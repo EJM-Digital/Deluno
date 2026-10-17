@@ -14,6 +14,7 @@
 #                               builds for them; web's own checks run when the web app changed
 #   image paths                 docker (the Dockerfile, compose, the migrations, the README examples, or this file)
 #   manual run only             windows-installer: the Windows installer of this commit, for the golden path
+#   manual run, or a push whose version is untagged   e2e-linux: the end-to-end groups on Docker Compose (docs/exec-plans/active/PLAN-E2E-IN-CI.md)
 #
 # Work lands on main directly (James, 22 Sep 2026: one person works on Deluno, so no feature branches), which makes
 # each push to main the one run. A pull request, if one is ever opened, is still checked; "Run workflow" re-runs by
@@ -56,6 +57,7 @@ jobs:
       run_e2e_smoke: ${{ steps.flags.outputs.run_e2e_smoke }}
       run_docker: ${{ steps.flags.outputs.run_docker }}
       run_windows_installer: ${{ steps.flags.outputs.run_windows_installer }}
+      run_e2e_linux: ${{ steps.flags.outputs.run_e2e_linux }}
       run_coverage: ${{ steps.flags.outputs.run_coverage }}
       run_mutation: ${{ steps.flags.outputs.run_mutation }}
     steps:
@@ -114,9 +116,9 @@ jobs:
           WORKFLOWS: ${{ steps.filter.outputs.workflows }}
         run: |
           set -euo pipefail
-          backend=false; web=false; smoke=false; docker=false; installer=false; coverage=false; mutation=false
+          backend=false; web=false; smoke=false; docker=false; installer=false; e2e_linux=false; coverage=false; mutation=false
           if [ "$EVENT" = "workflow_dispatch" ]; then
-            backend=true; web=true; smoke=true; docker=true; installer=true
+            backend=true; web=true; smoke=true; docker=true; installer=true; e2e_linux=true
           else
             # Anything in the change that is not the web app (or a document) reaches the backend side: source,
             # tests, scripts, the tray, build props, the workflows themselves.
@@ -124,6 +126,12 @@ jobs:
             if [ "$WEB" = "true" ] || [ "$WORKFLOWS" = "true" ]; then web=true; fi
             if [ "$CODE" = "true" ] || [ "$NOTES" = "true" ]; then smoke=true; fi
             if [ "$DOCKER" = "true" ] || [ "$WORKFLOWS" = "true" ]; then docker=true; fi
+          fi
+          # The end-to-end groups run on a manual run and on a push whose version is not yet tagged: the work toward a
+          # release (a tag v<version> is made only after they pass), not the pushes that follow it.
+          if [ "$EVENT" != "workflow_dispatch" ]; then
+            version="$(grep -oP '(?<=<Version>)[^<]+' Directory.Build.props | head -n 1)"
+            if [ -n "$version" ] && [ -z "$(git ls-remote --tags origin "refs/tags/v$version")" ]; then e2e_linux=true; fi
           fi
           # Coverage is measured and held to its baseline only when both the backend and the web tests ran: the
           # ratchet compares whole-repository numbers, and a half report would look like a drop.
@@ -141,6 +149,7 @@ jobs:
             echo "run_e2e_smoke=$smoke"
             echo "run_docker=$docker"
             echo "run_windows_installer=$installer"
+            echo "run_e2e_linux=$e2e_linux"
             echo "run_coverage=$coverage"
             echo "run_mutation=$mutation"
           } | tee -a "$GITHUB_OUTPUT"
@@ -519,6 +528,76 @@ jobs:
         timeout-minutes: 10
         run: bash scripts/test-readme-docker-examples.sh "$IMAGE"
 
+  # The end-to-end suite on Docker Compose (docs/exec-plans/active/PLAN-E2E-IN-CI.md): this commit's own image, the real
+  # download client, Weir and the suite's fixture on one private network, one group per job (they cannot interfere).
+  # Each spec reads every application's own API. Add a group by adding its name to the matrix and its spec to tests/e2e.
+  e2e-linux:
+    name: End-to-end (${{ matrix.group }})
+    needs: changes
+    if: ${{ needs.changes.outputs.run_e2e_linux == 'true' }}
+    runs-on: ubuntu-latest
+    # The films group took about 75 seconds on a workstation once the images were pulled; the image build is the rest.
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [films]
+    env:
+      DELUNO_IMAGE: deluno-e2e:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build Deluno's image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: ${{ env.DELUNO_IMAGE }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max,ignore-error=true
+
+      # Weir's image is pulled anonymously from its public registry page (by digest, tests/e2e/compose.yaml).
+      - name: Bring the stack up
+        run: docker compose -f tests/e2e/compose.yaml up --build --wait --detach
+
+      - name: Run the ${{ matrix.group }} group
+        run: npx playwright test -c tests/e2e/playwright.config.ts ${{ matrix.group }}
+
+      - name: Keep every application's log
+        if: ${{ always() }}
+        run: |
+          mkdir -p artifacts/e2e/logs
+          for service in deluno qbittorrent weir fixture; do
+            docker compose -f tests/e2e/compose.yaml logs --no-color "$service" > "artifacts/e2e/logs/$service.log" 2>&1 || true
+          done
+
+      - name: Take the stack down
+        if: ${{ always() }}
+        run: docker compose -f tests/e2e/compose.yaml down --volumes
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ always() }}
+        with:
+          name: e2e-${{ matrix.group }}
+          path: artifacts/e2e/
+          retention-days: 14
+          if-no-files-found: ignore
+
   # The installable build of this exact commit, for the golden path (docs/golden-path.md): only a manual run builds it
   # ("Run workflow" on any ref or commit), because a release is not tagged until the golden path has passed on a build
   # like this one. The same steps as the release's windows job, minus signing and delta packages, so what the golden
@@ -799,7 +878,7 @@ jobs:
 
   # The verdict. `always()` so it reports even when a job it needs failed or was skipped.
   ci-passed:
-    needs: [changes, repo-checks, backend, web-dist, web, e2e-smoke, docker, windows-installer, coverage-node, coverage, mutation]
+    needs: [changes, repo-checks, backend, web-dist, web, e2e-smoke, docker, windows-installer, e2e-linux, coverage-node, coverage, mutation]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
