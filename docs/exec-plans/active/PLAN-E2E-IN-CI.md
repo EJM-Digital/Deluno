@@ -36,7 +36,7 @@ One row per golden-path scenario id (77 on 16 Oct 2026, 78 with `outage.tray`), 
 | Scenario id | CI home | State |
 | --- | --- | --- |
 | `install-first-run` | `windows` | to port |
-| `nzbget.setup-twice` | `linux-e2e:nzbgetsetup` | to port |
+| `nzbget.setup-twice` | `linux-e2e:nzbgetsetup` | ported (tests/e2e/nzbgetsetup.spec.ts) |
 | `film.qbittorrent` | `linux-e2e:films` | ported (tests/e2e/films.spec.ts) |
 | `film.transmission` | `linux-e2e:films` | ported (tests/e2e/films.spec.ts) |
 | `film.deluge` | `linux-e2e:films` | ported (tests/e2e/films.spec.ts) |
@@ -96,16 +96,16 @@ One row per golden-path scenario id (77 on 16 Oct 2026, 78 with `outage.tray`), 
 | `tryagain.deluge` | `linux-e2e:tryagain` | ported (tests/e2e/tryagain.spec.ts) |
 | `tryagain.sabnzbd` | `linux-e2e:tryagain` | ported (tests/e2e/tryagain.spec.ts) |
 | `tryagain.nzbget` | `linux-e2e:tryagain` | ported (tests/e2e/tryagain.spec.ts) |
-| `vanish.before.qbittorrent` | `linux-e2e:vanish` | to port |
-| `vanish.before.transmission` | `linux-e2e:vanish` | to port |
-| `vanish.before.deluge` | `linux-e2e:vanish` | to port |
-| `vanish.before.sabnzbd` | `linux-e2e:vanish` | to port |
-| `vanish.before.nzbget` | `linux-e2e:vanish` | to port |
-| `vanish.waiting.qbittorrent` | `linux-e2e:vanish` | to port |
-| `vanish.waiting.transmission` | `linux-e2e:vanish` | to port |
-| `vanish.waiting.deluge` | `linux-e2e:vanish` | to port |
-| `vanish.waiting.sabnzbd` | `linux-e2e:vanish` | to port |
-| `vanish.waiting.nzbget` | `linux-e2e:vanish` | to port |
+| `vanish.before.qbittorrent` | `linux-e2e:vanishbefore` | ported (tests/e2e/vanishbefore.spec.ts) |
+| `vanish.before.transmission` | `linux-e2e:vanishbefore` | ported (tests/e2e/vanishbefore.spec.ts) |
+| `vanish.before.deluge` | `linux-e2e:vanishbefore` | ported (tests/e2e/vanishbefore.spec.ts) |
+| `vanish.before.sabnzbd` | `linux-e2e:vanishbefore` | ported (tests/e2e/vanishbefore.spec.ts) |
+| `vanish.before.nzbget` | `linux-e2e:vanishbefore` | ported (tests/e2e/vanishbefore.spec.ts) |
+| `vanish.waiting.qbittorrent` | `linux-e2e:vanishwaiting` | ported (tests/e2e/vanishwaiting.spec.ts) |
+| `vanish.waiting.transmission` | `linux-e2e:vanishwaiting` | ported (tests/e2e/vanishwaiting.spec.ts) |
+| `vanish.waiting.deluge` | `linux-e2e:vanishwaiting` | ported (tests/e2e/vanishwaiting.spec.ts) |
+| `vanish.waiting.sabnzbd` | `linux-e2e:vanishwaiting` | ported (tests/e2e/vanishwaiting.spec.ts) |
+| `vanish.waiting.nzbget` | `linux-e2e:vanishwaiting` | ported (tests/e2e/vanishwaiting.spec.ts) |
 | `problems.dismiss-everywhere` | `linux-e2e:problems` | to port |
 | `activity.one-story` | `linux-e2e:problems` | to port |
 | `seasonpack.no-library` | `linux-e2e:seasonpack` | to port |
