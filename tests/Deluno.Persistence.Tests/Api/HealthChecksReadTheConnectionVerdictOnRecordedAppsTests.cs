@@ -60,6 +60,34 @@ public sealed class HealthChecksReadTheConnectionVerdictOnRecordedAppsTests
         Assert.Equal("YTS is reachable.", ok.Message);
     }
 
+    [Fact]
+    public async Task A_broken_indexer_shows_on_the_System_health_list_after_the_scheduled_pass_and_clears_when_it_answers_again()
+    {
+        var wrong = RecordedReplies.Jackett("caps-wrong-api-key").Single.Reply;
+        await using var jackett = await RecordedIndexerServer.StartAsync(RecordedReplies.Jackett("search-text"), RecordedReplies.Jackett("caps"));
+        await using var app = await ApplicationTestHost.StartAsync();
+        var id = await AddIndexerAsync(app, jackett.BaseUrl + TorznabPath);
+
+        async Task<JsonElement> RowAsync()
+        {
+            using var scope = app.Services.CreateScope();
+            await scope.ServiceProvider.GetRequiredService<Deluno.Worker.HealthChecks.HealthCheckRunner>().RunCategoriesAsync([HealthCheckCategories.Indexer], CancellationToken.None);
+            var list = await app.Client.GetFromJsonAsync<JsonElement>("/api/system/health");
+            return list.GetProperty("checks").EnumerateArray().Single(row => row.GetProperty("id").GetString() == $"indexer:{id}");
+        }
+
+        jackett.AnswerEverythingWith = wrong;
+        await TestIndexerAsync(app, id);
+        var broken = await RowAsync();
+        Assert.Equal("problem", broken.GetProperty("status").GetString());
+        Assert.StartsWith("YTS: ", broken.GetProperty("message").GetString());
+
+        jackett.AnswerEverythingWith = null;
+        await TestIndexerAsync(app, id);
+        var fixedRow = await RowAsync();
+        Assert.Equal("ok", fixedRow.GetProperty("status").GetString());
+    }
+
     [Fact(Skip = "Defect: IndexerHealthCheck has no grace for a new indexer (DownloadClientHealthCheck has one, #1055). An indexer added through POST /api/indexers and not yet tested is read at once as a problem: \"YTS: Not tested yet.\"")]
     public async Task An_indexer_just_added_is_tested_on_save_so_it_shows_reachable_not_a_problem_before_anyone_presses_test()
     {
