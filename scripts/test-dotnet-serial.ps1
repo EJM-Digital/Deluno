@@ -7,6 +7,10 @@ param(
     [switch]$NoBuild,
     # A dotnet test filter applied to every project, e.g. "Category!=Timing".
     [string]$Filter = "",
+    # Run only these test projects (by name, e.g. Deluno.Persistence.Tests), or all but those in -Except. CI and the
+    # gate split the suite by project and, for Persistence, by namespace part (scripts/persistence-parts.mjs, #1346).
+    [string[]]$Only = @(),
+    [string[]]$Except = @(),
     # Collect line and branch coverage (coverlet, cobertura) for every Deluno production assembly, written next to the
     # TRX files (tests/<project>/TestResults/<guid>/coverage.cobertura.xml). CI's coverage job merges them (docs/testing/COVERAGE.md).
     [switch]$Coverage
@@ -17,6 +21,8 @@ Set-Location $Root
 
 $dotnet = Get-Command dotnet -ErrorAction Stop
 $projects = @(Get-ChildItem -Path (Join-Path $Root "tests") -Filter "*.Tests.csproj" -Recurse | Sort-Object FullName)
+if ($Only.Count -gt 0) { $projects = @($projects | Where-Object { $Only -contains $_.BaseName }) }
+if ($Except.Count -gt 0) { $projects = @($projects | Where-Object { $Except -notcontains $_.BaseName }) }
 if ($projects.Count -eq 0) {
     throw "No .NET test projects were found under $Root\tests."
 }

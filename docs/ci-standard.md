@@ -19,7 +19,7 @@ Any other workflow follows the same rules below.
 
 ## The local gate matches CI
 
-The local pre-push gate (`npm run gate`, `scripts/gate.ps1`) runs the browser smoke in CI's two shards (`--shard=1/2` and `--shard=2/2`, same Playwright config), each against its own fresh smoke host and database on its own ports, so state left by earlier specs is the same here as in a CI shard.
+The local pre-push gate (`npm run gate`, `scripts/gate.ps1`) runs the browser smoke in CI's three shards (`--shard=1/3`, `2/3` and `3/3`, same Playwright config), each against its own fresh smoke host and database on its own ports, so state left by earlier specs is the same here as in a CI shard.
 
 ## The required check
 
@@ -112,3 +112,5 @@ These are settings, not files, and are made by the repository owner:
 - Dependabot security updates on.
 - Secret scanning and push protection on.
 - A tag ruleset so that only the owner can create a `v*` tag.
+
+The backend tests run in four parallel jobs (issue 1346): the six smaller test projects together, and `Deluno.Persistence.Tests` in three parts split by namespace (`scripts/persistence-parts.mjs`). `scripts/check-persistence-parts.mjs` proves, from `dotnet test --list-tests`, that every Persistence test runs in exactly one part; CI runs it on the first leg and the gate runs it before the tests. Coverage from every leg is merged before the ratchet, and a failed leg fails the `backend` job that `ci-passed` judges.

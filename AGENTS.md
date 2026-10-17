@@ -59,7 +59,7 @@ npm run gate
 It builds Release once, then runs the backend tests, `npm run ci:check`, the web
 unit tests and the browser smoke side by side (about 8 minutes instead of about
 20 one after another), and says which step failed with the tail of its log. The
-gate runs the smoke in CI's two shards (`--shard=1/2` and `2/2`), each against its
+gate runs the smoke in CI's three shards (`--shard=1/3`, `2/3` and `3/3`), each against its
 own fresh smoke host and database on its own ports, so a spec that depends on
 state an earlier spec left behind fails before the push, not in CI.
 
