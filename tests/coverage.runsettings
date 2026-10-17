@@ -8,13 +8,17 @@
   docs/testing/coverage-exclusions.json, with a reason. That is why ExcludeByAttribute names only the
   compiler's own marks: coverlet's default also drops [Obsolete] and [ExcludeFromCodeCoverage], which
   would hide code from the report with no reason written down.
+
+  The format is opencover, not cobertura, on purpose: a cobertura line only says "50% of this jump was taken", not which
+  side, so merging the four backend legs' reports (#1346) could not union their branches and lost some. OpenCover names
+  each branch (offset and path), so ReportGenerator unions them exactly as one whole run would.
 -->
 <RunSettings>
   <DataCollectionRunSettings>
     <DataCollectors>
       <DataCollector friendlyName="XPlat code coverage">
         <Configuration>
-          <Format>cobertura</Format>
+          <Format>opencover</Format>
           <Include>[Deluno.*]*</Include>
           <Exclude>[*.Tests]*,[Deluno.Tests.*]*,[xunit*]*</Exclude>
           <ExcludeByAttribute>GeneratedCodeAttribute,CompilerGeneratedAttribute</ExcludeByAttribute>
