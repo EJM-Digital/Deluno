@@ -76,15 +76,41 @@ function Write-SuiteLog {
     if ($script:S) { Add-Content -Path $script:S.LogFile -Value $line -Encoding utf8 }
 }
 
+# Replaces $Destination with $Tmp. The host's progress poller reads results.json over PowerShell Direct while the suite
+# saves, and Windows refuses the rename ("Cannot create a file when that file already exists") while the reader holds the
+# file open. Retry briefly; saving results must never fail a scenario or a group, so the last resort is a plain
+# overwrite and, failing that, a logged skip (the next save carries everything).
+function Move-ResultsFile {
+    param([string] $Tmp, [string] $Destination, [int] $Attempts = 8, [int] $DelayMs = 250)
+    for ($i = 1; $i -le $Attempts; $i++) {
+        try {
+            if (Test-Path -LiteralPath $Destination) {
+                try { [IO.File]::Replace($Tmp, $Destination, $null) }
+                catch { Move-Item -Force -LiteralPath $Tmp -Destination $Destination -ErrorAction Stop }
+            }
+            else { Move-Item -Force -LiteralPath $Tmp -Destination $Destination -ErrorAction Stop }
+            return $true
+        }
+        catch { Start-Sleep -Milliseconds $DelayMs }
+    }
+    try { Copy-Item -Force -LiteralPath $Tmp -Destination $Destination -ErrorAction Stop; Remove-Item -Force -LiteralPath $Tmp -ErrorAction SilentlyContinue; return $true }
+    catch { return $false }
+}
+
 function Save-Results {
     $payload = [ordered]@{
         startedUtc = $script:S.Started.ToString('o')
         updatedUtc = [DateTime]::UtcNow.ToString('o')
         scenarios  = @($script:S.Results)
     }
-    $tmp = $script:S.ResultsFile + '.tmp'
-    ($payload | ConvertTo-Json -Depth 8) | Set-Content -Path $tmp -Encoding utf8
-    Move-Item -Force -Path $tmp -Destination $script:S.ResultsFile
+    try {
+        $tmp = $script:S.ResultsFile + '.tmp'
+        ($payload | ConvertTo-Json -Depth 8) | Set-Content -Path $tmp -Encoding utf8
+        if (-not (Move-ResultsFile -Tmp $tmp -Destination $script:S.ResultsFile)) {
+            Write-SuiteLog 'Could not replace results.json (a reader holds it); the next save will carry these results.'
+        }
+    }
+    catch { Write-SuiteLog "Could not save results.json ($($_.Exception.Message)); the next save will carry these results." }
 }
 
 # Runs one scenario. A thrown error is an "error" result (the harness or the VM broke, not necessarily the product);
