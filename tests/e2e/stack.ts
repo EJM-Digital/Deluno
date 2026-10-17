@@ -97,12 +97,12 @@ export class DelunoApi {
     return new DelunoApi(context, session);
   }
 
-  async call<T = any>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, data?: unknown): Promise<Reply<T>> {
+  async call<T = any>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, data?: unknown): Promise<Reply<T>> {
     return reply<T>(await this.context.fetch(path, { method, data, timeout: 60_000 }));
   }
 
   /** The body of a call that must have worked. */
-  async must<T = any>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, data?: unknown): Promise<T> {
+  async must<T = any>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, data?: unknown): Promise<T> {
     const r = await this.call<T>(method, path, data);
     if (r.status < 200 || r.status >= 300) throw new Error(`${method} ${path} answered ${r.status}: ${r.text.slice(0, 600)}`);
     return r.body;
@@ -209,11 +209,30 @@ export async function makeFilm(title: string, extra: boolean, usenet = false, la
   return await response.json() as FixtureFilm;
 }
 
+/** A season pack for the show: a folder of five episode files (S01E01..S01E05), one torrent over them, offered on the Torznab feed under the TV categories. */
+export async function makeTvPack(title: string, episodes = 5): Promise<FixtureFilm> {
+  const response = await fetch(`${URLS.fixture}/films`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title, year: 2020, tvPack: episodes }) });
+  if (!response.ok) throw new Error(`The fixture would not make the pack for ${title}: ${response.status} ${await response.text()}`);
+  return await response.json() as FixtureFilm;
+}
+
 /** The files under a shared folder whose path contains the text, read by the fixture from its own mount. */
-export async function filesUnder(root: "media" | "downloads" | "weir", contains: string): Promise<Array<{ path: string; size: number }>> {
+export async function filesUnder(root: "media" | "downloads" | "weir" | "pack", contains: string): Promise<Array<{ path: string; size: number }>> {
   const response = await fetch(`${URLS.fixture}/inspect?root=${root}&contains=${encodeURIComponent(contains)}`);
   if (!response.ok) throw new Error(`The fixture could not list ${root}: ${response.status}`);
   return await response.json() as Array<{ path: string; size: number }>;
+}
+
+/** Makes folders and copies of the fixture's videos under /pack (owned by Deluno's user), for a group that imports from a folder. */
+export async function stage(body: { dirs?: string[]; copies?: Array<{ to: string; from: "small" | "big" }> }) {
+  const response = await fetch(`${URLS.fixture}/stage`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  if (!response.ok) throw new Error(`The fixture would not stage the files: ${response.status} ${await response.text()}`);
+}
+
+/** SHA-256 of a file on the pack volume, read by the fixture from its own mount. */
+export async function sha256Of(file: string): Promise<{ sha256: string; size: number } | undefined> {
+  const response = await fetch(`${URLS.fixture}/sha256?root=pack&path=${encodeURIComponent(file)}`);
+  return response.ok ? await response.json() as { sha256: string; size: number } : undefined;
 }
 
 // ------------------------------------------------------------------ waiting

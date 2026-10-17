@@ -213,6 +213,27 @@ async function newSingleFileFilm(title, year, variant = "complete") {
   return { title, year, release, infohash, size: data.length, url: `${PUBLIC_BASE}/dl/${name}`, files: [{ path: `${release}.mkv`, size: data.length }] };
 }
 
+// A season pack: a folder named like a scene release with one episode file for each of 1..episodes (each its own bytes), one torrent over the
+// lot, offered on the Torznab feed under the TV categories (a tvsearch finds it, a movie search does not).
+async function newTvPack(title, year, episodes) {
+  const release = `${title}.S01.1080p.WEB-DL.x264-E2E`;
+  const folder = path.join(WORK, "films", release);
+  if (fs.existsSync(folder)) throw new Error("a release of that name already exists");
+  const [baseFilm] = await makeBaseVideos();
+  fs.mkdirSync(folder, { recursive: true });
+  for (let episode = 1; episode <= episodes; episode++) {
+    const name = `${title}.S01E${String(episode).padStart(2, "0")}.1080p.WEB-DL.x264-E2E.mkv`;
+    await ffmpeg(["-i", baseFilm, "-c", "copy", "-metadata", `title=${name}`, path.join(folder, name)]);
+  }
+  const { torrent, infohash, total, files } = makeTorrent(folder, release, `${PUBLIC_BASE}/webseed/`);
+  fs.mkdirSync(path.join(WORK, "torrents"), { recursive: true });
+  const name = `${release}.torrent`;
+  fs.writeFileSync(path.join(WORK, "torrents", name), torrent);
+  RELEASES.push({ title: release, torrent: name, infohash, size: total, cat: 5040, seeders: 50, tv: true });
+  log(`made ${release}: ${total} bytes, ${files.length} episode files, hash ${infohash}`);
+  return { title, year, release, infohash, size: total, url: `${PUBLIC_BASE}/dl/${name}`, files: files.map((f) => ({ path: f, size: fs.statSync(path.join(folder, f)).size })) };
+}
+
 async function newFilm(title, year, withExtra) {
   const release = `${title}.${year}.1080p.WEB-DL.x264-E2E`;
   const folder = path.join(WORK, "films", release);
@@ -424,7 +445,7 @@ function searchXml(query, usenet) {
   const kind = (query.get("t") || "").toLowerCase();
   const items = [];
   for (const row of [...RELEASES]) {
-    if (kind === "tvsearch" || kind === "tv") continue;
+    if (Boolean(row.tv) !== (kind === "tvsearch" || kind === "tv")) continue;
     if (Boolean(row.usenet) !== usenet) continue;
     if (words.length && !words.some((w) => row.title.toLowerCase().includes(w))) continue;
     const url = `${PUBLIC_BASE}/dl/${row.torrent}`;
@@ -556,6 +577,21 @@ async function handleGet(req, res, url) {
     found.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
     return sendBytes(req, res, 200, JSON.stringify(found), "application/json");
   }
+  // A metadata broker (docs/metadata-broker-contract.md) that knows the made-up shows the season-pack group adds: a show whose title begins
+  // "Gppack" has one season of five episodes. It answers nothing else, so no other title gets metadata from it.
+  if (route === "/metadata/search") {
+    const title = query.get("query") || "";
+    const results = title.startsWith("Gppack") ? [{
+      provider: "tmdb", providerId: String(9000000 + (Number.parseInt(sha1(Buffer.from(title)).toString("hex").slice(0, 5), 16) % 900000)), mediaType: "tv", title,
+      originalTitle: title, year: 2020, overview: "A made-up show for the end-to-end suite.", posterUrl: null, backdropUrl: null, rating: null, ratings: [], genres: [], imdbId: null, externalUrl: null
+    }] : [];
+    return sendBytes(req, res, 200, JSON.stringify({ provider: "deluno-broker", mode: "broker", resultCount: results.length, results }), "application/json");
+  }
+  const catalogue = /^\/metadata\/tv\/(\d+)\/catalogue$/.exec(route);
+  if (catalogue) {
+    const episodes = [1, 2, 3, 4, 5].map((episodeNumber) => ({ episodeNumber, title: `Episode ${episodeNumber}`, overview: "", airDate: `2020-01-0${episodeNumber}` }));
+    return sendBytes(req, res, 200, JSON.stringify({ seasons: [{ seasonNumber: 1, name: "Season 1", airDate: "2020-01-01", episodes }] }), "application/json");
+  }
   if (route === "/sha256") {
     const root = ROOTS[query.get("root") || ""];
     const target = path.posix.normalize(query.get("path") || "");
@@ -587,6 +623,7 @@ async function handlePost(req, res, url) {
     const body = raw.trim() ? JSON.parse(raw) : {};
     if (url.pathname === "/stage") return sendBytes(req, res, 200, JSON.stringify(await stage(body)), "application/json");
     if (url.pathname === "/films") {
+      if (body.tvPack) return sendBytes(req, res, 200, JSON.stringify(await newTvPack(body.title, Number.parseInt(body.year ?? 2020, 10), Number(body.tvPack))), "application/json");
       if (body.usenet) return sendBytes(req, res, 200, JSON.stringify(await newUsenetFilm(body.title, Number.parseInt(body.year ?? 2020, 10), { hang: body.hang || "", slow: Boolean(body.slow) })), "application/json");
       if (body.layout === "file" || body.variant) return sendBytes(req, res, 200, JSON.stringify(await newSingleFileFilm(body.title, Number.parseInt(body.year ?? 2020, 10), body.variant || "complete")), "application/json");
       const made = await newFilm(body.title, Number.parseInt(body.year ?? 2020, 10), Boolean(body.extra));
