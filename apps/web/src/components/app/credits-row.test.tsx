@@ -8,8 +8,8 @@
  * from its own record, and a reader that knows one of them returns an empty
  * list for half the installs while looking perfectly correct.</p>
  */
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { CreditsRow, readStoredCredits } from "./credits-row";
 
 describe("readStoredCredits", () => {
@@ -136,5 +136,80 @@ describe("a credit as a link", () => {
     // window it could drive.
     expect(links[0].getAttribute("rel")).toContain("noreferrer");
     expect(container.querySelectorAll("figure")).toHaveLength(2);
+  });
+});
+
+describe("CreditsRow when the row is wider than the space", () => {
+  const person = (name: string, extra: Partial<{ role: string | null; personId: string | null; imdbUrl: string | null }> = {}) =>
+    ({ name, role: "Role", profileUrl: null, personId: null, imdbUrl: null, ...extra });
+
+  function measuredRow(container: HTMLElement, layout: { scrollLeft: number; clientWidth: number; scrollWidth: number }) {
+    const row = container.querySelector<HTMLElement>(".overflow-x-auto")!;
+    Object.defineProperty(row, "scrollLeft", { configurable: true, value: layout.scrollLeft });
+    Object.defineProperty(row, "clientWidth", { configurable: true, value: layout.clientWidth });
+    Object.defineProperty(row, "scrollWidth", { configurable: true, value: layout.scrollWidth });
+    row.scrollBy = vi.fn();
+    return row;
+  }
+
+  it("turns on the arrow for the side that has more, and pages the row by most of a view", () => {
+    const { container } = render(<CreditsRow heading="Cast" people={[person("A"), person("B")]} />);
+    const row = measuredRow(container, { scrollLeft: 0, clientWidth: 400, scrollWidth: 1200 });
+
+    fireEvent.scroll(row);
+
+    expect(screen.getByLabelText("Scroll cast right")).toBeEnabled();
+    expect(screen.getByLabelText("Scroll cast left")).toBeDisabled();
+    fireEvent.click(screen.getByLabelText("Scroll cast right"));
+    expect(row.scrollBy).toHaveBeenCalledWith({ left: 340, behavior: "smooth" });
+  });
+
+  it("turns on the back arrow once the row has moved, and pages back", () => {
+    const { container } = render(<CreditsRow heading="Cast" people={[person("A"), person("B")]} />);
+    const row = measuredRow(container, { scrollLeft: 800, clientWidth: 400, scrollWidth: 1200 });
+
+    fireEvent.scroll(row);
+
+    expect(screen.getByLabelText("Scroll cast left")).toBeEnabled();
+    expect(screen.getByLabelText("Scroll cast right")).toBeDisabled();
+    fireEvent.click(screen.getByLabelText("Scroll cast left"));
+    expect(row.scrollBy).toHaveBeenCalledWith({ left: -340, behavior: "smooth" });
+  });
+
+  it("measures again when the row changes size, and stops watching when it goes", () => {
+    const callbacks: Array<() => void> = [];
+    const disconnect = vi.fn();
+    const observe = vi.fn();
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: () => void) { callbacks.push(callback); }
+      observe = observe;
+      disconnect = disconnect;
+    });
+    try {
+      const { container, unmount } = render(<CreditsRow heading="Cast" people={[person("A")]} />);
+      const row = measuredRow(container, { scrollLeft: 0, clientWidth: 100, scrollWidth: 900 });
+      expect(observe).toHaveBeenCalledWith(row);
+
+      act(() => callbacks[0]());
+      expect(screen.getByLabelText("Scroll cast right")).toBeEnabled();
+
+      unmount();
+      expect(disconnect).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("links a person with an id but no IMDb address to the provider's page, and shows a credit with no role", () => {
+    const { container } = render(<CreditsRow heading="Cast" people={[person("Amy Adams", { personId: "1245", role: null })]} />);
+
+    expect(container.querySelector("a")?.getAttribute("href")).toBe("https://www.themoviedb.org/person/1245");
+    expect(screen.getByText("Amy Adams")).toBeInTheDocument();
+    expect(screen.queryByText("Role")).toBeNull();
+  });
+
+  it("skips anything in a stored list that is not a person", () => {
+    const { cast } = readStoredCredits(JSON.stringify({ cast: [null, "Amy Adams", 7, { name: "Tzi Ma" }] }));
+    expect(cast.map((entry) => entry.name)).toEqual(["Tzi Ma"]);
   });
 });
