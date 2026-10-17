@@ -19,7 +19,7 @@
 //     without trusting any application's word for it.
 //
 // Nothing here is the product: Deluno, the download client and Weir are the real published images.
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
@@ -37,6 +37,15 @@ const NNTP_PORT = Number(process.env.FIXTURE_NNTP_PORT || "1119");
 const PART_BYTES = 700 * 1024; // the data in one posted article
 const GROUP = "alt.binaries.e2e";
 const ARTICLES = new Map(); // message-id (no brackets) -> { head, body }
+
+// What the stuck-download scenarios need (docs/golden-path.md, group stuck): a release that is never answered, or answered slowly.
+//   SHORT_FILES - web-seed files served up to the start of the last piece, then left open: a torrent that stops just short of the end;
+//   HUNG        - news articles the news server never answers (a Usenet release that makes no progress);
+//   SLOWED      - news articles answered only after SLOW_MS (a Usenet release that is too slow).
+const SHORT_FILES = new Set();
+const HUNG = new Set();
+const SLOWED = new Set();
+const SLOW_MS = Number(process.env.FIXTURE_SLOW_MS || "15000");
 
 const RELEASES = []; // newest last: title, torrent (or nzb), infohash, size, cat, seeders, usenet
 
@@ -135,13 +144,29 @@ async function makeBaseVideos() {
 }
 
 // A single-file release: the film alone, named like the release (the torrent has one file and no folder).
-async function newSingleFileFilm(title, year) {
+// variant "short": the web seed stops before the last piece, so a client ends just short of 100%.
+// variant "dummy": a torrent of 40 MB nobody serves (no tracker, no web seed): no data and no peers, ever.
+async function newSingleFileFilm(title, year, variant = "complete") {
   const release = `${title}.${year}.1080p.WEB-DL.x264-E2E`;
   const file = path.join(WORK, "films", `${release}.mkv`);
   if (fs.existsSync(file)) throw new Error("a release of that name already exists");
-  const [baseFilm] = await makeBaseVideos();
   fs.mkdirSync(path.join(WORK, "films"), { recursive: true });
+  if (variant === "dummy") {
+    const bytes = randomBytes(40 * 1024 * 1024);
+    const hashes = [];
+    for (let at = 0; at < bytes.length; at += PIECE) hashes.push(sha1(bytes.subarray(at, at + PIECE)));
+    const dummyInfo = { name: `${release}.mkv`, "piece length": PIECE, pieces: Buffer.concat(hashes), length: bytes.length };
+    const dummyHash = sha1(bencode(dummyInfo)).toString("hex");
+    fs.mkdirSync(path.join(WORK, "torrents"), { recursive: true });
+    const dummyName = `${release}.torrent`;
+    fs.writeFileSync(path.join(WORK, "torrents", dummyName), bencode({ info: dummyInfo, comment: "Deluno end-to-end fixture (nobody has it)" }));
+    RELEASES.push({ title: release, torrent: dummyName, infohash: dummyHash, size: bytes.length, cat: 2000, seeders: 50 });
+    log(`made ${release}: ${bytes.length} bytes, one file, no web seed and no tracker, hash ${dummyHash}`);
+    return { title, year, release, infohash: dummyHash, size: bytes.length, url: `${PUBLIC_BASE}/dl/${dummyName}`, files: [{ path: `${release}.mkv`, size: bytes.length }] };
+  }
+  const [baseFilm] = await makeBaseVideos();
   await ffmpeg(["-i", baseFilm, "-c", "copy", "-metadata", `title=${release}`, file]);
+  if (variant === "short") SHORT_FILES.add(`${release}.mkv`);
   const data = fs.readFileSync(file);
   const pieces = [];
   for (let at = 0; at < data.length; at += PIECE) pieces.push(sha1(data.subarray(at, at + PIECE)));
@@ -257,7 +282,8 @@ function nzbXml(name, files) {
 }
 
 // A Usenet release: a folder job (the film and a small .nfo beside it, as a real post carries them) and its .nzb.
-async function newUsenetFilm(title, year) {
+// hang "all": no article is ever answered; hang "last": the film's last article is never answered; slow: every article waits SLOW_MS.
+async function newUsenetFilm(title, year, { hang = "", slow = false } = {}) {
   const release = `${title}.${year}.1080p.WEB-DL.x264-E2E`;
   if (RELEASES.some((r) => r.title === release)) throw new Error("a release of that name already exists");
   const [baseFilm] = await makeBaseVideos();
@@ -270,6 +296,9 @@ async function newUsenetFilm(title, year) {
   fs.writeFileSync(nfo, Array.from({ length: 40 }, (_, i) => `Line ${i + 1} of the note that travels beside the film in this release.`).join("\n") + "\n");
   const key = sha1(Buffer.from(release)).toString("hex").slice(0, 10);
   const files = [postFile(film, `${release}.mkv`, 1, 2, key), postFile(nfo, `${release}.nfo`, 2, 2, key)];
+  if (hang === "all") for (const f of files) for (const s of f.segments) HUNG.add(s.id);
+  if (hang === "last") HUNG.add(files[0].segments[files[0].segments.length - 1].id);
+  if (slow) for (const f of files) for (const s of f.segments) SLOWED.add(s.id);
   fs.mkdirSync(path.join(WORK, "nzbs"), { recursive: true });
   const name = `${release}.nzb`;
   fs.writeFileSync(path.join(WORK, "nzbs", name), nzbXml(release, files));
@@ -332,6 +361,8 @@ function nntpCommand(socket, line) {
       const id = arg.replace(/^</, "").replace(/>$/, "");
       const article = ARTICLES.get(id);
       if (!article) { socket.write("430 No such article\r\n"); return; }
+      // A hung article is never answered: the connection waits, as it does for a news server that has stopped replying.
+      if (HUNG.has(id)) { log(`news: holding ${command} <${id}> unanswered`); return; }
       if (command === "STAT") { socket.write(`223 0 <${id}>\r\n`); return; }
       const parts = [Buffer.from(`${{ ARTICLE: "220", HEAD: "221", BODY: "222" }[command]} 0 <${id}>\r\n`)];
       if (command !== "BODY") parts.push(dotStuffed(article.head));
@@ -339,7 +370,8 @@ function nntpCommand(socket, line) {
       if (command !== "HEAD") parts.push(dotStuffed(article.body));
       parts.push(Buffer.from(".\r\n"));
       const out = Buffer.concat(parts);
-      socket.write(out, () => log(`news: sent ${command} <${id}> (${out.length} bytes)`));
+      const send = () => socket.write(out, () => log(`news: sent ${command} <${id}> (${out.length} bytes)`));
+      if (SLOWED.has(id) && command !== "STAT") setTimeout(send, SLOW_MS); else send();
       return;
     }
     default: socket.write("500 Command not recognised\r\n");
@@ -430,6 +462,31 @@ function sendFile(req, res, file) {
   stream.pipe(res);
 }
 
+// A web-seed file that stops short: what lies before the last piece is served, and a request that reaches the last piece is
+// answered up to that point and then left open, so a client ends with every piece but the last.
+function sendFileShort(req, res, file) {
+  const size = fs.statSync(file).size;
+  const limit = Math.floor((size - 1) / PIECE) * PIECE; // the first byte of the last piece
+  let start = 0;
+  let end = size - 1;
+  const match = /^bytes=(\d*)-(\d*)$/.exec((req.headers.range || "").trim());
+  if (match) {
+    if (match[1] === "" && match[2]) start = Math.max(0, size - Number(match[2]));
+    else { start = Number(match[1] || 0); if (match[2]) end = Math.min(size - 1, Number(match[2])); }
+    if (start > end || start >= size) return sendBytes(req, res, 416, "", "text/plain", { "Content-Range": `bytes */${size}` });
+  }
+  const headers = { "Content-Type": "application/octet-stream", "Content-Length": end - start + 1, "Accept-Ranges": "bytes" };
+  if (match) headers["Content-Range"] = `bytes ${start}-${end}/${size}`;
+  res.writeHead(match ? 206 : 200, headers);
+  if (req.method === "HEAD") return res.end();
+  const stopAt = Math.min(end, limit - 1);
+  if (start > stopAt) { log(`web seed: holding the last piece of ${path.basename(file)} unanswered`); return; }
+  const stream = fs.createReadStream(file, { start, end: stopAt });
+  stream.on("error", () => res.destroy());
+  res.on("close", () => stream.destroy());
+  stream.pipe(res, { end: stopAt === end }); // the rest of the range is never sent
+}
+
 async function handleGet(req, res, url) {
   const route = decodeURIComponent(url.pathname);
   const query = url.searchParams;
@@ -449,6 +506,7 @@ async function handleGet(req, res, url) {
     const rel = path.posix.normalize(route.slice("/webseed/".length));
     const target = path.join(WORK, "films", rel);
     if (rel.startsWith("..") || !fs.existsSync(target) || !fs.statSync(target).isFile()) return sendBytes(req, res, 404, "no", "text/plain");
+    if (SHORT_FILES.has(rel)) return sendFileShort(req, res, target);
     return sendFile(req, res, target);
   }
   if (route === "/inspect") {
@@ -488,8 +546,8 @@ async function handlePost(req, res, url) {
     const raw = Buffer.concat(chunks).toString("utf8");
     const body = raw.trim() ? JSON.parse(raw) : {};
     if (url.pathname === "/films") {
-      if (body.usenet) return sendBytes(req, res, 200, JSON.stringify(await newUsenetFilm(body.title, Number.parseInt(body.year ?? 2020, 10))), "application/json");
-      if (body.layout === "file") return sendBytes(req, res, 200, JSON.stringify(await newSingleFileFilm(body.title, Number.parseInt(body.year ?? 2020, 10))), "application/json");
+      if (body.usenet) return sendBytes(req, res, 200, JSON.stringify(await newUsenetFilm(body.title, Number.parseInt(body.year ?? 2020, 10), { hang: body.hang || "", slow: Boolean(body.slow) })), "application/json");
+      if (body.layout === "file" || body.variant) return sendBytes(req, res, 200, JSON.stringify(await newSingleFileFilm(body.title, Number.parseInt(body.year ?? 2020, 10), body.variant || "complete")), "application/json");
       const made = await newFilm(body.title, Number.parseInt(body.year ?? 2020, 10), Boolean(body.extra));
       return sendBytes(req, res, 200, JSON.stringify(made), "application/json");
     }
