@@ -32,7 +32,7 @@ public sealed class HealthChecksReadTheConnectionVerdictOnRecordedAppsTests
 
     private static Task TestIndexerAsync(ApplicationTestHost app, string id) => app.Client.PostAsync($"/api/indexers/{id}/test", null);
 
-    private static IndexerHealthCheck IndexerCheck(ApplicationTestHost app) => new(app.Services.GetRequiredService<IConnectionsRepository>());
+    private static IndexerHealthCheck IndexerCheck(ApplicationTestHost app) => new(app.Services.GetRequiredService<IConnectionsRepository>(), TimeProvider.System);
 
     [Fact]
     public async Task An_indexer_that_refuses_the_key_is_a_problem_row_naming_it_and_clears_once_it_answers_properly()
@@ -89,16 +89,30 @@ public sealed class HealthChecksReadTheConnectionVerdictOnRecordedAppsTests
     }
 
     [Fact]
-    public async Task An_indexer_just_added_is_tested_on_save_so_it_shows_reachable_not_a_problem_before_anyone_presses_test()
+    public async Task An_indexer_just_added_is_left_alone_before_its_first_test_then_shows_reachable_once_tested()
     {
         await using var jackett = await RecordedIndexerServer.StartAsync(RecordedReplies.Jackett("search-text"), RecordedReplies.Jackett("caps"));
         await using var app = await ApplicationTestHost.StartAsync();
         var id = await AddIndexerAsync(app, jackett.BaseUrl + TorznabPath);
 
-        var row = Assert.Single(await IndexerCheck(app).RunAsync(CancellationToken.None));
+        // Added seconds ago and never tested: no "Not tested yet" problem during the grace, the same as a download client.
+        Assert.Empty(await IndexerCheck(app).RunAsync(CancellationToken.None));
 
+        await TestIndexerAsync(app, id);
+        var row = Assert.Single(await IndexerCheck(app).RunAsync(CancellationToken.None));
         Assert.Equal($"indexer:{id}", row.Id);
         Assert.Equal(HealthCheckStatuses.Ok, row.Status);
+
+        // Past the grace, one that was never tested is a problem again.
+        var late = new IndexerHealthCheck(app.Services.GetRequiredService<IConnectionsRepository>(), new LaterClock(IndexerHealthCheck.NewIndexerGrace + TimeSpan.FromMinutes(1)));
+        var untestedId = await AddIndexerAsync(app, "http://127.0.0.1:9" + TorznabPath);
+        var rows = await late.RunAsync(CancellationToken.None);
+        Assert.Equal(HealthCheckStatuses.Problem, rows.Single(r => r.Id == $"indexer:{untestedId}").Status);
+    }
+
+    private sealed class LaterClock(TimeSpan by) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.UtcNow + by;
     }
 
     [Fact]
