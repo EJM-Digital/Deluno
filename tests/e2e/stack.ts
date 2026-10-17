@@ -77,7 +77,7 @@ async function reply<T>(response: { status(): number; text(): Promise<string> })
 }
 
 export class DelunoApi {
-  private constructor(private readonly context: APIRequestContext) {}
+  private constructor(private readonly context: APIRequestContext, readonly session: { accessToken: string; user?: unknown; expiresUtc?: string }) {}
 
   static async signIn(): Promise<DelunoApi> {
     const anonymous = await request.newContext({ baseURL: URLS.deluno });
@@ -88,10 +88,11 @@ export class DelunoApi {
     }
     const login = await anonymous.post("/api/auth/login", { data: { username: LOGIN.deluno.username, password: LOGIN.deluno.password } });
     if (!login.ok()) throw new Error(`Deluno would not sign in: ${login.status()} ${await login.text()}`);
-    const { accessToken } = await login.json() as { accessToken: string };
+    const session = await login.json() as { accessToken: string; user?: unknown; expiresUtc?: string };
+    const { accessToken } = session;
     await anonymous.dispose();
     const context = await request.newContext({ baseURL: URLS.deluno, extraHTTPHeaders: { Authorization: `Bearer ${accessToken}` } });
-    return new DelunoApi(context);
+    return new DelunoApi(context, session);
   }
 
   async call<T = any>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, data?: unknown): Promise<Reply<T>> {
@@ -190,9 +191,9 @@ export interface FixtureFilm {
   files: Array<{ path: string; size: number }>;
 }
 
-/** A release the fixture makes: a torrent (with a web seed) or, with usenet, a folder job posted as yEnc articles with its .nzb. */
-export async function makeFilm(title: string, extra: boolean, usenet = false): Promise<FixtureFilm> {
-  const response = await fetch(`${URLS.fixture}/films`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title, year: 2020, extra, usenet }) });
+/** A release the fixture makes: a torrent (with a web seed; layout "file" is one file with no folder) or, with usenet, a folder job posted as yEnc articles with its .nzb. */
+export async function makeFilm(title: string, extra: boolean, usenet = false, layout: "folder" | "file" = "folder"): Promise<FixtureFilm> {
+  const response = await fetch(`${URLS.fixture}/films`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title, year: 2020, extra, usenet, layout }) });
   if (!response.ok) throw new Error(`The fixture would not make ${title}: ${response.status} ${await response.text()}`);
   return await response.json() as FixtureFilm;
 }
