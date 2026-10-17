@@ -49,8 +49,8 @@ function Get-SuiteVerdict {
 
 # The status description GitHub shows: at most 140 characters, and on a failure it names the scenarios that failed.
 function Get-StatusDescription {
-    param([Parameter(Mandatory)] $Verdict, [string] $Version = '')
-    if ($Verdict.State -eq 'success') { return "Scenario suite passed: $($Verdict.Passed) of $($Verdict.Total) on $Version" }
+    param([Parameter(Mandatory)] $Verdict, [string] $Version = '', [string] $Note = '')
+    if ($Verdict.State -eq 'success') { return "Scenario suite passed: $($Verdict.Passed) of $($Verdict.Total) on $Version$Note" }
     $names = New-Object System.Collections.ArrayList
     if (-not $Verdict.BuildMatches) { [void]$names.Add('installed build is not this commit') }
     foreach ($h in @($Verdict.HarnessFailures)) { [void]$names.Add('install') }
@@ -65,8 +65,8 @@ function Get-StatusDescription {
 
 # The gh arguments that record the status. The context is the one the release gate reads.
 function Get-StatusArguments {
-    param([Parameter(Mandatory)] [string] $Repository, [Parameter(Mandatory)] [string] $Sha, [Parameter(Mandatory)] $Verdict, [string] $Version = '', [string] $TargetUrl = '')
-    $a = @('api', "repos/$Repository/statuses/$Sha", '-f', "state=$($Verdict.State)", '-f', 'context=golden-path', '-f', "description=$(Get-StatusDescription -Verdict $Verdict -Version $Version)")
+    param([Parameter(Mandatory)] [string] $Repository, [Parameter(Mandatory)] [string] $Sha, [Parameter(Mandatory)] $Verdict, [string] $Version = '', [string] $TargetUrl = '', [string] $Note = '')
+    $a = @('api', "repos/$Repository/statuses/$Sha", '-f', "state=$($Verdict.State)", '-f', 'context=golden-path', '-f', "description=$(Get-StatusDescription -Verdict $Verdict -Version $Version -Note $Note)")
     if ($TargetUrl) { $a += @('-f', "target_url=$TargetUrl") }
     $a
 }
@@ -226,4 +226,77 @@ function Get-GithubPickerChecks {
     & $add 'The installed Weir is one of the newest releases github.com''s release feed lists (the release used through the feed)' ($core -and ($core -in $top)) "installed $WeirVersion; feed newest: $((@($FeedTags) | Select-Object -First 3) -join ', ')"
     & $add 'The picker reached its finish screen' ($PickerLog -match 'final: .*Finished\.') ''
     @($checks)
+}
+
+
+# ------------------------------------------------------------------ combining a full run with re-runs (James, 17 Oct 2026)
+# When a full run fails only on harness or timing problems and the fix touches no shipped file, the full run's passes plus each
+# failed scenario re-run alone and passing on the same build count as the gate. Nothing here talks to the VM or to GitHub.
+
+# Whether a file that ships changed between the full run's harness and now. The rule lives in scripts/ship-paths.mjs (one place,
+# shared with the tag script); this only calls it. Returns Ok, Reason.
+function Invoke-ShipPathsCheck {
+    param([Parameter(Mandatory)] [string] $Script, [Parameter(Mandatory)] [string] $Base, [Parameter(Mandatory)] [string] $Head)
+    if (-not (Test-Path -LiteralPath $Script)) {
+        return [pscustomobject]@{ Ok = $false; Reason = "$Script is not here, so nothing proves that no shipped file changed (merge the suite-carry branch)." }
+    }
+    $out = & node $Script --base $Base --head $Head 2>&1
+    [pscustomobject]@{ Ok = ($LASTEXITCODE -eq 0); Reason = (($out | ForEach-Object { "$_" }) -join ' ').Trim() }
+}
+
+# Judges a full run (its results.json, as an object) with the re-runs (objects) against the plan. Ok only when every check holds;
+# Problems says each one that does not. Combined is every planned scenario with the run that vouches for it.
+function Get-CombinedRunJudgement {
+    param(
+        [Parameter(Mandatory)] $Full, [Parameter(Mandatory)] [object[]] $Reruns, [Parameter(Mandatory)] [object[]] $Plan,
+        [Parameter(Mandatory)] $ShipPaths, [string] $FullHarnessCommit = ''
+    )
+    $problems = New-Object System.Collections.ArrayList
+    $commit = ([string]$Full.commit).ToLowerInvariant()
+
+    # The same build: every run was against the same commit and its installed build carries it.
+    if (-not (Test-BuildMatchesCommit -ProductVersion ([string]$Full.installedBuild) -Commit $commit)) { [void]$problems.Add("The full run's installed build '$($Full.installedBuild)' is not commit $commit.") }
+    $n = 0
+    foreach ($r in $Reruns) {
+        $n++
+        if (([string]$r.commit).ToLowerInvariant() -ne $commit) { [void]$problems.Add("Re-run $n is for commit $($r.commit), not $commit.") }
+        if (-not (Test-BuildMatchesCommit -ProductVersion ([string]$r.installedBuild) -Commit $commit)) { [void]$problems.Add("Re-run $n's installed build '$($r.installedBuild)' is not commit $commit.") }
+        if (-not $r.chosenPassed) { [void]$problems.Add("Re-run $n did not pass (or its results do not say so).") }
+    }
+
+    # What the full run vouches for, and what needs a passing re-run.
+    $byId = [ordered]@{}
+    foreach ($s in @($Full.scenarios)) { if ($s.Id -and -not "$($s.Id)".StartsWith('group.')) { $byId[[string]$s.Id] = @{ Status = [string]$s.Status; By = 'full run' } } }
+    $need = New-Object System.Collections.ArrayList
+    foreach ($g in $Plan) { foreach ($id in $g.Ids) { if (-not $byId.Contains($id) -or $byId[$id].Status -ne 'pass') { [void]$need.Add($id) } } }
+    $groupErrors = @(@($Full.scenarios) | Where-Object { "$($_.Id)" -like 'group.*' } | ForEach-Object { "$($_.Id)" -replace '^group\.', '' })
+
+    $rerunPass = @{}
+    $rerunGroupErrors = New-Object System.Collections.ArrayList
+    $k = 0
+    foreach ($r in $Reruns) {
+        $k++
+        foreach ($s in @($r.scenarios)) {
+            if ("$($s.Id)" -like 'group.*') { [void]$rerunGroupErrors.Add(("$($s.Id)" -replace '^group\.', '')) }
+            elseif ($s.Status -eq 'pass' -and $r.chosenPassed) { $rerunPass[[string]$s.Id] = "re-run $k" }
+        }
+    }
+    $missing = New-Object System.Collections.ArrayList
+    foreach ($id in $need) {
+        if ($rerunPass.ContainsKey($id)) { $byId[$id] = @{ Status = 'pass'; By = $rerunPass[$id] } } else { [void]$missing.Add($id) }
+    }
+    # A group that broke as a whole (group.<name>) is cleared by a re-run that ran the whole group and did not break again.
+    foreach ($gn in $groupErrors) {
+        if ($rerunGroupErrors -contains $gn) { [void]$problems.Add("group.$gn broke again in a re-run.") }
+        else {
+            $ids = @(($Plan | Where-Object Name -eq $gn).Ids)
+            $groupRerun = ($ids.Count -gt 0) -and (@($ids | Where-Object { $rerunPass.ContainsKey($_) }).Count -eq $ids.Count)
+            if (-not $groupRerun) { [void]$problems.Add("group.$gn broke in the full run and no re-run ran the whole group again.") }
+        }
+    }
+    if ($missing.Count -gt 0) { [void]$problems.Add("No passing re-run for: $($missing -join ', ').") }
+    if (-not $ShipPaths.Ok) { [void]$problems.Add("A file that ships may have changed since the full run's harness$(if ($FullHarnessCommit) { " ($FullHarnessCommit)" }): $($ShipPaths.Reason)") }
+
+    $combined = @($byId.Keys | ForEach-Object { [pscustomobject]@{ Id = $_; Status = $byId[$_].Status; By = $byId[$_].By } })
+    [pscustomobject]@{ Ok = ($problems.Count -eq 0); Problems = @($problems); Combined = $combined; Needed = @($need) }
 }
