@@ -22,16 +22,17 @@ $hashPrefix = $hash.Substring(0, 8)
 $logDir = Join-Path ([System.IO.Path]::GetTempPath()) "deluno-gate-$hashPrefix"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
-# CI runs the browser smoke suite as two shards, each against its own fresh smoke host
+# CI runs the browser smoke suite as three shards, each against its own fresh smoke host
 # and database (.github/workflows/ci.yml, job e2e-smoke). The gate does the same, so a
 # spec that depends on state an earlier spec left behind fails here and not only in CI.
 # Shard 1 uses DELUNO_SMOKE_API_PORT / DELUNO_SMOKE_WEB_PORT (default 5199 / 5174), shard 2
-# uses those plus 100. All four must be free before anything starts.
+# uses those plus 100 and shard 3 plus 200. All six must be free before anything starts.
 $smokeApiPort = if ($env:DELUNO_SMOKE_API_PORT) { [int]$env:DELUNO_SMOKE_API_PORT } else { 5199 }
 $smokeWebPort = if ($env:DELUNO_SMOKE_WEB_PORT) { [int]$env:DELUNO_SMOKE_WEB_PORT } else { 5174 }
 $shards = @(
-    @{ Id = 1; Shard = "1/2"; ApiPort = $smokeApiPort; WebPort = $smokeWebPort },
-    @{ Id = 2; Shard = "2/2"; ApiPort = $smokeApiPort + 100; WebPort = $smokeWebPort + 100 }
+    @{ Id = 1; Shard = "1/3"; ApiPort = $smokeApiPort; WebPort = $smokeWebPort },
+    @{ Id = 2; Shard = "2/3"; ApiPort = $smokeApiPort + 100; WebPort = $smokeWebPort + 100 },
+    @{ Id = 3; Shard = "3/3"; ApiPort = $smokeApiPort + 200; WebPort = $smokeWebPort + 200 }
 )
 foreach ($shard in $shards) {
     foreach ($port in @($shard.ApiPort, $shard.WebPort)) {
@@ -83,9 +84,28 @@ $running = @()
 # Tests that time an endpoint against a budget (Category=Timing) do not run beside
 # the web tests, which starve the machine: an endpoint that answers in 12 ms alone
 # took 754 ms there. They run on their own once the parallel steps are done.
-$running += Start-GateStep "Backend tests" $powershell "-NoProfile -ExecutionPolicy Bypass -File scripts\test-dotnet-serial.ps1 -NoBuild -Filter `"Category!=Timing`""
+#
+# The backend tests are split as CI splits them (.github/workflows/ci.yml, job backend; #1346): the other test
+# projects in one step, and Deluno.Persistence.Tests, which outgrew one job, in the parts of
+# scripts/persistence-parts.mjs, each its own step beside the rest. First the proof that the parts together run every
+# Persistence test exactly once.
+$node = (Get-Command node).Source
+$partsCheck = Join-Path $logDir "Persistenceparts.log"
+& $node scripts\check-persistence-parts.mjs *> $partsCheck
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "  XX  The Persistence parts do not run every test exactly once; log: $partsCheck" -ForegroundColor Red
+    Get-Content $partsCheck -Tail 25 | ForEach-Object { Write-Host "      $_" }
+    exit 1
+}
+Write-Host "  OK  Persistence parts run every test exactly once"
+$running += Start-GateStep "Backend tests other projects" $powershell "-NoProfile -ExecutionPolicy Bypass -File scripts\test-dotnet-serial.ps1 -NoBuild -Filter `"Category!=Timing`" -Except Deluno.Persistence.Tests"
+$partCount = [int](& $node scripts\persistence-parts.mjs count)
+foreach ($part in 1..$partCount) {
+    $partFilter = (& $node scripts\persistence-parts.mjs filter $part)
+    $running += Start-GateStep "Backend tests Persistence part $part of $partCount" $powershell "-NoProfile -ExecutionPolicy Bypass -File scripts\test-dotnet-serial.ps1 -NoBuild -Only Deluno.Persistence.Tests -Filter `"Category!=Timing&($partFilter)`""
+}
 
-# CI builds the web app once and hands both smoke shards that build. The gate does the
+# CI builds the web app once and hands every smoke shard that build. The gate does the
 # same, and keeps its own copy of the bundle: ci:check builds the web app again into
 # apps/web/dist while the shards run, which would empty the folder under them.
 Write-Host "Web build..."
