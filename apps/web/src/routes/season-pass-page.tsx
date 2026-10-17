@@ -24,11 +24,16 @@ import { toast } from "../components/shell/toaster";
 
 interface SeasonPassLoaderData {
   seasons: SeriesSeasonPassItem[];
+  /** The list could not be read: the page says so instead of reading "No seasons yet". */
+  unreadable?: boolean;
 }
 
 export async function seasonPassLoader(): Promise<SeasonPassLoaderData> {
-  const seasons = await fetchJson<SeriesSeasonPassItem[]>("/api/series/season-pass").catch(() => []);
-  return { seasons };
+  try {
+    return { seasons: await fetchJson<SeriesSeasonPassItem[]>("/api/series/season-pass") };
+  } catch {
+    return { seasons: [], unreadable: true };
+  }
 }
 
 /** How a season/series' monitor state reads at a glance - never all three at once. */
@@ -108,7 +113,13 @@ export function SeasonPassPage() {
       />
 
       <ListCard title="Season Pass" count={`${seasons.length} season${seasons.length === 1 ? "" : "s"}`}>
-        {seasons.length === 0 ? (
+        {data.unreadable ? (
+          <ListEmpty
+            title="The seasons could not be read"
+            description="Deluno could not get the list of seasons just now. Nothing was changed."
+            actions={<Button type="button" variant="outline" onClick={() => revalidator.revalidate()}>Try again</Button>}
+          />
+        ) : seasons.length === 0 ? (
           <ListEmpty
             title="No seasons yet"
             description="A show needs its episode catalogue synced before its seasons appear here."

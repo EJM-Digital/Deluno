@@ -1220,3 +1220,204 @@ describe("a show in more than one library", () => {
     await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url === "/api/series/s1/episodes/search")).toBe(true));
   });
 });
+
+describe("removing a show that holds files", () => {
+  it("says where the files went, offers Restore, and Restore brings the show page back", async () => {
+    setup((url) =>
+      url === "/api/series/bulk"
+        ? { body: { successCount: 1, results: [{ metadata: { recycleBinItemIds: "bin1,bin2", recycleBinRetentionDays: "30" } }] } }
+        : url === "/api/recycle-bin/bin1/restore" || url === "/api/recycle-bin/bin2/restore"
+          ? { body: { success: true, message: "Restored.", titleRestored: true, titleId: "s1", titleEntityType: "series" } }
+          : undefined
+    );
+    const { router } = await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove from Deluno" }));
+    const dialog = await screen.findByRole("dialog", { name: /Remove The Wire\?/ });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove TV show" }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("The Wire removed from Deluno", expect.objectContaining({ action: expect.objectContaining({ label: "Restore" }) })));
+    const options = toast.success.mock.calls.find((call) => call[0] === "The Wire removed from Deluno")![1] as { description: string; action: { onClick: () => void } };
+    expect(options.description).toContain("recycle bin for 30 days");
+    await waitFor(() => expect(router.state.location.pathname).toBe("/tv"));
+
+    options.action.onClick();
+
+    await waitFor(() => expect(calls.filter((c) => c.method === "POST" && /\/api\/recycle-bin\/bin[12]\/restore$/.test(c.url))).toHaveLength(2));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/tv/s1"));
+    expect(toast.success).toHaveBeenCalledWith("The Wire restored", expect.anything());
+  });
+
+  it("a removal with nothing in the recycle bin just says it was removed, with no Restore", async () => {
+    setup((url) => (url === "/api/series/bulk" ? { body: { successCount: 1, results: [{ metadata: {} }] } } : undefined));
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove from Deluno" }));
+    const dialog = await screen.findByRole("dialog", { name: /Remove The Wire\?/ });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove TV show" }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("The Wire removed from Deluno"));
+  });
+
+  it("a failed removal keeps the show page open", async () => {
+    setup((url) => (url === "/api/series/bulk" ? { body: { successCount: 0, results: [] } } : undefined));
+    const { router } = await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove from Deluno" }));
+    const dialog = await screen.findByRole("dialog", { name: /Remove The Wire\?/ });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove TV show" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("This TV show could not be removed."));
+    expect(router.state.location.pathname).toBe("/tv/s1");
+    expect(screen.getByRole("heading", { level: 1, name: "The Wire" })).toBeInTheDocument();
+  });
+});
+
+describe("Force a re-download on a show", () => {
+  const BLOCKED = {
+    mediaId: "s1",
+    mediaType: "series",
+    title: "The Wire",
+    blockers: [{ kind: "download-in-flight", source: "qBittorrent", summary: "A download is already with qBittorrent.", detail: "Sent 2 hours ago.", canClear: true, clearEffect: "Removes the download from qBittorrent." }],
+    nothingIsBlocking: false,
+    summary: "One thing is holding The Wire back.",
+    canForce: true
+  };
+  const forced = { body: { mediaId: "s1", cleared: [], couldNotClear: [], searchStarted: true, summary: "Done." } };
+  const blocked: Handler = (url) => (url === "/api/series/s1/acquisition-blockers" ? { body: BLOCKED } : url.startsWith("/api/series/s1/force-redownload") ? forced : undefined);
+  const twoLibraries: Handler = (url) => {
+    if (url === "/api/series/s1/libraries/") {
+      return { body: [{ libraryId: "lib1", libraryName: "Shows", hasFile: true, notWantedHere: false, canRemove: false, canMove: true }, { libraryId: "lib2", libraryName: "Anime", hasFile: false, notWantedHere: false, canRemove: true, canMove: true }] };
+    }
+    if (url === "/api/libraries") return { body: [{ id: "lib1", name: "Shows", mediaType: "tv", rootPath: "/shows" }, { id: "lib2", name: "Anime", mediaType: "tv", rootPath: "/anime" }] };
+    return undefined;
+  };
+  const force = async () => {
+    fireEvent.click(await screen.findByRole("button", { name: /force a re-download/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /clear it and search again/i }));
+  };
+
+  it("goes through the library chosen on the Libraries card when the show is in more than one", async () => {
+    setup((url, init) => twoLibraries(url, init) ?? blocked(url, init));
+    await renderPage();
+    openTab("Destination");
+    const animeRow = (await screen.findByText("Anime", { selector: "*" })).closest("[role='row']") as HTMLElement;
+    fireEvent.click(within(animeRow).getByRole("button", { name: "Use for search" }));
+
+    await force();
+
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url === "/api/series/s1/force-redownload?libraryId=lib2")).toBe(true));
+  });
+
+  it("names no library when the show is in just one", async () => {
+    setup(blocked);
+    await renderPage();
+
+    await force();
+
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url === "/api/series/s1/force-redownload")).toBe(true));
+  });
+});
+
+describe("the show's header badge and metadata notice", () => {
+  const withCases = (n: number): Handler => (url) =>
+    url.startsWith("/api/series/import-recovery?")
+      ? { body: { openCount: n, recentCases: Array.from({ length: n }, (_, i) => ({ id: `c${i}`, title: "the wire", failureKind: "importFailed", summary: "Failed.", recommendedAction: "Do it.", detailsJson: null, detectedUtc: "2026-10-01T00:00:00Z" })) } }
+      : undefined;
+
+  it("warns 1 import issue in the singular", async () => {
+    setup(withCases(1));
+    await renderPage();
+    expect(await screen.findByText("1 import issue")).toBeInTheDocument();
+  });
+
+  it("says 2 import issues in the plural", async () => {
+    setup(withCases(2));
+    await renderPage();
+    expect(await screen.findByText("2 import issues")).toBeInTheDocument();
+  });
+
+  it("shows no import-issue badge when no case names the show", async () => {
+    await renderPage();
+    expect(screen.queryByText(/^\d+ import issues?$/)).toBeNull();
+  });
+
+  const LOST = { kind: "provider-record-missing", provider: "tmdb", providerId: "1438", evidenceKey: "tmdb:tv:1438:missing", detectedUtc: "2026-10-01T00:00:00Z", acknowledgedUtc: null };
+  const withIssue: Handler = (url) => (url === "/api/series/s1/metadata/issue" ? { body: LOST } : undefined);
+
+  it("a lost provider record shows the notice, and Keep this show acknowledges it at the series route", async () => {
+    setup((url, init) => withIssue(url, init) ?? (url === "/api/series/s1/metadata/issue/acknowledge" ? { status: 204 } : undefined));
+    await renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Keep this show" }));
+
+    await waitFor(() => expect(posts("/metadata/issue/acknowledge")).toHaveLength(1));
+    expect(posts("/metadata/issue/acknowledge")[0].url).toBe("/api/series/s1/metadata/issue/acknowledge");
+  });
+
+  it("Try again runs the show refresh and Find another match opens the Metadata drawer", async () => {
+    setup((url, init) => withIssue(url, init) ?? (url === "/api/series/s1/metadata/refresh" ? { body: {} } : undefined));
+    await renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(posts("/metadata/refresh")).toHaveLength(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Find another match" }));
+    expect(await screen.findByRole("dialog", { name: "Metadata" })).toBeInTheDocument();
+  });
+});
+
+describe("Edit metadata on a show", () => {
+  it("opens the drawer from the header, saves the changed overview to the series override route, and the page reads again", async () => {
+    setup((url) => (url === "/api/series/s1/metadata/override" ? { body: {} } : undefined));
+    await renderPage();
+    const readsBefore = calls.filter((c) => c.method === "GET" && c.url === "/api/series/s1").length;
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit metadata" }));
+    const drawer = await screen.findByRole("dialog", { name: "Metadata" });
+    fireEvent.click(within(drawer).getByText("Fine-tune"));
+    fireEvent.change(within(drawer).getByDisplayValue("Baltimore."), { target: { value: "A city, told through its institutions." } });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Save metadata" }));
+
+    await waitFor(() => expect(calls.some((c) => c.method === "PUT" && c.url === "/api/series/s1/metadata/override")).toBe(true));
+    const sent = calls.find((c) => c.method === "PUT" && c.url === "/api/series/s1/metadata/override")!.body as Record<string, unknown>;
+    expect(sent).toMatchObject({ overview: "A city, told through its institutions." });
+    await waitFor(() => expect(calls.filter((c) => c.method === "GET" && c.url === "/api/series/s1").length).toBeGreaterThan(readsBefore));
+  });
+});
+
+describe("a processor-output case on the show's History tab", () => {
+  const processorCase = (detailsJson: string | null) => ({
+    id: "c9",
+    title: "the wire",
+    failureKind: "processor-output-missing",
+    summary: "The file did not come back.",
+    recommendedAction: "Search again.",
+    detailsJson,
+    detectedUtc: "2026-10-01T00:00:00Z"
+  });
+  const withCase = (detailsJson: string | null): Handler => (url) =>
+    url.startsWith("/api/series/import-recovery?") ? { body: { openCount: 1, recentCases: [processorCase(detailsJson)] } } : undefined;
+
+  it("Search looks for the one episode the file name resolved to, and nothing else", async () => {
+    setup((url, init) => withCase(JSON.stringify({ episodeId: "e12" }))(url, init) ?? (url === "/api/series/s1/episodes/search" ? { body: { searchedEpisodes: 1, episodes: [] } } : undefined));
+    await renderPage();
+    openTab("History");
+    const row = (await screen.findByText("Missing from processor output")).closest("[role='row']") as HTMLElement;
+
+    fireEvent.click(within(row).getByRole("button", { name: "Search" }));
+
+    await waitFor(() => expect(posts("/episodes/search")).toHaveLength(1));
+    expect(bodies("/episodes/search")[0]).toMatchObject({ episodeIds: ["e12"] });
+  });
+
+  it("offers no Search when the file name did not resolve to an episode", async () => {
+    setup(withCase(null));
+    await renderPage();
+    openTab("History");
+    const row = (await screen.findByText("Missing from processor output")).closest("[role='row']") as HTMLElement;
+
+    expect(within(row).queryByRole("button", { name: "Search" })).toBeNull();
+    expect(within(row).getByRole("button", { name: "Import manually" })).toBeInTheDocument();
+  });
+});
