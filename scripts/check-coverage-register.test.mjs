@@ -530,6 +530,12 @@ test('vm is only true, and only on a row that touches disk or install', () => {
   assert.deepEqual(validateShape(register([row({ proofs: [{ type: 'real-fs', file: 'a.cs', name: 'x' }] })])), [], 'real-fs is a known proof type');
 });
 
+test('account names the outside service a gap waits for, and only on a gap that names an issue', () => {
+  assert.deepEqual(validateShape(register([row({ issue: 1343, account: 'Trakt' })])), []);
+  assert.match(validateShape(register([row({ issue: 1343, account: '' })])).join(' '), /account must name the outside service/);
+  assert.match(validateShape(register([row({ account: 'Trakt' })])).join(' '), /account is only for a gap that names an issue/);
+});
+
 test('the statistics report reports the real-fs proofs and the vm rows', () => {
   const rows = [row({ id: 'v1', severity: 'high', touches: 'install', required: 'real', vm: true })];
   const text = statisticsReport(register(rows), [], totals(register(rows)));

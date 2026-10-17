@@ -25,6 +25,7 @@ One row is one behaviour a person or another app can rely on:
 | `incomplete` | no | Only `true` (the check refuses `false` and any other value). Says the row's proofs reach its level but do not yet cover its whole claim; the row is then a **gap** until the missing part is proven and the mark is removed. `partial` keeps its meaning: part-proofs that never count toward the level. |
 | `needs` | no | `{ "kind", "test" }`: the test that would close the gap. |
 | `issue` | no | The number (a positive integer) of the open coverage issue that will close the row's gap. Counted in the statistics. A gap (a row below its level, or `incomplete`) must carry it, and a row that is no gap must not (rule 4). |
+| `account` | no | Only on a gap that names an `issue`: the outside service (Trakt, Discord, Slack, Telegram, Pushover, a signed-in subtitle provider) whose account the proof needs. The row waits for that account and its issue; it is not counted as work a builder can finish. |
 | `audit` | no | Where the row came from. |
 
 A proof's `type` is one of:
