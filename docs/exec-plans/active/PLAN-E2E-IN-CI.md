@@ -31,4 +31,88 @@
 
 ## Parity table
 
-One row per golden-path scenario id (77 on 16 Oct 2026), each with its CI home (`linux-e2e:<group>` or `windows`) and its state (to port, ported, or green twice). Filled in during step 2.
+One row per golden-path scenario id (77 on 16 Oct 2026), each with its CI home (`linux-e2e:<group>` or `windows`) and its state (to port, ported, or green twice). The table lists every id in `scripts/golden-path/suite/ScenarioPlan.ps1`. The five `film.*` clients other than qBittorrent wait for those clients to join the stack (step 2).
+
+| Scenario id | CI home | State |
+| --- | --- | --- |
+| `install-first-run` | `windows` | to port |
+| `nzbget.setup-twice` | `linux-e2e:nzbgetsetup` | to port |
+| `film.qbittorrent` | `linux-e2e:films` | ported (tests/e2e/films.spec.ts) |
+| `film.transmission` | `linux-e2e:films` | to port |
+| `film.deluge` | `linux-e2e:films` | to port |
+| `film.sabnzbd` | `linux-e2e:films` | to port |
+| `film.nzbget` | `linux-e2e:films` | to port |
+| `film.extra-left-out` | `linux-e2e:films` | ported (tests/e2e/films.spec.ts) |
+| `remove-copy.qbittorrent.folder` | `linux-e2e:removal` | to port |
+| `remove-copy.transmission.folder` | `linux-e2e:removal` | to port |
+| `remove-copy.deluge.folder` | `linux-e2e:removal` | to port |
+| `remove-copy.sabnzbd.folder` | `linux-e2e:removal` | to port |
+| `remove-copy.nzbget.folder` | `linux-e2e:removal` | to port |
+| `remove-copy.qbittorrent.file` | `linux-e2e:removal` | to port |
+| `remove-copy.transmission.file` | `linux-e2e:removal` | to port |
+| `remove-copy.deluge.file` | `linux-e2e:removal` | to port |
+| `resend.before.qbittorrent` | `linux-e2e:resend` | to port |
+| `resend.before.transmission` | `linux-e2e:resend` | to port |
+| `resend.before.deluge` | `linux-e2e:resend` | to port |
+| `resend.before.sabnzbd` | `linux-e2e:resend` | to port |
+| `resend.before.nzbget` | `linux-e2e:resend` | to port |
+| `resend.during.qbittorrent` | `linux-e2e:resend` | to port |
+| `resend.during.transmission` | `linux-e2e:resend` | to port |
+| `resend.during.deluge` | `linux-e2e:resend` | to port |
+| `resend.during.sabnzbd` | `linux-e2e:resend` | to port |
+| `resend.during.nzbget` | `linux-e2e:resend` | to port |
+| `resend.after.qbittorrent` | `linux-e2e:resend` | to port |
+| `resend.after.transmission` | `linux-e2e:resend` | to port |
+| `resend.after.deluge` | `linux-e2e:resend` | to port |
+| `resend.after.sabnzbd` | `linux-e2e:resend` | to port |
+| `resend.after.nzbget` | `linux-e2e:resend` | to port |
+| `resend.single-file.takeover` | `linux-e2e:resend` | to port |
+| `stuck.zero.qbittorrent` | `linux-e2e:stuck` | to port |
+| `stuck.zero.transmission` | `linux-e2e:stuck` | to port |
+| `stuck.zero.deluge` | `linux-e2e:stuck` | to port |
+| `stuck.zero.sabnzbd` | `linux-e2e:stuck` | to port |
+| `stuck.zero.nzbget` | `linux-e2e:stuck` | to port |
+| `stuck.short.qbittorrent` | `linux-e2e:stuck` | to port |
+| `stuck.short.transmission` | `linux-e2e:stuck` | to port |
+| `stuck.short.deluge` | `linux-e2e:stuck` | to port |
+| `stuck.short.sabnzbd` | `linux-e2e:stuck` | to port |
+| `stuck.short.nzbget` | `linux-e2e:stuck` | to port |
+| `stuck.peers.qbittorrent` | `linux-e2e:stuck` | to port |
+| `stuck.peers.transmission` | `linux-e2e:stuck` | to port |
+| `stuck.peers.deluge` | `linux-e2e:stuck` | to port |
+| `stuck.slow.sabnzbd` | `linux-e2e:stuck` | to port |
+| `stuck.slow.nzbget` | `linux-e2e:stuck` | to port |
+| `keepseeding.moved.qbittorrent` | `linux-e2e:keepseeding` | to port |
+| `keepseeding.moved.transmission` | `linux-e2e:keepseeding` | to port |
+| `keepseeding.moved.deluge` | `linux-e2e:keepseeding` | to port |
+| `keepseeding.public-removed.qbittorrent` | `linux-e2e:keepseeding` | to port |
+| `keepseeding.public-removed.transmission` | `linux-e2e:keepseeding` | to port |
+| `keepseeding.public-removed.deluge` | `linux-e2e:keepseeding` | to port |
+| `outage.idle` | `linux-e2e:outage` | to port |
+| `outage.inflight` | `linux-e2e:outage` | to port |
+| `tryagain.qbittorrent` | `linux-e2e:tryagain` | to port |
+| `tryagain.transmission` | `linux-e2e:tryagain` | to port |
+| `tryagain.deluge` | `linux-e2e:tryagain` | to port |
+| `tryagain.sabnzbd` | `linux-e2e:tryagain` | to port |
+| `tryagain.nzbget` | `linux-e2e:tryagain` | to port |
+| `vanish.before.qbittorrent` | `linux-e2e:vanish` | to port |
+| `vanish.before.transmission` | `linux-e2e:vanish` | to port |
+| `vanish.before.deluge` | `linux-e2e:vanish` | to port |
+| `vanish.before.sabnzbd` | `linux-e2e:vanish` | to port |
+| `vanish.before.nzbget` | `linux-e2e:vanish` | to port |
+| `vanish.waiting.qbittorrent` | `linux-e2e:vanish` | to port |
+| `vanish.waiting.transmission` | `linux-e2e:vanish` | to port |
+| `vanish.waiting.deluge` | `linux-e2e:vanish` | to port |
+| `vanish.waiting.sabnzbd` | `linux-e2e:vanish` | to port |
+| `vanish.waiting.nzbget` | `linux-e2e:vanish` | to port |
+| `problems.dismiss-everywhere` | `linux-e2e:problems` | to port |
+| `activity.one-story` | `linux-e2e:problems` | to port |
+| `seasonpack.no-library` | `linux-e2e:seasonpack` | to port |
+| `layout.390-folder-chain` | `linux-e2e:layout` | to port |
+| `github-limit.messages` | `linux-e2e:github` | to port |
+| `github-limit.picker` | `windows` | to port |
+| `update.over-running-previous` | `windows` | to port |
+
+## Step 1 result (17 Oct 2026)
+
+The stack is `tests/e2e/compose.yaml`: Deluno's image, qBittorrent (linuxserver, by digest), Weir (by digest) and the fixture (`tests/e2e/fixture`: a Torznab feed, a web seed and a read-only look at the shared folders). The film is a real 130-second video made by ffmpeg inside the fixture. Its torrent carries no tracker and names the fixture as a web seed (BEP 19), so qBittorrent downloads every byte over HTTP from the fixture with DHT, PEX and LSD off and no internet. `tests/e2e/films.spec.ts` ports `film.qbittorrent` and `film.extra-left-out`, keeping each of their checks and reading the client's, Weir's and the folders' own state. The `e2e-linux` job in `ci.yml` runs it as the matrix group `films`. Two things the stack taught: Deluno sends only to a client whose connection test passed, and it treats a film under two minutes as a likely sample.
