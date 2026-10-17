@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import { request, type APIRequestContext } from "@playwright/test";
 import { CLIENT_KINDS, DelugeApi, NzbgetApi, SabnzbdApi, TransmissionApi, isUsenet, type ClientKind } from "./clients.ts";
 
@@ -192,8 +194,17 @@ export interface FixtureFilm {
 }
 
 /** A release the fixture makes: a torrent (with a web seed; layout "file" is one file with no folder) or, with usenet, a folder job posted as yEnc articles with its .nzb. */
-export async function makeFilm(title: string, extra: boolean, usenet = false, layout: "folder" | "file" = "folder"): Promise<FixtureFilm> {
-  const response = await fetch(`${URLS.fixture}/films`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title, year: 2020, extra, usenet, layout }) });
+export interface FilmOptions {
+  /** Torrents: "short" stops the web seed before the last piece; "dummy" is a torrent nobody serves (no data, no peers). */
+  variant?: "complete" | "short" | "dummy";
+  /** Usenet: "all" never answers an article; "last" never answers the film's last one. */
+  hang?: "all" | "last";
+  /** Usenet: every article is answered only after a delay, so the download is slow. */
+  slow?: boolean;
+}
+
+export async function makeFilm(title: string, extra: boolean, usenet = false, layout: "folder" | "file" = "folder", options: FilmOptions = {}): Promise<FixtureFilm> {
+  const response = await fetch(`${URLS.fixture}/films`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title, year: 2020, extra, usenet, layout, ...options }) });
   if (!response.ok) throw new Error(`The fixture would not make ${title}: ${response.status} ${await response.text()}`);
   return await response.json() as FixtureFilm;
 }
@@ -239,7 +250,11 @@ export interface Stack {
   indexerId: string;
   usenetIndexerId: string;
   processorId: string;
+  /** The secret Weir and Deluno share (kept beside the results by the run that made it), for the one call that asks Weir about a hand-off. */
+  weirSecret?: string;
 }
+
+const SECRET_FILE = path.resolve(process.cwd(), "artifacts/e2e/weir-secret.txt");
 
 /** Routes the movies library to this one client, as a person does in the library's settings, so the next send goes there. */
 export async function routeLibraryTo(stack: Stack, kind: ClientKind) {
@@ -344,6 +359,8 @@ export async function setUpStack(): Promise<Stack> {
   // Weir: Deluno's API key for Weir to call back with, Weir's connection to Deluno and its webhook secret, then Weir as Deluno's processor.
   const processors = await deluno.must<any[]>("GET", "/api/integrations/processors/connections");
   let processor = processors.find((p) => String(p.submissionUrl ?? "").startsWith(INSIDE.weir));
+  let weirSecret: string | undefined;
+  try { weirSecret = fs.readFileSync(SECRET_FILE, "utf8").trim() || undefined; } catch { /* a stack this run is making has none yet */ }
   if (!processor) {
     const key = await deluno.must<{ apiKey: string }>("POST", "/api/api-keys", { name: "Weir (set up by the end-to-end suite)", scopes: "read,imports" });
     const managers = await weir.get<any[]>("/api/v1/media-managers/connections");
@@ -355,6 +372,9 @@ export async function setUpStack(): Promise<Stack> {
     }
     const secret = await weir.post<any>(`/api/v1/media-managers/connections/${manager.id}/webhook-secret`);
     if (secret.status >= 300) throw new Error(`Weir would not make a webhook secret: ${secret.status} ${secret.text}`);
+    weirSecret = secret.body.webhook_secret;
+    fs.mkdirSync(path.dirname(SECRET_FILE), { recursive: true });
+    fs.writeFileSync(SECRET_FILE, `${weirSecret}\n`);
     processor = await deluno.must("POST", "/api/integrations/processors/connections", {
       name: "Weir", provider: "generic-webhook", submissionUrl: `${INSIDE.weir}${secret.body.webhook_url_path}`,
       authHeaderName: secret.body.header_name ?? "X-Webhook-Secret", secret: secret.body.webhook_secret, isEnabled: true,
@@ -405,7 +425,7 @@ export async function setUpStack(): Promise<Stack> {
 
   return {
     deluno, qbittorrent, transmission, deluge, sabnzbd, nzbget, weir, libraryId: library.id, clientIds, clientId: client.id,
-    indexerId: indexer.id, usenetIndexerId: usenetIndexer.id, processorId: processor.id
+    indexerId: indexer.id, usenetIndexerId: usenetIndexer.id, processorId: processor.id, weirSecret
   };
 }
 
