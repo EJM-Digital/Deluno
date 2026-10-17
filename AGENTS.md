@@ -86,15 +86,15 @@ release comment, every workflow has `permissions` and every job a timeout.
 - **Tags are made only through `scripts/tag-release.ps1 -Version <x.y.z[-rc.N[.M]]>`** (9 Oct 2026). It
   refuses unless the working tree is clean, HEAD is `origin/main`, `Directory.Build.props` and
   `RELEASE_NOTES.md` carry the version, CI passed on HEAD and ran the jobs, and the golden path passed
-  on HEAD. Then it creates and pushes the annotated tag. Never run `git tag` for a release by hand.
+  on HEAD or an earlier commit with the same shipped files. Then it creates and pushes the annotated tag. Never run `git tag` for a release by hand.
 - **Right the first time** (James, 11 Oct 2026). A fix is done only when a failing test first reproduced it from real evidence (a log, a recorded reply, a screen record); tests of another app use its recorded real replies (`tests/fixtures/recorded/`), never an assumed shape; and the acceptance lines name every variation (each client, each timing, with and without work in flight), each tested.
   The scenario suite on the golden VM proves the candidate before the tag, and every run keeps Deluno's and Weir's logs.
 - **A tag is made only after the scenario suite has passed on that exact commit** (James, 7 and 11 Oct 2026;
   `docs/golden-path.md`, issues 1158 and 1238). No waiver, release candidates included. Build the commit's installer with a manual
   `ci.yml` run (`windows-installer`), then run `./scripts/golden-path/Invoke-ScenarioSuite.ps1 -RigHost <host> -InstallerPath <Deluno-rc-Setup.exe> -Version <x.y.z[-rc.N]> -Commit <sha>`
   (unattended, about two hours: 124 minutes in the rc.30.29 run; the per-group times are in `docs/golden-path.md`). It keeps Deluno's and Weir's full logs and records the `golden-path` commit status itself: `success` on a
-  full pass, `failure` naming the failed scenarios otherwise. The release's `golden-path` job (`scripts/verify-golden-path-for-release.mjs`)
-  passes only when the newest `golden-path` status on the tagged commit is `success`, and does not wait.
+  full pass, `failure` naming the failed scenarios otherwise. The release's `golden-path` job passes only on a `success` and does not wait. A pass on an earlier commit
+  counts when no file that ships changed since (only tests, scripts, docs or CI; `scripts/ship-paths.mjs`; a new version differs) (James, 16 Oct 2026).
   After a fix, check only the scenario that needed it: `-Scenarios <id,id>` runs single scenarios, and `-UseReadyCheckpoint` skips the
   install and setup of a commit already saved as a ready checkpoint. Such a run records no status and is never the run that gates a tag
   (James, 14 Oct 2026).
