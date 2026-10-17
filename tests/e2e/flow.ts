@@ -14,7 +14,9 @@ import {
 export interface Sent { kind: ClientKind; film: FixtureFilm; movieId: string; sentAt: number; layout: "folder" | "file" }
 
 /** Adds the film to Deluno and sends its release to the one client, as the VM's Send-Film does. */
-export async function sendFilm(stack: Stack, kind: ClientKind, label: string, layout: "folder" | "file" = "folder", options: FilmOptions = {}): Promise<Sent> {
+export async function sendFilm(
+  stack: Stack, kind: ClientKind, label: string, layout: "folder" | "file" = "folder", options: FilmOptions = {}, via?: { id: string; name: string }
+): Promise<Sent> {
   const title = `E2e${label}${Date.now().toString(36)}${kind[0].toUpperCase()}${kind.slice(1)}${layout === "file" ? "File" : ""}`;
   const usenet = isUsenet(kind);
   const film = await makeFilm(title, false, usenet, usenet ? "folder" : layout, options);
@@ -22,8 +24,8 @@ export async function sendFilm(stack: Stack, kind: ClientKind, label: string, la
   await routeLibraryTo(stack, kind);
   const sentAt = Date.now();
   await stack.deluno.must("POST", `/api/movies/${movie.id}/grab`, {
-    releaseName: film.release, indexerId: usenet ? stack.usenetIndexerId : stack.indexerId,
-    indexerName: usenet ? "E2E Usenet feed" : "E2E feed", candidateQuality: "WEB 1080p",
+    releaseName: film.release, indexerId: via?.id ?? (usenet ? stack.usenetIndexerId : stack.indexerId),
+    indexerName: via?.name ?? (usenet ? "E2E Usenet feed" : "E2E feed"), candidateQuality: "WEB 1080p",
     downloadUrl: film.url, sizeBytes: film.size, seeders: usenet ? 0 : 50, force: true, overrideReason: "end-to-end suite", duplicateAction: null
   });
   return { kind, film, movieId: movie.id, sentAt, layout: usenet ? "folder" : layout };
@@ -198,4 +200,17 @@ export const setAutomation = (stack: Stack, on: boolean) => stack.deluno.must("P
 /** Makes folders on the shared volumes, as a person does at the file manager before pointing a library at them (Deluno asks for the folder to exist). */
 export function makeFolders(...folders: string[]) {
   docker("exec", containerOf("deluno"), "mkdir", "-p", ...folders);
+}
+
+/** Activity's newest items, parsed (each item as the API gives it), following the pages. */
+export async function activityItems(stack: Stack, pageSize = 300, maxPages = 1): Promise<any[]> {
+  const items: any[] = [];
+  let token: string | undefined;
+  for (let page = 0; page < maxPages; page++) {
+    const reply = await stack.deluno.must<any>("GET", `/api/activity?pageSize=${pageSize}${token ? `&pageToken=${encodeURIComponent(token)}` : ""}`);
+    items.push(...((Array.isArray(reply) ? reply : reply.items) as any[]));
+    token = Array.isArray(reply) ? undefined : reply.nextPageToken;
+    if (!token) break;
+  }
+  return items;
 }

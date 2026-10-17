@@ -82,12 +82,12 @@ One row per golden-path scenario id (77 on 16 Oct 2026, 78 with `outage.tray`), 
 | `stuck.peers.deluge` | `linux-e2e:stuckrate` | ported (tests/e2e/stuckrate.spec.ts) |
 | `stuck.slow.sabnzbd` | `linux-e2e:stuckrate` | ported (tests/e2e/stuckrate.spec.ts) |
 | `stuck.slow.nzbget` | `linux-e2e:stuckrate` | ported (tests/e2e/stuckrate.spec.ts) |
-| `keepseeding.moved.qbittorrent` | `linux-e2e:keepseeding` | to port |
-| `keepseeding.moved.transmission` | `linux-e2e:keepseeding` | to port |
-| `keepseeding.moved.deluge` | `linux-e2e:keepseeding` | to port |
-| `keepseeding.public-removed.qbittorrent` | `linux-e2e:keepseeding` | to port |
-| `keepseeding.public-removed.transmission` | `linux-e2e:keepseeding` | to port |
-| `keepseeding.public-removed.deluge` | `linux-e2e:keepseeding` | to port |
+| `keepseeding.moved.qbittorrent` | `linux-e2e:keepseeding` | ported (tests/e2e/keepseeding.spec.ts) |
+| `keepseeding.moved.transmission` | `linux-e2e:keepseeding` | ported (tests/e2e/keepseeding.spec.ts) |
+| `keepseeding.moved.deluge` | `linux-e2e:keepseeding` | ported (tests/e2e/keepseeding.spec.ts) |
+| `keepseeding.public-removed.qbittorrent` | `linux-e2e:keepseeding` | ported (tests/e2e/keepseeding.spec.ts) |
+| `keepseeding.public-removed.transmission` | `linux-e2e:keepseeding` | ported (tests/e2e/keepseeding.spec.ts) |
+| `keepseeding.public-removed.deluge` | `linux-e2e:keepseeding` | ported (tests/e2e/keepseeding.spec.ts) |
 | `outage.idle` | `linux-e2e:outage` | ported (tests/e2e/outage.spec.ts) |
 | `outage.inflight` | `linux-e2e:outage` | ported (tests/e2e/outage.spec.ts) |
 | `outage.tray` | `windows` | to port: the Deluno tray icon's hover text and dot going amber and green in the same watch (a tray exists only on Windows; the Linux outage group makes every other reading of `outage.idle` and `outage.inflight`) |

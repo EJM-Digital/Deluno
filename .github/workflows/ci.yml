@@ -544,7 +544,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [films, removal, tryagain, outage, resendbefore, resendduringtorrent, resendduringusenet, resendaftertorrent, resendafterusenet, stuckprogress, stuckrate, nzbgetsetup, vanishbefore, vanishwaiting, problems, layout]
+        group: [films, removal, tryagain, outage, resendbefore, resendduringtorrent, resendduringusenet, resendaftertorrent, resendafterusenet, stuckprogress, stuckrate, nzbgetsetup, vanishbefore, vanishwaiting, problems, layout, keepseeding]
     env:
       DELUNO_IMAGE: deluno-e2e:${{ github.sha }}
     steps:
