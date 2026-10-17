@@ -86,7 +86,7 @@
                 "bt_version": 1,
                 "min_announce": 1792237249,
                 "msg": "timed out",
-                "name": "192.168.1.10:44101",
+                "name": "<interface>:44101",
                 "next_announce": 1792237296,
                 "num_downloaded": -1,
                 "num_leeches": -1,
