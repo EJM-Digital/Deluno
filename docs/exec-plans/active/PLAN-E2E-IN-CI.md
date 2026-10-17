@@ -106,10 +106,10 @@ One row per golden-path scenario id (77 on 16 Oct 2026, 78 with `outage.tray`), 
 | `vanish.waiting.deluge` | `linux-e2e:vanishwaiting` | ported (tests/e2e/vanishwaiting.spec.ts) |
 | `vanish.waiting.sabnzbd` | `linux-e2e:vanishwaiting` | ported (tests/e2e/vanishwaiting.spec.ts) |
 | `vanish.waiting.nzbget` | `linux-e2e:vanishwaiting` | ported (tests/e2e/vanishwaiting.spec.ts) |
-| `problems.dismiss-everywhere` | `linux-e2e:problems` | to port |
-| `activity.one-story` | `linux-e2e:problems` | to port |
+| `problems.dismiss-everywhere` | `linux-e2e:problems` | ported (tests/e2e/problems.spec.ts) |
+| `activity.one-story` | `linux-e2e:problems` | ported (tests/e2e/problems.spec.ts) |
 | `seasonpack.no-library` | `linux-e2e:seasonpack` | to port |
-| `layout.390-folder-chain` | `linux-e2e:layout` | to port |
+| `layout.390-folder-chain` | `linux-e2e:layout` | ported (tests/e2e/layout.spec.ts) |
 | `github-limit.messages` | `linux-e2e:github` | to port |
 | `github-limit.picker` | `windows` | to port |
 | `update.over-running-previous` | `windows` | to port |
