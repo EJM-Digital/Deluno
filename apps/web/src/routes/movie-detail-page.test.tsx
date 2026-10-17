@@ -1076,3 +1076,126 @@ describe("a film in more than one library", () => {
     await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url === "/api/movies/m1/search")).toBe(true));
   });
 });
+
+describe("the film's lost-provider notice", () => {
+  const LOST = {
+    kind: "provider-record-missing",
+    provider: "tmdb",
+    providerId: "10378",
+    evidenceKey: "tmdb:movie:10378:missing",
+    detectedUtc: "2026-10-01T00:00:00Z",
+    acknowledgedUtc: null
+  };
+  const withIssue: Handler = (url) => (url === "/api/movies/m1/metadata/issue" ? { body: LOST } : undefined);
+
+  it("Find another match opens the Metadata drawer", async () => {
+    setup(withIssue);
+    await renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Find another match" }));
+
+    expect(await screen.findByRole("dialog", { name: "Metadata" })).toBeInTheDocument();
+  });
+
+  it("Try again runs the metadata refresh for this film", async () => {
+    setup((url, init) => withIssue(url, init) ?? (url === "/api/movies/m1/metadata/refresh" ? { body: {} } : undefined));
+    await renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
+
+    await waitFor(() => expect(posts("/metadata/refresh")).toHaveLength(1));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Big Buck Bunny metadata refreshed."));
+  });
+});
+
+describe("the film's import issues are matched by the film's title text", () => {
+  const caseTitled = (title: string, id: string) => ({
+    id,
+    title,
+    failureKind: "quality",
+    summary: `Summary for ${id}.`,
+    recommendedAction: "Do the thing.",
+    detailsJson: null,
+    detectedUtc: "2026-10-01T00:00:00Z"
+  });
+
+  it("matches without regard to case, and leaves a case that names another film out", async () => {
+    setup((url) =>
+      url.startsWith("/api/movies/import-recovery?")
+        ? { body: { openCount: 3, recentCases: [caseTitled("BIG BUCK BUNNY", "mine-upper"), caseTitled("big buck bunny", "mine-lower"), caseTitled("Sintel", "other-film")] } }
+        : undefined
+    );
+    await renderPage();
+    fireEvent.click(screen.getByRole("radio", { name: "History" }));
+
+    expect(await screen.findByText("Summary for mine-upper.")).toBeInTheDocument();
+    expect(screen.getByText("Summary for mine-lower.")).toBeInTheDocument();
+    expect(screen.queryByText("Summary for other-film.")).toBeNull();
+  });
+
+  it("goes by the title text, not the id: a case carrying a different film's id but this title still shows", async () => {
+    setup((url) =>
+      url.startsWith("/api/movies/import-recovery?")
+        ? { body: { openCount: 1, recentCases: [{ ...caseTitled("Big Buck Bunny", "same-title"), movieId: "some-other-film" }] } }
+        : undefined
+    );
+    await renderPage();
+    fireEvent.click(screen.getByRole("radio", { name: "History" }));
+
+    expect(await screen.findByText("Summary for same-title.")).toBeInTheDocument();
+  });
+});
+
+describe("the film page after the connection was lost", () => {
+  it("stays usable, and a reconnect's route revalidation re-reads every group", async () => {
+    const { router } = await renderPage();
+    calls.length = 0;
+    // The shell revalidates the route when a reconnect's gap is too large to replay (app-layout's useSignalRResync).
+    await act(async () => { await router.revalidate(); });
+
+    const read = (path: string) => calls.some((c) => c.method === "GET" && c.url.split("?")[0] === path);
+    for (const path of ["/api/movies/m1", "/api/movies/search-history", "/api/movies/import-recovery", "/api/movies/m1/subtitles", "/api/libraries"]) {
+      expect(read(path), `${path} should be read again`).toBe(true);
+    }
+    expect(screen.getByRole("heading", { level: 1, name: "Big Buck Bunny" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Refresh metadata" })).toBeEnabled();
+  });
+});
+
+describe("the film's Indexers and download clients card", () => {
+  const routed = (titleTags: string[]): Handler => (url) => {
+    if (url === "/api/libraries/lib1/routing") {
+      return { body: { sources: [{ indexerId: "i1", indexerName: "Kids Indexer" }, { indexerId: "i2", indexerName: "Open Indexer" }], downloadClients: [{ downloadClientId: "c1", downloadClientName: "qBittorrent" }] } };
+    }
+    if (url === "/api/indexers") return { body: [{ id: "i1", name: "Kids Indexer", tags: "kids" }, { id: "i2", name: "Open Indexer", tags: "" }] };
+    if (url === "/api/download-clients") return { body: [{ id: "c1", name: "qBittorrent", protocol: "qbittorrent", tags: "" }] };
+    if (url === "/api/movies/m1/tags") return { body: titleTags.map((name, i) => ({ tagId: `t${i}`, name })) };
+    return undefined;
+  };
+  const rowOf = async (name: string) => (await screen.findByText(name, { selector: "*" })).closest("[role='row']") as HTMLElement;
+
+  it("marks a tagged connection Not used for an untagged film, and an untagged one Used, with the reason", async () => {
+    setup(routed([]));
+    await renderPage();
+    openRouting();
+
+    const kids = await rowOf("Kids Indexer");
+    expect(within(kids).getByText("Not used")).toBeInTheDocument();
+    const open = await rowOf("Open Indexer");
+    expect(within(open).getByText("Used")).toBeInTheDocument();
+    expect(within(await rowOf("qBittorrent")).getByText("Used")).toBeInTheDocument();
+  });
+
+  it("marks the tagged connection Used once the film shares its tag", async () => {
+    setup(routed(["kids"]));
+    await renderPage();
+    openRouting();
+
+    expect(within(await rowOf("Kids Indexer")).getByText("Used")).toBeInTheDocument();
+  });
+
+  function openRouting() {
+    const tab = screen.queryByRole("radio", { name: "Destination" });
+    if (tab) fireEvent.click(tab);
+  }
+});
