@@ -9,6 +9,47 @@ developer: say what changed in everyday words, not internal file or class
 names. `npm run ci:check` warns (does not fail) when the version currently
 being built has no section here yet.
 
+## 1.0.0-rc.30.34
+
+Deluno is early. It is still being tested hard and it is not finished. Expect
+some rough edges, and please do not point it at the only copy of anything you
+cannot replace. Nothing runs on its own until you switch it on, and everything
+Deluno does is written to Activity. If something looks wrong, confusing or
+just ugly, tell us at https://github.com/jampat000/Deluno/issues: every report
+gets read. This notice is at the top of every release.
+
+Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
+your PC" the first time you run the installer. Choose More info, then Run
+anyway.
+
+Everything in 1.0.0-rc.30.33, plus:
+
+Security:
+- Behind a reverse proxy, "skip sign-in on my local network" now goes by the
+  address the proxy says the request came from. Before, a request from outside
+  could be taken for a local one.
+- Deluno's checks that a request comes from this same computer can no longer
+  be fooled by a forwarded address.
+
+Fixes:
+- A download that is removed and added again in its client, while Weir is still
+  working on it, now gets its own hand-off to Weir instead of being taken for the
+  old one.
+- The Dashboard's Live board no longer stops with "This area could not load" on
+  a phone-sized screen when the pipeline is busy.
+- A new health problem now appears on the Dashboard straight away, without a
+  reload, and clears the same way.
+- The pipeline's average times show real numbers instead of staying blank.
+- Restoring a backup made by a newer version of Deluno now says so, and asks you
+  to confirm before it goes ahead.
+- A newly added indexer gets a few minutes before Health judges it, as a new
+  download client does, instead of showing a problem before its first test.
+- The API page lists the permissions each route really needs.
+- Importing a TV season pack whose files are all blocked now says why for each
+  file, instead of a server error.
+- Season Pass says when it could not read the seasons, with Try again, instead of
+  showing "No seasons yet".
+
 ## 1.0.0-rc.30.33
 
 Deluno is early. It is still being tested hard and it is not finished. Expect
