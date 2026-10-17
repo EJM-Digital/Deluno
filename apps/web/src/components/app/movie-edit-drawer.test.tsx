@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchJson, type LibraryItem, type QualityProfileItem } from "../../lib/api";
 import { authedFetch } from "../../lib/use-auth";
 import { MovieEditDrawer } from "./movie-edit-drawer";
+import { useUnsavedChanges } from "../../hooks/use-unsaved-changes";
 
 vi.mock("../../lib/api", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../lib/api")>(),
@@ -133,6 +134,17 @@ describe("MovieEditDrawer (#784)", () => {
     renderDrawer();
 
     expect(await screen.findByText("Could not load libraries and quality profiles.")).toBeVisible();
+  });
+
+  it("guards leaving the drawer only once something has been changed", async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByRole("combobox", { name: "Path" });
+    expect(vi.mocked(useUnsavedChanges).mock.calls.at(-1)?.[0]).toBe(false);
+
+    await user.click(screen.getByRole("switch"));
+
+    expect(vi.mocked(useUnsavedChanges).mock.calls.at(-1)?.[0]).toBe(true);
   });
 
   it("reopening starts from what the server holds, not from an abandoned edit", async () => {

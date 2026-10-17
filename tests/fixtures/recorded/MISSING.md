@@ -217,3 +217,8 @@ Rows left open because the other app's reply is not recorded. Each line says wha
 - deluge: only `location-moved` holds a file listing (one file); a folder torrent's listing (a film and an `.nfo`) is not recorded.
 - uTorrent and rTorrent: no recordings at all (see the allow-list), so the strike rules, the removal verbs and the re-check on those two have no recorded reply.
 - qbittorrent, transmission, deluge, sabnzbd, nzbget: the reply to a re-check (`torrents/recheck`, `torrent-verify`, `force_recheck`, and what the two Usenet clients answer to a re-check) has not been recorded.
+
+## Metadata service replies the film and show pages lean on (coverage register, areas movie-detail and show-detail)
+
+- tmdb / the metadata broker, for the re-link of a film or a show (`POST /api/movies/{id}/metadata/link/preview`, `/link` and the series twins): the reply to a record lookup by provider id (found, and the record gone), and the episode catalogue of a show that the preview compares. `MetadataLinkRoutesTests` answers these with its own stand-in provider, which is a hand-built shape, so the film re-link row (movie-detail, "Backend: POST metadata/link/preview and /link for a film") stays a gap until the real replies are recorded. Needed: a TMDb record by id for a film and for a show, the same id after TMDb dropped it, and the season/episode lists of one show.
+- thexem (TheXEM, `thexem.info`): the three replies `XemSceneMappingProviderTests` and `EpisodeGroupRefreshServiceTests` assume today: a show with a scene mapping, a show with none, and an error answer. They are the hand-built shapes of an assumed reply, so the register row "TheXEM's real reply shape is covered by a recording" stays a gap until they are recorded with the recorder script.
