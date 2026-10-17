@@ -41,7 +41,7 @@ public sealed class ALanDeviceSkipsSignInOnTheShippedPipelineTests
         return answer.StatusCode;
     }
 
-    [Fact(Skip = "Defect: a device behind a trusted proxy is judged on the proxy's address, never its own. UseForwardedHeaders (KnownProxies cleared) consumes X-Forwarded-For before TrustedProxyClientAddressResolver reads it, so with trustedProxies [127.0.0.1] a request from 127.0.0.1 claiming X-Forwarded-For: 8.8.8.8 is still resolved to 127.0.0.1 (GET /api/security/local-network-auth answers currentAddress 127.0.0.1, currentAddressIsLocal true) and skips sign-in. The resolver's unit tests set the header by hand, which the shipped pipeline never leaves in place.")]
+    [Fact]
     public async Task A_device_on_the_home_network_behind_a_trusted_proxy_is_let_in_and_one_from_outside_is_not()
     {
         await using var host = await SharedPipelineHost.StartAsync();

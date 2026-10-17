@@ -19,6 +19,9 @@ public static class CaptureOriginalRemoteAddressMiddlewareExtensions
         => app.Use((context, next) =>
         {
             context.Items[LocalNetworkAuthConstants.OriginalRemoteAddressItemKey] = context.Connection.RemoteIpAddress;
+            // #1349: UseForwardedHeaders strips X-Forwarded-For once it has applied it, so the resolver would never see the
+            // forwarded client. Keep what the caller sent, as it arrived.
+            context.Items[LocalNetworkAuthConstants.OriginalForwardedForItemKey] = context.Request.Headers["X-Forwarded-For"].ToString();
             return next(context);
         });
 }
@@ -26,6 +29,7 @@ public static class CaptureOriginalRemoteAddressMiddlewareExtensions
 public static class LocalNetworkAuthConstants
 {
     public const string OriginalRemoteAddressItemKey = "deluno.originalRemoteAddress";
+    public const string OriginalForwardedForItemKey = "deluno.originalForwardedFor";
 }
 
 /// <summary>
@@ -71,7 +75,10 @@ public sealed class TrustedProxyClientAddressResolver(ILocalNetworkAuthSettingsC
             return originalAddress;
         }
 
-        var header = context.Request.Headers["X-Forwarded-For"].ToString();
+        // #1349: the header as it arrived (the pipeline's forwarded-headers step has since removed it from the request).
+        var header = context.Items.TryGetValue(LocalNetworkAuthConstants.OriginalForwardedForItemKey, out var capturedHeader) && capturedHeader is string kept
+            ? kept
+            : context.Request.Headers["X-Forwarded-For"].ToString();
         if (string.IsNullOrWhiteSpace(header))
         {
             return originalAddress;
