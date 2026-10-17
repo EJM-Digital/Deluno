@@ -530,14 +530,14 @@ jobs:
         run: bash scripts/test-readme-docker-examples.sh "$IMAGE"
 
   # The end-to-end suite on Docker Compose (docs/exec-plans/active/PLAN-E2E-IN-CI.md): this commit's own image, the real
-  # download client, Weir and the suite's fixture on one private network, one group per job (they cannot interfere).
+  # download clients, Weir and the suite's fixture on one private network, one group per job (they cannot interfere).
   # Each spec reads every application's own API. Add a group by adding its name to the matrix and its spec to tests/e2e.
   e2e-linux:
     name: End-to-end (${{ matrix.group }})
     needs: changes
     if: ${{ needs.changes.outputs.run_e2e_linux == 'true' }}
     runs-on: ubuntu-latest
-    # The films group took about 75 seconds on a workstation once the images were pulled; the image build is the rest.
+    # The films group (five clients) took about 90 seconds on a workstation once the images were pulled; the image build is the rest.
     timeout-minutes: 40
     permissions:
       contents: read
@@ -583,7 +583,7 @@ jobs:
         if: ${{ always() }}
         run: |
           mkdir -p artifacts/e2e/logs
-          for service in deluno qbittorrent weir fixture; do
+          for service in deluno qbittorrent transmission deluge sabnzbd nzbget weir fixture; do
             docker compose -f tests/e2e/compose.yaml logs --no-color "$service" > "artifacts/e2e/logs/$service.log" 2>&1 || true
           done
 
