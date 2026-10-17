@@ -77,7 +77,7 @@ for ($run = 1; $run -le $Runs; $run++) {
         Write-Host ("run {0,2}: {1}  (exit {2}, {3} rows ticked, install pressed: {4}, finish screen: {5})" -f $run, $(if ($ok) { 'ok' } else { 'FAILED' }), $p.ExitCode, $ticks, ($text -match 'pressed Install selected'), ($text -match 'Finished\.')) -ForegroundColor $(if ($ok) { 'Green' } else { 'Red' })
         if (-not $ok) { $fail++; Write-Host ($text -split "`n" | Select-Object -Last 12 | ForEach-Object { '      ' + $_ }) }
     }
-    finally { if (-not $host1.HasExited) { Stop-Process -Id $host1.Id -Force }; Start-Sleep -Milliseconds 800 }
+    finally { if (-not $host1.HasExited) { Stop-Process -Id $host1.Id -Force }; Start-Sleep -Milliseconds 800 } # reason: settle after starting or stopping a process; no event to wait on
 }
 Write-Host ("{0} of {1} runs passed." -f ($Runs - $fail), $Runs)
 if (-not $KeepHost) { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }

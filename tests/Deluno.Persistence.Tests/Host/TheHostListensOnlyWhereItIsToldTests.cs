@@ -70,7 +70,7 @@ public sealed class TheHostListensOnlyWhereItIsToldTests
         process.BeginErrorReadLine();
         try
         {
-            var finished = await Task.WhenAny(started.Task, Task.Delay(TimeSpan.FromSeconds(90)));
+            var finished = await Task.WhenAny(started.Task, Task.Delay(TimeSpan.FromSeconds(90))); // reason: the 90 s limit on waiting for the host's start line, not a pause
             Assert.True(finished == started.Task, "Deluno.Host did not report 'Application started'. It printed:\n" + string.Join('\n', lines));
             return (lines.ToArray(), port);
         }

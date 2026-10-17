@@ -125,7 +125,7 @@ function Save-VmScreen([string] $Name) {
             $kb = Get-CimInstance -Namespace root\virtualization\v2 -ClassName Msvm_Keyboard |
                 Where-Object { $_.SystemName -eq (Get-CimInstance -Namespace root\virtualization\v2 -ClassName Msvm_ComputerSystem -Filter "ElementName='$vm'").Name }
             if ($kb) { $null = Invoke-CimMethod -InputObject $kb -MethodName TypeKey -Arguments @{ keyCode = [uint32]0x11 } }  # wake the display with Ctrl pressed once: it does nothing on its own. F15 (0x7E) did not wake it, every picker screen came back black (rc.30.8 run); Shift five times opens the Sticky Keys prompt
-            Start-Sleep -Milliseconds 800
+            Start-Sleep -Milliseconds 800 # reason: lets the VM display wake before the screenshot; no event for it
             & ([scriptblock]::Create($scriptText)) -VmName $vm -OutPath $file -Width 1024 -Height 768 | Out-Null
             $file
         }
@@ -162,7 +162,7 @@ function Invoke-InteractiveInstall([string] $SetupName) {
     $shot = 0
     $log = ''
     while ((Get-Date) -lt $deadline) {
-        Start-Sleep -Seconds 20
+        Start-Sleep -Seconds 20 # reason: poll interval inside a loop bounded by its deadline
         $log = Invoke-InVm { if (Test-Path 'C:\golden\picker.log') { Get-Content -Raw 'C:\golden\picker.log' } else { '' } }
         if ($shot -lt 40 -and ($shot -lt 6 -or $shot % 3 -eq 0)) { Save-VmScreen ('picker-{0:d2}' -f $shot) }
         $shot++
@@ -211,7 +211,7 @@ function Start-UsenetStubInVm {
         # Wait for both to answer: the news server with its greeting, the indexer with its capabilities.
         $nntp = 'no answer'; $newznab = 'no answer'
         for ($i = 0; $i -lt 40 -and ($nntp -notlike '200*' -or $newznab -notlike '*<caps>*'); $i++) {
-            Start-Sleep -Seconds 2
+            Start-Sleep -Seconds 2 # reason: poll interval inside a loop bounded by its deadline
             try {
                 $c = New-Object System.Net.Sockets.TcpClient('127.0.0.1', $nntpPort)
                 $reader = New-Object System.IO.StreamReader($c.GetStream())
@@ -346,14 +346,14 @@ try {
         $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
         Register-ScheduledTask -TaskName 'GoldenPathLaunch' -Action $action -Principal $principal -Force | Out-Null
         Start-ScheduledTask -TaskName 'GoldenPathLaunch'
-        Start-Sleep -Seconds 5
+        Start-Sleep -Seconds 5 # reason: settle after starting or stopping a process; no event to wait on
         Unregister-ScheduledTask -TaskName 'GoldenPathLaunch' -Confirm:$false
         'started in the signed-in desktop session'
     }
     Add-Result 'Deluno started in the desktop session' $(if ($launch -like 'started*') { 'passed' } else { 'failed' }) $launch
 
     # First run (firewall step, then the picker) starts after Setup; give it time to settle or show itself.
-    Start-Sleep -Seconds $PickerWaitSeconds
+    Start-Sleep -Seconds $PickerWaitSeconds # reason: the first-run firewall step and picker show themselves on their own time; the wait is the picker wait in seconds
     }
 
     # 5. What is installed and running.
