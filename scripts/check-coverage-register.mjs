@@ -123,6 +123,8 @@ export function validateShape(register) {
     else if (row.required !== requiredFor(row)) problems.push(`${where}: required must be "${requiredFor(row)}" for a ${row.severity} row that touches ${row.touches}`);
     if (row.vm != null && row.vm !== true) problems.push(`${where}: vm may only be true (leave it out otherwise)`);
     if (row.vm === true && !REAL_FS_TOUCHES.has(row.touches)) problems.push(`${where}: vm is for a row that touches disk or install, not ${row.touches}`);
+    if (row.account != null && (typeof row.account !== 'string' || !row.account.trim())) problems.push(`${where}: account must name the outside service whose account the proof needs`);
+    if (row.account != null && row.issue == null) problems.push(`${where}: account is only for a gap that names an issue (the one that waits for that account)`);
     if (row.incomplete != null && row.incomplete !== true) problems.push(`${where}: incomplete may only be true (leave it out otherwise)`);
     if (row.issue != null && !(Number.isInteger(row.issue) && row.issue > 0)) problems.push(`${where}: issue must be the number of an open coverage issue`);
     if (!Array.isArray(row.proofs)) problems.push(`${where}: proofs must be a list (empty when it is a gap)`);
