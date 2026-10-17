@@ -1202,6 +1202,29 @@ finally {
     Remove-Item -LiteralPath $coldRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+Write-Host 'Saving results survives a reader holding results.json'
+$saveDir = Join-Path ([IO.Path]::GetTempPath()) ('saveres-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $saveDir | Out-Null
+try {
+    $script:S = @{ Started = [DateTime]::UtcNow; Results = (New-Object System.Collections.ArrayList); ResultsFile = (Join-Path $saveDir 'results.json'); LogFile = (Join-Path $saveDir 'suite.log'); Secrets = @{}; Token = $null }
+    Save-Results
+    Check 'the first save writes results.json' (Test-Path $script:S.ResultsFile)
+    $reader = [IO.File]::Open($script:S.ResultsFile, 'Open', 'Read', 'Read')
+    $releaser = [powershell]::Create().AddScript({ param($r) Start-Sleep -Milliseconds 700; $r.Dispose() }).AddArgument($reader)
+    $handle = $releaser.BeginInvoke()
+    $threw = $false
+    try { Save-Results } catch { $threw = $true }
+    $releaser.EndInvoke($handle); $releaser.Dispose()
+    Check 'saving while a reader holds the file never throws' (-not $threw)
+    Check 'the save lands once the reader lets go' ((Get-Content -Raw $script:S.ResultsFile) -match 'updatedUtc')
+    $reader2 = [IO.File]::Open($script:S.ResultsFile, 'Open', 'Read', 'None')
+    $threw = $false
+    try { Save-Results } catch { $threw = $true }
+    $reader2.Dispose()
+    Check 'saving while a reader never lets go still does not throw (the next save carries it)' (-not $threw)
+}
+finally { Remove-Item -LiteralPath $saveDir -Recurse -Force -ErrorAction SilentlyContinue }
+
 Write-Host ''
 Write-Host ("{0} checks passed, {1} failed." -f $script:passes, $script:failures) -ForegroundColor $(if ($script:failures -eq 0) { 'Green' } else { 'Red' })
 if ($script:failures -gt 0) { exit 1 }
