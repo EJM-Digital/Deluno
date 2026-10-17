@@ -31,7 +31,7 @@
 
 ## Parity table
 
-One row per golden-path scenario id (77 on 16 Oct 2026), each with its CI home (`linux-e2e:<group>` or `windows`) and its state (to port, ported, or green twice). The table lists every id in `scripts/golden-path/suite/ScenarioPlan.ps1`. The four other `film.*` clients joined the stack in step 2a (below).
+One row per golden-path scenario id (77 on 16 Oct 2026, 78 with `outage.tray`), each with its CI home (`linux-e2e:<group>` or `windows`) and its state (to port, ported, or green twice). The table lists every id in `scripts/golden-path/suite/ScenarioPlan.ps1`. The four other `film.*` clients joined the stack in step 2a (below).
 
 | Scenario id | CI home | State |
 | --- | --- | --- |
@@ -88,8 +88,9 @@ One row per golden-path scenario id (77 on 16 Oct 2026), each with its CI home (
 | `keepseeding.public-removed.qbittorrent` | `linux-e2e:keepseeding` | to port |
 | `keepseeding.public-removed.transmission` | `linux-e2e:keepseeding` | to port |
 | `keepseeding.public-removed.deluge` | `linux-e2e:keepseeding` | to port |
-| `outage.idle` | `linux-e2e:outage` | to port |
-| `outage.inflight` | `linux-e2e:outage` | to port |
+| `outage.idle` | `linux-e2e:outage` | ported (tests/e2e/outage.spec.ts) |
+| `outage.inflight` | `linux-e2e:outage` | ported (tests/e2e/outage.spec.ts) |
+| `outage.tray` | `windows` | to port: the Deluno tray icon's hover text and dot going amber and green in the same watch (a tray exists only on Windows; the Linux outage group makes every other reading of `outage.idle` and `outage.inflight`) |
 | `tryagain.qbittorrent` | `linux-e2e:tryagain` | ported (tests/e2e/tryagain.spec.ts) |
 | `tryagain.transmission` | `linux-e2e:tryagain` | ported (tests/e2e/tryagain.spec.ts) |
 | `tryagain.deluge` | `linux-e2e:tryagain` | ported (tests/e2e/tryagain.spec.ts) |
@@ -126,3 +127,11 @@ How each client downloads with no internet:
 - **Transmission and Deluge** both support web seeds (BEP 19, libtorrent and Transmission's own), so they use the same tracker-less torrent as qBittorrent and download every byte over HTTP from the fixture. No tracker and no second client were needed. Their spec setup, through their own RPC, turns DHT, PEX and local discovery off and sets the incomplete folder.
 - **SABnzbd and NZBGet** download from the fixture's news server: the fixture posts the film and an .nfo as real yEnc articles (a folder job, as in `scripts/golden-path/usenet-stub`), serves them over NNTP on port 1119 (any login), lists them on a Newznab feed (`/newznab/api`) and serves the .nzb. SABnzbd's first settings file is `tests/e2e/sabnzbd/sabnzbd.ini` (key, host whitelist, folders, news server); NZBGet's server and folders are set through its own JSON-RPC.
 - Deluno runs in a container and cannot tell that Transmission and Deluge see the same folders, so the stack adds the path mapping a person adds (`/downloads` to `/downloads`); without it Deluno names no save folder and the film lands outside the folder Weir watches.
+
+## Step 2b result (17 Oct 2026)
+
+Groups `removal`, `tryagain` and `outage` are ported, each passing on a fresh stack: `tests/e2e/removal.spec.ts` (8 scenarios: the five clients as a folder and the three torrent clients as a single file; the fixture now makes single-file torrents with `layout: "file"`), `tests/e2e/tryagain.spec.ts` (5) and `tests/e2e/outage.spec.ts` (2). Shared helpers are in `tests/e2e/flow.ts`.
+
+- **Removal** keeps every check of G03-Removal.ps1 (on disk before, first removal succeeds, nothing left in the completed folders, library file untouched, second removal reads as a failure, no second Activity row) and also asks the client itself whether it still holds the download, before and after.
+- **Try again** stops Weir's container, sends the five films, reads each client's own API for the finish, waits for the failed hand-offs, starts Weir, and reads the drawer in a real browser (Playwright's Chromium, installed by a CI step for the groups that need it) every 200 ms. It also checks Weir's own record of the file at the end.
+- **Outage** stops and starts Weir's container and watches System, the Dashboard and Deluno's record of the Weir connection every 300 ms, with the same one-minute limits; the in-flight scenario pauses Weir through its own API first. The tray readings of the VM scenario cannot exist on Linux: they are the new `outage.tray` row for the Windows job.

@@ -543,7 +543,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [films, removal, tryagain]
+        group: [films, removal, tryagain, outage]
     env:
       DELUNO_IMAGE: deluno-e2e:${{ github.sha }}
     steps:
