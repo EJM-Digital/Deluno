@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using Deluno.Infrastructure.Http;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.Versions;
 
