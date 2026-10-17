@@ -544,7 +544,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [films, removal, tryagain, outage, resendbefore, resendduringtorrent, resendduringusenet, resendaftertorrent, resendafterusenet, stuckprogress, stuckrate, nzbgetsetup, vanishbefore, vanishwaiting]
+        group: [films, removal, tryagain, outage, resendbefore, resendduringtorrent, resendduringusenet, resendaftertorrent, resendafterusenet, stuckprogress, stuckrate, nzbgetsetup, vanishbefore, vanishwaiting, problems, layout]
     env:
       DELUNO_IMAGE: deluno-e2e:${{ github.sha }}
     steps:
@@ -578,7 +578,7 @@ jobs:
 
       # The groups that read Deluno's screens (a drawer, System, the Dashboard) drive a real browser.
       - name: Install the browser
-        if: ${{ matrix.group == 'tryagain' || matrix.group == 'outage' }}
+        if: ${{ matrix.group == 'tryagain' || matrix.group == 'outage' || matrix.group == 'layout' || matrix.group == 'github' }}
         run: npx playwright install --with-deps chromium
 
       - name: Run the ${{ matrix.group }} group

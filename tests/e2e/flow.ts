@@ -194,3 +194,8 @@ export async function activityRaw(stack: Stack, title: string): Promise<string[]
 
 /** Automation (the jobs that hand a finished download on) paused or running, as the Dashboard's switch does. */
 export const setAutomation = (stack: Stack, on: boolean) => stack.deluno.must("PUT", "/api/settings/automation", { isEnabled: on });
+
+/** Makes folders on the shared volumes, as a person does at the file manager before pointing a library at them (Deluno asks for the folder to exist). */
+export function makeFolders(...folders: string[]) {
+  docker("exec", containerOf("deluno"), "mkdir", "-p", ...folders);
+}
