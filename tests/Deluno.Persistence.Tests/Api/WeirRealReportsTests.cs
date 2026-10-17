@@ -116,6 +116,56 @@ public sealed class WeirRealReportsTests
         }
     }
 
+    // ----- Weir 1.0.0-rc.18 and Deluno 1.0.0-rc.30.33, recorded in Docker (scripts/recorded-replies/docker/flows.mjs) with a proxy between the two. Deluno sent
+    // these hand-offs itself, so the proxy's copy of Deluno's reply is the reply for a hand-off it holds.
+
+    /// <summary>
+    /// Weir #956, Deluno #1250: a second connection of the same kind handed Weir a file whose pass belongs to the first, and Weir reports the send as
+    /// failed with failureClass not_taken and no disposition. Deluno accepted it (202) and said it would send the file again, after two minutes; the
+    /// hand-off waits to be sent again and is not a failure.
+    /// </summary>
+    [Fact]
+    public async Task A_hand_off_Weir_did_not_take_because_another_connection_owns_the_file_is_accepted_and_will_be_sent_again()
+    {
+        var recorded = RecordedReplies.Deluno("events-failed-not-taken").Single;
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var handoff = await HandoffAsync(app, scene, recorded);
+
+        var response = await PostAsync(app, scene, handoff, recorded, createOutput: false);
+
+        Assert.Equal((HttpStatusCode)recorded.Reply.Status, response.StatusCode);
+        var wanted = JsonNode.Parse(recorded.Reply.Body!)!;
+        var said = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        Assert.Equal("failed", said["status"]!.GetValue<string>());
+        Assert.Equal(wanted["willRetry"]!.GetValue<bool>(), said["willRetry"]!.GetValue<bool>());
+        Assert.Equal(wanted["retryAfterMinutes"]!.GetValue<int>(), said["retryAfterMinutes"]!.GetValue<int>());
+        Assert.Equal(ProcessorHandoffStatuses.Waiting, (await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))!.Status);
+    }
+
+    /// <summary>
+    /// The report Weir sends for an audio-only file under its reject policy, for a hand-off the real Deluno sent (events-failed-rejected-known-handoff), and
+    /// the reply Deluno really gave it: failed with disposition rejected and the file left in place, answered 202 "rejected" naming the release it blocked
+    /// and the search it started. The tests of what Deluno does with a rejection (AHandOffFollowsTheDownloadItIsForTests) post this body and hold their
+    /// answer against this one.
+    /// </summary>
+    [Fact]
+    public void The_report_for_a_rejected_release_and_the_reply_Deluno_gave_it_are_what_the_rejection_tests_replay()
+    {
+        var recorded = RecordedReplies.Deluno("events-failed-rejected-known-handoff").Single;
+        var report = JsonNode.Parse(recorded.Request.Body!)!;
+        var reply = JsonNode.Parse(recorded.Reply.Body!)!;
+
+        Assert.Equal("failed", report["status"]!.GetValue<string>());
+        Assert.Equal("rejected", report["disposition"]!.GetValue<string>());
+        Assert.False(report["sourceRemoved"]!.GetValue<bool>());
+        Assert.Equal(202, recorded.Reply.Status);
+        Assert.Equal("rejected", reply["status"]!.GetValue<string>());
+        Assert.Equal(report["handoffId"]!.GetValue<string>(), reply["handoffId"]!.GetValue<string>());
+        Assert.False(string.IsNullOrWhiteSpace(reply["blockedReleaseId"]!.GetValue<string>()));
+        Assert.False(string.IsNullOrWhiteSpace(reply["searchJobId"]!.GetValue<string>()));
+    }
+
     // ----- Weir 1.0.0-rc.18, recorded on the golden VM for #1239 and #1262. Weir made these hand-offs itself, straight to its own
     // intake, so the real Deluno in front of the recording proxy had no row for them and answered 409 (recorded with each); the proxy
     // answered some itself, and each recording's note says which. Here the same bodies reach a Deluno that holds the hand-off.

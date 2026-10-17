@@ -1,0 +1,22 @@
+{
+  "app": "prowlarr",
+  "version": "2.6.5.5623",
+  "state": "download-clients",
+  "recordedAt": "2026-10-17T12:34:49Z",
+  "note": "GET /api/v1/downloadclient (2.6.5.5623): none are set up.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/downloadclient"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": []
+      }
+    }
+  ]
+}

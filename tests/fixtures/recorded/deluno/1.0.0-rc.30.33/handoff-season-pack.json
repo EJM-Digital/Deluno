@@ -1,0 +1,45 @@
+{
+  "app": "deluno",
+  "version": "1.0.0-rc.30.33",
+  "state": "handoff-season-pack",
+  "recordedAt": "2026-10-17T12:21:37Z",
+  "note": "Deluno's hand-off of a season pack of two episodes (Deluno 1.0.0-rc.30.33, Weir 1.0.0-rc.18); Weir ended it completed, with 2 output file(s).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/webhook/deluno",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "idempotency-key": "01a149ceda137945b97376e67dc10626:1792239655443",
+          "x-webhook-secret": "<scrubbed>"
+        },
+        "body": {
+          "eventType": "deluno.processor-handoff",
+          "handoffId": "01a149ceda137945b97376e67dc10626",
+          "libraryId": "01a149ce796c72efa134eb4384ad310f",
+          "mediaType": "tv",
+          "sourcePath": "/downloads/completed/TV/Recorded.Show.S01.1080p.WEB-DL.x264-E2E",
+          "releaseName": "Recorded.Show.S01.1080p.WEB-DL.x264-E2E",
+          "queueItemId": "584c89e54b9bde3134fb4127539b1c18a27c0fc7",
+          "callbackPath": "/api/integrations/processors/events",
+          "title": "Recorded Show",
+          "year": 2020
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "status": "ok",
+          "source": "deluno",
+          "event": "handoff",
+          "media_scope": "tv",
+          "enqueued": "processing.file.remux_pass.v1"
+        }
+      }
+    }
+  ]
+}

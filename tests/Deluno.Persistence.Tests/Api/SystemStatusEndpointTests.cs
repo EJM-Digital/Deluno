@@ -34,6 +34,45 @@ public sealed class SystemStatusEndpointTests
         Assert.True(status.GetProperty("tasks").GetProperty("total").GetInt32() > 0);
     }
 
+    /// <summary>
+    /// "A widget written for Radarr reads it unchanged" (#1020): the answer Radarr 6.4.4, Sonarr 4.0.20 and Prowlarr 2.6.5 really give to
+    /// <c>GET /api/v3/system/status</c> (tests/fixtures/recorded/radarr, sonarr and prowlarr: system-status) is held against Deluno's. Every
+    /// field a real app sends is a field Deluno sends, except the ones Deluno has no counterpart for and leaves out rather than invents.
+    /// </summary>
+    [Theory]
+    [InlineData("radarr")]
+    [InlineData("sonarr")]
+    [InlineData("prowlarr")]
+    public async Task Status_has_every_field_a_real_arr_app_sends_but_the_ones_Deluno_has_no_counterpart_for(string app)
+    {
+        var recording = app switch
+        {
+            "radarr" => Deluno.Tests.Recorded.RecordedReplies.Radarr("system-status"),
+            "sonarr" => Deluno.Tests.Recorded.RecordedReplies.Sonarr("system-status"),
+            _ => Deluno.Tests.Recorded.RecordedReplies.Prowlarr("system-status")
+        };
+        var real = System.Text.Json.Nodes.JsonNode.Parse(recording.Single.Reply.Body!)!.AsObject();
+        await using var host = await ApplicationTestHost.StartAsync();
+        var status = await host.Client.GetFromJsonAsync<JsonElement>("/api/system/status");
+        var ours = status.EnumerateObject().Select(property => property.Name).ToHashSet(StringComparer.Ordinal);
+
+        var missing = real.Select(property => property.Key).Where(name => !ours.Contains(name)).Order().ToArray();
+
+        // Fields an arr app has and Deluno leaves out (SystemStatusResponse's own comment): nothing to put in them.
+        // isContainerized is not one of those: Radarr 6 and Prowlarr 2 send it beside isDocker (Sonarr 4.0.20 does not), and Deluno sends isDocker only.
+        // It is listed here so the difference is known and stays visible; whether Deluno should send it too is for the owner to decide (see the report).
+        var leftOut = new[] { "isAdmin", "mode", "migrationVersion", "packageVersion", "packageAuthor", "packageUpdateMechanism", "packageUpdateMechanismMessage", "isContainerized" };
+        Assert.True(missing.Except(leftOut).Count() == 0, $"A real {app} sends {string.Join(", ", missing.Except(leftOut))}, which Deluno's status does not.");
+        // And the fields both send hold the same kind of value, so a widget reads them the same way.
+        foreach (var (name, value) in real.Where(p => ours.Contains(p.Key) && p.Value is not null))
+        {
+            var theirKind = value!.GetValueKind();
+            var ourKind = status.GetProperty(name).ValueKind;
+            var sameKind = theirKind == ourKind || (theirKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False && ourKind is JsonValueKind.True or JsonValueKind.False);
+            Assert.True(sameKind, $"{name} is {theirKind} in a real {app} and {ourKind} in Deluno.");
+        }
+    }
+
     [Fact]
     public async Task Status_agrees_with_the_installation_info_it_shares_a_reading_with()
     {

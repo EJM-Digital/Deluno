@@ -1,0 +1,177 @@
+{
+  "app": "deluge",
+  "version": "2.2.0",
+  "state": "add-url-dead",
+  "recordedAt": "2026-10-17T11:40:31Z",
+  "note": "core.add_torrent_url for a link the server answers 404 for, then the torrent list (Deluge adds nothing).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "core.add_torrent_url",
+          "params": [
+            "http://fixture:8765/dl/Recorded.Nothing.Here.torrent",
+            {
+              "add_paused": false
+            }
+          ],
+          "id": 115
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": null,
+          "error": {
+            "message": "Failure: [Failure instance: Traceback (failure with no frames): <class 'deluge.error.WrappedException'>: 404 Not Found\nTraceback (most recent call last):\n  File \"/lsiopy/lib/python3.12/site-packages/deluge/core/rpcserver.py\", line 363, in on_fail\n    failure.raiseException()\n  File \"/lsiopy/lib/python3.12/site-packages/twisted/python/failure.py\", line 455, in raiseException\n    raise self.value.with_traceback(self.tb)\n  File \"/lsiopy/lib/python3.12/site-packages/twisted/internet/defer.py\", line 1834, in _inlineCallbacks\n    result = context.run(\n             ^^^^^^^^^^^^\n  File \"/lsiopy/lib/python3.12/site-packages/twisted/python/failure.py\", line 467, in throwExceptionIntoGenerator\n    return g.throw(self.value.with_traceback(self.tb))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/lsiopy/lib/python3.12/site-packages/deluge/core/core.py\", line 532, in add_torrent_url\n    filename = await download_file(\n               ^^^^^^^^^^^^^^^^^^^^\n  File \"/lsiopy/lib/python3.12/site-packages/twisted/internet/defer.py\", line 1177, in __iter__\n    yield self\ntwisted.web.error.Error: 404 Not Found\n\n]",
+            "code": 4
+          },
+          "id": 115
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "web.update_ui",
+          "params": [
+            [
+              "name",
+              "state",
+              "progress",
+              "download_payload_rate",
+              "upload_payload_rate",
+              "eta",
+              "total_size",
+              "total_done",
+              "num_peers",
+              "num_seeds",
+              "time_added",
+              "label",
+              "message",
+              "save_path",
+              "move_completed",
+              "move_completed_path",
+              "ratio",
+              "seeding_time",
+              "tracker_status",
+              "trackers",
+              "private",
+              "queue",
+              "stop_at_ratio",
+              "stop_ratio",
+              "remove_at_ratio"
+            ],
+            {}
+          ],
+          "id": 116
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": {
+            "connected": true,
+            "torrents": {},
+            "filters": {
+              "state": [
+                [
+                  "All",
+                  0
+                ],
+                [
+                  "Active",
+                  0
+                ],
+                [
+                  "Allocating",
+                  0
+                ],
+                [
+                  "Checking",
+                  0
+                ],
+                [
+                  "Downloading",
+                  0
+                ],
+                [
+                  "Seeding",
+                  0
+                ],
+                [
+                  "Paused",
+                  0
+                ],
+                [
+                  "Error",
+                  0
+                ],
+                [
+                  "Queued",
+                  0
+                ],
+                [
+                  "Moving",
+                  0
+                ]
+              ],
+              "tracker_host": [
+                [
+                  "All",
+                  0
+                ],
+                [
+                  "Error",
+                  0
+                ]
+              ],
+              "owner": [
+                [
+                  "",
+                  0
+                ]
+              ],
+              "label": [
+                [
+                  "All",
+                  0
+                ],
+                [
+                  "recorded-movies",
+                  0
+                ]
+              ]
+            },
+            "stats": {
+              "max_download": -1,
+              "max_upload": -1,
+              "max_num_connections": 200,
+              "num_connections": 0,
+              "upload_rate": 0,
+              "download_rate": 0,
+              "download_protocol_rate": 0,
+              "upload_protocol_rate": 0,
+              "dht_nodes": 0,
+              "has_incoming_connections": 0,
+              "free_space": 1001746415616,
+              "external_ip": "175.111.176.60"
+            }
+          },
+          "error": null,
+          "id": 116
+        }
+      }
+    }
+  ]
+}

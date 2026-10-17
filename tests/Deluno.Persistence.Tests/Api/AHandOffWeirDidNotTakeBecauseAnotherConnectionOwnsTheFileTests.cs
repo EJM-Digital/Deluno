@@ -23,17 +23,10 @@ public sealed class AHandOffWeirDidNotTakeBecauseAnotherConnectionOwnsTheFileTes
 {
     private const string Release = "Shared.Folder.2021.1080p.WEB-DL.DDP5.1.H.264-DELUNO";
 
-    // The reply Weir sends today (Weir #956): failed, not_taken, no disposition, source not removed.
+    // The report Weir 1.0.0-rc.18 really sent (Weir #956): failed, not_taken, no disposition, source not removed (tests/fixtures/recorded/deluno/1.0.0-rc.30.33/events-failed-not-taken,
+    // recorded in Docker with two connections to one Weir), with this test's library and hand-off ids.
     private static Task<HttpResponseMessage> NotTakenAsync(ApplicationTestHost app, string libraryId, string handoffId)
-        => app.Client.PostAsJsonAsync("/api/integrations/processors/events", new
-        {
-            libraryId,
-            handoffId,
-            status = "failed",
-            failureClass = "not_taken",
-            sourceRemoved = false,
-            message = "Weir is already processing this file for another connection, so it did not take this hand-off."
-        });
+        => RecordedWeirReports.PostAsync(app.Client, RecordedWeirReports.Body(RecordedWeirReports.Exchange("events-failed-not-taken"), libraryId, handoffId, string.Empty));
 
     public static TheoryData<string, string, string> Clients => new()
     {

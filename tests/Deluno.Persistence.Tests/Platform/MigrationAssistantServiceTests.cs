@@ -79,6 +79,94 @@ public sealed class MigrationAssistantServiceTests
         Assert.Empty(await repository.ListMigrationAuditReportsAsync(10, CancellationToken.None));
     }
 
+    /// <summary>
+    /// What a person pastes after copying the lists out of a real Radarr (tests/fixtures/recorded/radarr, a container set up through its own API with
+    /// one film, a tag, a custom format, qBittorrent and a Torznab feed): each list is the app's own answer to its own call, put under the name the
+    /// assistant looks for. The assistant must account for every row and make an operation of each kind, and keep every key and password out of the report.
+    /// </summary>
+    [Fact]
+    public async Task PreviewAsync_reads_the_lists_a_real_Radarr_answers()
+    {
+        using var storage = TestStorage.Create();
+        var service = await CreateServiceAsync(storage);
+
+        var report = await service.PreviewAsync(
+            new MigrationImportRequest("radarr", "Real Radarr", RecordedExport(("qualityProfiles", Deluno.Tests.Recorded.RecordedReplies.Radarr("quality-profiles")), ("rootFolders", Deluno.Tests.Recorded.RecordedReplies.Radarr("root-folders")), ("customFormats", Deluno.Tests.Recorded.RecordedReplies.Radarr("custom-formats")), ("downloadClients", Deluno.Tests.Recorded.RecordedReplies.Radarr("download-clients")), ("indexers", Deluno.Tests.Recorded.RecordedReplies.Radarr("indexers")), ("movies", Deluno.Tests.Recorded.RecordedReplies.Radarr("movies")), ("tags", Deluno.Tests.Recorded.RecordedReplies.Radarr("tags")))),
+            CancellationToken.None);
+
+        Assert.True(report.Valid, string.Join("; ", report.Errors ?? []));
+        Assert.Equal("radarr", report.SourceKind);
+        Assert.Equal(ListedCount(Deluno.Tests.Recorded.RecordedReplies.Radarr("quality-profiles")), report.Operations.Count(operation => operation.TargetType == "quality-profile"));
+        Assert.Contains(report.Operations, operation => operation.TargetType == "library" && operation.Data.Values.Contains("/movies"));
+        Assert.Contains(report.Operations, operation => operation.TargetType == "indexer" && operation.Name == "E2E feed");
+        Assert.Contains(report.Operations, operation => operation.TargetType == "download-client" && operation.Name == "qBittorrent");
+        Assert.Equal(ListedCount(Deluno.Tests.Recorded.RecordedReplies.Radarr("movies")), report.Summary.TitleCount);
+        Assert.NotNull(report.Inventory);
+        Assert.Equal(0, report.Inventory.UnaccountedRowCount);
+        Assert.All(report.Operations.SelectMany(operation => operation.Data), pair =>
+        {
+            if (pair.Key.Contains("api", StringComparison.OrdinalIgnoreCase) && pair.Key.Contains("key", StringComparison.OrdinalIgnoreCase)
+                || pair.Key.Contains("password", StringComparison.OrdinalIgnoreCase) || pair.Key.Contains("secret", StringComparison.OrdinalIgnoreCase) || pair.Key.Contains("token", StringComparison.OrdinalIgnoreCase))
+            {
+                Assert.Equal("[redacted]", pair.Value);
+            }
+        });
+    }
+
+    /// <summary>The same for a real Sonarr (tests/fixtures/recorded/sonarr): one real series, a tag, a custom format and qBittorrent, no indexer (the feed answers movie searches only).</summary>
+    [Fact]
+    public async Task PreviewAsync_reads_the_lists_a_real_Sonarr_answers()
+    {
+        using var storage = TestStorage.Create();
+        var service = await CreateServiceAsync(storage);
+
+        var report = await service.PreviewAsync(
+            new MigrationImportRequest("sonarr", "Real Sonarr", RecordedExport(("qualityProfiles", Deluno.Tests.Recorded.RecordedReplies.Sonarr("quality-profiles")), ("rootFolders", Deluno.Tests.Recorded.RecordedReplies.Sonarr("root-folders")), ("customFormats", Deluno.Tests.Recorded.RecordedReplies.Sonarr("custom-formats")), ("downloadClients", Deluno.Tests.Recorded.RecordedReplies.Sonarr("download-clients")), ("indexers", Deluno.Tests.Recorded.RecordedReplies.Sonarr("indexers")), ("series", Deluno.Tests.Recorded.RecordedReplies.Sonarr("series")), ("tags", Deluno.Tests.Recorded.RecordedReplies.Sonarr("tags")))),
+            CancellationToken.None);
+
+        Assert.True(report.Valid, string.Join("; ", report.Errors ?? []));
+        Assert.Equal("sonarr", report.SourceKind);
+        Assert.Equal(ListedCount(Deluno.Tests.Recorded.RecordedReplies.Sonarr("quality-profiles")), report.Operations.Count(operation => operation.TargetType == "quality-profile"));
+        Assert.Contains(report.Operations, operation => operation.TargetType == "library" && operation.Data.Values.Contains("/tv"));
+        Assert.Contains(report.Operations, operation => operation.TargetType == "download-client" && operation.Name == "qBittorrent");
+        Assert.DoesNotContain(report.Operations, operation => operation.TargetType == "indexer");
+        Assert.Equal(ListedCount(Deluno.Tests.Recorded.RecordedReplies.Sonarr("series")), report.Summary.TitleCount);
+        Assert.Equal(0, report.Inventory!.UnaccountedRowCount);
+    }
+
+    /// <summary>A real Prowlarr's indexer list (tests/fixtures/recorded/prowlarr): the one Torznab indexer it holds is planned as an indexer, and the tags and app profiles it also answers are not mistaken for something to import.</summary>
+    [Fact]
+    public async Task PreviewAsync_reads_the_indexer_list_a_real_Prowlarr_answers()
+    {
+        using var storage = TestStorage.Create();
+        var service = await CreateServiceAsync(storage);
+
+        var report = await service.PreviewAsync(
+            new MigrationImportRequest("prowlarr", "Real Prowlarr", RecordedExport(("indexers", Deluno.Tests.Recorded.RecordedReplies.Prowlarr("indexers")), ("downloadClients", Deluno.Tests.Recorded.RecordedReplies.Prowlarr("download-clients")), ("tags", Deluno.Tests.Recorded.RecordedReplies.Prowlarr("tags")))),
+            CancellationToken.None);
+
+        Assert.True(report.Valid, string.Join("; ", report.Errors ?? []));
+        Assert.Equal("prowlarr", report.SourceKind);
+        var indexer = Assert.Single(report.Operations, operation => operation.TargetType == "indexer");
+        Assert.Equal("E2E feed", indexer.Name);
+        Assert.Equal(0, report.Inventory!.UnaccountedRowCount);
+    }
+
+    /// <summary>The object a person pastes: each recorded list (the last exchange of the recording is the app's answer to the list call) under the name the assistant reads it by.</summary>
+    private static string RecordedExport(params (string Name, Deluno.Tests.Recorded.Recording From)[] lists)
+    {
+        var export = new System.Text.Json.Nodes.JsonObject();
+        foreach (var (name, from) in lists)
+        {
+            export[name] = System.Text.Json.Nodes.JsonNode.Parse(from.Exchanges[^1].Reply.Body!);
+        }
+
+        return export.ToJsonString();
+    }
+
+    private static int ListedCount(Deluno.Tests.Recorded.Recording from)
+        => System.Text.Json.Nodes.JsonNode.Parse(from.Exchanges[^1].Reply.Body!)!.AsArray().Count;
+
     [Fact]
     public async Task PreviewAsync_compiles_a_supported_unreviewed_matcher_to_typed_intent()
     {

@@ -1,0 +1,45 @@
+{
+  "app": "deluno",
+  "version": "1.0.0-rc.30.33",
+  "state": "handoff-second-connection",
+  "recordedAt": "2026-10-17T12:14:56Z",
+  "note": "Deluno's hand-off through a second processor connection to the same Weir, for a file the first connection's pass already owns (Deluno 1.0.0-rc.30.33, Weir 1.0.0-rc.18): Weir accepts the send with a 200.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/webhook/deluno",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "idempotency-key": "01a149c86e6a772ea30489a2d7003f91:1792239234666",
+          "x-webhook-secret": "<scrubbed>"
+        },
+        "body": {
+          "eventType": "deluno.processor-handoff",
+          "handoffId": "01a149c86e6a772ea30489a2d7003f91",
+          "libraryId": "01a149b6785e78dea5d9b11d83fd0daf",
+          "mediaType": "movies",
+          "sourcePath": "/downloads/completed/Movies/E2entmvccxun1QbittorrentFile.2020.1080p.WEB-DL.x264-E2E.mkv",
+          "releaseName": "E2entmvccxun1QbittorrentFile.2020.1080p.WEB-DL.x264-E2E.mkv",
+          "queueItemId": "e7f93ed0f864b96e307309e62b94cbc75e562963",
+          "callbackPath": "/api/integrations/processors/events",
+          "title": "E2entmvccxun1QbittorrentFile",
+          "year": 2020
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "status": "ok",
+          "source": "deluno",
+          "event": "handoff",
+          "media_scope": "movie",
+          "enqueued": "processing.file.remux_pass.v1"
+        }
+      }
+    }
+  ]
+}

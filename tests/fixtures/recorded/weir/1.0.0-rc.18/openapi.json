@@ -1,0 +1,28 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.18",
+  "state": "openapi",
+  "recordedAt": "2026-10-17T11:43:57Z",
+  "note": "GET /openapi.json with no secret: Weir's description of its API. The reply was 356 KB; only \"openapi\", \"info\" and \"servers\" are kept here, the paths and components are left out.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/openapi.json"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "openapi": "3.1.0",
+          "info": {
+            "title": "Weir API",
+            "version": "1.0.0-rc.18"
+          }
+        }
+      }
+    }
+  ]
+}

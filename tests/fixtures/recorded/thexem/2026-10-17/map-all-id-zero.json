@@ -1,0 +1,26 @@
+{
+  "app": "thexem",
+  "version": "2026-10-17",
+  "state": "map-all-id-zero",
+  "recordedAt": "2026-10-17T12:35:47Z",
+  "note": "GET /map/all with id 0: the same failure answer.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/map/all?id=0&origin=tvdb&output=json"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": "failure",
+          "data": [],
+          "message": "no show with the tvdb_id 0 found"
+        }
+      }
+    }
+  ]
+}

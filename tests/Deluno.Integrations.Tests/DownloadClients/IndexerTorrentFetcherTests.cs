@@ -220,8 +220,8 @@ public sealed class IndexerTorrentFetcherTests
             var added = Deluno.Tests.Recorded.RecordedReplies.Sabnzbd("queued");
             var answer = shape switch
             {
-                // SABnzbd's own answer to an add with its job list emptied. (Its real answer to a discarded duplicate is not recorded
-                // yet: the capture script now sends the NZB as a file for that, listed in MISSING.md.)
+                // The recorded answer to an add with its job list emptied. (SABnzbd 5.1.3 never answers a discarded duplicate with an empty
+                // list: it gives the new job an id and discards it afterwards, recorded as duplicate-discarded, tested below.)
                 "duplicate" => added.Body("mode=addurl", ("nzo_ids", new System.Text.Json.Nodes.JsonArray())),
                 "no-id-key" => added.Body("mode=addurl", ("nzo_ids", null)),
                 _ => added.Body("mode=addurl", ("nzo_ids.0", ""))
@@ -241,6 +241,32 @@ public sealed class IndexerTorrentFetcherTests
             Assert.True(result.Succeeded);
             Assert.True(result.IsDuplicateFollow);
             Assert.Null(result.ExternalId);
+        }
+
+        /// <summary>
+        /// What SABnzbd 5.1.3 really does with a duplicate when it is set to discard them (the recording duplicate-discarded): the second add is
+        /// answered like any other, with a new job id, and the job is gone from the queue and the history a few seconds later. The grab is a send
+        /// known by that id; the job's absence afterwards is for the queue follow-up to settle, not for the add.
+        /// </summary>
+        [Fact]
+        public async Task A_duplicate_SABnzbd_discards_after_taking_it_is_answered_with_a_new_id_and_is_a_send()
+        {
+            var recording = Deluno.Tests.Recorded.RecordedReplies.Sabnzbd("duplicate-discarded");
+            var second = recording.Exchanges[2].Reply;
+            var id = System.Text.Json.Nodes.JsonNode.Parse(second.Body!)!["nzo_ids"]![0]!.GetValue<string>();
+            var handler = new StubHandler(_ => second.ToResponse());
+            var client = new DownloadClientItem(
+                "sab-1", "SABnzbd", "sabnzbd", "localhost", 8080, null, "key", "http://localhost:8080/", false, null,
+                "movies", "tv", null, 1, true, "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+
+            var result = await new SabnzbdDownloadClient(new StubFactory(handler)).GrabAsync(
+                client,
+                new DownloadClientGrabRequest("Example.Movie.2026", "https://ix.example/getnzb/1", "movies", "movies", "Example"),
+                CancellationToken.None);
+
+            Assert.True(result.Succeeded, result.Message);
+            Assert.Equal(id, result.ExternalId);
+            Assert.False(result.IsDuplicateFollow);
         }
 
         [Fact]

@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text;
+using System.Text.Json.Nodes;
 using Deluno.Integrations.Metadata.SceneMapping;
+using Deluno.Tests.Recorded;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Deluno.Integrations.Tests.Metadata.SceneMapping;
@@ -14,38 +16,60 @@ namespace Deluno.Integrations.Tests.Metadata.SceneMapping;
 /// </summary>
 public sealed class XemSceneMappingProviderTests
 {
+    /// <summary>
+    /// TheXEM's real answer for a show it maps (tests/fixtures/recorded/thexem, TVDB 79824, shortened): the provider asks the address the
+    /// recording was made at, and keeps the entries that say something the provider's own numbering does not (a different scene season or
+    /// episode, or an absolute number). The expected entries are worked out from the recorded body here, not written by hand.
+    /// </summary>
     [Fact]
-    public async Task A_scene_mismatch_is_reported_and_an_identical_entry_is_not()
+    public async Task A_show_TheXEM_maps_gives_the_entries_whose_scene_numbering_or_absolute_number_says_something_more()
     {
-        var body = """
+        var recording = RecordedReplies.Thexem("map-all-mapped");
+        var asked = new List<string>();
+        var provider = Provider(request =>
         {
-          "result": "success",
-          "data": [
-            { "tvdb": { "season": 1, "episode": 13, "absolute": 13 }, "scene": { "season": 1, "episode": 1 } },
-            { "tvdb": { "season": 1, "episode": 1 }, "scene": { "season": 1, "episode": 1 } }
-          ]
-        }
-        """;
+            asked.Add(request.RequestUri!.PathAndQuery);
+            return recording.Exchanges[0].Reply.ToResponse();
+        });
 
-        var provider = Provider(_ => Json(body));
+        var entries = await provider.GetMappingAsync("79824", CancellationToken.None);
 
-        var entries = await provider.GetMappingAsync("12345", CancellationToken.None);
-
-        var mismatch = Assert.Single(entries);
-        Assert.Equal(1, mismatch.ProviderSeasonNumber);
-        Assert.Equal(13, mismatch.ProviderEpisodeNumber);
-        Assert.Equal(1, mismatch.SceneSeasonNumber);
-        Assert.Equal(1, mismatch.SceneEpisodeNumber);
-        Assert.Equal(13, mismatch.AbsoluteNumber);
+        Assert.Equal(recording.Exchanges[0].Request.Path, Assert.Single(asked));
+        var recorded = JsonNode.Parse(recording.Exchanges[0].Reply.Body!)!["data"]!.AsArray();
+        var expected = recorded.Where(item =>
+        {
+            var tvdb = item!["tvdb"]!;
+            var scene = item["scene"];
+            var differs = scene?["season"] is not null && scene["episode"] is not null
+                && (scene["season"]!.GetValue<int>() != tvdb["season"]!.GetValue<int>() || scene["episode"]!.GetValue<int>() != tvdb["episode"]!.GetValue<int>());
+            return differs || tvdb["absolute"] is not null || scene?["absolute"] is not null;
+        }).ToArray();
+        Assert.NotEmpty(expected);
+        Assert.Equal(expected.Length, entries.Count);
+        Assert.Contains(recorded, item => item!["scene"]!["season"]!.GetValue<int>() != item["tvdb"]!["season"]!.GetValue<int>());
+        var first = entries[0];
+        Assert.Equal(expected[0]!["tvdb"]!["season"]!.GetValue<int>(), first.ProviderSeasonNumber);
+        Assert.Equal(expected[0]!["tvdb"]!["episode"]!.GetValue<int>(), first.ProviderEpisodeNumber);
+        Assert.Equal(expected[0]!["tvdb"]!["absolute"]!.GetValue<int>(), first.AbsoluteNumber);
+        Assert.Contains(entries, entry => entry.SceneSeasonNumber is not null && entry.SceneSeasonNumber != entry.ProviderSeasonNumber);
     }
 
-    [Fact]
-    public async Task A_title_with_no_mapping_answers_empty_rather_than_throwing()
+    /// <summary>TheXEM answers most titles with HTTP 200 and <c>"result": "failure"</c> and an empty list (recorded for a show and for id 0): nothing to correct.</summary>
+    [Theory]
+    [InlineData("map-all-unknown-show", "81189")]
+    [InlineData("map-all-id-zero", "0")]
+    public async Task A_title_with_no_mapping_answers_empty_rather_than_throwing(string state, string tvdbId)
     {
-        var provider = Provider(_ => Json("""{"result":"failure","message":"No data found for this show"}"""));
+        var recording = RecordedReplies.Thexem(state);
+        var provider = Provider(request =>
+        {
+            Assert.Equal(recording.Exchanges[0].Request.Path, request.RequestUri!.PathAndQuery);
+            return recording.Exchanges[0].Reply.ToResponse();
+        });
 
-        var entries = await provider.GetMappingAsync("999999", CancellationToken.None);
+        var entries = await provider.GetMappingAsync(tvdbId, CancellationToken.None);
 
+        Assert.Equal("failure", JsonNode.Parse(recording.Exchanges[0].Reply.Body!)!["result"]!.GetValue<string>());
         Assert.Empty(entries);
     }
 

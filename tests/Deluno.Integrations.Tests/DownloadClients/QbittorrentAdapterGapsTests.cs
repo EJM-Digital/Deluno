@@ -314,9 +314,9 @@ public sealed class QbittorrentAdapterGapsTests
 
             if (path.Contains("setAutoManagement", StringComparison.Ordinal))
             {
-                // Not recorded: qBittorrent answers its other changes with an empty 200.
+                // qBittorrent 5.2.4's own answer to setAutoManagement, recorded: an empty 200.
                 AutoManagementBody = body;
-                return Changed();
+                return RecordedReplies.Qbittorrent("auto-management-set").Response("torrents/setAutoManagement");
             }
 
             if (SignIn(path) is { } signIn) return signIn;

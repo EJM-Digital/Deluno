@@ -1,0 +1,63 @@
+{
+  "app": "deluge",
+  "version": "2.2.0",
+  "state": "status-unknown-hash",
+  "recordedAt": "2026-10-17T11:40:31Z",
+  "note": "core.get_torrent_status for a hash Deluge never had, asked for the label and for the files.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "core.get_torrent_status",
+          "params": [
+            "0123456789abcdef0123456789abcdef01234567",
+            [
+              "label"
+            ]
+          ],
+          "id": 117
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": {},
+          "error": null,
+          "id": 117
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "core.get_torrent_status",
+          "params": [
+            "0123456789abcdef0123456789abcdef01234567",
+            [
+              "files"
+            ]
+          ],
+          "id": 118
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": {},
+          "error": null,
+          "id": 118
+        }
+      }
+    }
+  ]
+}

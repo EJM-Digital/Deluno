@@ -123,8 +123,8 @@ public sealed class TorrentFileGrabsOnEveryClientTests
             // The category the grab puts on the torrent: the recorded creation (qBittorrent said it was there already) and move.
             if (path.Contains("torrents/createCategory", StringComparison.Ordinal)) return RecordedReplies.Qbittorrent("category-moved").Response("torrents/createCategory");
             if (path.Contains("torrents/setCategory", StringComparison.Ordinal)) return RecordedReplies.Qbittorrent("category-moved").Response("torrents/setCategory");
-            // Automatic management is not recorded; qBittorrent answers its other changes with an empty 200, as the recorded category move does.
-            if (path.Contains("torrents/setAutoManagement", StringComparison.Ordinal)) return RecordedReplies.Qbittorrent("category-moved").Response("torrents/setCategory");
+            // qBittorrent 5.2.4's own answer to setAutoManagement, recorded.
+            if (path.Contains("torrents/setAutoManagement", StringComparison.Ordinal)) return RecordedReplies.Qbittorrent("auto-management-set").Response("torrents/setAutoManagement");
             return path.Contains("torrents/info", StringComparison.Ordinal)
                 ? RecordedReplies.Json(added ? after : before)
                 : throw new InvalidOperationException("qBittorrent was asked something no recording answers: " + path);
