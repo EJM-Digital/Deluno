@@ -31,7 +31,7 @@
 
 ## Parity table
 
-One row per golden-path scenario id (77 on 16 Oct 2026), each with its CI home (`linux-e2e:<group>` or `windows`) and its state (to port, ported, or green twice). The table lists every id in `scripts/golden-path/suite/ScenarioPlan.ps1`. The five `film.*` clients other than qBittorrent wait for those clients to join the stack (step 2).
+One row per golden-path scenario id (77 on 16 Oct 2026), each with its CI home (`linux-e2e:<group>` or `windows`) and its state (to port, ported, or green twice). The table lists every id in `scripts/golden-path/suite/ScenarioPlan.ps1`. The four other `film.*` clients wait for those clients to join the stack (step 2).
 
 | Scenario id | CI home | State |
 | --- | --- | --- |
