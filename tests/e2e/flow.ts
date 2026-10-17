@@ -1,7 +1,7 @@
 import type { Browser, Page } from "@playwright/test";
 import { isUsenet, type ClientKind } from "./clients.ts";
 import {
-  URLS, WeirApi, clientFinished, containerOf, docker, filesUnder, makeFilm, routeLibraryTo, until,
+  URLS, WeirApi, clientFinished, containerOf, docker, filesUnder, makeFilm, routeLibraryTo, until, type FilmOptions,
   type FixtureFilm, type Stack
 } from "./stack.ts";
 
@@ -14,10 +14,10 @@ import {
 export interface Sent { kind: ClientKind; film: FixtureFilm; movieId: string; sentAt: number; layout: "folder" | "file" }
 
 /** Adds the film to Deluno and sends its release to the one client, as the VM's Send-Film does. */
-export async function sendFilm(stack: Stack, kind: ClientKind, label: string, layout: "folder" | "file" = "folder"): Promise<Sent> {
+export async function sendFilm(stack: Stack, kind: ClientKind, label: string, layout: "folder" | "file" = "folder", options: FilmOptions = {}): Promise<Sent> {
   const title = `E2e${label}${Date.now().toString(36)}${kind[0].toUpperCase()}${kind.slice(1)}${layout === "file" ? "File" : ""}`;
   const usenet = isUsenet(kind);
-  const film = await makeFilm(title, false, usenet, usenet ? "folder" : layout);
+  const film = await makeFilm(title, false, usenet, usenet ? "folder" : layout, options);
   const movie = await stack.deluno.must<any>("POST", "/api/movies", { title: film.title, releaseYear: film.year, imdbId: null, monitored: true });
   await routeLibraryTo(stack, kind);
   const sentAt = Date.now();
