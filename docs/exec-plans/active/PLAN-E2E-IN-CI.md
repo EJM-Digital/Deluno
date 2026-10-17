@@ -31,17 +31,17 @@
 
 ## Parity table
 
-One row per golden-path scenario id (77 on 16 Oct 2026), each with its CI home (`linux-e2e:<group>` or `windows`) and its state (to port, ported, or green twice). The table lists every id in `scripts/golden-path/suite/ScenarioPlan.ps1`. The four other `film.*` clients wait for those clients to join the stack (step 2).
+One row per golden-path scenario id (77 on 16 Oct 2026), each with its CI home (`linux-e2e:<group>` or `windows`) and its state (to port, ported, or green twice). The table lists every id in `scripts/golden-path/suite/ScenarioPlan.ps1`. The four other `film.*` clients joined the stack in step 2a (below).
 
 | Scenario id | CI home | State |
 | --- | --- | --- |
 | `install-first-run` | `windows` | to port |
 | `nzbget.setup-twice` | `linux-e2e:nzbgetsetup` | to port |
 | `film.qbittorrent` | `linux-e2e:films` | ported (tests/e2e/films.spec.ts) |
-| `film.transmission` | `linux-e2e:films` | to port |
-| `film.deluge` | `linux-e2e:films` | to port |
-| `film.sabnzbd` | `linux-e2e:films` | to port |
-| `film.nzbget` | `linux-e2e:films` | to port |
+| `film.transmission` | `linux-e2e:films` | ported (tests/e2e/films.spec.ts) |
+| `film.deluge` | `linux-e2e:films` | ported (tests/e2e/films.spec.ts) |
+| `film.sabnzbd` | `linux-e2e:films` | ported (tests/e2e/films.spec.ts) |
+| `film.nzbget` | `linux-e2e:films` | ported (tests/e2e/films.spec.ts) |
 | `film.extra-left-out` | `linux-e2e:films` | ported (tests/e2e/films.spec.ts) |
 | `remove-copy.qbittorrent.folder` | `linux-e2e:removal` | to port |
 | `remove-copy.transmission.folder` | `linux-e2e:removal` | to port |
@@ -116,3 +116,13 @@ One row per golden-path scenario id (77 on 16 Oct 2026), each with its CI home (
 ## Step 1 result (17 Oct 2026)
 
 The stack is `tests/e2e/compose.yaml`: Deluno's image, qBittorrent (linuxserver, by digest), Weir (by digest) and the fixture (`tests/e2e/fixture`: a Torznab feed, a web seed and a read-only look at the shared folders). The film is a real 130-second video made by ffmpeg inside the fixture. Its torrent carries no tracker and names the fixture as a web seed (BEP 19), so qBittorrent downloads every byte over HTTP from the fixture with DHT, PEX and LSD off and no internet. `tests/e2e/films.spec.ts` ports `film.qbittorrent` and `film.extra-left-out`, keeping each of their checks and reading the client's, Weir's and the folders' own state. The `e2e-linux` job in `ci.yml` runs it as the matrix group `films`. Two things the stack taught: Deluno sends only to a client whose connection test passed, and it treats a film under two minutes as a likely sample.
+
+## Step 2a result (17 Oct 2026)
+
+Transmission 4.1.3, Deluge 2.2.0, SABnzbd 5.1.3 and NZBGet 26.3 (linuxserver, each by digest) joined `tests/e2e/compose.yaml`, and `tests/e2e/films.spec.ts` now runs `film.<client>` for all five clients plus `film.extra-left-out`, with the checks of G02-Films.ps1: the client's own API says it finished, Deluno handed the film to Weir, the hand-off settled, the cleaned file is in the library, and Activity says sent, handed over and imported. All five films are sent first, so the clients and Weir work at once, as on the VM.
+
+How each client downloads with no internet:
+
+- **Transmission and Deluge** both support web seeds (BEP 19, libtorrent and Transmission's own), so they use the same tracker-less torrent as qBittorrent and download every byte over HTTP from the fixture. No tracker and no second client were needed. Their spec setup, through their own RPC, turns DHT, PEX and local discovery off and sets the incomplete folder.
+- **SABnzbd and NZBGet** download from the fixture's news server: the fixture posts the film and an .nfo as real yEnc articles (a folder job, as in `scripts/golden-path/usenet-stub`), serves them over NNTP on port 1119 (any login), lists them on a Newznab feed (`/newznab/api`) and serves the .nzb. SABnzbd's first settings file is `tests/e2e/sabnzbd/sabnzbd.ini` (key, host whitelist, folders, news server); NZBGet's server and folders are set through its own JSON-RPC.
+- Deluno runs in a container and cannot tell that Transmission and Deluge see the same folders, so the stack adds the path mapping a person adds (`/downloads` to `/downloads`); without it Deluno names no save folder and the film lands outside the folder Weir watches.

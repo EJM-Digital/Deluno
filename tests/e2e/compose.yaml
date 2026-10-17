@@ -1,4 +1,4 @@
-# The end-to-end stack (docs/exec-plans/active/PLAN-E2E-IN-CI.md): Deluno's own image, a real download client and the suite's
+# The end-to-end stack (docs/exec-plans/active/PLAN-E2E-IN-CI.md): Deluno's own image, the five download clients, Weir and the suite's
 # fixture, on one private network. Nothing in a scenario reaches the internet; the only pulls are these images.
 #
 #   docker compose -f tests/e2e/compose.yaml up --build --wait
@@ -14,14 +14,16 @@ services:
   prepare:
     build: ./fixture
     # qBittorrent's first settings file is the suite's login (user e2e, password in tests/e2e/stack.ts); the rest is set through its API.
-    entrypoint: ["sh", "-c", "mkdir -p /downloads/completed/Movies /downloads/completed/TV /downloads/incomplete /media/Movies /media/TV /weir/Ready/Movies /weir/Ready/TV /config/qBittorrent && if [ ! -f /config/qBittorrent/qBittorrent.conf ]; then cp /qbit-seed/qBittorrent.conf /config/qBittorrent/qBittorrent.conf; fi && chown -R 1654:1654 /downloads /media /weir /config"]
+    entrypoint: ["sh", "-c", "mkdir -p /downloads/completed/Movies /downloads/completed/TV /downloads/incomplete /media/Movies /media/TV /weir/Ready/Movies /weir/Ready/TV /config/qBittorrent && if [ ! -f /config/qBittorrent/qBittorrent.conf ]; then cp /qbit-seed/qBittorrent.conf /config/qBittorrent/qBittorrent.conf; fi && if [ ! -f /sab-config/sabnzbd.ini ]; then cp /sab-seed/sabnzbd.ini /sab-config/sabnzbd.ini; fi && chown -R 1654:1654 /downloads /media /weir /config /sab-config"]
     user: root
     volumes:
       - downloads:/downloads
       - media:/media
       - weir-output:/weir
       - qbittorrent-config:/config
+      - sabnzbd-config:/sab-config
       - ./qbittorrent:/qbit-seed:ro
+      - ./sabnzbd:/sab-seed:ro
 
   deluno:
     image: ${DELUNO_IMAGE:-deluno:e2e}
@@ -71,6 +73,104 @@ services:
       start_period: 20s
       retries: 20
 
+  # Transmission, as linuxserver publishes it (4.1.3 when pinned), by digest. It keeps its shipped login (none); the spec sets
+  # its folders and turns DHT, PEX and local discovery off through its own RPC, so a torrent with a web seed downloads from the fixture.
+  transmission:
+    image: lscr.io/linuxserver/transmission@sha256:d6caecad406774a18511be7bfa99ba5070c17a3bdd7a5d73091651841603273c
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+    environment:
+      PUID: "1654"
+      PGID: "1654"
+      TZ: Etc/UTC
+      HOST_WHITELIST: "*"
+      WHITELIST: "*"
+    ports:
+      - "127.0.0.1:${E2E_TRANSMISSION_PORT:-19091}:9091"
+    volumes:
+      - transmission-config:/config
+      - downloads:/downloads
+    healthcheck:
+      test: ["CMD", "curl", "--silent", "--output", "/dev/null", "http://127.0.0.1:9091/transmission/web/"]
+      interval: 5s
+      timeout: 5s
+      start_period: 20s
+      retries: 20
+
+  # Deluge (web interface and daemon), as linuxserver publishes it (2.2.0 when pinned), by digest. Its shipped web login is
+  # "deluge"; the spec sets its folders and turns DHT, PEX and local discovery off through its own JSON-RPC.
+  deluge:
+    image: lscr.io/linuxserver/deluge@sha256:bf306ddd5e6d4a85d3d05ce1b947ab6e344e7fca1b7740b77c58ce170118c7ff
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+    environment:
+      PUID: "1654"
+      PGID: "1654"
+      TZ: Etc/UTC
+    ports:
+      - "127.0.0.1:${E2E_DELUGE_PORT:-18112}:8112"
+    volumes:
+      - deluge-config:/config
+      - downloads:/downloads
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--output", "/dev/null", "http://127.0.0.1:8112/"]
+      interval: 5s
+      timeout: 5s
+      start_period: 20s
+      retries: 20
+
+  # SABnzbd, as linuxserver publishes it (5.1.3 when pinned), by digest. Its first settings file (tests/e2e/sabnzbd/sabnzbd.ini)
+  # carries the suite's key, the host name Deluno reaches it by, its folders and the fixture as its one news server.
+  sabnzbd:
+    image: lscr.io/linuxserver/sabnzbd@sha256:7a13af91cf296399e302d2fb6fc709d6e2ea15e3094f220684611fbe1dd43625
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+      fixture:
+        condition: service_healthy
+    environment:
+      PUID: "1654"
+      PGID: "1654"
+      TZ: Etc/UTC
+    ports:
+      - "127.0.0.1:${E2E_SABNZBD_PORT:-18083}:8080"
+    volumes:
+      - sabnzbd-config:/config
+      - downloads:/downloads
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--output", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 5s
+      timeout: 5s
+      start_period: 20s
+      retries: 20
+
+  # NZBGet, as linuxserver publishes it (26.3 when pinned), by digest. It keeps its shipped login; the spec points it at the
+  # fixture's news server and sets its folders and category through its own JSON-RPC.
+  nzbget:
+    image: lscr.io/linuxserver/nzbget@sha256:ab18af1d16027fdf870fc58a39bbc764043b16e9220e06b9d0413e8b56bd622b
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+      fixture:
+        condition: service_healthy
+    environment:
+      PUID: "1654"
+      PGID: "1654"
+      TZ: Etc/UTC
+    ports:
+      - "127.0.0.1:${E2E_NZBGET_PORT:-16789}:6789"
+    volumes:
+      - nzbget-config:/config
+      - downloads:/downloads
+    healthcheck:
+      test: ["CMD", "curl", "--silent", "--output", "/dev/null", "http://127.0.0.1:6789/"]
+      interval: 5s
+      timeout: 5s
+      start_period: 20s
+      retries: 20
+
   # Weir, the processor Deluno hands a finished download to before it imports, as Weir publishes it (by digest).
   weir:
     image: ghcr.io/jampat000/weir@sha256:77a2de6920d6ef7fc3fa3bc4a55dc13ae8318ee46a08d01527eb248362e9f674
@@ -89,7 +189,8 @@ services:
       - downloads:/downloads
       - weir-output:/weir
 
-  # The local Torznab feed, the web seed for its torrents and a read-only look at the shared folders.
+  # The local Torznab and Newznab feeds, the web seed for the torrents, the news server (NNTP, port 1119) for the Usenet releases
+  # and a read-only look at the shared folders.
   fixture:
     build: ./fixture
     depends_on:
@@ -118,6 +219,10 @@ volumes:
   downloads:
   media:
   qbittorrent-config:
+  transmission-config:
+  deluge-config:
+  sabnzbd-config:
+  nzbget-config:
   fixture-work:
   weir-data:
   weir-output:
