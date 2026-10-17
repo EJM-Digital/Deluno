@@ -25,6 +25,7 @@ public sealed class MetadataLinkRoutesTests
         public string ProviderId = "9001";
         public string Title = "Dune";
         public int Year = 2021;
+        public IReadOnlyList<MetadataSeason>? Catalogue;
 
         private MetadataSearchResult Record(string mediaType) => new(
             "tmdb", ProviderId, mediaType, Title, null, Year, "A record the person picked.", null, null, 7.5, [], ["Drama"],
@@ -40,7 +41,7 @@ public sealed class MetadataLinkRoutesTests
             });
 
         public Task<IReadOnlyList<MetadataSeason>> GetSeriesCatalogueAsync(string providerId, MetadataCatalogueSource source, CancellationToken cancellationToken)
-            => Task.FromResult<IReadOnlyList<MetadataSeason>>(
+            => Task.FromResult(Catalogue ?? (IReadOnlyList<MetadataSeason>)
             [
                 new MetadataSeason(1, "Season 1", 1, null, [new MetadataEpisode(1, 1, "Pilot", null, null)])
             ]);
@@ -223,5 +224,54 @@ public sealed class MetadataLinkRoutesTests
         provider.Status = MetadataProviderRecordStatus.Unavailable;
         Assert.Equal(HttpStatusCode.ServiceUnavailable, (await app.Client.PostAsJsonAsync($"/api/movies/{film.MovieId}/metadata/link/preview", new { providerId = "9001" })).StatusCode);
         Assert.Equal(HttpStatusCode.ServiceUnavailable, (await app.Client.PostAsJsonAsync($"/api/series/{show.SeriesId}/metadata/link/preview", new { providerId = "9001" })).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_show_is_not_linked_to_a_record_another_show_already_owns()
+    {
+        var provider = new LinkProvider { Title = "The Wire", Year = 2002, ProviderId = "4242" };
+        await using var app = await StartAsync(provider);
+        var wire = await ApiScenes.ShowOnDiskAsync(app, "The Wire", 2002);
+        var deadwood = await ApiScenes.ShowOnDiskAsync(app, "Deadwood", 2004, wire.LibraryId);
+        var series = app.Services.GetRequiredService<ISeriesCatalogRepository>();
+        var token = await TokenAsync(app, "series", wire.SeriesId, "4242");
+        Assert.Equal(HttpStatusCode.OK, (await app.Client.PostAsJsonAsync($"/api/series/{wire.SeriesId}/metadata/link", new { providerId = "4242", confirmationToken = token })).StatusCode);
+
+        var preview = await (await app.Client.PostAsJsonAsync($"/api/series/{deadwood.SeriesId}/metadata/link/preview", new { providerId = "4242" })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(preview.GetProperty("canApply").GetBoolean());
+        var refused = await app.Client.PostAsJsonAsync($"/api/series/{deadwood.SeriesId}/metadata/link", new { providerId = "4242", confirmationToken = preview.GetProperty("confirmationToken").GetString() });
+
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+        Assert.Equal("metadata-link-blocked", (await refused.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+        Assert.Equal("Deadwood", (await series.GetByIdAsync(deadwood.SeriesId, CancellationToken.None))!.Title);
+        Assert.True(File.Exists(deadwood.FilePath), "a refused re-link leaves the episode file alone");
+    }
+
+    [Fact]
+    public async Task A_remap_that_would_lose_an_episode_the_show_holds_is_blocked_and_one_that_keeps_every_episode_is_allowed()
+    {
+        var provider = new LinkProvider
+        {
+            Title = "The Wire", Year = 2002, ProviderId = "4242",
+            Catalogue = [new MetadataSeason(1, "Season 1", 1, null, [new MetadataEpisode(1, 2, "Not the one on disk", null, null)])]
+        };
+        await using var app = await StartAsync(provider);
+        var show = await ApiScenes.ShowOnDiskAsync(app, "The Wire", 2002);
+        var series = app.Services.GetRequiredService<ISeriesCatalogRepository>();
+
+        var losing = await (await app.Client.PostAsJsonAsync($"/api/series/{show.SeriesId}/metadata/link/preview", new { providerId = "4242" })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(losing.GetProperty("canApply").GetBoolean());
+        var blocked = await app.Client.PostAsJsonAsync($"/api/series/{show.SeriesId}/metadata/link", new { providerId = "4242", confirmationToken = losing.GetProperty("confirmationToken").GetString() });
+        Assert.Equal(HttpStatusCode.Conflict, blocked.StatusCode);
+        Assert.NotEqual("4242", (await series.GetByIdAsync(show.SeriesId, CancellationToken.None))!.MetadataProviderId);
+        Assert.True(File.Exists(show.FilePath));
+
+        provider.Catalogue = [new MetadataSeason(1, "Season 1", 2, null, [new MetadataEpisode(1, 1, "Pilot", null, null), new MetadataEpisode(1, 2, "The Detail", null, null)])];
+        var keeping = await (await app.Client.PostAsJsonAsync($"/api/series/{show.SeriesId}/metadata/link/preview", new { providerId = "4242" })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(keeping.GetProperty("canApply").GetBoolean());
+        var linked = await app.Client.PostAsJsonAsync($"/api/series/{show.SeriesId}/metadata/link", new { providerId = "4242", confirmationToken = keeping.GetProperty("confirmationToken").GetString() });
+        Assert.Equal(HttpStatusCode.OK, linked.StatusCode);
+        Assert.Equal("4242", (await series.GetByIdAsync(show.SeriesId, CancellationToken.None))!.MetadataProviderId);
+        Assert.True(File.Exists(show.FilePath));
     }
 }

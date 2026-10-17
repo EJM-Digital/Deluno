@@ -47,7 +47,7 @@ public sealed class TitleSearchAndGrabRoutesAgainstRecordedAppsTests
         return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 
-    private static async Task<Rig> RigAsync()
+    private static async Task<Rig> RigAsync(params string[] moreQbitStates)
     {
         var jackett = await RecordedAppServer.StartAsync(
             "jackett",
@@ -65,7 +65,7 @@ public sealed class TitleSearchAndGrabRoutesAgainstRecordedAppsTests
                     ("search", RecordedReplies.Jackett("search-movie-imdb").Exchanges[1]))));
         var qbit = await RecordedAppServer.StartAsync(
             "qbittorrent",
-            new[] { "sign-in", "version", "settings", "resumed" }.Select(RecordedReplies.Qbittorrent),
+            new[] { "sign-in", "version", "settings", "resumed" }.Concat(moreQbitStates).Select(RecordedReplies.Qbittorrent),
             RecordedAppServer.InOrder("torrents/info", RecordedReplies.Qbittorrent("downloading").Exchanges[0]));
         var app = await ApplicationTestHost.StartAsync();
 
@@ -198,6 +198,83 @@ public sealed class TitleSearchAndGrabRoutesAgainstRecordedAppsTests
         Assert.Contains(rig.Jackett.Requests, request => request.PathAndQuery.Contains("/thepiratebay/", StringComparison.Ordinal) && request.PathAndQuery.Contains("t=search&q=Breaking%20Bad", StringComparison.Ordinal));
         Assert.Empty(rig.Jackett.Unanswered);
         Assert.Equal(HttpStatusCode.NotFound, (await rig.App.Client.PostAsync("/api/series/no-such-show/search", content: null)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Search_now_on_a_show_queues_one_search_for_each_aired_missing_episode_and_leaves_future_unmonitored_and_held_ones_alone()
+    {
+        await using var rig = await RigAsync();
+        var series = rig.App.Services.GetRequiredService<ISeriesCatalogRepository>();
+        await series.ImportExistingAsync(
+            rig.ShowLibrary, "Breaking Bad", 2008, "missing", "Wanted.", null, "WEB 1080p", false, null, null,
+            [
+                new ImportedEpisodeItem(1, 1, HasFile: false, AirDate: new DateOnly(2008, 1, 20)),
+                new ImportedEpisodeItem(1, 2, HasFile: false, AirDate: new DateOnly(2008, 1, 27)),
+                new ImportedEpisodeItem(1, 3, HasFile: true, FilePath: "/shows/Breaking Bad/S01E03.mkv", FileSizeBytes: 4, AirDate: new DateOnly(2008, 2, 3)),
+                new ImportedEpisodeItem(1, 4, HasFile: false, AirDate: DateOnly.FromDateTime(DateTime.UtcNow.AddYears(2)))
+            ],
+            CancellationToken.None);
+        var seriesId = (await series.ListAsync(CancellationToken.None)).Single(item => item.Title == "Breaking Bad").Id;
+        // The air dates a metadata sync would have written: two long past, one past (held), one two years ahead.
+        await ApiScenes.ExecuteAsync(rig.App, "series", $"UPDATE episode_entries SET air_date_utc = CASE episode_number WHEN 4 THEN '{DateTime.UtcNow.AddYears(2):O}' ELSE '2008-02-0' || episode_number || 'T00:00:00.0000000+00:00' END WHERE series_id = '{seriesId}';");
+
+        var sent = await PostOkAsync(rig.App, $"/api/series/{seriesId}/search");
+
+        Assert.Equal(2, sent.GetProperty("plannedEpisodes").GetInt32());
+        Assert.Equal(2, await ApiScenes.ScalarAsync(rig.App, "jobs", "SELECT COUNT(*) FROM job_queue WHERE job_type = 'episode.search' AND status = 'queued';"));
+        var episodes = (await series.GetInventoryDetailAsync(seriesId, CancellationToken.None))!.Episodes;
+        var queued = await ApiScenes.TextAsync(rig.App, "jobs", "SELECT group_concat(payload_json, ' ') FROM job_queue WHERE job_type = 'episode.search';");
+        foreach (var wanted in episodes.Where(episode => episode.EpisodeNumber is 1 or 2)) Assert.Contains(wanted.EpisodeId, queued, StringComparison.Ordinal);
+        foreach (var left in episodes.Where(episode => episode.EpisodeNumber is 3 or 4)) Assert.DoesNotContain(left.EpisodeId, queued, StringComparison.Ordinal);
+
+        // Pressing it again while those jobs are still waiting adds none.
+        await PostOkAsync(rig.App, $"/api/series/{seriesId}/search");
+        Assert.Equal(2, await ApiScenes.ScalarAsync(rig.App, "jobs", "SELECT COUNT(*) FROM job_queue WHERE job_type = 'episode.search';"));
+
+        // A preview plans nothing.
+        var preview = await PostOkAsync(rig.App, $"/api/series/{seriesId}/search?mode=preview");
+        Assert.Equal(0, preview.GetProperty("plannedEpisodes").GetInt32());
+    }
+
+    /// <summary>The refusal and its two answers, against qBittorrent's recorded replies (the first send's hash is the one the recorded removal was made with).</summary>
+    [Fact]
+    public async Task A_second_hand_send_for_a_film_already_downloading_asks_first_and_Send_as_well_keeps_both_and_Replace_takes_the_first_out_of_qBittorrent()
+    {
+        await using var rig = await RigAsync("removed-with-data");
+        const string recordedHash = "d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c";
+        const string otherHash = "A779FA758F2229586EEBC2E5960EB32FE5659596";
+        object Send(string release, string hash, string? duplicateAction) => new
+        {
+            releaseName = release, indexerName = "Fixture Indexer", downloadUrl = $"magnet:?xt=urn:btih:{hash}&dn={release}", candidateQuality = "Bluray 1080p",
+            sizeBytes = 143151596L, force = true, overrideReason = "You chose this release.", duplicateAction
+        };
+        int Adds() => rig.Qbit.Requests.Count(request => request.Method == "POST" && request.PathAndQuery.EndsWith("torrents/add", StringComparison.Ordinal));
+        int Deletes() => rig.Qbit.Requests.Count(request => request.PathAndQuery.EndsWith("torrents/delete", StringComparison.Ordinal));
+
+        var film = await AddFilmAsync(rig);
+        await PostOkAsync(rig.App, $"/api/movies/{film}/grab", Send("Sintel.2010.1080p.BluRay.x264-AAA", recordedHash, null));
+        Assert.Equal(1, Adds());
+
+        var asked = await rig.App.Client.PostAsJsonAsync($"/api/movies/{film}/grab", Send("Sintel.2010.2160p.BluRay.x265-BBB", otherHash, null));
+        Assert.Equal(HttpStatusCode.Conflict, asked.StatusCode);
+        Assert.Equal("already-downloading", (await asked.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+        Assert.Equal(1, Adds());
+        Assert.Equal(0, Deletes());
+
+        await PostOkAsync(rig.App, $"/api/movies/{film}/grab", Send("Sintel.2010.2160p.BluRay.x265-BBB", otherHash, "send-as-well"));
+        Assert.Equal(2, Adds());
+        Assert.Equal(0, Deletes());
+
+        // Replace, on a film of its own: the first download leaves qBittorrent with its data, then the new one is added.
+        var second = (await PostOkAsync(rig.App, "/api/movies", new { title = "Tears of Steel", releaseYear = 2012, imdbId = "tt2285752", monitored = true, libraryId = rig.FilmLibrary })).GetProperty("id").GetString()!;
+        await PostOkAsync(rig.App, $"/api/movies/{second}/grab", Send("Tears.of.Steel.2012.1080p.BluRay.x264-AAA", recordedHash, null));
+        Assert.Equal(3, Adds());
+        await PostOkAsync(rig.App, $"/api/movies/{second}/grab", Send("Tears.of.Steel.2012.2160p.BluRay.x265-BBB", otherHash, "replace"));
+        var delete = Assert.Single(rig.Qbit.Requests, request => request.PathAndQuery.EndsWith("torrents/delete", StringComparison.Ordinal));
+        Assert.Contains($"hashes={recordedHash}", delete.Body, StringComparison.Ordinal);
+        Assert.Contains("deleteFiles=true", delete.Body, StringComparison.Ordinal);
+        Assert.Equal(4, Adds());
+        Assert.Empty(rig.Qbit.Unanswered);
     }
 
     [Fact]
