@@ -589,9 +589,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [films, removal, tryagain, outage, resendbefore, resendduringtorrent, resendduringusenet, resendaftertorrent, resendafterusenet, stuckprogress, stuckrate]
+        group: [films, removal, tryagain, outage, resendbefore, resendduringtorrent, resendduringusenet, resendaftertorrent, resendafterusenet, stuckprogress, stuckrate, nzbgetsetup, vanishbefore, vanishwaiting, problems, layout, keepseeding, seasonpack, github]
     env:
       DELUNO_IMAGE: deluno-e2e:${{ github.sha }}
+      # Group github adds GitHub's API with its allowance used up (a stand-in answering GitHub's own recorded reply, tests/e2e/fixture/github.mjs).
+      COMPOSE_PROFILES: ${{ matrix.group == 'github' && 'github' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -623,7 +625,7 @@ jobs:
 
       # The groups that read Deluno's screens (a drawer, System, the Dashboard) drive a real browser.
       - name: Install the browser
-        if: ${{ matrix.group == 'tryagain' || matrix.group == 'outage' }}
+        if: ${{ matrix.group == 'tryagain' || matrix.group == 'outage' || matrix.group == 'layout' || matrix.group == 'github' }}
         run: npx playwright install --with-deps chromium
 
       - name: Run the ${{ matrix.group }} group
@@ -633,7 +635,7 @@ jobs:
         if: ${{ always() }}
         run: |
           mkdir -p artifacts/e2e/logs
-          for service in deluno qbittorrent transmission deluge sabnzbd nzbget weir fixture; do
+          for service in deluno qbittorrent transmission deluge sabnzbd nzbget weir fixture github-api; do
             docker compose -f tests/e2e/compose.yaml logs --no-color "$service" > "artifacts/e2e/logs/$service.log" 2>&1 || true
           done
 

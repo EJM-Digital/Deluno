@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using Deluno.Infrastructure.Http;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.Versions;
 
@@ -59,6 +60,27 @@ public sealed class GitHubApiConditionalHandlerTests
         time.Set(reset.AddSeconds(1));
         Assert.Equal("[]", await http.GetStringAsync(Url));
         Assert.Equal(2, stub.Calls);
+    }
+
+    [Fact]
+    public async Task GitHubs_real_reply_after_the_allowance_is_spent_is_the_limit_and_names_when_it_lifts()
+    {
+        // GitHub's own reply once the anonymous allowance was spent (recorded from the real api.github.com, tests/fixtures/recorded/github): it is the
+        // limit, it lifts at the reset the reply names, and the sentence a person reads gives that minute in UTC. The end-to-end group `github` answers
+        // with this same reply.
+        var recorded = RecordedReplies.Github("rate-limit-used-up").Single.Reply;
+        var reset = DateTimeOffset.FromUnixTimeSeconds(long.Parse(recorded.Headers["x-ratelimit-reset"]));
+        var stub = new Script(_ => recorded.ToResponse());
+        using var http = Client(stub, new FakeTime(reset.AddMinutes(-30)));
+
+        Assert.Equal(403, recorded.Status);
+        var limit = await Assert.ThrowsAsync<GitHubRateLimitException>(() => http.GetStringAsync(Url));
+
+        Assert.Equal(reset, limit.ResetsAt);
+        Assert.Equal(GitHubRateLimitException.MessageFor(reset), limit.Message);
+        Assert.Contains(" UTC. Deluno will try again then.", limit.Message, StringComparison.Ordinal);
+        await Assert.ThrowsAsync<GitHubRateLimitException>(() => http.GetStringAsync(Url));
+        Assert.Equal(1, stub.Calls);
     }
 
     [Fact]

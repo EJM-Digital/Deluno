@@ -36,7 +36,7 @@ One row per golden-path scenario id (77 on 16 Oct 2026, 78 with `outage.tray`), 
 | Scenario id | CI home | State |
 | --- | --- | --- |
 | `install-first-run` | `windows` | to port |
-| `nzbget.setup-twice` | `linux-e2e:nzbgetsetup` | to port |
+| `nzbget.setup-twice` | `linux-e2e:nzbgetsetup` | ported (tests/e2e/nzbgetsetup.spec.ts) |
 | `film.qbittorrent` | `linux-e2e:films` | ported (tests/e2e/films.spec.ts) |
 | `film.transmission` | `linux-e2e:films` | ported (tests/e2e/films.spec.ts) |
 | `film.deluge` | `linux-e2e:films` | ported (tests/e2e/films.spec.ts) |
@@ -82,12 +82,12 @@ One row per golden-path scenario id (77 on 16 Oct 2026, 78 with `outage.tray`), 
 | `stuck.peers.deluge` | `linux-e2e:stuckrate` | ported (tests/e2e/stuckrate.spec.ts) |
 | `stuck.slow.sabnzbd` | `linux-e2e:stuckrate` | ported (tests/e2e/stuckrate.spec.ts) |
 | `stuck.slow.nzbget` | `linux-e2e:stuckrate` | ported (tests/e2e/stuckrate.spec.ts) |
-| `keepseeding.moved.qbittorrent` | `linux-e2e:keepseeding` | to port |
-| `keepseeding.moved.transmission` | `linux-e2e:keepseeding` | to port |
-| `keepseeding.moved.deluge` | `linux-e2e:keepseeding` | to port |
-| `keepseeding.public-removed.qbittorrent` | `linux-e2e:keepseeding` | to port |
-| `keepseeding.public-removed.transmission` | `linux-e2e:keepseeding` | to port |
-| `keepseeding.public-removed.deluge` | `linux-e2e:keepseeding` | to port |
+| `keepseeding.moved.qbittorrent` | `linux-e2e:keepseeding` | ported (tests/e2e/keepseeding.spec.ts) |
+| `keepseeding.moved.transmission` | `linux-e2e:keepseeding` | ported (tests/e2e/keepseeding.spec.ts) |
+| `keepseeding.moved.deluge` | `linux-e2e:keepseeding` | ported (tests/e2e/keepseeding.spec.ts) |
+| `keepseeding.public-removed.qbittorrent` | `linux-e2e:keepseeding` | ported (tests/e2e/keepseeding.spec.ts) |
+| `keepseeding.public-removed.transmission` | `linux-e2e:keepseeding` | ported (tests/e2e/keepseeding.spec.ts) |
+| `keepseeding.public-removed.deluge` | `linux-e2e:keepseeding` | ported (tests/e2e/keepseeding.spec.ts) |
 | `outage.idle` | `linux-e2e:outage` | ported (tests/e2e/outage.spec.ts) |
 | `outage.inflight` | `linux-e2e:outage` | ported (tests/e2e/outage.spec.ts) |
 | `outage.tray` | `windows` | to port: the Deluno tray icon's hover text and dot going amber and green in the same watch (a tray exists only on Windows; the Linux outage group makes every other reading of `outage.idle` and `outage.inflight`) |
@@ -96,21 +96,21 @@ One row per golden-path scenario id (77 on 16 Oct 2026, 78 with `outage.tray`), 
 | `tryagain.deluge` | `linux-e2e:tryagain` | ported (tests/e2e/tryagain.spec.ts) |
 | `tryagain.sabnzbd` | `linux-e2e:tryagain` | ported (tests/e2e/tryagain.spec.ts) |
 | `tryagain.nzbget` | `linux-e2e:tryagain` | ported (tests/e2e/tryagain.spec.ts) |
-| `vanish.before.qbittorrent` | `linux-e2e:vanish` | to port |
-| `vanish.before.transmission` | `linux-e2e:vanish` | to port |
-| `vanish.before.deluge` | `linux-e2e:vanish` | to port |
-| `vanish.before.sabnzbd` | `linux-e2e:vanish` | to port |
-| `vanish.before.nzbget` | `linux-e2e:vanish` | to port |
-| `vanish.waiting.qbittorrent` | `linux-e2e:vanish` | to port |
-| `vanish.waiting.transmission` | `linux-e2e:vanish` | to port |
-| `vanish.waiting.deluge` | `linux-e2e:vanish` | to port |
-| `vanish.waiting.sabnzbd` | `linux-e2e:vanish` | to port |
-| `vanish.waiting.nzbget` | `linux-e2e:vanish` | to port |
-| `problems.dismiss-everywhere` | `linux-e2e:problems` | to port |
-| `activity.one-story` | `linux-e2e:problems` | to port |
-| `seasonpack.no-library` | `linux-e2e:seasonpack` | to port |
-| `layout.390-folder-chain` | `linux-e2e:layout` | to port |
-| `github-limit.messages` | `linux-e2e:github` | to port |
+| `vanish.before.qbittorrent` | `linux-e2e:vanishbefore` | ported (tests/e2e/vanishbefore.spec.ts) |
+| `vanish.before.transmission` | `linux-e2e:vanishbefore` | ported (tests/e2e/vanishbefore.spec.ts) |
+| `vanish.before.deluge` | `linux-e2e:vanishbefore` | ported (tests/e2e/vanishbefore.spec.ts) |
+| `vanish.before.sabnzbd` | `linux-e2e:vanishbefore` | ported (tests/e2e/vanishbefore.spec.ts) |
+| `vanish.before.nzbget` | `linux-e2e:vanishbefore` | ported (tests/e2e/vanishbefore.spec.ts) |
+| `vanish.waiting.qbittorrent` | `linux-e2e:vanishwaiting` | ported (tests/e2e/vanishwaiting.spec.ts) |
+| `vanish.waiting.transmission` | `linux-e2e:vanishwaiting` | ported (tests/e2e/vanishwaiting.spec.ts) |
+| `vanish.waiting.deluge` | `linux-e2e:vanishwaiting` | ported (tests/e2e/vanishwaiting.spec.ts) |
+| `vanish.waiting.sabnzbd` | `linux-e2e:vanishwaiting` | ported (tests/e2e/vanishwaiting.spec.ts) |
+| `vanish.waiting.nzbget` | `linux-e2e:vanishwaiting` | ported (tests/e2e/vanishwaiting.spec.ts) |
+| `problems.dismiss-everywhere` | `linux-e2e:problems` | ported (tests/e2e/problems.spec.ts) |
+| `activity.one-story` | `linux-e2e:problems` | ported (tests/e2e/problems.spec.ts) |
+| `seasonpack.no-library` | `linux-e2e:seasonpack` | ported (tests/e2e/seasonpack.spec.ts) |
+| `layout.390-folder-chain` | `linux-e2e:layout` | ported (tests/e2e/layout.spec.ts) |
+| `github-limit.messages` | `linux-e2e:github` | ported (tests/e2e/github.spec.ts) |
 | `github-limit.picker` | `windows` | to port |
 | `update.over-running-previous` | `windows` | to port |
 
@@ -135,3 +135,13 @@ Groups `removal`, `tryagain` and `outage` are ported, each passing on a fresh st
 - **Removal** keeps every check of G03-Removal.ps1 (on disk before, first removal succeeds, nothing left in the completed folders, library file untouched, second removal reads as a failure, no second Activity row) and also asks the client itself whether it still holds the download, before and after.
 - **Try again** stops Weir's container, sends the five films, reads each client's own API for the finish, waits for the failed hand-offs, starts Weir, and reads the drawer in a real browser (Playwright's Chromium, installed by a CI step for the groups that need it) every 200 ms. It also checks Weir's own record of the file at the end.
 - **Outage** stops and starts Weir's container and watches System, the Dashboard and Deluno's record of the Weir connection every 300 ms, with the same one-minute limits; the in-flight scenario pauses Weir through its own API first. The tray readings of the VM scenario cannot exist on Linux: they are the new `outage.tray` row for the Windows job.
+
+## Step 2c result (17 Oct 2026)
+
+The remaining Linux groups are ported, each passing on a fresh stack (`down --volumes`, then `up`): `nzbgetsetup`, `vanishbefore`, `vanishwaiting`, `problems`, `layout`, `keepseeding`, `seasonpack` and `github` (13 scenario ids, 78 rows in all with the 52 before; the Windows rows stay). Tests-only times on a workstation, stack already up: `nzbgetsetup` 0.4 min, `vanishbefore` 1.2, `vanishwaiting` 12.3 (Weir waits about 11 minutes before it reports a source gone, and all five clients wait together), `problems` 2.1, `layout` 2.3, `keepseeding` 7.0, `seasonpack` 0.8, `github` 0.4. `vanishwaiting` is the slowest and the only one near 15 minutes; it cannot be split, because the wait is Weir's own.
+
+- **Vanish** deletes a finished download's files from the shared volume with `docker exec` in Deluno's container (a person at the file manager) and reads Deluno's telemetry rows ("Files are gone", within 30 s) and hand-offs. **Problems** stops and starts Weir's container and reads the places a person looks (Transfers, the bell, System); the story check sends a film through every client. **Layout** is real Chromium at 390 px and reads `window.innerWidth` on all 58 screens (the lists come from `apps/web/tests/helpers/route-lists.ts`, so a new screen is walked the day it is added).
+- **Keep-seeding** adds the fixture's feed under another address (`/private/api`) as a private indexer, and asks each client itself (qBittorrent's category, Deluge's label, Transmission's labels) where the torrent is.
+- **Season pack** is not the VM script's `/api/filesystem/import/jobs` call: that endpoint refuses a pack that replaces an owned episode (its preview blocks it, "replace it through an episode-scoped review"), so the VM scenario could never reach the pack path. The group drives Deluno's own season search instead (`POST /api/series/{id}/seasons/1/search`), which finds a five-episode pack on the fixture's Torznab feed under the TV categories, grabs it, qBittorrent downloads it from the web seed, and Deluno imports it as a replacement with the targets the dispatch recorded. The show's five episodes come from a metadata broker in the fixture (the contract in `docs/metadata-broker-contract.md`; Deluno refuses to invent an episode a catalogue does not list). Every check of the VM script is kept: the old files are hashed first and are still there byte for byte (at the `.deluno-pack-backup-` name the pack path gives them), the new files are under the library's new folder, and Deluno's log says once for each file that it was left because no library matched it and nothing was deleted.
+- **GitHub**: a hosted runner's own address must never be used up, so the group runs with `--profile github`. What is real: Deluno's image and its own HTTPS calls to `api.github.com`, and GitHub's reply, recorded from the real API after the anonymous allowance was spent (`tests/fixtures/recorded/github/2022-11-28/rate-limit-used-up.json`, by `scripts/recorded-replies/Record-GithubLimit.mjs`: 60 real calls, then the 403). What is not GitHub's: the server (the name `api.github.com` resolves, inside the stack only, to `tests/e2e/fixture/github.mjs`, behind a certificate from an authority the stack makes and Deluno trusts through `SSL_CERT_DIR`), and one value, the reset time (the recorded one has long passed, so the stand-in sends one an hour after it started and its `/limit` says which). `github.com`, `www.github.com` and `codeload.github.com` resolve to a container with nothing listening, so the free release feed and the definitions archive cannot be read, as the VM's hosts file did. `github-limit.picker` stays `windows`.
+- The Deluno restart the VM did from its tray menu is `docker restart` of Deluno's container, which empties its memory of earlier reads the same way.

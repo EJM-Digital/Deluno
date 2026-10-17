@@ -14,12 +14,14 @@ services:
   prepare:
     build: ./fixture
     # qBittorrent's first settings file is the suite's login (user e2e, password in tests/e2e/stack.ts); the rest is set through its API.
-    entrypoint: ["sh", "-c", "mkdir -p /downloads/completed/Movies /downloads/completed/TV /downloads/incomplete /media/Movies /media/TV /weir/Ready/Movies /weir/Ready/TV /config/qBittorrent && if [ ! -f /config/qBittorrent/qBittorrent.conf ]; then cp /qbit-seed/qBittorrent.conf /config/qBittorrent/qBittorrent.conf; fi && if [ ! -f /sab-config/sabnzbd.ini ]; then cp /sab-seed/sabnzbd.ini /sab-config/sabnzbd.ini; fi && chown -R 1654:1654 /downloads /media /weir /config /sab-config"]
+    entrypoint: ["sh", "-c", "mkdir -p /downloads/completed/Movies /downloads/completed/TV /downloads/incomplete /media/Movies /media/TV /weir/Ready/Movies /weir/Ready/TV /pack /config/qBittorrent && if [ ! -f /config/qBittorrent/qBittorrent.conf ]; then cp /qbit-seed/qBittorrent.conf /config/qBittorrent/qBittorrent.conf; fi && if [ ! -f /sab-config/sabnzbd.ini ]; then cp /sab-seed/sabnzbd.ini /sab-config/sabnzbd.ini; fi && sh /fixture/make-certs.sh /certs && chown -R 1654:1654 /downloads /media /weir /pack /config /sab-config"]
     user: root
     volumes:
       - downloads:/downloads
       - media:/media
       - weir-output:/weir
+      - pack:/pack
+      - certs:/certs
       - qbittorrent-config:/config
       - sabnzbd-config:/sab-config
       - ./qbittorrent:/qbit-seed:ro
@@ -38,11 +40,16 @@ services:
       Server__Port: 8080
       Server__AllowLan: "true"
       Storage__DataRoot: /data
+      # The authority the stack made (make-certs.sh) is trusted beside the system's own, so the GitHub stand-in's certificate for
+      # api.github.com is accepted. Nothing else about Deluno's trust changes.
+      SSL_CERT_DIR: /etc/ssl/certs:/e2e-certs/ca
     volumes:
+      - certs:/e2e-certs:ro
       - deluno-data:/data
       - downloads:/downloads
       - media:/media
       - weir-output:/weir
+      - pack:/pack
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/health"]
       interval: 5s
@@ -207,6 +214,7 @@ services:
       - downloads:/downloads:ro
       - media:/media:ro
       - weir-output:/weir:ro
+      - pack:/pack
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8765/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
       interval: 5s
@@ -214,7 +222,47 @@ services:
       start_period: 15s
       retries: 20
 
+  # Group github only (docker compose --profile github): GitHub's API with its hourly allowance used up, and GitHub's other names unreachable.
+  # See tests/e2e/fixture/github.mjs for what is GitHub's own recorded reply and what is not.
+  github-api:
+    profiles: ["github"]
+    build: ./fixture
+    entrypoint: ["node", "/fixture/github.mjs"]
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+    networks:
+      default:
+        aliases:
+          - api.github.com
+    ports:
+      - "127.0.0.1:${E2E_GITHUB_PORT:-18443}:8081"
+    volumes:
+      - certs:/certs:ro
+      - ../fixtures/recorded/github/2022-11-28:/recorded:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8081/').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      start_period: 10s
+      retries: 20
+
+  # Nothing listens here: github.com (the release feeds), www.github.com and codeload.github.com (the definitions archive) refuse the
+  # connection, as the VM's hosts file did by pointing github.com at a closed port.
+  github-closed:
+    profiles: ["github"]
+    build: ./fixture
+    entrypoint: ["sleep", "infinity"]
+    networks:
+      default:
+        aliases:
+          - github.com
+          - www.github.com
+          - codeload.github.com
+
 volumes:
+  certs:
+  pack:
   deluno-data:
   downloads:
   media:

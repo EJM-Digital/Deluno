@@ -14,7 +14,9 @@ import {
 export interface Sent { kind: ClientKind; film: FixtureFilm; movieId: string; sentAt: number; layout: "folder" | "file" }
 
 /** Adds the film to Deluno and sends its release to the one client, as the VM's Send-Film does. */
-export async function sendFilm(stack: Stack, kind: ClientKind, label: string, layout: "folder" | "file" = "folder", options: FilmOptions = {}): Promise<Sent> {
+export async function sendFilm(
+  stack: Stack, kind: ClientKind, label: string, layout: "folder" | "file" = "folder", options: FilmOptions = {}, via?: { id: string; name: string }
+): Promise<Sent> {
   const title = `E2e${label}${Date.now().toString(36)}${kind[0].toUpperCase()}${kind.slice(1)}${layout === "file" ? "File" : ""}`;
   const usenet = isUsenet(kind);
   const film = await makeFilm(title, false, usenet, usenet ? "folder" : layout, options);
@@ -22,8 +24,8 @@ export async function sendFilm(stack: Stack, kind: ClientKind, label: string, la
   await routeLibraryTo(stack, kind);
   const sentAt = Date.now();
   await stack.deluno.must("POST", `/api/movies/${movie.id}/grab`, {
-    releaseName: film.release, indexerId: usenet ? stack.usenetIndexerId : stack.indexerId,
-    indexerName: usenet ? "E2E Usenet feed" : "E2E feed", candidateQuality: "WEB 1080p",
+    releaseName: film.release, indexerId: via?.id ?? (usenet ? stack.usenetIndexerId : stack.indexerId),
+    indexerName: via?.name ?? (usenet ? "E2E Usenet feed" : "E2E feed"), candidateQuality: "WEB 1080p",
     downloadUrl: film.url, sizeBytes: film.size, seeders: usenet ? 0 : 50, force: true, overrideReason: "end-to-end suite", duplicateAction: null
   });
   return { kind, film, movieId: movie.id, sentAt, layout: usenet ? "folder" : layout };
@@ -120,8 +122,8 @@ export const weirSignIn = () => WeirApi.signIn();
 // ------------------------------------------------------------------ a real browser on Deluno's screens
 
 /** A page signed in as the stack's person, at the path, the way the VM's Open-DelunoPage does. */
-export async function openDeluno(browser: Browser, stack: Stack, path: string): Promise<Page> {
-  const context = await browser.newContext({ baseURL: URLS.deluno, viewport: { width: 1440, height: 900 } });
+export async function openDeluno(browser: Browser, stack: Stack, path: string, viewport = { width: 1440, height: 900 }): Promise<Page> {
+  const context = await browser.newContext({ baseURL: URLS.deluno, viewport });
   const page = await context.newPage();
   await page.goto("/");
   const { accessToken, user, expiresUtc } = stack.deluno.session;
@@ -153,4 +155,62 @@ export async function weirFile(title: string) {
     const reply = await weir.get<{ files: any[] }>("/api/v1/processing/files");
     return reply.body.files?.find((f) => String(f.relative_path).includes(title));
   } finally { await weir.dispose(); }
+}
+
+// ------------------------------------------------------------------ what Deluno shows of the clients' downloads
+
+/**
+ * Every client's queue rows as Deluno reads them, flattened (GET telemetry). With `history` the clients' finished rows come too,
+ * each with the status of its outcome (a torrent whose files were deleted shows up there), as the VM's Get-TelemetryRows does.
+ */
+export async function telemetryRows(stack: Stack, history = false): Promise<any[]> {
+  const overview = await stack.deluno.must<any>("GET", "/api/download-clients/telemetry");
+  const rows: any[] = [];
+  for (const snap of overview.clients ?? []) {
+    for (const q of snap.queue ?? []) if (q) rows.push({ ...q, clientId: snap.clientId, clientProtocol: snap.protocol });
+    if (history) for (const h of snap.history ?? []) if (h) rows.push({ ...h, status: String(h.outcome), progress: 100, isHistory: true, clientProtocol: snap.protocol });
+  }
+  return rows;
+}
+
+/** Deletes what a finished download left under the clients' completed folders, as a person at the file manager would. Returns how many files went. */
+export async function deleteCompletedFiles(title: string): Promise<number> {
+  const before = (await completedLeftovers(title)).length;
+  // Deluno's container has the downloads folder writable; the files are removed by their path, deepest first.
+  docker("exec", containerOf("deluno"), "sh", "-c", `find /downloads/completed -depth -path '*${title}*' -exec rm -rf {} +`);
+  return before;
+}
+
+/** Every Activity line (an item's whole JSON, as the person reads it) that names the film, following the pages. */
+export async function activityRaw(stack: Stack, title: string): Promise<string[]> {
+  const lines: string[] = [];
+  let token: string | undefined;
+  for (let page = 0; page < 6; page++) {
+    const reply = await stack.deluno.must<any>("GET", `/api/activity?pageSize=500${token ? `&pageToken=${encodeURIComponent(token)}` : ""}`);
+    for (const item of (Array.isArray(reply) ? reply : reply.items) as any[]) lines.push(JSON.stringify(item));
+    token = Array.isArray(reply) ? undefined : reply.nextPageToken;
+    if (!token) break;
+  }
+  return lines.filter((l) => l.toLowerCase().includes(title.toLowerCase()));
+}
+
+/** Automation (the jobs that hand a finished download on) paused or running, as the Dashboard's switch does. */
+export const setAutomation = (stack: Stack, on: boolean) => stack.deluno.must("PUT", "/api/settings/automation", { isEnabled: on });
+
+/** Makes folders on the shared volumes, as a person does at the file manager before pointing a library at them (Deluno asks for the folder to exist). */
+export function makeFolders(...folders: string[]) {
+  docker("exec", containerOf("deluno"), "mkdir", "-p", ...folders);
+}
+
+/** Activity's newest items, parsed (each item as the API gives it), following the pages. */
+export async function activityItems(stack: Stack, pageSize = 300, maxPages = 1): Promise<any[]> {
+  const items: any[] = [];
+  let token: string | undefined;
+  for (let page = 0; page < maxPages; page++) {
+    const reply = await stack.deluno.must<any>("GET", `/api/activity?pageSize=${pageSize}${token ? `&pageToken=${encodeURIComponent(token)}` : ""}`);
+    items.push(...((Array.isArray(reply) ? reply : reply.items) as any[]));
+    token = Array.isArray(reply) ? undefined : reply.nextPageToken;
+    if (!token) break;
+  }
+  return items;
 }

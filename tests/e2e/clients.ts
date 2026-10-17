@@ -61,6 +61,13 @@ export class TransmissionApi {
     const t = await this.torrent(film.infohash);
     return !!t && t.percentDone >= 1 && t.leftUntilDone === 0;
   }
+
+  /** The torrent's labels as Transmission itself lists them (it has labels, not categories), or undefined when it does not hold the torrent. */
+  async labels(hash: string): Promise<string[] | undefined> {
+    const reply = await this.rpc("torrent-get", { ids: [hash.toLowerCase()], fields: ["hashString", "labels"] });
+    const t = reply.torrents?.[0];
+    return t ? (t.labels ?? []) as string[] : undefined;
+  }
 }
 
 // ------------------------------------------------------------------ Deluge
@@ -103,6 +110,12 @@ export class DelugeApi {
   async torrent(hash: string): Promise<{ state: string; progress: number; save_path: string; name: string } | undefined> {
     const status = await this.call("core.get_torrent_status", [hash.toLowerCase(), ["state", "progress", "save_path", "name"]]);
     return status && status.state ? status : undefined;
+  }
+
+  /** The torrent's Label as Deluge itself lists it, or undefined when it does not hold the torrent. */
+  async label(hash: string): Promise<string | undefined> {
+    const status = await this.call("core.get_torrent_status", [hash.toLowerCase(), ["label", "state"]]);
+    return status && status.state ? String(status.label ?? "") : undefined;
   }
 
   async finished(film: FixtureFilm) {
