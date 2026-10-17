@@ -94,10 +94,8 @@ public sealed class BackupRestoreRoundTripOnRealFilesTests
 
     private sealed record RestoreResultResponseHolder(RestoreResultResponse Result);
 
-    [Fact(Skip = "Defect: a backup made by a newer Deluno is not warned about. DelunoBackupService.PreviewRestoreCoreAsync never compares the manifest's Version with the running version, so the preview of a 99.0.0 backup says 'Backup can be restored.' with no warnings, and the restore is staged.")]
-    public async Task A_backup_made_by_a_newer_deluno_is_warned_about_in_the_preview()
+    private static async Task<string> NewerBackupAsync(TestStorage storage)
     {
-        using var storage = TestStorage.Create();
         await RunAsync(storage, "CREATE TABLE notes (id INTEGER PRIMARY KEY, text TEXT NOT NULL); INSERT INTO notes (text) VALUES ('x');");
         storage.Factory.ClearPools();
         var backup = await Backups(storage).CreateBackupAsync("manual", CancellationToken.None);
@@ -116,10 +114,55 @@ public sealed class BackupRestoreRoundTripOnRealFilesTests
             await write.WriteAsync(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(manifest with { Version = "99.0.0" }, new JsonSerializerOptions(JsonSerializerDefaults.Web))));
         }
 
-        await using var zip = File.OpenRead(backup.FullPath);
+        return backup.FullPath;
+    }
+
+    [Fact]
+    public async Task A_backup_made_by_a_newer_deluno_is_warned_about_in_the_preview()
+    {
+        using var storage = TestStorage.Create();
+        var path = await NewerBackupAsync(storage);
+
+        await using var zip = File.OpenRead(path);
         var preview = await Backups(storage).PreviewRestoreAsync(zip, CancellationToken.None);
 
         Assert.True(preview.Valid);
+        Assert.True(preview.NewerThanThisVersion);
         Assert.Contains(preview.Warnings, warning => warning.Contains("newer", StringComparison.OrdinalIgnoreCase));
     }
+
+    [Fact]
+    public async Task A_backup_made_by_a_newer_deluno_is_restored_only_once_the_person_has_confirmed_it()
+    {
+        using var storage = TestStorage.Create();
+        var path = await NewerBackupAsync(storage);
+
+        await using (var zip = File.OpenRead(path))
+        {
+            var refused = await Backups(storage).RestoreAsync(zip, CancellationToken.None);
+            Assert.False(refused.Restored);
+            Assert.Contains("newer", refused.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.False(StagedRestore.IsPending(storage.DataRoot));
+        }
+
+        await using (var zip = File.OpenRead(path))
+        {
+            var confirmed = await Backups(storage).RestoreAsync(zip, CancellationToken.None, confirmNewerVersion: true);
+            Assert.True(confirmed.Restored);
+            Assert.True(StagedRestore.IsPending(storage.DataRoot));
+        }
+    }
+
+    [Theory]
+    [InlineData("99.0.0", "1.0.0-rc.30.33", true)]
+    [InlineData("1.0.0", "1.0.0-rc.30.33", true)]
+    [InlineData("1.0.0-rc.30.34", "1.0.0-rc.30.33", true)]
+    [InlineData("1.0.0-rc.31", "1.0.0-rc.30.33", true)]
+    [InlineData("1.0.0-rc.30.33", "1.0.0-rc.30.33", false)]
+    [InlineData("1.0.0-rc.30.9", "1.0.0-rc.30.33", false)]
+    [InlineData("1.0.0-rc.30", "1.0.0-rc.30.33", false)]
+    [InlineData("0.9.0", "1.0.0", false)]
+    [InlineData("not a version", "1.0.0", false)]
+    public void A_version_is_newer_by_its_numbers_then_a_release_beats_its_candidates(string candidate, string running, bool expected)
+        => Assert.Equal(expected, Deluno.Api.DelunoVersion.IsNewer(candidate, running));
 }

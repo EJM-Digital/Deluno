@@ -88,7 +88,7 @@ public sealed class HealthChecksReadTheConnectionVerdictOnRecordedAppsTests
         Assert.Equal("ok", fixedRow.GetProperty("status").GetString());
     }
 
-    [Fact(Skip = "Defect: IndexerHealthCheck has no grace for a new indexer (DownloadClientHealthCheck has one, #1055). An indexer added through POST /api/indexers and not yet tested is read at once as a problem: \"YTS: Not tested yet.\"")]
+    [Fact]
     public async Task An_indexer_just_added_is_tested_on_save_so_it_shows_reachable_not_a_problem_before_anyone_presses_test()
     {
         await using var jackett = await RecordedIndexerServer.StartAsync(RecordedReplies.Jackett("search-text"), RecordedReplies.Jackett("caps"));

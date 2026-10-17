@@ -135,7 +135,7 @@ public sealed class UpdateBackupEndpointTests : IAsyncDisposable
         public Task<RestorePreviewResponse> PreviewRestoreAsync(Stream backupStream, CancellationToken cancellationToken) =>
             Task.FromResult(new RestorePreviewResponse(false, "not implemented", null, Array.Empty<string>()));
 
-        public Task<RestoreResultResponse> RestoreAsync(Stream backupStream, CancellationToken cancellationToken) =>
+        public Task<RestoreResultResponse> RestoreAsync(Stream backupStream, CancellationToken cancellationToken, bool confirmNewerVersion = false) =>
             Task.FromResult(new RestoreResultResponse(false, "not implemented", string.Empty, Array.Empty<string>()));
     }
 
