@@ -82,15 +82,23 @@ vi.mock("../lib/api", async (importOriginal) => {
 
 const { DashboardPage } = await import("./dashboard-page");
 const { queryClient } = await import("../lib/route-cache");
+const { useAttention } = await import("../lib/use-attention");
 
 function send(name: string, payload: unknown = {}) {
   act(() => { for (const handler of handlers.get(name) ?? []) handler(payload); });
+}
+
+/** The shell's bell reads the attention summary and follows its pushes whatever screen is open. */
+function Bell() {
+  useAttention();
+  return null;
 }
 
 function renderDashboard(tab: "live" | "system" = "system") {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[tab === "system" ? "/?tab=system" : "/"]}>
+        <Bell />
         <DashboardPage />
       </MemoryRouter>
     </QueryClientProvider>
@@ -269,6 +277,21 @@ describe("The System tab following the server", () => {
     await waitFor(() => expect(count("/api/download-clients")).toBeGreaterThan(before.clients), { timeout: 3_000 });
     await waitFor(() => expect(count("/api/dashboard/live-extras")).toBeGreaterThan(before.extras), { timeout: 3_000 });
     expect(world.paths.some((path) => path.includes("live-extras") && path.includes("fresh=true"))).toBe(true);
+  }, 20_000);
+
+  it("clears a problem from the Health card when the server stops reporting it after it is dismissed elsewhere, with no reload", async () => {
+    world.attention = summaryOf([serverRow({ id: "failed-jobs", kind: "jobs", tone: "bad", title: "1 background job gave up", text: "The work was not done." })]);
+    renderDashboard();
+    const health = await screen.findByRole("region", { name: "Health" });
+    expect(await within(health).findByRole("button", { name: "Retry: 1 background job gave up" })).toBeInTheDocument();
+    const summaryReads = world.paths.filter((path) => path === "/api/dashboard/summary").length;
+
+    // Dismissed in Activity: the server stops listing it and says so on the dashboard subject.
+    world.attention = summaryOf([]);
+    send("AttentionChanged", { reason: "jobs" });
+
+    await waitFor(() => expect(within(health).queryByRole("button", { name: "Retry: 1 background job gave up" })).toBeNull(), { timeout: 5_000 });
+    expect(world.paths.filter((path) => path === "/api/dashboard/summary").length).toBe(summaryReads);
   }, 20_000);
 
   it("keeps at most 200 pushed log lines", async () => {
