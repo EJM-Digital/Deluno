@@ -35,7 +35,7 @@ One row per golden-path scenario id (77 on 16 Oct 2026, 78 with `outage.tray`), 
 
 | Scenario id | CI home | State |
 | --- | --- | --- |
-| `install-first-run` | `windows` | to port |
+| `install-first-run` | `windows` | ported (needs first CI run): tests/e2e-windows, leg `install` |
 | `nzbget.setup-twice` | `linux-e2e:nzbgetsetup` | ported (tests/e2e/nzbgetsetup.spec.ts) |
 | `film.qbittorrent` | `linux-e2e:films` | ported (tests/e2e/films.spec.ts) |
 | `film.transmission` | `linux-e2e:films` | ported (tests/e2e/films.spec.ts) |
@@ -90,7 +90,7 @@ One row per golden-path scenario id (77 on 16 Oct 2026, 78 with `outage.tray`), 
 | `keepseeding.public-removed.deluge` | `linux-e2e:keepseeding` | ported (tests/e2e/keepseeding.spec.ts) |
 | `outage.idle` | `linux-e2e:outage` | ported (tests/e2e/outage.spec.ts) |
 | `outage.inflight` | `linux-e2e:outage` | ported (tests/e2e/outage.spec.ts) |
-| `outage.tray` | `windows` | to port: the Deluno tray icon's hover text and dot going amber and green in the same watch (a tray exists only on Windows; the Linux outage group makes every other reading of `outage.idle` and `outage.inflight`) |
+| `outage.tray` | `windows` | ported (needs first CI run): tests/e2e-windows, leg `install`; the Deluno tray icon's hover text and dot going amber and green in the same watch (a tray exists only on Windows; the Linux outage group makes every other reading of `outage.idle` and `outage.inflight`) |
 | `tryagain.qbittorrent` | `linux-e2e:tryagain` | ported (tests/e2e/tryagain.spec.ts) |
 | `tryagain.transmission` | `linux-e2e:tryagain` | ported (tests/e2e/tryagain.spec.ts) |
 | `tryagain.deluge` | `linux-e2e:tryagain` | ported (tests/e2e/tryagain.spec.ts) |
@@ -111,8 +111,8 @@ One row per golden-path scenario id (77 on 16 Oct 2026, 78 with `outage.tray`), 
 | `seasonpack.no-library` | `linux-e2e:seasonpack` | ported (tests/e2e/seasonpack.spec.ts) |
 | `layout.390-folder-chain` | `linux-e2e:layout` | ported (tests/e2e/layout.spec.ts) |
 | `github-limit.messages` | `linux-e2e:github` | ported (tests/e2e/github.spec.ts) |
-| `github-limit.picker` | `windows` | to port |
-| `update.over-running-previous` | `windows` | to port |
+| `github-limit.picker` | `windows` | ported (needs first CI run): tests/e2e-windows, leg `githubpicker` |
+| `update.over-running-previous` | `windows` | ported (needs first CI run): tests/e2e-windows, leg `update` |
 
 ## Step 1 result (17 Oct 2026)
 
@@ -145,3 +145,15 @@ The remaining Linux groups are ported, each passing on a fresh stack (`down --vo
 - **Season pack** is not the VM script's `/api/filesystem/import/jobs` call: that endpoint refuses a pack that replaces an owned episode (its preview blocks it, "replace it through an episode-scoped review"), so the VM scenario could never reach the pack path. The group drives Deluno's own season search instead (`POST /api/series/{id}/seasons/1/search`), which finds a five-episode pack on the fixture's Torznab feed under the TV categories, grabs it, qBittorrent downloads it from the web seed, and Deluno imports it as a replacement with the targets the dispatch recorded. The show's five episodes come from a metadata broker in the fixture (the contract in `docs/metadata-broker-contract.md`; Deluno refuses to invent an episode a catalogue does not list). Every check of the VM script is kept: the old files are hashed first and are still there byte for byte (at the `.deluno-pack-backup-` name the pack path gives them), the new files are under the library's new folder, and Deluno's log says once for each file that it was left because no library matched it and nothing was deleted.
 - **GitHub**: a hosted runner's own address must never be used up, so the group runs with `--profile github`. What is real: Deluno's image and its own HTTPS calls to `api.github.com`, and GitHub's reply, recorded from the real API after the anonymous allowance was spent (`tests/fixtures/recorded/github/2022-11-28/rate-limit-used-up.json`, by `scripts/recorded-replies/Record-GithubLimit.mjs`: 60 real calls, then the 403). What is not GitHub's: the server (the name `api.github.com` resolves, inside the stack only, to `tests/e2e/fixture/github.mjs`, behind a certificate from an authority the stack makes and Deluno trusts through `SSL_CERT_DIR`), and one value, the reset time (the recorded one has long passed, so the stand-in sends one an hour after it started and its `/limit` says which). `github.com`, `www.github.com` and `codeload.github.com` resolve to a container with nothing listening, so the free release feed and the definitions archive cannot be read, as the VM's hosts file did. `github-limit.picker` stays `windows`.
 - The Deluno restart the VM did from its tray menu is `docker restart` of Deluno's container, which empties its memory of earlier reads the same way.
+
+## Step 3 result (17 Oct 2026): the Windows job, written and checked offline; not yet run on a runner
+
+The four `windows` ids are ported to `tests/e2e-windows/` (a runner, `Run-WindowsE2E.ps1`, and one scenario file per leg) and run by the `e2e-windows` job in `ci.yml`. They are marked `ported (needs first CI run)` and become `green twice` only after two passing runs; the register's `windows-e2e` proofs are added after the first pass, never before.
+
+- **One fresh runner per leg**, because each starts from a clean machine: `install` (`install-first-run`, then `outage.tray` on the same install), `githubpicker` (`github-limit.picker`) and `update` (`update.over-running-previous`). The job is a matrix of the three, needs `windows-installer`, is due exactly when it is (the same flag), and `ci-passed` judges it.
+- **The checks are the golden path's own, run on the runner instead of in a VM.** The runner is already signed in to a desktop, so there is no PowerShell Direct and no scheduled task: Setup, the picker driver (`Invoke-ComponentPicker.ps1`) and the tray watcher (`Watch-Tray.ps1`) are hidden processes in the runner's own session. `install-first-run` is `G01-Install.ps1` unchanged, `update.over-running-previous` is `Update.Lib.ps1` unchanged, and `github-limit.picker` is judged by the host script's own `Get-GithubPickerChecks`. `outage.tray` takes the tray half of `G06-Outage.ps1`.
+- **The tray is driven through UI Automation, as on the VM** (`Tray.Lib.ps1`): the icons are promoted onto the taskbar through `NotifyIconSettings`, the hover text is the Name of the taskbar button, and the dot's colour is read from the button's pixels. Weir quits through its own tray menu (UI Automation, the menu key), falling back to stopping its processes, and starts again as a process.
+- **Installers.** The candidate is the artifact `windows-installer` uploaded in the same run (`deluno-windows-<sha>`). The previous release's is the newest published release's `*Setup*.exe`, from `gh release download` with the job's own token. The githubpicker leg gets no token: GitHub's anonymous allowance is what it tests.
+- **Results** are in the golden path's JSON shape (`C:\e2e-windows\results\results.json`) with evidence, a picture of the desktop at the key moments, and Deluno's and Weir's logs, uploaded as `e2e-windows-<leg>`. A scenario a leg owns that never reports is an error.
+- **Unproven until a runner has run it:** that the runner has a taskbar and notification area for UI Automation to read; that the picker window can be driven there (Server Manager, the first-run firewall step); how long the five clients and Weir take to download; and that anonymous GitHub calls from a hosted runner's address can be used up.
+- **Offline checks:** `tests/e2e-windows/Test-WindowsE2E.ps1` (run by `npm run ci:check`).

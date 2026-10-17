@@ -64,3 +64,14 @@ test("per-push mutation switched off is skipped and fine; running while off is a
   assert.match(verdict(needs({ due: { run_mutation: false }, results: { mutation: "success" } })).join(" "), /mutation ended success; it was not due/);
   assert.match(verdict(needs({ results: { mutation: "failure" } })).join(" "), /mutation ended failure/);
 });
+
+test("the Windows end-to-end job is due exactly when the installer job is", () => {
+  assert.equal(GATES["e2e-windows"], GATES["windows-installer"]);
+  assert.deepEqual(verdict(needs({ due: { run_windows_installer: false } })), []);
+  // Due, but skipped (the installer failed, so its dependent never ran): not a pass.
+  const problems = verdict(needs({ results: { "e2e-windows": "skipped" } }));
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /e2e-windows ended skipped; it was due/);
+  // Not due, but it ran: the flags and the job condition disagree.
+  assert.match(verdict(needs({ due: { run_windows_installer: false }, results: { "e2e-windows": "success" } })).join(" "), /e2e-windows ended success; it was not due/);
+});
