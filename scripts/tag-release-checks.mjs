@@ -3,7 +3,6 @@
 // judgements are the release workflow's own (verify-ci-for-release.mjs, verify-golden-path-for-release.mjs), so the
 // script and the release can never disagree about what counts.
 import { evaluateRun, ACCEPTED_EVENTS } from "./verify-ci-for-release.mjs";
-import { evaluateStatuses } from "./verify-golden-path-for-release.mjs";
 
 export const VERSION_PATTERN = /^\d+\.\d+\.\d+(-rc\.\d+(\.\d+)?)?$/;
 
@@ -65,7 +64,14 @@ export function checkCi(runs, jobsFor) {
   return [`CI has not passed on HEAD. ${reasons.join(" | ")}`];
 }
 
-export function checkGoldenPath(statuses) {
-  const problems = evaluateStatuses(statuses);
-  return problems.length ? [`The golden path has not passed on HEAD: ${problems.join("; ")}. See docs/golden-path.md.`] : [];
+// outcome: what findGoldenPathPass (verify-golden-path-for-release.mjs) returned for HEAD: the commit's own pass, or
+// an earlier commit's with the same shipped files (scripts/ship-paths.mjs), the same judgement the release makes.
+export function checkGoldenPath(outcome) {
+  return outcome.ok ? [] : [`The golden path has not passed on HEAD: ${outcome.problems.join("; ")}. See docs/golden-path.md.`];
+}
+
+export function describeGoldenPath(outcome) {
+  return outcome.carried
+    ? `The golden path passed on ${outcome.sha}, an earlier commit, and the shipped files are identical to HEAD (${outcome.reason}).`
+    : "The golden path passed on HEAD.";
 }
