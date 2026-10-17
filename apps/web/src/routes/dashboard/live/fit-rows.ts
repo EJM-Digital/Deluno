@@ -7,8 +7,8 @@
  */
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 
-/** How many of a host's `data-fit` rows fit inside its height, hiding the rest. Without `enabled` (a card that grows with its rows) every row fits. */
-export function fitRows(host: HTMLElement, enabled = true): number {
+/** How many of a host's `data-fit` rows fit inside its height, hiding the rest. Without `enabled` (a card that grows with its rows) every row fits. `most` caps the count (see `useFittingRows`). */
+export function fitRows(host: HTMLElement, enabled = true, most = Number.MAX_SAFE_INTEGER): number {
   const rows = Array.from(host.querySelectorAll<HTMLElement>("[data-fit]"));
   for (const row of rows) row.style.visibility = "";
   if (!enabled) return rows.length;
@@ -20,31 +20,59 @@ export function fitRows(host: HTMLElement, enabled = true): number {
     if (row.getBoundingClientRect().bottom - padding > limit + 0.5) break;
     fits++;
   }
+  fits = Math.min(fits, most);
   rows.forEach((row, index) => {
     row.style.visibility = index < fits ? "" : "hidden";
   });
   return fits;
 }
 
+/** Measuring after a render may change what the render shows this many times in a row before it may only shrink (#1348). */
+const SETTLE_PASSES = 3;
+
+/**
+ * The rows that fit, measured after every render, whenever the card changes size and when the fonts arrive. What a card shows
+ * can change its own height (the "N more" link in its header wraps, the box shrinks), so a measure can answer a render with
+ * a different number each time; set on every render that never stops (React error #185, #1348). A measure that follows a
+ * render may therefore change the number a few times and then only lower it, which ends: the number it settles on is the
+ * smaller of the two the card swung between, so no row is ever cut through. It may grow again when the card's rows or width
+ * change, or when the size or the fonts call for a fresh measure.
+ */
 export function useFittingRows(enabled = true): [RefObject<HTMLDivElement | null>, number] {
   const ref = useRef<HTMLDivElement | null>(null);
   const [fits, setFits] = useState(Number.MAX_SAFE_INTEGER);
-  const measure = useRef<() => void>(() => undefined);
+  const measure = useRef<(afterRender: boolean) => void>(() => undefined);
   // Measured after every change of what is listed...
   useLayoutEffect(() => {
-    measure.current();
+    measure.current(true);
   });
   // ...and whenever the card changes size or the fonts arrive.
   useLayoutEffect(() => {
     const host = ref.current;
     if (!host) return undefined;
     let live = true;
-    measure.current = () => {
+    let shown = Number.MAX_SAFE_INTEGER;
+    let streak = 0;
+    let ceiling: { rows: number; width: number; most: number } | null = null;
+    measure.current = (afterRender) => {
       if (!live) return;
-      const next = fitRows(host, enabled);
-      setFits((current) => (current === next ? current : next));
+      const rows = host.querySelectorAll("[data-fit]").length;
+      const width = Math.round(host.getBoundingClientRect().width);
+      if (ceiling && (ceiling.rows !== rows || ceiling.width !== width)) ceiling = null;
+      let next = fitRows(host, enabled, ceiling?.most);
+      if (!afterRender) streak = 0;
+      else if (next === shown) streak = 0;
+      else if (next > shown && ++streak > SETTLE_PASSES) {
+        // Growing again after shrinking, over and over: stay at the smaller number until the card's rows or width change.
+        ceiling = { rows, width, most: shown };
+        next = fitRows(host, enabled, shown);
+        streak = 0;
+      } else if (next < shown) streak += 1;
+      if (next === shown) return;
+      shown = next;
+      setFits(next);
     };
-    const again = () => measure.current();
+    const again = () => measure.current(false);
     again();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(again);
     observer?.observe(host);
