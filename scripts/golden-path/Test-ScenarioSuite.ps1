@@ -488,7 +488,7 @@ Check 'a full run whose installed build is not the commit is not the gate' (-not
 $failedRerun = Get-CombinedRunJudgement -Full $fullBoth -Reruns @((New-CombineRerun @($takeover) -Passed $false), (New-CombineRerun $ksIds)) -Plan $plan -ShipPaths $shipOk
 Check 'a re-run that did not pass is not the gate' (-not $failedRerun.Ok)
 $shipped = Get-CombinedRunJudgement -Full $fullBoth -Reruns @((New-CombineRerun @($takeover)), (New-CombineRerun $ksIds)) -Plan $plan -ShipPaths $shipBad -FullHarnessCommit 'abc'
-Check 'a change to a shipped file since the full run is not the gate' (-not $shipped.Ok -and ($shipped.Problems -join ' ') -match 'ships') ("exit $badExit: " + ($runBad -join ' '))
+Check 'a change to a shipped file since the full run is not the gate' (-not $shipped.Ok -and ($shipped.Problems -join ' ') -match 'ships') ("exit ${badExit}: " + ($runBad -join ' '))
 $neverRan = New-CombineFull -FailIds @()
 $neverRan.scenarios = @($neverRan.scenarios | Select-Object -SkipLast 1)
 $lastId = @($plan[-1].Ids)[-1]
@@ -509,7 +509,7 @@ try {
     Check 'no ship-paths module is a no, never a yes' (-not $noCall.Ok -and $noCall.Reason -match 'suite-carry')
 
     # The whole script, end to end on result folders (a dry run records no status).
-    foreach ($n in 'full', 'r1', 'r2') { New-Item -ItemType Directory -Path (Join-Path $shipTmp $n) | Out-Null }
+    foreach ($folderName in 'full', 'r1', 'r2') { New-Item -ItemType Directory -Path (Join-Path $shipTmp $folderName) | Out-Null }
     (New-CombineFull -FailIds @($takeover) -GroupErrors @('keepseeding')) | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $shipTmp 'full\scenario-suite-results.json')
     (New-CombineRerun @($takeover)) | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $shipTmp 'r1\scenario-suite-results.json')
     (New-CombineRerun $ksIds) | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $shipTmp 'r2\scenario-suite-results.json')
@@ -521,7 +521,7 @@ try {
     Check 'the one record lists the full run and each re-run' ($recordText -match 'Full run' -and $recordText -match 'Re-run 1' -and $recordText -match 'Re-run 2' -and $recordText -match [regex]::Escape($takeover))
     $runBad = & powershell -NoProfile -ExecutionPolicy Bypass -File $complete -FullRun (Join-Path $shipTmp 'full') -Reruns (Join-Path $shipTmp 'r1') -ShipPathsScript $stubBad -OutDirectory $outBad -DryRun 2>&1
     $badExit = $LASTEXITCODE
-    Check 'the script, with a failing check, exits 1, sets nothing and says why' ($badExit -eq 1 -and ($runBad -join ' ') -notmatch 'state=success' -and ($runBad -join ' ') -match 'No passing re-run' -and ($runBad -join ' ') -match 'ships') ("exit $badExit: " + ($runBad -join ' '))
+    Check 'the script, with a failing check, exits 1, sets nothing and says why' ($badExit -eq 1 -and ($runBad -join ' ') -notmatch 'state=success' -and ($runBad -join ' ') -match 'no re-run ran the whole group' -and ($runBad -join ' ') -match 'ships') ("exit ${badExit}: " + ($runBad -join ' '))
 }
 finally { Remove-Item -LiteralPath $shipTmp -Recurse -Force -ErrorAction SilentlyContinue }
 
