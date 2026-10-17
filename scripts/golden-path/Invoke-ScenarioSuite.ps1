@@ -361,7 +361,7 @@ try {
     else {
         Send-BundleToVm -Session $rig -Name $VmName -Credential $vmCred -Bundle $bundle
         # The tray watcher has done its job (the install is over); it must not touch the tray while the scenarios read it.
-        Invoke-InVmVia -Session $rig -Name $VmName -Credential $vmCred -Block { New-Item -ItemType File -Force -Path 'C:\golden\suite\logs\traywatch.stop' | Out-Null; Start-Sleep -Seconds 3 } | Out-Null
+        Invoke-InVmVia -Session $rig -Name $VmName -Credential $vmCred -Block { New-Item -ItemType File -Force -Path 'C:\golden\suite\logs\traywatch.stop' | Out-Null; Start-Sleep -Seconds 3 } | Out-Null # reason: settle after starting or stopping a process; no event to wait on
         $runArgs = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\golden\suite\vm\Run-Suite.ps1" -Root "C:\golden\suite"'
         if ($AfterSetupScript -or $makeReady) {
             # Deluno is set up first (Connect Weir makes Weir's account). With an after-setup script, Weir's Update phase runs then,

@@ -74,7 +74,7 @@ while ($true) {
     catch {
         if ((Get-Date) -gt $deadline -or $_.Exception.Message -notmatch 'no SABnzbd or NZBGet connection') { throw }
         Write-Host 'No SABnzbd or NZBGet connection in Deluno yet; waiting 15 s (connect them in the guided setup).'
-        Start-Sleep -Seconds 15
+        Start-Sleep -Seconds 15 # reason: poll interval inside a loop bounded by its deadline
     }
 }
 foreach ($c in @($saved.clients)) { Write-Host ("Provider: {0} - {1}" -f $c.clientName, $c.message) }
@@ -96,7 +96,7 @@ else {
 }
 
 # 3. Read it back.
-Start-Sleep -Seconds 3
+Start-Sleep -Seconds 3 # reason: lets Deluno store the setting before it is read back
 $status = Invoke-Deluno 'GET' '/api/download-clients/usenet-provider'
 foreach ($c in @($status.clients)) { Write-Host ("Usenet client {0}: provider set = {1}" -f $c.clientName, $c.hasProvider) }
 $indexer = @(Invoke-Deluno 'GET' '/api/indexers') | Where-Object { $_.baseUrl -like "$baseUrl*" } | Select-Object -First 1

@@ -56,7 +56,7 @@ function Invoke-GroupNzbgetSetup {
             try { $s = Invoke-NzbgetRpc -Client $client -Method 'status'; if ($s -and -not $s.DownloadPaused) { $s } else { $null } } catch { $null }
         }
         Add-Check 'NZBGet answers and its downloads are not paused' $w.Ok $(if ($w.Ok) { "$([int]$w.Seconds) s after the second setup" } else { 'still paused or not answering after 90 s' })
-        Start-Sleep -Seconds 5
+        Start-Sleep -Seconds 5 # reason: lets NZBGet settle after it answered, so the second read can show a change
         $status = Invoke-NzbgetRpc -Client $client -Method 'status'
         $log = Invoke-NzbgetRpc -Client $client -Method 'log' -Params @(0, 500)
         $after = Get-NzbgetConfigProblems -Status $status -LogEntries $log

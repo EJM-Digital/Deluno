@@ -72,7 +72,7 @@ for ($i = 0; $i -lt $WaitForWindowSeconds -and -not $window; $i++) {
             # BM_CLICK straight to the button's window: a mouse click needs the box in front, and Server Manager's own pop-up can cover it.
             Add-Type -Namespace Gp -Name Win -MemberDefinition '[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern System.IntPtr SendMessage(System.IntPtr h, uint m, System.IntPtr w, System.IntPtr l);'
             [void][Gp.Win]::SendMessage([System.IntPtr]$no.Current.NativeWindowHandle, 0x00F5, [System.IntPtr]::Zero, [System.IntPtr]::Zero)
-            Start-Sleep -Seconds 1
+            Start-Sleep -Seconds 1 # reason: UI settle after input; Windows raises no event for it
             Log "start-with-windows question answered: No (pressed the No button); box still showing: $([bool](ByName $AE::RootElement 'Start Deluno when you sign in to Windows?'))"
             $asked = $true
         }
@@ -82,7 +82,7 @@ for ($i = 0; $i -lt $WaitForWindowSeconds -and -not $window; $i++) {
         $window = $null
         if (-not $script:UiaRetryLogged) { Log "UI Automation could not read the desktop just now ($($_.Exception.Message)); looking again"; $script:UiaRetryLogged = $true }
     }
-    if (-not $window) { if ($i % 5 -eq 0) { Clear-ServerManager }; Start-Sleep -Seconds 1 }
+    if (-not $window) { if ($i % 5 -eq 0) { Clear-ServerManager }; Start-Sleep -Seconds 1 } # reason: poll interval inside a loop bounded by its deadline
 }
 if (-not $asked) { Log "start-with-windows question was NOT shown before the picker" }
 if (-not $window) { Log "FAILED: the picker never appeared"; exit 1 }
@@ -111,10 +111,10 @@ function Assert-ListHasKeyboard {
     $w = ByName $AE::RootElement 'Set up download clients and Weir'
     if (-not $w) { throw 'the picker window is gone, so no key was sent' }
     $hwnd = [System.IntPtr]$w.Current.NativeWindowHandle
-    if ([Gp.Fg]::GetForegroundWindow() -ne $hwnd) { [void][Gp.Fg]::SetForegroundWindow($hwnd); Start-Sleep -Milliseconds 300 }
+    if ([Gp.Fg]::GetForegroundWindow() -ne $hwnd) { [void][Gp.Fg]::SetForegroundWindow($hwnd); Start-Sleep -Milliseconds 300 } # reason: UI settle after input; Windows raises no event for it
     if ([Gp.Fg]::GetForegroundWindow() -ne $hwnd) { throw 'the picker is not the foreground window, so no key was sent' }
     $list = Get-PickerList
-    $list.SetFocus(); Start-Sleep -Milliseconds 200
+    $list.SetFocus(); Start-Sleep -Milliseconds 200 # reason: UI settle after input; Windows raises no event for it
     $has = $list.Current.HasKeyboardFocus -or (@(Get-PickerRows | Where-Object { $_.Current.HasKeyboardFocus }).Count -gt 0)
     if (-not $has) { throw 'the component list does not hold the keyboard focus, so no key was sent (a stray key could hit Skip)' }
 }
@@ -125,13 +125,13 @@ function Tick-RowByKeys([int] $index) {
     # list, and Space only ticks, so Skip (which closes the picker) is never pressed.
     Assert-ListHasKeyboard
     [System.Windows.Forms.SendKeys]::SendWait('{HOME}')
-    Start-Sleep -Milliseconds 300
-    for ($d = 0; $d -lt $index; $d++) { [System.Windows.Forms.SendKeys]::SendWait('{DOWN}'); Start-Sleep -Milliseconds 200 }
-    Start-Sleep -Milliseconds 300
+    Start-Sleep -Milliseconds 300 # reason: UI settle after input; Windows raises no event for it
+    for ($d = 0; $d -lt $index; $d++) { [System.Windows.Forms.SendKeys]::SendWait('{DOWN}'); Start-Sleep -Milliseconds 200 } # reason: UI settle after input; Windows raises no event for it
+    Start-Sleep -Milliseconds 300 # reason: UI settle after input; Windows raises no event for it
     Assert-ListHasKeyboard
     Log "keys: states before Space (1 = on, 0 = off): $(Get-RowStates)"
     [System.Windows.Forms.SendKeys]::SendWait(' ')
-    Start-Sleep -Milliseconds 400
+    Start-Sleep -Milliseconds 400 # reason: UI settle after input; Windows raises no event for it
     Log "keys: states after Space: $(Get-RowStates)"
 }
 Step 'read the rows'
@@ -151,14 +151,14 @@ for ($i = 0; $i -lt $names.Count; $i++) {
         $how = 'Toggle'
         try { if ($ForceKeys) { throw 'keys only' }; $row.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle() }
         catch { $how = 'keys'; Tick-RowByKeys $i }
-        Start-Sleep -Milliseconds 400
+        Start-Sleep -Milliseconds 400 # reason: UI settle after input; Windows raises no event for it
         $after = RowState (@(Get-PickerRows)[$i])
         Log "row $i '$name': $how, was $state, now $after (attempt $attempt)"
         if ($after -eq 'On') { $ok = $true } elseif ($after -eq 'unknown' -and $how -eq 'keys') { $ok = $true }
     }
     if (-not $ok) { throw "row $i '$name' would not tick after 3 tries" }
 }
-Start-Sleep -Seconds 1
+Start-Sleep -Seconds 1 # reason: UI settle after input; Windows raises no event for it
 Step 'check the ticks'
 $unticked = 0
 $i = 0
@@ -186,7 +186,7 @@ $deadline = (Get-Date).AddMinutes($InstallMinutes)
 $last = ''
 $missingSince = $null
 while ((Get-Date) -lt $deadline) {
-    Start-Sleep -Seconds 5
+    Start-Sleep -Seconds 5 # reason: poll interval inside a loop bounded by its deadline
     Clear-ServerManager
     $now = ByName $AE::RootElement 'Set up download clients and Weir'
     if (-not $now) {
@@ -208,7 +208,7 @@ $window = ByName $AE::RootElement 'Set up download clients and Weir'
 if ($window) {
     Log "final: $((Texts $window) -join ' | ')"
     $open = ByName $window 'Open Deluno'
-    if ($open -and $open.Current.IsEnabled -and -not $SkipOpenDeluno) { Press $open; Log "pressed Open Deluno"; Start-Sleep -Seconds 8 }
+    if ($open -and $open.Current.IsEnabled -and -not $SkipOpenDeluno) { Press $open; Log "pressed Open Deluno"; Start-Sleep -Seconds 8 } # reason: gives the opened page time to load; the run never waits on it
     $browsers = @(Get-Process msedge, chrome, firefox -ErrorAction SilentlyContinue)
     Log "browser processes after Open Deluno: $($browsers.Count)"
     $close = ByName $window 'Close'

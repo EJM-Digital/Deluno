@@ -129,7 +129,7 @@ function Wait-KsAllStruck {
             if ($m) { $seen[$k].Message = $m; $seen[$k].Seconds = [math]::Round(([DateTime]::UtcNow - $f.SentUtc).TotalSeconds, 0) }
         }
         if (@($seen.Values | Where-Object { -not $_.Message }).Count -eq 0) { break }
-        Start-Sleep -Seconds 4
+        Start-Sleep -Seconds 4 # reason: poll interval inside a loop bounded by its deadline
     }
     $seen
 }

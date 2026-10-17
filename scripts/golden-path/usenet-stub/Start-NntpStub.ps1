@@ -61,7 +61,7 @@ if ($ReadyFile) { Set-Content -Path $ReadyFile -Value "ready $($server.Port)" -E
 $lastServed = -1
 try {
     while ($true) {
-        Start-Sleep -Seconds 5
+        Start-Sleep -Seconds 5 # reason: the stub's report interval; it runs until stopped
         if ($server.ArticlesServed -ne $lastServed) {
             $lastServed = $server.ArticlesServed
             Write-Host ("{0:HH:mm:ss} connections {1}, articles served {2}, not found {3}" -f (Get-Date), $server.Connections, $server.ArticlesServed, $server.ArticlesMissed)

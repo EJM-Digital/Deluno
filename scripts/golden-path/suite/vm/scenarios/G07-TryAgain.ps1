@@ -75,7 +75,7 @@ function Invoke-GroupTryAgain {
                     if (-not $serverMoved -and $cur -and $cur.status -notin 'failed', 'rejected', 'waiting') { $serverMoved = $now }
                     if (-not $sawSending -and $t -match 'Sending to .* again') { $sawSending = $now }
                     if ($serverMoved -and -not $headerMoved -and $t -notmatch 'Sending to .* again') { $headerMoved = $now }
-                    if ($cur -and $cur.status -eq 'completed' -and $cur.importJobId -and (Find-Imported -Title $f.Title)) { $imported = $true; Start-Sleep -Seconds 2; break }
+                    if ($cur -and $cur.status -eq 'completed' -and $cur.importJobId -and (Find-Imported -Title $f.Title)) { $imported = $true; Start-Sleep -Seconds 2; break } # reason: lets the page show the finished state before the loop ends
                     Start-Sleep -Milliseconds 200 # reason: poll interval inside a loop bounded by its deadline
                 }
                 Add-Check 'The film was imported after Try again' $imported ''

@@ -187,7 +187,7 @@ function Invoke-ResendTakeover {
         Add-Check 'The during moment was reached with the first send still open' $moment.Reached $(if ($first) { "processor '$($first.processor.state)', status '$($first.status)'" } else { "missed three times ($($moment.What))" })
         if (-not $moment.Reached) { return }
         Remove-FilmDownload -Film $film -Reason 'unwanted' | Out-Null
-        Start-Sleep -Seconds 1
+        Start-Sleep -Seconds 1 # reason: the removal and the next step are the timing under test
         $firstWasImported = (Wait-Until -TimeoutSec 5 -IntervalSec 0.5 -Condition { Find-Imported -Title $film.Title }).Ok
         if ($firstWasImported) { Add-Note "takeover/$kind : the first send was imported before the removal landed." }
         Start-AgainDownload -Film $film
@@ -249,7 +249,7 @@ function Invoke-GroupResend {
             $f = $films[$kind]
             if ($firsts[$kind]) {
                 Remove-FilmDownload -Film $f -Reason 'unwanted' | Out-Null
-                Start-Sleep -Seconds 1
+                Start-Sleep -Seconds 1 # reason: the removal and the next step are the timing under test
                 try { Start-AgainDownload -Film $f } catch { Write-SuiteLog "   $($f.Release): $(Hide-Secrets $_.Exception.Message)" }
             }
         }
@@ -285,7 +285,7 @@ function Invoke-GroupResend {
                 Add-Check "The $timing moment was reached with the first send still open" $moment.Reached $(if ($first) { "processor '$($first.processor.state)', status '$($first.status)'" } else { "missed three times ($($moment.What))" })
                 if (-not $moment.Reached) { return }
                 Remove-FilmDownload -Film $film -Reason 'unwanted' | Out-Null
-                Start-Sleep -Seconds 1
+                Start-Sleep -Seconds 1 # reason: the removal and the next step are the timing under test
                 # Whether the first send reached the library before the removal (Deluno imports a cleaned film within a second or two).
                 $firstWasImported = (Wait-Until -TimeoutSec 5 -IntervalSec 0.5 -Condition { Find-Imported -Title $film.Title }).Ok
                 if ($firstWasImported) { Add-Note "$timing/$kind : the first send was imported before the removal landed." }
