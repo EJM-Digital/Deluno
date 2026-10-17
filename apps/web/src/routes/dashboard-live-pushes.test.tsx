@@ -49,7 +49,8 @@ const world = vi.hoisted(() => ({
   indexers: [] as unknown[],
   settings: null as unknown,
   checkedItems: [] as unknown[],
-  connections: [] as unknown[]
+  connections: [] as unknown[],
+  movieTitles: {} as Record<string, unknown>
 }));
 
 vi.mock("../lib/api", async (importOriginal) => {
@@ -67,6 +68,7 @@ vi.mock("../lib/api", async (importOriginal) => {
     if (path === "/api/attention/summary") return world.attention;
     if (path === "/api/system/health") return { summary: { problemCount: 0, unsnoozedProblemCount: 0, unknownCount: 0, suggestionCount: 0, lastRunUtc: null }, checks: world.checks };
     if (path === "/api/connections/checks") return world.checkedItems;
+    if (path.startsWith("/api/movies/titles")) return world.movieTitles;
     if (path === "/api/indexers") return world.indexers;
     if (path.startsWith("/api/dashboard/live-extras")) {
       return { arrivals: [], importsToday: 0, protected: { refusedToday: 0 }, requests: [], retentionReclaimBytes: 0, turnedDown: null, cleanedUpToday: 0, connections: world.connections };
@@ -124,6 +126,7 @@ beforeEach(() => {
   world.settings = null;
   world.checkedItems = [];
   world.connections = [];
+  world.movieTitles = {};
 });
 
 describe("The Dashboard reading its summary", () => {
@@ -170,6 +173,34 @@ describe("The Dashboard reading its summary", () => {
     send("SettingsChanged");
     await waitFor(() => expect(screen.queryByText(/Automation is paused, so nothing is searched/)).toBeNull());
   }, 20_000);
+});
+
+describe("The Live tab following a whole film", () => {
+  it("moves a film from the grab to the library as the server pushes each step, and adds its poster to the shelf once, with no new summary request", async () => {
+    world.movieTitles = { m1: { title: "Moon", year: 2009, posterUrl: "/moon.jpg" } };
+    renderDashboard("live");
+    const board = await screen.findByRole("region", { name: /^pipeline/i });
+    await waitFor(() => expect(world.paths).toContain("/api/dashboard/summary"));
+    const summaryReads = world.paths.filter((path) => path === "/api/dashboard/summary").length;
+    const shelf = screen.getByRole("region", { name: "Your library" });
+    expect(shelf.textContent).not.toContain("Moon");
+
+    send("DispatchGrabAttempt", { dispatchId: "d1", releaseName: "Moon.2009.1080p", clientId: "c1", clientName: "Deluge", timestamp: new Date().toISOString() });
+    expect(await within(board).findByRole("link", { name: /Sending to Deluge/ })).toBeInTheDocument();
+    send("DispatchGrabCompleted", { dispatchId: "d1", releaseName: "Moon.2009.1080p", clientId: "c1", succeeded: true, message: null, timestamp: new Date().toISOString() });
+    send("DispatchImportStarted", { dispatchId: "d1", releaseName: "Moon.2009.1080p", mediaType: "movie", timestamp: new Date().toISOString() });
+    await waitFor(() => expect(board.querySelector('[data-glide-stage="importing"]')?.textContent ?? "").toContain("Moon"));
+
+    const landed = { dispatchId: "d1", releaseName: "Moon.2009.1080p", mediaType: "movies", entityType: "movie", entityId: "m1", libraryId: "lib", stage: "import_succeeded", detail: null, at: new Date().toISOString() };
+    send("DispatchImportCompleted", { dispatchId: "d1", releaseName: "Moon.2009.1080p", succeeded: true, importedPath: "/movies/Moon", failureReason: null, timestamp: new Date().toISOString() });
+    send("JourneyStageChanged", landed);
+    send("JourneyStageChanged", landed);
+
+    await waitFor(() => expect(shelf.textContent).toContain("Moon"));
+    expect(shelf.querySelectorAll("img[src='/moon.jpg']").length + (shelf.textContent?.match(/Moon/g)?.length ?? 0)).toBeGreaterThan(0);
+    expect(queryClient.getQueryData<{ arrivals: Array<{ entityId: string }> }>(["src", "dashboard-live-extras"])?.arrivals.filter((arrival) => arrival.entityId === "m1")).toHaveLength(1);
+    expect(world.paths.filter((path) => path === "/api/dashboard/summary").length).toBe(summaryReads);
+  }, 30_000);
 });
 
 describe("The System tab following the server", () => {
