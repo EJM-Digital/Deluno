@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { CLIENT_KINDS, isUsenet, type ClientKind } from "./clients.ts";
 import {
-  FOLDERS, clientFinished, containerOf, docker, filesUnder, makeFilm, routeLibraryTo, setUpStack, until,
+  FOLDERS, clientFinished, containerOf, docker, filesUnder, makeFilm, routeLibraryTo, settledLibraryFile, setUpStack, until,
   type FixtureFilm, type Stack
 } from "./stack.ts";
 
@@ -42,8 +42,8 @@ async function watch(run: Run) {
   if (h && !outcome.handedOff) { outcome.handedOff = true; outcome.handedSec = secondsSince(run); }
   outcome.handoff = h;
   outcome.settled = !!h && h.status === "completed";
-  // A file Deluno is still copying is a .tmp beside the final name; only the finished file counts.
-  const file = (await filesUnder("media", film.title)).find((f) => !/[.]tmp$/i.test(f.path));
+  // Only the finished file counts: not a .tmp, not a size still changing, and Activity has said it was imported.
+  const file = await settledLibraryFile(stack, film.title);
   if (file && !outcome.imported) { outcome.imported = true; outcome.importedSec = secondsSince(run); outcome.file = file; }
   return outcome.imported && outcome.settled;
 }
