@@ -5982,6 +5982,79 @@ public sealed class ImportPipelineServiceTests
             payload.Changes.Select(change => change.Path).OrderBy(path => path));
     }
 
+    /// <summary>
+    /// #1351: a pack whose every file is blocked (here each resolves outside the season the folder names) once read a
+    /// first file from two empty lists and answered 500. It now refuses plainly and names each file's reason.
+    /// </summary>
+    [Fact]
+    public async Task Tv_pack_whose_every_file_is_blocked_is_refused_with_the_reasons_not_a_server_error()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(seriesRootPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, Path.Combine(storage.DataRoot, "movies"), downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath, qualityProfileId: null);
+
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await seriesRepository.AddAsync(new CreateSeriesRequest("Pack Blocked", 2026, "tt1112224"), CancellationToken.None);
+        await seriesRepository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(2, 1, "One", null, timeProvider.GetUtcNow().AddDays(-2)),
+                new CatalogueEpisodeItem(2, 2, "Two", null, timeProvider.GetUtcNow().AddDays(-1))
+            ],
+            "provider",
+            CancellationToken.None);
+
+        var service = CreateService(
+            storage, timeProvider, platform, libraries,
+            new SqliteMovieCatalogRepository(storage.Factory, timeProvider),
+            seriesCatalogRepository: seriesRepository);
+
+        var packDirectory = Path.Combine(downloadsPath, "Pack.Blocked.S01.WEB-DL");
+        Directory.CreateDirectory(packDirectory);
+        foreach (var episodeNumber in new[] { 1, 2 })
+        {
+            var path = Path.Combine(packDirectory, $"Pack.Blocked.S02E{episodeNumber:D2}.WEB-DL.mkv");
+            await File.WriteAllBytesAsync(path, Enumerable.Repeat((byte)(0x40 + episodeNumber), 4096).ToArray());
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(-1));
+        }
+
+        var preview = new ImportPreviewRequest(
+            packDirectory,
+            "Pack.Blocked.S01.WEB-DL.mkv",
+            "tv",
+            "Pack Blocked",
+            2026,
+            [],
+            [],
+            null,
+            null,
+            SeriesId: series.Id,
+            SeriesType: SeriesTypes.Standard,
+            NumberingScheme: SeriesNumberingSchemes.Standard);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(preview, "copy", Overwrite: false, AllowCopyFallback: true),
+            CancellationToken.None);
+        Assert.False(result.Succeeded);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Contains("Pack.Blocked.S02E01", result.Message);
+        Assert.Contains("Pack.Blocked.S02E02", result.Message);
+
+        var shown = await service.PreviewAsync(preview, CancellationToken.None);
+        Assert.NotNull(shown.Pack);
+        Assert.False(shown.Pack.CanExecute);
+        Assert.Contains(shown.Pack.BlockReasons, reason => reason.Contains("outside season 01"));
+    }
+
     [Fact]
     public async Task Tv_pack_skips_a_file_that_does_not_resolve_to_a_canonical_episode_and_imports_the_rest()
     {
