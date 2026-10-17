@@ -690,15 +690,17 @@ elseif (-not $fullRun) { $recorded = 'not recorded (a partial run records nothin
 $minutes = $clock.Elapsed.TotalMinutes
 $md = New-ResultsMarkdown -Verdict $verdict -Merged $merged -HarnessRows $harnessRows -Version $Version -Commit $fullSha -InstallerSha256 $installerSha `
     -InstalledBuild $installedBuild -Minutes $minutes -DryRun $DryRun.IsPresent -RecordedStatus $recorded -Warnings @($warnings) -Notes @($runNotes) -Coverage (Get-RunCoverageText -Scope $scope)
+$partialPassed = (-not $fullRun) -and $verdict.Failed.Count -eq 0 -and @($verdict.HarnessFailures).Count -eq 0 -and $verdict.BuildMatches -and -not $runnerNote -and $verdict.Total -gt 0
+$harnessCommit = (& git -C $repoRoot rev-parse HEAD 2>$null | Select-Object -First 1)
+$harnessDirty = [bool](& git -C $repoRoot status --porcelain -- scripts 2>$null)
 $resultsMd = Join-Path $OutDirectory 'scenario-suite-results.md'
 Set-Content -Path $resultsMd -Value $md -Encoding utf8
-([ordered]@{ version = $Version; commit = $fullSha; installedBuild = $installedBuild; state = $verdict.State; passed = $verdict.Passed; total = $verdict.Total; failed = $verdict.Failed; minutes = [math]::Round($minutes, 1); scenarios = $merged } |
+([ordered]@{ version = $Version; commit = $fullSha; harnessCommit = [string]$harnessCommit; harnessDirty = $harnessDirty; fullRun = [bool]$fullRun; chosenPassed = [bool]$partialPassed; installedBuild = $installedBuild; state = $verdict.State; passed = $verdict.Passed; total = $verdict.Total; failed = $verdict.Failed; minutes = [math]::Round($minutes, 1); scenarios = $merged } |
     ConvertTo-Json -Depth 10) | Set-Content -Path (Join-Path $OutDirectory 'scenario-suite-results.json') -Encoding utf8
 
 Write-Host ''
 # A partial run never records a status, but its exit code and its verdict line still say whether what it ran passed (every chosen
 # scenario passed, the install had no failed line, the build is the commit, and nothing stopped the run early).
-$partialPassed = (-not $fullRun) -and $verdict.Failed.Count -eq 0 -and @($verdict.HarnessFailures).Count -eq 0 -and $verdict.BuildMatches -and -not $runnerNote -and $verdict.Total -gt 0
 $verdictLabel = if ($partialPassed) { 'PASSED (a partial run: no status is recorded)' } else { $verdict.State.ToUpperInvariant() }
 Write-Host ("Verdict: {0}. {1} of {2} scenarios passed in {3:N1} minutes." -f $verdictLabel, $verdict.Passed, $verdict.Total, $minutes) -ForegroundColor $(if ($verdict.State -eq 'success' -or $partialPassed) { 'Green' } else { 'Red' })
 if ($verdict.Failed.Count -gt 0) { Write-Host ("Failed or not reported: " + ($verdict.Failed -join ', ')) -ForegroundColor Red }
