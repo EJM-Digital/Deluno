@@ -40,7 +40,8 @@ public sealed record RestorePreviewResponse(
     bool Valid,
     string Message,
     BackupManifest? Manifest,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings,
+    bool NewerThanThisVersion = false);
 
 public sealed record RestoreResultResponse(
     bool Restored,

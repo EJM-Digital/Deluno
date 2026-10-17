@@ -159,7 +159,7 @@ public sealed class TheApiPagesIntegrationEndpointsAreTrueTests
         Assert.Equal(HttpStatusCode.Forbidden, answer.StatusCode);
     }
 
-    [Fact(Skip = "Defects: (1) the page lists GET /api/integrations/processors/handoffs with scope 'imports', but a key holding only 'imports' is answered 403 (the sign-in gate asks every GET for 'read'). (2) the page lists the four methods of /api/notification-webhooks with scope 'write', but the sign-in gate asks a GET for 'read' (DelunoRequestPipeline.ResolveApiScopes), so a key with only the write scope cannot list the webhooks the page says it can.")]
+    [Fact]
     public async Task A_key_holding_only_the_scope_the_page_names_is_let_through_for_every_method_of_a_row_of_several_and_on_the_handoffs_list()
     {
         var refused = await RefusedAsync(ListedEndpoints().Where(row => row.Method.Contains('|') || IsKnownDefect(row)));

@@ -22,7 +22,7 @@ public interface IDelunoBackupService
     Task<(Stream Stream, string ContentType, string FileName)?> OpenBackupAsync(string id, CancellationToken cancellationToken);
     Task<bool> DeleteBackupAsync(string id, CancellationToken cancellationToken);
     Task<RestorePreviewResponse> PreviewRestoreAsync(Stream backupStream, CancellationToken cancellationToken);
-    Task<RestoreResultResponse> RestoreAsync(Stream backupStream, CancellationToken cancellationToken);
+    Task<RestoreResultResponse> RestoreAsync(Stream backupStream, CancellationToken cancellationToken, bool confirmNewerVersion = false);
 }
 
 public sealed class DelunoBackupService(
@@ -249,7 +249,7 @@ public sealed class DelunoBackupService(
         return await PreviewRestoreCoreAsync(buffered, cancellationToken);
     }
 
-    public async Task<RestoreResultResponse> RestoreAsync(Stream backupStream, CancellationToken cancellationToken)
+    public async Task<RestoreResultResponse> RestoreAsync(Stream backupStream, CancellationToken cancellationToken, bool confirmNewerVersion = false)
     {
         await gate.WaitAsync(cancellationToken);
         try
@@ -261,6 +261,13 @@ public sealed class DelunoBackupService(
             if (!preview.Valid)
             {
                 return new RestoreResultResponse(false, preview.Message, string.Empty, []);
+            }
+
+            // #1349: a backup from a newer Deluno may hold data this version cannot read. It is restored only when the person
+            // has confirmed it after reading the warning.
+            if (preview.NewerThanThisVersion && !confirmNewerVersion)
+            {
+                return new RestoreResultResponse(false, NewerBackupMessage(preview.Manifest?.Version), string.Empty, []);
             }
 
             buffered.Position = 0;
@@ -411,7 +418,13 @@ public sealed class DelunoBackupService(
                 warnings.Add("The archive does not contain any data files.");
             }
 
-            return new RestorePreviewResponse(true, "Backup can be restored.", manifest, warnings);
+            var newer = DelunoVersion.IsNewer(manifest.Version, GetVersion());
+            if (newer)
+            {
+                warnings.Add(NewerBackupMessage(manifest.Version));
+            }
+
+            return new RestorePreviewResponse(true, "Backup can be restored.", manifest, warnings, newer);
         }
         catch (Exception ex)
         {
@@ -833,6 +846,9 @@ public sealed class DelunoBackupService(
         var path = Path.GetFullPath(Path.Combine(backupFolder, $"{safeId}.zip"));
         return Deluno.Contracts.SafePath.IsInside(Path.GetFullPath(backupFolder), path) ? path : null;
     }
+
+    private static string NewerBackupMessage(string? backupVersion)
+        => $"This backup was made by a newer Deluno ({backupVersion}) than the one running now ({GetVersion()}). It may hold data this version cannot read. Update Deluno first, or confirm that you want to restore it anyway.";
 
     private static string GetVersion()
         => DelunoVersion.Running;

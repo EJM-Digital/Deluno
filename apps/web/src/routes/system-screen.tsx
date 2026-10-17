@@ -1262,7 +1262,7 @@ function BackupCard({
     const formData = new FormData();
     formData.append("file", restoreFile);
     try {
-      const response = await authedFetch("/api/backups/restore", {
+      const response = await authedFetch(restorePreview?.newerThanThisVersion ? "/api/backups/restore?confirmNewer=true" : "/api/backups/restore", {
         method: "POST",
         body: formData
       });
@@ -1384,6 +1384,9 @@ function BackupCard({
           {restorePreview ? (
             <div className="mt-3 rounded-xl border border-hairline bg-background/40 p-3 text-sm">
               <p className={restorePreview.valid ? "text-success" : "text-destructive"}>{restorePreview.message}</p>
+              {restorePreview.warnings.map((warning) => (
+                <p key={warning} className="mt-1 text-xs text-warning">{warning}</p>
+              ))}
               {restorePreview.manifest ? (
                 <p className="mt-1 text-xs text-muted-foreground">
                   {restorePreview.manifest.files.length} files · {formatWhen(restorePreview.manifest.createdUtc, preferences)}
@@ -1433,7 +1436,9 @@ function BackupCard({
         open={showRestoreConfirm}
         onOpenChange={setShowRestoreConfirm}
         title="Restore this backup?"
-        description="Deluno's data files will be replaced with this backup. Restart Deluno immediately after the restore completes."
+        description={restorePreview?.newerThanThisVersion
+          ? "This backup was made by a newer Deluno than this one, so it may hold data this version cannot read. Deluno's data files will be replaced with it. Restart Deluno immediately after the restore completes."
+          : "Deluno's data files will be replaced with this backup. Restart Deluno immediately after the restore completes."}
         confirmLabel="Restore now"
         confirmVariant="destructive"
         busy={busy === "restore"}
