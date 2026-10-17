@@ -1112,6 +1112,8 @@ public sealed partial class ImportPipelineService(
 
         var files = new List<TvPackFilePlan>();
         var skippedFiles = new List<TvPackSkippedFilePlan>();
+        // #1351: a pack whose every file is blocked has neither a planned nor a skipped file to describe it.
+        ImportPreviewResponse? firstSeenPreview = null;
         foreach (var sourcePath in sourceFiles)
         {
             var fileRequest = request with
@@ -1124,6 +1126,7 @@ public sealed partial class ImportPipelineService(
             {
                 preview = await EnrichPreviewWithMediaProbeAsync(preview, cancellationToken);
             }
+            firstSeenPreview ??= preview;
 
             // #889: a problem that belongs to the whole pack (a setup gap or
             // an outage, never this file's fault) still blocks every file, the
@@ -1403,7 +1406,9 @@ public sealed partial class ImportPipelineService(
             Files: publicFiles,
             BlockReasons: distinctReasons,
             SkippedFiles: publicSkippedFiles);
-        var first = files.Count > 0 ? files[0].Preview : skippedFiles[0].Preview;
+        var first = files.Count > 0 ? files[0].Preview
+            : skippedFiles.Count > 0 ? skippedFiles[0].Preview
+            : firstSeenPreview!;
         var skippedNote = skippedFiles.Count > 0
             ? $" {skippedFiles.Count} file(s) do not resolve to a canonical episode and will be skipped: {string.Join(", ", skippedFiles.Select(file => Path.GetFileName(file.Preview.SourcePath)))}."
             : string.Empty;
