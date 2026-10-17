@@ -26,6 +26,15 @@ public sealed class WeirRealExchangeTests
     [InlineData("handoff-usenet-folder", 0)]
     [InlineData("handoff-resend", 0)]
     [InlineData("handoff-resend", 1)]
+    // Deluno 1.0.0-rc.30.33 into Weir 1.0.0-rc.18, recorded in Docker through a proxy between the two (scripts/recorded-replies/docker/flows.mjs):
+    // a name already in Weir's output (both collision policies), a season pack, a pack with a file that cannot be read, a release Weir rejects,
+    // and a send through a second processor connection to the same Weir.
+    [InlineData("handoff-collision-replace", 0)]
+    [InlineData("handoff-collision-keep-both", 0)]
+    [InlineData("handoff-season-pack", 0)]
+    [InlineData("handoff-partial-season-pack", 0)]
+    [InlineData("handoff-rejected-release", 0)]
+    [InlineData("handoff-second-connection", 0)]
     public async Task The_request_Deluno_sends_for_a_hand_off_is_the_request_it_was_recorded_sending(string state, int exchange)
     {
         var recording = RecordedReplies.Deluno(state);
@@ -202,6 +211,8 @@ public sealed class WeirRealExchangeTests
     [Theory]
     [InlineData("status-wrong-secret")]
     [InlineData("status-no-secret")]
+    // The secret of a different connection of the same kind than the one that sent the hand-off: the same 401 and the same words.
+    [InlineData("status-other-connections-secret")]
     public async Task A_status_poll_Weir_refuses_for_its_secret_is_forbidden_and_says_to_check_the_secret(string state)
     {
         var recording = Rec(state);
@@ -288,6 +299,23 @@ public sealed class WeirRealExchangeTests
         var status = await Service(new WeirReplay(recording)).GetHandoffStatusAsync(connection, IdOfPath(recording.Exchanges[0].Request.Path), CancellationToken.None);
 
         Assert.Equal(403, recording.Exchanges[0].Reply.Status);
+        Assert.Equal(ProcessorAnswer.Forbidden, status.Answer);
+    }
+
+    /// <summary>
+    /// Weir 1.0.0-rc.18 with no Deluno connection left in it (its secret gone): the status poll on Deluno's own source is 403 with Weir's instruction,
+    /// with Deluno's old secret and with none, and Deluno reads each as Forbidden, as it reads the answer under a source Weir has no secret for.
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public async Task A_status_poll_on_Deluno_own_source_once_no_connection_has_a_secret_is_forbidden_with_Weirs_instruction(int exchange)
+    {
+        var recording = Rec("status-deluno-source-no-secret");
+        var status = await Service(new WeirReplay(recording)).GetHandoffStatusAsync(Connection, IdOfPath(recording.Exchanges[exchange].Request.Path), CancellationToken.None);
+
+        Assert.Equal(403, recording.Exchanges[exchange].Reply.Status);
+        Assert.Equal("Set a webhook secret in Weir so a media manager can ask about hand-offs.", Body(recording.Exchanges[exchange].Reply.Body)["detail"]!.GetValue<string>());
         Assert.Equal(ProcessorAnswer.Forbidden, status.Answer);
     }
 

@@ -1,0 +1,216 @@
+{
+  "app": "deluge",
+  "version": "2.2.0",
+  "state": "add-url",
+  "recordedAt": "2026-10-17T11:40:28Z",
+  "note": "A torrent added by its link with core.add_torrent_url (Deluge fetches the file itself), then the torrent list once it finished.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "core.add_torrent_url",
+          "params": [
+            "http://fixture:8765/dl/Recorded%20Deluge%20Link%203.2008.1080p.WEB-DL.x264-E2E.torrent",
+            {
+              "add_paused": false,
+              "move_completed": true,
+              "move_completed_path": "/downloads/completed/Movies"
+            }
+          ],
+          "id": 109
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": "3ee8e947529c654973af6e7781c7964de3e665c4",
+          "error": null,
+          "id": 109
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "web.update_ui",
+          "params": [
+            [
+              "name",
+              "state",
+              "progress",
+              "download_payload_rate",
+              "upload_payload_rate",
+              "eta",
+              "total_size",
+              "total_done",
+              "num_peers",
+              "num_seeds",
+              "time_added",
+              "label",
+              "message",
+              "save_path",
+              "move_completed",
+              "move_completed_path",
+              "ratio",
+              "seeding_time",
+              "tracker_status",
+              "trackers",
+              "private",
+              "queue",
+              "stop_at_ratio",
+              "stop_ratio",
+              "remove_at_ratio"
+            ],
+            {}
+          ],
+          "id": 113
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": {
+            "connected": true,
+            "torrents": {
+              "3ee8e947529c654973af6e7781c7964de3e665c4": {
+                "state": "Seeding",
+                "seeding_time": 2,
+                "download_payload_rate": 13407562,
+                "message": "OK",
+                "move_completed_path": "/downloads/completed/Movies",
+                "move_completed": false,
+                "num_peers": 0,
+                "num_seeds": 0,
+                "progress": 100,
+                "remove_at_ratio": false,
+                "save_path": "/downloads/completed/Movies",
+                "stop_at_ratio": false,
+                "stop_ratio": 2,
+                "time_added": 1792237226,
+                "total_done": 67037812,
+                "trackers": [],
+                "tracker_status": "",
+                "upload_payload_rate": 0,
+                "private": false,
+                "total_size": 67037812,
+                "eta": 0,
+                "queue": -1,
+                "ratio": 0,
+                "name": "Recorded Deluge Link 3.2008.1080p.WEB-DL.x264-E2E.mkv",
+                "label": ""
+              }
+            },
+            "filters": {
+              "state": [
+                [
+                  "All",
+                  1
+                ],
+                [
+                  "Active",
+                  1
+                ],
+                [
+                  "Allocating",
+                  0
+                ],
+                [
+                  "Checking",
+                  0
+                ],
+                [
+                  "Downloading",
+                  0
+                ],
+                [
+                  "Seeding",
+                  1
+                ],
+                [
+                  "Paused",
+                  0
+                ],
+                [
+                  "Error",
+                  0
+                ],
+                [
+                  "Queued",
+                  0
+                ],
+                [
+                  "Moving",
+                  0
+                ]
+              ],
+              "tracker_host": [
+                [
+                  "",
+                  1
+                ],
+                [
+                  "All",
+                  1
+                ],
+                [
+                  "Error",
+                  0
+                ]
+              ],
+              "owner": [
+                [
+                  "",
+                  0
+                ],
+                [
+                  "localclient",
+                  1
+                ]
+              ],
+              "label": [
+                [
+                  "",
+                  1
+                ],
+                [
+                  "All",
+                  1
+                ],
+                [
+                  "recorded-movies",
+                  0
+                ]
+              ]
+            },
+            "stats": {
+              "max_download": -1,
+              "max_upload": -1,
+              "max_num_connections": 200,
+              "num_connections": 0,
+              "upload_rate": 0,
+              "download_rate": 33518906,
+              "download_protocol_rate": 754,
+              "upload_protocol_rate": 427.5,
+              "dht_nodes": 0,
+              "has_incoming_connections": 0,
+              "free_space": 1001679495168,
+              "external_ip": "175.111.176.60"
+            }
+          },
+          "error": null,
+          "id": 113
+        }
+      }
+    }
+  ]
+}

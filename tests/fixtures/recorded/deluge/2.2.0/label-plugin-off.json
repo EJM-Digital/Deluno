@@ -1,0 +1,111 @@
+{
+  "app": "deluge",
+  "version": "2.2.0",
+  "state": "label-plugin-off",
+  "recordedAt": "2026-10-17T11:40:44Z",
+  "note": "Deluge with the Label plugin off (switched off with core.disable_plugin and Deluge restarted): label.get_labels, label.add and label.set_torrent.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "core.get_enabled_plugins",
+          "params": [],
+          "id": 130
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": [],
+          "error": null,
+          "id": 130
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "label.get_labels",
+          "params": [],
+          "id": 131
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": null,
+          "error": {
+            "message": "Unknown method",
+            "code": 2
+          },
+          "id": 131
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "label.add",
+          "params": [
+            "recorded-movies"
+          ],
+          "id": 132
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": null,
+          "error": {
+            "message": "Unknown method",
+            "code": 2
+          },
+          "id": 132
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/json",
+        "body": {
+          "method": "label.set_torrent",
+          "params": [
+            "44275eff051237f9d12e7099395edcebf79aa189",
+            "recorded-movies"
+          ],
+          "id": 133
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": null,
+          "error": {
+            "message": "Unknown method",
+            "code": 2
+          },
+          "id": 133
+        }
+      }
+    }
+  ]
+}

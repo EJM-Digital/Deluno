@@ -144,7 +144,7 @@ public sealed class CompleteTorrentWithTrackerErrorTests
 
     /// <summary>
     /// qBittorrent 5.2.1's recorded list of a complete torrent whose tracker does not answer, in the state and progress under test.
-    /// The tracker list is the recorded one with its first entry a tracker that is not working (the nearest recorded reply).
+    /// The tracker list is qBittorrent 5.2.4's recorded list for a tracker that is not working, with the tracker's reason changed to the one under test.
     /// </summary>
     private static async Task<DownloadQueueItem> RecordedQbitSnapshot(string state, double progress, string trackerMessage)
     {

@@ -1,0 +1,51 @@
+{
+  "app": "radarr",
+  "version": "6.4.4.10685",
+  "state": "custom-formats",
+  "recordedAt": "2026-10-17T12:34:45Z",
+  "note": "GET /api/v3/customformat (6.4.4.10685, a fresh container set up through its own API with a public title, a tag, a custom format, qBittorrent and, for Radarr, a Torznab feed).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v3/customformat"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "id": 1,
+            "name": "Recorded x265",
+            "includeCustomFormatWhenRenaming": false,
+            "specifications": [
+              {
+                "name": "x265",
+                "implementation": "ReleaseTitleSpecification",
+                "implementationName": "Release Title",
+                "infoLink": "https://wiki.servarr.com/radarr/settings#custom-formats-2",
+                "negate": false,
+                "required": true,
+                "fields": [
+                  {
+                    "order": 0,
+                    "name": "value",
+                    "label": "Regular Expression",
+                    "helpText": "Custom Format RegEx is Case Insensitive",
+                    "value": "(x|h)\\.?265",
+                    "type": "textbox",
+                    "advanced": false,
+                    "privacy": "normal",
+                    "isFloat": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

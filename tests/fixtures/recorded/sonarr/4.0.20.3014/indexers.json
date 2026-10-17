@@ -1,0 +1,22 @@
+{
+  "app": "sonarr",
+  "version": "4.0.20.3014",
+  "state": "indexers",
+  "recordedAt": "2026-10-17T12:34:42Z",
+  "note": "GET /api/v3/indexer (4.0.20.3014, a fresh container set up through its own API with a public title, a tag, a custom format, qBittorrent and, for Radarr, a Torznab feed).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v3/indexer"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": []
+      }
+    }
+  ]
+}

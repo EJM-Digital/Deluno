@@ -1,0 +1,45 @@
+{
+  "app": "deluno",
+  "version": "1.0.0-rc.30.33",
+  "state": "handoff-collision-replace",
+  "recordedAt": "2026-10-17T12:18:16Z",
+  "note": "Deluno's hand-off of a single file whose name is already in Weir's output folder from an earlier, different file, collision policy replace (Deluno 1.0.0-rc.30.33, Weir 1.0.0-rc.18). Weir finished it with output [\"/weir/Ready/Movies/Recorded.Collide.replace.2020.1080p.WEB-DL.x264-E2E.mkv\"].",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/webhook/deluno",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "idempotency-key": "01a149cc197674dc842c4c554b1cbb18:1792239475061",
+          "x-webhook-secret": "<scrubbed>"
+        },
+        "body": {
+          "eventType": "deluno.processor-handoff",
+          "handoffId": "01a149cc197674dc842c4c554b1cbb18",
+          "libraryId": "01a149b6785e78dea5d9b11d83fd0daf",
+          "mediaType": "movies",
+          "sourcePath": "/downloads/completed/Movies/Recorded.Collide.replace.2020.1080p.WEB-DL.x264-E2E.mkv",
+          "releaseName": "Recorded.Collide.replace.2020.1080p.WEB-DL.x264-E2E.mkv",
+          "queueItemId": "d047631a068dd91d7249ea3360c22fe38a9827e3",
+          "callbackPath": "/api/integrations/processors/events",
+          "title": "Recorded Collide replace second",
+          "year": 2020
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "status": "ok",
+          "source": "deluno",
+          "event": "handoff",
+          "media_scope": "movie",
+          "enqueued": "processing.file.remux_pass.v1"
+        }
+      }
+    }
+  ]
+}
