@@ -18,24 +18,9 @@
         start log, which say where it stopped.
 #>
 
-function Test-DelunoAnswering {
-    $r = Try-Deluno -Path '/api/auth/bootstrap-status' -TimeoutSec 5
-    $r.Status -eq 200
-}
-
 function Get-InstalledDelunoExe {
     $dir = Join-Path $env:LOCALAPPDATA 'Deluno\current'
     Get-ChildItem -Path $dir -Filter 'Deluno.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
-}
-
-function Get-DelunoProcess {
-    @(Get-Process -Name 'Deluno' -ErrorAction SilentlyContinue)
-}
-
-function Read-StartMarker {
-    $path = Join-Path $env:LOCALAPPDATA 'Deluno\logs\start-progress.json'
-    if (-not (Test-Path $path)) { return $null }
-    try { Get-Content -Raw $path | ConvertFrom-Json } catch { $null }
 }
 
 # The state the previous release is given: the first account, a quality profile, a library, a download client, and some Activity.
