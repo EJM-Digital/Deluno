@@ -153,6 +153,31 @@ describe("the list drawer", () => {
     expect(screen.getByLabelText("Monitor")).toHaveValue("movie");
   });
 
+  it("sends the movie list's Don't search until stage and Monitor choice when it is saved, and shows neither for a TV list", async () => {
+    loader.intakeSources = [list({})];
+    renderPage();
+    fireEvent.click(screen.getByText("Weekend list"));
+    expect(screen.getByLabelText("Don't search until")).toHaveValue("announced");
+    expect(screen.getByLabelText("Monitor")).toHaveValue("movie");
+
+    fireEvent.change(screen.getByLabelText("Don't search until"), { target: { value: "inCinemas" } });
+    fireEvent.change(screen.getByLabelText("Monitor"), { target: { value: "none" } });
+    vi.mocked(authedFetch).mockResolvedValueOnce(json(list({})));
+    fireEvent.click(screen.getByRole("button", { name: "Save list" }));
+
+    await waitFor(() => expect(calls("PUT")).toHaveLength(1));
+    expect(bodyOf(calls("PUT")[0])).toMatchObject({ minimumAvailability: "inCinemas", monitorMode: "none" });
+
+    fireEvent.change(screen.getByLabelText("Don't search until"), { target: { value: "released" } });
+    vi.mocked(authedFetch).mockResolvedValueOnce(json(list({})));
+    fireEvent.click(screen.getByRole("button", { name: "Save list" }));
+    await waitFor(() => expect(calls("PUT")).toHaveLength(2));
+    expect(bodyOf(calls("PUT")[1])).toMatchObject({ minimumAvailability: "released" });
+
+    fireEvent.click(screen.getByRole("radio", { name: "TV shows" }));
+    expect(screen.queryByLabelText("Don't search until")).toBeNull();
+  });
+
   it("opens the filters by itself for a list that has some, keeps them closed for one that has none", () => {
     loader.intakeSources = [list({ id: "a", name: "Filtered", requiredGenres: "Horror" }), list({ id: "b", name: "Whole list" })];
     renderPage();

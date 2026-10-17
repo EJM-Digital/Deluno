@@ -217,3 +217,12 @@ Rows left open because the other app's reply is not recorded. Each line says wha
 - deluge: only `location-moved` holds a file listing (one file); a folder torrent's listing (a film and an `.nfo`) is not recorded.
 - uTorrent and rTorrent: no recordings at all (see the allow-list), so the strike rules, the removal verbs and the re-check on those two have no recorded reply.
 - qbittorrent, transmission, deluge, sabnzbd, nzbget: the reply to a re-check (`torrents/recheck`, `torrent-verify`, `force_recheck`, and what the two Usenet clients answer to a re-check) has not been recorded.
+
+## Settings lists and the Dashboard (#1292, #1282)
+
+Recordings the settings-lists coverage rows still need, found 17 October 2026. Each was left a gap rather than answered with a reply written by hand.
+
+- tmdb `search` and `details` replies (a title found, nothing found, the service refusing a key, the service down): needed to prove the local broker-compatible `GET /api/metadata/broker/status` and `/broker/search` of a configured install and of an outage. An unconfigured install is tested without TMDb (`MetadataBrokerEndpointsTests`).
+- sonarr, prowlarr and recyclarr exports (the files each tool writes for a migration, one of each source kind; Prowlarr's indexers scoped "both"): needed to prove the migration assistant's preview and apply per source kind.
+- a list read from a list service (TMDb list items, a Letterboxd or StevenLu feed) with an entry that is on the Never add list: needed to prove "exclusions are honoured by sync" against a real service's reply. A plain RSS feed is proven (`ImportListsOnTheRealHostTests`), and a feed is a file of titles, not another app's reply.
+- mdblist items reply for a public list; imdb list export CSV and list page; trakt list items and watchlist replies: these services need a signed-in account to read, so those rows wait on #1343.

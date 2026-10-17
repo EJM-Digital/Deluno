@@ -46,7 +46,7 @@ describe("the Health card's buttons", () => {
     { label: "Keep awake", check: check({ id: "machine:sleep", name: "This computer may sleep", category: "machine" }), method: "PATCH", path: "/api/settings", body: { keepComputerAwake: true }, done: "Deluno is keeping this computer awake" },
     { label: "Back up now", check: check({ id: "machine:drive:C:", name: "Drive C: is nearly full", category: "machine" }), method: "POST", path: "/api/backups", done: "Backup started" },
     { label: "Test again", check: check({ id: "processor:p1", name: "Cleaner isn’t answering", category: "connections" }), method: "POST", path: "/api/connections/processor/p1/test", done: "Tested again: Cleaner isn’t answering" },
-    { label: "Switch off", check: check({ id: "indexer:i2", name: "Nyaa.si isn�t answering", category: "indexers" }), method: "PUT", path: "/api/indexers/i2", body: { isEnabled: false }, done: "Nyaa.si isn�t answering switched off" },
+    { label: "Switch off", check: check({ id: "indexer:i2", name: "Nyaa.si isn’t answering", category: "indexers" }), method: "PUT", path: "/api/indexers/i2", body: { isEnabled: false }, done: "Nyaa.si isn’t answering switched off" },
     { label: "Unsnooze", check: check({ id: "old:one", name: "An old problem", snoozedUntilUtc: "2999-01-01T00:00:00Z" }), method: "POST", path: "/api/system/health/old%3Aone/unsnooze", done: "An old problem is being watched again" }
   ];
 
