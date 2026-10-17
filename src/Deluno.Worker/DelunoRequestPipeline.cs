@@ -53,6 +53,10 @@ public static class DelunoRequestPipeline
     public static string[] ResolveApiScopes(PathString path, string method)
     {
         var isRead = HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method);
+        // #1349: the processor hand-off list is an imports route (the route itself asks for "imports"), so a key holding
+        // only imports must be let through the gate that otherwise asks every read for "read".
+        if (isRead && path.StartsWithSegments("/api/integrations/processors/handoffs", StringComparison.OrdinalIgnoreCase))
+            return ["read", "imports"];
         if (isRead) return ["read"];
         // #1333: the docs give queue removal the queue scope. A queue-only key is let through to the route.
         if (path.StartsWithSegments("/api/queue", StringComparison.OrdinalIgnoreCase))
