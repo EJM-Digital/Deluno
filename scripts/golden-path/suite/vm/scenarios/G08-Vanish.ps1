@@ -39,7 +39,7 @@ function Invoke-GroupVanish {
             }
             Start-Sleep -Milliseconds 500 # reason: poll interval inside a loop bounded by its deadline
         }
-        Start-Sleep -Seconds 5
+        Start-Sleep -Seconds 5 # reason: gives the client time to report the files gone before they are read back
         # A client that was never seen saying "Files are gone": keep the row Deluno held for it (its status and the sourcePath the
         # check judges), which the rc.30.22 run did not keep for SABnzbd and NZBGet.
         foreach ($kind in $beforeKinds) {
@@ -48,7 +48,7 @@ function Invoke-GroupVanish {
         }
     }
     finally { Stop-AutomationPause }
-    Start-Sleep -Seconds 45
+    Start-Sleep -Seconds 45 # reason: the elapsed time is the behaviour under test (the check runs after its interval)
     }
     foreach ($kind in Get-AllKinds) {
         Invoke-Scenario -Id "vanish.before.$kind" -Title "A $kind download's files vanish before the hand-off: Files are gone, never handed off" -Body {
@@ -82,7 +82,7 @@ function Invoke-GroupVanish {
                     }
                 }
             }
-            Start-Sleep -Milliseconds 500
+            Start-Sleep -Milliseconds 500 # reason: poll interval inside a loop bounded by its deadline
         }
         foreach ($kind in $waitKinds) {
             if ($flaggedAfter.ContainsKey($kind)) { continue }
@@ -101,7 +101,7 @@ function Invoke-GroupVanish {
             $h = Get-FilmHandoff -Film $films2[$kind]
             if ($h -and ($h.status -eq 'source-gone' -or ($h.status -eq 'dismissed' -and "$($h.failureMessage)" -match 'gone|no longer'))) { $goneAt[$kind] = [DateTime]::UtcNow }
         }
-        Start-Sleep -Seconds 5
+        Start-Sleep -Seconds 5 # reason: poll interval inside a loop bounded by its deadline
     }
     foreach ($kind in Get-AllKinds) {
         Invoke-Scenario -Id "vanish.waiting.$kind" -Title "A $kind download's files vanish while the hand-off waits: it ends as source gone, nothing imported" -Body {

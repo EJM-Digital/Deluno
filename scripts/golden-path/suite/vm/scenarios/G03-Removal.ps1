@@ -22,7 +22,7 @@ function Test-RemoveThisCopy {
     $second = Remove-FilmDownload -Film $Film -Reason 'reclaim'
     $reads = ($second.Status -ge 400 -and (($second.Data -and $second.Data.succeeded -eq $false) -or $second.Status -ge 400))
     Add-Check "$What : the second removal reads as a failure" $reads ("HTTP {0}: {1}" -f $second.Status, $(if ($second.Data) { $second.Data.message } else { $second.Raw }))
-    Start-Sleep -Seconds 2
+    Start-Sleep -Seconds 2 # reason: lets Activity take the row, which is what is then counted
     $rowsAfter = @(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($Film.Title) -and $_ -match 'Removed from the download queue' }).Count
     Add-Check "$What : the second removal writes no second Activity row" ($rowsAfter -eq $rowsBefore + 1) "rows before the first removal $rowsBefore, after the second $rowsAfter"
 }

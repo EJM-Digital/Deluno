@@ -29,17 +29,17 @@ function Complete-WeirWizard {
         $page = New-CdpPage 'about:blank'
         try {
             Send-Cdp -Page $page -Method 'Page.navigate' -Params @{ url = $script:S.WeirUrl + '/' } | Out-Null
-            Start-Sleep -Seconds 3
+            Start-Sleep -Seconds 3 # reason: lets the page load before it is read
             $text = Get-PageText -Page $page
             if ($text -match 'Sign in|Log in') {
                 Set-PageInput -Page $page -Selector 'input[name=username],input[type=text],input:not([type])' -Value (Get-SuiteSecret 'weir-username') | Out-Null
                 Set-PageInput -Page $page -Selector 'input[type=password]' -Value (Get-SuiteSecret 'weir-password') | Out-Null
                 Click-PageText -Page $page -Pattern '^(Sign in|Log in)' -TimeoutSec 10 | Out-Null
-                Start-Sleep -Seconds 3
+                Start-Sleep -Seconds 3 # reason: lets the sign-in finish
             }
             $steps = @()
             foreach ($pattern in '^Finish setup', '^Continue to Weir') {
-                if (Click-PageText -Page $page -Pattern $pattern -TimeoutSec 0) { $steps += $pattern; Start-Sleep -Seconds 2 }
+                if (Click-PageText -Page $page -Pattern $pattern -TimeoutSec 0) { $steps += $pattern; Start-Sleep -Seconds 2 } # reason: lets the next setup page load
             }
             $now = (Get-PageText -Page $page) -replace '\s+', ' '
             Write-SuiteLog ("   Weir's first-run wizard: pressed [{0}]; the page now reads: {1}" -f ($steps -join ', '), $now.Substring(0, [math]::Min(120, $now.Length)))

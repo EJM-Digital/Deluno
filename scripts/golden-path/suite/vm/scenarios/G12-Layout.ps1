@@ -68,13 +68,13 @@ function Invoke-NarrowWalk {
         foreach ($route in $Routes) {
             if (-not $first) {
                 Send-Cdp -Page $page -Method 'Page.navigate' -Params @{ url = "$($script:S.DelunoUrl)$route" } | Out-Null
-                Start-Sleep -Milliseconds 1500
+                Start-Sleep -Milliseconds 1500 # reason: lets the screen lay out and load its rows; the screen has no ready signal
             }
             $first = $false
             # The width measured is the window's (innerWidth): clientWidth leaves out the 10 px page scrollbar, which read 380 on 15 Oct.
             # Shown when the screen has some text, then given a moment to lay out and load its rows.
             $ready = Wait-Until -TimeoutSec 20 -IntervalSec 0.5 -Condition { $t = Get-PageText -Page $page; if ($t.Trim().Length -gt 40) { $t } else { $null } }
-            Start-Sleep -Milliseconds 1500
+            Start-Sleep -Milliseconds 1500 # reason: lets the screen lay out and load its rows; the screen has no ready signal
             $text = ''; $problem = ''; $width = 0
             try { $text = Get-PageText -Page $page; $problem = [string](Invoke-CdpEval -Page $page -Script $script:NarrowMeasureJs); $width = [int](Invoke-CdpEval -Page $page -Script 'window.innerWidth') } catch { $problem = "the screen could not be read: $($_.Exception.Message)" }
             [void]$out.Add([pscustomobject]@{ Route = $route; Shown = $ready.Ok; Width = $width; Problem = $problem; Text = $text })

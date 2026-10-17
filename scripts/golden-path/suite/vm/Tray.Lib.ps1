@@ -41,7 +41,7 @@ function Get-TrayButtons {
 function Open-TrayOverflow {
     $chevron = @(Get-TrayButtons | Where-Object { $_.Name -match 'Show Hidden Icons|Notification Chevron|hidden icons' }) | Select-Object -First 1
     if (-not $chevron) { return $false }
-    try { Wait-UiaClickable -Element $chevron.Element -What "the hidden-icons button" -TimeoutSec 3; $chevron.Element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); Start-Sleep -Milliseconds 600; return $true } catch { return $false }
+    try { Wait-UiaClickable -Element $chevron.Element -What "the hidden-icons button" -TimeoutSec 3; $chevron.Element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); Start-Sleep -Milliseconds 600; return $true } catch { return $false } # reason: UI settle after input; Windows raises no event for it
 }
 
 # Escape goes to whatever window is in front. During the install that is the component picker, and an Escape there
@@ -66,7 +66,7 @@ function Send-EscapeIfSafe([string] $Kind) {
     $isShell = $fg.Process -eq "explorer" -or $fg.Process -eq "ShellExperienceHost" -or $fg.Process -eq "ShellHost"
     if (($Kind -eq "menu" -and $isMenu) -or ($Kind -eq "overflow" -and ($isShell -or $isMenu))) { [System.Windows.Forms.SendKeys]::SendWait("{ESC}") }
 }
-function Close-TrayOverflow { Send-EscapeIfSafe overflow; Start-Sleep -Milliseconds 200 }
+function Close-TrayOverflow { Send-EscapeIfSafe overflow; Start-Sleep -Milliseconds 200 } # reason: UI settle after input; Windows raises no event for it
 
 function Find-TrayIcon {
     param([Parameter(Mandatory)] [string] $Icon)
@@ -145,7 +145,7 @@ function Get-TrayDot {
 function Send-Click {
     param([int] $X, [int] $Y, [switch] $Right)
     [Golden.Mouse]::SetCursorPos($X, $Y) | Out-Null
-    Start-Sleep -Milliseconds 120
+    Start-Sleep -Milliseconds 120 # reason: UI settle after input; Windows raises no event for it
     $down, $up = if ($Right) { 0x0008, 0x0010 } else { 0x0002, 0x0004 }
     [Golden.Mouse]::mouse_event($down, 0, 0, 0, [UIntPtr]::Zero)
     [Golden.Mouse]::mouse_event($up, 0, 0, 0, [UIntPtr]::Zero)
@@ -163,7 +163,7 @@ function Wait-UiaClickable {
         if ([DateTime]::UtcNow -ge $deadline) {
             throw "Could not click $What within $TimeoutSec s: it is $(if (-not $enabled) { 'disabled' } else { 'not visible' })."
         }
-        Start-Sleep -Milliseconds 250
+        Start-Sleep -Milliseconds 250 # reason: poll interval inside a loop bounded by its deadline
     }
 }
 
@@ -179,9 +179,9 @@ function Open-TrayMenu {
     # Through the icon's own automation element: focus it and press the menu key. A click at a screen position can land on the
     # taskbar (it once opened Server Manager's jump list over the component picker), so none is ever sent for the icon.
     $btn.Element.SetFocus()
-    Start-Sleep -Milliseconds 200
+    Start-Sleep -Milliseconds 200 # reason: UI settle after input; Windows raises no event for it
     [System.Windows.Forms.SendKeys]::SendWait('+{F10}')
-    Start-Sleep -Milliseconds 700
+    Start-Sleep -Milliseconds 700 # reason: UI settle after input; Windows raises no event for it
     Get-OpenMenuItems
 }
 
@@ -192,7 +192,7 @@ function Get-OpenMenuItems {
     @($items | Where-Object { -not $_.Current.IsOffscreen -and $_.Current.Name } | ForEach-Object { [string]$_.Current.Name })
 }
 
-function Close-TrayMenu { Send-EscapeIfSafe menu; Start-Sleep -Milliseconds 300 }
+function Close-TrayMenu { Send-EscapeIfSafe menu; Start-Sleep -Milliseconds 300 } # reason: UI settle after input; Windows raises no event for it
 
 # Opens the app's tray menu and clicks the item whose name matches the pattern. Returns $true when it was clicked.
 # Why the last Invoke-TrayMenuItem returned false, so a caller can say it (rc.30.28: "via its tray menu: False" twice with no

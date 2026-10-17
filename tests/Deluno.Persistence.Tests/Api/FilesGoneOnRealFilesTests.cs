@@ -115,8 +115,7 @@ public sealed class FilesGoneOnRealFilesTests
         for (var attempt = 0; attempt < 200 && !finished; attempt++)
         {
             finished = !await MovieHasFile(app, ids[0]);
-            // reason: the background job has no completion signal; this polls its visible effect, up to 10 seconds.
-            if (!finished) await Task.Delay(50);
+            if (!finished) await Task.Delay(50); // reason: the background job has no completion signal; this polls its visible effect, up to 10 seconds
         }
         Assert.True(finished, "the background job never marked the missing files as gone");
         for (var i = 0; i < Deleted; i++) Assert.False(await MovieHasFile(app, ids[i]), $"film {i} was gone");

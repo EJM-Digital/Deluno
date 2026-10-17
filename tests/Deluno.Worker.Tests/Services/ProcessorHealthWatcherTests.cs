@@ -46,7 +46,7 @@ public sealed class ProcessorHealthWatcherTests
             var deadline = Environment.TickCount64 + 10_000;
             while (Outstanding.Count(task => !task.IsCompleted) > Volatile.Read(ref _parked) && Environment.TickCount64 < deadline)
             {
-                await Task.Delay(1);
+                await Task.Delay(1); // reason: poll interval inside a bounded wait (10 s above)
             }
 
             for (var y = 0; y < 30; y++) await Task.Yield();

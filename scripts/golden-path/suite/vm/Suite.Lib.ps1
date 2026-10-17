@@ -378,7 +378,7 @@ function Start-WeirApp {
     $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
     Register-ScheduledTask -TaskName 'GoldenSuiteWeirStart' -Action $action -Principal $principal -Force | Out-Null
     Start-ScheduledTask -TaskName 'GoldenSuiteWeirStart'
-    Start-Sleep -Seconds 3
+    Start-Sleep -Seconds 3 # reason: settle after starting or stopping a process; no event to wait on
     Unregister-ScheduledTask -TaskName 'GoldenSuiteWeirStart' -Confirm:$false -ErrorAction SilentlyContinue
 }
 

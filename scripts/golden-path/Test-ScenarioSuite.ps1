@@ -496,7 +496,7 @@ $mockScript = {
 $ps = [powershell]::Create()
 [void]$ps.AddScript($mockScript).AddArgument($port)
 $async = $ps.BeginInvoke()
-Start-Sleep -Milliseconds 700
+Start-Sleep -Milliseconds 700 # reason: lets the in-process mock listener start; no event to wait on
 try {
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ('suite-test-' + [guid]::NewGuid().ToString('N'))
     Initialize-Suite -Root $tmp -DelunoUrl "http://127.0.0.1:$port" -WeirUrl "http://127.0.0.1:1"
@@ -847,26 +847,26 @@ if ($edge) {
             $page = New-CdpPage 'about:blank'
             $html = '<html><body><h1>Queue</h1><button onclick="document.title=''clicked''">Send to Weir again</button><div role="dialog">Drawer text</div></body></html>'
             Send-Cdp -Page $page -Method 'Page.navigate' -Params @{ url = 'data:text/html,' + [uri]::EscapeDataString($html) } | Out-Null
-            Start-Sleep -Seconds 1
+            Start-Sleep -Seconds 1 # reason: UI settle after input; Windows raises no event for it
             Check 'the page text is read' ((Get-PageText -Page $page) -match 'Queue')
             Check 'the open drawer text is read' ((Get-DrawerText -Page $page) -match 'Drawer text')
             Check 'a button is found by its text and pressed with a real click' (Click-PageText -Page $page -Pattern '^Send to .* again')
-            Start-Sleep -Milliseconds 300
+            Start-Sleep -Milliseconds 300 # reason: UI settle after input; Windows raises no event for it
             Check 'the click reached the page' ((Invoke-CdpEval -Page $page -Script 'document.title') -eq 'clicked')
             Check 'a button that is not there is not found' (-not (Click-PageText -Page $page -Pattern 'No such button' -TimeoutSec 0))
             $busyHtml = '<html><body><button id=remove disabled onclick="document.title=''removed''">Remove...</button><script>setTimeout(function(){document.getElementById("remove").disabled=false},3500)</script></body></html>'
             Send-Cdp -Page $page -Method 'Page.navigate' -Params @{ url = 'data:text/html,' + [uri]::EscapeDataString($busyHtml) } | Out-Null
-            Start-Sleep -Milliseconds 400
+            Start-Sleep -Milliseconds 400 # reason: UI settle after input; Windows raises no event for it
             Check 'a disabled button is not clicked when the caller only probes' (-not (Click-PageText -Page $page -Pattern '^Remove' -TimeoutSec 0))
             $threw = ''; try { Click-PageText -Page $page -Pattern '^Remove' -TimeoutSec 1 | Out-Null } catch { $threw = $_.Exception.Message }
             Check 'a button that stays disabled fails with a message that says so' ($threw -match 'disabled') $threw
             Check 'a button that becomes enabled is clicked once it is' (Click-PageText -Page $page -Pattern "^Remove" -TimeoutSec 10)
-            Start-Sleep -Milliseconds 300
+            Start-Sleep -Milliseconds 300 # reason: UI settle after input; Windows raises no event for it
             Check 'the click reached the enabled button' ((Invoke-CdpEval -Page $page -Script 'document.title') -eq 'removed')
             Close-CdpPage -Page $page
         }
     }
-    finally { try { Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" | Where-Object { $_.CommandLine -match [regex]::Escape($prof) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } } catch { }; Start-Sleep -Milliseconds 500; Remove-Item -LiteralPath $prof -Recurse -Force -ErrorAction SilentlyContinue }
+    finally { try { Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" | Where-Object { $_.CommandLine -match [regex]::Escape($prof) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } } catch { }; Start-Sleep -Milliseconds 500; Remove-Item -LiteralPath $prof -Recurse -Force -ErrorAction SilentlyContinue } # reason: lets the browser exit before its profile is removed
 }
 else { Write-Host '  skipped (no Edge)' }
 
@@ -1052,7 +1052,7 @@ $fixAst = [System.Management.Automation.Language.Parser]::ParseInput($fixText, [
 function Get-FnText([string] $Name) { ($fixAst.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $Name }, $true) | Select-Object -First 1).Extent.Text }
 foreach ($fn in 'Invoke-FilmSettle', 'Resolve-FilmPlacement', 'Invoke-DelugeSettle', 'Wait-ClientCheckDone', 'Wait-FilmFinished', 'Move-FilmDataToFolder', 'Get-ClientTorrent', 'Get-ClientDataFolder') {
     $t = Get-FnText $fn
-    Check "$fn has no sleep" ($t -and $t -notmatch 'Start-Sleep')
+    Check "$fn has no sleep" ($t -and $t -notmatch 'Start-Sleep') # reason: the text being checked for, not a call
 }
 $wait = Get-FnText 'Wait-FilmFinished'
 Check 'Wait-FilmFinished no longer re-checks every twenty seconds' ($wait -notmatch 'TotalSeconds' -and $wait -notmatch '\* \(\$state' -and $wait -match 'Invoke-FilmSettle -Film \$Film -IfChanged')
