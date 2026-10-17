@@ -543,7 +543,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [films]
+        group: [films, removal, tryagain]
     env:
       DELUNO_IMAGE: deluno-e2e:${{ github.sha }}
     steps:
@@ -574,6 +574,11 @@ jobs:
       # Weir's image is pulled anonymously from its public registry page (by digest, tests/e2e/compose.yaml).
       - name: Bring the stack up
         run: docker compose -f tests/e2e/compose.yaml up --build --wait --detach
+
+      # The groups that read Deluno's screens (a drawer, System, the Dashboard) drive a real browser.
+      - name: Install the browser
+        if: ${{ matrix.group == 'tryagain' || matrix.group == 'outage' }}
+        run: npx playwright install --with-deps chromium
 
       - name: Run the ${{ matrix.group }} group
         run: npx playwright test -c tests/e2e/playwright.config.ts ${{ matrix.group }}
