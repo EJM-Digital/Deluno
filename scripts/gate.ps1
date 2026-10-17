@@ -137,8 +137,14 @@ foreach ($shard in $shards) {
     $env:DELUNO_SMOKE_API_PORT = [string]$shard.ApiPort
     $env:DELUNO_SMOKE_WEB_PORT = [string]$shard.WebPort
     $output = Join-Path $logDir "playwright-output-$($shard.Id)"
+    # Playwright keeps its compiled copy of every spec and helper in one shared cache folder and writes each
+    # file in place. Three shards starting together on a cold cache read each other's half-written files and
+    # died before any test with "SyntaxError: missing ) after argument list" / "Unexpected end of input" at
+    # eval (17 Oct 2026, shards 1 and 2 of 3). Each shard gets a cache folder of its own.
+    $env:PWTEST_CACHE_DIR = Join-Path $logDir "playwright-cache-$($shard.Id)"
     $running += Start-GateStep "Smoke shard $($shard.Shard)" $npm "--workspace apps/web run test:smoke -- --shard=$($shard.Shard) --reporter=dot --output=`"$output`""
 }
+Remove-Item Env:\PWTEST_CACHE_DIR -ErrorAction SilentlyContinue
 # Put the caller's smoke ports back for anything started later.
 $env:DELUNO_SMOKE_API_PORT = [string]$smokeApiPort
 $env:DELUNO_SMOKE_WEB_PORT = [string]$smokeWebPort
