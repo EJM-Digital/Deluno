@@ -15,6 +15,10 @@ test("everything the installer and the image build from ships", () => {
   ]) assert.equal(isShippedPath(path), true, path);
 });
 
+test("the release workflow ships: it builds what is published", () => {
+  assert.equal(isShippedPath(".github/workflows/release.yml"), true);
+});
+
 test("tests, docs, CI files and checks do not ship", () => {
   for (const path of [
     "tests/Deluno.Movies.Tests/A.cs", "docs/golden-path.md", "AGENTS.md", "README.md", ".github/workflows/ci.yml",

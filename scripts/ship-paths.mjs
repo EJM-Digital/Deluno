@@ -32,6 +32,8 @@ export const SHIPPED_PREFIXES = [
 ];
 
 export const SHIPPED_FILES = [
+  // The release workflow builds what is published (the installer and the image), so a change to it changes the product.
+  ".github/workflows/release.yml",
   "Directory.Build.props",
   "RELEASE_NOTES.md",
   "Dockerfile",
