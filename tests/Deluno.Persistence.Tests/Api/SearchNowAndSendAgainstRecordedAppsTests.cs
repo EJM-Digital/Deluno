@@ -242,6 +242,37 @@ public sealed class SearchNowAndSendAgainstRecordedAppsTests
         Assert.Equal(1, rig.AddsToQbit);
     }
 
+    [Fact]
+    public async Task A_film_qBittorrent_refused_leaves_a_dispatch_whose_facts_journey_and_failure_are_what_the_dispatch_drawer_reads()
+    {
+        await using var rig = await RigAsync(refuseAdd: true);
+        var films = await LibraryAsync(rig, "movies", "Films", rig.FilmIndexerId, rig.ClientId);
+        var filmId = await AddFilmAsync(rig, films);
+
+        var grab = await rig.App.Client.PostAsJsonAsync($"/api/movies/{filmId}/grab", new
+        {
+            releaseName = "Sintel.2010.720p.BluRay.x264-YTS", indexerName = "Fixture Indexer", downloadUrl = "magnet:?xt=urn:btih:A779FA758F2229586EEBC2E5960EB32FE5659596",
+            candidateQuality = "Bluray 720p", sizeBytes = 143151596L, force = true, overrideReason = "You chose this release."
+        });
+        Assert.NotEqual(0, (int)grab.StatusCode);
+
+        var list = await rig.App.Client.GetFromJsonAsync<JsonElement>($"/api/download-dispatches?entityId={filmId}");
+        var item = Assert.Single(list.GetProperty("items").EnumerateArray());
+        Assert.Equal("Sintel.2010.720p.BluRay.x264-YTS", item.GetProperty("releaseName").GetString());
+        Assert.StartsWith("qBittorrent", item.GetProperty("downloadClientName").GetString(), StringComparison.Ordinal);
+        Assert.Equal("deadRelease", item.GetProperty("status").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(item.GetProperty("grabStatus").GetString()));
+        var failure = item.GetProperty("failure");
+        Assert.StartsWith("qBittorrent", failure.GetProperty("serviceName").GetString(), StringComparison.Ordinal);
+        Assert.Equal("grab", failure.GetProperty("operation").GetString());
+        Assert.Equal("RejectedAction", failure.GetProperty("kind").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(failure.GetProperty("summary").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(failure.GetProperty("nextAction").GetString()));
+        Assert.Equal("ManualAction", failure.GetProperty("retryState").GetString());
+        Assert.Equal(JsonValueKind.Null, failure.GetProperty("retryAfterUtc").ValueKind);
+        Assert.Empty(rig.Qbit.Unanswered);
+    }
+
     // DEFECT (found by this test, 15 Oct 2026): a client that refuses the send (qBittorrent 415 "not a valid torrent file", recorded as add-refused) gives a
     // grab result that is neither "sent" nor "failed", so the episodes/search route counts it in plannedCount (planned 1, failed 0) instead of failedCount.
     [Fact]

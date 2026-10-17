@@ -47,7 +47,7 @@ public sealed class TitleSearchAndGrabRoutesAgainstRecordedAppsTests
         return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 
-    private static async Task<Rig> RigAsync()
+    private static async Task<Rig> RigAsync(params string[] moreQbitStates)
     {
         var jackett = await RecordedAppServer.StartAsync(
             "jackett",
@@ -65,7 +65,7 @@ public sealed class TitleSearchAndGrabRoutesAgainstRecordedAppsTests
                     ("search", RecordedReplies.Jackett("search-movie-imdb").Exchanges[1]))));
         var qbit = await RecordedAppServer.StartAsync(
             "qbittorrent",
-            new[] { "sign-in", "version", "settings", "resumed" }.Select(RecordedReplies.Qbittorrent),
+            new[] { "sign-in", "version", "settings", "resumed" }.Concat(moreQbitStates).Select(RecordedReplies.Qbittorrent),
             RecordedAppServer.InOrder("torrents/info", RecordedReplies.Qbittorrent("downloading").Exchanges[0]));
         var app = await ApplicationTestHost.StartAsync();
 
@@ -234,6 +234,47 @@ public sealed class TitleSearchAndGrabRoutesAgainstRecordedAppsTests
         // A preview plans nothing.
         var preview = await PostOkAsync(rig.App, $"/api/series/{seriesId}/search?mode=preview");
         Assert.Equal(0, preview.GetProperty("plannedEpisodes").GetInt32());
+    }
+
+    /// <summary>The refusal and its two answers, against qBittorrent's recorded replies (the first send's hash is the one the recorded removal was made with).</summary>
+    [Fact]
+    public async Task A_second_hand_send_for_a_film_already_downloading_asks_first_and_Send_as_well_keeps_both_and_Replace_takes_the_first_out_of_qBittorrent()
+    {
+        await using var rig = await RigAsync("removed-with-data");
+        const string recordedHash = "d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c";
+        const string otherHash = "A779FA758F2229586EEBC2E5960EB32FE5659596";
+        object Send(string release, string hash, string? duplicateAction) => new
+        {
+            releaseName = release, indexerName = "Fixture Indexer", downloadUrl = $"magnet:?xt=urn:btih:{hash}&dn={release}", candidateQuality = "Bluray 1080p",
+            sizeBytes = 143151596L, force = true, overrideReason = "You chose this release.", duplicateAction
+        };
+        int Adds() => rig.Qbit.Requests.Count(request => request.Method == "POST" && request.PathAndQuery.EndsWith("torrents/add", StringComparison.Ordinal));
+        int Deletes() => rig.Qbit.Requests.Count(request => request.PathAndQuery.EndsWith("torrents/delete", StringComparison.Ordinal));
+
+        var film = await AddFilmAsync(rig);
+        await PostOkAsync(rig.App, $"/api/movies/{film}/grab", Send("Sintel.2010.1080p.BluRay.x264-AAA", recordedHash, null));
+        Assert.Equal(1, Adds());
+
+        var asked = await rig.App.Client.PostAsJsonAsync($"/api/movies/{film}/grab", Send("Sintel.2010.2160p.BluRay.x265-BBB", otherHash, null));
+        Assert.Equal(HttpStatusCode.Conflict, asked.StatusCode);
+        Assert.Equal("already-downloading", (await asked.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+        Assert.Equal(1, Adds());
+        Assert.Equal(0, Deletes());
+
+        await PostOkAsync(rig.App, $"/api/movies/{film}/grab", Send("Sintel.2010.2160p.BluRay.x265-BBB", otherHash, "send-as-well"));
+        Assert.Equal(2, Adds());
+        Assert.Equal(0, Deletes());
+
+        // Replace, on a film of its own: the first download leaves qBittorrent with its data, then the new one is added.
+        var second = (await PostOkAsync(rig.App, "/api/movies", new { title = "Tears of Steel", releaseYear = 2012, imdbId = "tt2285752", monitored = true, libraryId = rig.FilmLibrary })).GetProperty("id").GetString()!;
+        await PostOkAsync(rig.App, $"/api/movies/{second}/grab", Send("Tears.of.Steel.2012.1080p.BluRay.x264-AAA", recordedHash, null));
+        Assert.Equal(3, Adds());
+        await PostOkAsync(rig.App, $"/api/movies/{second}/grab", Send("Tears.of.Steel.2012.2160p.BluRay.x265-BBB", otherHash, "replace"));
+        var delete = Assert.Single(rig.Qbit.Requests, request => request.PathAndQuery.EndsWith("torrents/delete", StringComparison.Ordinal));
+        Assert.Contains($"hashes={recordedHash}", delete.Body, StringComparison.Ordinal);
+        Assert.Contains("deleteFiles=true", delete.Body, StringComparison.Ordinal);
+        Assert.Equal(4, Adds());
+        Assert.Empty(rig.Qbit.Unanswered);
     }
 
     [Fact]
