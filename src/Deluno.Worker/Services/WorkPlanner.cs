@@ -2667,8 +2667,14 @@ public sealed class WorkPlanner(
         IJobQueueRepository? dispatches = null)
     {
         // A download the client took after the hand-off ended is a new acquisition.
+        // A hand-off is made after the client has the download, so a download added after the hand-off was made is a new
+        // one, whatever happened to the hand-off since. A hand-off closed because its download was removed is stamped
+        // when the removal lands, which can be later than the add time of the same torrent added again (the client
+        // stamps whole seconds), so a dismissed hand-off is judged on when it was made, not when it was closed.
         static bool IsNewer(DownloadQueueItem download, ProcessorHandoffItem handoff)
-            => download.AddedUtc > DateTimeOffset.UnixEpoch && download.AddedUtc > handoff.UpdatedUtc;
+            => download.AddedUtc > DateTimeOffset.UnixEpoch
+               && (download.AddedUtc > handoff.UpdatedUtc
+                   || (handoff.Status == ProcessorHandoffStatuses.Dismissed && download.AddedUtc > handoff.CreatedUtc));
 
         var prior = await processorRepository.FindProcessorHandoffForDownloadAsync(item.ClientId, item.Id, cancellationToken);
         if (prior is not null && !IsNewer(item, prior))
