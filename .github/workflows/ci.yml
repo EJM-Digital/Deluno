@@ -239,14 +239,41 @@ jobs:
         run: node scripts/check-windows-icon.mjs
 
   backend:
-    name: Backend build and tests
+    # Four parallel legs (Refs #1346): Deluno.Persistence.Tests outgrew one job (more than 54 minutes with coverage on
+    # 15 Oct), so it runs in the parts of scripts/persistence-parts.mjs (split by namespace; every test in exactly one
+    # part, proved by scripts/check-persistence-parts.mjs on the "other" leg), and the six other test projects run in
+    # their own leg. A matrix job's result is the worst of its legs, so ci-passed (needs: backend) judges every part:
+    # one failed or cancelled leg fails the verdict. Each leg builds the solution, which is a few minutes.
+    name: Backend ${{ matrix.name }}
     needs: changes
     if: ${{ needs.changes.outputs.run_backend == 'true' }}
     runs-on: ubuntu-latest
-    # Observed 23 to 34 minutes (3 Oct 2026), 41 on 15 Oct, and more than 57 for the tests alone once the coverage work
-    # added about 1,500 Persistence tests (15 Oct, run 38731946211 cancelled at the old 60). Splitting Persistence across
-    # jobs is the lasting fix (Refs #1346); until then the job may take 90.
-    timeout-minutes: 90
+    # Observed 23 to 34 minutes for the whole backend in one job (3 Oct), 41 on 15 Oct, and more than 57 for the tests
+    # alone once the coverage work added about 1,500 Persistence tests. The expected time of a leg is its build (about
+    # 4 minutes) plus its share of the tests, around 15 to 20 minutes with coverage; the limit is 40, about twice that.
+    # Re-measure after the first runs and set it to twice the slowest leg (issue 1346).
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: other
+            name: other projects
+            # The Timing tests run on this leg alone, as their own step.
+            args: -Except Deluno.Persistence.Tests
+            part: 0
+          - leg: persistence-1
+            name: Persistence part 1
+            args: -Only Deluno.Persistence.Tests
+            part: 1
+          - leg: persistence-2
+            name: Persistence part 2
+            args: -Only Deluno.Persistence.Tests
+            part: 2
+          - leg: persistence-3
+            name: Persistence part 3
+            args: -Only Deluno.Persistence.Tests
+            part: 3
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -260,46 +287,60 @@ jobs:
       - name: Build backend
         run: dotnet build Deluno.slnx --configuration Release --no-restore
 
+      # Every Persistence test is in exactly one part: `dotnet test --list-tests` of the whole against the union of the parts.
+      - name: Persistence parts run every test exactly once
+        if: ${{ matrix.part == 0 }}
+        run: node scripts/check-persistence-parts.mjs
+
       - name: Run backend tests
         if: ${{ needs.changes.outputs.run_coverage != 'true' }}
         shell: pwsh
         # The Timing tests hold an endpoint to a time budget; beside the rest of the suite a
         # busy runner made a 12 ms call take 633 ms (10 Oct 2026). They run on their own next,
         # exactly as scripts/gate.ps1 runs them.
-        run: ./scripts/test-dotnet-serial.ps1 -Filter "Category!=Timing"
+        run: |
+          $filter = "Category!=Timing"
+          if (${{ matrix.part }} -gt 0) { $filter = "Category!=Timing&($(node scripts/persistence-parts.mjs filter ${{ matrix.part }}))" }
+          ./scripts/test-dotnet-serial.ps1 ${{ matrix.args }} -Filter $filter
 
       # The same run, collecting line and branch coverage (coverlet) for every Deluno production assembly.
       - name: Run backend tests with coverage
         if: ${{ needs.changes.outputs.run_coverage == 'true' }}
         shell: pwsh
-        run: ./scripts/test-dotnet-serial.ps1 -Filter "Category!=Timing" -Coverage
+        run: |
+          $filter = "Category!=Timing"
+          if (${{ matrix.part }} -gt 0) { $filter = "Category!=Timing&($(node scripts/persistence-parts.mjs filter ${{ matrix.part }}))" }
+          ./scripts/test-dotnet-serial.ps1 ${{ matrix.args }} -Filter $filter -Coverage
 
       - name: Run timing tests alone
+        if: ${{ matrix.part == 0 }}
         shell: pwsh
         run: dotnet test tests/Deluno.Persistence.Tests/Deluno.Persistence.Tests.csproj --configuration Release --no-build --no-restore --filter "Category=Timing" --logger "trx;LogFileName=timing-tests.trx"
 
       - name: Summarize backend test results
         if: always()
-        run: node scripts/summarize-test-results.mjs trx tests "Backend tests"
+        run: node scripts/summarize-test-results.mjs trx tests "Backend tests (${{ matrix.name }})"
 
       - name: Upload backend test results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: backend-test-results
+          name: backend-test-results-${{ matrix.leg }}
           path: "**/TestResults/*.trx"
           if-no-files-found: ignore
 
+      # One artifact per leg, all named coverage-dotnet-*: the coverage job downloads them together and merges them
+      # before the ratchet, so a file covered by tests in different legs counts every line any of them hit.
       - name: Upload backend coverage
         if: ${{ needs.changes.outputs.run_coverage == 'true' && !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: coverage-dotnet
+          name: coverage-dotnet-${{ matrix.leg }}
           path: tests/*/TestResults/*/coverage.cobertura.xml
           if-no-files-found: error
           retention-days: 7
 
-  # The production web build, made once: the web checks and both smoke shards use this one (the smoke suite used to
+  # The production web build, made once: the web checks and all three smoke shards use this one (the smoke suite used to
   # build it again on every shard, and its web server built it a third time).
   web-dist:
     name: Web build
@@ -376,24 +417,27 @@ jobs:
           retention-days: 7
 
   e2e-smoke:
-    # Two shards, not four: each shard repeats about 75 seconds of setup, and the suite is two-thirds of a pull
-    # request's minutes. A run takes a few minutes longer for it.
-    name: Frontend smoke (${{ matrix.shard_id }}/2)
+    # Three shards (Refs #1346). Each repeats about 75 seconds of setup, and the suite is a large share of a pull
+    # request's minutes. Two shards were unbalanced: on 15 Oct shard 2 took 19 minutes and shard 1 more than 30 (it
+    # was 25 before the real-server specs joined). The same 50 or so minutes of specs over three shards is about 17
+    # each. Playwright cuts the suite into equal runs of tests, so adding a shard also moves the real-server specs
+    # into a shard of their own. The limit is 35, about twice the expected time; re-measure after the first runs.
+    name: Frontend smoke (${{ matrix.shard_id }}/3)
     needs: [changes, web-dist]
     if: ${{ needs.changes.outputs.run_e2e_smoke == 'true' }}
     runs-on: ubuntu-latest
-    # Observed 9 to 15 minutes per shard, then 25 for shard 1 once the real-server specs joined (15 Oct), and more than
-    # 29 on run 38731946211, cancelled at the old 30.
-    timeout-minutes: 45
+    timeout-minutes: 35
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 3
       matrix:
         include:
           - shard_id: 1
-            shard: "1/2"
+            shard: "1/3"
           - shard_id: 2
-            shard: "2/2"
+            shard: "2/3"
+          - shard_id: 3
+            shard: "3/3"
     env:
       # The suite's web server skips its own build and serves the one web-dist made (apps/web/playwright.config.ts).
       DELUNO_SMOKE_PREBUILT: "1"
@@ -440,7 +484,7 @@ jobs:
 
       - name: Summarize smoke test results
         if: always()
-        run: node scripts/summarize-test-results.mjs playwright "$PLAYWRIGHT_JSON_OUTPUT_NAME" "Frontend smoke (${{ matrix.shard_id }}/2)"
+        run: node scripts/summarize-test-results.mjs playwright "$PLAYWRIGHT_JSON_OUTPUT_NAME" "Frontend smoke (${{ matrix.shard_id }}/3)"
 
       - name: Upload Playwright report
         if: always()
@@ -780,12 +824,12 @@ jobs:
           pattern: coverage-*
           path: coverage-in
 
-      # ReportGenerator, pinned in .config/dotnet-tools.json, merges the seven test projects' coverage of the same file.
+      # ReportGenerator, pinned in .config/dotnet-tools.json, merges the seven test projects' coverage of the same file and the four backend legs' reports (Persistence is split in three parts, #1346).
       - name: Merge the .NET reports
         run: |
           dotnet tool restore
           dotnet tool run reportgenerator \
-            "-reports:coverage-in/coverage-dotnet/**/coverage.cobertura.xml" \
+            "-reports:coverage-in/coverage-dotnet-*/**/coverage.cobertura.xml" \
             "-targetdir:coverage-out/dotnet" \
             "-reporttypes:Cobertura;HtmlInline" \
             "-assemblyfilters:+Deluno.*;-Deluno.*.Tests"
