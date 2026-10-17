@@ -216,6 +216,47 @@ public sealed class ImportListsOnTheRealHostTests
     }
 
     [Fact]
+    public async Task The_adult_audience_filter_keeps_only_what_a_certificate_calls_adult_and_the_any_choice_keeps_everything()
+    {
+        await using var feed = new FeedHolder(Feed(Item("Toy Story (1995)", "Animation"), Item("Heat (1995)", "Crime")));
+        var (server, url) = await ServeAsync(() => feed.Body);
+        await using var _ = server;
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => services.AddSingleton<IMetadataProvider>(Cards()));
+        var libraryId = await ApiScenes.CreateLibraryAsync(app, "movies");
+        var adults = await CreateListAsync(app, libraryId, url, new { audience = "adult" }, name: "Adults");
+
+        var adult = await SyncAsync(app, adults);
+
+        // Nothing in a plain feed says "adult" (no certificate), so nothing is added, and each skip says why.
+        Assert.Equal(0, adult.AddedCount);
+        Assert.Equal("0", await StoredAsync(app, DelunoDatabaseNames.Movies, "SELECT count(*) FROM movie_entries"));
+        Assert.Contains("did not match required audience 'adult'", await app.Client.GetStringAsync("/api/activity?take=50"));
+
+        var everyone = await CreateListAsync(app, libraryId, url, new { audience = "any" }, name: "Everyone");
+        var any = await SyncAsync(app, everyone);
+
+        Assert.Equal(2, any.AddedCount);
+        Assert.Equal(["Heat", "Toy Story"], await MovieTitlesAsync(app));
+    }
+
+    [Fact]
+    public async Task An_allowed_certifications_filter_skips_a_film_the_list_gives_no_certificate_for_and_says_so_without_adding_it()
+    {
+        await using var feed = new FeedHolder(Feed(Item("Toy Story (1995)", "Animation")));
+        var (server, url) = await ServeAsync(() => feed.Body);
+        await using var _ = server;
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => services.AddSingleton<IMetadataProvider>(Cards()));
+        var libraryId = await ApiScenes.CreateLibraryAsync(app, "movies");
+        var listId = await CreateListAsync(app, libraryId, url, new { allowedCertifications = "G, PG" });
+
+        var result = await SyncAsync(app, listId);
+
+        Assert.Equal(0, result.AddedCount);
+        Assert.Equal("0", await StoredAsync(app, DelunoDatabaseNames.Movies, "SELECT count(*) FROM movie_entries"));
+        Assert.Contains("Missing certification for certification filter.", await app.Client.GetStringAsync("/api/activity?take=50"));
+    }
+
+    [Fact]
     public async Task Approve_refuses_no_entries_and_more_than_100_and_a_list_that_is_not_there_in_plain_words_and_adds_nothing()
     {
         await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => services.AddSingleton<IMetadataProvider>(Cards()));

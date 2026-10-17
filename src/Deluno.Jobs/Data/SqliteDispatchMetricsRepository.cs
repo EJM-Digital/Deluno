@@ -56,13 +56,13 @@ public sealed class SqliteDispatchMetricsRepository(
         var openProblemCount = await problemLog.CountOpenAsync(cancellationToken);
         var averageGrabToDetectionMinutes = await GetAverageDurationAsync(
             connection,
-            "AVG(CAST((julianday(detected_utc) - julianday(grab_attempted_utc)) * 24 * 60 AS INTEGER))",
+            "AVG((julianday(detected_utc) - julianday(grab_attempted_utc)) * 24 * 60)",
             "WHERE grab_status = 'succeeded' AND detected_utc IS NOT NULL",
             cancellationToken);
 
         var averageDetectionToImportMinutes = await GetAverageDurationAsync(
             connection,
-            "AVG(CAST((julianday(import_completed_utc) - julianday(detected_utc)) * 24 * 60 AS INTEGER))",
+            "AVG((julianday(import_completed_utc) - julianday(detected_utc)) * 24 * 60)",
             "WHERE detected_utc IS NOT NULL AND import_completed_utc IS NOT NULL",
             cancellationToken);
 
@@ -100,7 +100,7 @@ public sealed class SqliteDispatchMetricsRepository(
         await Task.CompletedTask;
     }
 
-    private static async Task<int?> GetAverageDurationAsync(
+    private static async Task<double?> GetAverageDurationAsync(
         DbConnection connection,
         string aggregateExpr,
         string whereClause,
@@ -116,12 +116,8 @@ public sealed class SqliteDispatchMetricsRepository(
         var result = await command.ExecuteScalarAsync(cancellationToken);
         if (result is DBNull or null)
             return null;
-        if (result is long longVal)
-            return (int)longVal;
-        if (result is int intVal)
-            return intVal;
-
-        return null;
+        // SQLite's AVG is a REAL: it arrives as a double, never as a long or an int.
+        return Convert.ToDouble(result, System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static async Task<IReadOnlyDictionary<string, int>> GetFailuresByClientAsync(

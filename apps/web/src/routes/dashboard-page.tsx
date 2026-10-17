@@ -155,6 +155,8 @@ export function DashboardPage() {
     void refreshLiveExtrasNow();
     void queryClient.invalidateQueries({ queryKey: liveSources.indexers.key, exact: true });
     void queryClient.invalidateQueries({ queryKey: liveSources.clients.key, exact: true });
+    // The stored checks are the Health card's own list; a new problem and its clearing arrive on this same push.
+    void queryClient.invalidateQueries({ queryKey: ["src", "system-health"], exact: true });
   }, 150);
   useSignalREvent("HealthChanged", RealtimeGroups.Dashboard, readConnectionsAgain);
   useSignalRResync(() => { void queryClient.invalidateQueries({ queryKey: ["dashboard"] }); void queryClient.invalidateQueries({ queryKey: ["src"] }); });
