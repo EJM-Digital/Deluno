@@ -4,6 +4,7 @@
 //
 //   * makes, once at start, a small film that is a real video (ffmpeg's test pattern and a tone, encoded as Matroska) and a
 //     tiny extra (a featurette);
+//   * POST /films with {"layout": "file"} makes a single-file torrent instead (the film alone, no folder);
 //   * POST /films makes a release of its own from them (a folder named like a scene release: the film, a sample, an .nfo and,
 //     when asked, a featurette), hashes it into a real .torrent and offers it on the Torznab feed;
 //   * the .torrent carries no tracker. It names this server as a web seed (BEP 19, "url-list"), so a download client
@@ -131,6 +132,29 @@ async function makeBaseVideos() {
       "-c:v", "mpeg4", "-b:v", "200k", "-c:a", "aac", "-b:a", "48k", "-shortest", extra]);
   }
   return [film, extra];
+}
+
+// A single-file release: the film alone, named like the release (the torrent has one file and no folder).
+async function newSingleFileFilm(title, year) {
+  const release = `${title}.${year}.1080p.WEB-DL.x264-E2E`;
+  const file = path.join(WORK, "films", `${release}.mkv`);
+  if (fs.existsSync(file)) throw new Error("a release of that name already exists");
+  const [baseFilm] = await makeBaseVideos();
+  fs.mkdirSync(path.join(WORK, "films"), { recursive: true });
+  await ffmpeg(["-i", baseFilm, "-c", "copy", "-metadata", `title=${release}`, file]);
+  const data = fs.readFileSync(file);
+  const pieces = [];
+  for (let at = 0; at < data.length; at += PIECE) pieces.push(sha1(data.subarray(at, at + PIECE)));
+  const info = { name: `${release}.mkv`, "piece length": PIECE, pieces: Buffer.concat(pieces), length: data.length };
+  const infohash = sha1(bencode(info)).toString("hex");
+  // The web seed of a one-file torrent is fetched as <base><name>, so the file sits directly under /webseed/.
+  const torrent = bencode({ info, "url-list": [`${PUBLIC_BASE}/webseed/`], comment: "Deluno end-to-end fixture" });
+  fs.mkdirSync(path.join(WORK, "torrents"), { recursive: true });
+  const name = `${release}.torrent`;
+  fs.writeFileSync(path.join(WORK, "torrents", name), torrent);
+  RELEASES.push({ title: release, torrent: name, infohash, size: data.length, cat: 2000, seeders: 50 });
+  log(`made ${release}: ${data.length} bytes, one file, hash ${infohash}`);
+  return { title, year, release, infohash, size: data.length, url: `${PUBLIC_BASE}/dl/${name}`, files: [{ path: `${release}.mkv`, size: data.length }] };
 }
 
 async function newFilm(title, year, withExtra) {
@@ -465,6 +489,7 @@ async function handlePost(req, res, url) {
     const body = raw.trim() ? JSON.parse(raw) : {};
     if (url.pathname === "/films") {
       if (body.usenet) return sendBytes(req, res, 200, JSON.stringify(await newUsenetFilm(body.title, Number.parseInt(body.year ?? 2020, 10))), "application/json");
+      if (body.layout === "file") return sendBytes(req, res, 200, JSON.stringify(await newSingleFileFilm(body.title, Number.parseInt(body.year ?? 2020, 10))), "application/json");
       const made = await newFilm(body.title, Number.parseInt(body.year ?? 2020, 10), Boolean(body.extra));
       return sendBytes(req, res, 200, JSON.stringify(made), "application/json");
     }
