@@ -58,10 +58,9 @@ export function CreditsRow({ heading, people, className }: CreditsRowProps) {
     if (!node) return;
     // A pixel of slack: fractional widths mean scrollLeft rarely lands exactly
     // on the end, and an arrow that never turns off is worse than no arrow.
-    setOverflow({
-      left: node.scrollLeft > 1,
-      right: node.scrollLeft + node.clientWidth < node.scrollWidth - 1
-    });
+    const left = node.scrollLeft > 1;
+    const right = node.scrollLeft + node.clientWidth < node.scrollWidth - 1;
+    setOverflow((current) => (current.left === left && current.right === right ? current : { left, right }));
   }, []);
 
   useEffect(() => {
