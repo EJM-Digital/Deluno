@@ -201,6 +201,42 @@ public sealed class TitleSearchAndGrabRoutesAgainstRecordedAppsTests
     }
 
     [Fact]
+    public async Task Search_now_on_a_show_queues_one_search_for_each_aired_missing_episode_and_leaves_future_unmonitored_and_held_ones_alone()
+    {
+        await using var rig = await RigAsync();
+        var series = rig.App.Services.GetRequiredService<ISeriesCatalogRepository>();
+        await series.ImportExistingAsync(
+            rig.ShowLibrary, "Breaking Bad", 2008, "missing", "Wanted.", null, "WEB 1080p", false, null, null,
+            [
+                new ImportedEpisodeItem(1, 1, HasFile: false, AirDate: new DateOnly(2008, 1, 20)),
+                new ImportedEpisodeItem(1, 2, HasFile: false, AirDate: new DateOnly(2008, 1, 27)),
+                new ImportedEpisodeItem(1, 3, HasFile: true, FilePath: "/shows/Breaking Bad/S01E03.mkv", FileSizeBytes: 4, AirDate: new DateOnly(2008, 2, 3)),
+                new ImportedEpisodeItem(1, 4, HasFile: false, AirDate: DateOnly.FromDateTime(DateTime.UtcNow.AddYears(2)))
+            ],
+            CancellationToken.None);
+        var seriesId = (await series.ListAsync(CancellationToken.None)).Single(item => item.Title == "Breaking Bad").Id;
+        // The air dates a metadata sync would have written: two long past, one past (held), one two years ahead.
+        await ApiScenes.ExecuteAsync(rig.App, "series", $"UPDATE episode_entries SET air_date_utc = CASE episode_number WHEN 4 THEN '{DateTime.UtcNow.AddYears(2):O}' ELSE '2008-02-0' || episode_number || 'T00:00:00.0000000+00:00' END WHERE series_id = '{seriesId}';");
+
+        var sent = await PostOkAsync(rig.App, $"/api/series/{seriesId}/search");
+
+        Assert.Equal(2, sent.GetProperty("plannedEpisodes").GetInt32());
+        Assert.Equal(2, await ApiScenes.ScalarAsync(rig.App, "jobs", "SELECT COUNT(*) FROM job_queue WHERE job_type = 'episode.search' AND status = 'queued';"));
+        var episodes = (await series.GetInventoryDetailAsync(seriesId, CancellationToken.None))!.Episodes;
+        var queued = await ApiScenes.TextAsync(rig.App, "jobs", "SELECT group_concat(payload_json, ' ') FROM job_queue WHERE job_type = 'episode.search';");
+        foreach (var wanted in episodes.Where(episode => episode.EpisodeNumber is 1 or 2)) Assert.Contains(wanted.EpisodeId, queued, StringComparison.Ordinal);
+        foreach (var left in episodes.Where(episode => episode.EpisodeNumber is 3 or 4)) Assert.DoesNotContain(left.EpisodeId, queued, StringComparison.Ordinal);
+
+        // Pressing it again while those jobs are still waiting adds none.
+        await PostOkAsync(rig.App, $"/api/series/{seriesId}/search");
+        Assert.Equal(2, await ApiScenes.ScalarAsync(rig.App, "jobs", "SELECT COUNT(*) FROM job_queue WHERE job_type = 'episode.search';"));
+
+        // A preview plans nothing.
+        var preview = await PostOkAsync(rig.App, $"/api/series/{seriesId}/search?mode=preview");
+        Assert.Equal(0, preview.GetProperty("plannedEpisodes").GetInt32());
+    }
+
+    [Fact]
     public async Task Searching_chosen_episodes_and_one_season_asks_the_real_indexer_for_them_and_reports_what_it_matched()
     {
         await using var rig = await RigAsync();
