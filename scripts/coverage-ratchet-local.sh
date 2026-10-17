@@ -36,8 +36,8 @@ for project in tests/*/*.Tests.csproj; do
     --collect:"XPlat Code Coverage" --settings tests/coverage.runsettings 2>&1 | grep -E "Passed!|Failed!|\[FAIL\]" | head -20
   [ "${PIPESTATUS[0]}" = 0 ] || failed=1
   mkdir -p "coverage-in/coverage-dotnet/$name"
-  find "tests/$name/TestResults" -name coverage.cobertura.xml | while read -r file; do
-    cp "$file" "coverage-in/coverage-dotnet/$name/$(basename "$(dirname "$file")").cobertura.xml"
+  find "tests/$name/TestResults" -name coverage.opencover.xml | while read -r file; do
+    cp "$file" "coverage-in/coverage-dotnet/$name/$(basename "$(dirname "$file")").opencover.xml"
   done
 done
 
@@ -58,7 +58,7 @@ node --test --experimental-test-coverage \
 
 echo "== merge and ratchet"
 dotnet tool restore >/dev/null
-dotnet tool run reportgenerator "-reports:coverage-in/coverage-dotnet/**/*.cobertura.xml" \
+dotnet tool run reportgenerator "-reports:coverage-in/coverage-dotnet/**/*.opencover.xml" \
   "-targetdir:coverage-out/dotnet" "-reporttypes:Cobertura" "-assemblyfilters:+Deluno.*;-Deluno.*.Tests" >/dev/null
 node scripts/coverage/merge-coverage.mjs \
   --cobertura coverage-out/dotnet/Cobertura.xml \

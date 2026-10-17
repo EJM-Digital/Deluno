@@ -11,8 +11,8 @@ param(
     # gate split the suite by project and, for Persistence, by namespace part (scripts/persistence-parts.mjs, #1346).
     [string[]]$Only = @(),
     [string[]]$Except = @(),
-    # Collect line and branch coverage (coverlet, cobertura) for every Deluno production assembly, written next to the
-    # TRX files (tests/<project>/TestResults/<guid>/coverage.cobertura.xml). CI's coverage job merges them (docs/testing/COVERAGE.md).
+    # Collect line and branch coverage (coverlet, opencover) for every Deluno production assembly, written next to the
+    # TRX files (tests/<project>/TestResults/<guid>/coverage.opencover.xml). CI's coverage job merges them (docs/testing/COVERAGE.md).
     [switch]$Coverage
 )
 
