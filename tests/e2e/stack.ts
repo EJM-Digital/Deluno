@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { request, type APIRequestContext } from "@playwright/test";
+import { CLIENT_KINDS, DelugeApi, NzbgetApi, SabnzbdApi, TransmissionApi, isUsenet, type ClientKind } from "./clients.ts";
 
 /**
- * The end-to-end stack (tests/e2e/compose.yaml) as the specs see it: Deluno, qBittorrent, Weir and the fixture, each on a
- * port published on the machine running the specs. A spec reads every application's OWN API (qBittorrent's, Weir's, the
- * shared folders through the fixture), never Deluno's word about what another application did.
+ * The end-to-end stack (tests/e2e/compose.yaml) as the specs see it: Deluno, the five download clients, Weir and the fixture,
+ * each on a port published on the machine running the specs. A spec reads every application's OWN API (the clients', Weir's,
+ * the shared folders through the fixture), never Deluno's word about what another application did.
  *
  * Nothing here is private: these are the stack's own throwaway logins, made for a container that exists for one run.
  */
@@ -14,6 +15,10 @@ const port = (name: string, fallback: number) => Number(process.env[name] ?? fal
 export const URLS = {
   deluno: `http://127.0.0.1:${port("E2E_DELUNO_PORT", 5099)}`,
   qbittorrent: `http://127.0.0.1:${port("E2E_QBIT_PORT", 18081)}`,
+  transmission: `http://127.0.0.1:${port("E2E_TRANSMISSION_PORT", 19091)}`,
+  deluge: `http://127.0.0.1:${port("E2E_DELUGE_PORT", 18112)}`,
+  sabnzbd: `http://127.0.0.1:${port("E2E_SABNZBD_PORT", 18083)}`,
+  nzbget: `http://127.0.0.1:${port("E2E_NZBGET_PORT", 16789)}`,
   weir: `http://127.0.0.1:${port("E2E_WEIR_PORT", 19347)}`,
   fixture: `http://127.0.0.1:${port("E2E_FIXTURE_PORT", 18765)}`
 };
@@ -22,12 +27,20 @@ export const URLS = {
 export const INSIDE = {
   deluno: "http://deluno:8080",
   qbittorrent: { host: "qbittorrent", port: 8080 },
+  transmission: { host: "transmission", port: 9091 },
+  deluge: { host: "deluge", port: 8112 },
+  sabnzbd: { host: "sabnzbd", port: 8080 },
+  nzbget: { host: "nzbget", port: 6789 },
   weir: "http://weir:9347"
 };
 
 export const LOGIN = {
   deluno: { username: "e2e", displayName: "End to end", password: "e2e-deluno-password-123" },
   qbittorrent: { username: "e2e", password: "e2e-qbittorrent-pass" },
+  // The other clients keep their own shipped logins (Transmission has none); SABnzbd's key is the one in tests/e2e/sabnzbd/sabnzbd.ini.
+  deluge: { password: "deluge" },
+  sabnzbd: { apiKey: "e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0" },
+  nzbget: { username: "nzbget", password: "tegbzn6789" },
   weir: { username: "e2e", password: "tidal-quarry-lantern-77" }
 };
 
@@ -39,6 +52,7 @@ export const FOLDERS = {
 };
 
 export const MOVIES_CATEGORY = "deluno-movies";
+export { isUsenet };
 
 // ------------------------------------------------------------------ docker (for the two things only a container can say)
 
@@ -172,12 +186,13 @@ export class WeirApi {
 // ------------------------------------------------------------------ the fixture
 
 export interface FixtureFilm {
-  title: string; year: number; release: string; infohash: string; size: number; url: string;
+  title: string; year: number; release: string; protocol?: "usenet"; infohash: string; size: number; url: string;
   files: Array<{ path: string; size: number }>;
 }
 
-export async function makeFilm(title: string, extra: boolean): Promise<FixtureFilm> {
-  const response = await fetch(`${URLS.fixture}/films`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title, year: 2020, extra }) });
+/** A release the fixture makes: a torrent (with a web seed) or, with usenet, a folder job posted as yEnc articles with its .nzb. */
+export async function makeFilm(title: string, extra: boolean, usenet = false): Promise<FixtureFilm> {
+  const response = await fetch(`${URLS.fixture}/films`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title, year: 2020, extra, usenet }) });
   if (!response.ok) throw new Error(`The fixture would not make ${title}: ${response.status} ${await response.text()}`);
   return await response.json() as FixtureFilm;
 }
@@ -209,11 +224,39 @@ export async function until<T>(what: string, seconds: number, read: () => Promis
 export interface Stack {
   deluno: DelunoApi;
   qbittorrent: QbittorrentApi;
+  transmission: TransmissionApi;
+  deluge: DelugeApi;
+  sabnzbd: SabnzbdApi;
+  nzbget: NzbgetApi;
   weir: WeirApi;
   libraryId: string;
+  /** Deluno's id for each download client, by kind. */
+  clientIds: Record<ClientKind, string>;
+  /** The qBittorrent client (the first one the stack had). */
   clientId: string;
+  /** The Torznab feed (torrent releases) and the Newznab feed (Usenet releases). */
   indexerId: string;
+  usenetIndexerId: string;
   processorId: string;
+}
+
+/** Routes the movies library to this one client, as a person does in the library's settings, so the next send goes there. */
+export async function routeLibraryTo(stack: Stack, kind: ClientKind) {
+  await stack.deluno.must("PUT", `/api/libraries/${stack.libraryId}/routing`, {
+    sources: [{ indexerId: stack.indexerId, priority: 1, requiredTags: "", excludedTags: "" }, { indexerId: stack.usenetIndexerId, priority: 2, requiredTags: "", excludedTags: "" }],
+    downloadClients: [{ downloadClientId: stack.clientIds[kind], priority: 1 }]
+  });
+}
+
+/** The client's own word on whether it has finished downloading the film. */
+export function clientFinished(stack: Stack, kind: ClientKind, film: FixtureFilm): Promise<boolean> {
+  switch (kind) {
+    case "qbittorrent": return stack.qbittorrent.torrent(film.infohash).then((t) => !!t && t.progress >= 1 && t.amount_left === 0);
+    case "transmission": return stack.transmission.finished(film);
+    case "deluge": return stack.deluge.finished(film);
+    case "sabnzbd": return stack.sabnzbd.finished(film);
+    case "nzbget": return stack.nzbget.finished(film);
+  }
 }
 
 /**
@@ -224,6 +267,10 @@ export interface Stack {
 export async function setUpStack(): Promise<Stack> {
   const deluno = await DelunoApi.signIn();
   const qbittorrent = await QbittorrentApi.signIn();
+  const transmission = await TransmissionApi.connect();
+  const deluge = await DelugeApi.connect();
+  const sabnzbd = await SabnzbdApi.connect();
+  const nzbget = await NzbgetApi.connect();
   const weir = await WeirApi.signIn();
 
   // qBittorrent: where it keeps unfinished and finished torrents, and the category Deluno puts films in.
@@ -233,33 +280,65 @@ export async function setUpStack(): Promise<Stack> {
   const categories = await qbittorrent.get<Record<string, unknown>>("/api/v2/torrents/categories");
   if (!categories[MOVIES_CATEGORY]) await qbittorrent.post("/api/v2/torrents/createCategory", { category: MOVIES_CATEGORY, savePath: FOLDERS.moviesDownloads });
 
-  // The download client.
-  const clients = await deluno.must<any[]>("GET", "/api/download-clients");
-  let client = clients.find((c) => c.protocol === "qbittorrent" && c.host === INSIDE.qbittorrent.host);
-  if (!client) {
-    client = await deluno.must("POST", "/api/download-clients", {
-      name: "qBittorrent", protocol: "qbittorrent", host: INSIDE.qbittorrent.host, port: INSIDE.qbittorrent.port,
-      username: LOGIN.qbittorrent.username, password: LOGIN.qbittorrent.password,
-      moviesCategory: MOVIES_CATEGORY, tvCategory: "deluno-tv", priority: 1, isEnabled: true
-    });
+  // The other clients' folders (and for the torrent clients, no DHT, PEX or local discovery), through each one's own API.
+  await transmission.setUp();
+  await deluge.setUp();
+  await nzbget.setUp();
+
+  // The download clients, each as a person adds it: the address, its login (or SABnzbd's key) and the two categories.
+  const logins: Record<ClientKind, { name: string; username?: string; password?: string }> = {
+    qbittorrent: { name: "qBittorrent", ...LOGIN.qbittorrent },
+    transmission: { name: "Transmission" },
+    deluge: { name: "Deluge", password: LOGIN.deluge.password },
+    sabnzbd: { name: "SABnzbd", password: LOGIN.sabnzbd.apiKey },
+    nzbget: { name: "NZBGet", ...LOGIN.nzbget }
+  };
+  const existing = await deluno.must<any[]>("GET", "/api/download-clients");
+  const clientRows = {} as Record<ClientKind, any>;
+  for (const kind of CLIENT_KINDS) {
+    let row = existing.find((c) => c.protocol === kind && c.host === INSIDE[kind].host);
+    if (!row) {
+      row = await deluno.must("POST", "/api/download-clients", {
+        ...logins[kind], protocol: kind, host: INSIDE[kind].host, port: INSIDE[kind].port,
+        moviesCategory: MOVIES_CATEGORY, tvCategory: "deluno-tv", priority: 1, isEnabled: true
+      });
+    }
+    clientRows[kind] = row;
   }
 
-  // The fixture's feed as a public Torznab indexer. Nothing automatic: the spec sends each release itself (#936).
+  // Deluno runs in its own container, so it cannot tell that Transmission and Deluge see the same folders it does. A person adds a
+  // path mapping for each ("Add a path mapping" in the client's settings); with it Deluno names the library's downloads folder
+  // on every send, so a finished torrent lands where Weir watches. The folders are the same on both sides: /downloads.
+  for (const kind of ["transmission", "deluge"] as const) {
+    const mappings = await deluno.must<any[]>("GET", `/api/download-clients/${clientRows[kind].id}/path-mappings`);
+    if (!mappings.some((m) => m.remotePath === "/downloads" && m.localPath === "/downloads")) {
+      await deluno.must("POST", `/api/download-clients/${clientRows[kind].id}/path-mappings`, { remotePath: "/downloads", localPath: "/downloads", isEnabled: true, priority: 1 });
+    }
+  }
+  const client = clientRows.qbittorrent;
+
+  // The fixture's feeds: a public Torznab indexer for the torrents and a Newznab one for the Usenet releases. Nothing automatic:
+  // the spec sends each release itself (#936).
   const indexers = await deluno.must<any[]>("GET", "/api/indexers");
-  let indexer = indexers.find((i) => String(i.baseUrl).startsWith("http://fixture:8765"));
-  if (!indexer) {
-    indexer = await deluno.must("POST", "/api/indexers", {
-      name: "E2E feed", protocol: "torznab", privacy: "public", baseUrl: "http://fixture:8765", apiKey: "e2e",
+  const feed = async (name: string, protocol: string, baseUrl: string) => {
+    return indexers.find((i) => i.baseUrl === baseUrl) ?? await deluno.must("POST", "/api/indexers", {
+      name, protocol, privacy: "public", baseUrl, apiKey: "e2e",
       priority: 25, categories: "2000,2040,5000,5040", mediaScope: "both", isEnabled: true, keepName: true, routeToLibraries: true,
       rssEnabled: false, automaticSearchEnabled: false
     });
-  }
+  };
+  const indexer = await feed("E2E feed", "torznab", "http://fixture:8765");
+  const usenetIndexer = await feed("E2E Usenet feed", "newznab", "http://fixture:8765/newznab");
 
-  // Deluno sends a release only to a client whose connection test passed, so test both as a person does.
-  const clientTest = await deluno.call("POST", `/api/download-clients/${client.id}/test`);
-  if (clientTest.status >= 300) throw new Error(`Deluno's test of qBittorrent failed: ${clientTest.status} ${clientTest.text.slice(0, 400)}`);
-  const indexerTest = await deluno.call("POST", `/api/indexers/${indexer.id}/test`);
-  if (indexerTest.status >= 300) throw new Error(`Deluno's test of the feed failed: ${indexerTest.status} ${indexerTest.text.slice(0, 400)}`);
+  // Deluno sends a release only to a client whose connection test passed, so test them all as a person does.
+  for (const kind of CLIENT_KINDS) {
+    const clientTest = await deluno.call("POST", `/api/download-clients/${clientRows[kind].id}/test`);
+    if (clientTest.status >= 300) throw new Error(`Deluno's test of ${logins[kind].name} failed: ${clientTest.status} ${clientTest.text.slice(0, 400)}`);
+  }
+  for (const [name, row] of [["the Torznab feed", indexer], ["the Newznab feed", usenetIndexer]] as const) {
+    const indexerTest = await deluno.call("POST", `/api/indexers/${row.id}/test`);
+    if (indexerTest.status >= 300) throw new Error(`Deluno's test of ${name} failed: ${indexerTest.status} ${indexerTest.text.slice(0, 400)}`);
+  }
 
   // Weir: Deluno's API key for Weir to call back with, Weir's connection to Deluno and its webhook secret, then Weir as Deluno's processor.
   const processors = await deluno.must<any[]>("GET", "/api/integrations/processors/connections");
@@ -306,9 +385,10 @@ export async function setUpStack(): Promise<Stack> {
     cleanupMode: "keep-source", removeEmptySourceFolders: false
   });
 
-  // Route the library to the one client and the feed (what a person does in the library's settings).
+  // Route the library to qBittorrent and the feeds (what a person does in the library's settings); a spec re-routes it per send.
+  const clientIds = Object.fromEntries(CLIENT_KINDS.map((kind) => [kind, clientRows[kind].id])) as Record<ClientKind, string>;
   await deluno.must("PUT", `/api/libraries/${library.id}/routing`, {
-    sources: [{ indexerId: indexer.id, priority: 1, requiredTags: "", excludedTags: "" }],
+    sources: [{ indexerId: indexer.id, priority: 1, requiredTags: "", excludedTags: "" }, { indexerId: usenetIndexer.id, priority: 2, requiredTags: "", excludedTags: "" }],
     downloadClients: [{ downloadClientId: client.id, priority: 1 }]
   });
 
@@ -322,7 +402,10 @@ export async function setUpStack(): Promise<Stack> {
   // Automatic jobs on, as the scenario suite does: the planner that hands a finished download to Weir is one of them.
   await deluno.must("PUT", "/api/settings/automation", { isEnabled: true });
 
-  return { deluno, qbittorrent, weir, libraryId: library.id, clientId: client.id, indexerId: indexer.id, processorId: processor.id };
+  return {
+    deluno, qbittorrent, transmission, deluge, sabnzbd, nzbget, weir, libraryId: library.id, clientIds, clientId: client.id,
+    indexerId: indexer.id, usenetIndexerId: usenetIndexer.id, processorId: processor.id
+  };
 }
 
 /** The fields a Weir library write takes (Weir refuses any other), taken from what it reads back. */
