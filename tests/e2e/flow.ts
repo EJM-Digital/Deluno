@@ -1,7 +1,7 @@
 import type { Browser, Page } from "@playwright/test";
 import { isUsenet, type ClientKind } from "./clients.ts";
 import {
-  URLS, WeirApi, clientFinished, containerOf, docker, filesUnder, makeFilm, routeLibraryTo, until, type FilmOptions,
+  URLS, WeirApi, clientFinished, containerOf, docker, filesUnder, makeFilm, routeLibraryTo, settledLibraryFile, until, type FilmOptions,
   type FixtureFilm, type Stack
 } from "./stack.ts";
 
@@ -51,7 +51,7 @@ export async function waitImported(stack: Stack, sent: Sent, seconds = 8 * 60) {
     const h = await handoffOf(stack, film.release);
     return h && h.status === "completed" && h.importJobId ? h : undefined;
   }, 1000);
-  const file = await until(`${film.release} to be in the library`, 120, () => importedFile(film.title), 1000);
+  const file = await until(`${film.release} to be in the library`, 120, () => settledLibraryFile(stack, film.title), 1000);
   return { handoff: settled.value, file: file.value };
 }
 
