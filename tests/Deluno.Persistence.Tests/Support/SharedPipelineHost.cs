@@ -35,14 +35,14 @@ internal sealed class SharedPipelineHost : IAsyncDisposable
 
     public string DataRoot => Path.Combine(_root, "data");
 
-    public static async Task<SharedPipelineHost> StartAsync(IDictionary<string, string?>? configuration = null, string? root = null)
+    public static async Task<SharedPipelineHost> StartAsync(IDictionary<string, string?>? configuration = null, string? root = null, Action<IServiceCollection>? configureServices = null, string? environment = null)
     {
         root ??= Path.Combine(Path.GetTempPath(), "deluno-shared-pipeline", Guid.NewGuid().ToString("N"));
         var webRoot = Path.Combine(root, "wwwroot");
         Directory.CreateDirectory(webRoot);
         await File.WriteAllTextAsync(Path.Combine(webRoot, "index.html"), "<html><body>Deluno</body></html>");
 
-        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { WebRootPath = webRoot });
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { WebRootPath = webRoot, EnvironmentName = environment });
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Configuration["Storage:DataRoot"] = Path.Combine(root, "data");
         foreach (var pair in configuration ?? new Dictionary<string, string?>())
@@ -69,6 +69,8 @@ internal sealed class SharedPipelineHost : IAsyncDisposable
                 builder.Services.Remove(descriptor);
             }
         }
+
+        configureServices?.Invoke(builder.Services);
 
         var app = builder.Build();
         app.UseDelunoRequestPipeline();

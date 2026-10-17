@@ -178,6 +178,24 @@ public sealed class TheRecycleBinOnDiskTests
     }
 
     [Fact]
+    public async Task With_nothing_expired_the_preview_is_empty_the_cleanup_removes_nothing_and_every_file_stays_on_disk()
+    {
+        await using var world = await StartWorldAsync();
+        var fresh = LibraryFile(world, "Fresh (2002).mkv", length: 3000);
+        var stored = (await world.Bin.StoreReplacementAsync(world.Library, fresh, fresh, CancellationToken.None))!;
+
+        var preview = await world.App.Client.GetFromJsonAsync<JsonElement>("/api/recycle-bin/cleanup/preview");
+        var emptied = await world.App.Client.PostAsync("/api/recycle-bin/cleanup", null);
+
+        Assert.Equal(0, preview.GetProperty("expiredCount").GetInt32());
+        Assert.Equal(0, preview.GetProperty("bytesFreed").GetInt64());
+        Assert.Empty(preview.GetProperty("items").EnumerateArray());
+        Assert.Equal(0, (await emptied.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("removed").GetInt32());
+        Assert.True(File.Exists(stored.RecyclePath), "nothing had expired, so nothing is deleted");
+        Assert.Equal(stored.Id, Assert.Single(await world.Bin.ListAsync(CancellationToken.None)).Id);
+    }
+
+    [Fact]
     public async Task Saving_settings_with_a_smaller_size_limit_deletes_what_no_longer_fits_and_what_has_expired_at_once()
     {
         await using var world = await StartWorldAsync();
