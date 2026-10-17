@@ -28,6 +28,15 @@ public static class CaptureOriginalRemoteAddressMiddlewareExtensions
 
 public static class LocalNetworkAuthConstants
 {
+    /// <summary>
+    /// The address of the socket that really connected to Deluno (#1349), before the forwarded-headers step replaced it with
+    /// whatever X-Forwarded-For claimed. "Is this the computer Deluno runs on" must be asked of this, never of a header.
+    /// </summary>
+    public static IPAddress? SocketPeer(HttpContext context)
+        => context.Items.TryGetValue(OriginalRemoteAddressItemKey, out var stored) && stored is IPAddress captured
+            ? captured
+            : context.Connection.RemoteIpAddress;
+
     public const string OriginalRemoteAddressItemKey = "deluno.originalRemoteAddress";
     public const string OriginalForwardedForItemKey = "deluno.originalForwardedFor";
 }

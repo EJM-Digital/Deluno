@@ -74,4 +74,16 @@ public sealed class ALanDeviceSkipsSignInOnTheShippedPipelineTests
         using var answer = await host.Client.GetAsync("/api/system/overview");
         return answer.StatusCode;
     }
+
+    [Fact]
+    public void The_computer_a_request_really_came_from_is_the_socket_peer_not_a_forwarded_claim()
+    {
+        var context = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        context.Connection.RemoteIpAddress = IPAddress.Parse("127.0.0.1");
+        context.Items[Deluno.Security.Hardening.LocalNetworkAuthConstants.OriginalRemoteAddressItemKey] = IPAddress.Parse("203.0.113.9");
+
+        Assert.Equal(IPAddress.Parse("203.0.113.9"), Deluno.Security.Hardening.LocalNetworkAuthConstants.SocketPeer(context));
+        Assert.False(Deluno.Filesystem.FilesystemEndpointRouteBuilderExtensions.IsFromThisMachine(
+            Deluno.Security.Hardening.LocalNetworkAuthConstants.SocketPeer(context), null, context.Request.Headers));
+    }
 }
