@@ -83,9 +83,14 @@ test.describe("System > Health, processor output", () => {
     await expect.poll(() => fs.existsSync(path.join(output, "stray-notes.nfo"))).toBe(false);
     expect(fs.existsSync(path.join(output, "Stray.Output.Film.2021.1080p.mkv")), "the other item is untouched").toBe(true);
     expect(fs.existsSync(path.join(folder, "Films")), "the library folder is untouched").toBe(true);
-    const bin = await api<Array<{ originalPath?: string }> | { items?: Array<{ originalPath?: string }> }>(page, "GET", "/api/recycle-bin");
+    const bin = await api<Array<{ id: string; originalPath?: string }> | { items?: Array<{ id: string; originalPath?: string }> }>(page, "GET", "/api/recycle-bin");
     const items = Array.isArray(bin.body) ? bin.body : (bin.body.items ?? []);
-    expect(items.some((item) => (item.originalPath ?? "").includes("stray-notes.nfo")), JSON.stringify(bin.body)).toBe(true);
+    const mine = items.filter((item) => (item.originalPath ?? "").includes("stray-notes.nfo"));
+    expect(mine.length > 0, JSON.stringify(bin.body)).toBe(true);
+    // The recycle bin is shared by every spec on this server; the screens spec expects it empty, so this test empties what it put there.
+    for (const item of mine) {
+      expect((await api(page, "DELETE", `/api/recycle-bin/${item.id}`)).status).toBeLessThan(300);
+    }
     await expect(page.getByRole("row").filter({ hasText: "stray-notes.nfo" })).toHaveCount(0, { timeout: 60_000 });
   });
 });
