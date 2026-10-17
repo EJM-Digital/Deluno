@@ -25,7 +25,7 @@
 //     really starts the container: its text must run `docker run` or `docker compose up`. A step that only builds, configures or scans an image
 //     is refused (counts as inproc). Real for a disk or install row that is not "vm", the same as real-fs.
 //     A row marked "vm": true can only be proven by a real install (NTFS-specific behaviour, network shares,
-//     cross-volume moves and links, the installer, the update, the tray, Windows service mode): it needs a scenario proof, nothing else reaches real.
+//     cross-volume moves and links, the installer, the update, the tray, Windows service mode): it needs a scenario, e2e or windows-e2e proof, nothing else reaches real. An e2e proof (tests/e2e: the real apps, files and containers) is real for every touches kind.
 // (d) with --base: the number of gaps is above the register's count at that git ref. The gaps only go down, measured against the branch a
 //     change goes into, so no number is kept in the file for parallel changes to fight over. A rise needs a `gapIncrease` entry in the
 //     register, { "from": <gaps on the base>, "to": <gaps now>, "reason": "..." }, matching that rise exactly.
@@ -43,10 +43,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { CONTAINER_SMOKE_FILE, TestIndex, read, walk, slash } from './coverage/testindex.mjs';
 import { buildInventory, countsOf, scenarioPlan } from './coverage/inventory.mjs';
 
-export const PROOF_TYPES = ['vitest', 'smoke', 'backend', 'scenario', 'recording-replay', 'real-fs', 'container-smoke'];
+export const PROOF_TYPES = ['vitest', 'smoke', 'backend', 'scenario', 'recording-replay', 'real-fs', 'container-smoke', 'e2e', 'windows-e2e'];
 export const KINDS = ['screen action', 'state', 'API route', 'job', 'integration-operation', 'failure-mode', 'migration', 'install-update', 'tray'];
 export const SEVERITIES = ['high', 'medium', 'low'];
-export const REAL_TYPES = new Set(['scenario', 'recording-replay']);
+export const REAL_TYPES = new Set(['scenario', 'recording-replay', 'e2e', 'windows-e2e']);
 /** real-fs satisfies "real" only for these rows, and never for a row marked "vm": true. */
 export const REAL_FS_TOUCHES = new Set(['disk', 'install']);
 export const TOUCHES = ['other-app', 'disk', 'install', 'none'];
@@ -75,10 +75,10 @@ export function realFsCounts(proof, row, index) {
 }
 /**
  * scenario and recording-replay are real; real-fs is real for a verified disk or install row that is not "vm"; a smoke spec is real only for a
- * screen behaviour and only when its API calls are not stubbed. A "vm" row (only a real install can prove it) is real by a scenario alone.
+ * screen behaviour and only when its API calls are not stubbed. A "vm" row (only a real install can prove it) is real by a scenario, an e2e (the CI end-to-end suite) or a windows-e2e proof alone.
  */
 export function proofLevel(proof, row, index) {
-  if (row && row.vm === true) return proof.type === 'scenario' ? 2 : 1;
+  if (row && row.vm === true) return proof.type === 'scenario' || proof.type === 'e2e' || proof.type === 'windows-e2e' ? 2 : 1;
   if (proof.type === 'real-fs') return realFsCounts(proof, row, index) ? 2 : 1;
   if (proof.type === 'container-smoke') return containerSmokeCounts(proof, row, index) ? 2 : 1;
   if (REAL_TYPES.has(proof.type)) return 2;
@@ -149,6 +149,8 @@ export function mapInventory(register, inventory, { checkStale = true, ignoreSta
 function typeMismatch(p, index) {
   switch (p.type) {
     case 'scenario': return p.file.endsWith('.ps1') ? null : `a scenario proof must be a .ps1 scenario script, not ${p.file}`;
+    case 'e2e': return /^tests\/e2e\/.+\.ts$/.test(p.file) ? null : `an e2e proof must be a Playwright test in tests/e2e, not ${p.file}`;
+    case 'windows-e2e': return /^tests\/e2e-windows\/.+\.ts$/.test(p.file) ? null : `a windows-e2e proof must be a Playwright test in tests/e2e-windows, not ${p.file}`;
     case 'smoke': return /^apps\/web\/tests\/.+\.spec\.ts$/.test(p.file) ? null : `a smoke proof must be a Playwright spec in apps/web/tests, not ${p.file}`;
     case 'vitest': return /\.test\.tsx?$/.test(p.file) ? null : `a vitest proof must be a .test.ts(x) file, not ${p.file}`;
     case 'real-fs': {

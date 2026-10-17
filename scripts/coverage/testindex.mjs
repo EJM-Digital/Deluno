@@ -34,6 +34,9 @@ export function testFiles(root) {
   add('tests', (f) => f.endsWith('.cs') && !/[\\/]fixtures[\\/]/.test(f));
   add('apps/web/src', (f) => /\.test\.tsx?$/.test(f));
   add('apps/web/tests', (f) => /\.spec\.ts$/.test(f) || /\.test\.tsx?$/.test(f));
+  // The CI end-to-end suite: Playwright specs (and the helpers that define their tests) against Docker Compose, and later against a Windows runner.
+  add('tests/e2e', (f) => f.endsWith('.ts') && !/playwright\.config\.ts$/.test(f));
+  add('tests/e2e-windows', (f) => f.endsWith('.ts') && !/playwright\.config\.ts$/.test(f));
   add('scripts', (f) => /\.test\.mjs$/.test(f) || /[\\/]golden-path[\\/].*\.ps1$/.test(f) || CONTAINER_SCRIPT.test(slash(f)));
   add('.github/workflows', (f) => /\.ya?ml$/.test(f));
   add('services', (f) => /[\\/]test[\\/].*\.js$/.test(f) || /\.test\.(js|mjs|ts)$/.test(f));
@@ -232,6 +235,8 @@ function csBodies(file, text) {
 /** The kind of proof a file is. */
 export function proofTypeOf(file, index, name) {
   if (/\.ps1$/.test(file)) return 'scenario';
+  if (/^tests\/e2e-windows\/.+\.ts$/.test(file)) return 'windows-e2e';
+  if (/^tests\/e2e\/.+\.ts$/.test(file)) return 'e2e';
   if (/^apps\/web\/tests\/.+\.spec\.ts$/.test(file)) return 'smoke';
   if (/\.test\.tsx?$/.test(file)) return 'vitest';
   if (index && index.replaysRecording(file, name)) return 'recording-replay';
