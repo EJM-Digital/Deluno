@@ -135,4 +135,74 @@ public sealed class ProcessorOutputSweepAndSafetyNetAfterRecordedWeirReportsTest
         Assert.Equal(0, await SweepAsync(app));
         Assert.True(File.Exists(stray));
     }
+
+    [Fact]
+    public async Task A_media_file_and_a_folder_of_scraps_are_both_listed_and_only_the_media_is_offered_for_import()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var film = Leftover(scene, "Stray.Film.2020.1080p.mkv");
+        var scraps = Leftover(scene, "notes.nfo");
+
+        var listed = await SafetyNetAsync(app);
+
+        Assert.Equal(2, listed.Count);
+        Assert.Contains("\"isMedia\":true", Assert.Single(listed, outcome => outcome.Message.Contains("Stray.Film.2020.1080p.mkv", StringComparison.Ordinal)).DetailsJson);
+        var nfo = Assert.Single(listed, outcome => outcome.Message.Contains("notes.nfo", StringComparison.Ordinal));
+        Assert.Contains("\"isMedia\":false", nfo.DetailsJson);
+        Assert.Contains("not media", nfo.Message);
+        Assert.True(File.Exists(film));
+        Assert.True(File.Exists(scraps));
+    }
+
+    [Fact]
+    public async Task A_file_the_processor_is_still_writing_is_not_listed_until_it_is_quiet()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var path = Path.Combine(scene.Output, "Still.Writing.2020.1080p.mkv");
+        File.WriteAllBytes(path, new byte[2048]);
+
+        var whileWriting = await SafetyNetAsync(app);
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(-30));
+        var afterwards = await SafetyNetAsync(app);
+
+        Assert.Empty(whileWriting);
+        Assert.Contains("Still.Writing.2020.1080p.mkv", Assert.Single(afterwards).Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_second_copy_of_a_film_the_library_holds_is_called_that_and_offers_keep_and_remove_instead_of_import()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var movies = app.Services.GetRequiredService<Deluno.Movies.Data.IMovieCatalogRepository>();
+        var movie = await movies.AddAsync(new Deluno.Movies.Contracts.CreateMovieRequest("Pulp Fiction", 1994, null, true, null, null), CancellationToken.None);
+        await movies.EnsureWantedStateAsync(movie.Id, scene.LibraryId, WantedStatuses.Covered, "Already in the library.", true, null, null, true, CancellationToken.None);
+        Leftover(scene, "Pulp.Fiction.1994.1080p.mkv");
+
+        var spare = Assert.Single(await SafetyNetAsync(app));
+
+        Assert.Contains("second copy", spare.Message);
+        Assert.Contains("Pulp Fiction (1994)", spare.Message);
+        Assert.Contains("\"spareCopyOf\":\"Pulp Fiction (1994)\"", spare.DetailsJson);
+    }
+
+    [Fact]
+    public async Task Clear_moves_a_listed_stray_item_to_the_recycle_bin_says_so_in_Activity_and_the_row_goes_with_it()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var stray = Leftover(scene, ReleaseOf());
+        Assert.Single(await SafetyNetAsync(app));
+
+        using var cleared = await app.Client.PostAsJsonAsync("/api/integrations/processors/output/delete", new { libraryId = scene.LibraryId, path = stray });
+
+        Assert.Equal(HttpStatusCode.OK, cleared.StatusCode);
+        Assert.False(File.Exists(stray));
+        var inBin = Assert.Single(await app.Services.GetRequiredService<Deluno.Platform.IRecycleBinService>().ListAsync(CancellationToken.None));
+        Assert.True(File.Exists(inBin.RecyclePath), "Clear never deletes outright: the item is in the recycle bin");
+        Assert.Contains($"Moved {ReleaseOf()} from the Films library's processor output folder to the recycle bin.", await app.Client.GetStringAsync("/api/activity?take=100"));
+        Assert.Empty(await SafetyNetAsync(app));
+    }
 }
