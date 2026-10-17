@@ -98,13 +98,13 @@ function Open-DelunoPage {
     param($Page, [Parameter(Mandatory)] [string] $Path, [Parameter(Mandatory)] $Login)
     $base = $script:S.DelunoUrl
     Send-Cdp -Page $Page -Method 'Page.navigate' -Params @{ url = "$base/" } | Out-Null
-    Start-Sleep -Seconds 2
+    Start-Sleep -Seconds 2 # reason: lets the page load before its sign-in keys are written; the page has no ready signal here
     $user = if ($Login.user) { ($Login.user | ConvertTo-Json -Compress -Depth 5) } else { '{}' }
     $js = 'localStorage.setItem("deluno-auth-token",' + ($Login.accessToken | ConvertTo-Json) + ');localStorage.setItem("deluno-auth-user",' + ($user | ConvertTo-Json) + ');' +
         $(if ($Login.expiresUtc) { 'localStorage.setItem("deluno-auth-expires",' + ($Login.expiresUtc | ConvertTo-Json) + ');' } else { '' }) + '1'
     Invoke-CdpEval -Page $Page -Script $js | Out-Null
     Send-Cdp -Page $Page -Method 'Page.navigate' -Params @{ url = "$base$Path" } | Out-Null
-    Start-Sleep -Seconds 3
+    Start-Sleep -Seconds 3 # reason: lets the page load and draw before it is read
 }
 
 function Get-PageText {

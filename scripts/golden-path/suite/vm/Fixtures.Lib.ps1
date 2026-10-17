@@ -91,7 +91,7 @@ function Start-FeedAndStubs {
     # The news server again, now with the hang and slow lists (the harness started one without them; same port, same articles).
     Stop-ScheduledTask -TaskName 'GoldenPathUsenetNntp' -ErrorAction SilentlyContinue
     Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { $_.CommandLine -match 'Start-NntpStub' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-    Start-Sleep -Seconds 1
+    Start-Sleep -Seconds 1 # reason: settle after starting or stopping a process; no event to wait on
     $nntpArgs = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + (Get-RepoScript 'usenet-stub\Start-NntpStub.ps1') + '" -Root "' + (Join-Path $script:Fx.Stub 'release') + '" -Port 1119 -HangFile "' + $script:Fx.Hang + '" -SlowFile "' + $script:Fx.Slow + '" -ArticleDelayMs 2500'
     Register-ScheduledTask -TaskName 'GoldenSuiteNntp' -Action (New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $nntpArgs) -Principal $principal -Settings $settings -Force | Out-Null
     Start-ScheduledTask -TaskName 'GoldenSuiteNntp'
@@ -487,7 +487,7 @@ function Open-KsDeluge {
     if ($login.result -ne $true) { throw 'Deluge''s web interface refused its shipped login.' }
     if (-not (Invoke-KsDeluge -Session $d -Method 'web.connected' -Params @() -Subject $Subject).result) {
         $hosts = (Invoke-KsDeluge -Session $d -Method 'web.get_hosts' -Params @() -Subject $Subject).result
-        if ($hosts) { Invoke-KsDeluge -Session $d -Method 'web.connect' -Params @($hosts[0][0]) -Subject $Subject | Out-Null; Start-Sleep -Seconds 2 }
+        if ($hosts) { Invoke-KsDeluge -Session $d -Method 'web.connect' -Params @($hosts[0][0]) -Subject $Subject | Out-Null; Start-Sleep -Seconds 2 } # reason: lets Deluge reconnect to its host
     }
     $d
 }

@@ -7,6 +7,7 @@ using Deluno.Worker.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Deluno.Persistence.Tests.Support;
 
 namespace Deluno.Worker.Tests.Services;
 
@@ -22,7 +23,7 @@ public sealed class EpisodeFileLinkRepairObeysTheAutomaticJobsSwitchTests
         var run = Build(automaticJobsOn: false);
 
         await run.Service.StartAsync(CancellationToken.None);
-        await Task.Delay(300);
+        await Wait.UntilAsync(() => run.Activity.Invocations.Count > 0, "the service to say in Activity that automatic jobs are off");
         await run.Service.StopAsync(CancellationToken.None);
 
         run.Series.Verify(series => series.RepairWrongEpisodeFileLinksAsync(It.IsAny<CancellationToken>()), Times.Never);
@@ -43,7 +44,7 @@ public sealed class EpisodeFileLinkRepairObeysTheAutomaticJobsSwitchTests
         var run = Build(automaticJobsOn: true);
 
         await run.Service.StartAsync(CancellationToken.None);
-        await Task.Delay(300);
+        await Wait.UntilAsync(() => run.Series.Invocations.Count > 0, "the service to run its one pass");
         await run.Service.StopAsync(CancellationToken.None);
 
         run.Series.Verify(series => series.RepairWrongEpisodeFileLinksAsync(It.IsAny<CancellationToken>()), Times.Once);
@@ -54,11 +55,11 @@ public sealed class EpisodeFileLinkRepairObeysTheAutomaticJobsSwitchTests
     {
         var run = Build(automaticJobsOn: false);
         await run.Service.StartAsync(CancellationToken.None);
-        await Task.Delay(150);
+        await Wait.UntilAsync(() => run.Activity.Invocations.Count > 0, "the service to notice that automatic jobs are off");
         run.Series.Verify(series => series.RepairWrongEpisodeFileLinksAsync(It.IsAny<CancellationToken>()), Times.Never);
 
         run.Switch.Value = true;
-        await Task.Delay(300);
+        await Wait.UntilAsync(() => run.Series.Invocations.Count > 0, "the service to run its pass once the switch is on");
         await run.Service.StopAsync(CancellationToken.None);
 
         run.Series.Verify(series => series.RepairWrongEpisodeFileLinksAsync(It.IsAny<CancellationToken>()), Times.Once);

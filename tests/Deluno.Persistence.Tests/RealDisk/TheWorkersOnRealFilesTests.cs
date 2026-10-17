@@ -420,7 +420,7 @@ public sealed class TheWorkersOnRealFilesTests
         public async Task<DownloadDispatchPollingReport> PollAsync(CancellationToken cancellationToken)
         {
             Started.TrySetResult();
-            await Task.Delay(Timeout.Infinite, cancellationToken);
+            await Task.Delay(Timeout.Infinite, cancellationToken); // reason: blocks until the host cancels it, which is the behaviour under test
             return new DownloadDispatchPollingReport(0, 0, 0, 0, 0, 0);
         }
     }

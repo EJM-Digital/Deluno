@@ -34,7 +34,7 @@
 // The statistics (totals by severity, area and proof level) are not kept in the repository: they go to $GITHUB_STEP_SUMMARY when that is
 // set, and to the --report file.
 // Only (a), (b), (d), (e) and (f) fail the default run. A malformed register, a stale cover, a proof of the wrong type and the rules below are reported.
-// Determinism rules, reported with counts and failing under --strict: no fixed sleep in a test without a `reason:` comment on its line;
+// Determinism rules: a fixed sleep in a test without a `reason:` comment on its line fails the run (#1273); under --strict the rules below also fail:
 // every golden-path scenario runnable alone; every external-app test on a recording or in tests/recorded-reply-allow-list.json.
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -501,14 +501,16 @@ async function main() {
   lines.push(`      container-smoke proofs ${t.container.claims}: ${t.container.counted} counted, ${t.container.refused} refused (counted inproc), ${t.container.noEffect} without effect.`);
   if (t.gaps.length) warn.push(levelLine);
 
+  const failing_rules = new Set();
   const rules = [
     [result.sleeps.length, `${result.sleeps.length} fixed sleep(s) in tests without a "reason:" comment on the line`, result.sleeps.map((s) => `${s.file}:${s.line}`), 'no fixed sleep in a test without a reason'],
     [result.scenarios.length, `${result.scenarios.length} golden-path scenario(s) not runnable alone`, result.scenarios.map((s) => `${s.id}: ${s.why}`), `every golden-path scenario is runnable alone (${plan.length} ids)`],
     [external.problems.length, `${external.problems.length} external-app test problem(s): a reply built inline and not in tests/recorded-reply-allow-list.json (${external.listed} files listed there)`, external.problems, `every external-app test is on a recording or listed in the allow-list (${external.listed} listed)`]
   ];
+  failing_rules.add(rules[0][2]); // a fixed sleep without a reason fails the default run
   for (const [n, text, items, okText] of rules) {
     lines.push(`  ${n ? '!!' : 'OK'}  determinism: ${n ? text : okText}`);
-    if (n) warn.push(`determinism: ${text}\n    ${shown(items, (x) => x, 5)}`);
+    if (n) (failing_rules.has(items) ? fail : warn).push(`determinism: ${text}\n    ${shown(items, (x) => x, 5)}`);
   }
 
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, jobSummary(register, inventory, t, result.gapNotes));

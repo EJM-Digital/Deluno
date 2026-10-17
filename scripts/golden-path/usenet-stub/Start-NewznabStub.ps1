@@ -47,7 +47,7 @@ if ($ReadyFile) { Set-Content -Path $ReadyFile -Value "ready $($server.Port)" -E
 $last = -1
 try {
     while ($true) {
-        Start-Sleep -Seconds 5
+        Start-Sleep -Seconds 5 # reason: the stub's report interval; it runs until stopped
         if ($server.Requests -ne $last) {
             $last = $server.Requests
             Write-Host ("{0:HH:mm:ss} requests {1}" -f (Get-Date), $server.Requests)

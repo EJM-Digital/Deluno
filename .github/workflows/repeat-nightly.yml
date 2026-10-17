@@ -1,0 +1,106 @@
+# Nightly repeat of every suite (issue 1273, docs/testing/STRATEGY.md). Each backend test project and the web unit tests run
+# several times in a row on the same build. A test that passes on one run and fails on another fails the night and opens a defect
+# issue. There is no retry and no quarantine: the first failing run fails the job.
+name: Repeat suites (nightly)
+
+on:
+  schedule:
+    # Every night, 03:41 UTC.
+    - cron: "41 3 * * *"
+  workflow_dispatch:
+    inputs:
+      repeats:
+        description: "How many times each suite runs in a row"
+        default: "5"
+        required: false
+
+concurrency:
+  group: repeat-nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  REPEATS: ${{ inputs.repeats || '5' }}
+
+jobs:
+  backend:
+    name: ${{ matrix.project }}
+    runs-on: ubuntu-latest
+    # Five runs of the slowest project plus its build; the backend job in ci.yml has 90 minutes for one run of all of them.
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - Deluno.Integrations.Tests
+          - Deluno.Movies.Tests
+          - Deluno.Persistence.Tests
+          - Deluno.Platform.Tests
+          - Deluno.Series.Tests
+          - Deluno.Tray.Tests
+          - Deluno.Worker.Tests
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build Release once
+        run: dotnet build tests/${{ matrix.project }} -c Release
+
+      - name: Run the suite ${{ env.REPEATS }} times in a row, no retry
+        shell: bash
+        run: |
+          for run in $(seq 1 "$REPEATS"); do
+            echo "::group::Run $run of $REPEATS"
+            dotnet test tests/${{ matrix.project }} -c Release --no-build
+            echo "::endgroup::"
+          done
+
+  web:
+    name: Web unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Install the pinned packages
+        run: npm ci
+
+      - name: Run the suite ${{ env.REPEATS }} times in a row, no retry
+        shell: bash
+        run: |
+          for run in $(seq 1 "$REPEATS"); do
+            echo "::group::Run $run of $REPEATS"
+            npm run test:unit:web
+            echo "::endgroup::"
+          done
+
+  report:
+    name: Open a defect issue for a flaky night
+    needs: [backend, web]
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh issue create --repo "${{ github.repository }}" \
+            --title "A suite differed between nightly runs" \
+            --label "testing: coverage" \
+            --body "The nightly repeat of the suites failed: a test failed on at least one of ${REPEATS} runs in a row on the same build. Find the failing test in ${RUN_URL}, reproduce it, and fix its cause. It is not retried or quarantined."
