@@ -443,9 +443,7 @@ describe("The System tab following the server", () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("The backup did not go through."));
   }, 20_000);
 
-  // DEFECT: HealthChanged re-reads the connections (dashboard-page.tsx readConnectionsAgain) but never the stored checks
-  // (["src","system-health"]), so a new problem does not appear in the Health card until something else reads that list.
-  it.skip("shows a Health problem when the server's checks change, and clears it when they change back", async () => {
+  it("shows a Health problem when the server's checks change, and clears it when they change back", async () => {
     world.attention = summaryOf([]);
     renderDashboard();
     const health = await screen.findByRole("region", { name: "Health" });

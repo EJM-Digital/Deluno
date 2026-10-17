@@ -106,7 +106,7 @@ public sealed class DashboardSummarySectionsFromStoredRowsTests
     // DEFECT: SqliteDispatchMetricsRepository.GetAverageDurationAsync reads AVG(...) with "is long" / "is int", but SQLite's AVG
     // is a REAL, so the scalar arrives as a double, matches neither and the average is always null: the Dashboard never shows
     // the average grab-to-detection or detection-to-import time, whatever the dispatches hold. Seen here: both stay null.
-    [Fact(Skip = "Defect: AVG() arrives as a double and GetAverageDurationAsync (SqliteDispatchMetricsRepository.cs) only reads long and int, so both averages are always null")]
+    [Fact]
     public async Task The_pipeline_section_averages_the_minutes_between_grab_and_detection_and_between_detection_and_import()
     {
         await using var app = await ApplicationTestHost.StartAsync();
