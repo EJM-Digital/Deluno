@@ -107,7 +107,7 @@ services:
       - media:/media:ro
       - weir-output:/weir:ro
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8765/health').status == 200 else 1)"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8765/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
       interval: 5s
       timeout: 5s
       start_period: 15s
