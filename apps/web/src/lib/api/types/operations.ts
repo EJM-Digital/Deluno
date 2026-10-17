@@ -221,6 +221,7 @@ export interface RestorePreviewResponse {
     files: string[];
   } | null;
   warnings: string[];
+  newerThanThisVersion?: boolean;
 }
 
 export interface UpdateStatusResponse {

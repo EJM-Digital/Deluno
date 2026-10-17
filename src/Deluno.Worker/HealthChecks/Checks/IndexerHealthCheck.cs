@@ -9,8 +9,15 @@ namespace Deluno.Worker.HealthChecks.Checks;
 /// on save and re-test through their own circuit breaker, so this only
 /// surfaces that verdict on the shared health board.
 /// </summary>
-public sealed class IndexerHealthCheck(IConnectionsRepository connections) : IHealthCheck
+public sealed class IndexerHealthCheck(IConnectionsRepository connections, TimeProvider timeProvider) : IHealthCheck
 {
+    /// <summary>
+    /// How long an indexer that has never been tested is left alone (#1349), the same grace a download client gets (#1055).
+    /// One added moments ago is still being tested by whatever added it, and reading it in that gap showed "Not tested yet"
+    /// as a problem for an indexer that was healthy a moment later.
+    /// </summary>
+    public static readonly TimeSpan NewIndexerGrace = DownloadClientHealthCheck.NewClientGrace;
+
     public string Category => HealthCheckCategories.Indexer;
 
     public async Task<IReadOnlyList<HealthCheckOutcome>> RunAsync(CancellationToken cancellationToken)
@@ -18,8 +25,17 @@ public sealed class IndexerHealthCheck(IConnectionsRepository connections) : IHe
         var indexers = await connections.ListIndexersAsync(cancellationToken);
         var outcomes = new List<HealthCheckOutcome>(indexers.Count);
 
+        var now = timeProvider.GetUtcNow();
+
         foreach (var indexer in indexers.Where(item => item.IsEnabled))
         {
+            if (indexer.LastHealthTestUtc is null
+                && !string.Equals(indexer.HealthStatus, "healthy", StringComparison.OrdinalIgnoreCase)
+                && now - indexer.CreatedUtc < NewIndexerGrace)
+            {
+                continue;
+            }
+
             var id = $"indexer:{indexer.Id}";
             var name = $"{indexer.Name} (indexer)";
 

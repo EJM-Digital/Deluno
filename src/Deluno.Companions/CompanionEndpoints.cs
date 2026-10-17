@@ -55,7 +55,7 @@ public static class CompanionModule
 
             // Windows' permission prompt appears on this computer's screen. Asked
             // for from another device, nobody would be there to answer it.
-            var remote = httpContext.Connection.RemoteIpAddress;
+            var remote = Deluno.Security.Hardening.LocalNetworkAuthConstants.SocketPeer(httpContext);
             if (remote is not null && !IPAddress.IsLoopback(remote))
             {
                 return Results.Conflict(new { message = "Open Deluno on the computer it runs on to install tools: Windows asks for permission on that screen." });
@@ -86,7 +86,7 @@ public static class CompanionModule
                 return Results.Conflict(new { message = availability.Reason });
             }
 
-            var remote = httpContext.Connection.RemoteIpAddress;
+            var remote = Deluno.Security.Hardening.LocalNetworkAuthConstants.SocketPeer(httpContext);
             if (remote is not null && !IPAddress.IsLoopback(remote))
             {
                 return Results.Conflict(new { message = "Open Deluno on the computer it runs on to install apps: Windows asks for permission on that screen." });
@@ -139,7 +139,7 @@ public static class CompanionModule
 
             // Windows' permission prompt appears on this computer's screen. Asked for from another device, nobody
             // would be there to answer it.
-            var remote = httpContext.Connection.RemoteIpAddress;
+            var remote = Deluno.Security.Hardening.LocalNetworkAuthConstants.SocketPeer(httpContext);
             if (remote is not null && !IPAddress.IsLoopback(remote))
             {
                 return Results.Conflict(new { message = "Open Deluno on the computer it runs on to update: Windows asks for permission on that screen." });
