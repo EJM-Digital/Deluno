@@ -46,7 +46,7 @@ public static class FilesystemEndpointRouteBuilderExtensions
 
     public static async Task<IResult> PickNativeFolderAsync(HttpContext httpContext, NativeFolderPickerRequest request, CancellationToken cancellationToken)
     {
-        if (!IsFromThisMachine(httpContext.Connection.RemoteIpAddress, httpContext.Connection.LocalIpAddress, httpContext.Request.Headers))
+        if (!IsFromThisMachine(Deluno.Security.Hardening.LocalNetworkAuthConstants.SocketPeer(httpContext), httpContext.Connection.LocalIpAddress, httpContext.Request.Headers))
         {
             return Results.Json(
                 new
