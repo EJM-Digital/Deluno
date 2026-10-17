@@ -223,6 +223,28 @@ export async function filesUnder(root: "media" | "downloads" | "weir" | "pack", 
   return await response.json() as Array<{ path: string; size: number }>;
 }
 
+const lastSeenSize = new Map<string, number>();
+
+/**
+ * The film's finished file in the library: the video file exists, Deluno's Activity says "Imported into the library" for the
+ * title, and the file's size is the same on two reads in a row. Call it on every poll; it never sleeps. A file Deluno is still copying
+ * is a .tmp beside the final name, and a final name can still be growing while it is moved, so the size alone is not enough.
+ */
+export async function settledLibraryFile(stack: Stack, title: string): Promise<{ path: string; size: number } | undefined> {
+  const file = (await filesUnder("media", title)).find((f) => !/[.]tmp$/i.test(f.path) && /[.](mkv|mp4|avi)$/i.test(f.path));
+  if (!file) return undefined;
+  const previous = lastSeenSize.get(file.path);
+  lastSeenSize.set(file.path, file.size);
+  if (previous !== file.size) return undefined;
+  const activity = await stack.deluno.must<any>("GET", "/api/activity?pageSize=500");
+  const items = (Array.isArray(activity) ? activity : activity.items) as any[];
+  const said = items.some((i) => {
+    const line = JSON.stringify(i).toLowerCase();
+    return line.includes(title.toLowerCase()) && line.includes("imported into the library");
+  });
+  return said ? file : undefined;
+}
+
 /** Makes folders and copies of the fixture's videos under /pack (owned by Deluno's user), for a group that imports from a folder. */
 export async function stage(body: { dirs?: string[]; copies?: Array<{ to: string; from: "small" | "big" }> }) {
   const response = await fetch(`${URLS.fixture}/stage`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
