@@ -402,3 +402,19 @@ function Save-Evidence {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     Set-Content -Path (Join-Path $dir $Name) -Value (Hide-Secrets $Text) -Encoding utf8
 }
+
+# Shared by the update runner and the scenarios that restart Deluno.
+function Test-DelunoAnswering {
+    $r = Try-Deluno -Path '/api/auth/bootstrap-status' -TimeoutSec 5
+    $r.Status -eq 200
+}
+
+function Get-DelunoProcess {
+    @(Get-Process -Name 'Deluno' -ErrorAction SilentlyContinue)
+}
+
+function Read-StartMarker {
+    $path = Join-Path $env:LOCALAPPDATA 'Deluno\logs\start-progress.json'
+    if (-not (Test-Path $path)) { return $null }
+    try { Get-Content -Raw $path | ConvertFrom-Json } catch { $null }
+}

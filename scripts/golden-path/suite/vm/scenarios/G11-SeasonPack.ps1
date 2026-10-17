@@ -6,12 +6,18 @@
     deleting it for good, and says why. A person's media only ever leaves through the recycle bin, and the bin needs a library to
     put the file under (ImportPipelineService.ExecuteTvPackAsync).
 
-    The fixture is built the way a person could end up there, with Deluno's own screens' calls:
-      1. a TV library of its own and a show in it (no metadata exists for the made-up title, so the first import makes the episodes);
-      2. season 1, episodes 1 and 2, imported from single files, so the show owns two files in that library;
-      3. the library's folder is changed to another folder (Settings > Libraries), so the two files now sit outside every TV library;
-      4. a season pack for the same two episodes, with a different (bigger) video, imported as a replacement with the exact
-         episode-to-file manifest a reviewed season-pack decision carries (overwrite and force replacement both set).
+    The replacement arrives the way a real one does, never through a hand-made import call (Deluno refuses that, rightly: "Episode
+    S01E01 already owns a different file. Replace it through an episode-scoped review"). Only a stored dispatch carries replacement
+    targets for a pack, and only Deluno's own season search stores one (SeasonSearchExecutor -> SeriesSearchBaselineResolver.
+    EvaluateSeasonPackCandidate -> RecordDownloadDispatchAsync(replacementTargets)). So:
+      1. a TV library of its own, routed to a torrent client and the suite's Torznab feed, and a show in it (a real show, whose
+         episodes come from its metadata: Deluno never invents an episode the catalogue lacks);
+      2. season 1, episodes 1 and 2, imported from single files (Deluno records the installed-file evaluation as it imports);
+      3. the library's folder is changed to another folder (Settings > Libraries), so the two files sit outside every TV library;
+      4. a season pack of the same show, in a better quality, is offered by the feed with its data in the client; the season is
+         searched from the TV workspace (POST /api/series/{id}/seasons/1/search), Deluno sees a proven upgrade for both installed
+         episodes, sends the pack as a replacement and stores the targets with the dispatch; the client finishes it, and Deluno's own
+         completed-download import runs the replacement.
     The old files are hashed before step 4. Afterwards they must still be on disk, byte for byte, and Deluno's log must say they were
     left because no library matched them and that nothing was deleted. The new files are placed under the library's new folder.
 #>
@@ -26,28 +32,56 @@ function Wait-ImportJobDone {
     if ($w.Ok) { $w.Value } else { $null }
 }
 
+# The baseline: one episode file imported as the library's first copy (nothing is replaced).
 function Queue-TvImport {
-    param([Parameter(Mandatory)] [string] $SourcePath, [Parameter(Mandatory)] $Show, [switch] $Replacement, $Targets = @(), [string] $DispatchId)
+    param([Parameter(Mandatory)] [string] $SourcePath, [Parameter(Mandatory)] $Show)
     $body = @{
         preview = @{ sourcePath = $SourcePath; mediaType = 'tv'; title = $Show.Title; year = $Show.Year; seriesId = $Show.SeriesId; libraryId = $Show.LibraryId }
-        transferMode = 'copy'; overwrite = [bool]$Replacement; allowCopyFallback = $true
+        transferMode = 'copy'; overwrite = $false; allowCopyFallback = $true
     }
-    if ($Replacement) { $body.forceReplacement = $true; $body.dispatchId = $DispatchId; $body.replacementTargets = @($Targets) }
     Try-Deluno -Method POST -Path '/api/filesystem/import/jobs' -Body $body -TimeoutSec 120
+}
+
+# A season pack the feed offers (a folder of two episodes, in the better quality), with its data placed where the torrent client keeps
+# an unfinished torrent, so the client completes it at once when Deluno sends it. Shaped like the films the other groups send, so the
+# same settle and wait helpers read it.
+function New-PackRelease {
+    param([Parameter(Mandatory)] [string] $Dotted, [Parameter(Mandatory)] [string] $Token, [Parameter(Mandatory)] [string] $Client)
+    $release = "$Dotted.S01.1080p.WEB-DL.x264-GP$($Token.Replace('-', ''))"
+    $source = Join-Path (Get-SuiteRoot) "films\$release"
+    $folder = Join-Path $source $release
+    New-Item -ItemType Directory -Force -Path $folder | Out-Null
+    # Five episodes: Deluno refuses a pack under its minimum size for the quality (1.5 GB for WEB 1080p, rc.30.33 run), and the
+    # first two replace the files the show owns. The other three are new to the show.
+    foreach ($ep in 1..5) {
+        New-Item -ItemType HardLink -Path (Join-Path $folder ("{0}.S01E{1:d2}.1080p.WEB-DL.x264-GP{2}.mkv" -f $Dotted, $ep, $Token.Replace('-', ''))) -Target $script:Fx.Base['big'] | Out-Null
+    }
+    $rel = Add-SuiteTorrentRelease -Title $release -Cat 5040 -Folder $folder
+    $placeIn = Get-ClientDataFolder -Kind $Client -For $release
+    $dest = Join-Path $placeIn $release
+    New-Item -ItemType Directory -Force -Path $dest | Out-Null
+    foreach ($f in Get-ChildItem -LiteralPath $folder -File) { New-Item -ItemType HardLink -Path (Join-Path $dest $f.Name) -Target $script:Fx.Base['big'] | Out-Null }
+    [pscustomobject]@{
+        Title = $Dotted; Release = $release; Protocol = 'torrent'; Client = $Client; ClientKind = $Client; Layout = 'folder'; Size = $rel.size
+        DataFolder = $placeIn; DataItem = $release; DataFiles = @(Get-FilmFilesIn -Folder $placeIn -Item $release); SettleKey = $null
+        Hash = $rel.infohash; Url = "http://127.0.0.1:$($script:Fx.FeedPort)/dl/$($rel.torrent)"; IndexerId = $script:Fx.IndexerIds.torrent; Folder = $release
+    }
 }
 
 function Invoke-GroupSeasonPack {
     Invoke-Scenario -Id 'seasonpack.no-library' -Title 'A season-pack replacement whose old files match no library leaves them in place, byte for byte, and says why' -Body {
         $token = New-FilmToken
-        $title = ('Gppack{0}' -f $token).Replace('-', '')
-        $year = 2020
-        $root = Join-Path (Get-SuiteRoot) "seasonpack\$title"
+        # A real show, with its episodes in the metadata: Deluno never invents an episode for a file whose number the show's catalogue
+        # lacks ("unmatched"), so a made-up title cannot own episodes (the 15 Oct run's baseline import failed that way).
+        $title = 'Breaking Bad'
+        $dotted = 'Breaking.Bad'
+        $year = 2008
+        $root = Join-Path (Get-SuiteRoot) ("seasonpack\Pack{0}" -f $token.Replace('-', ''))
         $libRoot = Join-Path $root 'library-before'
         $movedRoot = Join-Path $root 'library-after'
         $downloads = Join-Path $root 'downloads'
         $oldSrc = Join-Path $downloads 'old'
-        $packDir = Join-Path $downloads "$title.S01.1080p.WEB-DL.x264-GOLDEN"
-        New-Item -ItemType Directory -Force -Path $libRoot, $movedRoot, $oldSrc, $packDir | Out-Null
+        New-Item -ItemType Directory -Force -Path $libRoot, $movedRoot, $oldSrc | Out-Null
         $libId = $null; $seriesId = $null
         try {
             # ---------------------------------------------------------- 1. a TV library and a show in it
@@ -61,10 +95,19 @@ function Invoke-GroupSeasonPack {
             $series = Invoke-Deluno -Method POST -Path '/api/series/' -Body @{ title = $title; startYear = $year; monitored = $true; libraryId = $libId }
             $seriesId = $series.id
             $show = [pscustomobject]@{ Title = $title; Year = $year; SeriesId = $seriesId; LibraryId = $libId }
+            # The show's episodes come from its metadata; the import matches a file only to an episode the catalogue holds.
+            $refresh = Try-Deluno -Method POST -Path "/api/series/$seriesId/metadata/refresh" -TimeoutSec 120
+            $catalogued = Wait-Until -TimeoutSec 180 -IntervalSec 3 -Condition {
+                $inv = Try-Deluno -Path "/api/series/$seriesId/inventory"
+                $have = @($inv.Data.episodes | Where-Object { $_.seasonNumber -eq 1 -and $_.episodeNumber -in 1, 2 })
+                if ($have.Count -eq 2) { $have } else { $null }
+            }
+            Add-Check 'The show''s first two episodes are in its catalogue (from its metadata)' $catalogued.Ok $(if ($catalogued.Ok) { '' } else { "the metadata refresh answered HTTP $($refresh.Status) and the show still has no S01E01 and S01E02" })
+            if (-not $catalogued.Ok) { return }
 
             # ---------------------------------------------------------- 2. two episodes imported, each from a single file
             foreach ($ep in 1, 2) {
-                $file = Join-Path $oldSrc ("{0}.S01E{1:d2}.720p.WEB-DL.x264-GOLDEN.mkv" -f $title, $ep)
+                $file = Join-Path $oldSrc ("{0}.S01E{1:d2}.720p.WEB-DL.x264-GOLDEN.mkv" -f $dotted, $ep)
                 Copy-Item -LiteralPath $script:Fx.Base['small'] -Destination $file
                 $q = Queue-TvImport -SourcePath $file -Show $show
                 if ($q.Status -lt 200 -or $q.Status -ge 300) { throw (Hide-Secrets "Queuing the import of S01E$ep answered $($q.Status). $($q.Raw)") }
@@ -81,13 +124,6 @@ function Invoke-GroupSeasonPack {
             if ($oldFiles.Count -ne 2) { return }
             $before = @{}
             foreach ($f in $oldFiles) { $before[$f.FullName] = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash }
-            $targets = @()
-            foreach ($f in $oldFiles) {
-                $ep = [int]([regex]::Match($f.Name, 'S01E(\d+)').Groups[1].Value)
-                $row = @($owned.Value | Where-Object { $_.episodeNumber -eq $ep })[0]
-                $targets += @{ entityId = $row.episodeId; expectedPath = $f.FullName }
-            }
-
             # ---------------------------------------------------------- 3. the library's folder changes: the old files match no library
             $put = Try-Deluno -Method PUT -Path "/api/libraries/$libId" -Body @{ name = "Pack walk $token"; rootPath = $movedRoot; downloadsPath = $downloads }
             Add-Check 'The library''s folder is changed to another folder, so the two old files sit outside every TV library' ($put.Status -ge 200 -and $put.Status -lt 300) "HTTP $($put.Status)"
@@ -95,17 +131,44 @@ function Invoke-GroupSeasonPack {
             Add-Check 'No TV library''s folder contains the old files now' ($others.Count -eq 0) (($others | ForEach-Object { $_.name }) -join ', ')
             if ($others.Count -gt 0) { return }
 
-            # ---------------------------------------------------------- 4. the season pack replaces them
-            foreach ($ep in 1, 2) {
-                Copy-Item -LiteralPath $script:Fx.Base['big'] -Destination (Join-Path $packDir ("{0}.S01E{1:d2}.1080p.WEB-DL.x264-GOLDEN.mkv" -f $title, $ep))
-            }
+            # ---------------------------------------------------------- 4. the season is searched; Deluno sends the pack as a replacement
+            # The library takes the suite's torrent client and the feed, as the films' library does.
+            $clientKind = 'transmission'
+            $client = Get-ClientByKind -Kind $clientKind
+            Invoke-Deluno -Method PUT -Path "/api/libraries/$libId/routing" -Body @{
+                sources = @(@{ indexerId = $script:Fx.IndexerIds.torrent; priority = 1; requiredTags = ''; excludedTags = '' })
+                downloadClients = @(@{ downloadClientId = $client.id; priority = 1 })
+            } | Out-Null
+            $pack = New-PackRelease -Dotted $dotted -Token $token -Client $clientKind
+            $pack | Add-Member -NotePropertyName ClientId -NotePropertyValue $client.id -Force
+            Write-SuiteLog ("   offered the pack {0} ({1} MB) to {2}" -f $pack.Release, [math]::Round($pack.Size / 1MB), $clientKind)
             $mark = Get-Date
-            $q = Queue-TvImport -SourcePath $packDir -Show $show -Replacement -Targets $targets -DispatchId "golden-suite-pack-$token"
-            Add-Check 'The season-pack replacement import is accepted' ($q.Status -ge 200 -and $q.Status -lt 300) $(if ($q.Status -ge 200 -and $q.Status -lt 300) { "HTTP $($q.Status)" } else { Hide-Secrets "HTTP $($q.Status) $($q.Raw)" })
-            if ($q.Status -lt 200 -or $q.Status -ge 300) { return }
-            $job = Wait-ImportJobDone -JobId $q.Data.jobId
-            Add-Check 'The import job finished' ($null -ne $job) $(if ($job) { "status $($job.status) $($job.lastError)" } else { 'it did not finish in 5 minutes' })
-            if ($job) { Save-Evidence -Name 'seasonpack-job.json' -Text ($job | ConvertTo-Json -Depth 5) }
+            $s = Try-Deluno -Method POST -Path "/api/series/$seriesId/seasons/1/search" -TimeoutSec 240
+            if ($s.Status -ge 200 -and $s.Status -lt 300) { Save-Evidence -Name 'seasonpack-search.json' -Text ($s.Data | ConvertTo-Json -Depth 8) }
+            Add-Check 'The season is searched from the TV workspace' ($s.Status -ge 200 -and $s.Status -lt 300) $(if ($s.Status -ge 200 -and $s.Status -lt 300) { "outcome $($s.Data.outcome): $($s.Data.reason)" } else { Hide-Secrets "HTTP $($s.Status) $($s.Raw)" })
+            if ($s.Status -lt 200 -or $s.Status -ge 300) { return }
+            $comparisons = @($s.Data.replacementComparisons)
+            Add-Check 'Deluno judged the pack against both installed episode files and sent it' ($s.Data.releaseName -eq $pack.Release -and $comparisons.Count -eq 2 -and "$($s.Data.dispatchStatus)" -and "$($s.Data.dispatchStatus)" -notmatch '(?i)fail|error|held|block|refus') (Hide-Secrets "release $($s.Data.releaseName); $($comparisons.Count) comparison(s); dispatch $($s.Data.dispatchStatus): $($s.Data.dispatchMessage); $($s.Data.reason)")
+            if ($s.Data.releaseName -ne $pack.Release -or $comparisons.Count -ne 2) {
+                # Why no pack was sent: what the feed was asked and what Activity says about this show, kept as evidence.
+                $feedLog = Join-Path $script:Fx.Feed 'feed.log'
+                $asked = if (Test-Path $feedLog) { (Get-Content $feedLog -Tail 15) -join "`n" } else { 'no feed log' }
+                $act = (@(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($title) }) | Select-Object -First 12) -join "`n"
+                Save-Evidence -Name 'seasonpack-why-no-pack.txt' -Text ("feed requests:`n$asked`n`nactivity:`n$act`n`nreleases:`n" + (Get-Content (Join-Path $script:Fx.Feed 'releases.jsonl') -Tail 3 | Out-String))
+                return
+            }
+
+            # ---------------------------------------------------------- the client finishes it; Deluno's own import runs the replacement
+            $fin = Wait-FilmFinished -Film $pack -TimeoutSec 240
+            Add-Check 'The torrent client finished the pack' $fin.Ok ''
+            if (-not $fin.Ok) { return }
+            $placed = Wait-Until -TimeoutSec 360 -IntervalSec 3 -Condition {
+                $n = @(Get-ChildItem -LiteralPath $movedRoot -Recurse -File -Filter '*.mkv' -ErrorAction SilentlyContinue)
+                if ($n.Count -ge 5) { $n } else { $null }
+            }
+            Add-Check 'Deluno''s own import placed the pack''s five episode files under the library''s new folder' $placed.Ok $(if ($placed.Ok) { ($placed.Value | ForEach-Object { $_.FullName }) -join '; ' } else { 'no pack file under the new folder in 6 minutes' })
+            $h = Find-Handoffs -Name $pack.Release | Select-Object -First 1
+            if ($h) { Save-Evidence -Name 'seasonpack-handoff.json' -Text ($h | ConvertTo-Json -Depth 5) }
 
             # ---------------------------------------------------------- what is left
             $gone = @()
@@ -128,7 +191,12 @@ function Invoke-GroupSeasonPack {
             $said = Wait-Until -TimeoutSec 60 -IntervalSec 3 -Condition {
                 $hits = New-Object System.Collections.ArrayList
                 foreach ($f in Get-DelunoLogFiles) {
-                    try { foreach ($line in [IO.File]::ReadLines($f.FullName)) { if ($line -match 'because no library matched it; nothing was deleted') { [void]$hits.Add($line) } } } catch { }
+                    # Deluno has its log open for writing: read it sharing the file (File.ReadLines refuses a file another process writes).
+                    try {
+                        $fs = New-Object IO.FileStream($f.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+                        $sr = New-Object IO.StreamReader($fs)
+                        try { while ($null -ne ($line = $sr.ReadLine())) { if ($line -match 'because no library matched it; nothing was deleted') { [void]$hits.Add($line) } } } finally { $sr.Dispose() }
+                    } catch { }
                 }
                 if ($hits.Count -gt 0) { @($hits) } else { $null }
             }

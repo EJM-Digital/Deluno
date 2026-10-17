@@ -51,6 +51,9 @@ Clear-ServerManager
 $window = $null
 $asked = $false
 for ($i = 0; $i -lt $WaitForWindowSeconds -and -not $window; $i++) {
+    # UI Automation answers E_UNEXPECTED ("Catastrophic failure") now and then while windows are opening or closing, as the 15 Oct
+    # GitHub-limit run met after 40 s. That is not the picker missing: look again a second later, and say so once.
+    try {
     $window = ByName $AE::RootElement 'Set up download clients and Weir'
     if (-not $window -and -not $asked) {
         # First run asks "Start Deluno when you sign in to Windows?" (Yes / No) before the picker. A person answering
@@ -73,6 +76,11 @@ for ($i = 0; $i -lt $WaitForWindowSeconds -and -not $window; $i++) {
             Log "start-with-windows question answered: No (pressed the No button); box still showing: $([bool](ByName $AE::RootElement 'Start Deluno when you sign in to Windows?'))"
             $asked = $true
         }
+    }
+    }
+    catch {
+        $window = $null
+        if (-not $script:UiaRetryLogged) { Log "UI Automation could not read the desktop just now ($($_.Exception.Message)); looking again"; $script:UiaRetryLogged = $true }
     }
     if (-not $window) { if ($i % 5 -eq 0) { Clear-ServerManager }; Start-Sleep -Seconds 1 }
 }

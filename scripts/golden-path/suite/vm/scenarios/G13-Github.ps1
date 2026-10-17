@@ -19,27 +19,32 @@ $script:GithubHostsTag = '# golden-suite-github-block'
 
 function Get-HostsFilePath { Join-Path $env:SystemRoot 'System32\drivers\etc\hosts' }
 
-# Points github.com at this PC so the free release feed cannot be read (api.github.com is left alone: it is the route that is limited).
+# Points github.com at this PC so the free release feed cannot be read, and codeload.github.com too, the free archive the tracker
+# definitions are taken from first (api.github.com is left alone: it is the route that is limited).
 function Set-GithubFeedBlocked {
     param([bool] $Blocked)
     $path = Get-HostsFilePath
     $lines = @(Get-Content -LiteralPath $path -ErrorAction SilentlyContinue | Where-Object { $_ -notlike "*$($script:GithubHostsTag)*" })
-    if ($Blocked) { $lines += "127.0.0.1 github.com www.github.com $($script:GithubHostsTag)" }
+    if ($Blocked) { $lines += "127.0.0.1 github.com www.github.com codeload.github.com $($script:GithubHostsTag)" }
     Set-Content -LiteralPath $path -Value $lines -Encoding ascii
     try { & ipconfig.exe /flushdns | Out-Null } catch { }
 }
 
 # Quits Deluno and starts it again the way a person does, from its tray menu, and waits until it answers as a new process.
 function Restart-DelunoFromTray {
-    $before = @(Get-DelunoProcess | ForEach-Object { $_.Id })
+    # Restart Deluno rebuilds the host inside the same process (the tray keeps its process id), so a restart is told by Deluno's own
+    # start marker (start-progress.json): written again after the click, in phase "ready", and Deluno answering.
+    $clickedAt = (Get-Date).ToUniversalTime().AddSeconds(-2)
     $clicked = $false
     try { $clicked = [bool](Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Restart Deluno') } catch { $clicked = $false }
     if (-not $clicked) { throw ("Deluno's tray menu did not offer Restart Deluno ($script:TrayMenuMiss), so Deluno could not be restarted to empty its memory of earlier reads.") }
     $new = Wait-Until -TimeoutSec 240 -IntervalSec 3 -Condition {
-        $procs = @(Get-DelunoProcess | Where-Object { $_.Id -notin $before })
-        if ($procs.Count -gt 0 -and (Test-DelunoAnswering)) { $procs } else { $null }
+        $m = Read-StartMarker
+        $at = $null
+        if ($m -and $m.atUtc) { try { $at = [DateTimeOffset]::Parse([string]$m.atUtc).UtcDateTime } catch { $at = $null } }
+        if ($m -and "$($m.phase)" -eq 'ready' -and $at -and $at -gt $clickedAt -and (Test-DelunoAnswering)) { $m } else { $null }
     }
-    if (-not $new.Ok) { throw 'Deluno did not come back as a new process within 4 minutes of Restart Deluno.' }
+    if (-not $new.Ok) { throw 'Deluno did not write a new "ready" start marker and answer within 4 minutes of Restart Deluno.' }
     Wait-DelunoUp | Out-Null
     Connect-Deluno
     $new.Seconds
@@ -56,6 +61,13 @@ function Invoke-GroupGithub {
         $stamp = Get-GitHubLimitStamp -ResetEpoch $limit.ResetEpoch
         Add-Check "GitHub's anonymous allowance is used up from the VM (0 calls left)" ($limit.Remaining -eq 0) ("made {0} call(s); GitHub says it lifts at {1} UTC" -f $limit.Calls, $limit.ResetUtc.ToString('yyyy-MM-dd HH:mm'))
 
+        # The definitions come from codeload.github.com's free archive first, which spends none of the allowance, so the archive and the
+        # feed are pointed at this PC from here: only the limited API route is left, the case the sentence is for.
+        $blocked = $false
+        try {
+            Set-GithubFeedBlocked -Blocked $true
+            $blocked = $true
+
         # ---------------------------------------------------------- the tracker definitions' Update now
         $run = Try-Deluno -Method POST -Path '/api/trackers/definitions/update-check/run' -TimeoutSec 120
         $state = $run.Data
@@ -65,7 +77,11 @@ function Invoke-GroupGithub {
         Add-Check "Update now names GitHub's limit, not an unreachable source" ($error1 -match "GitHub's limit for checking releases from this network is used up until" -and $error1 -notmatch 'could not reach') $error1
         $m = [regex]::Match($error1, '(\d{4}-\d{2}-\d{2} \d{2}:\d{2}) UTC')
         $diff = $null
-        if ($m.Success) { $diff = [math]::Abs(([DateTime]::ParseExact($m.Groups[1].Value, 'yyyy-MM-dd HH:mm', [Globalization.CultureInfo]::InvariantCulture)) - ([DateTime]::ParseExact(($stamp -replace ' UTC$', ''), 'yyyy-MM-dd HH:mm', [Globalization.CultureInfo]::InvariantCulture))).TotalMinutes }
+        if ($m.Success) {
+            $said = [DateTime]::ParseExact($m.Groups[1].Value, 'yyyy-MM-dd HH:mm', [Globalization.CultureInfo]::InvariantCulture)
+            $github = [DateTime]::ParseExact(($stamp -replace ' UTC$', ''), 'yyyy-MM-dd HH:mm', [Globalization.CultureInfo]::InvariantCulture)
+            $diff = [math]::Abs(($said - $github).TotalMinutes)
+        }
         Add-Check "The reset in the sentence is GitHub's own reset time (within a minute)" ($null -ne $diff -and $diff -le 1) $(if ($m.Success) { "Deluno says $($m.Groups[1].Value) UTC; GitHub says $stamp" } else { 'no reset time in the sentence' })
 
         # ... and on the screen, the way a person presses it: Settings > General, in the viewer's own time.
@@ -84,10 +100,7 @@ function Invoke-GroupGithub {
         finally { Close-CdpPage -Page $page }
 
         # ---------------------------------------------------------- the connections' version check
-        $blocked = $false
-        try {
-            Set-GithubFeedBlocked -Blocked $true
-            $blocked = $true
+        # (github.com and codeload.github.com are already pointed at this PC.)
             $secs = Restart-DelunoFromTray
             Add-Note "Deluno was restarted from its tray menu ($secs s) with github.com pointed at this PC, so its release reads start empty and the free feed cannot be read."
             # Reading the versions starts each project's release read in the background; it is asked again until one says why it cannot.
