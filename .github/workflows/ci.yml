@@ -336,7 +336,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-dotnet-${{ matrix.leg }}
-          path: tests/*/TestResults/*/coverage.cobertura.xml
+          path: tests/*/TestResults/*/coverage.opencover.xml
           if-no-files-found: error
           retention-days: 7
 
@@ -830,7 +830,7 @@ jobs:
         run: |
           dotnet tool restore
           dotnet tool run reportgenerator \
-            "-reports:coverage-in/coverage-dotnet-*/**/coverage.cobertura.xml" \
+            "-reports:coverage-in/coverage-dotnet-*/**/coverage.opencover.xml" \
             "-targetdir:coverage-out/dotnet" \
             "-reporttypes:Cobertura;HtmlInline" \
             "-assemblyfilters:+Deluno.*;-Deluno.*.Tests"
