@@ -21,6 +21,8 @@ export const GATES = {
   docker: "run_docker",
   // Only a manual run builds it: the installable build the golden path installs (docs/golden-path.md).
   "windows-installer": "run_windows_installer",
+  // The end-to-end groups on Docker Compose: a manual run, or a push whose version is not yet tagged.
+  "e2e-linux": "run_e2e_linux",
   // Coverage is measured only when the backend and the web tests both ran (issue 1268).
   "coverage-node": "run_coverage",
   coverage: "run_coverage",
