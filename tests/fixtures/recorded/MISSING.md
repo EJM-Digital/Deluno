@@ -2,18 +2,9 @@
 
 Written by scripts/recorded-replies/Invoke-RecordReplies.ps1 on 2026-10-11. Each line says what is needed to record it.
 
-- qbittorrent downloading / stalled-near-end: no peer connection formed between transmission and qbittorrent (the clients may refuse peers on one address)
-- weir status-queued: the burst of hand-offs was finished before the last could be seen queued
-- weir failed with failureClass not_taken (Weir #956, Deluno #1250): Weir answers it when a second connection of the same kind hands off a file whose processing pass belongs to the first; the VM has one Deluno connection to Weir, so it cannot be produced there. It needs a second processor connection in Deluno pointing at the same Weir and watched folder
-- sabnzbd duplicate-add: SABnzbd 5.1.3 answers an addurl of a duplicate with a new job id (it fetches the NZB afterwards), so the empty-id answer was not recorded; the capture script now sends the NZB as a file (addlocalfile) for that, but it was not re-run
-- qbittorrent downloading / stalled-near-end seeded by transmission: no peer connection formed; it was recorded with Deluge as the seeder
 - tests not yet moved onto recordings: see tests/recorded-reply-allow-list.json (kind "pending"): only the uTorrent and rTorrent parts of eleven files, each entry saying what to record
 - found while moving the tests onto recordings (#1237), replies a test needed that are not recorded; each was answered with the nearest recorded reply changed in the one value the test is about, and says so:
-  - qbittorrent: the reply to torrents/setAutoManagement; the tracker list of a tracker that is not working (status 4 and its message); the reply to an add of a link (not a file) and to a link that is dead
-  - deluge: the reply to core.add_torrent_url; label.* with the Label plugin switched off (the "Unknown method" error); core.get_torrent_status for a hash it never had
-  - transmission: torrent-get with the fields Deluno asks for now (uploadRatio, secondsSeeding, activityDate, doneDate, seedRatioMode, seedRatioLimit, seedIdleMode, seedIdleLimit; the recording's field list was shorter); a refused torrent-set
-  - sabnzbd: the history entry of a duplicate it turned down, with the wording it gives in fail_message (the recorded duplicate-add shows only the add)
-  - weir: the "scheduled" state (a library with processing hours); /openapi.json; a 403 (rc.13 answers 401 for a missing and for a wrong secret); the outcome and status replies that the recordings hold for one hand-off only
+  - weir: the outcome and status replies that the recordings hold for one hand-off only
   - plex, jellyfin, emby and seerr: the identity and status replies that carry their version (ConnectionVersionParserTests still holds those shapes)
 
 ## Deluno-Weir contract gaps (#1239, docs/deluno-weir-contract.md)
@@ -21,15 +12,12 @@ Written by scripts/recorded-replies/Invoke-RecordReplies.ps1 on 2026-10-11. Each
 Recorded on 13 October 2026 (Deluno 1.0.0-rc.30.30, Weir 1.0.0-rc.13): Deluno's own requests with their headers, Weir's reports to Deluno, and Weir's refusals of a wrong secret, an unknown id, a refused body and an Origin without X-Requested-With. What is still missing:
 
 - weir plain-text `500 Internal Server Error`, treated by Deluno as retryable: Weir has no deliberate 5xx or 429 on its intake routes. The only 5xx is the web server's plain-text 500 for an exception nothing handled (SQLite still busy after 30 s, say), and the VM cannot be made to produce that on purpose. `WeirPlainTextFiveHundredTests` builds it. `429` is never sent by Weir.
-- weir `401` for a secret that belongs to a different connection than the hand-off's owner (the same text as a wrong secret): needs a second connection of the same kind in Weir with its own secret. The VM has one.
-- weir `403` "Set a webhook secret in Weir so a media manager can ask about hand-offs" on the status poll was recorded under a source key with no connection (`status-no-connection-for-source`), not on Deluno's own source with its secret removed; the second needs Weir's secret for the Deluno connection to be unset, which would break the real connection.
-- weir report `not_taken` (Weir #956, Deluno #1250) (listed above too): it needs a second processor connection in Deluno pointing at the same Weir and watched folder.
 - weir reports `accepted`, `started` and `rejected`: in this run Weir sent only `completed` and `failed` reports to Deluno (and `source_gone` as a failure class). A `started` or `accepted` report was never sent, and `rejected` needs a reject-capable workflow.
 - a report for a hand-off Deluno has no row for at all: every hand-off the reports named still had a row (a late report was answered 409 for a dismissed one). It needs a hand-off row that is gone, for example a title removed while Weir was working.
 - the person's "I don't want it" on a hand-off Weir is working on (`409` working, as Deluno sent it): the cancel Deluno sent was taken while Weir still held the hand-off queued, so only the 204 is a Deluno-sent cancel. `handoff-cancel-working` and `handoff-cancel-too-late` are Weir's replies to a cancel sent by the recording script.
 - weir connection refused (Weir switched off) and a timeout: no reply to record. The contract tests make the connection fail.
-- weir `scheduled` and `passed-through` states on the status poll: Weir 1.0.0-rc.13 was never seen giving them. A scheduled workflow run would give `scheduled`; `passed-through` may be a state Weir no longer uses (ask the Weir session).
 - weir capabilities carrying `watchedPath`: rc.13 does not send it.
+- weir `passed-through` on the status poll: never seen from rc.13 or rc.18; it may be a state Weir no longer uses (ask the Weir session).
 - weir `outcome` for a hand-off Weir finished but whose stored note belongs to another send of the same release (#1232): the reply carried an ordinary message; a reply whose message contradicts the outcome has not been seen from the real Weir.
 
 ## GitHub (`github/2022-11-28`, #1237, #1263)
@@ -217,3 +205,17 @@ Rows left open because the other app's reply is not recorded. Each line says wha
 - deluge: only `location-moved` holds a file listing (one file); a folder torrent's listing (a film and an `.nfo`) is not recorded.
 - uTorrent and rTorrent: no recordings at all (see the allow-list), so the strike rules, the removal verbs and the re-check on those two have no recorded reply.
 - qbittorrent, transmission, deluge, sabnzbd, nzbget: the reply to a re-check (`torrents/recheck`, `torrent-verify`, `force_recheck`, and what the two Usenet clients answer to a re-check) has not been recorded.
+
+
+## Docker recording, 17 October 2026 (scripts/recorded-replies/docker/)
+
+Recorded from the published images in Docker: qBittorrent 5.2.4 (`auto-management-set`, `tracker-not-working`, `add-link`, `add-link-dead`), Deluge 2.2.0 (`add-url`, `add-url-dead`, `status-unknown-hash`, `label-plugin-off`), Transmission 4.1.3 (`finished-seed-fields`, `label-set-refused-comma`, `label-set-refused-empty`), SABnzbd 5.1.3 (`duplicate-discarded`, `duplicate-failed`), Weir 1.0.0-rc.18 (`openapi`, `status-scheduled-file-on-hold`, `status-not-taken`, `status-other-connections-secret`, `status-deluno-source-no-secret`, and the hand-offs around them), Deluno 1.0.0-rc.30.33 into Weir (`handoff-collision-*`, `handoff-season-pack`, `handoff-partial-season-pack`, `handoff-rejected-release`, `handoff-second-connection`, `events-failed-not-taken`, `events-failed-rejected-known-handoff`), Sonarr 4.0.20, Radarr 6.4.4 and Prowlarr 2.6.5 (system status, lists, profiles, tags, root folders, custom formats, download clients, indexers) and TheXEM (`thexem/2026-10-17`).
+
+Still missing, and why:
+
+- tmdb, through the metadata gateway: `services/metadata-gateway` is a Cloudflare Worker that needs the `TMDB_API_KEY` secret to answer a search, and there is no key here. The deployed gateway was not used (it was to run locally or not at all). The TMDb and gateway lines above stay open.
+- recyclarr: Deluno reads no Recyclarr file. The migration assistant takes pasted JSON, and Recyclarr keeps its configuration in YAML and has no JSON export; nothing to record.
+- sonarr indexers: the stack's Torznab feed answers movie searches only (`tests/e2e/fixture/server.mjs` ignores TV searches) and Sonarr tests an indexer with a TV search, so Sonarr's `indexers` recording is an empty list.
+- weir `partial-season-pack` final state: with the failure policy hold, a pack with one unreadable episode was still queued 150 s after the hand-off, so only Deluno's request (`handoff-partial-season-pack`) is recorded for it, not Weir's end state.
+- qbittorrent, deluge, transmission, sabnzbd, weir: the other lines in this file that name states the Docker run did not need are unchanged.
+- plex, jellyfin, emby, seerr, utorrent, rtorrent: not asked for in this run; their lines above are unchanged.
