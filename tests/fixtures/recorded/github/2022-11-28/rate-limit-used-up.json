@@ -1,0 +1,31 @@
+{
+  "app": "github",
+  "version": "2022-11-28",
+  "state": "rate-limit-used-up",
+  "recordedAt": "2026-10-17T10:10:15.804Z",
+  "note": "A real unauthenticated GET of api.github.com/repos/octocat/Hello-World after 59 earlier unauthenticated calls from the same address spent the hourly allowance (the REST API's primary rate limit). The caller's address in the message was replaced by a documentation address; nothing else was changed. The reset time is a real one from that moment: a test that needs a limit that has not lifted yet replaces X-RateLimit-Reset, never anything else.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "api.github.com/repos/octocat/Hello-World",
+        "body": null
+      },
+      "reply": {
+        "status": 403,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "x-ratelimit-limit": "60",
+          "x-ratelimit-remaining": "0",
+          "x-ratelimit-reset": "1792233337",
+          "x-ratelimit-resource": "core",
+          "x-ratelimit-used": "60"
+        },
+        "body": {
+          "message": "API rate limit exceeded for 203.0.113.7. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)",
+          "documentation_url": "https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting"
+        }
+      }
+    }
+  ]
+}
