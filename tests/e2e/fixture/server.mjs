@@ -31,7 +31,7 @@ const PORT = Number(process.env.FIXTURE_PORT || "8765");
 const PUBLIC_BASE = process.env.FIXTURE_PUBLIC_BASE || `http://fixture:${PORT}`;
 const WORK = process.env.FIXTURE_WORK || "/work";
 const FILM_MB = Number(process.env.FIXTURE_FILM_MB || "24");
-const ROOTS = { media: "/media", downloads: "/downloads", weir: "/weir" };
+const ROOTS = { media: "/media", downloads: "/downloads", weir: "/weir", pack: "/pack" };
 const PIECE = 256 * 1024;
 const NNTP_PORT = Number(process.env.FIXTURE_NNTP_PORT || "1119");
 const PART_BYTES = 700 * 1024; // the data in one posted article
@@ -141,6 +141,37 @@ async function makeBaseVideos() {
       "-c:v", "mpeg4", "-b:v", "200k", "-c:a", "aac", "-b:a", "48k", "-shortest", extra]);
   }
   return [film, extra];
+}
+
+// A second, bigger video for the season-pack group: the film played twice over (a stream copy), so it differs from the film in size and bytes.
+async function bigVideo() {
+  const [film] = await makeBaseVideos();
+  const big = path.join(WORK, "base", "big.mkv");
+  if (!fs.existsSync(big)) await ffmpeg(["-stream_loop", "1", "-i", film, "-c", "copy", big]);
+  return big;
+}
+
+// Puts folders and copies of the base videos on the "pack" volume, owned by Deluno's user (1654), for the groups that import from a
+// folder (seasonpack). dirs: folders to make; copies: [{ to, from: "small" | "big" }] where small is the film.
+async function stage(body) {
+  const owner = 1654;
+  const made = [];
+  for (const dir of body.dirs ?? []) {
+    if (!dir.startsWith("/pack/") || dir.includes("..")) throw new Error("only folders under /pack can be made");
+    let at = dir;
+    const chain = [];
+    while (at.startsWith("/pack") && at !== "/pack" && !fs.existsSync(at)) { chain.unshift(at); at = path.dirname(at); }
+    fs.mkdirSync(dir, { recursive: true });
+    for (const made_ of chain) fs.chownSync(made_, owner, owner);
+    made.push(dir);
+  }
+  for (const copy of body.copies ?? []) {
+    if (!copy.to.startsWith("/pack/") || copy.to.includes("..")) throw new Error("only files under /pack can be made");
+    const source = copy.from === "big" ? await bigVideo() : (await makeBaseVideos())[0];
+    fs.copyFileSync(source, copy.to);
+    fs.chownSync(copy.to, owner, owner);
+  }
+  return { dirs: made, files: (body.copies ?? []).length };
 }
 
 // A single-file release: the film alone, named like the release (the torrent has one file and no folder).
@@ -491,7 +522,8 @@ async function handleGet(req, res, url) {
   const route = decodeURIComponent(url.pathname);
   const query = url.searchParams;
   if (route === "/health") return sendBytes(req, res, 200, "ok", "text/plain");
-  if (route === "/api" || route === "/newznab/api") {
+  // /private/api is the same Torznab feed under another address, so Deluno can be given it as a private tracker (group keepseeding).
+  if (route === "/api" || route === "/newznab/api" || route === "/private/api") {
     const kind = (query.get("t") || "").toLowerCase();
     return sendBytes(req, res, 200, kind === "caps" ? CAPS : searchXml(query, route === "/newznab/api"));
   }
@@ -524,6 +556,14 @@ async function handleGet(req, res, url) {
     found.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
     return sendBytes(req, res, 200, JSON.stringify(found), "application/json");
   }
+  if (route === "/sha256") {
+    const root = ROOTS[query.get("root") || ""];
+    const target = path.posix.normalize(query.get("path") || "");
+    if (!root || !target.startsWith(root + "/") || !fs.existsSync(target) || !fs.statSync(target).isFile()) return sendBytes(req, res, 404, "no", "text/plain");
+    const hash = createHash("sha256");
+    for await (const chunk of fs.createReadStream(target)) hash.update(chunk);
+    return sendBytes(req, res, 200, JSON.stringify({ sha256: hash.digest("hex"), size: fs.statSync(target).size }), "application/json");
+  }
   if (route === "/probe") {
     const root = ROOTS[query.get("root") || ""];
     const target = path.posix.normalize(query.get("path") || "");
@@ -545,6 +585,7 @@ async function handlePost(req, res, url) {
   try {
     const raw = Buffer.concat(chunks).toString("utf8");
     const body = raw.trim() ? JSON.parse(raw) : {};
+    if (url.pathname === "/stage") return sendBytes(req, res, 200, JSON.stringify(await stage(body)), "application/json");
     if (url.pathname === "/films") {
       if (body.usenet) return sendBytes(req, res, 200, JSON.stringify(await newUsenetFilm(body.title, Number.parseInt(body.year ?? 2020, 10), { hang: body.hang || "", slow: Boolean(body.slow) })), "application/json");
       if (body.layout === "file" || body.variant) return sendBytes(req, res, 200, JSON.stringify(await newSingleFileFilm(body.title, Number.parseInt(body.year ?? 2020, 10), body.variant || "complete")), "application/json");
