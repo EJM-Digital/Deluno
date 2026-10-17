@@ -1,0 +1,123 @@
+# The end-to-end stack (docs/exec-plans/active/PLAN-E2E-IN-CI.md): Deluno's own image, a real download client and the suite's
+# fixture, on one private network. Nothing in a scenario reaches the internet; the only pulls are these images.
+#
+#   docker compose -f tests/e2e/compose.yaml up --build --wait
+#   npx playwright test -c tests/e2e/playwright.config.ts
+#   docker compose -f tests/e2e/compose.yaml down --volumes
+#
+# DELUNO_IMAGE is the image the CI docker job built (or `docker build -t deluno:e2e .` locally). Ports are published on
+# 127.0.0.1 only so the spec can read each application's own API.
+name: deluno-e2e
+
+services:
+  # Makes the shared folders writable by the users inside the containers (Deluno runs as 1654; qBittorrent is told the same).
+  prepare:
+    build: ./fixture
+    # qBittorrent's first settings file is the suite's login (user e2e, password in tests/e2e/stack.ts); the rest is set through its API.
+    entrypoint: ["sh", "-c", "mkdir -p /downloads/completed/Movies /downloads/completed/TV /downloads/incomplete /media/Movies /media/TV /weir/Ready/Movies /weir/Ready/TV /config/qBittorrent && if [ ! -f /config/qBittorrent/qBittorrent.conf ]; then cp /qbit-seed/qBittorrent.conf /config/qBittorrent/qBittorrent.conf; fi && chown -R 1654:1654 /downloads /media /weir /config"]
+    user: root
+    volumes:
+      - downloads:/downloads
+      - media:/media
+      - weir-output:/weir
+      - qbittorrent-config:/config
+      - ./qbittorrent:/qbit-seed:ro
+
+  deluno:
+    image: ${DELUNO_IMAGE:-deluno:e2e}
+    pull_policy: never
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${E2E_DELUNO_PORT:-5099}:8080"
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      Server__Port: 8080
+      Server__AllowLan: "true"
+      Storage__DataRoot: /data
+    volumes:
+      - deluno-data:/data
+      - downloads:/downloads
+      - media:/media
+      - weir-output:/weir
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 5s
+      start_period: 30s
+      retries: 20
+
+  # qBittorrent, as linuxserver publishes it (5.2.4 when pinned), by digest.
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent@sha256:97333cc1ccf903e0bbcd8eb67e3332e4970e9c1ecabe145e499e9c0847ebcaed
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+    environment:
+      PUID: "1654"
+      PGID: "1654"
+      TZ: Etc/UTC
+      WEBUI_PORT: "8080"
+    ports:
+      - "127.0.0.1:${E2E_QBIT_PORT:-18081}:8080"
+    volumes:
+      - qbittorrent-config:/config
+      - downloads:/downloads
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--output", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 5s
+      timeout: 5s
+      start_period: 20s
+      retries: 20
+
+  # Weir, the processor Deluno hands a finished download to before it imports, as Weir publishes it (by digest).
+  weir:
+    image: ghcr.io/jampat000/weir@sha256:77a2de6920d6ef7fc3fa3bc4a55dc13ae8318ee46a08d01527eb248362e9f674
+    hostname: weir
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+    environment:
+      WEIR_HOME: /data/weir
+      WEIR_PUID: "1654"
+      WEIR_PGID: "1654"
+    ports:
+      - "127.0.0.1:${E2E_WEIR_PORT:-19347}:9347"
+    volumes:
+      - weir-data:/data/weir
+      - downloads:/downloads
+      - weir-output:/weir
+
+  # The local Torznab feed, the web seed for its torrents and a read-only look at the shared folders.
+  fixture:
+    build: ./fixture
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+    environment:
+      FIXTURE_PUBLIC_BASE: http://fixture:8765
+      # Weir leaves a file under 50 MB alone (its own default), so the film is a little over it; the extra stays well under.
+      FIXTURE_FILM_MB: "64"
+    ports:
+      - "127.0.0.1:${E2E_FIXTURE_PORT:-18765}:8765"
+    volumes:
+      - fixture-work:/work
+      - downloads:/downloads:ro
+      - media:/media:ro
+      - weir-output:/weir:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8765/health').status == 200 else 1)"]
+      interval: 5s
+      timeout: 5s
+      start_period: 15s
+      retries: 20
+
+volumes:
+  deluno-data:
+  downloads:
+  media:
+  qbittorrent-config:
+  fixture-work:
+  weir-data:
+  weir-output:
