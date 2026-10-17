@@ -521,6 +521,34 @@ test('a vm row needs a scenario: real-fs and a recording stay inproc', () => {
   }
 });
 
+const E2E_SPEC = ['import { test } from "@playwright/test";', 'test(`film.${kind}: a film through ${kind} is grabbed`, async () => {});', ''].join('\n');
+test('an e2e proof is real for every touches kind, satisfies a vm row, and must exist under tests/e2e', () => {
+  const root = makeRepo({ 'tests/e2e/films.spec.ts': E2E_SPEC, 'tests/e2e/playwright.config.ts': 'export default {};\n', 'tests/e2e-windows/tray.spec.ts': "test('tray: goes amber', async () => {});\n" });
+  try {
+    const index = new TestIndex(root);
+    const e2e = { type: 'e2e', file: 'tests/e2e/films.spec.ts', name: 'film.${kind}: a film through ${kind} is grabbed' };
+    for (const touches of ['other-app', 'disk', 'install', 'none']) {
+      assert.equal(isGap(row({ severity: 'high', touches, required: touches === 'none' ? 'inproc' : 'real', proofs: [e2e] }), index), false, touches);
+    }
+    assert.equal(isGap(row({ severity: 'high', touches: 'disk', required: 'real', vm: true, proofs: [e2e] }), index), false);
+    const win = { type: 'windows-e2e', file: 'tests/e2e-windows/tray.spec.ts', name: 'tray: goes amber' };
+    assert.equal(isGap(row({ severity: 'high', touches: 'install', required: 'real', vm: true, proofs: [win] }), index), false);
+    assert.deepEqual(missingProofs(register([row({ proofs: [e2e, win] })]), index, new Set()), []);
+    const bad = [
+      { ...e2e, name: 'film.nothing: not a test in the file' },
+      { ...e2e, file: 'tests/e2e/gone.spec.ts' },
+      { ...e2e, file: 'tests/e2e-windows/tray.spec.ts', name: 'tray: goes amber' },
+      { ...win, file: 'tests/e2e/films.spec.ts' }
+    ];
+    assert.deepEqual(missingProofs(register(bad.map((p, i) => row({ id: `b${i}`, proofs: [p] }))), index, new Set()).map((m) => m.kind), ['missing', 'missing', 'type', 'type']);
+    // the playwright config is not a test file
+    assert.equal(index.has('tests/e2e/playwright.config.ts'), false);
+    assert.equal(validateShape(register([row({ proofs: [e2e, win] })])).length, 0, 'e2e and windows-e2e are known proof types');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('vm is only true, and only on a row that touches disk or install', () => {
   assert.deepEqual(validateShape(register([row({ severity: 'high', touches: 'install', required: 'real', vm: true })])), []);
   assert.deepEqual(validateShape(register([row({ severity: 'high', touches: 'disk', required: 'real', vm: true })])), []);
