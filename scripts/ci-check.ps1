@@ -327,6 +327,16 @@ if ($scenarioSuite.ExitCode -eq 0) {
     Write-Fail "golden-path scenario suite code"
 }
 
+# The Windows end-to-end suite (tests/e2e-windows) runs on a windows-latest runner in CI; its own code is checked here without installing
+# or starting anything: every script parses, the legs own the scenarios the parity table gives to windows, and the result shape holds.
+$windowsE2e = Invoke-LoggedCommand -FilePath $powerShellPath -Arguments @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "tests/e2e-windows/Test-WindowsE2E.ps1")
+if ($windowsE2e.ExitCode -eq 0) {
+    Write-Ok "Windows end-to-end suite code"
+} else {
+    if ($windowsE2e.Output) { Write-Host $windowsE2e.Output }
+    Write-Fail "Windows end-to-end suite code"
+}
+
 # The HEAD commit message is what gets squashed onto main, and GitHub reads a
 # closing verb next to an issue reference as an instruction - without reading
 # negation, and without caring that you are quoting. Three issues were closed

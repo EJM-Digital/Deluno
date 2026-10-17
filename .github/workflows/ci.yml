@@ -15,6 +15,7 @@
 #   image paths                 docker (the Dockerfile, compose, the migrations, the README examples, or this file)
 #   untagged version or manual  windows-installer: the Windows installer of this commit, for the golden path; a push
 #                               builds it while Directory.Build.props carries a version that has no tag yet
+#   same as windows-installer  e2e-windows: the Windows-only end-to-end legs (install and the tray, the picker under the GitHub limit, the update), on windows-latest from that installer
 #   manual run, or a push whose version is untagged   e2e-linux: the end-to-end groups on Docker Compose (docs/exec-plans/active/PLAN-E2E-IN-CI.md)
 #
 # Work lands on main directly (James, 22 Sep 2026: one person works on Deluno, so no feature branches), which makes
@@ -762,6 +763,94 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # The Windows-only behaviour on a fresh `windows-latest` machine per leg (docs/exec-plans/active/PLAN-E2E-IN-CI.md, step 3): the
+  # installer the windows-installer job built in this same run, with the component picker and the tray read through UI Automation;
+  # the picker with GitHub's allowance used up; and the update from the previous release's installer (a GitHub Release asset) over a
+  # running copy. The checks are the golden-path scenario suite's own, run directly on the runner (tests/e2e-windows). Each leg needs a
+  # clean machine, so each is a job of its own. Due exactly when windows-installer is, and judged by ci-passed.
+  e2e-windows:
+    name: Windows end-to-end (${{ matrix.leg }})
+    needs: [changes, windows-installer]
+    if: ${{ needs.changes.outputs.run_windows_installer == 'true' }}
+    runs-on: windows-latest
+    # Windows minutes bill at twice the rate. The picker installs five download clients and Weir (up to 40 minutes on the VM; most of it download time).
+    timeout-minutes: 75
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: [install, githubpicker, update]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The version the commit carries (Directory.Build.props): what the installer was built as.
+      - name: Read the version
+        id: version
+        shell: pwsh
+        run: |
+          $props = Get-Content Directory.Build.props -Raw
+          $version = [regex]::Match($props, '<Version>\s*([^<\s]+)\s*</Version>').Groups[1].Value
+          if (-not $version) { Write-Error "No <Version> in Directory.Build.props."; exit 1 }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Download the installer this run built
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: deluno-windows-${{ github.sha }}
+          path: artifacts/installer
+
+      # The newest published release that is not this version: its installer is what the update leg installs first.
+      - name: Download the previous release's installer
+        if: ${{ matrix.leg == 'update' }}
+        id: previous
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $releases = gh release list --repo $env:GITHUB_REPOSITORY --limit 30 --json tagName,isDraft | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { Write-Error "Could not list the releases."; exit 1 }
+          $previous = $releases | Where-Object { -not $_.isDraft -and $_.tagName -ne "v$($env:VERSION)" } | Select-Object -First 1
+          if (-not $previous) { Write-Error "There is no previous release to update from."; exit 1 }
+          gh release download $previous.tagName --repo $env:GITHUB_REPOSITORY --pattern '*Setup*.exe' --dir artifacts/previous
+          if ($LASTEXITCODE -ne 0) { Write-Error "Could not download the installer of $($previous.tagName)."; exit 1 }
+          "version=$($previous.tagName -replace '^v', '')" >> $env:GITHUB_OUTPUT
+
+      # Windows PowerShell 5.1, the edition the golden-path code is written for. The runner is signed in to a desktop, so Setup, the
+      # picker driver and the tray readings run in its own session. No token is passed: GitHub's anonymous allowance is part of what
+      # the githubpicker leg tests.
+      - name: Run the ${{ matrix.leg }} leg
+        shell: powershell
+        env:
+          LEG: ${{ matrix.leg }}
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT: ${{ github.sha }}
+          PREVIOUS_VERSION: ${{ steps.previous.outputs.version }}
+        run: |
+          $leg = @{ Leg = $env:LEG; Candidate = 'artifacts/installer'; CandidateVersion = $env:VERSION; Commit = $env:COMMIT }
+          if ($env:LEG -eq 'update') { $leg.Previous = 'artifacts/previous'; $leg.PreviousVersion = $env:PREVIOUS_VERSION }
+          & ./tests/e2e-windows/Run-WindowsE2E.ps1 @leg
+          exit $LASTEXITCODE
+
+      - name: Keep Deluno's and Weir's logs
+        if: ${{ always() }}
+        shell: powershell
+        run: |
+          if (Test-Path C:\e2e-windows) { & ./scripts/golden-path/suite/vm/Collect-Logs.ps1 -Root C:\e2e-windows }
+          exit 0
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ always() }}
+        with:
+          name: e2e-windows-${{ matrix.leg }}
+          path: |
+            C:\e2e-windows\results\
+            C:\e2e-windows\logs\
+            C:\e2e-windows\collect.zip
+          if-no-files-found: ignore
+          retention-days: 14
+
   # Coverage of the Node code (the scripts and the metadata gateway), by node --test's own v8 coverage.
   coverage-node:
     name: Node coverage
@@ -931,7 +1020,7 @@ jobs:
 
   # The verdict. `always()` so it reports even when a job it needs failed or was skipped.
   ci-passed:
-    needs: [changes, repo-checks, backend, web-dist, web, e2e-smoke, docker, windows-installer, e2e-linux, coverage-node, coverage, mutation]
+    needs: [changes, repo-checks, backend, web-dist, web, e2e-smoke, docker, windows-installer, e2e-windows, e2e-linux, coverage-node, coverage, mutation]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
