@@ -227,7 +227,6 @@ Still missing, and why:
 - plex, jellyfin, emby, seerr, utorrent, rtorrent: not asked for in this run; their lines above are unchanged.
 
 ## Found while closing the search-and-grab and connections coverage rows (#1287, #1290)
-
 - sabnzbd: the reply to `mode=addurl` when SABnzbd refuses the add (`{"status": false, "error": "..."}`), for a link it cannot take. Only the accepted add (`queued`) and the wrong-key reply (`api-key-refused`) are recorded. The row "SABnzbd answers the add with an error / status false" waits for it.
 - nzbhydra2 (or any Newznab indexer): a search that returns releases. All four recorded searches (9.1.1) answer an empty feed, because every Usenet indexer needs an account. Without one the automatic search of a film or an episode cannot be shown reaching SABnzbd and NZBGet, only the three torrent clients (Jackett's recorded feeds), so the row "Automatic search ... sends to each real client" stays a gap.
 - qbittorrent 5.2.x: the reply to a sign-in with an API key as a bearer token, on `GET /api/v2/torrents/info` (only the refused key, `api-key-refused`, is recorded).
@@ -235,3 +234,5 @@ Still missing, and why:
 - plex and emby (any version): the identity, library list, refresh and watch-state replies. Only Jellyfin 12.2.0 is recorded.
 - utorrent and rtorrent (any version): the token handshake, a torrent list and an add. Neither is installed on the golden VM, so their rows (connected, Test connection healthy, a release sent) stay gaps, and the allow-list keeps the uTorrent and rTorrent parts of the download-client tests as hand-built.
 - subtitle providers (OpenSubtitles, Addic7ed, Ktuvit, Titlovi, Assrt, SuperSubtitles): a search and a download reply from each. The provider tests build the shapes from the providers' documentation, not from a recording.
+## uTorrent and rTorrent scenarios (#1288)
+- utorrent and rtorrent: the queue-area rows for delete against delete-with-data on uTorrent and rTorrent (rTorrent's d.erase, its own path delete and the second removal), and the scenario families film, resend, remove-copy, try-again, stuck (0 bytes, short, peers) and vanish for the two clients, need their real replies. Neither is installed on the golden VM, so nothing is recorded (see tests/recorded-reply-allow-list.json). Record the same calls as listed there, then move the pending tests onto them.

@@ -150,6 +150,12 @@ public static class DelunoApplicationEndpointMapping
             writeEndpoints.MapDelunoRealtimePushTestEndpoints();
         }
 
+        // Same guard: lets a browser test start Transfers from a download Deluno sent and the hand-off that went with it.
+        if (configuration.GetValue<bool>("Testing:EnableTransfersSeedEndpoint"))
+        {
+            writeEndpoints.MapDelunoTransfersSeedTestEndpoints();
+        }
+
         return endpoints;
     }
 }

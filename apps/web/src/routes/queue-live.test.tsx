@@ -149,3 +149,31 @@ describe("the Transfers screen is live", () => {
     await waitFor(() => expect(document.body.textContent).toContain("0/1"));
   });
 });
+
+describe("Transfers after a reconnect that replays what it missed", () => {
+  it("applies the replayed events in the order the server sent them, so the last word wins, and shows each change once", async () => {
+    lists["/api/download-clients/telemetry"] = overview();
+    lists["/api/settings"] = emptyPlatformSettingsSnapshot;
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter><QueuePage /></MemoryRouter>
+      </QueryClientProvider>
+    );
+    expect((await screen.findAllByText(/^61%/)).length).toBeGreaterThan(0);
+
+    // The connection dropped; on return the hub replays what was missed, oldest first, through the same listeners a live push uses.
+    send("DownloadProgress", { id: "q1", title: "Photographer (2026)", progress: 70, speedMbps: 4.1, eta: null, status: "downloading" });
+    send("DownloadProgress", { id: "q1", title: "Photographer (2026)", progress: 85, speedMbps: 2.2, eta: null, status: "downloading" });
+    send("DownloadProgress", { id: "q1", title: "Photographer (2026)", progress: 97, speedMbps: 0.4, eta: null, status: "downloading" });
+
+    await waitFor(() => expect(screen.getAllByText(/^97%/).length).toBeGreaterThan(0));
+    // Nothing older is left on screen from the replay, and the number is not drawn twice for one download.
+    expect(screen.queryByText(/^70%/)).toBeNull();
+    expect(screen.queryByText(/^85%/)).toBeNull();
+    expect(document.body.textContent).toContain("0.4 MB/s");
+
+    // A replayed removal ends it, whatever came before.
+    send("QueueItemRemoved", { id: "q1" });
+    await waitFor(() => expect(screen.queryByText(/^97%/)).toBeNull());
+  });
+});

@@ -804,6 +804,151 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
     }
 
     /// <summary>
+    /// "It's bad" on each client that was recorded: the real adapter is sent the remove call that takes the files, the release is
+    /// refused from every indexer in the real blocklist, and one new search is queued. The claim holds the same on all five.
+    /// </summary>
+    [Theory]
+    [InlineData("qbittorrent", "deleteFiles=true")]
+    [InlineData("deluge", "queue-item-1\",true")]
+    [InlineData("transmission", "\"delete-local-data\":true")]
+    [InlineData("nzbget", "GroupFinalDelete")]
+    [InlineData("sabnzbd", "del_files=1")]
+    public async Task Its_bad_on_each_recorded_client_takes_the_files_blocklists_the_release_everywhere_and_searches_again(string protocol, string takesFiles)
+    {
+        // The call each client was recorded taking for a removal that takes the files exists, so the markers above are real ones.
+        Assert.NotEmpty(protocol switch
+        {
+            "qbittorrent" => RecordedReplies.Qbittorrent("removed-with-data").Exchanges,
+            "deluge" => RecordedReplies.Deluge("removed-with-data").Exchanges,
+            "transmission" => RecordedReplies.Transmission("removed-with-data").Exchanges,
+            "nzbget" => RecordedReplies.Nzbget("removed-with-data").Exchanges,
+            _ => RecordedReplies.Sabnzbd("removed-with-data").Exchanges
+        });
+        var (world, traffic) = await World.CreateWithRealClientAsync(protocol);
+        using var _ = world;
+
+        var result = await world.RemoveAsync(QueueRemovalReasons.Failed);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.True(result.Blocklisted);
+        Assert.True(result.SearchStarted);
+        Assert.Contains(takesFiles, System.Text.RegularExpressions.Regex.Replace(string.Join(" ", traffic.Requests), @"\s", string.Empty), StringComparison.Ordinal);
+        var refused = Assert.Single(await world.Blocklist.ListAsync(CancellationToken.None));
+        Assert.True(refused.EveryIndexer);
+        Assert.Equal(BlockedReleaseOrigins.Manual, refused.Origin);
+        Assert.Equal("1", OnDisk(world, "jobs.db", $"SELECT COUNT(*) FROM blocked_releases WHERE release_name = '{Release}'"));
+        Assert.Equal("1", OnDisk(world, "jobs.db", "SELECT COUNT(*) FROM job_queue"));
+    }
+
+    /// <summary>
+    /// The verbs the screens and the public API send (pause, resume, recheck, the three removals, the four queue moves and
+    /// force-start) each get through the gateway to the client as that verb, for a download Deluno recorded sending, and leave
+    /// Deluno's own record of the send where it was on disk.
+    /// </summary>
+    [Theory]
+    [InlineData(DownloadClientActions.Pause)]
+    [InlineData(DownloadClientActions.Resume)]
+    [InlineData(DownloadClientActions.Recheck)]
+    [InlineData(DownloadClientActions.Delete)]
+    [InlineData(DownloadClientActions.DeleteWithData)]
+    [InlineData(DownloadClientActions.RemoveRefusedCopy)]
+    [InlineData(DownloadClientActions.MoveToTop)]
+    [InlineData(DownloadClientActions.MoveUp)]
+    [InlineData(DownloadClientActions.MoveDown)]
+    [InlineData(DownloadClientActions.MoveToBottom)]
+    [InlineData(DownloadClientActions.ForceStart)]
+    public async Task Every_verb_the_clients_implement_reaches_the_client_as_that_verb_for_a_download_Deluno_sent(string verb)
+    {
+        using var world = await World.CreateAsync("qbittorrent");
+
+        var result = await world.ActAsync(world.ItemId, verb);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(verb, world.Client.LastAction);
+        Assert.Equal(world.ItemId, world.Client.LastQueueItemId);
+        Assert.Equal("1", OnDisk(world, "jobs.db", "SELECT COUNT(*) FROM download_dispatches"));
+    }
+
+    [Theory]
+    [InlineData("obliterate")]
+    [InlineData("empty")]
+    [InlineData("delete-everything")]
+    [InlineData("")]
+    public async Task An_action_Deluno_does_not_recognise_is_refused_and_neither_the_client_nor_Delunos_record_is_touched(string action)
+    {
+        using var world = await World.CreateAsync("qbittorrent");
+
+        var result = await world.ActAsync(world.ItemId, action);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("Unsupported action.", result.Message);
+        Assert.Null(world.Client.LastAction);
+        Assert.Equal("1", OnDisk(world, "jobs.db", "SELECT COUNT(*) FROM download_dispatches"));
+        Assert.Equal("0", OnDisk(world, "jobs.db", "SELECT COUNT(*) FROM activity_events WHERE category = 'download.queue.removed'"));
+    }
+
+    /// <summary>
+    /// Delete leaves the files and delete-with-data takes them, and no client treats them as one request. The part of the call
+    /// that decides the files is the one each client was recorded taking (qBittorrent, Deluge, Transmission, SABnzbd, NZBGet:
+    /// removed-with-data and removed-without-data), and Deluno's two requests differ in exactly that part.
+    /// </summary>
+    [Theory]
+    [InlineData("qbittorrent", "deleteFiles=false", "deleteFiles=true")]
+    [InlineData("deluge", "queue-item-1\",false", "queue-item-1\",true")]
+    [InlineData("transmission", "\"delete-local-data\":false", "\"delete-local-data\":true")]
+    [InlineData("nzbget", "\"GroupDelete\"", "\"GroupFinalDelete\"")]
+    [InlineData("sabnzbd", "name=delete&value=", "del_files=1")]
+    public async Task Delete_and_delete_with_data_are_two_different_requests_on_each_recorded_client(string protocol, string keepsFiles, string takesFiles)
+    {
+        string Recorded(string state) => protocol switch
+        {
+            "qbittorrent" => RecordedReplies.Qbittorrent(state).Find("torrents/delete").Request.Path + RecordedReplies.Qbittorrent(state).Find("torrents/delete").Request.Body,
+            "deluge" => RecordedReplies.Deluge(state).Find("core.remove_torrent").Request.Body ?? string.Empty,
+            "transmission" => RecordedReplies.Transmission(state).Find("torrent-remove").Request.Body ?? string.Empty,
+            "nzbget" => RecordedReplies.Nzbget(state).Find("editqueue").Request.Body ?? string.Empty,
+            _ => RecordedReplies.Sabnzbd(state).Find("name=delete").Request.Path
+        };
+        // What the real client was recorded taking: the with-data call carries the part that takes the files, the other does not.
+        var recordedMarker = protocol switch
+        {
+            "qbittorrent" => "deleteFiles=true",
+            "deluge" => ",true",
+            "transmission" => "\"delete-local-data\":true",
+            "nzbget" => "FinalDelete",
+            _ => "del_files=1"
+        };
+        var recordedKeeps = System.Text.RegularExpressions.Regex.Replace(Recorded("removed-without-data"), @"\s", string.Empty);
+        var recordedTakes = System.Text.RegularExpressions.Regex.Replace(Recorded("removed-with-data"), @"\s", string.Empty);
+        // NZBGet's two recordings were made by the recording script on a queue item and on a history item, so their names differ by
+        // where the download sat, not by what was asked of the files; the others differ by the flag alone.
+        if (protocol != "nzbget")
+        {
+            Assert.DoesNotContain(recordedMarker, recordedKeeps, StringComparison.Ordinal);
+            Assert.Contains(recordedMarker, recordedTakes, StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.NotEmpty(recordedKeeps);
+            Assert.NotEmpty(recordedTakes);
+        }
+
+        var (keeping, keepTraffic) = await World.CreateWithRealClientAsync(protocol);
+        using var _keeping = keeping;
+        var (taking, takeTraffic) = await World.CreateWithRealClientAsync(protocol);
+        using var _taking = taking;
+
+        Assert.True((await keeping.ActAsync(keeping.ItemId, DownloadClientActions.Delete)).Succeeded);
+        Assert.True((await taking.ActAsync(taking.ItemId, DownloadClientActions.DeleteWithData)).Succeeded);
+
+        var kept = System.Text.RegularExpressions.Regex.Replace(string.Join(" ", keepTraffic.Requests), @"\s", string.Empty);
+        var taken = System.Text.RegularExpressions.Regex.Replace(string.Join(" ", takeTraffic.Requests), @"\s", string.Empty);
+        Assert.NotEqual(kept, taken);
+        Assert.Contains(System.Text.RegularExpressions.Regex.Replace(keepsFiles, @"\s", string.Empty), kept, StringComparison.Ordinal);
+        Assert.DoesNotContain(System.Text.RegularExpressions.Regex.Replace(takesFiles, @"\s", string.Empty), kept, StringComparison.Ordinal);
+        Assert.Contains(System.Text.RegularExpressions.Regex.Replace(takesFiles, @"\s", string.Empty), taken, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// #1241: the old "forget" verb meant removal with data on a torrent client, so it is no longer a verb
     /// the gateway passes on. A caller that still sends it is refused and the client is not touched.
     /// </summary>

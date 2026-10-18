@@ -1,10 +1,14 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Deluno.Connections.Contracts;
+using Deluno.Connections.Data;
+using Deluno.Integrations.DownloadClients;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Persistence.Tests.Support;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Deluno.Persistence.Tests.Api;
 
@@ -98,18 +102,79 @@ public sealed class HeldReleasesOverHttpTests
         Assert.Single((await app.Client.GetFromJsonAsync<JsonElement>("/api/attention/held-releases")).EnumerateArray());
     }
 
+    [Fact]
+    public async Task Approving_a_held_release_that_the_title_still_needs_judges_it_again_sends_it_exactly_once_and_answers_the_row()
+    {
+        var grabs = new CountingGrabService();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services =>
+        {
+            services.RemoveAll<IDownloadClientGrabService>();
+            services.AddSingleton<IDownloadClientGrabService>(grabs);
+        });
+        var libraryId = await LibraryWithAClientAsync(app);
+        var id = await HeldMovieAsync(app, "Big Buck Bunny", "held", libraryId);
+        var historyId = await HistoryIdAsync(app);
+
+        using var response = await app.Client.PostAsync($"/api/attention/held-releases/{historyId}/approve", content: null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Big.Buck.Bunny.2008.2160p.WEB-DL-GRP", body.GetProperty("releaseName").GetString());
+        Assert.Equal(1, grabs.Count);
+        Assert.Equal("https://indexer.example/get/1", grabs.LastUrl);
+        // The row is answered: it is no longer listed, and the send is on record against this film.
+        Assert.Empty((await app.Client.GetFromJsonAsync<JsonElement>("/api/attention/held-releases")).EnumerateArray());
+        var dispatches = await app.Client.GetStringAsync("/api/download-dispatches");
+        Assert.Contains("Big.Buck.Bunny.2008.2160p.WEB-DL-GRP", dispatches);
+        Assert.Contains(id, dispatches);
+        // And it says why it went out: a person approved it.
+        Assert.Contains("You approved this release from Needs action.", await app.Client.GetStringAsync("/api/activity"), StringComparison.Ordinal);
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private static async Task<string> HistoryIdAsync(ApplicationTestHost app)
         => Assert.Single((await app.Client.GetFromJsonAsync<JsonElement>("/api/attention/held-releases")).EnumerateArray()).GetProperty("historyId").GetString()!;
 
-    private static async Task<string> HeldMovieAsync(ApplicationTestHost app, string title, string outcome)
+    private static async Task<string> LibraryWithAClientAsync(ApplicationTestHost app)
+    {
+        var root = Directory.CreateDirectory(Path.Combine(app.DataRoot, "Films")).FullName;
+        var library = await app.Client.PostAsJsonAsync("/api/libraries", new { name = "Films", mediaType = "movies", rootPath = root });
+        Assert.True(library.IsSuccessStatusCode, await library.Content.ReadAsStringAsync());
+        var libraryId = (await library.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        var client = await app.Services.GetRequiredService<IConnectionsRepository>().CreateDownloadClientAsync(
+            new CreateDownloadClientRequest("Fake", "qbittorrent", "localhost", 1234, null, null, null, "movies", "tv", null, 1, true),
+            CancellationToken.None);
+        var routed = await app.Client.PutAsJsonAsync($"/api/libraries/{libraryId}/routing", new
+        {
+            sources = Array.Empty<object>(),
+            downloadClients = new[] { new { downloadClientId = client.Id, priority = 1, category = (string?)null } }
+        });
+        Assert.True(routed.IsSuccessStatusCode, await routed.Content.ReadAsStringAsync());
+        return libraryId;
+    }
+
+    private sealed class CountingGrabService : IDownloadClientGrabService
+    {
+        public int Count { get; private set; }
+
+        public string? LastUrl { get; private set; }
+
+        public Task<DownloadClientGrabResult> GrabAsync(string clientId, DownloadClientGrabRequest request, CancellationToken cancellationToken)
+        {
+            Count++;
+            LastUrl = request.DownloadUrl;
+            return Task.FromResult(new DownloadClientGrabResult(clientId, request.ReleaseName, true, "sent", "Sent to the fake client.") { ExternalId = "fake-hash" });
+        }
+    }
+
+    private static async Task<string> HeldMovieAsync(ApplicationTestHost app, string title, string outcome, string library = "lib")
     {
         var movies = app.Services.GetRequiredService<IMovieCatalogRepository>();
         var added = await movies.AddAsync(new CreateMovieRequest(title, 2008, null), CancellationToken.None);
-        await movies.EnsureWantedStateAsync(added.Id, "lib", "missing", "Wanted", hasFile: false, null, "WEB 1080p", false, CancellationToken.None);
+        await movies.EnsureWantedStateAsync(added.Id, library, "missing", "Wanted", hasFile: false, null, "WEB 1080p", false, CancellationToken.None);
         await movies.RecordSearchAttemptAsync(
-            added.Id, "lib", "automatic", outcome, DateTimeOffset.UtcNow.AddHours(-1), null, "Held.",
+            added.Id, library, "automatic", outcome, DateTimeOffset.UtcNow.AddHours(-1), null, "Held.",
             "Big.Buck.Bunny.2008.2160p.WEB-DL-GRP", "Nyaa", HeldPlan, CancellationToken.None);
         return added.Id;
     }

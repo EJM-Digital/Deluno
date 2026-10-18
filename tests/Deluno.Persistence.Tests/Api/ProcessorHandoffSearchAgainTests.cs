@@ -3,6 +3,7 @@ using Deluno.Jobs.Data;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Tests.Recorded;
 using Microsoft.Extensions.DependencyInjection;
 using System.Net;
 using System.Net.Http.Json;
@@ -81,6 +82,55 @@ public sealed class ProcessorHandoffSearchAgainTests
 
         var jobs = await JobQueueRepository(app).ListAsync(200, CancellationToken.None);
         Assert.Contains(jobs, job => job.JobType == LibrarySearchJobTypes.For("tv") && job.PayloadJson!.Contains("\"targetEntityId\":\"series-1\""));
+    }
+
+    /// <summary>
+    /// The same give-up against a real qBittorrent 5.2.1 (tests/fixtures/recorded) on a loopback port, with the real removal and no
+    /// stand-in for it: the torrent is taken out of the client with its files (the recorded delete call with deleteFiles=true, for
+    /// the hash Deluno recorded sending), the release is blocklisted, and one search for the title is queued.
+    /// </summary>
+    [Fact]
+    public async Task Giving_up_on_a_download_in_a_recorded_qbittorrent_removes_it_with_its_files_blocklists_it_and_searches_now()
+    {
+        const string hash = "69ca35bca234b9cb822abc435ddbababf6147591";
+        const string release = "Pioneer.One.S01E01.1080p.WEB-DL.DDP5.1.H.264-DELUNO";
+        await using var qbit = await RecordedAppServer.StartAsync(
+            "qbittorrent",
+            new[] { "sign-in", "version", "removed-with-data" }.Select(RecordedReplies.Qbittorrent),
+            RecordedAppServer.InOrder("torrents/info", RecordedReplies.Qbittorrent("downloading").Exchanges[0], RecordedReplies.Qbittorrent("removed-with-data").Exchanges[1]));
+        await using var app = await ApplicationTestHost.StartAsync();
+        var created = await app.Client.PostAsJsonAsync("/api/download-clients", new
+        {
+            protocol = "qbittorrent", host = qbit.Host, port = qbit.Port, username = "deluno", password = "a-test-password",
+            moviesCategory = "movies", tvCategory = "tv", priority = 10, isEnabled = true
+        });
+        Assert.True(created.IsSuccessStatusCode, await created.Content.ReadAsStringAsync());
+        var client = await created.Content.ReadFromJsonAsync<JsonElement>();
+        var clientId = client.GetProperty("id").GetString()!;
+        var dispatchId = await JobQueueRepository(app).RecordDownloadDispatchAsync(
+            "library-1", "tv", "series", "series-1", release, "Indexer", clientId, client.GetProperty("name").GetString()!, "queued", null,
+            cancellationToken: CancellationToken.None);
+        await DispatchesRepository(app).RecordGrabAsync(dispatchId, "succeeded", 200, null, null, null, CancellationToken.None, externalId: hash);
+        var handoff = await ProcessorRepository(app).EnsureProcessorHandoffAsync(
+            new CreateProcessorHandoffRequest("library-1", "tv", clientId, hash, release, @"C:Downloads-CompleteTV\" + release, "Weir"),
+            CancellationToken.None);
+        await ProcessorRepository(app).UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Failed, null, null, "Weir could not read the file.", CancellationToken.None);
+
+        var response = await app.Client.PostAsJsonAsync($"/api/integrations/processors/handoffs/{handoff.Id}/search-again", new { });
+
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Contains("Removed it from the download client with its files", body.RootElement.GetProperty("message").GetString());
+        var delete = Assert.Single(qbit.Requests, request => request.Method == "POST" && request.PathAndQuery.EndsWith("torrents/delete", StringComparison.Ordinal));
+        Assert.Contains(hash, delete.Body, StringComparison.Ordinal);
+        Assert.Contains("deleteFiles=true", delete.Body, StringComparison.Ordinal);
+        Assert.Empty(qbit.Unanswered);
+
+        var blocked = await app.Client.GetFromJsonAsync<JsonElement>("/api/blocked-releases");
+        Assert.Contains(blocked.EnumerateArray(), item => item.GetProperty("releaseName").GetString() == release);
+        var jobs = await JobQueueRepository(app).ListAsync(200, CancellationToken.None);
+        Assert.Contains(jobs, job => job.JobType == LibrarySearchJobTypes.For("tv") && job.PayloadJson!.Contains("\"targetEntityId\":\"series-1\""));
+        Assert.Equal(ProcessorHandoffStatuses.Dismissed, (await ProcessorRepository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))!.Status);
     }
 
     /// <summary>A client that cannot be reached must not stop the release being blocklisted and searched for; the screen says why the removal waits.</summary>
