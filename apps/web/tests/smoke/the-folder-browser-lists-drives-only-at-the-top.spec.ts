@@ -10,6 +10,7 @@ import { authenticateAndNavigate } from "../helpers/auth-helper";
 test.skip(({ isMobile }) => isMobile, "The folder browser is the same on a phone.");
 
 test("inside a folder the browser lists only that folder's folders, never a drive", async ({ page }) => {
+  test.setTimeout(90_000);
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "deluno-folder-browser-"));
   fs.mkdirSync(path.join(root, "Movies"));
   fs.mkdirSync(path.join(root, "TV", "Shows"), { recursive: true });
@@ -40,7 +41,8 @@ test("inside a folder the browser lists only that folder's folders, never a driv
 
     // The list of drives, one click away, is where drives are.
     await browser.getByRole("button", { name: "Roots", exact: true }).click();
-    await expect(browser.getByText(/Local drive|Filesystem root/).first()).toBeVisible();
+    // Asking the machine for its drives can take long when a mapped network drive is asleep: wait for the list itself.
+    await expect(browser.getByText(/Local drive|Filesystem root/).first()).toBeVisible({ timeout: 60_000 });
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
