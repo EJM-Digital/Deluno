@@ -1034,10 +1034,11 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
                 {
                     return new HttpResponseMessage(HttpStatusCode.OK)
                     {
+                        // rTorrent 0.16.25's own d.name replies: the name of a held download, and the fault for one it no longer holds.
                         Content = new StringContent(
                             held
-                                ? "<?xml version=\"1.0\"?><methodResponse><params><param><value><string>Some.Movie</string></value></param></params></methodResponse>"
-                                : "<?xml version=\"1.0\"?><methodResponse><fault><value><struct><member><name>faultCode</name><value><i4>-501</i4></value></member><member><name>faultString</name><value><string>Could not find info-hash.</string></value></member></struct></value></fault></methodResponse>",
+                                ? RecordedReplies.Rtorrent("downloading").Exchanges[2].Reply.Body!
+                                : RecordedReplies.Rtorrent("removed-twice").Exchanges[1].Reply.Body!,
                             Encoding.UTF8, "text/xml")
                     };
                 }
@@ -1061,9 +1062,8 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
             {
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
-                    Content = new StringContent(
-                        "<?xml version=\"1.0\"?><methodResponse><params><param><value><i4>0</i4></value></param></params></methodResponse>",
-                        Encoding.UTF8, "text/xml")
+                    // rTorrent 0.16.25's own answer to d.erase, d.pause and the rest: 0.
+                    Content = new StringContent(RecordedReplies.Rtorrent("removed-without-data").Exchanges[0].Reply.Body!, Encoding.UTF8, "text/xml")
                 };
             }
 
