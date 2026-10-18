@@ -3,6 +3,7 @@ using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Jobs.Data;
 using Deluno.Jobs.Migrations;
 using Deluno.Persistence.Tests.Support;
+using Deluno.Tests.Recorded;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Deluno.Persistence.Tests.Jobs;
@@ -96,6 +97,29 @@ public sealed class TheBlocklistTests
         Assert.Contains(BlockedReleaseKeys.ForHash("ABCDEF0123456789ABCDEF0123456789ABCDEF01"), keys);
         // Case and surrounding space fall out the same way the name key's do.
         Assert.Contains(BlockedReleaseKeys.ForHash("  abcdef0123456789abcdef0123456789abcdef01  "), keys);
+    }
+
+    /// <summary>
+    /// The identity a real client gives a download is what a block is keyed on: qBittorrent 5.2.1's own torrent list (tests/fixtures/recorded)
+    /// names the torrent and its hash, and a release blocked with exactly those is skipped whichever indexer it is offered by, by hash and
+    /// by the name the client knows it under.
+    /// </summary>
+    [Fact]
+    public async Task A_release_blocked_with_the_hash_and_name_a_real_client_listed_is_skipped_from_any_indexer()
+    {
+        var torrent = RecordedReplies.Qbittorrent("downloading").Find("torrents/info").Reply.Json().AsArray()[0]!;
+        var hash = (string)torrent["hash"]!;
+        var name = (string)torrent["name"]!;
+        using var storage = await StorageAsync();
+        var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, Clock);
+
+        await blocklist.BlockAsync(Release(name, "Nebula", "likelySample") with { TorrentHashOrItemId = hash }, CancellationToken.None);
+
+        var keys = await blocklist.ListKeysAsync(CancellationToken.None);
+        Assert.Contains(BlockedReleaseKeys.ForHash(hash), keys);
+        Assert.Contains(BlockedReleaseKeys.ForHash(hash.ToUpperInvariant()), keys);
+        Assert.Contains(BlockedReleaseKeys.For(name, "Nebula"), keys);
+        Assert.Single(await blocklist.ListAsync(CancellationToken.None));
     }
 
     /// <summary>

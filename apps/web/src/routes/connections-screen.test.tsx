@@ -471,3 +471,40 @@ describe("indexer save payload name", () => {
     expect(buildIndexerSavePayload({ ...blank, name: "My tracker" }, blank, false)).not.toHaveProperty("keepName");
   });
 });
+
+// #288, #739: the sharing question is written only when it was answered differently, strict is the canned 336 h / ratio 1 / stuck after
+// 14 days, custom is the typed numbers, and "use the site's own rule" clears it.
+describe("indexer save payload sharing choice (#288, #739)", () => {
+  const base = { ...emptyIndexerForm(), name: "PrivateHD", baseUrl: "https://tracker.example.test" };
+
+  it("writes the strict rule as 336 hours, a ratio of 1 and stuck after 14 days when strict was newly chosen", () => {
+    const payload = buildIndexerSavePayload({ ...base, sharingRule: "strict" }, base, true);
+
+    expect(payload).toMatchObject({ sharingMode: "share-then-tidy", sharingForHours: 336, sharingUntilRatio: 1, sharingStuckAction: "keep-waiting", sharingStuckAfterDays: 14, clearSharingPolicy: false });
+  });
+
+  it("writes the typed numbers of a custom rule, and a blank number as none", () => {
+    const typed = buildIndexerSavePayload({ ...base, sharingRule: "custom", sharingSeedHours: "72", sharingSeedRatio: "1.5" }, base, true);
+    const blank = buildIndexerSavePayload({ ...base, sharingRule: "custom", sharingSeedHours: "", sharingSeedRatio: "" }, base, true);
+
+    expect(typed).toMatchObject({ sharingMode: "share-then-tidy", sharingForHours: 72, sharingUntilRatio: 1.5, clearSharingPolicy: false });
+    expect(blank).toMatchObject({ sharingForHours: null, sharingUntilRatio: null, clearSharingPolicy: false });
+  });
+
+  it("clears the rule when the site's own rule is chosen again", () => {
+    const payload = buildIndexerSavePayload({ ...base, sharingRule: "inherit" }, { ...base, sharingRule: "strict" }, true);
+
+    expect(payload).toMatchObject({ clearSharingPolicy: true });
+    expect(payload).not.toHaveProperty("sharingForHours");
+  });
+
+  it("writes nothing about sharing when the choice was left as it was, so a hand-tuned rule survives an unrelated edit", () => {
+    for (const rule of ["inherit", "strict", "custom"] as const) {
+      const form = { ...base, sharingRule: rule, sharingSeedHours: "72" };
+      const payload = buildIndexerSavePayload(form, form, true);
+      expect(payload).not.toHaveProperty("sharingMode");
+      expect(payload).not.toHaveProperty("sharingForHours");
+      expect(payload).not.toHaveProperty("clearSharingPolicy");
+    }
+  });
+});

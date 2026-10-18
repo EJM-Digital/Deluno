@@ -473,6 +473,46 @@ describe("an episode's drawer", () => {
     expect(toast.success).toHaveBeenCalledWith("Compared 2 releases. Choose one below.", undefined);
   });
 
+  it("a choose that finds releases for more than one episode picks no single list to show, and says how many were compared", async () => {
+    setup((url) =>
+      url === "/api/series/s1/episodes/search"
+        ? { body: { searchedEpisodes: 2, matchedCount: 0, sentCount: 0, episodes: [
+            { episodeId: "e12", seasonNumber: 1, episodeNumber: 2, title: "The Detail", comparedCount: 1, candidates: [PREFERRED] },
+            { episodeId: "e13", seasonNumber: 1, episodeNumber: 3, title: "The Buys", comparedCount: 1, candidates: [ELIGIBLE] }
+          ] } }
+        : undefined
+    );
+    await renderPage();
+    const drawer = await openDrawer();
+
+    fireEvent.click(within(drawer).getByRole("button", { name: "Choose a release for this episode" }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Compared 2 releases. Choose one below.", undefined));
+    expect(screen.queryByRole("heading", { name: /choose a release for s01e0/i })).toBeNull();
+    expect(screen.queryByText(PREFERRED.releaseName)).toBeNull();
+    expect(screen.queryByText(ELIGIBLE.releaseName)).toBeNull();
+    expect(posts("/grab")).toHaveLength(0);
+  });
+
+  it("a choose that finds nothing clears the list an earlier choose left", async () => {
+    let answers = 0;
+    setup((url) =>
+      url === "/api/series/s1/episodes/search"
+        ? { body: ++answers === 1
+            ? { searchedEpisodes: 1, matchedCount: 0, sentCount: 0, episodes: [{ episodeId: "e12", seasonNumber: 1, episodeNumber: 2, title: "The Detail", comparedCount: 1, candidates: [PREFERRED] }] }
+            : { searchedEpisodes: 1, matchedCount: 0, sentCount: 0, reason: "no_results", episodes: [{ episodeId: "e12", seasonNumber: 1, episodeNumber: 2, title: "The Detail", comparedCount: 0, candidates: [] }] } }
+        : undefined
+    );
+    await renderPage();
+    fireEvent.click(within(await openDrawer()).getByRole("button", { name: "Choose a release for this episode" }));
+    expect(await screen.findByText(PREFERRED.releaseName)).toBeInTheDocument();
+
+    fireEvent.click(within(await openDrawer()).getByRole("button", { name: "Choose a release for this episode" }));
+
+    await waitFor(() => expect(screen.queryByText(PREFERRED.releaseName)).toBeNull());
+    expect(screen.queryByRole("heading", { name: /choose a release for s01e02/i })).toBeNull();
+  });
+
   it("tells that the episode is already downloading instead of sending a second copy", async () => {
     setup((url) => (url === "/api/series/s1/episodes/search" ? { body: { searchedEpisodes: 1, sentCount: 0, alreadyDownloading: ["S01E02 is already downloading."], episodes: [] } } : undefined));
     await renderPage();

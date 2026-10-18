@@ -225,3 +225,13 @@ Still missing, and why:
 - weir `partial-season-pack` final state: with the failure policy hold, a pack with one unreadable episode was still queued 150 s after the hand-off, so only Deluno's request (`handoff-partial-season-pack`) is recorded for it, not Weir's end state.
 - qbittorrent, deluge, transmission, sabnzbd, weir: the other lines in this file that name states the Docker run did not need are unchanged.
 - plex, jellyfin, emby, seerr, utorrent, rtorrent: not asked for in this run; their lines above are unchanged.
+
+## Found while closing the search-and-grab and connections coverage rows (#1287, #1290)
+
+- sabnzbd: the reply to `mode=addurl` when SABnzbd refuses the add (`{"status": false, "error": "..."}`), for a link it cannot take. Only the accepted add (`queued`) and the wrong-key reply (`api-key-refused`) are recorded. The row "SABnzbd answers the add with an error / status false" waits for it.
+- nzbhydra2 (or any Newznab indexer): a search that returns releases. All four recorded searches (9.1.1) answer an empty feed, because every Usenet indexer needs an account. Without one the automatic search of a film or an episode cannot be shown reaching SABnzbd and NZBGet, only the three torrent clients (Jackett's recorded feeds), so the row "Automatic search ... sends to each real client" stays a gap.
+- qbittorrent 5.2.x: the reply to a sign-in with an API key as a bearer token, on `GET /api/v2/torrents/info` (only the refused key, `api-key-refused`, is recorded).
+- seerr (any version): the request listing, a request's approval webhook, and the reply to telling Seerr a title is available. Seerr is not installed on the golden VM, so the rows "an approval to download goes end to end" and "Seerr replies have recordings" wait for it.
+- plex and emby (any version): the identity, library list, refresh and watch-state replies. Only Jellyfin 12.2.0 is recorded.
+- utorrent and rtorrent (any version): the token handshake, a torrent list and an add. Neither is installed on the golden VM, so their rows (connected, Test connection healthy, a release sent) stay gaps, and the allow-list keeps the uTorrent and rTorrent parts of the download-client tests as hand-built.
+- subtitle providers (OpenSubtitles, Addic7ed, Ktuvit, Titlovi, Assrt, SuperSubtitles): a search and a download reply from each. The provider tests build the shapes from the providers' documentation, not from a recording.

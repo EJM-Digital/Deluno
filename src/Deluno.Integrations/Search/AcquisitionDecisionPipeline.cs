@@ -122,6 +122,9 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 Summary: sourceCount == 0
                     ? request.Sources.Count == 0
                         ? "No indexers are linked to this library yet."
+                        : readyConnections.LibraryTagSkips is { Count: > 0 } && readyConnections.Sources.Count == 0
+                            && request.Sources.Count == readyConnections.LibraryTagSkips.Count
+                            ? string.Join(" ", readyConnections.LibraryTagSkips)
                         : readyConnections.NoClientForAnySource
                             ? "None of this library's download clients can take what its search sources offer. Link a torrent client for torrent sources, or a Usenet client for Usenet sources, in Library Routing."
                             : "No linked search source is ready. Test a source successfully before Deluno searches or dispatches releases."
@@ -165,6 +168,11 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 episodeTitles: request.EpisodeTitles,
                 episodeTitlesBySeason: request.EpisodeTitlesBySeason,
                 patientIndexerIds: request.PatientIndexerIds);
+
+        if (sourceCount > 0 && readyConnections.LibraryTagSkips is { Count: > 0 } tagSkips)
+        {
+            searchPlan = searchPlan with { Summary = $"{searchPlan.Summary} {string.Join(" ", tagSkips)}" };
+        }
 
         var beforeBlocklist = searchPlan;
         searchPlan = await SkipBlockedReleasesAsync(searchPlan, cancellationToken);
@@ -1070,8 +1078,22 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
 
         // A source whose releases no ready client can take is not searched. Its
         // best release would otherwise win the search and have nowhere to go.
+        // The library's own choices for this indexer (#1354): "Only for titles tagged" and "Never for titles tagged".
+        var libraryTagSkips = new List<string>();
+        var indexerNames = indexers.ToDictionary(item => item.Id, item => item.Name, StringComparer.OrdinalIgnoreCase);
         var readySources = request.Sources
             .Where(source => readyIndexerIds.Contains(source.IndexerId))
+            .Where(source =>
+            {
+                var refusal = Deluno.Contracts.TagRoutingMatch.LibrarySourceRefusal(
+                    source.RequiredTags,
+                    source.ExcludedTags,
+                    request.TagNames,
+                    indexerNames.TryGetValue(source.IndexerId, out var name) ? name : source.IndexerName,
+                    string.IsNullOrWhiteSpace(request.Title) ? "this title" : request.Title);
+                if (refusal is not null) libraryTagSkips.Add(refusal);
+                return refusal is null;
+            })
             .Where(source => !indexerTags.TryGetValue(source.IndexerId, out var tags)
                 || DownloadClientTagMatch.IsEligible(tags, request.TagNames))
             .ToArray();
@@ -1085,7 +1107,8 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             readyClients,
             readyClientDetails,
             sourceKinds,
-            NoClientForAnySource: readySources.Length > 0 && usableSources.Length == 0);
+            NoClientForAnySource: readySources.Length > 0 && usableSources.Length == 0,
+            LibraryTagSkips: libraryTagSkips);
     }
 
     private static bool IsReadyDownloadClient(DownloadClientItem client)
@@ -1096,7 +1119,8 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
         IReadOnlyList<LibraryDownloadClientLinkItem> DownloadClients,
         IReadOnlyDictionary<string, DownloadClientItem> DownloadClientDetails,
         IReadOnlyDictionary<string, string> SourceKinds,
-        bool NoClientForAnySource = false)
+        bool NoClientForAnySource = false,
+        IReadOnlyList<string>? LibraryTagSkips = null)
     {
         /// <summary>
         /// The ready clients that can take a release from this source. When the

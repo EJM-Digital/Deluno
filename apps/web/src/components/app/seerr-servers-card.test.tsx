@@ -117,3 +117,25 @@ describe("a saved Seerr server", () => {
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 });
+
+describe("a link to a request server", () => {
+  it("opens that server's drawer when the page was reached through its link, and tells the page the link was used", () => {
+    const opened = vi.fn();
+    render(
+      <MemoryRouter><SeerrServersCard openId="z2" onOpened={opened} servers={[server(), server({ id: "z2", name: "Seerr on attic" })] as never} cleanups={[]} libraries={[]} qualityProfiles={[]} onChanged={onChanged} /></MemoryRouter>
+    );
+
+    expect(screen.getByRole("dialog", { name: "Seerr on attic" })).toBeInTheDocument();
+    expect(opened).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens nothing for a link to a server that is not there", () => {
+    const opened = vi.fn();
+    render(
+      <MemoryRouter><SeerrServersCard openId="gone" onOpened={opened} servers={[server()] as never} cleanups={[]} libraries={[]} qualityProfiles={[]} onChanged={onChanged} /></MemoryRouter>
+    );
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(opened).not.toHaveBeenCalled();
+  });
+});

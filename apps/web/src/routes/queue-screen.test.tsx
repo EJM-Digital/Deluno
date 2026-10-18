@@ -1006,6 +1006,18 @@ describe("download drawer: availability, last activity and completion (#970)", (
     expect(screen.queryByText("Place in queue")).not.toBeInTheDocument();
     expect(screen.queryByText("Seed limit")).not.toBeInTheDocument();
   });
+
+  // #925: the same Block this release the search results, the title pages and Activity carry sits in a download's own drawer, matched to it
+  // by the client's id for the download, so it opens straight into "Stop it, delete it and find another" for this very download.
+  it("offers Block this release in a download's own drawer, named for that release", async () => {
+    authedFetchMock.mockResolvedValue({ ok: true, json: async () => ({ items: [] }) });
+    openDrawerWith(queueItem({ title: "Example Movie" }));
+
+    const block = await screen.findByRole("button", { name: 'Block "Example Movie"' });
+    expect(block).toHaveTextContent("Block this release");
+    expect(screen.getAllByRole("button", { name: 'Block "Example Movie"' })).toHaveLength(1);
+    authedFetchMock.mockReset();
+  });
 });
 
 /** #1115: the history lives on Activity; Transfers keeps only a way there. */
