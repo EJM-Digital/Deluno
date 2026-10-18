@@ -28,6 +28,12 @@ function Initialize-DelunoWithWeir {
     Write-SuiteLog ("   connect weir: {0}" -f $weir.Data.message)
 }
 
+# Deluno's own record of the Weir connection (the golden path's scenarios/Common.ps1 has the same helper, which this suite does not load).
+function Get-WeirAnswering {
+    $conns = @(Invoke-Deluno -Path '/api/integrations/processors/connections')
+    $conns | Where-Object { $_.name -match 'weir' } | Select-Object -First 1
+}
+
 # What the tray and Deluno's own record say about Weir right now.
 function Read-TrayWeirSignals {
     try { Set-TrayIconsPromoted } catch { }

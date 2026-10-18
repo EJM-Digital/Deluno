@@ -43,6 +43,20 @@ foreach ($fn in 'Invoke-LegInstall', 'Invoke-LegGithubPicker', 'Invoke-LegUpdate
 }
 Check 'Start-WeirApp is the runner''s (no scheduled task)' ((Get-Command Start-WeirApp).ScriptBlock.ToString() -notmatch 'ScheduledTask')
 
+# Run 39100172223: outage.tray called Get-WeirAnswering, which only the VM's Common.ps1 defines, inside a try/catch that hid the
+# "not recognized" error, so Deluno's own record of the Weir connection read null for the whole minute. Every command the Windows
+# scenarios and libraries call must resolve once the libraries are loaded.
+$called = @{}
+foreach ($f in @(Get-ChildItem $here -Recurse -Filter '*.ps1' | Where-Object { $_.Name -ne 'Test-WindowsE2E.ps1' })) {
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$null)
+    foreach ($c in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true)) {
+        $name = $c.GetCommandName()
+        if ($name -and $name -match '^[A-Z][a-z]+-[A-Za-z]+$') { $called[$name] = $f.Name }
+    }
+}
+$undefined = @($called.Keys | Where-Object { -not (Get-Command $_ -ErrorAction SilentlyContinue) } | Sort-Object | ForEach-Object { "$_ (in $($called[$_]))" })
+Check 'every command the Windows scenarios call is defined' ($undefined.Count -eq 0) ($undefined -join ', ')
+
 Write-Host 'The legs own exactly the scenarios the parity table gives to windows'
 $planText = Get-Content -Raw (Join-Path $repo 'docs\exec-plans\active\PLAN-E2E-IN-CI.md')
 $tableIds = @([regex]::Matches($planText, '(?m)^\| `([^`]+)` \| `windows` \|') | ForEach-Object { $_.Groups[1].Value } | Sort-Object)
