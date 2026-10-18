@@ -1,0 +1,98 @@
+{
+  "app": "emby",
+  "version": "4.10.1.0",
+  "state": "item-deleted",
+  "recordedAt": "2026-10-18T10:29:48Z",
+  "note": "A film deleted by its id (the server removes the item and its file), then the list; and a delete of an id it does not have (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Items?Recursive=true&IncludeItemTypes=Movie"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [
+            {
+              "Name": "Recorded Delete",
+              "ServerId": "be642afd648049da98b3ab61acd23785",
+              "Id": "16",
+              "RunTimeTicks": 200230000,
+              "IsFolder": false,
+              "Type": "Movie",
+              "ImageTags": {},
+              "BackdropImageTags": [],
+              "MediaType": "Video"
+            },
+            {
+              "Name": "Sintel",
+              "ServerId": "be642afd648049da98b3ab61acd23785",
+              "Id": "6",
+              "RunTimeTicks": 200230000,
+              "IsFolder": false,
+              "Type": "Movie",
+              "ImageTags": {},
+              "BackdropImageTags": [],
+              "MediaType": "Video"
+            }
+          ],
+          "TotalRecordCount": 2
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/emby/Items/16"
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Items?Recursive=true&IncludeItemTypes=Movie"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [
+            {
+              "Name": "Sintel",
+              "ServerId": "be642afd648049da98b3ab61acd23785",
+              "Id": "6",
+              "RunTimeTicks": 200230000,
+              "IsFolder": false,
+              "Type": "Movie",
+              "ImageTags": {},
+              "BackdropImageTags": [],
+              "MediaType": "Video"
+            }
+          ],
+          "TotalRecordCount": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/emby/Items/00000000000000000000000000000000"
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    }
+  ]
+}

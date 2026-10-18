@@ -1,0 +1,35 @@
+{
+  "app": "emby",
+  "version": "4.10.1.0",
+  "state": "directory-contents",
+  "recordedAt": "2026-10-18T10:29:47Z",
+  "note": "The folder browser Deluno uses to map paths: a folder that exists, a folder that does not (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Environment/DirectoryContents?path=%2Fmedia%2FMovies&includeFiles=false"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": []
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Environment/DirectoryContents?path=%2Fnowhere%2Fnone&includeFiles=false"
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "bodyText": "The directory '/nowhere/none' could not be found."
+      }
+    }
+  ]
+}

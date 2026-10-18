@@ -1,0 +1,48 @@
+{
+  "app": "emby",
+  "version": "4.10.1.0",
+  "state": "wrong-token",
+  "recordedAt": "2026-10-18T10:29:04Z",
+  "note": "System info, the user list and the library list with a key the server does not know (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/System/Info"
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "bodyText": "Access token is invalid or expired."
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Users"
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "bodyText": "Access token is invalid or expired."
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Library/VirtualFolders"
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "bodyText": "Access token is invalid or expired."
+      }
+    }
+  ]
+}

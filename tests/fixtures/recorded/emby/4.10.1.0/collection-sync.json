@@ -1,0 +1,204 @@
+{
+  "app": "emby",
+  "version": "4.10.1.0",
+  "state": "collection-sync",
+  "recordedAt": "2026-10-18T10:29:47Z",
+  "note": "A collection made with the film, described, put on the home screen (favourite), a series added and taken out again, then listed with its members (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/emby/Collections?Name=Recorded%20collection&Ids=6"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Id": "14",
+          "Name": "Recorded collection"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Items?Ids=14&Fields=Overview,Tags,Genres,ProviderIds,People,Studios"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [
+            {
+              "Name": "Recorded collection",
+              "ServerId": "be642afd648049da98b3ab61acd23785",
+              "Id": "14",
+              "Genres": [],
+              "ProviderIds": {},
+              "IsFolder": true,
+              "Type": "BoxSet",
+              "People": [],
+              "GenreItems": [],
+              "TagItems": [],
+              "ImageTags": {},
+              "BackdropImageTags": []
+            }
+          ],
+          "TotalRecordCount": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/emby/Items/14",
+        "body": {
+          "Name": "Recorded collection",
+          "ServerId": "be642afd648049da98b3ab61acd23785",
+          "Id": "14",
+          "Genres": [],
+          "ProviderIds": {},
+          "IsFolder": true,
+          "Type": "BoxSet",
+          "People": [],
+          "GenreItems": [],
+          "TagItems": [],
+          "ImageTags": {},
+          "BackdropImageTags": [],
+          "Overview": "Recorded description"
+        }
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/emby/Users/e0b3cbdd8da1492d88f03dd9cd168369/FavoriteItems/14"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "PlaybackPositionTicks": 0,
+          "PlayCount": 0,
+          "IsFavorite": true,
+          "Played": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/emby/Collections/14/Items?Ids=9"
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/emby/Collections/14/Items?Ids=9"
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Users/e0b3cbdd8da1492d88f03dd9cd168369/Items?Recursive=true&IncludeItemTypes=BoxSet&CollapseBoxSetItems=false"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [
+            {
+              "Name": "Recorded collection",
+              "ServerId": "be642afd648049da98b3ab61acd23785",
+              "Id": "14",
+              "IsFolder": true,
+              "Type": "BoxSet",
+              "UserData": {
+                "PlaybackPositionTicks": 0,
+                "PlayCount": 0,
+                "IsFavorite": false,
+                "Played": false
+              },
+              "ImageTags": {},
+              "BackdropImageTags": []
+            }
+          ],
+          "TotalRecordCount": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Users/e0b3cbdd8da1492d88f03dd9cd168369/Items?ParentId=14&CollapseBoxSetItems=false"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [
+            {
+              "Name": "Sintel",
+              "ServerId": "be642afd648049da98b3ab61acd23785",
+              "Id": "6",
+              "RunTimeTicks": 200230000,
+              "IsFolder": false,
+              "Type": "Movie",
+              "UserData": {
+                "PlaybackPositionTicks": 0,
+                "PlayCount": 0,
+                "IsFavorite": false,
+                "Played": false
+              },
+              "ImageTags": {},
+              "BackdropImageTags": [],
+              "MediaType": "Video"
+            }
+          ],
+          "TotalRecordCount": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Users/e0b3cbdd8da1492d88f03dd9cd168369/Items?Recursive=true&IncludeItemTypes=Playlist&CollapseBoxSetItems=false"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [],
+          "TotalRecordCount": 0
+        }
+      }
+    }
+  ]
+}

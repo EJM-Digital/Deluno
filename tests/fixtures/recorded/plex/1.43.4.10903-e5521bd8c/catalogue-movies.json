@@ -1,0 +1,424 @@
+{
+  "app": "plex",
+  "version": "1.43.4.10903-e5521bd8c",
+  "state": "catalogue-movies",
+  "recordedAt": "2026-10-18T10:35:55Z",
+  "note": "The movie section with guids (provider ids) (Plex Media Server 1.43.4.10903-e5521bd8c in Docker, UNCLAIMED: no account is made, so every call is local and carries no token).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/library/sections/1/all?type=1&includeGuids=1&X-Plex-Container-Start=0&X-Plex-Container-Size=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "MediaContainer": {
+            "size": 1,
+            "totalSize": 1,
+            "offset": 0,
+            "allowSync": true,
+            "art": "/:/resources/movie-fanart.jpg",
+            "identifier": "com.plexapp.plugins.library",
+            "librarySectionID": 1,
+            "librarySectionTitle": "Movies",
+            "librarySectionUUID": "8abe45d8-a6c1-4cb0-8fcd-be2dea9ee912",
+            "mediaTagPrefix": "/system/bundle/media/flags/",
+            "mediaTagVersion": 1786914632,
+            "thumb": "/:/resources/movie.png",
+            "title1": "Movies",
+            "title2": "All Movies",
+            "viewGroup": "movie",
+            "viewMode": 65592,
+            "Metadata": [
+              {
+                "ratingKey": "1",
+                "key": "/library/metadata/1",
+                "guid": "plex://movie/5d77688123d5a3001f4ed3df",
+                "slug": "sintel",
+                "studio": "Blender Foundation",
+                "type": "movie",
+                "title": "Sintel",
+                "contentRating": "PG",
+                "summary": "A wandering warrior finds an unlikely friend in the form of a young dragon. The two develop a close bond, until one day the dragon is snatched away. She then sets out on a relentless quest to reclaim her friend, finding in the end that her quest exacts a far greater price than she had ever imagined.",
+                "audienceRating": 7.4,
+                "year": 2010,
+                "thumb": "/library/metadata/1/thumb/1792319736",
+                "art": "/library/metadata/1/art/1792319736",
+                "duration": 20023,
+                "originallyAvailableAt": "2010-09-30",
+                "addedAt": 1792318512,
+                "updatedAt": 1792319736,
+                "audienceRatingImage": "rottentomatoes://image.rating.upright",
+                "Media": [
+                  {
+                    "id": 1,
+                    "duration": 20023,
+                    "bitrate": 235,
+                    "width": 640,
+                    "height": 360,
+                    "aspectRatio": 1.78,
+                    "audioChannels": 1,
+                    "audioCodec": "aac",
+                    "videoCodec": "h264",
+                    "videoResolution": "sd",
+                    "container": "mkv",
+                    "videoFrameRate": "24p",
+                    "videoProfile": "constrained baseline",
+                    "Part": [
+                      {
+                        "id": 1,
+                        "key": "/library/parts/1/1792318512/file.mkv",
+                        "duration": 20023,
+                        "file": "/media/Movies/Sintel (2010)/Sintel (2010) [WEB 1080p].mkv",
+                        "size": 589148,
+                        "container": "mkv",
+                        "videoProfile": "constrained baseline"
+                      }
+                    ]
+                  }
+                ],
+                "Image": [
+                  {
+                    "alt": "Sintel",
+                    "type": "coverPoster",
+                    "url": "/library/metadata/1/thumb/1792319736"
+                  },
+                  {
+                    "alt": "Sintel",
+                    "type": "background",
+                    "url": "/library/metadata/1/art/1792319736"
+                  },
+                  {
+                    "alt": "Sintel",
+                    "type": "clearLogo",
+                    "url": "/library/metadata/1/clearLogo/1792319736"
+                  },
+                  {
+                    "alt": "Sintel",
+                    "type": "backgroundSquare",
+                    "url": "/library/metadata/1/squareArt/1792319736"
+                  }
+                ],
+                "UltraBlurColors": {
+                  "topLeft": "081c2a",
+                  "topRight": "020b14",
+                  "bottomRight": "030f1b",
+                  "bottomLeft": "0f2b3c"
+                },
+                "Guid": [
+                  {
+                    "id": "imdb://tt1727587"
+                  },
+                  {
+                    "id": "tmdb://45745"
+                  },
+                  {
+                    "id": "tvdb://9413"
+                  }
+                ],
+                "Genre": [
+                  {
+                    "tag": "Animation"
+                  },
+                  {
+                    "tag": "Fantasy"
+                  }
+                ],
+                "Country": [
+                  {
+                    "tag": "Netherlands"
+                  }
+                ],
+                "Director": [
+                  {
+                    "tag": "Colin Levy"
+                  }
+                ],
+                "Writer": [
+                  {
+                    "tag": "Esther Wouda"
+                  }
+                ],
+                "Role": [
+                  {
+                    "tag": "Halina Reijn"
+                  },
+                  {
+                    "tag": "Thom Hoffman"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/library/metadata/1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "MediaContainer": {
+            "size": 1,
+            "allowSync": true,
+            "identifier": "com.plexapp.plugins.library",
+            "librarySectionID": 1,
+            "librarySectionTitle": "Movies",
+            "librarySectionUUID": "8abe45d8-a6c1-4cb0-8fcd-be2dea9ee912",
+            "mediaTagPrefix": "/system/bundle/media/flags/",
+            "mediaTagVersion": 1786914632,
+            "Metadata": [
+              {
+                "ratingKey": "1",
+                "key": "/library/metadata/1",
+                "guid": "plex://movie/5d77688123d5a3001f4ed3df",
+                "slug": "sintel",
+                "studio": "Blender Foundation",
+                "type": "movie",
+                "title": "Sintel",
+                "librarySectionTitle": "Movies",
+                "librarySectionID": 1,
+                "librarySectionKey": "/library/sections/1",
+                "contentRating": "PG",
+                "summary": "A wandering warrior finds an unlikely friend in the form of a young dragon. The two develop a close bond, until one day the dragon is snatched away. She then sets out on a relentless quest to reclaim her friend, finding in the end that her quest exacts a far greater price than she had ever imagined.",
+                "audienceRating": 7.4,
+                "year": 2010,
+                "thumb": "/library/metadata/1/thumb/1792319736",
+                "art": "/library/metadata/1/art/1792319736",
+                "duration": 20023,
+                "originallyAvailableAt": "2010-09-30",
+                "addedAt": 1792318512,
+                "updatedAt": 1792319736,
+                "audienceRatingImage": "rottentomatoes://image.rating.upright",
+                "Media": [
+                  {
+                    "id": 1,
+                    "duration": 20023,
+                    "bitrate": 235,
+                    "width": 640,
+                    "height": 360,
+                    "aspectRatio": 1.78,
+                    "audioChannels": 1,
+                    "audioCodec": "aac",
+                    "videoCodec": "h264",
+                    "videoResolution": "sd",
+                    "container": "mkv",
+                    "videoFrameRate": "24p",
+                    "videoProfile": "constrained baseline",
+                    "Part": [
+                      {
+                        "id": 1,
+                        "key": "/library/parts/1/1792318512/file.mkv",
+                        "duration": 20023,
+                        "file": "/media/Movies/Sintel (2010)/Sintel (2010) [WEB 1080p].mkv",
+                        "size": 589148,
+                        "container": "mkv",
+                        "videoProfile": "constrained baseline",
+                        "Stream": [
+                          {
+                            "id": 1,
+                            "streamType": 1,
+                            "codec": "h264",
+                            "index": 0,
+                            "bitrate": 235,
+                            "language": "English",
+                            "languageTag": "en",
+                            "languageCode": "eng",
+                            "bitDepth": 8,
+                            "chromaLocation": "left",
+                            "chromaSubsampling": "4:2:0",
+                            "codedHeight": 368,
+                            "codedWidth": 640,
+                            "colorRange": "tv",
+                            "frameRate": 24,
+                            "hasScalingMatrix": false,
+                            "height": 360,
+                            "level": 30,
+                            "profile": "constrained baseline",
+                            "refFrames": 1,
+                            "scanType": "progressive",
+                            "width": 640,
+                            "displayTitle": "SD",
+                            "extendedDisplayTitle": "SD (H.264 Constrained Baseline)"
+                          },
+                          {
+                            "id": 2,
+                            "streamType": 2,
+                            "selected": true,
+                            "codec": "aac",
+                            "index": 1,
+                            "channels": 1,
+                            "language": "English",
+                            "languageTag": "en",
+                            "languageCode": "eng",
+                            "samplingRate": 44100,
+                            "displayTitle": "English (AAC Mono)",
+                            "extendedDisplayTitle": "English (AAC Mono)"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ],
+                "Image": [
+                  {
+                    "alt": "Sintel",
+                    "type": "coverPoster",
+                    "url": "/library/metadata/1/thumb/1792319736"
+                  },
+                  {
+                    "alt": "Sintel",
+                    "type": "background",
+                    "url": "/library/metadata/1/art/1792319736"
+                  },
+                  {
+                    "alt": "Sintel",
+                    "type": "clearLogo",
+                    "url": "/library/metadata/1/clearLogo/1792319736"
+                  },
+                  {
+                    "alt": "Sintel",
+                    "type": "backgroundSquare",
+                    "url": "/library/metadata/1/squareArt/1792319736"
+                  }
+                ],
+                "UltraBlurColors": {
+                  "topLeft": "081c2a",
+                  "topRight": "020b14",
+                  "bottomRight": "030f1b",
+                  "bottomLeft": "0f2b3c"
+                },
+                "Genre": [
+                  {
+                    "id": 6,
+                    "filter": "genre=6",
+                    "tag": "Animation"
+                  },
+                  {
+                    "id": 7,
+                    "filter": "genre=7",
+                    "tag": "Fantasy"
+                  },
+                  {
+                    "id": 8,
+                    "filter": "genre=8",
+                    "tag": "Short"
+                  },
+                  {
+                    "id": 9,
+                    "filter": "genre=9",
+                    "tag": "Action"
+                  },
+                  {
+                    "id": 10,
+                    "filter": "genre=10",
+                    "tag": "Adventure"
+                  },
+                  {
+                    "id": 11,
+                    "filter": "genre=11",
+                    "tag": "Drama"
+                  },
+                  {
+                    "id": 12,
+                    "filter": "genre=12",
+                    "tag": "Science Fiction"
+                  }
+                ],
+                "Country": [
+                  {
+                    "id": 18,
+                    "filter": "country=18",
+                    "tag": "Netherlands"
+                  }
+                ],
+                "Guid": [
+                  {
+                    "id": "imdb://tt1727587"
+                  },
+                  {
+                    "id": "tmdb://45745"
+                  },
+                  {
+                    "id": "tvdb://9413"
+                  }
+                ],
+                "Rating": [
+                  {
+                    "image": "imdb://image.rating",
+                    "value": 7.4,
+                    "type": "audience"
+                  },
+                  {
+                    "image": "rottentomatoes://image.rating.upright",
+                    "value": 7.4,
+                    "type": "audience"
+                  },
+                  {
+                    "image": "themoviedb://image.rating",
+                    "value": 7.3,
+                    "type": "audience"
+                  }
+                ],
+                "Director": [
+                  {
+                    "id": 13,
+                    "filter": "director=13",
+                    "tag": "Colin Levy",
+                    "tagKey": "5d77688123d5a3001f4ed40a",
+                    "thumb": "https://metadata-static.plex.tv/d/people/d8e05ba0778c6373127f8d8b07c17326.jpg"
+                  }
+                ],
+                "Writer": [
+                  {
+                    "id": 14,
+                    "filter": "writer=14",
+                    "tag": "Esther Wouda",
+                    "tagKey": "5d9c0904d4f2a9001f804e98"
+                  }
+                ],
+                "Role": [
+                  {
+                    "id": 15,
+                    "filter": "actor=15",
+                    "tag": "Halina Reijn",
+                    "tagKey": "5d77682bf54112001f5bc663",
+                    "role": "Sintel (voice)",
+                    "thumb": "https://metadata-static.plex.tv/9/people/95a33cf9743f24d12c2ac803a26941bc.jpg"
+                  },
+                  {
+                    "id": 16,
+                    "filter": "actor=16",
+                    "tag": "Thom Hoffman",
+                    "tagKey": "5d7768275af944001f1f6b57",
+                    "role": "Shaman (voice)",
+                    "thumb": "https://metadata-static.plex.tv/2/people/2f5a97329557ec9b911e8f82c0b0fcf8.jpg"
+                  }
+                ],
+                "Producer": [
+                  {
+                    "id": 17,
+                    "filter": "producer=17",
+                    "tag": "Ton Roosendaal",
+                    "tagKey": "5d776834103a2d001f567902",
+                    "thumb": "https://metadata-static.plex.tv/d/people/d0cd238b5a00353ddae78dd55720f7e3.jpg"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

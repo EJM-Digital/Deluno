@@ -1,0 +1,204 @@
+{
+  "app": "emby",
+  "version": "4.10.1.0",
+  "state": "libraries-created",
+  "recordedAt": "2026-10-18T10:29:15Z",
+  "note": "A movies library and a TV library made over the two folders (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/emby/Library/VirtualFolders?name=Movies&collectionType=movies&paths=%2Fmedia%2FMovies&refreshLibrary=true",
+        "body": {
+          "LibraryOptions": {}
+        }
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/emby/Library/VirtualFolders?name=Shows&collectionType=tvshows&paths=%2Fmedia%2FShows&refreshLibrary=true",
+        "body": {
+          "LibraryOptions": {}
+        }
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Library/VirtualFolders"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "Name": "Movies",
+            "Locations": [
+              "/media/Movies"
+            ],
+            "CollectionType": "movies",
+            "LibraryOptions": {
+              "EnableArchiveMediaFiles": false,
+              "EnablePhotos": true,
+              "EnableRealtimeMonitor": true,
+              "EnableMarkerDetection": false,
+              "EnableMarkerDetectionDuringLibraryScan": false,
+              "IntroDetectionFingerprintLength": 10,
+              "EnableChapterImageExtraction": false,
+              "ExtractChapterImagesDuringLibraryScan": false,
+              "DownloadImagesInAdvance": false,
+              "CacheImages": false,
+              "ExcludeFromSearch": false,
+              "EnablePlexIgnore": false,
+              "PathInfos": [
+                {
+                  "Path": "/media/Movies"
+                }
+              ],
+              "IgnoreHiddenFiles": false,
+              "IgnoreFileExtensions": [],
+              "SaveLocalMetadata": false,
+              "SaveMetadataHidden": false,
+              "SaveLocalThumbnailSets": false,
+              "ImportPlaylists": true,
+              "EnableAutomaticSeriesGrouping": true,
+              "ShareEmbeddedMusicAlbumImages": true,
+              "EnableEmbeddedTitles": false,
+              "EnableAudioResume": false,
+              "AutoGenerateChapters": true,
+              "MergeTopLevelFolders": false,
+              "AutoGenerateChapterIntervalMinutes": 5,
+              "AutomaticRefreshIntervalDays": 0,
+              "PlaceholderMetadataRefreshIntervalDays": 0,
+              "ContentType": "movies",
+              "MetadataSavers": [],
+              "DisabledLocalMetadataReaders": [],
+              "DisabledLyricsFetchers": [],
+              "SaveLyricsWithMedia": true,
+              "LyricsDownloadMaxAgeDays": 180,
+              "LyricsFetcherOrder": [],
+              "LyricsDownloadLanguages": [],
+              "DisabledSubtitleFetchers": [],
+              "SubtitleFetcherOrder": [],
+              "SkipSubtitlesIfEmbeddedSubtitlesPresent": false,
+              "SkipSubtitlesIfAudioTrackMatches": false,
+              "SubtitleDownloadLanguages": [],
+              "SubtitleDownloadMaxAgeDays": 180,
+              "RequirePerfectSubtitleMatch": true,
+              "SaveSubtitlesWithMedia": true,
+              "ForcedSubtitlesOnly": false,
+              "HearingImpairedSubtitlesOnly": false,
+              "TypeOptions": [],
+              "CollapseSingleItemFolders": false,
+              "ForceCollapseSingleItemFolders": false,
+              "EnableAdultMetadata": false,
+              "ImportCollections": false,
+              "EnableMultiVersionByFiles": true,
+              "EnableMultiVersionByMetadata": true,
+              "EnableMultiPartItems": true,
+              "MinCollectionItems": 2,
+              "MinResumePct": 2,
+              "MaxResumePct": 90,
+              "MinResumeDurationSeconds": 120,
+              "ThumbnailImagesIntervalSeconds": -1,
+              "SampleIgnoreSize": 314572800
+            },
+            "ItemId": "3",
+            "Id": "3",
+            "Guid": "7731cfe7c2e74f00bc6a2dba0eb22df5",
+            "RefreshProgress": 90
+          },
+          {
+            "Name": "Shows",
+            "Locations": [
+              "/media/Shows"
+            ],
+            "CollectionType": "tvshows",
+            "LibraryOptions": {
+              "EnableArchiveMediaFiles": false,
+              "EnablePhotos": true,
+              "EnableRealtimeMonitor": true,
+              "EnableMarkerDetection": false,
+              "EnableMarkerDetectionDuringLibraryScan": false,
+              "IntroDetectionFingerprintLength": 10,
+              "EnableChapterImageExtraction": false,
+              "ExtractChapterImagesDuringLibraryScan": false,
+              "DownloadImagesInAdvance": false,
+              "CacheImages": false,
+              "ExcludeFromSearch": false,
+              "EnablePlexIgnore": false,
+              "PathInfos": [
+                {
+                  "Path": "/media/Shows"
+                }
+              ],
+              "IgnoreHiddenFiles": false,
+              "IgnoreFileExtensions": [],
+              "SaveLocalMetadata": false,
+              "SaveMetadataHidden": false,
+              "SaveLocalThumbnailSets": false,
+              "ImportPlaylists": true,
+              "EnableAutomaticSeriesGrouping": true,
+              "ShareEmbeddedMusicAlbumImages": true,
+              "EnableEmbeddedTitles": false,
+              "EnableAudioResume": false,
+              "AutoGenerateChapters": true,
+              "MergeTopLevelFolders": false,
+              "AutoGenerateChapterIntervalMinutes": 5,
+              "AutomaticRefreshIntervalDays": 0,
+              "PlaceholderMetadataRefreshIntervalDays": 0,
+              "ContentType": "tvshows",
+              "MetadataSavers": [],
+              "DisabledLocalMetadataReaders": [],
+              "DisabledLyricsFetchers": [],
+              "SaveLyricsWithMedia": true,
+              "LyricsDownloadMaxAgeDays": 180,
+              "LyricsFetcherOrder": [],
+              "LyricsDownloadLanguages": [],
+              "DisabledSubtitleFetchers": [],
+              "SubtitleFetcherOrder": [],
+              "SkipSubtitlesIfEmbeddedSubtitlesPresent": false,
+              "SkipSubtitlesIfAudioTrackMatches": false,
+              "SubtitleDownloadLanguages": [],
+              "SubtitleDownloadMaxAgeDays": 180,
+              "RequirePerfectSubtitleMatch": true,
+              "SaveSubtitlesWithMedia": true,
+              "ForcedSubtitlesOnly": false,
+              "HearingImpairedSubtitlesOnly": false,
+              "TypeOptions": [],
+              "CollapseSingleItemFolders": false,
+              "ForceCollapseSingleItemFolders": false,
+              "EnableAdultMetadata": false,
+              "ImportCollections": false,
+              "EnableMultiVersionByFiles": true,
+              "EnableMultiVersionByMetadata": true,
+              "EnableMultiPartItems": true,
+              "MinCollectionItems": 2,
+              "MinResumePct": 2,
+              "MaxResumePct": 90,
+              "MinResumeDurationSeconds": 120,
+              "ThumbnailImagesIntervalSeconds": -1,
+              "SampleIgnoreSize": 314572800
+            },
+            "ItemId": "7",
+            "Id": "7",
+            "Guid": "b9131e2feb584eed99fdd4ba76ef2582"
+          }
+        ]
+      }
+    }
+  ]
+}

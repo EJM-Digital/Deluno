@@ -1,0 +1,54 @@
+{
+  "app": "jellyfin",
+  "version": "12.2.0",
+  "state": "media-updated-refused",
+  "recordedAt": "2026-10-18T10:28:48Z",
+  "note": "POST /Library/Media/Updated with a body that is not the update list (the server refuses it), and with no body (jellyfin 12.2.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/Library/Media/Updated",
+        "bodyText": "not json"
+      },
+      "reply": {
+        "status": 400,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+          "title": "One or more validation errors occurred.",
+          "status": 400,
+          "errors": {
+            "$": [
+              "'not json' is an invalid JSON literal. Expected the literal 'null'. Path: $ | LineNumber: 0 | BytePositionInLine: 1."
+            ],
+            "dto": [
+              "The dto field is required."
+            ]
+          },
+          "traceId": "00-f52920edf5072e2982ed04c8005de459-b9d852a77bd7e9b6-00"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/Library/Media/Updated"
+      },
+      "reply": {
+        "status": 415,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "type": "https://tools.ietf.org/html/rfc9110#section-15.5.16",
+          "title": "Unsupported Media Type",
+          "status": 415,
+          "traceId": "00-cdcff7cc570d175b816441b706f3d6ad-652924202ddb69cc-00"
+        }
+      }
+    }
+  ]
+}

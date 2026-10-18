@@ -1,0 +1,81 @@
+{
+  "app": "emby",
+  "version": "4.10.1.0",
+  "state": "sessions-stopped",
+  "recordedAt": "2026-10-18T10:30:58Z",
+  "note": "The same client stopped playing: the session list afterwards (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Sessions"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "PlayState": {
+              "CanSeek": false,
+              "IsPaused": false,
+              "IsMuted": false,
+              "RepeatMode": "RepeatNone",
+              "SleepTimerMode": "None",
+              "SubtitleOffset": 0,
+              "Shuffle": false,
+              "PlaybackRate": 1
+            },
+            "AdditionalUsers": [],
+            "RemoteEndPoint": "192.168.1.10",
+            "Protocol": "HTTP/1.1",
+            "PlayableMediaTypes": [],
+            "PlaylistIndex": 0,
+            "PlaylistLength": 0,
+            "Id": "f06e29aa441a4e5bb1587456ad887240",
+            "ServerId": "667af79faa0d4b9391290a8b2ec6d1e7",
+            "Client": "Deluno",
+            "LastActivityDate": "2026-10-18T10:30:58.4414811Z",
+            "DeviceName": "7606440a0594",
+            "InternalDeviceId": 2,
+            "DeviceId": "667af79faa0d4b9391290a8b2ec6d1e7",
+            "ApplicationVersion": "4.10.1.0",
+            "SupportedCommands": [],
+            "SupportsRemoteControl": false
+          },
+          {
+            "PlayState": {
+              "CanSeek": false,
+              "IsPaused": false,
+              "IsMuted": false,
+              "RepeatMode": "RepeatNone",
+              "SleepTimerMode": "None",
+              "SubtitleOffset": 0,
+              "Shuffle": false,
+              "PlaybackRate": 1
+            },
+            "AdditionalUsers": [],
+            "RemoteEndPoint": "192.168.1.10",
+            "Protocol": "HTTP/1.1",
+            "PlayableMediaTypes": [],
+            "PlaylistIndex": 0,
+            "PlaylistLength": 0,
+            "Id": "3b8bd03c19e5b6666a03601d27d0f6b7",
+            "ServerId": "667af79faa0d4b9391290a8b2ec6d1e7",
+            "UserId": "0ed787a542194a1f8e57daa661d88705",
+            "UserName": "<scrubbed>",
+            "Client": "Deluno Recorder",
+            "LastActivityDate": "2026-10-18T10:30:58.4378406Z",
+            "DeviceName": "Recorder",
+            "InternalDeviceId": 1,
+            "DeviceId": "deluno-recorder-1",
+            "ApplicationVersion": "1.0",
+            "SupportedCommands": [],
+            "SupportsRemoteControl": false
+          }
+        ]
+      }
+    }
+  ]
+}

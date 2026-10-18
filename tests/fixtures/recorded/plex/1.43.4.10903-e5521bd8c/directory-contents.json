@@ -1,0 +1,127 @@
+{
+  "app": "plex",
+  "version": "1.43.4.10903-e5521bd8c",
+  "state": "directory-contents",
+  "recordedAt": "2026-10-18T10:35:58Z",
+  "note": "The folder browser (/services/browse): a folder that exists, then one that does not (Plex Media Server 1.43.4.10903-e5521bd8c in Docker, UNCLAIMED: no account is made, so every call is local and carries no token).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/services/browse?path=%2Fmedia%2FMovies&includeFiles=0"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "MediaContainer": {
+            "size": 8,
+            "Path": [
+              {
+                "key": "<scrubbed>",
+                "title": "/",
+                "path": "/"
+              },
+              {
+                "key": "<scrubbed>",
+                "title": "mqueue",
+                "path": "/dev/mqueue"
+              },
+              {
+                "key": "<scrubbed>",
+                "title": "config",
+                "path": "/config"
+              },
+              {
+                "key": "/services/browse/L21lZGlh",
+                "title": "media",
+                "path": "/media"
+              },
+              {
+                "key": "<scrubbed>",
+                "title": "transcode",
+                "path": "/transcode"
+              },
+              {
+                "key": "<scrubbed>",
+                "title": "resolv.conf",
+                "path": "/etc/resolv.conf"
+              },
+              {
+                "key": "<scrubbed>",
+                "title": "hostname",
+                "path": "/etc/hostname"
+              },
+              {
+                "key": "<scrubbed>",
+                "title": "hosts",
+                "path": "/etc/hosts"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/services/browse?path=%2Fnowhere&includeFiles=0"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "MediaContainer": {
+            "size": 8,
+            "Path": [
+              {
+                "key": "<scrubbed>",
+                "title": "/",
+                "path": "/"
+              },
+              {
+                "key": "<scrubbed>",
+                "title": "mqueue",
+                "path": "/dev/mqueue"
+              },
+              {
+                "key": "<scrubbed>",
+                "title": "config",
+                "path": "/config"
+              },
+              {
+                "key": "/services/browse/L21lZGlh",
+                "title": "media",
+                "path": "/media"
+              },
+              {
+                "key": "<scrubbed>",
+                "title": "transcode",
+                "path": "/transcode"
+              },
+              {
+                "key": "<scrubbed>",
+                "title": "resolv.conf",
+                "path": "/etc/resolv.conf"
+              },
+              {
+                "key": "<scrubbed>",
+                "title": "hostname",
+                "path": "/etc/hostname"
+              },
+              {
+                "key": "<scrubbed>",
+                "title": "hosts",
+                "path": "/etc/hosts"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

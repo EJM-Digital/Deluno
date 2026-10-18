@@ -1,0 +1,267 @@
+{
+  "app": "plex",
+  "version": "1.43.4.10903-e5521bd8c",
+  "state": "collection-sync",
+  "recordedAt": "2026-10-18T10:35:58Z",
+  "note": "A collection made with the film, described, its home-screen promotion read, listed with its children (Plex Media Server 1.43.4.10903-e5521bd8c in Docker, UNCLAIMED: no account is made, so every call is local and carries no token).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/library/sections/1/collections?includeGuids=0"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "MediaContainer": {
+            "size": 1,
+            "allowSync": true,
+            "art": "/:/resources/movie-fanart.jpg",
+            "identifier": "com.plexapp.plugins.library",
+            "librarySectionID": 1,
+            "librarySectionTitle": "Movies",
+            "librarySectionUUID": "8abe45d8-a6c1-4cb0-8fcd-be2dea9ee912",
+            "mediaTagPrefix": "/system/bundle/media/flags/",
+            "mediaTagVersion": 1786914632,
+            "thumb": "/:/resources/movie.png",
+            "title1": "Movies",
+            "title2": "All Movies",
+            "viewGroup": "movie",
+            "viewMode": 65592,
+            "Metadata": [
+              {
+                "ratingKey": "6",
+                "key": "/library/collections/6/children",
+                "guid": "collection://8cc57d3e-3b7f-4df5-9810-51a37e82fac2",
+                "type": "collection",
+                "title": "Recorded collection",
+                "subtype": "movie",
+                "summary": "Recorded description",
+                "index": 49,
+                "ratingCount": 1,
+                "thumb": "/library/collections/6/composite/1792319758?width=400&height=600",
+                "addedAt": 1792319758,
+                "updatedAt": 1792319758,
+                "childCount": 1,
+                "maxYear": "2010",
+                "minYear": "2010"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/library/collections?type=1&title=Recorded%20collection&smart=0&sectionId=1&uri=server%3A%2F%2Fa4ccd564e2a3e55fc0c0dc14092a100231d9afb1%2Fcom.plexapp.plugins.library%2Flibrary%2Fmetadata%2F1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "MediaContainer": {
+            "size": 1,
+            "Metadata": [
+              {
+                "ratingKey": "6",
+                "key": "/library/collections/6/children",
+                "guid": "collection://8cc57d3e-3b7f-4df5-9810-51a37e82fac2",
+                "type": "collection",
+                "title": "Recorded collection",
+                "subtype": "movie",
+                "summary": "",
+                "index": 49,
+                "ratingCount": 1,
+                "thumb": "/library/collections/6/composite/1792319758?width=400&height=600",
+                "addedAt": 1792319758,
+                "updatedAt": 1792319758,
+                "childCount": 1,
+                "maxYear": "2010",
+                "minYear": "2010"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/library/sections/1/all?type=18&id=6&summary.value=Recorded%20description&summary.locked=1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/html"
+        },
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/library/collections/6/children?excludeAllLeaves=1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "MediaContainer": {
+            "size": 1,
+            "Metadata": [
+              {
+                "ratingKey": "1",
+                "key": "/library/metadata/1",
+                "guid": "plex://movie/5d77688123d5a3001f4ed3df",
+                "slug": "sintel",
+                "studio": "Blender Foundation",
+                "type": "movie",
+                "title": "Sintel",
+                "librarySectionTitle": "Movies",
+                "librarySectionID": 1,
+                "librarySectionKey": "/library/sections/1",
+                "contentRating": "PG",
+                "summary": "A wandering warrior finds an unlikely friend in the form of a young dragon. The two develop a close bond, until one day the dragon is snatched away. She then sets out on a relentless quest to reclaim her friend, finding in the end that her quest exacts a far greater price than she had ever imagined.",
+                "audienceRating": 7.4,
+                "year": 2010,
+                "thumb": "/library/metadata/1/thumb/1792319736",
+                "art": "/library/metadata/1/art/1792319736",
+                "duration": 20023,
+                "originallyAvailableAt": "2010-09-30",
+                "addedAt": 1792318512,
+                "updatedAt": 1792319736,
+                "audienceRatingImage": "rottentomatoes://image.rating.upright",
+                "Media": [
+                  {
+                    "id": 1,
+                    "duration": 20023,
+                    "bitrate": 235,
+                    "width": 640,
+                    "height": 360,
+                    "aspectRatio": 1.78,
+                    "audioChannels": 1,
+                    "audioCodec": "aac",
+                    "videoCodec": "h264",
+                    "videoResolution": "sd",
+                    "container": "mkv",
+                    "videoFrameRate": "24p",
+                    "videoProfile": "constrained baseline",
+                    "Part": [
+                      {
+                        "id": 1,
+                        "key": "/library/parts/1/1792318512/file.mkv",
+                        "duration": 20023,
+                        "file": "/media/Movies/Sintel (2010)/Sintel (2010) [WEB 1080p].mkv",
+                        "size": 589148,
+                        "container": "mkv",
+                        "videoProfile": "constrained baseline"
+                      }
+                    ]
+                  }
+                ],
+                "Image": [
+                  {
+                    "alt": "Sintel",
+                    "type": "coverPoster",
+                    "url": "/library/metadata/1/thumb/1792319736"
+                  },
+                  {
+                    "alt": "Sintel",
+                    "type": "background",
+                    "url": "/library/metadata/1/art/1792319736"
+                  },
+                  {
+                    "alt": "Sintel",
+                    "type": "clearLogo",
+                    "url": "/library/metadata/1/clearLogo/1792319736"
+                  },
+                  {
+                    "alt": "Sintel",
+                    "type": "backgroundSquare",
+                    "url": "/library/metadata/1/squareArt/1792319736"
+                  }
+                ],
+                "UltraBlurColors": {
+                  "topLeft": "081c2a",
+                  "topRight": "020b14",
+                  "bottomRight": "030f1b",
+                  "bottomLeft": "0f2b3c"
+                },
+                "Genre": [
+                  {
+                    "tag": "Animation"
+                  },
+                  {
+                    "tag": "Fantasy"
+                  }
+                ],
+                "Country": [
+                  {
+                    "tag": "Netherlands"
+                  }
+                ],
+                "Collection": [
+                  {
+                    "tag": "Recorded collection"
+                  }
+                ],
+                "Director": [
+                  {
+                    "tag": "Colin Levy"
+                  }
+                ],
+                "Writer": [
+                  {
+                    "tag": "Esther Wouda"
+                  }
+                ],
+                "Role": [
+                  {
+                    "tag": "Halina Reijn"
+                  },
+                  {
+                    "tag": "Thom Hoffman"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/hubs/sections/1/manage?metadataItemId=6"
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "text/html"
+        },
+        "bodyText": "<html><head><title>Not Found</title></head><body><h1>404 Not Found</h1></body></html>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/hubs/sections/1/manage?metadataItemId=6&promotedToRecommended=1&promotedToOwnHome=1&promotedToSharedHome=1"
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "text/html"
+        },
+        "bodyText": "<html><head><title>Not Found</title></head><body><h1>404 Not Found</h1></body></html>"
+      }
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "app": "plex",
+  "version": "1.43.4.10903-e5521bd8c",
+  "state": "collection-deleted",
+  "recordedAt": "2026-10-18T10:35:58Z",
+  "note": "The collection deleted, and the same delete again (Plex Media Server 1.43.4.10903-e5521bd8c in Docker, UNCLAIMED: no account is made, so every call is local and carries no token).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/library/collections/6"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/html"
+        },
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/library/collections/6"
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "text/html"
+        },
+        "bodyText": "<html><head><title>Not Found</title></head><body><h1>404 Not Found</h1></body></html>"
+      }
+    }
+  ]
+}
