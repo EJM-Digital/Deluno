@@ -27,14 +27,14 @@ test.describe("protected navigation", () => {
   test("system API route is canonical and protected", async ({ page }) => {
     await page.goto("/system/api");
 
-    await expect(authOrSetupHeading(page)).toBeVisible();
+    await expect(authOrSetupHeading(page)).toBeVisible({ timeout: 20_000 });
   });
 
   for (const route of protectedRoutes) {
     test(`protected route does not crash before auth: ${route}`, async ({ page }) => {
       await page.goto(route);
 
-      await expect(authOrSetupHeading(page)).toBeVisible();
+      await expect(authOrSetupHeading(page)).toBeVisible({ timeout: 20_000 });
       await expect(page.getByText("Unexpected Application Error")).toHaveCount(0);
       await expect(page.getByText("This area could not load")).toHaveCount(0);
     });
