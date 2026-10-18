@@ -185,3 +185,20 @@ describe("a saved server's drawer", () => {
     void within;
   });
 });
+
+describe("a link to a media server", () => {
+  it("opens the drawer of the server the link names and takes the id out of the address", async () => {
+    loaderData.servers = [server(), server({ id: "s2", name: "Emby on den", kind: "emby" })];
+    render(<MemoryRouter initialEntries={["/indexers/media-servers?connection=s2"]}><MediaServersPage /></MemoryRouter>);
+
+    expect(await screen.findByRole("dialog", { name: /Emby on den/ })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /Jellyfin on lounge/ })).not.toBeInTheDocument();
+  });
+
+  it("opens no drawer for a link to a server that is not there", () => {
+    loaderData.servers = [server()];
+    render(<MemoryRouter initialEntries={["/indexers/media-servers?connection=gone"]}><MediaServersPage /></MemoryRouter>);
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
