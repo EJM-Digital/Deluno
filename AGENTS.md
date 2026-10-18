@@ -81,8 +81,8 @@ release comment, every workflow has `permissions` and every job a timeout.
 - **A tag is made only after CI is green on that commit** (James, 3 Oct 2026).
   The release's first job checks it (`scripts/verify-ci-for-release.mjs`) and
   does not wait: tag while CI is still running and the release fails at once.
-  A green push run on a documents-only commit proves little, so tag a commit
-  whose own run ran the jobs, or run `ci.yml` by hand on it first.
+  A push never runs the installer or the end-to-end jobs, so a tag needs a
+  green manual run (`gh workflow run ci.yml`) on that commit.
 - **Tags are made only through `scripts/tag-release.ps1 -Version <x.y.z[-rc.N[.M]]>`** (9 Oct 2026). It
   refuses unless the working tree is clean, HEAD is `origin/main`, `Directory.Build.props` and
   `RELEASE_NOTES.md` carry the version, CI passed on HEAD and ran the jobs, and the golden path passed

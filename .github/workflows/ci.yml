@@ -13,10 +13,10 @@
 #   anything else               backend, web-dist, e2e-smoke (the smoke tests drive the real backend), and web-dist
 #                               builds for them; web's own checks run when the web app changed
 #   image paths                 docker (the Dockerfile, compose, the migrations, the README examples, or this file)
-#   untagged version or manual  windows-installer: the Windows installer of this commit, for the golden path; a push
-#                               builds it while Directory.Build.props carries a version that has no tag yet
+#   manual run only             windows-installer: the Windows installer of this commit, for the golden path. A push never
+#                               builds it: the one full manual run before a tag does, and a tag needs that run green
 #   same as windows-installer  e2e-windows: the Windows-only end-to-end legs (install and the tray, the picker under the GitHub limit, the update), on windows-latest from that installer
-#   manual run, or a push whose version is untagged   e2e-linux: the end-to-end groups on Docker Compose (docs/exec-plans/active/PLAN-E2E-IN-CI.md)
+#   manual run only             e2e-linux: the end-to-end groups on Docker Compose (docs/exec-plans/active/PLAN-E2E-IN-CI.md)
 #
 # Work lands on main directly (James, 22 Sep 2026: one person works on Deluno, so no feature branches), which makes
 # each push to main the one run. A pull request, if one is ever opened, is still checked; "Run workflow" re-runs by
@@ -128,12 +128,8 @@ jobs:
             if [ "$WEB" = "true" ] || [ "$WORKFLOWS" = "true" ]; then web=true; fi
             if [ "$CODE" = "true" ] || [ "$NOTES" = "true" ]; then smoke=true; fi
             if [ "$DOCKER" = "true" ] || [ "$WORKFLOWS" = "true" ]; then docker=true; fi
-            # While the version in Directory.Build.props has no tag yet, a release candidate is being prepared and
-            # the commit may be the one tagged: its push builds the installer the golden path needs and runs the
-            # end-to-end groups, so no manual run has to follow it (a manual run on the same branch cancels the push
-            # run, which reads as a failure). Pushes after the tag skip both.
-            version=$(sed -n "s:.*<Version>\(.*\)</Version>.*:\1:p" Directory.Build.props | head -1)
-            if [ "$EVENT" = "push" ] && [ "$backend" = "true" ] && [ -n "$version" ] && [ -z "$(git ls-remote --tags origin "refs/tags/v$version")" ]; then installer=true; e2e_linux=true; fi
+            # The installer and the end-to-end jobs cost the most, so an ordinary push never runs them: they run on
+            # a manual run only, the one full run on the commit before a tag (scripts/verify-ci-for-release.mjs).
           fi
           # Coverage is measured and held to its baseline only when both the backend and the web tests ran: the
           # ratchet compares whole-repository numbers, and a half report would look like a drop.

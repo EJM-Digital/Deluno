@@ -11,9 +11,10 @@
 // - its `ci-passed` job and that job's verdict step concluded `success`. ci-passed (scripts/ci-passed.mjs) passes
 //   only when every job due for the change passed and every other job was skipped by path filtering.
 //
-// Note what a green push run does and does not prove: a push that changed only documents skips every code job, so
-// its green says "nothing that needed testing changed since the last commit that did". Tag from a commit whose own
-// run ran the jobs, or run ci.yml by hand on the tag (a manual run skips nothing).
+// Note what a green push run does and does not prove: a push never runs the Windows installer or the end-to-end
+// jobs (they cost the most and run only on a manual run), and a push that changed only documents skips every code
+// job. So a push run alone never qualifies: run ci.yml by hand on the commit to tag (a manual run skips nothing),
+// and the run must show the installer and both end-to-end job sets passed.
 //
 // Usage (in release.yml):  node scripts/verify-ci-for-release.mjs
 //   env GH_TOKEN (actions: read), GITHUB_REPOSITORY, GITHUB_SHA (else `git rev-parse HEAD`)
@@ -30,6 +31,10 @@ export const ACCEPTED_EVENTS = ["push", "workflow_dispatch"];
 // declaring them, so a rename cannot silently disarm the gate.
 export const REQUIRED_EVIDENCE = [{ job: "ci-passed", steps: ["Every job that was due passed"] }];
 
+// The jobs that run only on a manual run (the one full run before a tag). A push never runs them, so a push run
+// cannot prove a release candidate: each prefix must match at least one job that concluded `success`.
+export const MANUAL_ONLY_JOBS = ["Windows installer", "Windows end-to-end (", "End-to-end ("];
+
 // Judges one run against the evidence. `run` has event, status, conclusion; `jobs` is the run's jobs, each with
 // name, conclusion and steps[{name, conclusion}]. Returns the reasons it does not qualify; empty means it does.
 export function evaluateRun(run, jobs, evidence = REQUIRED_EVIDENCE) {
@@ -42,6 +47,13 @@ export function evaluateRun(run, jobs, evidence = REQUIRED_EVIDENCE) {
     return problems;
   }
   if (run.conclusion !== "success") problems.push(`concluded ${run.conclusion}`);
+  if (evidence === REQUIRED_EVIDENCE) {
+    for (const prefix of MANUAL_ONLY_JOBS) {
+      if (!jobs.some((job) => job.name.startsWith(prefix) && job.conclusion === "success")) {
+        problems.push(`no "${prefix.replace(/ \($/, "")}" job passed: it runs only on a manual run (gh workflow run ci.yml), the one full run before a tag`);
+      }
+    }
+  }
   for (const want of evidence) {
     const matches = jobs.filter((job) => job.name === want.job);
     if (matches.length !== 1) {
