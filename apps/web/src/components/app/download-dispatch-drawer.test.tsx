@@ -74,7 +74,7 @@ describe("DownloadDispatchDrawer", () => {
       attemptCount: 2,
       detectedUtc: "2026-09-24T02:05:00Z",
       importStatus: "imported",
-      importedFilePath: "D:\Films\Wanted Film (2011)\Wanted Film (2011).mkv",
+      importedFilePath: "D:/Films/Wanted Film (2011)/Wanted Film (2011).mkv",
       torrentHashOrItemId: "a779fa758f2229586eebc2e5960ee32fe5659596"
     } as DownloadDispatchItem;
 
