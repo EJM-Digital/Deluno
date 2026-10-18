@@ -186,5 +186,7 @@ public sealed class SeerrPersistenceTests
         }
 
         public Task<MediaServerAnswer<bool>> MarkAvailableAsync(SeerrConnection connection, int seerrMediaId, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<int?> FindMediaIdAsync(SeerrConnection connection, string mediaType, string? tmdbId, string? tvdbId, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 }

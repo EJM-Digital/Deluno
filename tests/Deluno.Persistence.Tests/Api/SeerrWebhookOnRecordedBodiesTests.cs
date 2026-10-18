@@ -30,6 +30,7 @@ public sealed class SeerrWebhookOnRecordedBodiesTests : IAsyncDisposable
     private readonly SqliteSeerrRepository _repository;
     private readonly FixedTimeProvider _timeProvider;
     private readonly RecordingAcquisitionService _acquisitions = new();
+    private readonly NoopSeerrClient _seerr = new();
 
     public SeerrWebhookOnRecordedBodiesTests()
     {
@@ -50,7 +51,7 @@ public sealed class SeerrWebhookOnRecordedBodiesTests : IAsyncDisposable
                     services.AddRouting();
                     services.AddSingleton<TimeProvider>(_timeProvider);
                     services.AddSingleton<ISeerrRepository>(_repository);
-                    services.AddSingleton<ISeerrClient>(new NoopSeerrClient());
+                    services.AddSingleton<ISeerrClient>(_seerr);
                     services.AddSingleton<ISeerrAcquisitionsRepository>(
                         new SqliteSeerrAcquisitionsRepository(_storage.Factory, _timeProvider));
                     services.AddSingleton<ISeerrAcquisitionService>(_acquisitions);
@@ -99,20 +100,37 @@ public sealed class SeerrWebhookOnRecordedBodiesTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task The_default_payload_of_an_approval_carries_no_Seerr_media_id_so_the_route_acknowledges_it_and_acts_on_nothing()
+    public async Task The_default_payload_of_an_approval_carries_no_Seerr_media_id_so_Deluno_asks_Seerr_for_it_and_adds_the_title()
     {
-        // Seerr 3.5.0's media object has media_type, tmdbId, tvdbId and the statuses: no media id (webhook-media-id-not-substituted shows that
-        // asking for {{media_id}} sends the text unchanged). Deluno needs the id to mark the title available later, so it ignores the call.
+        // Seerr 3.5.0's media object has media_type, tmdbId, tvdbId and the statuses: no media id (#1356). Deluno finds it from the TMDb id.
         var sent = R("webhook-approved").Exchanges[0];
         var media = System.Text.Json.Nodes.JsonNode.Parse(sent.Request.Body!)!["media"]!.AsObject();
         Assert.False(media.ContainsKey("media_id") || media.ContainsKey("id"));
         var connection = await CreateConnectionAsync();
         var secret = await _repository.RegenerateWebhookSecretAsync(connection.Id, CancellationToken.None);
+        _seerr.FoundId = 7;
 
         var response = await _client.SendAsync(Posted(connection.Id, sent, secret));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Empty(_acquisitions.Calls);
+        var call = Assert.Single(_acquisitions.Calls);
+        Assert.Equal("45745", call.TmdbId);
+        Assert.Equal(7, call.SeerrMediaId);
+        Assert.Equal(("movies", "45745"), (_seerr.Asked!.Value.MediaType, _seerr.Asked.Value.TmdbId));
+    }
+
+    [Fact]
+    public async Task An_approval_is_still_added_when_Seerr_cannot_say_its_media_id_just_now()
+    {
+        var sent = R("webhook-approved").Exchanges[0];
+        var connection = await CreateConnectionAsync();
+        var secret = await _repository.RegenerateWebhookSecretAsync(connection.Id, CancellationToken.None);
+        _seerr.FoundId = null;
+
+        var response = await _client.SendAsync(Posted(connection.Id, sent, secret));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(0, Assert.Single(_acquisitions.Calls).SeerrMediaId);
     }
 
     [Fact]
@@ -152,17 +170,20 @@ public sealed class SeerrWebhookOnRecordedBodiesTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task A_payload_that_asks_for_the_media_id_gets_the_placeholder_text_back_from_Seerr_and_is_ignored()
+    public async Task A_payload_that_asks_for_the_media_id_gets_the_placeholder_text_back_from_Seerr_and_is_added_by_its_TMDb_id()
     {
         var sent = R("webhook-media-id-not-substituted").Exchanges[0];
         Assert.Contains("{{media_id}}", sent.Request.Body, StringComparison.Ordinal);
         var connection = await CreateConnectionAsync();
         var secret = await _repository.RegenerateWebhookSecretAsync(connection.Id, CancellationToken.None);
+        _seerr.FoundId = 3;
 
         var response = await _client.SendAsync(Posted(connection.Id, sent, secret));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Empty(_acquisitions.Calls);
+        var call = Assert.Single(_acquisitions.Calls);
+        Assert.Equal("550", call.TmdbId);
+        Assert.Equal(3, call.SeerrMediaId);
     }
 
     /// <summary>A notification that is not an approval (a request waiting, one declined, the test button) is accepted so Seerr does not retry, and never acted on.</summary>
@@ -231,6 +252,16 @@ public sealed class SeerrWebhookOnRecordedBodiesTests : IAsyncDisposable
 
         public Task<MediaServerAnswer<bool>> MarkAvailableAsync(SeerrConnection connection, int seerrMediaId, CancellationToken cancellationToken)
             => Task.FromResult<MediaServerAnswer<bool>>(new MediaServerAnswer<bool>.Unreachable("not used"));
+
+        public int? FoundId { get; set; }
+
+        public (string MediaType, string? TmdbId)? Asked { get; private set; }
+
+        public Task<int?> FindMediaIdAsync(SeerrConnection connection, string mediaType, string? tmdbId, string? tvdbId, CancellationToken cancellationToken)
+        {
+            Asked = (mediaType, tmdbId);
+            return Task.FromResult(FoundId);
+        }
     }
 
     /// <summary>
