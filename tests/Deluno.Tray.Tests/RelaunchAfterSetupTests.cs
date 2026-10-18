@@ -257,9 +257,24 @@ public sealed class RelaunchAfterSetupTests : IDisposable
         RunHelper(RelaunchKind.Tray, setup.Id, exe, logPath);
 
         Assert.True(setup.HasExited, "the helper must not start Deluno before Setup has exited");
-        Assert.True(SpinWait.SpinUntil(() => File.Exists(marker), 20000), "Deluno was not started");
-        Assert.Contains("--after-setup", File.ReadAllText(marker));
-        Assert.Contains("started Deluno", File.ReadAllText(logPath));
+        // The fake Deluno is still writing the marker when it first exists: wait for what it writes, reading with a sharing mode that lets it finish.
+        Assert.True(SpinWait.SpinUntil(() => ReadShared(marker).Contains("--after-setup", StringComparison.Ordinal), 20000), "Deluno was not started");
+        Assert.Contains("--after-setup", ReadShared(marker));
+        Assert.Contains("started Deluno", ReadShared(logPath));
+    }
+
+    private static string ReadShared(string path)
+    {
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream);
+            return reader.ReadToEnd();
+        }
+        catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException or IOException)
+        {
+            return string.Empty;
+        }
     }
 
     [Fact]

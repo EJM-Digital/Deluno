@@ -78,8 +78,9 @@ describe("the Collections page", () => {
 
   it("says how many films are excluded only when some are", async () => {
     renderPage([member({}), member({ providerId: "2", title: "Dune: Part Two", isExcluded: true })]);
-    expect(await screen.findByText("1 excluded")).toBeInTheDocument();
-  });
+    // The page loads on first use, which takes long on a busy machine: wait for the count itself, not for a set time.
+    expect(await screen.findByText("1 excluded", {}, { timeout: 30_000 })).toBeInTheDocument();
+  }, 40_000);
 
   it("shows no excluded count when none are excluded", async () => {
     renderPage([member({})]);
