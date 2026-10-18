@@ -177,8 +177,12 @@ async function stage(body) {
 // A single-file release: the film alone, named like the release (the torrent has one file and no folder).
 // variant "short": the web seed stops before the last piece, so a client ends just short of 100%.
 // variant "dummy": a torrent of 40 MB nobody serves (no tracker, no web seed): no data and no peers, ever.
-async function newSingleFileFilm(title, year, variant = "complete") {
-  const release = `${title}.${year}.1080p.WEB-DL.x264-E2E`;
+// A TV episode (tv: the episode number of season 1) is named like a scene release, Title.S01E01.1080p.WEB-DL.x264-E2E, and offered on the
+// Torznab/Newznab feed under the TV categories, so a tvsearch finds it and a movie search does not. A film is Title.Year.1080p...
+const releaseOf = (title, year, tv) => (tv ? `${title}.S01E${String(tv).padStart(2, "0")}.1080p.WEB-DL.x264-E2E` : `${title}.${year}.1080p.WEB-DL.x264-E2E`);
+
+async function newSingleFileFilm(title, year, variant = "complete", tv = 0) {
+  const release = releaseOf(title, year, tv);
   const file = path.join(WORK, "films", `${release}.mkv`);
   if (fs.existsSync(file)) throw new Error("a release of that name already exists");
   fs.mkdirSync(path.join(WORK, "films"), { recursive: true });
@@ -191,7 +195,7 @@ async function newSingleFileFilm(title, year, variant = "complete") {
     fs.mkdirSync(path.join(WORK, "torrents"), { recursive: true });
     const dummyName = `${release}.torrent`;
     fs.writeFileSync(path.join(WORK, "torrents", dummyName), bencode({ info: dummyInfo, comment: "Deluno end-to-end fixture (nobody has it)" }));
-    RELEASES.push({ title: release, torrent: dummyName, infohash: dummyHash, size: bytes.length, cat: 2000, seeders: 50 });
+    RELEASES.push({ title: release, torrent: dummyName, infohash: dummyHash, size: bytes.length, cat: tv ? 5040 : 2000, seeders: 50, tv: Boolean(tv) });
     log(`made ${release}: ${bytes.length} bytes, one file, no web seed and no tracker, hash ${dummyHash}`);
     return { title, year, release, infohash: dummyHash, size: bytes.length, url: `${PUBLIC_BASE}/dl/${dummyName}`, files: [{ path: `${release}.mkv`, size: bytes.length }] };
   }
@@ -208,7 +212,7 @@ async function newSingleFileFilm(title, year, variant = "complete") {
   fs.mkdirSync(path.join(WORK, "torrents"), { recursive: true });
   const name = `${release}.torrent`;
   fs.writeFileSync(path.join(WORK, "torrents", name), torrent);
-  RELEASES.push({ title: release, torrent: name, infohash, size: data.length, cat: 2000, seeders: 50 });
+  RELEASES.push({ title: release, torrent: name, infohash, size: data.length, cat: tv ? 5040 : 2000, seeders: 50, tv: Boolean(tv) });
   log(`made ${release}: ${data.length} bytes, one file, hash ${infohash}`);
   return { title, year, release, infohash, size: data.length, url: `${PUBLIC_BASE}/dl/${name}`, files: [{ path: `${release}.mkv`, size: data.length }] };
 }
@@ -234,8 +238,8 @@ async function newTvPack(title, year, episodes) {
   return { title, year, release, infohash, size: total, url: `${PUBLIC_BASE}/dl/${name}`, files: files.map((f) => ({ path: f, size: fs.statSync(path.join(folder, f)).size })) };
 }
 
-async function newFilm(title, year, withExtra) {
-  const release = `${title}.${year}.1080p.WEB-DL.x264-E2E`;
+async function newFilm(title, year, withExtra, tv = 0) {
+  const release = releaseOf(title, year, tv);
   const folder = path.join(WORK, "films", release);
   if (fs.existsSync(folder) && fs.statSync(folder).isDirectory()) throw new Error("a release of that name already exists");
   const [baseFilm, baseExtra] = await makeBaseVideos();
@@ -252,7 +256,7 @@ async function newFilm(title, year, withExtra) {
   fs.mkdirSync(path.join(WORK, "torrents"), { recursive: true });
   const name = `${release}.torrent`;
   fs.writeFileSync(path.join(WORK, "torrents", name), torrent);
-  RELEASES.push({ title: release, torrent: name, infohash, size: total, cat: 2000, seeders: 50 });
+  RELEASES.push({ title: release, torrent: name, infohash, size: total, cat: tv ? 5040 : 2000, seeders: 50, tv: Boolean(tv) });
   log(`made ${release}: ${total} bytes, ${files.length} files, hash ${infohash}`);
   return {
     title, year, release, infohash, size: total, url: `${PUBLIC_BASE}/dl/${name}`,
@@ -335,8 +339,8 @@ function nzbXml(name, files) {
 
 // A Usenet release: a folder job (the film and a small .nfo beside it, as a real post carries them) and its .nzb.
 // hang "all": no article is ever answered; hang "last": the film's last article is never answered; slow: every article waits SLOW_MS.
-async function newUsenetFilm(title, year, { hang = "", slow = false } = {}) {
-  const release = `${title}.${year}.1080p.WEB-DL.x264-E2E`;
+async function newUsenetFilm(title, year, { hang = "", slow = false, tv = 0 } = {}) {
+  const release = releaseOf(title, year, tv);
   if (RELEASES.some((r) => r.title === release)) throw new Error("a release of that name already exists");
   const [baseFilm] = await makeBaseVideos();
   const folder = path.join(WORK, "nzb-films", release);
@@ -355,7 +359,7 @@ async function newUsenetFilm(title, year, { hang = "", slow = false } = {}) {
   const name = `${release}.nzb`;
   fs.writeFileSync(path.join(WORK, "nzbs", name), nzbXml(release, files));
   const size = files.reduce((sum, f) => sum + f.size, 0);
-  RELEASES.push({ title: release, torrent: name, infohash: key, size, cat: 2000, seeders: 0, usenet: true });
+  RELEASES.push({ title: release, torrent: name, infohash: key, size, cat: tv ? 5040 : 2000, seeders: 0, usenet: true, tv: Boolean(tv) });
   log(`made ${release}: ${size} bytes, ${files.length} files, ${files.reduce((n, f) => n + f.total, 0)} articles`);
   return { title, year, release, protocol: "usenet", infohash: key, size, url: `${PUBLIC_BASE}/dl/${name}`, files: files.map((f) => ({ path: f.name, size: f.size })) };
 }
@@ -624,9 +628,9 @@ async function handlePost(req, res, url) {
     if (url.pathname === "/stage") return sendBytes(req, res, 200, JSON.stringify(await stage(body)), "application/json");
     if (url.pathname === "/films") {
       if (body.tvPack) return sendBytes(req, res, 200, JSON.stringify(await newTvPack(body.title, Number.parseInt(body.year ?? 2020, 10), Number(body.tvPack))), "application/json");
-      if (body.usenet) return sendBytes(req, res, 200, JSON.stringify(await newUsenetFilm(body.title, Number.parseInt(body.year ?? 2020, 10), { hang: body.hang || "", slow: Boolean(body.slow) })), "application/json");
-      if (body.layout === "file" || body.variant) return sendBytes(req, res, 200, JSON.stringify(await newSingleFileFilm(body.title, Number.parseInt(body.year ?? 2020, 10), body.variant || "complete")), "application/json");
-      const made = await newFilm(body.title, Number.parseInt(body.year ?? 2020, 10), Boolean(body.extra));
+      if (body.usenet) return sendBytes(req, res, 200, JSON.stringify(await newUsenetFilm(body.title, Number.parseInt(body.year ?? 2020, 10), { hang: body.hang || "", slow: Boolean(body.slow), tv: Number(body.tvEpisode || 0) })), "application/json");
+      if (body.layout === "file" || body.variant) return sendBytes(req, res, 200, JSON.stringify(await newSingleFileFilm(body.title, Number.parseInt(body.year ?? 2020, 10), body.variant || "complete", Number(body.tvEpisode || 0))), "application/json");
+      const made = await newFilm(body.title, Number.parseInt(body.year ?? 2020, 10), Boolean(body.extra), Number(body.tvEpisode || 0));
       return sendBytes(req, res, 200, JSON.stringify(made), "application/json");
     }
     return sendBytes(req, res, 404, "no", "text/plain");
