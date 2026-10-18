@@ -131,7 +131,6 @@ public sealed class RtorrentOnRecordingsTests
     /// </summary>
     private static Task<DownloadClientTelemetrySnapshot?> Poll(Scripted handler)
     {
-        if (!handler.Holds("t.multicall")) handler.Add(R("downloading"), 4);
         if (!handler.Holds("system.client_version")) handler.Add(R("version"));
         return Over(handler).GetSnapshotAsync(Item(), DateTimeOffset.UtcNow, CancellationToken.None);
     }
@@ -367,6 +366,8 @@ public sealed class RtorrentOnRecordingsTests
         Assert.Equal(DownloadQueueStatuses.Stalled, item.Status);
         Assert.Contains("Registered torrents only", item.ErrorMessage, StringComparison.Ordinal);
         Assert.True(item.IsSetupProblem);
+        // #1356: rTorrent 0.16 has no t.message; the tracker's refusal is in d.message, so it reads as unregistered.
+        Assert.Equal(DownloadTrackerStatuses.Unregistered, item.TrackerStatus);
         Assert.Contains("Registered torrents only", R("tracker-error").Exchanges[2].Reply.Body, StringComparison.Ordinal);
     }
 
@@ -602,15 +603,15 @@ public sealed class RtorrentOnRecordingsTests
     }
 
     [Fact]
-    public async Task A_torrent_list_is_read_even_though_rTorrent_has_no_t_message_and_faults_the_tracker_call()
+    public async Task A_torrent_with_no_tracker_message_reads_as_a_healthy_tracker_though_rTorrent_has_no_t_message()
     {
-        // The real rTorrent faults t.multicall for t.message; the poll must still give the list (a tracker read that fails says nothing either way).
-        var handler = new Scripted().Add(R("downloading"), 0, 4).Add(R("version"));
+        // The real rTorrent faults t.multicall for t.message, so Deluno never asks for it: the tracker's message is the list row's d.message.
+        var handler = new Scripted().Add(R("downloading"), 0).Add(R("version"));
 
         var snapshot = await Poll(handler);
 
         var item = Assert.Single(snapshot!.Queue);
-        Assert.Equal(DownloadTrackerStatuses.Unknown, item.TrackerStatus);
+        Assert.Equal(DownloadTrackerStatuses.Ok, item.TrackerStatus);
         Assert.Equal(DownloadQueueStatuses.Downloading, item.Status);
     }
 }

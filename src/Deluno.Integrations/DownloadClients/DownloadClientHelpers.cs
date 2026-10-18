@@ -323,7 +323,7 @@ internal static class DownloadClientHelpers
     private static readonly string[] UnregisteredTrackerPhrases =
     [
         "unregistered", "not registered", "torrent not found", "not authorized",
-        "torrent has been deleted", "info hash not found"
+        "torrent has been deleted", "info hash not found", "registered torrents only"
     ];
 
     /// <summary>Whether a tracker's own message is it declaring the torrent unregistered/removed (#878).</summary>
