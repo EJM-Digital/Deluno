@@ -1,0 +1,34 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.18",
+  "state": "status-not-taken",
+  "recordedAt": "2026-10-17T12:14:57Z",
+  "note": "The status poll (with the second connection's secret) of the send Weir did not take because the file's pass belongs to another connection: cancelled, with Weir's words.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/deluno/01a149c86e6a772ea30489a2d7003f91",
+        "headers": {
+          "x-webhook-secret": "<scrubbed>"
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "01a149c86e6a772ea30489a2d7003f91",
+          "state": "cancelled",
+          "queuePosition": null,
+          "scheduledFor": null,
+          "lastChangedUtc": "2026-10-17T12:13:55.030402Z",
+          "outputPath": null,
+          "outputFiles": null,
+          "message": "Weir is already working on this file for another connection, so it did not start this send."
+        }
+      }
+    }
+  ]
+}

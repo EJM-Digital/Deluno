@@ -1,0 +1,223 @@
+{
+  "app": "transmission",
+  "version": "4.1.3",
+  "state": "finished-seed-fields",
+  "recordedAt": "2026-10-17T11:39:44Z",
+  "note": "A torrent added by file, then torrent-get with every field Deluno asks for now (uploadRatio, secondsSeeding, activityDate, doneDate, seedRatioMode, seedRatioLimit, seedIdleMode, seedIdleLimit) while it was downloading and again once it finished.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/transmission/rpc",
+        "body": {
+          "method": "torrent-add",
+          "arguments": {
+            "paused": false,
+            "download-dir": "/downloads/completed/Movies",
+            "metainfo": "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"
+          },
+          "tag": 4
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "arguments": {
+            "torrent-added": {
+              "hashString": "2098900d96d997681cde46bf090073d7596e3eb6",
+              "id": 2,
+              "name": "Recorded Transmission Seed.2008.1080p.WEB-DL.x264-E2E.mkv"
+            }
+          },
+          "result": "success",
+          "tag": 4
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/transmission/rpc",
+        "body": {
+          "method": "torrent-get",
+          "arguments": {
+            "ids": [
+              "2098900d96d997681cde46bf090073d7596e3eb6"
+            ],
+            "fields": [
+              "id",
+              "hashString",
+              "name",
+              "status",
+              "percentDone",
+              "rateDownload",
+              "rateUpload",
+              "eta",
+              "totalSize",
+              "downloadedEver",
+              "peersConnected",
+              "peersSendingToUs",
+              "addedDate",
+              "activityDate",
+              "doneDate",
+              "downloadDir",
+              "labels",
+              "error",
+              "errorString",
+              "isStalled",
+              "uploadRatio",
+              "secondsSeeding",
+              "isPrivate",
+              "trackerStats",
+              "queuePosition",
+              "seedRatioMode",
+              "seedRatioLimit",
+              "seedIdleMode",
+              "seedIdleLimit"
+            ]
+          },
+          "tag": 5
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "arguments": {
+            "torrents": [
+              {
+                "activityDate": 0,
+                "addedDate": 1792237171,
+                "doneDate": 0,
+                "downloadDir": "/downloads/completed/Movies",
+                "downloadedEver": 0,
+                "error": 0,
+                "errorString": "",
+                "eta": -2,
+                "hashString": "2098900d96d997681cde46bf090073d7596e3eb6",
+                "id": 2,
+                "isPrivate": false,
+                "isStalled": false,
+                "labels": [],
+                "name": "Recorded Transmission Seed.2008.1080p.WEB-DL.x264-E2E.mkv",
+                "peersConnected": 0,
+                "peersSendingToUs": 0,
+                "percentDone": 0,
+                "queuePosition": 0,
+                "rateDownload": 0,
+                "rateUpload": 0,
+                "secondsSeeding": 0,
+                "seedIdleLimit": 30,
+                "seedIdleMode": 0,
+                "seedRatioLimit": 2,
+                "seedRatioMode": 0,
+                "status": 4,
+                "totalSize": 67037816,
+                "trackerStats": [],
+                "uploadRatio": 0
+              }
+            ]
+          },
+          "result": "success",
+          "tag": 5
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/transmission/rpc",
+        "body": {
+          "method": "torrent-get",
+          "arguments": {
+            "ids": [
+              "2098900d96d997681cde46bf090073d7596e3eb6"
+            ],
+            "fields": [
+              "id",
+              "hashString",
+              "name",
+              "status",
+              "percentDone",
+              "rateDownload",
+              "rateUpload",
+              "eta",
+              "totalSize",
+              "downloadedEver",
+              "peersConnected",
+              "peersSendingToUs",
+              "addedDate",
+              "activityDate",
+              "doneDate",
+              "downloadDir",
+              "labels",
+              "error",
+              "errorString",
+              "isStalled",
+              "uploadRatio",
+              "secondsSeeding",
+              "isPrivate",
+              "trackerStats",
+              "queuePosition",
+              "seedRatioMode",
+              "seedRatioLimit",
+              "seedIdleMode",
+              "seedIdleLimit"
+            ]
+          },
+          "tag": 18
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "arguments": {
+            "torrents": [
+              {
+                "activityDate": 1792237181,
+                "addedDate": 1792237171,
+                "doneDate": 1792237182,
+                "downloadDir": "/downloads/completed/Movies",
+                "downloadedEver": 67037816,
+                "error": 0,
+                "errorString": "",
+                "eta": -1,
+                "hashString": "2098900d96d997681cde46bf090073d7596e3eb6",
+                "id": 2,
+                "isPrivate": false,
+                "isStalled": false,
+                "labels": [],
+                "name": "Recorded Transmission Seed.2008.1080p.WEB-DL.x264-E2E.mkv",
+                "peersConnected": 0,
+                "peersSendingToUs": 0,
+                "percentDone": 1,
+                "queuePosition": 0,
+                "rateDownload": 0,
+                "rateUpload": 0,
+                "secondsSeeding": 2,
+                "seedIdleLimit": 30,
+                "seedIdleMode": 0,
+                "seedRatioLimit": 2,
+                "seedRatioMode": 0,
+                "status": 6,
+                "totalSize": 67037816,
+                "trackerStats": [],
+                "uploadRatio": 0
+              }
+            ]
+          },
+          "result": "success",
+          "tag": 18
+        }
+      }
+    }
+  ]
+}

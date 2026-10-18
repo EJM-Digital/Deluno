@@ -1,0 +1,359 @@
+{
+  "app": "radarr",
+  "version": "6.4.4.10685",
+  "state": "movies",
+  "recordedAt": "2026-10-17T12:34:45Z",
+  "note": "GET /api/v3/movie: one real film (6.4.4.10685, a fresh container set up through its own API with a public title, a tag, a custom format, qBittorrent and, for Radarr, a Torznab feed).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v3/movie",
+        "body": {
+          "title": "Big Buck Bunny",
+          "originalTitle": "Big Buck Bunny",
+          "originalLanguage": {
+            "id": 1,
+            "name": "English"
+          },
+          "alternateTitles": [
+            {
+              "sourceType": "tmdb",
+              "movieMetadataId": 0,
+              "title": "El gran conejo"
+            },
+            {
+              "sourceType": "tmdb",
+              "movieMetadataId": 0,
+              "title": "Peach Open Movie Project"
+            },
+            {
+              "sourceType": "tmdb",
+              "movieMetadataId": 0,
+              "title": "Big Buck Bunny (Short 2008)"
+            },
+            {
+              "sourceType": "tmdb",
+              "movieMetadataId": 0,
+              "title": "Большой кролик"
+            },
+            {
+              "sourceType": "tmdb",
+              "movieMetadataId": 0,
+              "title": "Большой кролик Бак"
+            },
+            {
+              "sourceType": "tmdb",
+              "movieMetadataId": 0,
+              "title": "Великий Бак"
+            },
+            {
+              "sourceType": "tmdb",
+              "movieMetadataId": 0,
+              "title": "Zeka veliki bak"
+            }
+          ],
+          "secondaryYearSourceId": 0,
+          "sortTitle": "big buck bunny",
+          "status": "released",
+          "overview": "Follow a day of the life of Big Buck Bunny when he meets three bullying rodents: Frank, Rinky, and Gamera. The rodents amuse themselves by harassing helpless creatures by throwing fruits, nuts and rocks at them. After the deaths of two of Bunny's favorite butterflies, and an offensive attack on Bunny himself, Bunny sets aside his gentle nature and orchestrates a complex plan for revenge.",
+          "inCinemas": "2008-04-10T00:00:00Z",
+          "digitalRelease": "2008-04-10T00:00:00Z",
+          "releaseDate": "2008-04-10T00:00:00Z",
+          "images": [
+            {
+              "coverType": "poster",
+              "remoteUrl": "https://image.tmdb.org/t/p/original/i9jJzvoXET4D9pOkoEwncSdNNER.jpg"
+            },
+            {
+              "coverType": "fanart",
+              "remoteUrl": "https://image.tmdb.org/t/p/original/xtdybjRRZ15mCrPOvEld305myys.jpg"
+            }
+          ],
+          "website": "https://peach.blender.org/",
+          "year": 2008,
+          "youTubeTrailerId": "yUQM7H4Swgw",
+          "studio": "Blender Foundation",
+          "qualityProfileId": 1,
+          "movieFileId": 0,
+          "monitored": false,
+          "minimumAvailability": "released",
+          "isAvailable": true,
+          "folderName": "",
+          "runtime": 8,
+          "cleanTitle": "bigbuckbunny",
+          "imdbId": "tt1254207",
+          "tmdbId": 10378,
+          "titleSlug": "10378",
+          "certification": "G",
+          "genres": [
+            "Animation",
+            "Comedy",
+            "Family"
+          ],
+          "keywords": [
+            "blender",
+            "bunny",
+            "conejo",
+            "hilarious",
+            "mobbing",
+            "open source",
+            "repayment",
+            "revenge",
+            "short film",
+            "squirrel"
+          ],
+          "tags": [
+            1
+          ],
+          "added": "0001-01-01T00:00:00Z",
+          "ratings": {
+            "imdb": {
+              "votes": 2267,
+              "value": 6.4,
+              "type": "user"
+            },
+            "tmdb": {
+              "votes": 200,
+              "value": 6.5,
+              "type": "user"
+            },
+            "trakt": {
+              "votes": 329,
+              "value": 7.04863,
+              "type": "user"
+            }
+          },
+          "popularity": 2.4014,
+          "rootFolderPath": "/movies",
+          "addOptions": {
+            "monitor": "none",
+            "searchForMovie": false
+          }
+        }
+      },
+      "reply": {
+        "status": 201,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "title": "Big Buck Bunny",
+          "originalTitle": "Big Buck Bunny",
+          "originalLanguage": {
+            "id": 1,
+            "name": "English"
+          },
+          "alternateTitles": [],
+          "secondaryYearSourceId": 0,
+          "sortTitle": "big buck bunny",
+          "sizeOnDisk": 0,
+          "status": "released",
+          "overview": "Follow a day of the life of Big Buck Bunny when he meets three bullying rodents: Frank, Rinky, and Gamera. The rodents amuse themselves by harassing helpless creatures by throwing fruits, nuts and rocks at them. After the deaths of two of Bunny's favorite butterflies, and an offensive attack on Bunny himself, Bunny sets aside his gentle nature and orchestrates a complex plan for revenge.",
+          "inCinemas": "2008-04-10T00:00:00Z",
+          "digitalRelease": "2008-04-10T00:00:00Z",
+          "releaseDate": "2008-04-10T00:00:00Z",
+          "images": [
+            {
+              "coverType": "poster",
+              "url": "/MediaCover/1/poster.jpg?h=575804ada86e356966a7",
+              "remoteUrl": "https://image.tmdb.org/t/p/original/i9jJzvoXET4D9pOkoEwncSdNNER.jpg"
+            },
+            {
+              "coverType": "fanart",
+              "url": "/MediaCover/1/fanart.jpg?h=a54364feca427354955c",
+              "remoteUrl": "https://image.tmdb.org/t/p/original/xtdybjRRZ15mCrPOvEld305myys.jpg"
+            }
+          ],
+          "website": "https://peach.blender.org/",
+          "year": 2008,
+          "youTubeTrailerId": "yUQM7H4Swgw",
+          "studio": "Blender Foundation",
+          "path": "/movies/Big Buck Bunny (2008)",
+          "qualityProfileId": 1,
+          "hasFile": false,
+          "movieFileId": 0,
+          "monitored": false,
+          "minimumAvailability": "released",
+          "isAvailable": true,
+          "folderName": "/movies/Big Buck Bunny (2008)",
+          "runtime": 8,
+          "cleanTitle": "bigbuckbunny",
+          "imdbId": "tt1254207",
+          "tmdbId": 10378,
+          "titleSlug": "10378",
+          "rootFolderPath": "/movies",
+          "certification": "G",
+          "genres": [
+            "Animation",
+            "Comedy",
+            "Family"
+          ],
+          "keywords": [
+            "blender",
+            "bunny",
+            "conejo",
+            "hilarious",
+            "mobbing",
+            "open source",
+            "repayment",
+            "revenge",
+            "short film",
+            "squirrel"
+          ],
+          "tags": [
+            1
+          ],
+          "added": "2026-10-17T12:34:45Z",
+          "addOptions": {
+            "searchForMovie": false,
+            "addMethod": "manual",
+            "ignoreEpisodesWithFiles": false,
+            "ignoreEpisodesWithoutFiles": false,
+            "monitor": "none"
+          },
+          "ratings": {
+            "imdb": {
+              "votes": 2267,
+              "value": 6.4,
+              "type": "user"
+            },
+            "tmdb": {
+              "votes": 200,
+              "value": 6.5,
+              "type": "user"
+            },
+            "trakt": {
+              "votes": 329,
+              "value": 7.04863,
+              "type": "user"
+            }
+          },
+          "popularity": 2.4014,
+          "statistics": {
+            "movieFileCount": 0,
+            "sizeOnDisk": 0,
+            "releaseGroups": [],
+            "movieFileQualities": []
+          },
+          "id": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v3/movie"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "title": "Big Buck Bunny",
+            "originalTitle": "Big Buck Bunny",
+            "originalLanguage": {
+              "id": 1,
+              "name": "English"
+            },
+            "alternateTitles": [],
+            "secondaryYearSourceId": 0,
+            "sortTitle": "big buck bunny",
+            "sizeOnDisk": 0,
+            "status": "released",
+            "overview": "Follow a day of the life of Big Buck Bunny when he meets three bullying rodents: Frank, Rinky, and Gamera. The rodents amuse themselves by harassing helpless creatures by throwing fruits, nuts and rocks at them. After the deaths of two of Bunny's favorite butterflies, and an offensive attack on Bunny himself, Bunny sets aside his gentle nature and orchestrates a complex plan for revenge.",
+            "inCinemas": "2008-04-10T00:00:00Z",
+            "digitalRelease": "2008-04-10T00:00:00Z",
+            "releaseDate": "2008-04-10T00:00:00Z",
+            "images": [
+              {
+                "coverType": "poster",
+                "url": "/MediaCover/1/poster.jpg?h=575804ada86e356966a7",
+                "remoteUrl": "https://image.tmdb.org/t/p/original/i9jJzvoXET4D9pOkoEwncSdNNER.jpg"
+              },
+              {
+                "coverType": "fanart",
+                "url": "/MediaCover/1/fanart.jpg?h=a54364feca427354955c",
+                "remoteUrl": "https://image.tmdb.org/t/p/original/xtdybjRRZ15mCrPOvEld305myys.jpg"
+              }
+            ],
+            "website": "https://peach.blender.org/",
+            "year": 2008,
+            "youTubeTrailerId": "yUQM7H4Swgw",
+            "studio": "Blender Foundation",
+            "path": "/movies/Big Buck Bunny (2008)",
+            "qualityProfileId": 1,
+            "hasFile": false,
+            "movieFileId": 0,
+            "monitored": false,
+            "minimumAvailability": "released",
+            "isAvailable": true,
+            "folderName": "/movies/Big Buck Bunny (2008)",
+            "runtime": 8,
+            "cleanTitle": "bigbuckbunny",
+            "imdbId": "tt1254207",
+            "tmdbId": 10378,
+            "titleSlug": "10378",
+            "rootFolderPath": "/movies",
+            "certification": "G",
+            "genres": [
+              "Animation",
+              "Comedy",
+              "Family"
+            ],
+            "keywords": [
+              "blender",
+              "bunny",
+              "conejo",
+              "hilarious",
+              "mobbing",
+              "open source",
+              "repayment",
+              "revenge",
+              "short film",
+              "squirrel"
+            ],
+            "tags": [
+              1
+            ],
+            "added": "2026-10-17T12:34:45Z",
+            "addOptions": {
+              "searchForMovie": false,
+              "addMethod": "manual",
+              "ignoreEpisodesWithFiles": false,
+              "ignoreEpisodesWithoutFiles": false,
+              "monitor": "none"
+            },
+            "ratings": {
+              "imdb": {
+                "votes": 2267,
+                "value": 6.4,
+                "type": "user"
+              },
+              "tmdb": {
+                "votes": 200,
+                "value": 6.5,
+                "type": "user"
+              },
+              "trakt": {
+                "votes": 329,
+                "value": 7.04863,
+                "type": "user"
+              }
+            },
+            "popularity": 2.4014,
+            "statistics": {
+              "movieFileCount": 0,
+              "sizeOnDisk": 0,
+              "releaseGroups": [],
+              "movieFileQualities": []
+            },
+            "id": 1
+          }
+        ]
+      }
+    }
+  ]
+}

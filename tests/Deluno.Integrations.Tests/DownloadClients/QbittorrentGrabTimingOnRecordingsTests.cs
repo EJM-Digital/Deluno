@@ -25,11 +25,9 @@ public sealed class QbittorrentGrabTimingOnRecordingsTests
     {
         var hash = RecordedHash();
         var infoCalls = 0;
-        var calls = new Calls("qbittorrent", [RecordedReplies.Qbittorrent("sign-in"), RecordedReplies.Qbittorrent("version"), RecordedReplies.Qbittorrent("finished-single-file"), RecordedReplies.Qbittorrent("category-moved")],
+        var calls = new Calls("qbittorrent", [RecordedReplies.Qbittorrent("sign-in"), RecordedReplies.Qbittorrent("version"), RecordedReplies.Qbittorrent("finished-single-file"), RecordedReplies.Qbittorrent("category-moved"), RecordedReplies.Qbittorrent("auto-management-set")],
             (request, _) =>
             {
-                // Automatic management is not recorded; qBittorrent answers its other changes with an empty 200, as the recorded category move does.
-                if (request.RequestUri!.AbsolutePath.EndsWith("setAutoManagement", StringComparison.Ordinal)) return RecordedReplies.Qbittorrent("category-moved").Response("torrents/setCategory");
                 if (!request.RequestUri!.AbsolutePath.EndsWith("torrents/info", StringComparison.Ordinal)) return null;
                 infoCalls++;
                 // Empty before the add and for the first look after it, as a client behaves while it fetches the link.
@@ -54,12 +52,10 @@ public sealed class QbittorrentGrabTimingOnRecordingsTests
         QbittorrentDownloadClient.ExtendedConfirmationDelay = TimeSpan.Zero;
         try
         {
-            var calls = new Calls("qbittorrent", [RecordedReplies.Qbittorrent("sign-in"), RecordedReplies.Qbittorrent("version"), RecordedReplies.Qbittorrent("finished-single-file"), RecordedReplies.Qbittorrent("category-moved")],
-                (request, _) => request.RequestUri!.AbsolutePath.EndsWith("setAutoManagement", StringComparison.Ordinal)
-                    ? RecordedReplies.Qbittorrent("category-moved").Response("torrents/setCategory")
-                    : request.RequestUri.AbsolutePath.EndsWith("torrents/info", StringComparison.Ordinal)
-                        ? RecordedReplies.Json(RecordedReplies.Qbittorrent("unknown-id").Body("torrents/info"))
-                        : null);
+            var calls = new Calls("qbittorrent", [RecordedReplies.Qbittorrent("sign-in"), RecordedReplies.Qbittorrent("version"), RecordedReplies.Qbittorrent("finished-single-file"), RecordedReplies.Qbittorrent("category-moved"), RecordedReplies.Qbittorrent("auto-management-set")],
+                (request, _) => request.RequestUri!.AbsolutePath.EndsWith("torrents/info", StringComparison.Ordinal)
+                    ? RecordedReplies.Json(RecordedReplies.Qbittorrent("unknown-id").Body("torrents/info"))
+                    : null);
             var handler = calls.Build();
 
             var result = await new QbittorrentDownloadClient(() => handler)

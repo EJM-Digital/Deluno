@@ -1,0 +1,42 @@
+{
+  "app": "deluno",
+  "version": "1.0.0-rc.30.33",
+  "state": "events-failed-not-taken",
+  "recordedAt": "2026-10-17T12:14:56Z",
+  "note": "Weir 1.0.0-rc.18 reports the second connection's send as not taken: failed, failureClass not_taken, no disposition, sourceRemoved false. Deluno's reply is the real one for a hand-off it sent.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/integrations/processors/events",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "01a149c86e6a772ea30489a2d7003f91",
+          "status": "failed",
+          "processorName": "Weir",
+          "libraryId": "01a149b6785e78dea5d9b11d83fd0daf",
+          "releaseName": "E2entmvccxun1QbittorrentFile.2020.1080p.WEB-DL.x264-E2E.mkv",
+          "message": "Weir is already working on this file for another connection, so it did not start this send.",
+          "sourceRemoved": false,
+          "failureClass": "not_taken",
+          "outputFiles": []
+        }
+      },
+      "reply": {
+        "status": 202,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "status": "failed",
+          "handoffId": "01a149c86e6a772ea30489a2d7003f91",
+          "activityId": "01a149c954fa704b9d72e57fe52e074d",
+          "willRetry": true,
+          "retryAfterMinutes": 2
+        }
+      }
+    }
+  ]
+}

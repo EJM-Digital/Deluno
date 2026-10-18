@@ -1,0 +1,51 @@
+{
+  "app": "sonarr",
+  "version": "4.0.20.3014",
+  "state": "root-folders",
+  "recordedAt": "2026-10-17T12:34:42Z",
+  "note": "GET /api/v3/rootfolder (4.0.20.3014, a fresh container set up through its own API with a public title, a tag, a custom format, qBittorrent and, for Radarr, a Torznab feed).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v3/rootfolder"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "path": "/tv",
+            "accessible": true,
+            "freeSpace": 1001683492864,
+            "unmappedFolders": [],
+            "id": 1
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v3/rootfolder"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "path": "/tv",
+            "accessible": true,
+            "freeSpace": 1001681244160,
+            "unmappedFolders": [],
+            "id": 1
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "app": "qbittorrent",
+  "version": "5.2.4",
+  "state": "add-link-dead",
+  "recordedAt": "2026-10-17T11:41:29Z",
+  "note": "A torrent added by a link the server answers 404 for: what qBittorrent says to the add, and that it lists nothing afterwards.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/torrents/add",
+        "bodyText": "urls=http://fixture:8765/dl/Recorded.Nothing.Here.torrent&category=recorded-movies"
+      },
+      "reply": {
+        "status": 202,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "added_torrent_ids": [],
+          "failure_count": 0,
+          "pending_count": 1,
+          "success_count": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/torrents/info?category=recorded-movies"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": []
+      }
+    }
+  ]
+}

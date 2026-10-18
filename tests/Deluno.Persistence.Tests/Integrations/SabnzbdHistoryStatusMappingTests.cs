@@ -28,6 +28,22 @@ public sealed class SabnzbdHistoryStatusMappingTests
     public void Duplicate_NZB_is_read_as_duplicate_not_failed()
         => Assert.Equal(DownloadClientHistoryOutcomes.Duplicate, SabnzbdDownloadClient.NormalizeHistoryOutcome("Failed", "Duplicate NZB"));
 
+    /// <summary>
+    /// SABnzbd 5.1.3's own history after the same NZB was sent twice with duplicate detection set to fail the job (the recording
+    /// duplicate-failed): the first job completed, and the second is Failed with exactly "Duplicate NZB" in <c>fail_message</c>.
+    /// </summary>
+    [Fact]
+    public void The_failed_job_SABnzbd_really_records_for_a_duplicate_is_read_as_duplicate_and_the_completed_one_as_completed()
+    {
+        var history = System.Text.Json.Nodes.JsonNode.Parse(Deluno.Tests.Recorded.RecordedReplies.Sabnzbd("duplicate-failed").Find("mode=history").Reply.Body!)!["history"]!["slots"]!.AsArray();
+        var failed = Assert.Single(history, slot => slot!["status"]!.GetValue<string>() == "Failed")!;
+        var completed = Assert.Single(history, slot => slot!["status"]!.GetValue<string>() == "Completed")!;
+
+        Assert.Equal("Duplicate NZB", failed["fail_message"]!.GetValue<string>());
+        Assert.Equal(DownloadClientHistoryOutcomes.Duplicate, SabnzbdDownloadClient.NormalizeHistoryOutcome("Failed", failed["fail_message"]!.GetValue<string>()));
+        Assert.Equal(DownloadQueueStatuses.Completed, SabnzbdDownloadClient.NormalizeHistoryOutcome("Completed", completed["fail_message"]!.GetValue<string>()));
+    }
+
     [Theory]
     [InlineData("Unpacking failed, disk full")]
     [InlineData("Unpacking failed, write error or disk is full?")]

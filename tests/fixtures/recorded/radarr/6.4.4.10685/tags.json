@@ -1,0 +1,27 @@
+{
+  "app": "radarr",
+  "version": "6.4.4.10685",
+  "state": "tags",
+  "recordedAt": "2026-10-17T12:34:45Z",
+  "note": "GET /api/v3/tag (6.4.4.10685, a fresh container set up through its own API with a public title, a tag, a custom format, qBittorrent and, for Radarr, a Torznab feed).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v3/tag"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "label": "recorded",
+            "id": 1
+          }
+        ]
+      }
+    }
+  ]
+}

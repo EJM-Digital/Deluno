@@ -36,6 +36,32 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
         }
     }
 
+    /// <summary>
+    /// The seed fields a real Transmission 4.1.3 sends (the recording finished-seed-fields: the torrent-get Deluno sends now, with every
+    /// field it asks for, answered while the torrent was downloading and again once it had finished). The torrent follows the daemon's
+    /// limits (mode 0), the queue place counts from 0, and the fields Deluno asks for are the fields the recording was made asking for.
+    /// </summary>
+    [Fact]
+    public async Task Transmission_reads_the_seed_fields_a_real_daemon_sends_for_a_finished_torrent()
+    {
+        var recording = RecordedReplies.Transmission("finished-seed-fields");
+        var recordedAsk = JsonDocument.Parse(recording.Exchanges[2].Request.Body!).RootElement.GetProperty("arguments").GetProperty("fields").EnumerateArray().Select(f => f.GetString()!).Order().ToArray();
+        var sent = new List<string>();
+        var snapshot = await new TransmissionDownloadClient(new Factory(RecordedTransmissionRig.Handler(recording.Exchanges[2].Reply.Body!, (_, body) =>
+            {
+                sent.Add(body);
+                return null;
+            })))
+            .GetSnapshotAsync(TransmissionClient(), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        var item = Assert.Single(snapshot!.Queue);
+        Assert.Equal(1, item.QueuePosition);
+        Assert.Equal("Follows Transmission's overall seed limits.", item.SeedLimit);
+        var torrentGet = Assert.Single(sent, body => body.Contains("\"torrent-get\"", StringComparison.Ordinal));
+        var asked = JsonDocument.Parse(torrentGet).RootElement.GetProperty("arguments").GetProperty("fields").EnumerateArray().Select(f => f.GetString()!).Order().ToArray();
+        Assert.Equal(recordedAsk, asked);
+    }
+
     [Theory]
     [InlineData(1, 2.0, 1, 30, "Stops seeding at ratio 2 or after 30 minutes with no uploading.")]
     [InlineData(1, 1.5, 0, 30, "Stops seeding at ratio 1.5.")]
