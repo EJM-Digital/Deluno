@@ -1,5 +1,6 @@
 import type { Browser, Page } from "@playwright/test";
 import { isUsenet, type ClientKind } from "./clients.ts";
+import { searchEpisode } from "./tv.ts";
 import {
   URLS, WeirApi, clientFinished, containerOf, docker, filesUnder, makeFilm, routeLibraryTo, settledLibraryFile, until, type FilmOptions,
   type FixtureFilm, type Stack
@@ -11,14 +12,19 @@ import {
  * film, stopping and starting Weir's container, and opening Deluno's screens in a real browser.
  */
 
-export interface Sent { kind: ClientKind; film: FixtureFilm; movieId: string; sentAt: number; layout: "folder" | "file" }
+export interface Sent { kind: ClientKind; film: FixtureFilm; movieId: string; sentAt: number; layout: "folder" | "file"; /** Set when the send was a TV episode (tests/e2e/tv.ts): the show's id, which "movieId" then also holds. */ seriesId?: string; /** Set with seriesId: Deluno's reply to the episode's Search. */ search?: any }
 
 /** Adds the film to Deluno and sends its release to the one client, as the VM's Send-Film does. */
 export async function sendFilm(
   stack: Stack, kind: ClientKind, label: string, layout: "folder" | "file" = "folder", options: FilmOptions = {}, via?: { id: string; name: string }
 ): Promise<Sent> {
-  const title = `E2e${label}${Date.now().toString(36)}${kind[0].toUpperCase()}${kind.slice(1)}${layout === "file" ? "File" : ""}`;
   const usenet = isUsenet(kind);
+  if (stack.media === "tv") {
+    // On a TV stack the same send is an episode of a show: searched and grabbed through Deluno, as the episode's Search does.
+    const episode = await searchEpisode(stack, kind, label, usenet ? "folder" : layout, options);
+    return { kind, film: episode.film, movieId: episode.seriesId, seriesId: episode.seriesId, search: episode.search, sentAt: episode.sentAt, layout: usenet ? "folder" : layout };
+  }
+  const title = `E2e${label}${Date.now().toString(36)}${kind[0].toUpperCase()}${kind.slice(1)}${layout === "file" ? "File" : ""}`;
   const film = await makeFilm(title, false, usenet, usenet ? "folder" : layout, options);
   const movie = await stack.deluno.must<any>("POST", "/api/movies", { title: film.title, releaseYear: film.year, imdbId: null, monitored: true });
   await routeLibraryTo(stack, kind);

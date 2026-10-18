@@ -201,6 +201,8 @@ export interface FilmOptions {
   hang?: "all" | "last";
   /** Usenet: every article is answered only after a delay, so the download is slow. */
   slow?: boolean;
+  /** The release is episode N of season 1 of a show (Title.S01E0N...), offered under the TV categories, not a film. */
+  tvEpisode?: number;
 }
 
 export async function makeFilm(title: string, extra: boolean, usenet = false, layout: "folder" | "file" = "folder", options: FilmOptions = {}): Promise<FixtureFilm> {
@@ -293,6 +295,8 @@ export interface Stack {
   processorId: string;
   /** The secret Weir and Deluno share (kept beside the results by the run that made it), for the one call that asks Weir about a hand-off. */
   weirSecret?: string;
+  /** "tv" when the stack was set up by setUpTvStack (tests/e2e/tv.ts): libraryId is then the TV library and sendFilm sends an episode. */
+  media?: "tv";
 }
 
 const SECRET_FILE = path.resolve(process.cwd(), "artifacts/e2e/weir-secret.txt");
@@ -483,7 +487,7 @@ const WEIR_LIBRARY_WRITE_FIELDS = [
 ];
 
 /** Fills in Weir's empty library of this type with the folders Deluno offered, and links it to Deluno, as Weir's setup wizard does. */
-async function linkWeirLibrary(weir: WeirApi, mediaType: "movie" | "tv", watched: string, output: string) {
+export async function linkWeirLibrary(weir: WeirApi, mediaType: "movie" | "tv", watched: string, output: string) {
   const libs = await weir.get<any[]>("/api/v1/processing/libraries");
   const library = libs.body.find((l) => l.media_type === mediaType);
   if (!library) throw new Error(`Weir has no ${mediaType} library to fill in.`);
