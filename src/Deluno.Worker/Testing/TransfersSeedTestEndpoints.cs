@@ -159,7 +159,7 @@ public static class TransfersSeedTestEndpoints
             try
             {
                 await Run("platform", "DELETE FROM processor_handoffs WHERE source_path LIKE '%deluno-seeded%';");
-                await Run("jobs", "DELETE FROM job_queue WHERE source = 'seeded';", "DELETE FROM download_dispatches WHERE indexer_name = 'Seeded';");
+                await Run("jobs", "DELETE FROM download_dispatch_timeline WHERE dispatch_id IN (SELECT id FROM download_dispatches WHERE indexer_name = 'Seeded');", "DELETE FROM import_resolutions WHERE dispatch_id IN (SELECT id FROM download_dispatches WHERE indexer_name = 'Seeded');", "DELETE FROM dispatch_alerts WHERE dispatch_id IN (SELECT id FROM download_dispatches WHERE indexer_name = 'Seeded');", "DELETE FROM job_queue WHERE source = 'seeded';", "DELETE FROM download_dispatches WHERE indexer_name = 'Seeded';");
                 await Run(
                     "movies",
                     "DELETE FROM movie_import_recovery_events WHERE case_id IN (SELECT id FROM movie_import_recovery_cases WHERE details_json LIKE '%dispatchId%');",
