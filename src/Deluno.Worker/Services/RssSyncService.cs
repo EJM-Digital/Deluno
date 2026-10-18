@@ -45,7 +45,8 @@ public sealed class RssSyncService(
     IActivityFeedRepository activityFeed,
     IIndexerHistoryEventStore indexerHistory,
     TimeProvider timeProvider,
-    ILogger<RssSyncService> logger)
+    ILogger<RssSyncService> logger,
+    Deluno.Contracts.IMediaTagStore? mediaTags = null)
 {
     public async Task<RssSyncResult> SyncAsync(CancellationToken cancellationToken)
     {
@@ -53,11 +54,14 @@ public sealed class RssSyncService(
             .Where(library => library.AutoSearchEnabled)
             .ToArray();
         var librariesByIndexer = new Dictionary<string, List<LibraryItem>>(StringComparer.OrdinalIgnoreCase);
+        // The library's own choice for each indexer (#1354): "Only for titles tagged" and "Never for titles tagged".
+        var linkOf = new Dictionary<(string Library, string Indexer), LibrarySourceLinkItem>();
         foreach (var library in libraries)
         {
             var routing = await librariesRepository.GetLibraryRoutingAsync(library.Id, cancellationToken);
             foreach (var source in routing?.Sources ?? [])
             {
+                linkOf[(library.Id, source.IndexerId)] = source;
                 if (!librariesByIndexer.TryGetValue(source.IndexerId, out var list))
                 {
                     librariesByIndexer[source.IndexerId] = list = [];
@@ -100,6 +104,9 @@ public sealed class RssSyncService(
                 showsWanted[library.Id] = await seriesCatalogRepository.ListEligibleWantedAsync(library.Id, WholeLibrary, now, ignoreRetryWindow: true, cancellationToken);
             }
         }
+        var needsTags = mediaTags is not null && linkOf.Values.Any(link => !string.IsNullOrWhiteSpace(link.RequiredTags) || !string.IsNullOrWhiteSpace(link.ExcludedTags));
+        var movieTags = needsTags && libraries.Any(IsMovies) ? await TagsByIdAsync(Deluno.Contracts.MediaKind.Movie, cancellationToken) : new Dictionary<string, IReadOnlyList<string>>();
+        var showTags = needsTags && libraries.Any(library => !IsMovies(library)) ? await TagsByIdAsync(Deluno.Contracts.MediaKind.Series, cancellationToken) : new Dictionary<string, IReadOnlyList<string>>();
         var inventories = new Dictionary<string, SeriesInventoryDetail?>(StringComparer.OrdinalIgnoreCase);
         var lastSeen = new Dictionary<string, DateTimeOffset>(await stateRepository.GetLastSeenAsync(cancellationToken), StringComparer.OrdinalIgnoreCase);
         var queuedThisPass = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -159,9 +166,10 @@ public sealed class RssSyncService(
 
                 foreach (var library in librariesByIndexer[indexer.Id])
                 {
+                    var link = linkOf[(library.Id, indexer.Id)];
                     var queued = IsMovies(library)
-                        ? await QueueFilmAsync(parsed, release, indexer.Id, library, moviesWanted[library.Id], movieMonitored, queuedThisPass, cancellationToken)
-                        : await QueueEpisodeAsync(parsed, release, indexer.Id, library, showsWanted[library.Id], showMonitored, inventories, queuedThisPass, cancellationToken);
+                        ? await QueueFilmAsync(parsed, release, indexer.Id, library, moviesWanted[library.Id], movieMonitored, queuedThisPass, link, movieTags, cancellationToken)
+                        : await QueueEpisodeAsync(parsed, release, indexer.Id, library, showsWanted[library.Id], showMonitored, inventories, queuedThisPass, link, showTags, cancellationToken);
                     if (queued is not null)
                     {
                         searches.Add(queued);
@@ -198,6 +206,8 @@ public sealed class RssSyncService(
         IReadOnlyList<Deluno.Movies.Contracts.MovieWantedItem> wanted,
         IReadOnlyDictionary<string, Deluno.Movies.Contracts.MovieListItem> catalogue,
         HashSet<string> queuedThisPass,
+        LibrarySourceLinkItem link,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> titleTags,
         CancellationToken cancellationToken)
     {
         if (parsed.IsEpisode || parsed.Year is null)
@@ -214,6 +224,7 @@ public sealed class RssSyncService(
             || !catalogue.TryGetValue(found.MovieId, out var movie)
             || !movie.Monitored
             || !IsWanted(found.WantedStatus)
+            || !TagsAllow(link, titleTags, movie.Id)
             || !queuedThisPass.Add($"movie:{movie.Id}"))
         {
             return null;
@@ -254,6 +265,8 @@ public sealed class RssSyncService(
         IReadOnlyDictionary<string, SeriesListItem> catalogue,
         Dictionary<string, SeriesInventoryDetail?> inventories,
         HashSet<string> queuedThisPass,
+        LibrarySourceLinkItem link,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> titleTags,
         CancellationToken cancellationToken)
     {
         if (!parsed.IsEpisode)
@@ -266,6 +279,11 @@ public sealed class RssSyncService(
         var found = wanted.FirstOrDefault(item =>
             MatchesShow(item.Title, catalogue.TryGetValue(item.SeriesId, out var entry) ? entry.OriginalTitle : null, item.StartYear, title, bare));
         if (found is null || !catalogue.TryGetValue(found.SeriesId, out var show) || !show.Monitored)
+        {
+            return null;
+        }
+
+        if (!TagsAllow(link, titleTags, show.Id))
         {
             return null;
         }
@@ -305,6 +323,13 @@ public sealed class RssSyncService(
             cancellationToken);
         return $"{show.Title} S{episode.SeasonNumber:00}E{episode.EpisodeNumber:00}";
     }
+
+    private async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> TagsByIdAsync(Deluno.Contracts.MediaKind kind, CancellationToken cancellationToken)
+        => (await mediaTags!.ListAllTitleTagsAsync(kind, cancellationToken)).ToDictionary(title => title.Id, title => title.Tags, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The library's "Only for titles tagged" / "Never for titles tagged" choice for this indexer lets the title through (#1354).</summary>
+    private static bool TagsAllow(LibrarySourceLinkItem link, IReadOnlyDictionary<string, IReadOnlyList<string>> titleTags, string titleId)
+        => Deluno.Contracts.TagRoutingMatch.LibrarySourceIsEligible(link.RequiredTags, link.ExcludedTags, titleTags.TryGetValue(titleId, out var tags) ? tags : null);
 
     private static bool MatchesShow(string showTitle, string? originalTitle, int? startYear, string title, string bare)
     {

@@ -32,7 +32,7 @@ internal sealed class RecordedAppServer : IAsyncDisposable
     }
 
     /// <summary>One request the app received.</summary>
-    public sealed record Seen(string Method, string PathAndQuery, string Body);
+    public sealed record Seen(string Method, string PathAndQuery, string Body, string Authorization = "");
 
     public Uri BaseUri { get; }
 
@@ -118,7 +118,7 @@ internal sealed class RecordedAppServer : IAsyncDisposable
 
             lock (requests)
             {
-                requests.Add(new Seen(context.Request.Method, context.Request.Path + context.Request.QueryString, body));
+                requests.Add(new Seen(context.Request.Method, context.Request.Path + context.Request.QueryString, body, context.Request.Headers.Authorization.ToString()));
             }
 
             var message = new HttpRequestMessage(new HttpMethod(context.Request.Method), $"http://127.0.0.1{context.Request.Path}{context.Request.QueryString}")

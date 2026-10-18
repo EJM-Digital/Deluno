@@ -1773,7 +1773,13 @@ public static class ConnectionsEndpointRouteBuilderExtensions
     {
         using var handler = new SocketsHttpHandler { ConnectCallback = Deluno.Infrastructure.Http.LoopbackFirstConnection.ConnectAsync, CookieContainer = new CookieContainer() };
         using var client = new HttpClient(handler) { BaseAddress = uri, Timeout = timeout };
-        if (!string.IsNullOrWhiteSpace(item.Username) || !string.IsNullOrWhiteSpace(item.Secret))
+        if (string.IsNullOrWhiteSpace(item.Username) && !string.IsNullOrWhiteSpace(item.Secret))
+        {
+            // #1354: no username means the secret is an API key, sent as a bearer token on every call and never as a login,
+            // exactly as QbittorrentDownloadClient does.
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", item.Secret);
+        }
+        else if (!string.IsNullOrWhiteSpace(item.Username) || !string.IsNullOrWhiteSpace(item.Secret))
         {
             // The same sign-in every later call uses (#1061), so a test that passes cannot be followed by a refusal.
             var login = await QbittorrentSignIn.SignInAsync(client, item.Username, item.Secret, cancellationToken);

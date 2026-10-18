@@ -50,6 +50,30 @@ public static class TagRoutingMatch
             : $"{connectionName} only takes titles tagged \"{matchedTag}\", and this one is.";
     }
 
+    /// <summary>
+    /// A library's own tag choices for one indexer (#1354): "Only for titles tagged" needs the title to hold one of
+    /// them, "Never for titles tagged" refuses a title holding any of them, and a refusal wins. Both empty means every title.
+    /// </summary>
+    public static bool LibrarySourceIsEligible(string? onlyForTags, string? neverForTags, IReadOnlyList<string>? titleTags)
+        => LibrarySourceRefusal(onlyForTags, neverForTags, titleTags, "the indexer", "this title") is null;
+
+    /// <summary>Why a library's indexer is not asked for this title, in words; null when it is asked.</summary>
+    public static string? LibrarySourceRefusal(string? onlyForTags, string? neverForTags, IReadOnlyList<string>? titleTags, string indexerName, string titleName)
+    {
+        var held = titleTags?.Select(tag => tag.Trim()).Where(tag => tag.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase)
+            ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var never = Split(neverForTags).FirstOrDefault(held.Contains);
+        if (never is not null)
+        {
+            return $"{indexerName} is never used for titles tagged \"{never}\", and {titleName} has that tag.";
+        }
+
+        var only = Split(onlyForTags);
+        return only.Count > 0 && !only.Any(held.Contains)
+            ? $"{indexerName} is only used for titles tagged {string.Join(" or ", only.Select(tag => $"\"{tag}\""))}, and {titleName} has none of them."
+            : null;
+    }
+
     private static IReadOnlyList<string> Split(string? csv) =>
         string.IsNullOrWhiteSpace(csv)
             ? []
