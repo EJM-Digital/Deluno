@@ -1,0 +1,30 @@
+{
+  "app": "tmdb",
+  "version": "2026-10-18",
+  "state": "release-dates-movie",
+  "recordedAt": "2026-10-18T10:45:10Z",
+  "note": "GET /metadata/movie/{id}/release-dates for a film (TMDb 603). Through the deployed gateway (deluno-metadata-gateway.ejmdigital.workers.dev).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/metadata/movie/603/release-dates"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "public, max-age=600"
+        },
+        "body": {
+          "provider": "deluno-broker",
+          "mode": "broker",
+          "providerId": "603",
+          "inCinemas": "1999-03-31",
+          "digital": "2016-01-07",
+          "physical": "1999-11-25"
+        }
+      }
+    }
+  ]
+}

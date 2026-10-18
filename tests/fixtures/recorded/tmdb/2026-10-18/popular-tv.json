@@ -1,0 +1,207 @@
+{
+  "app": "tmdb",
+  "version": "2026-10-18",
+  "state": "popular-tv",
+  "recordedAt": "2026-10-18T10:45:13Z",
+  "note": "GET /metadata/tv/popular?page=1 (Discover). Through the deployed gateway (deluno-metadata-gateway.ejmdigital.workers.dev). The reply had 20 entries; the first 12 are kept.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/metadata/tv/popular?page=1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "public, max-age=600"
+        },
+        "body": {
+          "page": 1,
+          "results": [
+            {
+              "id": 22980,
+              "title": null,
+              "name": "Watch What Happens Live with Andy Cohen",
+              "original_title": null,
+              "original_name": "Watch What Happens Live with Andy Cohen",
+              "overview": "Bravo network executive Andy Cohen discusses pop culture topics with celebrities and reality show personalities.",
+              "poster_path": "/onSD9UXfJwrMXWhq7UY7hGF2S1h.jpg",
+              "backdrop_path": "/hINekSpbcBxjnjGqmIm6I4bz2ab.jpg",
+              "release_date": null,
+              "first_air_date": "2009-07-16",
+              "vote_average": 4.9,
+              "vote_count": 100,
+              "popularity": 704.244
+            },
+            {
+              "id": 91759,
+              "title": null,
+              "name": "Come Home Love: Lo and Behold",
+              "original_title": null,
+              "original_name": "愛·回家之開心速遞",
+              "overview": "Hung Sue Gan starting from the bottom, established his own logistics company, which is now running smoothly. His only concern now are his three daughters. His eldest daughter has immigrated overseas. His second daughter Hung Yeuk Shui has reached the marriageable age, but has no hopes for marriage anytime soon. She is constantly bickering with her younger sister Hung Sum Yue, who is an honour student, over trivial matters, causing their father to not know whether to laugh or cry. Hung Sue Yan, Hung Sue Gan's brother, moves in with the family, temporarily ending his life as a nomadic photographer. He joins Hung Yeuk Shui's company and encounters Ko Pak Fei, the director of an online shop. The two appear to be former lovers, making for lots of laughter. Since Hung Sue Yan moved in, a series of strange events have occurred in the family. Upon investigation, the source is traced to Lung Ging Fung, a promising young man who is the son of department store mogul Lung Gam Wai.",
+              "poster_path": "/lgD4j9gUGmMckZpWWRJjorWqGVT.jpg",
+              "backdrop_path": "/dyFTt1a9ZpFdKE96kPlE9fQvXOJ.jpg",
+              "release_date": null,
+              "first_air_date": "2017-02-20",
+              "vote_average": 5.4,
+              "vote_count": 48,
+              "popularity": 670.7908
+            },
+            {
+              "id": 2734,
+              "title": null,
+              "name": "Law & Order: Special Victims Unit",
+              "original_title": null,
+              "original_name": "Law & Order: Special Victims Unit",
+              "overview": "In the criminal justice system, sexually-based offenses are considered especially heinous. In New York City, the dedicated detectives who investigate these vicious felonies are members of an elite squad known as the Special Victims Unit. These are their stories.",
+              "poster_path": "/pHNhUwSXuDQ9jPZOCb8SgJaQZsc.jpg",
+              "backdrop_path": "/xhK9YCxNwnE0OB1SWvCY39heHQI.jpg",
+              "release_date": null,
+              "first_air_date": "1999-09-20",
+              "vote_average": 7.96,
+              "vote_count": 4381,
+              "popularity": 414.9945
+            },
+            {
+              "id": 2261,
+              "title": null,
+              "name": "The Tonight Show Starring Johnny Carson",
+              "original_title": null,
+              "original_name": "The Tonight Show Starring Johnny Carson",
+              "overview": "The Tonight Show Starring Johnny Carson is a talk show hosted by Johnny Carson under The Tonight Show franchise from 1962 to 1992. It originally aired during late-night. For its first ten years, Carson's Tonight Show was based in New York City with occasional trips to Burbank, California; in May 1972, the show moved permanently to Burbank, California. In 2002, The Tonight Show Starring Johnny Carson was ranked #12 on TV Guide's 50 Greatest TV Shows of All Time.",
+              "poster_path": "/uSvET5YUvHNDIeoCpErrbSmasFb.jpg",
+              "backdrop_path": "/qFfWFwfaEHzDLWLuttWiYq7Poy2.jpg",
+              "release_date": null,
+              "first_air_date": "1962-10-01",
+              "vote_average": 7.562,
+              "vote_count": 97,
+              "popularity": 481.6196
+            },
+            {
+              "id": 59941,
+              "title": null,
+              "name": "The Tonight Show Starring Jimmy Fallon",
+              "original_title": null,
+              "original_name": "The Tonight Show Starring Jimmy Fallon",
+              "overview": "After Jay Leno's second retirement from the program, Jimmy Fallon stepped in as his permanent replacement. After 42 years in Los Angeles the program was brought back to New York.",
+              "poster_path": "/1N4o5PmmqhlVDrcdJ2RlCFWbLGX.jpg",
+              "backdrop_path": "/i4OYRb5V13BrOnTPJGdyXWg4r0J.jpg",
+              "release_date": null,
+              "first_air_date": "2014-02-17",
+              "vote_average": 5.789,
+              "vote_count": 395,
+              "popularity": 460.1808
+            },
+            {
+              "id": 456,
+              "title": null,
+              "name": "The Simpsons",
+              "original_title": null,
+              "original_name": "The Simpsons",
+              "overview": "Set in Springfield, the average American town, the show focuses on the antics and everyday adventures of the Simpson family; Homer, Marge, Bart, Lisa and Maggie, as well as a virtual cast of thousands. Since the beginning, the series has been a pop culture icon, attracting hundreds of celebrities to guest star. The show has also made name for itself in its fearless satirical take on politics, media and American life in general.",
+              "poster_path": "/tf0CUEynk6GfmrlHIQKQ5mfFP5P.jpg",
+              "backdrop_path": "/qcSHGC5BfoqBoP99PzDIERYG5Qm.jpg",
+              "release_date": null,
+              "first_air_date": "1989-12-17",
+              "vote_average": 8.024,
+              "vote_count": 11078,
+              "popularity": 431.0834
+            },
+            {
+              "id": 549,
+              "title": null,
+              "name": "Law & Order",
+              "original_title": null,
+              "original_name": "Law & Order",
+              "overview": "In cases ripped from the headlines, police investigate serious and often deadly crimes, weighing the evidence and questioning the suspects until someone is taken into custody. The district attorney's office then builds a case to convict the perpetrator by proving the person guilty beyond a reasonable doubt. Working together, these expert teams navigate all sides of the complex criminal justice system to make New York a safer place.",
+              "poster_path": "/hmd2tEtjolLWpNLCTvXS2PO5VCi.jpg",
+              "backdrop_path": "/oOce9hLMVFubjAJliau4kiSNPnW.jpg",
+              "release_date": null,
+              "first_air_date": "1990-09-13",
+              "vote_average": 7.3,
+              "vote_count": 735,
+              "popularity": 431.7365
+            },
+            {
+              "id": 61818,
+              "title": null,
+              "name": "Late Night with Seth Meyers",
+              "original_title": null,
+              "original_name": "Late Night with Seth Meyers",
+              "overview": "Seth Meyers, who is \"Saturday Night Live's\" longest serving anchor on the show's wildly popular \"Weekend Update,\" takes over as host of NBC's \"Late Night\" — home to A-list celebrity guests, memorable comedy and the best in musical talent. As the Emmy Award-winning head writer for \"SNL,\" Meyers has established a reputation for sharp wit and perfectly timed comedy, and has gained fame for his spot-on jokes and satire. Meyers takes his departure from \"SNL\" to his new post at \"Late Night,\" as Jimmy Fallon moves to \"The Tonight Show\".",
+              "poster_path": "/u0ttHM5ZQCvnfL0lkueEgS4h2nI.jpg",
+              "backdrop_path": "/dfX2UaHVE5c7kLBFbgmEZJuy4Ev.jpg",
+              "release_date": null,
+              "first_air_date": "2014-02-25",
+              "vote_average": 5.1,
+              "vote_count": 136,
+              "popularity": 412.5459
+            },
+            {
+              "id": 108978,
+              "title": null,
+              "name": "Reacher",
+              "original_title": null,
+              "original_name": "Reacher",
+              "overview": "Jack Reacher, a veteran military police investigator, has just recently entered civilian life. Reacher is a drifter, carrying no phone and the barest of essentials as he travels the country and explores the nation he once served.",
+              "poster_path": "/f1VCQIG2iCyOookdgOzwtUpwWC0.jpg",
+              "backdrop_path": "/pF0qkRsrHkdYadPWY9AMeFZfcwk.jpg",
+              "release_date": null,
+              "first_air_date": "2022-02-03",
+              "vote_average": 8.131,
+              "vote_count": 3507,
+              "popularity": 411.841
+            },
+            {
+              "id": 4614,
+              "title": null,
+              "name": "NCIS",
+              "original_title": null,
+              "original_name": "NCIS",
+              "overview": "From murder and espionage to terrorism and stolen submarines, a team of special agents investigates any crime that has any connection to Navy and Marine Corps personnel, regardless of rank or position.",
+              "poster_path": "/y4fGncqELtnvRQuwSpuH8LncZqU.jpg",
+              "backdrop_path": "/c1aBrG5s5xFa6Tbnihu2Hhj4t2q.jpg",
+              "release_date": null,
+              "first_air_date": "2003-09-23",
+              "vote_average": 7.6,
+              "vote_count": 2594,
+              "popularity": 405.0898
+            },
+            {
+              "id": 33238,
+              "title": null,
+              "name": "Running Man",
+              "original_title": null,
+              "original_name": "런닝맨",
+              "overview": "These days, as variety shows are gradually disappearing, this is one of Korea’s representative variety shows that has been responsible for Sunday evenings for over 10 years. This program features numerous stars and members going around various places, playing games, and completing missions. In particular, among the many fun elements of variety shows, this one focuses solely on laughter.\n\nOpen your eyes! Big fun is coming in!\n\nOpen your mouth! Big laughter is coming in!\n\nOpen your heart! Useful lessons are coming in!",
+              "poster_path": "/2Wmmu1MkqxJ48J7aySET9EKEjXz.jpg",
+              "backdrop_path": "/wsHj4oHQJoe7DMYaqNFwVoyLiAh.jpg",
+              "release_date": null,
+              "first_air_date": "2010-07-11",
+              "vote_average": 8.207,
+              "vote_count": 222,
+              "popularity": 398.1676
+            },
+            {
+              "id": 5920,
+              "title": null,
+              "name": "The Mentalist",
+              "original_title": null,
+              "original_name": "The Mentalist",
+              "overview": "Patrick Jane, a former celebrity psychic medium, uses his razor sharp skills of observation and expertise at \"reading\" people to solve serious crimes with the California Bureau of Investigation.",
+              "poster_path": "/acYXu4KaDj1NIkMgObnhe4C4a0T.jpg",
+              "backdrop_path": "/rJFqKcmMSttdNP58l0dVzY2NcTA.jpg",
+              "release_date": null,
+              "first_air_date": "2008-09-23",
+              "vote_average": 8.418,
+              "vote_count": 4874,
+              "popularity": 363.5756
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

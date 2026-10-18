@@ -1,0 +1,84 @@
+{
+  "app": "tmdb",
+  "version": "2026-10-18",
+  "state": "translations-movie",
+  "recordedAt": "2026-10-18T10:45:13Z",
+  "note": "GET /metadata/movie/{id}/translations for a film. Through the deployed gateway (deluno-metadata-gateway.ejmdigital.workers.dev). The reply had 18 entries; the first 8 are kept.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/metadata/movie/45745/translations"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "public, max-age=600"
+        },
+        "body": {
+          "provider": "tmdb",
+          "providerId": "45745",
+          "translations": [
+            {
+              "language": "en",
+              "region": "US",
+              "title": null,
+              "overview": "A wandering warrior finds an unlikely friend in the form of a young dragon. The two develop a close bond, until one day the dragon is snatched away. She then sets out on a relentless quest to reclaim her friend, finding in the end that her quest exacts a far greater price than she had ever imagined.",
+              "tagline": null
+            },
+            {
+              "language": "fr",
+              "region": "FR",
+              "title": "Sintel",
+              "overview": "Une jeune femme solitaire, Sintel, probablement orpheline, secourt et se lie d'amitié avec un dragonneau, qu'elle nomme Scales. Mais lorsque celui-ci se fait enlever par un dragon adulte, Sintel décide de se lancer dans une dangereuse quête pour retrouver son compagnon.",
+              "tagline": null
+            },
+            {
+              "language": "cs",
+              "region": "CZ",
+              "title": "Sintel",
+              "overview": "Ve fantasy světě, kde žijí jak lidé, tak draci, si mladá dívka zamiluje mládě dráčka. Brzy je ale unesen a ona se vydává na dalekou cestu, aby jej nalezla. Jejich další setkání proběhne, když už je z dívky žena...",
+              "tagline": null
+            },
+            {
+              "language": "de",
+              "region": "DE",
+              "title": "Sintel",
+              "overview": "Der Einstieg des Films ist der Überfall eines Drachentöters auf die durch eine verschneite Landschaft streifende, junge, weibliche Hauptfigur Sintel. Bei dem Überfall scheint sie ihrem Angreifer hoffnungslos unterlegen, kann jedoch seinen Speerattacken ausweichen und ihn mit ihrem Messer verwunden, wodurch er seinen Speer fallen lässt. Als er ungestüm auf sie zuläuft kann sie den Speer aufrichten, wodurch er ihn sich selbst in den Bauch rammt und tot umfällt. Sintel ist jedoch durch die Strapazen und den Überfall so geschwächt, dass sie nach einigen Schritten erschöpft im Schnee liegen bleibt und bewusstlos wird.",
+              "tagline": null
+            },
+            {
+              "language": "fi",
+              "region": "FI",
+              "title": "Sintel",
+              "overview": "Elokuva kertoo nuoresta naisesta nimeltä Sintel. Hän löytää kotikaupungistaan haavoittuneen lohikäärmeen poikasen, jolle hän antaa nimen Scales. Ajan myötä Scalesin siipivamma paranee, ja Sintel kiintyy Scalesiin. Yllättäen isompi lohikäärme kuitenkin nappaa Scalesin lennosta ja vie sen mukanaan. Sintel lähtee etsimään Scalesia ja aloittaa vaarallisen, pitkän matkan.",
+              "tagline": null
+            },
+            {
+              "language": "pt",
+              "region": "PT",
+              "title": "Sintel",
+              "overview": "O filme conta a história de uma rapariga chamada Sintel, que está à procura de um dragão bebé a quem chama Scales.",
+              "tagline": null
+            },
+            {
+              "language": "es",
+              "region": "ES",
+              "title": null,
+              "overview": "\"Sintel\" es el tercer gran proyecto animado de la Blender Fundation, tras \"Elephants Dream\" (2006) y \"Big Buck Bunny\" (2008) y narra la historia de una chica y su dragón que es secuestrado por otro dragón, lo que hace que la chica comience una larga aventura para encontrar a su compañero. Como los demás trabajos del la fundación, \"Sintel\" es de libre distribución y puede descargarse gratuitamente desde su propia web oficial o visionarse en el mismo lugar en versión original o con subtítulos en varios idiomas, entre ellos en español.",
+              "tagline": null
+            },
+            {
+              "language": "ru",
+              "region": "RU",
+              "title": "Синтел",
+              "overview": "Эта трогательная история произошла в красочном и фантастическом мире. В мире, где одинокой девушке по имени Синтель предстоит отправиться на поиски своего необычного маленького питомца, которого она приютила… Эта история о крепкой дружбе и неожиданных поворотах судьбы, которая порой бывает очень сурова…",
+              "tagline": null
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,244 @@
+{
+  "app": "tmdb",
+  "version": "2026-10-18",
+  "state": "search-tv-by-provider-id",
+  "recordedAt": "2026-10-18T10:45:09Z",
+  "note": "GET /metadata/search with a providerId for a series (the link preview of a series). Through the deployed gateway (deluno-metadata-gateway.ejmdigital.workers.dev).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/metadata/search?mediaType=tv&query=Breaking%20Bad&providerId=1396"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "public, max-age=300"
+        },
+        "body": {
+          "provider": "deluno-broker",
+          "mode": "broker",
+          "resultCount": 1,
+          "results": [
+            {
+              "provider": "tmdb",
+              "providerId": "1396",
+              "mediaType": "tv",
+              "runtimeMinutes": null,
+              "popularity": 268.4968,
+              "voteCount": 18862,
+              "title": "Breaking Bad",
+              "originalTitle": "Breaking Bad",
+              "year": 2008,
+              "overview": "Walter White, a New Mexico chemistry teacher, is diagnosed with Stage III cancer and given a prognosis of only two years left to live. He becomes filled with a sense of fearlessness and an unrelenting desire to secure his family's financial future at any cost as he enters the dangerous world of drugs and crime.",
+              "posterUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w780/anFx9aTOOYqgS3v7x3R84Kz67ly.jpg",
+              "backdropUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/original/tsRy63Mu5cu8etL1X7ZLyf7UP1M.jpg",
+              "rating": 8.955,
+              "ratings": [
+                {
+                  "source": "tmdb",
+                  "label": "TMDb",
+                  "score": 8.955,
+                  "maxScore": 10,
+                  "voteCount": 18862,
+                  "url": "https://www.themoviedb.org/tv/1396",
+                  "kind": "community"
+                }
+              ],
+              "genres": [
+                "Drama",
+                "Crime"
+              ],
+              "keywords": [
+                "new mexico",
+                "drug dealer",
+                "narcissism",
+                "psychopath",
+                "terminal illness",
+                "outlaw",
+                "dark comedy",
+                "cancer",
+                "tragedy",
+                "drugs",
+                "criminal",
+                "meth lab",
+                "drug lord",
+                "high school teacher",
+                "dea agent",
+                "neo-western",
+                "albuquerque, new mexico",
+                "criminal lawyer",
+                "fall from grace",
+                "cartel",
+                "mexican cartel",
+                "male egos",
+                "crystal meth",
+                "complex",
+                "dark"
+              ],
+              "cast": [
+                {
+                  "personId": "17419",
+                  "name": "Bryan Cranston",
+                  "character": "Walter White",
+                  "profileUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w185/7Jahy5LZX2Fo8fGJltMreAI49hC.jpg",
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/17419/imdb"
+                },
+                {
+                  "personId": "84497",
+                  "name": "Aaron Paul",
+                  "character": "Jesse Pinkman",
+                  "profileUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w185/8Ac9uuoYwZoYVAIJfRLzzLsGGJn.jpg",
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/84497/imdb"
+                },
+                {
+                  "personId": "134531",
+                  "name": "Anna Gunn",
+                  "character": "Skyler White",
+                  "profileUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w185/adppyeu1a4REN3khtgmXusrapFi.jpg",
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/134531/imdb"
+                },
+                {
+                  "personId": "209674",
+                  "name": "RJ Mitte",
+                  "character": "Walter White Jr.",
+                  "profileUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w185/sNPA92ZrssYhlaB1UA2pWcLD9db.jpg",
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/209674/imdb"
+                },
+                {
+                  "personId": "14329",
+                  "name": "Dean Norris",
+                  "character": "Hank Schrader",
+                  "profileUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w185/mKRrEbsxAX3ro700HsViFArRM7l.jpg",
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/14329/imdb"
+                },
+                {
+                  "personId": "1217934",
+                  "name": "Betsy Brandt",
+                  "character": "Marie Schrader",
+                  "profileUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w185/xAnuzyjdMbQq9L1c4JNwXL52Wm4.jpg",
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/1217934/imdb"
+                },
+                {
+                  "personId": "59410",
+                  "name": "Bob Odenkirk",
+                  "character": "Saul Goodman",
+                  "profileUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w185/rF0Lb6SBhGSTvjRffmlKRSeI3jE.jpg",
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/59410/imdb"
+                },
+                {
+                  "personId": "783",
+                  "name": "Jonathan Banks",
+                  "character": "Mike Ehrmantraut",
+                  "profileUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w185/bswk26L13PvY4iMTwUTAsepXCLv.jpg",
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/783/imdb"
+                }
+              ],
+              "crew": [
+                {
+                  "personId": "17419",
+                  "name": "Bryan Cranston",
+                  "job": "Producer",
+                  "profileUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w185/7Jahy5LZX2Fo8fGJltMreAI49hC.jpg",
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/17419/imdb"
+                },
+                {
+                  "personId": "1223202",
+                  "name": "Diane Mercer",
+                  "job": "Producer",
+                  "profileUrl": null,
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/1223202/imdb"
+                },
+                {
+                  "personId": "1223200",
+                  "name": "Stewart Lyons",
+                  "job": "Producer",
+                  "profileUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w185/dCAN4EMn8rsqALwDIjf9aNjuVTm.jpg",
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/1223200/imdb"
+                },
+                {
+                  "personId": "29779",
+                  "name": "Michelle MacLaren",
+                  "job": "Executive Producer",
+                  "profileUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w185/3LcH5eNiysMWaepARllVrS4Dzn7.jpg",
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/29779/imdb"
+                },
+                {
+                  "personId": "66633",
+                  "name": "Vince Gilligan",
+                  "job": "Executive Producer",
+                  "profileUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w185/wJIxATESjzsjSgvRhVavOmdamXc.jpg",
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/66633/imdb"
+                },
+                {
+                  "personId": "5162",
+                  "name": "Mark Johnson",
+                  "job": "Executive Producer",
+                  "profileUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w185/gLuXkOQjqB81aHMGJ2OtYzEpHQu.jpg",
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/5162/imdb"
+                },
+                {
+                  "personId": "1280070",
+                  "name": "Dave Porter",
+                  "job": "Original Music Composer",
+                  "profileUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w185/flRW9QknVtU8HG7lLjMvflbhl2a.jpg",
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/1280070/imdb"
+                },
+                {
+                  "personId": "12706",
+                  "name": "Mark S. Freeborn",
+                  "job": "Production Design",
+                  "profileUrl": null,
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/12706/imdb"
+                },
+                {
+                  "personId": "1330079",
+                  "name": "Bjarne Sletteland",
+                  "job": "Art Direction",
+                  "profileUrl": null,
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/1330079/imdb"
+                },
+                {
+                  "personId": "1537674",
+                  "name": "Jennifer Bryan",
+                  "job": "Costume Design",
+                  "profileUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w185/oA5QovyVfEG0SUIs0DIhGsriyok.jpg",
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/1537674/imdb"
+                },
+                {
+                  "personId": "959387",
+                  "name": "Sherry Thomas",
+                  "job": "Casting",
+                  "profileUrl": null,
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/959387/imdb"
+                },
+                {
+                  "personId": "6479",
+                  "name": "Sharon Bialy",
+                  "job": "Casting",
+                  "profileUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w185/uOex6LpaQYncD0sQfVYD1frI5uJ.jpg",
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/6479/imdb"
+                }
+              ],
+              "imdbId": "tt0903747",
+              "tvDbId": "81189",
+              "externalUrl": "https://www.themoviedb.org/tv/1396",
+              "certification": "TV-MA",
+              "studio": "Sony Pictures Television",
+              "network": "AMC",
+              "collection": null,
+              "collectionProviderId": null,
+              "director": null,
+              "trailerUrl": "https://www.youtube.com/watch?v=VFkjBy2b50Q",
+              "tagline": "Change the equation.",
+              "homepage": "https://www.sonypictures.com/tv/breakingbad",
+              "originalLanguage": "en",
+              "status": "Ended"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

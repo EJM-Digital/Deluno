@@ -1,0 +1,207 @@
+{
+  "app": "tmdb",
+  "version": "2026-10-18",
+  "state": "popular-movies",
+  "recordedAt": "2026-10-18T10:45:13Z",
+  "note": "GET /metadata/movies/popular?page=1 (Discover). Through the deployed gateway (deluno-metadata-gateway.ejmdigital.workers.dev). The reply had 20 entries; the first 12 are kept.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/metadata/movies/popular?page=1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "public, max-age=600"
+        },
+        "body": {
+          "page": 1,
+          "results": [
+            {
+              "id": 969681,
+              "title": "Spider-Man: Brand New Day",
+              "name": null,
+              "original_title": "Spider-Man: Brand New Day",
+              "original_name": null,
+              "overview": "Fighting crime full-time as Spider-Man in a world that doesn't remember him—and the pressure of seeing his old friends move on without him—sparks a change in Peter Parker he may not have the power to control. But that transformation might also be the only thing that can stop a shocking new threat to the city and those he loves - a powerful villain no one can even see.",
+              "poster_path": "/bjiS5ipwxb9JFy3XRRN4OAilSeX.jpg",
+              "backdrop_path": "/subj7knTn4DeS6KS7qI66EQKe9i.jpg",
+              "release_date": "2026-07-29",
+              "first_air_date": null,
+              "vote_average": 8.5,
+              "vote_count": 5659,
+              "popularity": 663.5004
+            },
+            {
+              "id": 1291595,
+              "title": "Insidious: Out of the Further",
+              "name": null,
+              "original_title": "Insidious: Out of the Further",
+              "original_name": null,
+              "overview": "Gemma, a young mother raising her daughter in the house she grew up in, discovers she can travel into The Further, where she possesses an ability to bring what lives there back to the real world.",
+              "poster_path": "/4tTrW9dXCByS5wt2pXVWb58zNjz.jpg",
+              "backdrop_path": "/p40lmrdI4blcAPZQMTPaiy5v5Ym.jpg",
+              "release_date": "2026-08-19",
+              "first_air_date": null,
+              "vote_average": 7.722,
+              "vote_count": 792,
+              "popularity": 362.2856
+            },
+            {
+              "id": 1148365,
+              "title": "Matchbox the Movie",
+              "name": null,
+              "original_title": "Matchbox the Movie",
+              "original_name": null,
+              "overview": "When a group of former childhood friends reconnect, their reunion takes a wild turn as they stumble upon a dangerous international plot—and must save the world.",
+              "poster_path": "/lFKA4GMz36dImEy3DQPdPF7G4V9.jpg",
+              "backdrop_path": "/jdJsnhHfkIi3J7jwfiCFT4gXNx5.jpg",
+              "release_date": "2026-10-05",
+              "first_air_date": null,
+              "vote_average": 7.818,
+              "vote_count": 384,
+              "popularity": 366.1906
+            },
+            {
+              "id": 1368337,
+              "title": "The Odyssey",
+              "name": null,
+              "original_title": "The Odyssey",
+              "original_name": null,
+              "overview": "Odysseus, the legendary King of Ithaca, embarks on a long and perilous journey home following the Trojan War. Throughout his voyage, he is forced to confront the whims of gods, mythological monsters, and trials that stretch both his cunning and his humanity to the breaking point.",
+              "poster_path": "/5rhTDKUhPYvpdQIijFIs5VoWsON.jpg",
+              "backdrop_path": "/nVBzWBqHTB3XD0iqWiJLfKLo5fq.jpg",
+              "release_date": "2026-07-15",
+              "first_air_date": null,
+              "vote_average": 8.008,
+              "vote_count": 4157,
+              "popularity": 345.1355
+            },
+            {
+              "id": 1423191,
+              "title": "Resident Evil",
+              "name": null,
+              "original_title": "Resident Evil",
+              "original_name": null,
+              "overview": "Medical courier Bryan unwittingly finds himself fighting for survival as one fateful, horrifying night collapses around him in chaos.",
+              "poster_path": "/i7UyjfPio0VFHB9rBUZSFyhOoM8.jpg",
+              "backdrop_path": "/3icyRAqgakNcQn6aDVz9libFmBA.jpg",
+              "release_date": "2026-09-16",
+              "first_air_date": null,
+              "vote_average": 7.305,
+              "vote_count": 971,
+              "popularity": 259.9739
+            },
+            {
+              "id": 1236045,
+              "title": "Animals",
+              "name": null,
+              "original_title": "Animals",
+              "original_name": null,
+              "overview": "When the son of an L.A. mayoral candidate is kidnapped, he and his wife have a few hours to come up with the ransom payment. With most of their money spent on his political campaign, they have to get their hands dirty and expose a side of their lives they never intended to see the light of day.",
+              "poster_path": "/iISM36voS1E8gX9BM0DVK0kgi3E.jpg",
+              "backdrop_path": "/tzoarEu7TsG959upiELyYPm5kO9.jpg",
+              "release_date": "2026-10-09",
+              "first_air_date": null,
+              "vote_average": 7.075,
+              "vote_count": 457,
+              "popularity": 242.509
+            },
+            {
+              "id": 1058424,
+              "title": "Hope",
+              "name": null,
+              "original_title": "호프",
+              "original_name": null,
+              "overview": "In the remote South Korean village of Hope Harbor, police chief Bum-seok and officer Sung-ae are called to investigate a mysterious creature wreaking havoc on the community. But all is not as it seems, and perceptions can be misleading. What begins as ignorance plants the seed of disaster, escalating through human conflict into a tragedy of cosmic proportions.",
+              "poster_path": "/qW1m7bcsRb2lo8xG2v0p4mARyH8.jpg",
+              "backdrop_path": "/ujUwzNV8ZkOzZonvhhHsc9KOKDf.jpg",
+              "release_date": "2026-07-15",
+              "first_air_date": null,
+              "vote_average": 6.905,
+              "vote_count": 236,
+              "popularity": 294.6518
+            },
+            {
+              "id": 1377237,
+              "title": "Runner",
+              "name": null,
+              "original_title": "Runner",
+              "original_name": null,
+              "overview": "A former soldier is thrown into a brutal race against time when a critical medical delivery makes him and his unlikely partner the targets of a ruthless cartel. As the mission spirals into a deadly manhunt, every detour, delay, and bullet pushes them closer to failure. With betrayal closing in from every side, they must survive the chase and deliver their cargo to save the life of a little girl.",
+              "poster_path": "/yBKMAIj7clP42UkFejhGDBBoTpb.jpg",
+              "backdrop_path": "/npXZNWjOEYrqdMDPQ11SGBrXqAG.jpg",
+              "release_date": "2026-09-07",
+              "first_air_date": null,
+              "vote_average": 8.335,
+              "vote_count": 619,
+              "popularity": 229.5685
+            },
+            {
+              "id": 1228834,
+              "title": "The Fix",
+              "name": null,
+              "original_title": "The Fix",
+              "original_name": null,
+              "overview": "Disillusioned by the end of the war in Afghanistan, a group of disgraced, war-torn ex-CIA operatives set out to Tehran to take down a life-changing score.",
+              "poster_path": "/jlP8XDjZN89GrpM3je5Uf8Grqx8.jpg",
+              "backdrop_path": "/dJTWIecL2vxsCRl5G0lRhPsfrhc.jpg",
+              "release_date": "2026-09-10",
+              "first_air_date": null,
+              "vote_average": 6.715,
+              "vote_count": 65,
+              "popularity": 230.1191
+            },
+            {
+              "id": 1712451,
+              "title": "Resident Dead",
+              "name": null,
+              "original_title": "Resident Dead",
+              "original_name": null,
+              "overview": "A man keeping his recently zombified daughter secure in hopes of a cure is tasked with delivering an unknown package through hordes of undead. If he succeeds, he will be given a cure for his daughter. If he fails, or opens the package, they will both be killed.",
+              "poster_path": "/qKhMVWwFikSUzOpkhOl35GBLkGH.jpg",
+              "backdrop_path": "/yKx5gYrYgakKZuUWAsuFDStBroy.jpg",
+              "release_date": "2026-09-04",
+              "first_air_date": null,
+              "vote_average": 5.667,
+              "vote_count": 9,
+              "popularity": 195.3195
+            },
+            {
+              "id": 1561726,
+              "title": "Masterplan",
+              "name": null,
+              "original_title": "Masterplan",
+              "original_name": null,
+              "overview": "When a legendary thief sets his sights on the Mona Lisa, he recruits two young strangers to help him before revealing they are long-lost siblings… and oh yes, by the way, he is their father. Thrown into a chaotic reunion they never asked for, this new family must learn to work together — and try not to kill each other — if they want any chance at pulling off the heist of the century.",
+              "poster_path": "/5xmXVd7nCK3tAo34XkO58SxUCip.jpg",
+              "backdrop_path": "/dgUDj84BWtW6EZzee8BkgKnjDhh.jpg",
+              "release_date": "2026-10-16",
+              "first_air_date": null,
+              "vote_average": 7.309,
+              "vote_count": 55,
+              "popularity": 189.8286
+            },
+            {
+              "id": 1101412,
+              "title": "Fall 2: Deadpoint",
+              "name": null,
+              "original_title": "Fall 2: Deadpoint",
+              "original_name": null,
+              "overview": "On a perilous climb across Thailand's Mount Kwan, two climbers become trapped thousands of feet above the ground, where vertigo-inducing heights, sheer exposure, and impossible odds turn every moment into a fight for survival.",
+              "poster_path": "/fgSm5ylwiXbIHn8UbUXDjk9RRu4.jpg",
+              "backdrop_path": "/nGau0KBOaRILSK5MqFcuTfv7GMl.jpg",
+              "release_date": "2026-09-01",
+              "first_air_date": null,
+              "vote_average": 7.307,
+              "vote_count": 577,
+              "popularity": 222.5641
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
