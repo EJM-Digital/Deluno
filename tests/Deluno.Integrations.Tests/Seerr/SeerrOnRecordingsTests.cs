@@ -39,6 +39,9 @@ public sealed class SeerrOnRecordingsTests
 
     private static Recording R(string state) => RecordedReplies.Seerr(state);
 
+    private static HttpResponseMessage Json(string body)
+        => new(System.Net.HttpStatusCode.OK) { Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json") };
+
     private static HttpResponseMessage Reply(string state, int exchange) => R(state).Exchanges[exchange].Reply.ToResponse();
 
     // ---- the connection test ----
@@ -281,6 +284,35 @@ public sealed class SeerrOnRecordingsTests
         Assert.Null(await new Seerr(_ => unknown).Client().FindMediaIdAsync(Server(), "movies", "1", null, CancellationToken.None));
         var client = new SeerrClient(new Factory(R("not-answering").NotAnswering()));
         Assert.Null(await client.FindMediaIdAsync(Server(), "movies", "45745", null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task The_Seerr_media_id_of_a_show_is_found_from_its_TVDb_id_in_the_media_list_and_a_tv_lookup_uses_the_tv_path()
+    {
+        var listed = R("media-available").Exchanges[2].Reply;
+        var asTv = listed.BodyWith(("results.0.mediaType", "tv"), ("results.0.tvdbId", 81189));
+        var seerr = new Seerr(request => request.RequestUri!.AbsolutePath == "/api/v1/media" ? Json(asTv) : null);
+
+        Assert.Equal(1, await seerr.Client().FindMediaIdAsync(Server(), "tv", null, "81189", CancellationToken.None));
+        Assert.Null(await seerr.Client().FindMediaIdAsync(Server(), "tv", null, "1", CancellationToken.None));
+
+        var lookup = new Seerr(_ => Reply("lookup-unknown", 1));
+        Assert.Null(await lookup.Client().FindMediaIdAsync(Server(), "tv", "1396", null, CancellationToken.None));
+        Assert.True(lookup.Sent("GET /api/v1/tv/1396"));
+    }
+
+    [Fact]
+    public async Task The_Seerr_media_id_is_not_found_without_an_id_or_when_Seerr_answers_a_server_error()
+    {
+        var none = new Seerr(_ => throw new InvalidOperationException("Seerr must not be asked with no id."));
+        Assert.Null(await none.Client().FindMediaIdAsync(Server(), "movies", null, null, CancellationToken.None));
+        Assert.Empty(none.Calls);
+
+        var broken = new Seerr(_ => Reply("lookup-unknown", 2));
+        Assert.Null(await broken.Client().FindMediaIdAsync(Server(), "movies", "999999999", null, CancellationToken.None));
+
+        var brokenList = new Seerr(_ => new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError));
+        Assert.Null(await brokenList.Client().FindMediaIdAsync(Server(), "tv", null, "81189", CancellationToken.None));
     }
 
     [Fact]
