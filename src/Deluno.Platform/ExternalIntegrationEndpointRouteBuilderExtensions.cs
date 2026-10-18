@@ -1228,11 +1228,16 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             // A send a person removed and asked for again (#1242). The processor had started it and reports it after the
             // release was sent again but before Deluno made the new send's hand-off, so there is no superseded record
             // to find it by yet. The report belongs to the newer send, which settles from its own: it is answered as
-            // already handled, never a 409, and nothing about this ended hand-off changes. A hand-off nobody sent
-            // again keeps the "too late" answer below.
+            // already handled, never a 409, and nothing about this ended hand-off changes. The same when Deluno itself
+            // closed the hand-off by taking the download out of its client: nobody told the processor, a resend may
+            // follow seconds after this report (CI run 39104138771: six), and Deluno ended the wait on purpose, so a
+            // finished report is not a mistake to refuse. A hand-off nobody sent again, and that was not closed by a
+            // removal, keeps the "too late" answer below.
             if (!ProcessorHandoffStatuses.AcceptsLateOutput(handoff.Status) &&
                 !string.Equals(handoff.Status, ProcessorHandoffStatuses.Completed, StringComparison.OrdinalIgnoreCase) &&
-                await outputImports.WasSentAgainAsync(handoff, cancellationToken))
+                ((string.Equals(handoff.Status, ProcessorHandoffStatuses.Dismissed, StringComparison.OrdinalIgnoreCase)
+                    && ProcessorHandoffRemovalReasons.IsOne(handoff.FailureMessage)) ||
+                 await outputImports.WasSentAgainAsync(handoff, cancellationToken)))
             {
                 return Results.Json(
                     new { status = "superseded", handoffId = handoff.Id, alreadyHandled = true },

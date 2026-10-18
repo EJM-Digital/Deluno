@@ -160,6 +160,59 @@ public sealed class ALateReportForARemovedSendIsSettledTests
         Assert.Contains("alreadyHandled", await response.Content.ReadAsStringAsync());
     }
 
+    /// <summary>
+    /// CI run 39104138771, resend.after.sabnzbd: "I don't want it" removed the download (SABnzbd archived it at 07:08:39.05) and
+    /// closed the hand-off with Deluno's own removal reason; Weir, which had already finished the file, reported it at
+    /// 07:08:39.21 and got a 409 ("Deluno stopped waiting ... too late"); the person's resend reached SABnzbd at 07:08:45, six
+    /// seconds after the report. Nothing in Deluno could know a resend was coming, so the report is answered by what Deluno did:
+    /// it ended the wait itself by removing the download, so the report is already handled, whether or not a resend follows.
+    /// </summary>
+    public static IEnumerable<object[]> RemovalReasons()
+    {
+        yield return ["Deluno removed {0} from SABnzbd, so it will not import it."];
+        yield return ["You told Deluno to stop tracking {0}, so Deluno will not import it."];
+        yield return ["Deluno moved {0} to Seeding on qBittorrent so it keeps seeding, so it will not import it."];
+    }
+
+    [Theory]
+    [MemberData(nameof(RemovalReasons))]
+    public async Task A_finished_report_for_a_send_whose_download_Deluno_removed_is_settled_before_any_resend_exists(string reasonFormat)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        await RecordSendAsync(app, scene, "sabnzbd-1", "SABnzbd_nzo_retthree");
+        var first = await HandoffAsync(app, scene, "sabnzbd-1", "SABnzbd_nzo_retthree");
+        await Repository(app).UpdateProcessorHandoffAsync(first.Id, ProcessorHandoffStatuses.Started, null, null, null, CancellationToken.None);
+        await Repository(app).UpdateProcessorHandoffAsync(first.Id, ProcessorHandoffStatuses.Dismissed, null, null, string.Format(reasonFormat, Release), CancellationToken.None);
+        var output = await WriteOutputAsync(scene);
+
+        var response = await WeirReportsAsync(app, scene, first.Id, output);
+
+        Assert.True(response.StatusCode == HttpStatusCode.Accepted, $"{(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
+        Assert.Contains("alreadyHandled", await response.Content.ReadAsStringAsync());
+        Assert.DoesNotContain(
+            await app.Services.GetRequiredService<IJobQueueRepository>().ListAsync(50, CancellationToken.None),
+            job => job.JobType == "filesystem.import.execute");
+        Assert.Equal(ProcessorHandoffStatuses.Dismissed, (await Repository(app).GetProcessorHandoffAsync(first.Id, CancellationToken.None))?.Status);
+        Assert.True(File.Exists(output), "the processor's file is left where it is");
+    }
+
+    [Fact]
+    public async Task A_rejection_Weir_reports_for_a_send_whose_download_Deluno_removed_is_settled_and_blocks_nothing()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        await RecordSendAsync(app, scene, "sabnzbd-1", "SABnzbd_nzo_retthree");
+        var first = await HandoffAsync(app, scene, "sabnzbd-1", "SABnzbd_nzo_retthree");
+        await Repository(app).UpdateProcessorHandoffAsync(first.Id, ProcessorHandoffStatuses.Dismissed, null, null, $"Deluno removed {Release} from SABnzbd, so it will not import it.", CancellationToken.None);
+
+        var response = await WeirFailsAsync(app, scene, first.Id, "events-failed-rejected");
+
+        Assert.True(response.StatusCode == HttpStatusCode.Accepted, $"{(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
+        Assert.Contains("alreadyHandled", await response.Content.ReadAsStringAsync());
+        Assert.Equal(ProcessorHandoffStatuses.Dismissed, (await Repository(app).GetProcessorHandoffAsync(first.Id, CancellationToken.None))?.Status);
+    }
+
     [Fact]
     public async Task A_report_for_a_removed_send_that_nobody_asked_for_again_is_still_too_late()
     {

@@ -1490,10 +1490,10 @@ public sealed class DownloadClientTelemetryService(
                 // The reason stays on the record and is what the processor is told: a person who stopped tracking
                 // the download is not told "the download was gone" (#1220).
                 var reason = movedToCategory is not null
-                    ? $"Deluno moved {handoff.ReleaseName} to {movedToCategory} on {client.Name} so it keeps seeding, so it will not import it."
+                    ? ProcessorHandoffRemovalReasons.MovedToKeepSeeding(handoff.ReleaseName, movedToCategory, client.Name)
                     : stoppedTracking
-                        ? $"You told Deluno to stop tracking {handoff.ReleaseName}, so Deluno will not import it."
-                        : $"Deluno removed {handoff.ReleaseName} from {client.Name}, so it will not import it.";
+                        ? ProcessorHandoffRemovalReasons.StoppedTracking(handoff.ReleaseName)
+                        : ProcessorHandoffRemovalReasons.Removed(handoff.ReleaseName, client.Name);
                 await processorRepository.UpdateProcessorHandoffAsync(
                     handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null, reason, cancellationToken);
                 await activityFeedRepository.RecordActivityAsync(
