@@ -1,0 +1,82 @@
+{
+  "app": "plex",
+  "version": "1.43.4.10903-e5521bd8c",
+  "state": "wrong-token",
+  "recordedAt": "2026-10-18T10:35:58Z",
+  "note": "The library list with a token the server does not know (Plex Media Server 1.43.4.10903-e5521bd8c in Docker, UNCLAIMED: no account is made, so every call is local and carries no token).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/library/sections"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "MediaContainer": {
+            "size": 2,
+            "allowSync": false,
+            "title1": "Plex Library",
+            "Directory": [
+              {
+                "allowSync": false,
+                "filters": true,
+                "refreshing": false,
+                "key": "1",
+                "type": "movie",
+                "title": "Movies",
+                "agent": "tv.plex.agents.movie",
+                "scanner": "Plex Movie",
+                "language": "en-US",
+                "metadataAgentProviderGroupId": 1,
+                "uuid": "8abe45d8-a6c1-4cb0-8fcd-be2dea9ee912",
+                "updatedAt": 1792319735,
+                "createdAt": 1792319735,
+                "scannedAt": 1792319758,
+                "content": true,
+                "directory": true,
+                "contentChangedAt": 31,
+                "hidden": 0,
+                "Location": [
+                  {
+                    "id": 1,
+                    "path": "/media/Movies"
+                  }
+                ]
+              },
+              {
+                "allowSync": false,
+                "filters": true,
+                "refreshing": false,
+                "key": "2",
+                "type": "show",
+                "title": "Shows",
+                "agent": "tv.plex.agents.series",
+                "scanner": "Plex TV Series",
+                "language": "en-US",
+                "metadataAgentProviderGroupId": 2,
+                "uuid": "24eca3bf-d43c-4f42-a991-5414f8cb7f46",
+                "updatedAt": 1792319735,
+                "createdAt": 1792319735,
+                "scannedAt": 1792319737,
+                "content": true,
+                "directory": true,
+                "contentChangedAt": 15,
+                "hidden": 0,
+                "Location": [
+                  {
+                    "id": 2,
+                    "path": "/media/Shows"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

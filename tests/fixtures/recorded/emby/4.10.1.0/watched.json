@@ -1,0 +1,78 @@
+{
+  "app": "emby",
+  "version": "4.10.1.0",
+  "state": "watched",
+  "recordedAt": "2026-10-18T10:29:45Z",
+  "note": "The film marked watched by the administrator, then the catalogue showing it played (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/emby/Users/e0b3cbdd8da1492d88f03dd9cd168369/PlayedItems/6"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "PlaybackPositionTicks": 0,
+          "PlayCount": 1,
+          "IsFavorite": false,
+          "LastPlayedDate": "2026-10-18T10:29:45.0000000Z",
+          "Played": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Users/e0b3cbdd8da1492d88f03dd9cd168369/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Filters=IsPlayed&Fields=UserData"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [
+            {
+              "Name": "Sintel",
+              "ServerId": "be642afd648049da98b3ab61acd23785",
+              "Id": "6",
+              "RunTimeTicks": 200230000,
+              "IsFolder": false,
+              "Type": "Movie",
+              "UserData": {
+                "PlaybackPositionTicks": 0,
+                "PlayCount": 0,
+                "IsFavorite": false,
+                "Played": true
+              },
+              "ImageTags": {},
+              "BackdropImageTags": [],
+              "MediaType": "Video"
+            }
+          ],
+          "TotalRecordCount": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Users/e0b3cbdd8da1492d88f03dd9cd168369/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Filters=IsUnplayed&Fields=UserData"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [],
+          "TotalRecordCount": 0
+        }
+      }
+    }
+  ]
+}

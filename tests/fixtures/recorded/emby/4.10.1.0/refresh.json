@@ -1,0 +1,58 @@
+{
+  "app": "emby",
+  "version": "4.10.1.0",
+  "state": "refresh",
+  "recordedAt": "2026-10-18T10:29:47Z",
+  "note": "A refresh of the whole library, and a media update for the film's path (Modified), then one for a path the server does not hold (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/emby/Library/Refresh"
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/emby/Library/Media/Updated",
+        "body": {
+          "Updates": [
+            {
+              "Path": "/media/Movies/Sintel (2010)/Sintel (2010) [WEB 1080p].mkv",
+              "UpdateType": "Modified"
+            }
+          ]
+        }
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/emby/Library/Media/Updated",
+        "body": {
+          "Updates": [
+            {
+              "Path": "/nowhere/Not A Film (1999).mkv",
+              "UpdateType": "Created"
+            }
+          ]
+        }
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    }
+  ]
+}

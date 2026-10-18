@@ -1,0 +1,266 @@
+{
+  "app": "emby",
+  "version": "4.10.1.0",
+  "state": "sessions-playing",
+  "recordedAt": "2026-10-18T10:30:58Z",
+  "note": "A client reports the film playing at the six-second mark: the session list before and during (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Sessions"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "PlayState": {
+              "CanSeek": false,
+              "IsPaused": false,
+              "IsMuted": false,
+              "RepeatMode": "RepeatNone",
+              "SleepTimerMode": "None",
+              "SubtitleOffset": 0,
+              "Shuffle": false,
+              "PlaybackRate": 1
+            },
+            "AdditionalUsers": [],
+            "RemoteEndPoint": "192.168.1.10",
+            "Protocol": "HTTP/1.1",
+            "PlayableMediaTypes": [],
+            "PlaylistIndex": 0,
+            "PlaylistLength": 0,
+            "Id": "f06e29aa441a4e5bb1587456ad887240",
+            "ServerId": "667af79faa0d4b9391290a8b2ec6d1e7",
+            "Client": "Deluno",
+            "LastActivityDate": "2026-10-18T10:30:56.3315609Z",
+            "DeviceName": "7606440a0594",
+            "InternalDeviceId": 2,
+            "DeviceId": "667af79faa0d4b9391290a8b2ec6d1e7",
+            "ApplicationVersion": "4.10.1.0",
+            "SupportedCommands": [],
+            "SupportsRemoteControl": false
+          },
+          {
+            "PlayState": {
+              "CanSeek": false,
+              "IsPaused": false,
+              "IsMuted": false,
+              "RepeatMode": "RepeatNone",
+              "SleepTimerMode": "None",
+              "SubtitleOffset": 0,
+              "Shuffle": false,
+              "PlaybackRate": 1
+            },
+            "AdditionalUsers": [],
+            "RemoteEndPoint": "192.168.1.10",
+            "Protocol": "HTTP/1.1",
+            "PlayableMediaTypes": [],
+            "PlaylistIndex": 0,
+            "PlaylistLength": 0,
+            "Id": "3b8bd03c19e5b6666a03601d27d0f6b7",
+            "ServerId": "667af79faa0d4b9391290a8b2ec6d1e7",
+            "UserId": "0ed787a542194a1f8e57daa661d88705",
+            "UserName": "<scrubbed>",
+            "Client": "Deluno Recorder",
+            "LastActivityDate": "2026-10-18T10:30:15.8990325Z",
+            "DeviceName": "Recorder",
+            "InternalDeviceId": 1,
+            "DeviceId": "deluno-recorder-1",
+            "ApplicationVersion": "1.0",
+            "SupportedCommands": [],
+            "SupportsRemoteControl": false
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/emby/Sessions/Playing",
+        "body": {
+          "ItemId": "6",
+          "MediaSourceId": "mediasource_6",
+          "PlaySessionId": "<scrubbed>",
+          "PlayMethod": "DirectPlay",
+          "CanSeek": true,
+          "PositionTicks": 60000000,
+          "IsPaused": false
+        }
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Sessions"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "PlayState": {
+              "CanSeek": false,
+              "IsPaused": false,
+              "IsMuted": false,
+              "RepeatMode": "RepeatNone",
+              "SleepTimerMode": "None",
+              "SubtitleOffset": 0,
+              "Shuffle": false,
+              "PlaybackRate": 1
+            },
+            "AdditionalUsers": [],
+            "RemoteEndPoint": "192.168.1.10",
+            "Protocol": "HTTP/1.1",
+            "PlayableMediaTypes": [],
+            "PlaylistIndex": 0,
+            "PlaylistLength": 0,
+            "Id": "f06e29aa441a4e5bb1587456ad887240",
+            "ServerId": "667af79faa0d4b9391290a8b2ec6d1e7",
+            "Client": "Deluno",
+            "LastActivityDate": "2026-10-18T10:30:58.4216485Z",
+            "DeviceName": "7606440a0594",
+            "InternalDeviceId": 2,
+            "DeviceId": "667af79faa0d4b9391290a8b2ec6d1e7",
+            "ApplicationVersion": "4.10.1.0",
+            "SupportedCommands": [],
+            "SupportsRemoteControl": false
+          },
+          {
+            "PlayState": {
+              "PositionTicks": 79982956,
+              "CanSeek": true,
+              "IsPaused": false,
+              "IsMuted": false,
+              "MediaSourceId": "mediasource_6",
+              "PlayMethod": "DirectPlay",
+              "RepeatMode": "RepeatNone",
+              "SleepTimerMode": "None",
+              "SubtitleOffset": 0,
+              "Shuffle": false,
+              "PlaybackRate": 1
+            },
+            "AdditionalUsers": [],
+            "RemoteEndPoint": "192.168.1.10",
+            "Protocol": "HTTP/1.1",
+            "PlayableMediaTypes": [],
+            "PlaylistIndex": 0,
+            "PlaylistLength": 0,
+            "Id": "3b8bd03c19e5b6666a03601d27d0f6b7",
+            "ServerId": "667af79faa0d4b9391290a8b2ec6d1e7",
+            "UserId": "0ed787a542194a1f8e57daa661d88705",
+            "UserName": "<scrubbed>",
+            "Client": "Deluno Recorder",
+            "LastActivityDate": "2026-10-18T10:30:58.3940397Z",
+            "DeviceName": "Recorder",
+            "NowPlayingItem": {
+              "Name": "Sintel",
+              "ServerId": "667af79faa0d4b9391290a8b2ec6d1e7",
+              "Id": "6",
+              "DateCreated": "2026-10-18T10:15:12.0000000Z",
+              "DateModified": "2026-10-18T10:15:12.0000000Z",
+              "PresentationUniqueKey": "78990f6a0a40212925e5c0f2d9bfb5d2",
+              "Container": "mkv",
+              "ExternalUrls": [],
+              "Path": "/media/Movies/Sintel (2010)/Sintel (2010) [WEB 1080p].mkv",
+              "Taglines": [],
+              "Genres": [],
+              "RunTimeTicks": 200230000,
+              "Size": 589148,
+              "FileName": "Sintel (2010) [WEB 1080p].mkv",
+              "Bitrate": 235388,
+              "ProductionYear": 2010,
+              "ProviderIds": {},
+              "IsFolder": false,
+              "ParentId": "5",
+              "Type": "Movie",
+              "Studios": [],
+              "GenreItems": [],
+              "MediaStreams": [
+                {
+                  "Codec": "h264",
+                  "TimeBase": "1/1000",
+                  "VideoRange": "SDR",
+                  "DisplayTitle": "SD H264",
+                  "NalLengthSize": "4",
+                  "IsInterlaced": false,
+                  "BitRate": 235388,
+                  "BitDepth": 8,
+                  "RefFrames": 1,
+                  "IsDefault": false,
+                  "IsForced": false,
+                  "IsHearingImpaired": false,
+                  "Height": 360,
+                  "Width": 640,
+                  "AverageFrameRate": 24,
+                  "RealFrameRate": 24,
+                  "Profile": "Constrained Baseline",
+                  "Type": "Video",
+                  "AspectRatio": "16:9",
+                  "Index": 0,
+                  "IsExternal": false,
+                  "IsTextSubtitleStream": false,
+                  "SupportsExternalStream": false,
+                  "Protocol": "File",
+                  "PixelFormat": "yuv420p",
+                  "Level": 30,
+                  "IsAnamorphic": false,
+                  "ExtendedVideoType": "None",
+                  "ExtendedVideoSubType": "None",
+                  "ExtendedVideoSubTypeDescription": "None",
+                  "AttachmentSize": 0
+                },
+                {
+                  "Codec": "aac",
+                  "TimeBase": "1/1000",
+                  "DisplayTitle": "AAC mono",
+                  "IsInterlaced": false,
+                  "ChannelLayout": "mono",
+                  "BitRate": 192000,
+                  "Channels": 1,
+                  "SampleRate": 44100,
+                  "IsDefault": false,
+                  "IsForced": false,
+                  "IsHearingImpaired": false,
+                  "Profile": "LC",
+                  "Type": "Audio",
+                  "Index": 1,
+                  "IsExternal": false,
+                  "IsTextSubtitleStream": false,
+                  "SupportsExternalStream": false,
+                  "Protocol": "File",
+                  "ExtendedVideoType": "None",
+                  "ExtendedVideoSubType": "None",
+                  "ExtendedVideoSubTypeDescription": "None",
+                  "AttachmentSize": 0
+                }
+              ],
+              "ImageTags": {},
+              "BackdropImageTags": [],
+              "Chapters": [],
+              "MediaType": "Video",
+              "MimeType": "video/x-matroska",
+              "Width": 640,
+              "Height": 360
+            },
+            "InternalDeviceId": 1,
+            "DeviceId": "deluno-recorder-1",
+            "ApplicationVersion": "1.0",
+            "SupportedCommands": [],
+            "SupportsRemoteControl": false
+          }
+        ]
+      }
+    }
+  ]
+}
