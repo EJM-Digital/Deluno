@@ -2,8 +2,8 @@
   "app": "plex",
   "version": "1.43.4.10903-e5521bd8c",
   "state": "catalogue-series",
-  "recordedAt": "2026-10-18T10:35:55Z",
-  "note": "The TV section with guids, and one show in full (Plex Media Server 1.43.4.10903-e5521bd8c in Docker, UNCLAIMED: no account is made, so every call is local and carries no token).",
+  "recordedAt": "2026-10-18T10:53:58Z",
+  "note": "The TV section with guids (shows, seasons and episodes as Deluno asks for the three levels), and one show in full (Plex Media Server 1.43.4.10903-e5521bd8c in Docker, UNCLAIMED: no account is made, so every call is local and carries no token).",
   "exchanges": [
     {
       "request": {
@@ -102,6 +102,277 @@
                   },
                   {
                     "tag": "Christine Stuckart"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/library/sections/2/all?type=3&includeGuids=1&X-Plex-Container-Start=0&X-Plex-Container-Size=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "MediaContainer": {
+            "size": 1,
+            "totalSize": 1,
+            "offset": 0,
+            "allowSync": true,
+            "art": "/:/resources/show-fanart.jpg",
+            "identifier": "com.plexapp.plugins.library",
+            "librarySectionID": 2,
+            "librarySectionTitle": "Shows",
+            "librarySectionUUID": "24eca3bf-d43c-4f42-a991-5414f8cb7f46",
+            "mediaTagPrefix": "/system/bundle/media/flags/",
+            "mediaTagVersion": 1786914632,
+            "nocache": true,
+            "thumb": "/:/resources/show.png",
+            "title1": "Shows",
+            "title2": "All Shows",
+            "viewGroup": "show",
+            "viewMode": 65592,
+            "Metadata": [
+              {
+                "ratingKey": "3",
+                "key": "/library/metadata/3/children",
+                "parentRatingKey": "2",
+                "guid": "plex://season/602e7b5cc96042002d09cfcf",
+                "parentGuid": "plex://show/5f187f31f72b56003f412681",
+                "parentSlug": "recorded-by-arizal-1",
+                "parentStudio": "Rooster Teeth Animation",
+                "type": "season",
+                "title": "Season 1",
+                "parentKey": "/library/metadata/2",
+                "parentTitle": "Recorded by Arizal",
+                "summary": "",
+                "index": 1,
+                "parentIndex": 1,
+                "parentYear": 2020,
+                "thumb": "/library/metadata/3/thumb/1792319738",
+                "parentThumb": "/library/metadata/2/thumb/1792319738",
+                "addedAt": 1792319736,
+                "updatedAt": 1792319738,
+                "Image": [
+                  {
+                    "alt": "Season 1",
+                    "type": "coverPoster",
+                    "url": "/library/metadata/3/thumb/1792319738"
+                  }
+                ],
+                "UltraBlurColors": {
+                  "topLeft": "203416",
+                  "topRight": "80512a",
+                  "bottomRight": "834219",
+                  "bottomLeft": "944018"
+                },
+                "Guid": [
+                  {
+                    "id": "tmdb://156918"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/library/sections/2/all?type=4&includeGuids=1&X-Plex-Container-Start=0&X-Plex-Container-Size=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "MediaContainer": {
+            "size": 2,
+            "totalSize": 2,
+            "offset": 0,
+            "allowSync": true,
+            "art": "/:/resources/show-fanart.jpg",
+            "identifier": "com.plexapp.plugins.library",
+            "librarySectionID": 2,
+            "librarySectionTitle": "Shows",
+            "librarySectionUUID": "24eca3bf-d43c-4f42-a991-5414f8cb7f46",
+            "mediaTagPrefix": "/system/bundle/media/flags/",
+            "mediaTagVersion": 1786914632,
+            "nocache": true,
+            "thumb": "/:/resources/show.png",
+            "title1": "Shows",
+            "title2": "All Shows",
+            "viewGroup": "show",
+            "viewMode": 65592,
+            "Metadata": [
+              {
+                "ratingKey": "4",
+                "key": "/library/metadata/4",
+                "parentRatingKey": "3",
+                "grandparentRatingKey": "2",
+                "guid": "plex://episode/5f187f32f72b56003f41268e",
+                "parentGuid": "plex://season/602e7b5cc96042002d09cfcf",
+                "grandparentGuid": "plex://show/5f187f31f72b56003f412681",
+                "grandparentSlug": "recorded-by-arizal-1",
+                "type": "episode",
+                "title": "Log i",
+                "grandparentKey": "/library/metadata/2",
+                "parentKey": "/library/metadata/3",
+                "grandparentTitle": "Recorded by Arizal",
+                "parentTitle": "Season 1",
+                "summary": "In the middle of summer vacation, Arizal, a 16-year-old senior from Yamayan, begins her extra credit assignment: creating a video diary as to why she wants to be a record keeper. But is she ready?",
+                "index": 1,
+                "parentIndex": 1,
+                "year": 2020,
+                "thumb": "/library/metadata/4/thumb/1792319738",
+                "parentThumb": "/library/metadata/3/thumb/1792319738",
+                "grandparentThumb": "/library/metadata/2/thumb/1792319738",
+                "duration": 20023,
+                "originallyAvailableAt": "2020-07-13",
+                "addedAt": 1792318512,
+                "updatedAt": 1792319738,
+                "Media": [
+                  {
+                    "id": 2,
+                    "duration": 20023,
+                    "bitrate": 235,
+                    "width": 640,
+                    "height": 360,
+                    "aspectRatio": 1.78,
+                    "audioChannels": 1,
+                    "audioCodec": "aac",
+                    "videoCodec": "h264",
+                    "videoResolution": "sd",
+                    "container": "mkv",
+                    "videoFrameRate": "24p",
+                    "videoProfile": "constrained baseline",
+                    "Part": [
+                      {
+                        "id": 2,
+                        "key": "/library/parts/2/1792318512/file.mkv",
+                        "duration": 20023,
+                        "file": "/media/Shows/Recorded Show (2020)/Season 01/Recorded Show (2020) - S01E01.mkv",
+                        "size": 589148,
+                        "container": "mkv",
+                        "videoProfile": "constrained baseline"
+                      }
+                    ]
+                  }
+                ],
+                "Image": [
+                  {
+                    "alt": "Log i",
+                    "type": "coverPoster",
+                    "url": "/library/metadata/2/thumb/1792319738"
+                  },
+                  {
+                    "alt": "Log i",
+                    "type": "snapshot",
+                    "url": "/library/metadata/4/thumb/1792319738"
+                  }
+                ],
+                "UltraBlurColors": {
+                  "topLeft": "120303",
+                  "topRight": "934403",
+                  "bottomRight": "632f14",
+                  "bottomLeft": "6d3c17"
+                },
+                "Guid": [
+                  {
+                    "id": "tmdb://2359548"
+                  },
+                  {
+                    "id": "tvdb://7837637"
+                  }
+                ]
+              },
+              {
+                "ratingKey": "5",
+                "key": "/library/metadata/5",
+                "parentRatingKey": "3",
+                "grandparentRatingKey": "2",
+                "guid": "plex://episode/5f3b92f42ce88f00433f44a5",
+                "parentGuid": "plex://season/602e7b5cc96042002d09cfcf",
+                "grandparentGuid": "plex://show/5f187f31f72b56003f412681",
+                "grandparentSlug": "recorded-by-arizal-1",
+                "type": "episode",
+                "title": "Log ii",
+                "grandparentKey": "/library/metadata/2",
+                "parentKey": "/library/metadata/3",
+                "grandparentTitle": "Recorded by Arizal",
+                "parentTitle": "Season 1",
+                "summary": "Arizal prepares herself to talk to Dante, an experienced record keeper, even having a set of questions to ask him. However, what she hears from him shakes her rosy picture of a record keeper that she has painted in her mind.",
+                "index": 2,
+                "parentIndex": 1,
+                "year": 2020,
+                "thumb": "/library/metadata/5/thumb/1792319738",
+                "parentThumb": "/library/metadata/3/thumb/1792319738",
+                "grandparentThumb": "/library/metadata/2/thumb/1792319738",
+                "duration": 20023,
+                "originallyAvailableAt": "2020-07-20",
+                "addedAt": 1792318512,
+                "updatedAt": 1792319738,
+                "Media": [
+                  {
+                    "id": 3,
+                    "duration": 20023,
+                    "bitrate": 235,
+                    "width": 640,
+                    "height": 360,
+                    "aspectRatio": 1.78,
+                    "audioChannels": 1,
+                    "audioCodec": "aac",
+                    "videoCodec": "h264",
+                    "videoResolution": "sd",
+                    "container": "mkv",
+                    "videoFrameRate": "24p",
+                    "videoProfile": "constrained baseline",
+                    "Part": [
+                      {
+                        "id": 3,
+                        "key": "/library/parts/3/1792318512/file.mkv",
+                        "duration": 20023,
+                        "file": "/media/Shows/Recorded Show (2020)/Season 01/Recorded Show (2020) - S01E02.mkv",
+                        "size": 589148,
+                        "container": "mkv",
+                        "videoProfile": "constrained baseline"
+                      }
+                    ]
+                  }
+                ],
+                "Image": [
+                  {
+                    "alt": "Log ii",
+                    "type": "coverPoster",
+                    "url": "/library/metadata/2/thumb/1792319738"
+                  },
+                  {
+                    "alt": "Log ii",
+                    "type": "snapshot",
+                    "url": "/library/metadata/5/thumb/1792319738"
+                  }
+                ],
+                "UltraBlurColors": {
+                  "topLeft": "4c1c1f",
+                  "topRight": "7d408b",
+                  "bottomRight": "6a2610",
+                  "bottomLeft": "742d1d"
+                },
+                "Guid": [
+                  {
+                    "id": "tmdb://2391702"
+                  },
+                  {
+                    "id": "tvdb://7837638"
                   }
                 ]
               }

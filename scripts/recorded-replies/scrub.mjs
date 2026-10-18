@@ -75,7 +75,7 @@ export function scrubText(text, extraNames = []) {
 
 // Plex names a library item by a field called `key` ("1", "/library/metadata/1", "/library/sections/1/all"): an address inside the server,
 // never a secret. Only a value of that shape is kept; an API key is neither a short number nor a path.
-const plexItemAddress = /^(?:\d{1,8}|(?:\/|%2F)[A-Za-z0-9_\/:.%-]*)$/i;
+const plexItemAddress = /^(?:\d{1,8}|(?:\/|%2F)[A-Za-z0-9_\/:.%=+-]*)$/i;
 export const isPlexItemAddress = (value) => plexItemAddress.test(value);
 
 export function scrubValue(value, extraNames = [], key = null) {

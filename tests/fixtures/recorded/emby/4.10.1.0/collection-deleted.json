@@ -2,13 +2,13 @@
   "app": "emby",
   "version": "4.10.1.0",
   "state": "collection-deleted",
-  "recordedAt": "2026-10-18T10:29:47Z",
+  "recordedAt": "2026-10-18T11:17:44Z",
   "note": "The collection deleted (DELETE /Items/{id}), and again (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {
       "request": {
         "method": "DELETE",
-        "path": "/emby/Items/14"
+        "path": "/emby/Items/22"
       },
       "reply": {
         "status": 204,
@@ -19,7 +19,7 @@
     {
       "request": {
         "method": "DELETE",
-        "path": "/emby/Items/14"
+        "path": "/emby/Items/22"
       },
       "reply": {
         "status": 204,

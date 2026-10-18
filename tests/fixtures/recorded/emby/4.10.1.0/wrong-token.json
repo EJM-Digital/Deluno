@@ -2,7 +2,7 @@
   "app": "emby",
   "version": "4.10.1.0",
   "state": "wrong-token",
-  "recordedAt": "2026-10-18T10:29:04Z",
+  "recordedAt": "2026-10-18T11:11:25Z",
   "note": "System info, the user list and the library list with a key the server does not know (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {

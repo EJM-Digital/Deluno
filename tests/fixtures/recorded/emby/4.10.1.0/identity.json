@@ -2,7 +2,7 @@
   "app": "emby",
   "version": "4.10.1.0",
   "state": "identity",
-  "recordedAt": "2026-10-18T10:29:04Z",
+  "recordedAt": "2026-10-18T11:11:25Z",
   "note": "The public identity and the full system info Deluno reads for the version and server id (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {
@@ -18,9 +18,9 @@
         "body": {
           "LocalAddresses": [],
           "RemoteAddresses": [],
-          "ServerName": "6b9cb519c744",
+          "ServerName": "18663f3536c2",
           "Version": "4.10.1.0",
-          "Id": "be642afd648049da98b3ab61acd23785"
+          "Id": "a8f5d36cc5ad4259880f1ff66bbdfbaa"
         }
       }
     },
@@ -57,7 +57,7 @@
           "HardwareAccelerationRequiresPremiere": true,
           "WakeOnLanInfo": [
             {
-              "MacAddress": "26B9B5867136",
+              "MacAddress": "C618B1D09A19",
               "BroadcastAddress": "192.168.1.10",
               "Port": 9
             }
@@ -65,9 +65,9 @@
           "IsInMaintenanceMode": false,
           "LocalAddresses": [],
           "RemoteAddresses": [],
-          "ServerName": "6b9cb519c744",
+          "ServerName": "18663f3536c2",
           "Version": "4.10.1.0",
-          "Id": "be642afd648049da98b3ab61acd23785"
+          "Id": "a8f5d36cc5ad4259880f1ff66bbdfbaa"
         }
       }
     }

@@ -2,7 +2,7 @@
   "app": "emby",
   "version": "4.10.1.0",
   "state": "media-updated-refused",
-  "recordedAt": "2026-10-18T10:29:48Z",
+  "recordedAt": "2026-10-18T11:17:45Z",
   "note": "POST /Library/Media/Updated with a body that is not the update list (the server refuses it), and with no body (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {

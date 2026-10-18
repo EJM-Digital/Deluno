@@ -2,7 +2,7 @@
   "app": "seerr",
   "version": "3.5.0",
   "state": "webhook-pending",
-  "recordedAt": "2026-10-18T10:41:23Z",
+  "recordedAt": "2026-10-18T11:04:24Z",
   "note": "The webhook Seerr sends when an ordinary user requests a film (MEDIA_PENDING), which Deluno must acknowledge and not act on. The request is what Seerr itself sent to the webhook address; the reply is the receiving container plain ok, not an answer from Deluno (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
   "exchanges": [
     {
@@ -31,7 +31,7 @@
             "request_id": "1",
             "requestedBy_email": "<scrubbed>@example.com",
             "requestedBy_username": "<scrubbed>",
-            "requestedBy_avatar": "https://gravatar.com/avatar/e819dbf8d8cd57554163d78957690f22?default=mm&size=200"
+            "requestedBy_avatar": "https://gravatar.com/avatar/b107b35d10886a77526c63a7c21cb61f?default=mm&size=200"
           },
           "extra": []
         }

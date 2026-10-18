@@ -2,7 +2,7 @@
   "app": "seerr",
   "version": "3.5.0",
   "state": "webhook-approved",
-  "recordedAt": "2026-10-18T10:41:26Z",
+  "recordedAt": "2026-10-18T11:04:27Z",
   "note": "The webhook Seerr sends when a request is approved (MEDIA_APPROVED): what Deluno's webhook route reads to add the title. The request is what Seerr itself sent to the webhook address; the reply is the receiving container plain ok, not an answer from Deluno (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
   "exchanges": [
     {
@@ -31,7 +31,7 @@
             "request_id": "1",
             "requestedBy_email": "<scrubbed>@example.com",
             "requestedBy_username": "<scrubbed>",
-            "requestedBy_avatar": "https://gravatar.com/avatar/e819dbf8d8cd57554163d78957690f22?default=mm&size=200"
+            "requestedBy_avatar": "https://gravatar.com/avatar/b107b35d10886a77526c63a7c21cb61f?default=mm&size=200"
           },
           "extra": []
         }

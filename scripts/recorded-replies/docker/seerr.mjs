@@ -114,8 +114,9 @@ async function main() {
       save('seerr', version, 'request-approved', note('The request approved (POST /api/v1/request/{id}/approve), then the request list and the film\'s lookup'), [approve, await get('/api/v1/request?filter=all&sort=added&take=100&skip=0'), await get(`/api/v1/movie/${FILM}`)]);
       const mediaId = mediaInfo?.id;
       if (mediaId) {
-        const available = await send('POST', `/api/v1/media/${mediaId}/available`);
-        save('seerr', version, 'media-available', note('The media record marked available (POST /api/v1/media/{id}/available), then the media list'), [available, await get('/api/v1/media?filter=all&sort=added&take=100&skip=0'), await get(`/api/v1/movie/${FILM}`)]);
+        const bare = await send('POST', `/api/v1/media/${mediaId}/available`);
+        const withBody = await send('POST', `/api/v1/media/${mediaId}/available`, { is4k: false });
+        save('seerr', version, 'media-available', note('The media record marked available: POST /api/v1/media/{id}/available with no body and no content type (what Deluno sends) is refused 415, and with the JSON body {"is4k": false} it is taken; then the media list and the lookup of the film'), [bare, withBody, await get('/api/v1/media?filter=all&sort=added&take=100&skip=0'), await get(`/api/v1/movie/${FILM}`)]);
         const deleted = await send('DELETE', `/api/v1/media/${mediaId}`);
         save('seerr', version, 'media-deleted', note('The media record deleted (DELETE /api/v1/media/{id}) with its requests, then the request and media lists, and the same delete again'), [deleted, await get('/api/v1/request?filter=all&sort=added&take=100&skip=0'), await get('/api/v1/media?filter=all&sort=added&take=100&skip=0'), await send('DELETE', `/api/v1/media/${mediaId}`)]);
       } else addMissing('seerr media-available/media-deleted: the film had no mediaInfo.id after its request');

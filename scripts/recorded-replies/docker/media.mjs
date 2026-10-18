@@ -96,10 +96,18 @@ async function embyFamily(kind) {
     await get('/Library/VirtualFolders'), await get('/Users'), await get(`/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Fields=${FIELDS}&StartIndex=0&Limit=500`), await get('/Sessions')]);
 
   // Libraries over the two folders; the server scans them and fetches the details from the internet.
-  const mkMovies = await send('POST', `/Library/VirtualFolders?name=Movies&collectionType=movies&paths=${encodeURIComponent('/media/Movies')}&refreshLibrary=true`, { LibraryOptions: {} });
+  // Emby makes a library with no metadata fetchers unless it is told which (the web app sends every one it offers); Jellyfin fills them in itself.
+  const optionsFor = async (type) => {
+    if (!emby) return {};
+    const available = replyJson(await get(`/Libraries/AvailableOptions?LibraryContentType=${type}`));
+    const typeOptions = (available?.TypeOptions ?? []).map((t) => ({ Type: t.Type, MetadataFetchers: (t.MetadataFetchers ?? []).map((f) => f.Name), MetadataFetcherOrder: (t.MetadataFetchers ?? []).map((f) => f.Name), ImageFetchers: (t.ImageFetchers ?? []).map((f) => f.Name), ImageFetcherOrder: (t.ImageFetchers ?? []).map((f) => f.Name) }));
+    const metadataSavers = (available?.MetadataSavers ?? []).map((m) => m.Name);
+    return { TypeOptions: typeOptions, EnableRealtimeMonitor: true, SaveLocalMetadata: false, MetadataSavers: [], PreferredMetadataLanguage: 'en', MetadataCountryCode: 'US', EnableInternetProviders: true, SkipSubtitlesIfAudioTrackMatches: false, metadataSavers };
+  };
+  const mkMovies = await send('POST', `/Library/VirtualFolders?name=Movies&collectionType=movies&paths=${encodeURIComponent('/media/Movies')}&refreshLibrary=true`, { LibraryOptions: await optionsFor('movies') });
   console.log('  movies library: ' + mkMovies.reply.status);
   await sleep(10000);
-  const mkShows = await send('POST', `/Library/VirtualFolders?name=Shows&collectionType=tvshows&paths=${encodeURIComponent('/media/Shows')}&refreshLibrary=true`, { LibraryOptions: {} });
+  const mkShows = await send('POST', `/Library/VirtualFolders?name=Shows&collectionType=tvshows&paths=${encodeURIComponent('/media/Shows')}&refreshLibrary=true`, { LibraryOptions: await optionsFor('tvshows') });
   console.log('  shows library: ' + mkShows.reply.status + ' ' + (mkShows.reply.bodyText ?? '').slice(0, 200));
   save(kind, version, 'libraries-created', note('A movies library and a TV library made over the two folders'), [mkMovies, mkShows, await get('/Library/VirtualFolders')]);
   await until('the library scan', 300, async () => {
@@ -107,7 +115,19 @@ async function embyFamily(kind) {
     console.log(`  scan: ${m?.TotalRecordCount} films, ${t?.TotalRecordCount} episodes`);
     return m?.TotalRecordCount >= 1 && t?.TotalRecordCount >= 2;
   }, 5000);
-  await sleep(25000);
+  // The details (provider ids) arrive from the metadata sources a little after the scan; ask for a refresh once if they are slow.
+  let asked = false;
+  const started = Date.now();
+  await until('the film and the series to carry provider ids', 360, async () => {
+    const m = replyJson(await get('/Items?Recursive=true&IncludeItemTypes=Movie&Fields=ProviderIds'))?.Items ?? [];
+    const t = replyJson(await get('/Items?Recursive=true&IncludeItemTypes=Series&Fields=ProviderIds'))?.Items ?? [];
+    const ready = m.length >= 1 && m.every((i) => i.ProviderIds && Object.keys(i.ProviderIds).length) && t.length >= 1 && t.every((i) => i.ProviderIds && Object.keys(i.ProviderIds).length);
+    if (!ready && !asked && Date.now() - started > 60000) {
+      asked = true;
+      for (const i of [...m, ...t]) await send('POST', `/Items/${i.Id}/Refresh?Recursive=true&ImageRefreshMode=FullRefresh&MetadataRefreshMode=FullRefresh&ReplaceAllImages=false&ReplaceAllMetadata=false`);
+    }
+    return ready;
+  }, 5000).catch(() => console.log('  provider ids never arrived; recording without them'));
   const users = replyJson(await get('/Users'));
   const userId = users[0].Id;
   const movies = await get(`/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Fields=${FIELDS}&StartIndex=0&Limit=500`);
@@ -115,14 +135,19 @@ async function embyFamily(kind) {
   const movieId = replyJson(movies).Items[0].Id;
   const mediaSourceId = replyJson(movies).Items[0].MediaSources?.[0]?.Id ?? movieId;
   const seriesId = replyJson(series).Items.find((i) => i.Type === 'Series').Id;
-  const watchedQuery = (f) => get(`/Users/${userId}/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Filters=${f}&Fields=UserData`);
-  save(kind, version, 'catalogue-movies', note('The movie catalogue as Deluno asks for it (Fields with provider ids, paths, media sources; unpaged first page)'), [movies, await watchedQuery('IsPlayed'), await watchedQuery('IsUnplayed')]);
+  // What each person has done with a title: Deluno asks for the played, the favourite and the resumable ones, one listing each.
+  const watchedQueries = async () => {
+    const out = [];
+    for (const f of ['IsPlayed=true', 'IsFavorite=true', 'Filters=IsResumable']) out.push(await get(`/Users/${userId}/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&${f}&Fields=UserData&StartIndex=0&Limit=500`));
+    return out;
+  };
+  save(kind, version, 'catalogue-movies', note('The movie catalogue as Deluno asks for it (Fields with provider ids, paths, media sources; unpaged first page)'), [movies, ...(await watchedQueries())]);
   save(kind, version, 'catalogue-series', note('The series catalogue: the series, its seasons and episodes'), [series, await get(`/Items?Ids=${seriesId}&Fields=ProviderIds`)]);
   save(kind, version, 'libraries', note('The libraries and users as the connection test lists them'), [await get('/Library/VirtualFolders'), await get('/Users')]);
 
   // Watched.
   const played = await send('POST', `/Users/${userId}/PlayedItems/${movieId}`);
-  save(kind, version, 'watched', note('The film marked watched by the administrator, then the catalogue showing it played'), [played, await watchedQuery('IsPlayed'), await watchedQuery('IsUnplayed')]);
+  save(kind, version, 'watched', note('The film marked watched by the administrator, then the played, favourite and resumable listings as Deluno asks for them'), [played, ...(await watchedQueries())]);
   await send('DELETE', `/Users/${userId}/PlayedItems/${movieId}`);
 
   // Playback: a second sign-in reports a play, the way a client does; the server then lists it under Sessions.
@@ -202,7 +227,7 @@ async function plex() {
   const note = (what) => `${what} (Plex Media Server ${version} in Docker, UNCLAIMED: no account is made, so every call is local and carries no token).`;
   save('plex', version, 'identity', note('/identity: the unauthenticated identity reply that carries the version and whether the server is claimed'), [identity]);
   // Straight after it first answers, a fresh Plex refuses to make a library: that reply is recorded as it is, then the run waits it out.
-  const early = await mk0();
+  const early = only ? { reply: { status: 0 } } : await mk0();
   if (early.reply.status === 400) save('plex', version, 'starting-up', note('A library made while the server is still starting up (right after /identity first answered)'), [early]);
   await sleep(early.reply.status === 400 ? 90000 : 0);
   const root = await c.get('/');
@@ -214,8 +239,10 @@ async function plex() {
   save('plex', version, 'root', note('The server root: name, version, machine id, claimed or not, myPlex state'), [root]);
   const mk = (n, type, agent, scanner, path) => c.send({ method: 'POST', path: `/library/sections?name=${encodeURIComponent(n)}&type=${type}&agent=${agent}&scanner=${encodeURIComponent(scanner)}&language=en-US&location=${encodeURIComponent(path)}` });
   const empty = await c.get('/library/sections');
-  const mkM = await mk('Movies', 'movie', 'tv.plex.agents.movie', 'Plex Movie', '/media/Movies');
-  const mkS = await mk('Shows', 'show', 'tv.plex.agents.series', 'Plex TV Series', '/media/Shows');
+  // Run again on a server that already holds the two libraries (REC_ONLY=<state>): nothing is created twice.
+  const have = replyJson(empty)?.MediaContainer?.Directory?.length ?? 0;
+  const mkM = have >= 2 ? empty : await mk('Movies', 'movie', 'tv.plex.agents.movie', 'Plex Movie', '/media/Movies');
+  const mkS = have >= 2 ? empty : await mk('Shows', 'show', 'tv.plex.agents.series', 'Plex TV Series', '/media/Shows');
   save('plex', version, 'libraries-created', note('No library, then a movies section and a TV section made over the two folders'), [empty, mkM, mkS, await c.get('/library/sections')]);
   const sections = replyJson(await c.get('/library/sections'))?.MediaContainer?.Directory ?? [];
   if (sections.length < 2) { addMissing(`plex: the server would not make library sections without an account (POST /library/sections answered ${mkM.reply.status})`); return; }
@@ -232,11 +259,14 @@ async function plex() {
   const showKey = replyJson(shows).MediaContainer.Metadata[0].ratingKey;
   save('plex', version, 'sections', note('The library sections as Deluno lists them'), [await c.get('/library/sections')]);
   save('plex', version, 'catalogue-movies', note('The movie section with guids (provider ids)'), [movies, await c.get(`/library/metadata/${movieKey}`)]);
-  save('plex', version, 'catalogue-series', note('The TV section with guids, and one show in full'), [shows, await c.get(`/library/metadata/${showKey}`), await c.get(`/library/metadata/${showKey}/allLeaves`)]);
+  save('plex', version, 'catalogue-series', note('The TV section with guids (shows, seasons and episodes as Deluno asks for the three levels), and one show in full'), [
+    shows, await c.get(`/library/sections/${sKey}/all?type=3&includeGuids=1&X-Plex-Container-Start=0&X-Plex-Container-Size=500`), await c.get(`/library/sections/${sKey}/all?type=4&includeGuids=1&X-Plex-Container-Start=0&X-Plex-Container-Size=500`),
+    await c.get(`/library/metadata/${showKey}`), await c.get(`/library/metadata/${showKey}/allLeaves`)]);
   save('plex', version, 'accounts', note('The server\'s own account list and the myPlex account state (unclaimed: no plex.tv user)'), [await c.get('/accounts'), await c.get('/myplex/account')]);
   save('plex', version, 'sessions-idle', note('No one is playing'), [await c.get('/status/sessions')]);
   const scrobble = await c.get(`/:/scrobble?key=${movieKey}&identifier=com.plexapp.plugins.library`);
-  save('plex', version, 'watched', note('The film scrobbled (marked watched), then read with its viewCount'), [scrobble, await c.get(`/library/metadata/${movieKey}`)]);
+  save('plex', version, 'watched', note('The film scrobbled (marked watched), then read with its viewCount, and the movie section listed as Deluno pages it'), [
+    scrobble, await c.get(`/library/metadata/${movieKey}`), await c.get(`/library/sections/${mKey}/all?type=1&includeGuids=1&X-Plex-Container-Start=0&X-Plex-Container-Size=500`)]);
   await c.get(`/:/unscrobble?key=${movieKey}&identifier=com.plexapp.plugins.library`);
   const tl = (state) => c.get(`/:/timeline?ratingKey=${movieKey}&key=${encodeURIComponent('/library/metadata/' + movieKey)}&state=${state}&time=6000&duration=20000&X-Plex-Client-Identifier=deluno-recorder-2`);
   const playing = await tl('playing');
@@ -246,8 +276,13 @@ async function plex() {
   save('plex', version, 'refresh', note('A refresh of one section, of one folder in it, and of a folder the server does not hold; the trash emptied'), [
     await c.get(`/library/sections/${mKey}/refresh`), await c.get(`/library/sections/${mKey}/refresh?path=${encodeURIComponent(MOVIE_DIR)}`),
     await c.get(`/library/sections/${mKey}/refresh?path=${encodeURIComponent('/nowhere')}`), await c.send({ method: 'PUT', path: `/library/sections/${mKey}/emptyTrash` })]);
-  save('plex', version, 'directory-contents', note('The folder browser (/services/browse): a folder that exists, then one that does not'), [
-    await c.get(`/services/browse?path=${encodeURIComponent('/media/Movies')}&includeFiles=0`), await c.get(`/services/browse?path=${encodeURIComponent('/nowhere')}&includeFiles=0`)]);
+  // Plex browses a folder at /services/browse/<base64 of the path>; the older `path=` query is ignored and lists the roots of the server for any path.
+  const browse = (path) => c.get(`/services/browse/${Buffer.from(path).toString('base64')}?includeFiles=0`);
+  save('plex', version, 'directory-contents', note('The folder browser (/services/browse/<base64 of the folder>): the media folder, the root, a folder that does not exist, and the old path query that Plex ignores'), [
+    await browse('/media/Movies'), await browse('/'), await browse('/nowhere'), await c.get(`/services/browse?path=${encodeURIComponent('/nowhere')}&includeFiles=0`)]);
+  // The collection lists of both libraries before any collection exists (Deluno reads them with every catalogue listing).
+  save('plex', version, 'collections-empty', note('The collections of the movie library and of the TV library, asked for as Deluno pages them, before any collection exists'), [
+    await c.get(`/library/sections/${mKey}/collections?includeGuids=0&X-Plex-Container-Start=0&X-Plex-Container-Size=500`), await c.get(`/library/sections/${sKey}/collections?includeGuids=0&X-Plex-Container-Start=0&X-Plex-Container-Size=500`)]);
   const machine = replyJson(identity).MediaContainer.machineIdentifier;
   const uri = encodeURIComponent(`server://${machine}/com.plexapp.plugins.library/library/metadata/${movieKey}`);
   const made = await c.send({ method: 'POST', path: `/library/collections?type=1&title=${encodeURIComponent('Recorded collection')}&smart=0&sectionId=${mKey}&uri=${uri}` });
@@ -261,6 +296,16 @@ async function plex() {
     save('plex', version, 'collection-deleted', note('The collection deleted, and the same delete again'), [await c.send({ method: 'DELETE', path: `/library/collections/${collection}` }), await c.send({ method: 'DELETE', path: `/library/collections/${collection}` })]);
   } else addMissing(`plex collection-sync: a collection could not be made (answered ${made.reply.status})`);
   save('plex', version, 'playlists', note('The video playlists (none made)'), [await c.get('/playlists?playlistType=video')]);
+  // plex.tv itself, asked with no token the way a server nobody has claimed asks (a real unauthenticated GET from the internet; nothing is signed in).
+  {
+    const tv = new Client('https://plex.tv', { keep: ['content-type'], headers: { accept: 'application/json', 'x-plex-client-identifier': 'deluno-recorder-1', 'x-plex-product': 'Deluno Recorder' } });
+    const discover = new Client('https://discover.provider.plex.tv', { keep: ['content-type'], headers: { accept: 'application/json', 'x-plex-client-identifier': 'deluno-recorder-1', 'x-plex-product': 'Deluno Recorder' } });
+    const tagged = (host, e) => ({ ...e, request: { ...e.request, path: host + e.request.path } });
+    save('plex', version, 'plex-tv-no-token', note('The plex.tv calls Deluno makes for the account, its resources, the people the server is shared with and the watchlist, asked with no token at all (plex.tv answers each; the path of a request here begins with the host)'), [
+      tagged('plex.tv', await tv.get('/api/v2/user')), tagged('plex.tv', await tv.get('/api/v2/resources?includeHttps=1&includeRelay=1')),
+      tagged('plex.tv', await tv.get(`/api/servers/${machine}/shared_servers`)), tagged('plex.tv', await tv.get('/api/users')), tagged('plex.tv', await tv.get('/api/home/users')),
+      tagged('discover.provider.plex.tv', await discover.get('/library/sections/watchlist/all?X-Plex-Container-Start=0&X-Plex-Container-Size=500'))]);
+  }
   save('plex', version, 'wrong-token', note('The library list with a token the server does not know'), [await c.send({ method: 'GET', path: '/library/sections', headers: { 'x-plex-token': 'not-a-token' } })]);
   save('plex', version, 'not-answering', 'A request sent to a port nothing listens on: the connection is refused.', [await new Client('http://127.0.0.1:1').get('/identity')]);
   addMissing('plex: the plex.tv replies Deluno asks for (the user list, shared servers, resources, a token that identifies an owner) need the server claimed by its owner at plex.tv; no account was made');

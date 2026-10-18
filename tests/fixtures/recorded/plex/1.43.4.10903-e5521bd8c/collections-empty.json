@@ -1,0 +1,74 @@
+{
+  "app": "plex",
+  "version": "1.43.4.10903-e5521bd8c",
+  "state": "collections-empty",
+  "recordedAt": "2026-10-18T10:58:46Z",
+  "note": "The collections of the movie library and of the TV library, asked for as Deluno pages them, before any collection exists (Plex Media Server 1.43.4.10903-e5521bd8c in Docker, UNCLAIMED: no account is made, so every call is local and carries no token).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/library/sections/1/collections?includeGuids=0&X-Plex-Container-Start=0&X-Plex-Container-Size=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "MediaContainer": {
+            "size": 0,
+            "totalSize": 0,
+            "offset": 0,
+            "allowSync": true,
+            "art": "/:/resources/movie-fanart.jpg",
+            "identifier": "com.plexapp.plugins.library",
+            "librarySectionID": 1,
+            "librarySectionTitle": "Movies",
+            "librarySectionUUID": "8abe45d8-a6c1-4cb0-8fcd-be2dea9ee912",
+            "mediaTagPrefix": "/system/bundle/media/flags/",
+            "mediaTagVersion": 1786914632,
+            "thumb": "/:/resources/movie.png",
+            "title1": "Movies",
+            "title2": "All Movies",
+            "viewGroup": "movie",
+            "viewMode": 65592
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/library/sections/2/collections?includeGuids=0&X-Plex-Container-Start=0&X-Plex-Container-Size=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "MediaContainer": {
+            "size": 0,
+            "totalSize": 0,
+            "offset": 0,
+            "allowSync": true,
+            "art": "/:/resources/show-fanart.jpg",
+            "identifier": "com.plexapp.plugins.library",
+            "librarySectionID": 2,
+            "librarySectionTitle": "Shows",
+            "librarySectionUUID": "24eca3bf-d43c-4f42-a991-5414f8cb7f46",
+            "mediaTagPrefix": "/system/bundle/media/flags/",
+            "mediaTagVersion": 1786914632,
+            "nocache": true,
+            "thumb": "/:/resources/show.png",
+            "title1": "Shows",
+            "title2": "All Shows",
+            "viewGroup": "show",
+            "viewMode": 65592
+          }
+        }
+      }
+    }
+  ]
+}

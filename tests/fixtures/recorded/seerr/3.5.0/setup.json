@@ -2,7 +2,7 @@
   "app": "seerr",
   "version": "3.5.0",
   "state": "setup",
-  "recordedAt": "2026-10-18T10:41:16Z",
+  "recordedAt": "2026-10-18T11:04:16Z",
   "note": "The first sign-in (a Jellyfin administrator) that initialises Seerr, then the public settings (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
   "exchanges": [
     {
@@ -30,9 +30,9 @@
           "warnings": [],
           "id": 1,
           "jellyfinUsername": "<scrubbed>",
-          "jellyfinUserId": "84c7ceb310214b03868ca6d2397c6404",
+          "jellyfinUserId": "32efb5e43ef147efb037ee86be67617a",
           "userType": 3,
-          "avatar": "/avatarproxy/84c7ceb310214b03868ca6d2397c6404?v=undefined",
+          "avatar": "/avatarproxy/32efb5e43ef147efb037ee86be67617a?v=undefined",
           "plexUsername": null,
           "username": null,
           "recoveryLinkExpirationDate": null,
@@ -42,8 +42,8 @@
           "movieQuotaDays": null,
           "tvQuotaLimit": null,
           "tvQuotaDays": null,
-          "createdAt": "2026-10-18T10:41:15.000Z",
-          "updatedAt": "2026-10-18T10:41:15.000Z"
+          "createdAt": "2026-10-18T11:04:16.000Z",
+          "updatedAt": "2026-10-18T11:04:16.000Z"
         }
       }
     },
@@ -77,7 +77,7 @@
           "partialRequestsEnabled": true,
           "enableSpecialEpisodes": false,
           "cacheImages": false,
-          "vapidPublic": "BATB1IHtdZTJPhIbXmBFCbLiXZI3MPcxksuRluStg_Ubaj7ljgmOkbaxLYv49I1NxBhwb2FW0NYtCxWplN2fnRo",
+          "vapidPublic": "BH_gidOtfQsgRZGHIYGzdpdw-8duBkL9MXmHz4iblf-z8tUlNwwq7hzyaoB2JDCZnYel2t2SiWyWMuFQS2TzQ4k",
           "enablePushRegistration": false,
           "locale": "en",
           "emailEnabled": false,
@@ -85,7 +85,7 @@
           "newPlexLogin": true,
           "youtubeUrl": "",
           "versionCheck": true,
-          "plexClientIdentifier": "fcf705c6-e8bf-4bc1-b380-69b610df6545"
+          "plexClientIdentifier": "95ba9c00-480c-48f8-987e-5b013c19efa8"
         }
       }
     }
