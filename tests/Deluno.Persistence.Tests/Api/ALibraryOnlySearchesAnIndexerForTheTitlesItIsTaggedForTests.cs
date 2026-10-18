@@ -75,7 +75,7 @@ public sealed class ALibraryOnlySearchesAnIndexerForTheTitlesItIsTaggedForTests
         var filmId = (await PostOkAsync(app, "/api/movies", new { title = "Sintel", releaseYear = 2010, imdbId = "tt1727587", monitored = true, libraryId, searchForMissingNow = false })).GetProperty("id").GetString()!;
         if (filmTags.Length > 0)
         {
-            await PostOkAsync(app, "/api/movies/bulk/tags", new { movieIds = new[] { filmId }, tags = filmTags, mode = "add" });
+            await PostOkAsync(app, "/api/movies/bulk/tags", new { movieIds = new[] { filmId }, tags = string.Join(",", filmTags), mode = "add" });
         }
 
         return new Rig(jackett, qbit, app, filmId, await app.Client.GetFromJsonAsync<JsonElement>($"/api/libraries/{libraryId}/routing"));
@@ -116,7 +116,7 @@ public sealed class ALibraryOnlySearchesAnIndexerForTheTitlesItIsTaggedForTests
         Assert.Empty(preview.GetProperty("candidates").EnumerateArray());
     }
 
-    [Fact(Skip = "DEFECT: a library's per-indexer \"Never for titles tagged\" choice is saved and shown but never read by the search. Sintel carries the tag horror and the library's only indexer is routed with excludedTags=horror; POST /api/movies/{id}/search?mode=preview still asks that indexer and lists its release (see the other skipped test for where the tags are, and are not, read).")]
+    [Fact]
     public async Task An_indexer_routed_never_for_titles_tagged_is_not_asked_for_a_title_with_the_tag()
     {
         await using var rig = await RigAsync(string.Empty, "horror", "horror");
