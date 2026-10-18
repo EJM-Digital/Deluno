@@ -14,6 +14,8 @@ public static class JobSourceLabels
     {
         // You and Deluno itself
         ["manual"] = "You",
+        // The Transfers seed route that only the smoke tests switch on (Testing:EnableTransfersSeedEndpoint).
+        ["seeded"] = "Test setup",
         ["manual-season"] = "You",
         ["system"] = "Deluno",
         ["automation"] = "Deluno's automatic search",
