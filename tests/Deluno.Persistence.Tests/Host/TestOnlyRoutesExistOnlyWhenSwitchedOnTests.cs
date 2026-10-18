@@ -4,7 +4,7 @@ using Deluno.Persistence.Tests.Support;
 namespace Deluno.Persistence.Tests.Host;
 
 /// <summary>
-/// The routes only the browser tests use (seed a large library, push a realtime event, seed Transfers) are absent unless
+/// The routes only the browser tests use (seed a large library, push a realtime event, seed Transfers, seed a show with episodes) are absent unless
 /// their Testing switch is on: a shipped install has none of them, not even as an unauthorized answer.
 /// </summary>
 public sealed class TestOnlyRoutesExistOnlyWhenSwitchedOnTests
@@ -14,6 +14,7 @@ public sealed class TestOnlyRoutesExistOnlyWhenSwitchedOnTests
         { "Testing:EnableLargeLibrarySeedEndpoint", "/api/testing/movies/unseed-large-library" },
         { "Testing:EnableRealtimePushEndpoint", "/api/testing/realtime/activity" },
         { "Testing:EnableTransfersSeedEndpoint", "/api/testing/transfers/clear" },
+        { "Testing:EnableSeriesSeedEndpoint", "/api/testing/series/seed" },
     };
 
     [Theory]

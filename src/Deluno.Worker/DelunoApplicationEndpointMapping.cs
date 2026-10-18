@@ -156,6 +156,12 @@ public static class DelunoApplicationEndpointMapping
             writeEndpoints.MapDelunoTransfersSeedTestEndpoints();
         }
 
+        // Same guard: lets a browser test open a show page that has episodes and searches, with no metadata service to supply them.
+        if (configuration.GetValue<bool>("Testing:EnableSeriesSeedEndpoint"))
+        {
+            writeEndpoints.MapDelunoSeriesSeedTestEndpoints();
+        }
+
         return endpoints;
     }
 }
