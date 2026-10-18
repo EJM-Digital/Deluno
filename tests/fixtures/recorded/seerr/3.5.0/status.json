@@ -1,0 +1,28 @@
+{
+  "app": "seerr",
+  "version": "3.5.0",
+  "state": "status",
+  "recordedAt": "2026-10-18T10:39:59Z",
+  "note": "/api/v1/status: the public status reply that carries the version (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/status"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "version": "3.5.0",
+          "commitTag": "e2f24cb46079746936516c723b09820360f95113",
+          "updateAvailable": false,
+          "commitsBehind": 0,
+          "restartRequired": false
+        }
+      }
+    }
+  ]
+}

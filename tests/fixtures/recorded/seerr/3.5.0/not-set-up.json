@@ -1,0 +1,93 @@
+{
+  "app": "seerr",
+  "version": "3.5.0",
+  "state": "not-set-up",
+  "recordedAt": "2026-10-18T10:39:59Z",
+  "note": "Before the first sign-in: the public settings say it is not initialised, and the key-protected settings are refused (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/settings/public"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "initialized": false,
+          "applicationTitle": "Seerr",
+          "applicationUrl": "",
+          "hideAvailable": false,
+          "hideBlocklisted": false,
+          "hideRequested": false,
+          "localLogin": true,
+          "mediaServerLogin": true,
+          "jellyfinExternalHost": "",
+          "jellyfinForgotPasswordUrl": "",
+          "movie4kEnabled": false,
+          "series4kEnabled": false,
+          "discoverRegion": "",
+          "streamingRegion": "",
+          "originalLanguage": "",
+          "mediaServerType": 4,
+          "partialRequestsEnabled": true,
+          "enableSpecialEpisodes": false,
+          "cacheImages": false,
+          "vapidPublic": "BIU_Mmw3s0J22BE7uiGSUny2ekVJ_ah5FTYVEHXmWOxx0UUJBYcpuOyDz1418cDPgHue7UyQ1RdXD_hoMkdNsSA",
+          "enablePushRegistration": false,
+          "locale": "en",
+          "emailEnabled": false,
+          "userEmailRequired": false,
+          "newPlexLogin": true,
+          "youtubeUrl": "",
+          "versionCheck": true,
+          "plexClientIdentifier": "38781139-e1c9-4373-bd73-15761ef10d4b"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/settings/main"
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "message": "cookie 'connect.sid' required",
+          "errors": [
+            {
+              "path": "/api/v1/settings/main",
+              "message": "cookie 'connect.sid' required"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/request?filter=all&sort=added&take=100&skip=0"
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "message": "cookie 'connect.sid' required",
+          "errors": [
+            {
+              "path": "/api/v1/request",
+              "message": "cookie 'connect.sid' required"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
