@@ -133,6 +133,17 @@ public interface IDownloadDispatchesRepository
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Releases every record of a download a person told Deluno to stop tracking (#1356): they are marked handled with
+    /// <see cref="KeptSeedingDispatches.StoppedTrackingMessage"/>, so the download is no longer one of Deluno's own although
+    /// the client keeps it. The import status and the history stay as they were.
+    /// </summary>
+    Task ReleaseDispatchesByHashAsync(
+        string clientId,
+        string hash,
+        string message,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Which of these release names Deluno has a dispatch for, any status,
     /// archived included, whatever the number of dispatches (#1062). Names are
     /// matched ignoring case; the release names as recorded are returned.

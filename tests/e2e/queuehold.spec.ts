@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { CLIENT_KINDS } from "./clients.ts";
-import { activityLines, clientHolds, openDeluno, type Sent } from "./flow.ts";
+import { activityLines, clientHolds, openDeluno, telemetryRows, type Sent } from "./flow.ts";
 import { blockedFor, clientPaused, filesOnDisk, openDownload, pressAction, removeWith, sendStalled, waitInTransfers } from "./queue.ts";
 import { setUpStack, until, type Stack } from "./stack.ts";
 
@@ -59,6 +59,10 @@ for (const kind of CLIENT_KINDS) {
       }, 1000).catch(() => undefined);
       expect(closed, "Deluno closed its record of the send (the film is free for a new one)").toBeTruthy();
       expect(await clientHolds(stack, kind, film), `${kind} still holds the download`).toBe(true);
+      // #1356: it is outside Deluno's view now, so Transfers no longer lists it, though the client still holds it.
+      const gone = await until(`Transfers to stop listing ${film.release}`, 60, async () =>
+        !(await telemetryRows(stack)).some((r) => String(r.releaseName ?? "").includes(film.release) || String(r.title ?? "").includes(film.title)), 1000).catch(() => undefined);
+      expect(gone, "Transfers no longer lists the download Deluno stopped tracking").toBeTruthy();
       expect(await filesOnDisk(film.title), `${kind}'s files are untouched (${filesBefore} before)`).toBeGreaterThanOrEqual(filesBefore);
       expect((await blockedFor(stack, film.release)).length, "Nothing is blocklisted").toBe(0);
       const lines = await activityLines(stack, film.title);

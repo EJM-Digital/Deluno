@@ -948,6 +948,30 @@ public sealed class SqliteDownloadDispatchesRepository(
         return await reader.ReadAsync(cancellationToken) ? ReadDispatch(reader) : null;
     }
 
+    public async Task ReleaseDispatchesByHashAsync(
+        string clientId,
+        string hash,
+        string message,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs, cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE download_dispatches
+            SET import_failure_code = 'health-remediation-applied',
+                import_failure_message = @message
+            WHERE download_client_id = @clientId
+              AND torrent_hash_or_item_id = @hash COLLATE NOCASE
+            """;
+        AddParameter(command, "@clientId", clientId);
+        AddParameter(command, "@hash", hash);
+        AddParameter(command, "@message", message);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<string>> FindGrabbedReleaseNamesAsync(
         IReadOnlyCollection<string> candidateNames,
         CancellationToken cancellationToken)

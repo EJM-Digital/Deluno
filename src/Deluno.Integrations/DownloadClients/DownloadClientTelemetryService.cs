@@ -1131,6 +1131,13 @@ public sealed class DownloadClientTelemetryService(
         if (actionResult is null)
         {
             await NoteRemovedByDelunoAsync(client, queueItemId, stoppedTracking: true, cancellationToken);
+            // Closing the record is not enough: an archived dispatch still proves a download is Deluno's (#1062), so the
+            // row stayed on Transfers. The record is released: the client keeps the download, outside Deluno's view (#1356).
+            if (dispatch is not null)
+            {
+                await dispatchesRepository.ReleaseDispatchesByHashAsync(
+                    client.Id, queueItemId, KeptSeedingDispatches.StoppedTrackingMessage(dispatch.ReleaseName, client.Name), cancellationToken);
+            }
         }
 
         // What the Activity line may claim about the files: only "deleted" when the client (or Deluno) deleted them.
