@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { CLIENT_KINDS, type ClientKind } from "./clients.ts";
 import { setUpTvStack, type Media } from "./tv.ts";
 import {
-  activityLines, deleteCompletedFiles, handoffOf, importedFile, restoreWeir, sendFilm, setAutomation, sleep, telemetryRows, type Sent
+  activityLines, completedLeftovers, deleteCompletedFiles, handoffOf, importedFile, restoreWeir, sendFilm, setAutomation, sleep, telemetryRows, type Sent
 } from "./flow.ts";
 import { setWeirPause } from "./resend.ts";
 import { clientFinished, filesUnder, setUpStack, until, type Stack } from "./stack.ts";
@@ -47,6 +47,8 @@ export function defineVanish(phase: Phase, media: Media = "movies") {
       for (const kind of kinds) {
         const { film } = films.get(kind)!;
         await until(`${kind} to finish ${film.release}`, 240, () => clientFinished(stack, kind, film), 1000);
+        // A client reports "finished" before it has moved the files into the completed folder (Transmission moves them out of its incomplete folder after 100%), so wait until they are there to be deleted.
+        await until(`the files of ${film.release} in the completed folder`, 120, async () => (await completedLeftovers(film.title)).length > 0, 1000);
         if (phase === "waiting") await until(`the hand-off of ${film.release}`, 90, () => handoffOf(stack, film.release), 1000);
       }
       for (const kind of kinds) {

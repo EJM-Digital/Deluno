@@ -49,6 +49,9 @@ $delunoRoots = @((Join-Path $env:LOCALAPPDATA 'Deluno\logs'), (Join-Path $env:LO
 Copy-Logs -Roots $delunoRoots -Dest (Join-Path $out 'deluno') -Prefix 'deluno'
 # Weir's logs, wherever it keeps them.
 Copy-Logs -Roots @((Join-Path $env:LOCALAPPDATA 'Weir'), (Join-Path $env:ProgramData 'Weir'), (Join-Path $env:APPDATA 'Weir')) -Dest (Join-Path $out 'weir') -Prefix 'weir'
+# The download clients' own logs (Deluge writes deluged.log and web.log under %AppData%deluge), kept so a client that never answered says why.
+New-Item -ItemType Directory -Force -Path (Join-Path $out 'clients') | Out-Null
+Copy-Logs -Roots @((Join-Path $env:APPDATA 'deluge'), (Join-Path $env:APPDATA 'Transmission'), (Join-Path $env:APPDATA 'qBittorrent')) -Dest (Join-Path $out 'clients') -Prefix 'client'
 # The suite's own record.
 foreach ($name in 'logs', 'results') { if (Test-Path (Join-Path $Root $name)) { Copy-Item -Path (Join-Path $Root $name) -Destination (Join-Path $out 'suite') -Recurse -Force -ErrorAction SilentlyContinue } }
 Copy-Item -Path 'C:\golden\picker.log' -Destination (Join-Path $out 'suite\picker.log') -ErrorAction SilentlyContinue

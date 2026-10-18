@@ -639,7 +639,15 @@ jobs:
 
       # Weir's image is pulled anonymously from its public registry page (by digest, tests/e2e/compose.yaml).
       - name: Bring the stack up
-        run: docker compose -f tests/e2e/compose.yaml up --build --wait --detach
+        # A registry that resets the connection while an image is pulled (seen on lscr.io, run 39173532599) is retried; a stack that
+        # is up but unhealthy fails at once, with no second try.
+        run: |
+          for attempt in 1 2 3; do
+            docker compose -f tests/e2e/compose.yaml pull --quiet --ignore-buildable && break
+            if [ "$attempt" = 3 ]; then echo "The images could not be pulled after 3 tries"; exit 1; fi
+            echo "Pull failed (try $attempt); waiting 20 s"; sleep 20
+          done
+          docker compose -f tests/e2e/compose.yaml up --build --wait --detach
 
       # The groups that read Deluno's screens (a drawer, System, the Dashboard) drive a real browser.
       - name: Install the browser

@@ -814,6 +814,7 @@ public sealed class ComponentInstallService(
 
             if (DateTime.UtcNow >= deadline)
             {
+                _log.Write($"{spec.DisplayName}: not ready after {timeout.TotalSeconds:0} s at {spec.ReadinessUrl}; its process {(started.HasExited ? $"has exited ({started.ExitCode})" : "is still running")}.");
                 return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.ReadinessTimedOut,
                     $"{spec.DisplayName} started but did not report ready in time.");
             }
