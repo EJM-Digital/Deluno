@@ -105,7 +105,7 @@ public sealed class TheFileAnEventConcernsIsFoundInActivityOnRealFilesTests
     // DEFECT (found writing this test, 18 Oct 2026): a folder rename writes its Activity line with the old and new folder names
     // under "from" and "to", which the Activity file filter does not read (it reads path, filePath, sourcePath, destinationPath
     // and the like), and the sentence says only "1 movie folder renamed." So "everything about this file" never finds the rename.
-    [Fact(Skip = "DEFECT: a folder rename's Activity line carries no file path, so the file filter cannot find it (library.movie.renamed holds only from/to folder names)")]
+    [Fact]
     public async Task A_rename_is_found_by_the_name_of_the_folder_it_renamed()
     {
         await using var world = await StartWorldAsync();
@@ -116,5 +116,8 @@ public sealed class TheFileAnEventConcernsIsFoundInActivityOnRealFilesTests
         Assert.True(applied.IsSuccessStatusCode, await applied.Content.ReadAsStringAsync());
 
         Assert.Contains(await FindAsync(world, oldFolder), item => item.GetProperty("category").GetString() == "library.movie.renamed");
+        // ...and by the file's old name and the new one.
+        Assert.Contains(await FindAsync(world, Path.GetFileName(existing)), item => item.GetProperty("category").GetString() == "library.movie.renamed");
+        Assert.Contains(await FindAsync(world, "Renamed"), item => item.GetProperty("category").GetString() == "library.movie.renamed");
     }
 }

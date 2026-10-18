@@ -106,6 +106,16 @@ export function IndexerHistoryPage() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearing, setClearing] = useState(false);
 
+  // The router reads the loader again when the server says something changed (IndexerChanged), and the new first page
+  // replaces what the list shows; without this the copy made on the first render never saw the new event.
+  const seenPage = useRef(page);
+  useEffect(() => {
+    if (seenPage.current === page) return;
+    seenPage.current = page;
+    setItems(page.items);
+    setNextPageToken(page.nextPageToken);
+  }, [page]);
+
   const list = useListColumns("indexer-history", HISTORY_COLUMNS, items, { serverSort: true });
   const sortKey = list.sort && list.serverSortKey ? list.serverSortKey : "";
   const sortDirection = list.sort?.direction ?? "asc";

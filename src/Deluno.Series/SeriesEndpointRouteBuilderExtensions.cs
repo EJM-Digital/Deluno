@@ -3368,7 +3368,15 @@ public static class SeriesEndpointRouteBuilderExtensions
                     seriesId = id,
                     seriesItem.Title,
                     from = Path.GetFileName(plan.SourceDirectory),
-                    to = proposedName
+                    to = proposedName,
+                    // The folder's old and new path, and each episode file's, so a search by the file finds the rename by either.
+                    oldPath = plan.SourceDirectory,
+                    newPath = plan.DestinationDirectory,
+                    files = episodeFiles.Select(file => new
+                    {
+                        oldPath = file.FilePath,
+                        newPath = Path.Combine(plan.DestinationDirectory, Path.GetRelativePath(plan.SourceDirectory, file.FilePath))
+                    }).ToArray()
                 });
             }
 

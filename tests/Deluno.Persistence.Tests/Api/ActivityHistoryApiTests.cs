@@ -13,6 +13,17 @@ namespace Deluno.Persistence.Tests.Api;
 /// </summary>
 public sealed class ActivityHistoryApiTests
 {
+    [Fact]
+    public void A_batch_rename_s_old_and_new_file_paths_are_read_from_each_title_and_episode()
+    {
+        var details = "{\"renamed\":[{\"seriesId\":\"s1\",\"Title\":\"Show\",\"from\":\"Old\",\"to\":\"New\",\"oldPath\":\"/tv/Old\",\"newPath\":\"/tv/New\",\"files\":[{\"oldPath\":\"/tv/Old/S01E01.mkv\",\"newPath\":\"/tv/New/S01E01.mkv\"}]}],\"failures\":[]}";
+
+        var facts = ActivityHistory.FactsFromDetails(details);
+
+        Assert.Contains("/tv/Old/S01E01.mkv", facts.FilePaths);
+        Assert.Contains("/tv/New/S01E01.mkv", facts.FilePaths);
+    }
+
     private static async Task<JsonElement[]> ListAsync(ApplicationTestHost app, string query = "")
     {
         var response = await app.Client.GetAsync("/api/activity?pageSize=200" + query);
