@@ -46,6 +46,19 @@ public sealed class BundledComponentsTests
         }
     }
 
+    /// <summary>
+    /// CI run 39104138771, Windows install leg: Deluge's installer ran 78 s on a slow runner (20 s on the run before) and its
+    /// Web UI, a Python program starting deluged beside it, was not answering within the 45 s it was given. The picker ended
+    /// "Not installed: Deluge. Deluge started but did not report ready in time", although Deluno started Deluge itself a moment
+    /// later. A cold first start gets the three minutes Weir gets.
+    /// </summary>
+    [Fact]
+    public void Deluge_is_given_three_minutes_to_answer_on_its_first_start()
+    {
+        var deluge = BundledComponents.Load().Single(s => s.Kind == "deluge");
+        Assert.Equal(180, deluge.ReadinessTimeoutSeconds);
+    }
+
     [Fact]
     public void Qbittorrent_and_sabnzbd_never_share_a_default_port()
     {
