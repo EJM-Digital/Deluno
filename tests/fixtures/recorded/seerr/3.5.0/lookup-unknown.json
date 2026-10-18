@@ -2,7 +2,7 @@
   "app": "seerr",
   "version": "3.5.0",
   "state": "lookup-unknown",
-  "recordedAt": "2026-10-18T10:40:01Z",
+  "recordedAt": "2026-10-18T10:41:17Z",
   "note": "A movie and a series looked up by a TMDb id with no Seerr record: mediaInfo is absent (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
   "exchanges": [
     {

@@ -2,7 +2,7 @@
   "app": "seerr",
   "version": "3.5.0",
   "state": "not-set-up",
-  "recordedAt": "2026-10-18T10:39:59Z",
+  "recordedAt": "2026-10-18T10:41:15Z",
   "note": "Before the first sign-in: the public settings say it is not initialised, and the key-protected settings are refused (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
   "exchanges": [
     {
@@ -35,7 +35,7 @@
           "partialRequestsEnabled": true,
           "enableSpecialEpisodes": false,
           "cacheImages": false,
-          "vapidPublic": "BIU_Mmw3s0J22BE7uiGSUny2ekVJ_ah5FTYVEHXmWOxx0UUJBYcpuOyDz1418cDPgHue7UyQ1RdXD_hoMkdNsSA",
+          "vapidPublic": "BATB1IHtdZTJPhIbXmBFCbLiXZI3MPcxksuRluStg_Ubaj7ljgmOkbaxLYv49I1NxBhwb2FW0NYtCxWplN2fnRo",
           "enablePushRegistration": false,
           "locale": "en",
           "emailEnabled": false,
@@ -43,7 +43,7 @@
           "newPlexLogin": true,
           "youtubeUrl": "",
           "versionCheck": true,
-          "plexClientIdentifier": "38781139-e1c9-4373-bd73-15761ef10d4b"
+          "plexClientIdentifier": "fcf705c6-e8bf-4bc1-b380-69b610df6545"
         }
       }
     },

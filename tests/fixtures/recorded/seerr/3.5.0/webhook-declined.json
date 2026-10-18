@@ -2,7 +2,7 @@
   "app": "seerr",
   "version": "3.5.0",
   "state": "webhook-declined",
-  "recordedAt": "2026-10-18T10:40:14Z",
+  "recordedAt": "2026-10-18T10:41:29Z",
   "note": "The webhook Seerr sends when a request is declined (MEDIA_DECLINED). The request is what Seerr itself sent to the webhook address; the reply is the receiving container plain ok, not an answer from Deluno (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
   "exchanges": [
     {
@@ -31,7 +31,7 @@
             "request_id": "2",
             "requestedBy_email": "<scrubbed>@example.com",
             "requestedBy_username": "<scrubbed>",
-            "requestedBy_avatar": "https://gravatar.com/avatar/0003cea90dd161594d6f268b4620be78?default=mm&size=200"
+            "requestedBy_avatar": "https://gravatar.com/avatar/e819dbf8d8cd57554163d78957690f22?default=mm&size=200"
           },
           "extra": [
             {
@@ -75,7 +75,7 @@
             "request_id": "2",
             "requestedBy_email": "<scrubbed>@example.com",
             "requestedBy_username": "<scrubbed>",
-            "requestedBy_avatar": "https://gravatar.com/avatar/0003cea90dd161594d6f268b4620be78?default=mm&size=200"
+            "requestedBy_avatar": "https://gravatar.com/avatar/e819dbf8d8cd57554163d78957690f22?default=mm&size=200"
           },
           "extra": [
             {

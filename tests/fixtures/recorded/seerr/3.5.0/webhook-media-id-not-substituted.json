@@ -1,0 +1,37 @@
+{
+  "app": "seerr",
+  "version": "3.5.0",
+  "state": "webhook-media-id-not-substituted",
+  "recordedAt": "2026-10-18T10:41:36Z",
+  "note": "A webhook payload that asks for the media id of Seerr with the placeholders media_id and id: Seerr leaves the text as it is, so only the TMDb and TVDb ids can reach a receiver. The request is what Seerr itself sent to the webhook address; the reply is the receiving container plain ok, not an answer from Deluno (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/seerr-servers/{id}/webhook",
+        "headers": {
+          "content-type": "application/json",
+          "authorization": "<scrubbed>",
+          "user-agent": "Seerr/3.5.0"
+        },
+        "body": {
+          "notification_type": "MEDIA_AUTO_APPROVED",
+          "event": "Movie Request Automatically Approved",
+          "media": {
+            "media_type": "movie",
+            "tmdbId": "550",
+            "media_id": "{{media_id}}",
+            "id": "{{id}}"
+          }
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "bodyText": "ok"
+      }
+    }
+  ]
+}

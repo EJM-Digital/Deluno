@@ -136,6 +136,13 @@ async function main() {
   await sleep(3000);
   saveHooks('webhook-auto-approved', 'The webhook Seerr sends for an administrator\'s own request, approved at once (MEDIA_AUTO_APPROVED)', await hooks());
   save('seerr', version, 'request-auto-approved', note('An administrator\'s own request for a film, approved at once, then the request list'), [own, await get('/api/v1/request?filter=all&sort=added&take=100&skip=0')]);
+  // A payload that asks for the media id of Seerr ({{media_id}}): Seerr 3.5.0 sends the text unchanged, so a webhook cannot carry it.
+  await fetch(`${TRACKER}/hooks`, { method: 'DELETE' });
+  const probePayload = JSON.stringify({ notification_type: '{{notification_type}}', event: '{{event}}', '{{media}}': { media_type: '{{media_type}}', tmdbId: '{{media_tmdbid}}', media_id: '{{media_id}}', id: '{{id}}' } });
+  await send('POST', '/api/v1/settings/notifications/webhook', { enabled: true, types: 4094, options: { webhookUrl: 'http://tracker:8080/hook/seerr', authHeader: 'recorded-webhook-secret', jsonPayload: probePayload } });
+  await send('POST', '/api/v1/request', { mediaType: 'movie', mediaId: 550 });
+  await sleep(3000);
+  saveHooks('webhook-media-id-not-substituted', 'A webhook payload that asks for the media id of Seerr with the placeholders media_id and id: Seerr leaves the text as it is, so only the TMDb and TVDb ids can reach a receiver', await hooks());
   save('seerr', version, 'not-answering', 'A request sent to a port nothing listens on: the connection is refused.', [await new Client('http://127.0.0.1:1').get('/api/v1/status')]);
 }
 

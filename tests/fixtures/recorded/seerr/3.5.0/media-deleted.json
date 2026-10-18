@@ -2,7 +2,7 @@
   "app": "seerr",
   "version": "3.5.0",
   "state": "media-deleted",
-  "recordedAt": "2026-10-18T10:40:11Z",
+  "recordedAt": "2026-10-18T10:41:26Z",
   "note": "The media record deleted (DELETE /api/v1/media/{id}) with its requests, then the request and media lists, and the same delete again (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
   "exchanges": [
     {
