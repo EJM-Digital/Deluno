@@ -7,6 +7,7 @@ import {
   assertResendSettled, handoffsOf, openFirstSend, removeDownload, startAgainDownload, wasFirstImported, weirIntakeStatus, type Timing
 } from "./resend.ts";
 import { FOLDERS, setUpStack, until, type Stack } from "./stack.ts";
+import { setUpTvStack, type Media } from "./tv.ts";
 
 /**
  * The scenarios of group `resend` for the timings "during" and "after" (scripts/golden-path/suite/vm/scenarios/G04-Resend.ps1),
@@ -17,13 +18,14 @@ import { FOLDERS, setUpStack, until, type Stack } from "./stack.ts";
  */
 
 /** Registers one scenario per client for a timing, on one stack made for the file. Call it at the top level of a spec. */
-export function defineResend(timing: Timing, kinds: ClientKind[], extra?: (stack: () => Stack) => void) {
+export function defineResend(timing: Timing, kinds: ClientKind[], extra?: (stack: () => Stack) => void, media: Media = "movies") {
   test.describe.configure({ mode: "serial" });
+  const tv = media === "tv" ? "tv." : "";
   let stack: Stack;
-  test.beforeAll(async () => { test.setTimeout(10 * 60_000); stack = await setUpStack(); });
+  test.beforeAll(async () => { test.setTimeout(10 * 60_000); stack = media === "tv" ? await setUpTvStack() : await setUpStack(); });
 
   for (const kind of kinds) {
-    test(`resend.${timing}.${kind}: I don't want it, then a resend to ${kind}, while Weir is ${timing === "during" ? "working on" : "done with"} the first send`, async () => {
+    test(`${tv}resend.${timing}.${kind}: I don't want it, then a resend to ${kind}, while Weir is ${timing === "during" ? "working on" : "done with"} the first send`, async () => {
       test.setTimeout(15 * 60_000);
       const notes: string[] = [];
       const moment = await openFirstSend(stack, kind, timing, `re${timing}`, notes);
