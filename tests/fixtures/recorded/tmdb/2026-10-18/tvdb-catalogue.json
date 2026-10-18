@@ -1,0 +1,723 @@
+{
+  "app": "tmdb",
+  "version": "2026-10-18",
+  "state": "tvdb-catalogue",
+  "recordedAt": "2026-10-18T10:45:18Z",
+  "note": "GET /tvdb/tv/{id}/catalogue: the seasons and episodes from TheTVDB. Through the deployed gateway (deluno-metadata-gateway.ejmdigital.workers.dev).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/metadata/tvdb/tv/81189/catalogue"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "public, max-age=600"
+        },
+        "body": {
+          "provider": "tvdb",
+          "mode": "broker",
+          "providerId": "81189",
+          "seasonCount": 6,
+          "episodeCount": 80,
+          "seasons": [
+            {
+              "seasonNumber": 0,
+              "name": null,
+              "airDate": "2009-02-17",
+              "episodeCount": 18,
+              "episodes": [
+                {
+                  "episodeNumber": 1,
+                  "title": "Good Cop / Bad Cop",
+                  "overview": "Hank and Marie try to spice up their relationship on Valentine's Day.",
+                  "airDate": "2009-02-17",
+                  "absoluteNumber": null,
+                  "runtimeMinutes": 3
+                },
+                {
+                  "episodeNumber": 2,
+                  "title": "Wedding Day",
+                  "overview": "Walt and Hank have a talk before Hank gets married.",
+                  "airDate": "2009-02-17",
+                  "absoluteNumber": null,
+                  "runtimeMinutes": 5
+                },
+                {
+                  "episodeNumber": 3,
+                  "title": "TwaüghtHammër",
+                  "overview": "Jesse and Badger make a behind the scenes video about their band \"TwaughtHammer\" and show a music video for their song \"Fallacies.\"",
+                  "airDate": "2009-02-17",
+                  "absoluteNumber": null,
+                  "runtimeMinutes": 4
+                },
+                {
+                  "episodeNumber": 4,
+                  "title": "Marie's Confession",
+                  "overview": "Marie records a video diary.",
+                  "airDate": "2009-02-17",
+                  "absoluteNumber": null,
+                  "runtimeMinutes": 3
+                },
+                {
+                  "episodeNumber": 5,
+                  "title": "The Break-In",
+                  "overview": "Badger uses his lock-picking skills to help Walt (AKA Heisenberg) with some \"B&E\".",
+                  "airDate": "2009-02-17",
+                  "absoluteNumber": null,
+                  "runtimeMinutes": 5
+                },
+                {
+                  "episodeNumber": 20,
+                  "title": "Live Saul Cam",
+                  "overview": "Surveillance camera footage showcasing what Saul does in his free time at his office, including receiving fellatio from a prostitute.",
+                  "airDate": "2010-02-12",
+                  "absoluteNumber": null,
+                  "runtimeMinutes": 5
+                },
+                {
+                  "episodeNumber": 21,
+                  "title": "Fernando",
+                  "overview": "Fernando, accused of stealing a truck, appears in an advert for Saul.",
+                  "airDate": "2010-03-04",
+                  "absoluteNumber": null,
+                  "runtimeMinutes": 1
+                },
+                {
+                  "episodeNumber": 22,
+                  "title": "Carl",
+                  "overview": "Carl's story about how Saul helped him with a problem involving his ex.",
+                  "airDate": "2010-03-04",
+                  "absoluteNumber": null,
+                  "runtimeMinutes": 1
+                },
+                {
+                  "episodeNumber": 23,
+                  "title": "Wendy",
+                  "overview": "Wendy's story about how Saul got her out of jail.",
+                  "airDate": "2010-03-04",
+                  "absoluteNumber": null,
+                  "runtimeMinutes": 1
+                },
+                {
+                  "episodeNumber": 24,
+                  "title": "Badger",
+                  "overview": "Badger recalls how Saul got him out of trouble after he was selling meth.",
+                  "airDate": "2010-03-04",
+                  "absoluteNumber": null,
+                  "runtimeMinutes": 2
+                },
+                {
+                  "episodeNumber": 25,
+                  "title": "Wayfarer 515",
+                  "overview": "The advert that Saul used to appeal to victims of the Wayfarer 515 accident.",
+                  "airDate": "2010-03-04",
+                  "absoluteNumber": null,
+                  "runtimeMinutes": 2
+                },
+                {
+                  "episodeNumber": 26,
+                  "title": "Letters to Saul",
+                  "overview": "Saul opens some letters that he receives from criminals.",
+                  "airDate": "2010-03-04",
+                  "absoluteNumber": null,
+                  "runtimeMinutes": 2
+                },
+                {
+                  "episodeNumber": 27,
+                  "title": "Tiger Trouble? Better Call Saul!",
+                  "overview": "An advert Saul used to appeal to illegal tiger owners.",
+                  "airDate": "2010-03-04",
+                  "absoluteNumber": null,
+                  "runtimeMinutes": 2
+                },
+                {
+                  "episodeNumber": 28,
+                  "title": "Saul Says: \"Sue 'Em Now\"",
+                  "overview": "An advert that Saul used to make people want to come to him to sue companies.",
+                  "airDate": "2010-03-04",
+                  "absoluteNumber": null,
+                  "runtimeMinutes": 2
+                },
+                {
+                  "episodeNumber": 29,
+                  "title": "Team S.C.I.E.N.C.E.",
+                  "overview": "Jesse imagines all of his friends as one team, Team SCIENCE.",
+                  "airDate": "2010-03-11",
+                  "absoluteNumber": null,
+                  "runtimeMinutes": 4
+                },
+                {
+                  "episodeNumber": 30,
+                  "title": "Fatty Fat Fat",
+                  "overview": "Saul appears in an advert which appeals to overweight people to come to him for advice on how to lose weight.",
+                  "airDate": "2011-10-18",
+                  "absoluteNumber": null,
+                  "runtimeMinutes": 1
+                },
+                {
+                  "episodeNumber": 31,
+                  "title": "Fighting for You",
+                  "overview": "Saul's story about how two boxers came to him for compensation.",
+                  "airDate": "2011-10-18",
+                  "absoluteNumber": null,
+                  "runtimeMinutes": 1
+                },
+                {
+                  "episodeNumber": 32,
+                  "title": "Snow Globe: A Breaking Bad Short",
+                  "overview": "Todd assembles a custom snow globe which includes his and Lydia's likenesses, as he tries to call her to ask her on a date.",
+                  "airDate": "2020-02-16",
+                  "absoluteNumber": null,
+                  "runtimeMinutes": 3
+                }
+              ]
+            },
+            {
+              "seasonNumber": 1,
+              "name": null,
+              "airDate": "2008-01-20",
+              "episodeCount": 7,
+              "episodes": [
+                {
+                  "episodeNumber": 1,
+                  "title": "Pilot",
+                  "overview": "When an unassuming high school chemistry teacher discovers he has a rare form of lung cancer, he decides to team up with a former student and create a top of the line crystal meth in a used RV, to provide for his family once he is gone.",
+                  "airDate": "2008-01-20",
+                  "absoluteNumber": 1,
+                  "runtimeMinutes": 58
+                },
+                {
+                  "episodeNumber": 2,
+                  "title": "Cat's in the Bag...",
+                  "overview": "Walt and Jesse attempt to tie up loose ends. The desperate situation gets more complicated with the flip of a coin. Walt's wife, Skyler, becomes suspicious of Walt's strange behavior.",
+                  "airDate": "2008-01-27",
+                  "absoluteNumber": 2,
+                  "runtimeMinutes": 48
+                },
+                {
+                  "episodeNumber": 3,
+                  "title": "...And the Bag's in the River",
+                  "overview": "Walter fights with Jesse over his drug use, causing him to leave Walter alone with their captive, Krazy-8. Meanwhile, Hank has a scared straight moment with Walter Jr..",
+                  "airDate": "2008-02-10",
+                  "absoluteNumber": 3,
+                  "runtimeMinutes": 48
+                },
+                {
+                  "episodeNumber": 4,
+                  "title": "Cancer Man",
+                  "overview": "Walter finally tells his family that he has cancer. Meanwhile, the DEA believes Albuquerque has a new, big time player to worry about. Jesse makes a surprise visit to his parents home.",
+                  "airDate": "2008-02-17",
+                  "absoluteNumber": 4,
+                  "runtimeMinutes": 48
+                },
+                {
+                  "episodeNumber": 5,
+                  "title": "Gray Matter",
+                  "overview": "Walter and Skyler attend a former colleague's birthday party. Jesse tries to free himself from drugs, while Skyler organizes an intervention.",
+                  "airDate": "2008-02-24",
+                  "absoluteNumber": 5,
+                  "runtimeMinutes": 48
+                },
+                {
+                  "episodeNumber": 6,
+                  "title": "Crazy Handful of Nothin'",
+                  "overview": "The side effects of chemo begin to plague Walt. Meanwhile, the DEA rounds up suspected dealers.",
+                  "airDate": "2008-03-02",
+                  "absoluteNumber": 6,
+                  "runtimeMinutes": 48
+                },
+                {
+                  "episodeNumber": 7,
+                  "title": "A No-Rough-Stuff-Type Deal",
+                  "overview": "Walter accepts his new identity as a drug dealer. Elsewhere, Jesse decides to put his aunt's house on the market and Marie throws Skyler a baby shower.",
+                  "airDate": "2008-03-09",
+                  "absoluteNumber": 7,
+                  "runtimeMinutes": 48
+                }
+              ]
+            },
+            {
+              "seasonNumber": 2,
+              "name": null,
+              "airDate": "2009-03-08",
+              "episodeCount": 13,
+              "episodes": [
+                {
+                  "episodeNumber": 1,
+                  "title": "Seven Thirty-Seven",
+                  "overview": "Walt and Jesse are reminded of Tuco’s volatile nature, and try to figure a way out of their business partnership. Hank attempts to mend fences between the estranged Marie and Skyler.",
+                  "airDate": "2009-03-08",
+                  "absoluteNumber": 8,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 2,
+                  "title": "Grilled",
+                  "overview": "Walt and Jesse find themselves in close quarters with an unhinged Tuco. Marie and Hank comfort Skyler, who is distraught over Walt’s disappearance. Hank pays a visit to Mrs. Pinkman on some not-so-official business.",
+                  "airDate": "2009-03-15",
+                  "absoluteNumber": 9,
+                  "runtimeMinutes": 46
+                },
+                {
+                  "episodeNumber": 3,
+                  "title": "Bit by a Dead Bee",
+                  "overview": "Walt and Jesse cover their tracks, but as a result, both of their financial situations suffer. Meanwhile, Hank and his DEA colleagues may have a break in their meth investigation.",
+                  "airDate": "2009-03-22",
+                  "absoluteNumber": 10,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 4,
+                  "title": "Down",
+                  "overview": "Walt tries to reconnect with his family. Still suspicious of her husband's actions, Skyler keeps her distance. Jesse finds himself without a place to live and struggles to cope.",
+                  "airDate": "2009-03-29",
+                  "absoluteNumber": 11,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 5,
+                  "title": "Breakage",
+                  "overview": "Tensions and bills mount at the White household. Hank makes progress at work, but struggles with some residual effects from his encounter with Tuco. Jesse assembles a crew of dealers to get their product out on the streets.",
+                  "airDate": "2009-04-05",
+                  "absoluteNumber": 12,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 6,
+                  "title": "Peekaboo",
+                  "overview": "Walt returns to work. Skinny Pete gets ripped off and when Jesse steps in, he gets more than he bargained for. Walt's cover story on how Elliott and Gretchen are paying for his medical treatment starts to collapse.",
+                  "airDate": "2009-04-12",
+                  "absoluteNumber": 13,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 7,
+                  "title": "Negro y Azul",
+                  "overview": "Rumors fly about Jesse's recent actions as he and Walt discuss expanding their business into new territories. Hank struggles in El Paso. Skyler pursues a new job opportunity. Jesse gets to know his landlord, Jane.",
+                  "airDate": "2009-04-19",
+                  "absoluteNumber": 14,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 8,
+                  "title": "Better Call Saul",
+                  "overview": "When Badger gets busted, Walt and Jesse seek the legal advice of a shady attorney, Saul Goodman. Hank returns to Albuquerque, but his troubled mental state and demeanor cause Marie to worry.",
+                  "airDate": "2009-04-26",
+                  "absoluteNumber": 15,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 9,
+                  "title": "4 Days Out",
+                  "overview": "The Whites await news about Walt's cancer treatment progress. Walt and Jesse retreat to the desert for a marathon cook.",
+                  "airDate": "2009-05-03",
+                  "absoluteNumber": 16,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 10,
+                  "title": "Over",
+                  "overview": "Walt and Hank get into a fight, and Walt consumes himself with home improvements. Skyler opens up to her boss, Ted. Jane hides her relationship with Jesse from her father.",
+                  "airDate": "2009-05-10",
+                  "absoluteNumber": 17,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 11,
+                  "title": "Mandala",
+                  "overview": "Saul proposes a new business partner. Skyler makes a disturbing discovery. Jesse divulges his real profession to Jane.",
+                  "airDate": "2009-05-17",
+                  "absoluteNumber": 18,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 12,
+                  "title": "Phoenix",
+                  "overview": "The Whites welcome a new addition. Walter,  Jr. launches a website to aid his struggling family. Jesse's addiction spirals out of control.",
+                  "airDate": "2009-05-24",
+                  "absoluteNumber": 19,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 13,
+                  "title": "ABQ",
+                  "overview": "Walt's lies have pushed Skyler to her limit. Jesse self-destructs after a personal blow, forcing Walt to come to his aid. Donald's grief leads to tragedy.",
+                  "airDate": "2009-05-31",
+                  "absoluteNumber": 20,
+                  "runtimeMinutes": 48
+                }
+              ]
+            },
+            {
+              "seasonNumber": 3,
+              "name": null,
+              "airDate": "2010-03-21",
+              "episodeCount": 13,
+              "episodes": [
+                {
+                  "episodeNumber": 1,
+                  "title": "No Más",
+                  "overview": "As Walt copes with the aftermath of the plane crash and Skyler's anger, Jesse comes to a new realization. A new adversary tracks the elusive Heisenberg. Skyler seeks advice on the state of her marriage and confronts Walt.",
+                  "airDate": "2010-03-21",
+                  "absoluteNumber": 21,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 2,
+                  "title": "Caballo sin Nombre",
+                  "overview": "Walt takes drastic action to bring his family back together. With Saul's help, Jesse makes an unexpected investment.",
+                  "airDate": "2010-03-28",
+                  "absoluteNumber": 22,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 3,
+                  "title": "I.F.T.",
+                  "overview": "Walt ignores Skyler's demands, furthering the rift between them. Hank crosses a line at work.",
+                  "airDate": "2010-04-04",
+                  "absoluteNumber": 23,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 4,
+                  "title": "Green Light",
+                  "overview": "Walt loses control. Hank throws himself into his blue meth investigation. Jesse enacts a new plan.",
+                  "airDate": "2010-04-11",
+                  "absoluteNumber": 24,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 5,
+                  "title": "Más",
+                  "overview": "Gus tries to lure Walt back into business, forcing a rift between Walt and Jesse. Skyler doubts her new relationship. Marie confides in Skyler about her concern for Hank's well-being.",
+                  "airDate": "2010-04-18",
+                  "absoluteNumber": 25,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 6,
+                  "title": "Sunset",
+                  "overview": "As Walt settles into his new surroundings, Walter, Jr. demands answers about his parents' relationship. Hank's investigation creates an immediate problem for Walt and Jesse.",
+                  "airDate": "2010-04-25",
+                  "absoluteNumber": 26,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 7,
+                  "title": "One Minute",
+                  "overview": "Hank's increasing volatility forces a confrontation with Jesse and trouble at work. Skyler pressures Walt to make a deal. Gus' actions have severe consequences.",
+                  "airDate": "2010-05-02",
+                  "absoluteNumber": 27,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 8,
+                  "title": "I See You",
+                  "overview": "The family waits for news about Hank. While Jesse covers at the lab, Walt attempts to placate Gus.",
+                  "airDate": "2010-05-09",
+                  "absoluteNumber": 28,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 9,
+                  "title": "Kafkaesque",
+                  "overview": "As Hank's hospital bills stack up, Skyler hatches a plan. Walt and Gus come to a better understanding. Jesse pursues a new opportunity.",
+                  "airDate": "2010-05-16",
+                  "absoluteNumber": 29,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 10,
+                  "title": "Fly",
+                  "overview": "Walt becomes obsessed with a contaminant in the lab. A frustrated Jesse attempts to get Walt back on track.",
+                  "airDate": "2010-05-23",
+                  "absoluteNumber": 30,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 11,
+                  "title": "Abiquiu",
+                  "overview": "Skyler gets more involved in Walt's business. Hank struggles with his recovery. Jesse takes an active role in his new enterprise, leading him to a startling discovery.",
+                  "airDate": "2010-05-30",
+                  "absoluteNumber": 31,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 12,
+                  "title": "Half Measures",
+                  "overview": "Jesse lashes out. Fearing for Jesse's safety, Walt takes drastic action to intervene. A tragic event leads to a shocking confrontation.",
+                  "airDate": "2010-06-06",
+                  "absoluteNumber": 32,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 13,
+                  "title": "Full Measure",
+                  "overview": "With Jesse on the run, Walt negotiates a bargain with Gus and concocts a plan to provide for his and Jesse's safety.",
+                  "airDate": "2010-06-13",
+                  "absoluteNumber": 33,
+                  "runtimeMinutes": 47
+                }
+              ]
+            },
+            {
+              "seasonNumber": 4,
+              "name": null,
+              "airDate": "2011-07-17",
+              "episodeCount": 13,
+              "episodes": [
+                {
+                  "episodeNumber": 1,
+                  "title": "Box Cutter",
+                  "overview": "Walt and Jesse face the deadly consequences of their actions. Skyler deals with a puzzling disappearance, as Marie struggles to help Hank with his recovery.",
+                  "airDate": "2011-07-17",
+                  "absoluteNumber": 34,
+                  "runtimeMinutes": 48
+                },
+                {
+                  "episodeNumber": 2,
+                  "title": "Thirty-Eight Snub",
+                  "overview": "Walt attempts to form a new alliance as he plans his next move. Skyler pushes Walt towards a business opportunity, in hopes of protecting the family.",
+                  "airDate": "2011-07-24",
+                  "absoluteNumber": 35,
+                  "runtimeMinutes": 46
+                },
+                {
+                  "episodeNumber": 3,
+                  "title": "Open House",
+                  "overview": "Events spiral out of control at Jesse’s place. Skyler reluctantly asks for Saul’s help. Marie returns to an old pastime and a friend asks Hank for help.",
+                  "airDate": "2011-07-31",
+                  "absoluteNumber": 36,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 4,
+                  "title": "Bullet Points",
+                  "overview": "The Cartel takes steps to gain the upper hand. Walt and Skyler share an embarrassing secret with the rest of the family. Jesse’s activities draw unwanted attention.",
+                  "airDate": "2011-08-07",
+                  "absoluteNumber": 37,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 5,
+                  "title": "Shotgun",
+                  "overview": "When Jesse goes missing, Walt fears the worst. Skyler has an unlikely reunion. Hank shares some bad news with Detective Tim Roberts.",
+                  "airDate": "2011-08-14",
+                  "absoluteNumber": 38,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 6,
+                  "title": "Cornered",
+                  "overview": "Skyler makes an unsettling discovery. Walter, Jr. pushes his dad into a questionable purchase. Jesse offers Mike some unexpected help.",
+                  "airDate": "2011-08-21",
+                  "absoluteNumber": 39,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 7,
+                  "title": "Problem Dog",
+                  "overview": "A frustrated Walt gambles on a risky new plan.  Skyler's business venture hits a snag.  Hank recruits Walter, Jr. for an unusual outing.",
+                  "airDate": "2011-08-28",
+                  "absoluteNumber": 40,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 8,
+                  "title": "Hermanos",
+                  "overview": "Skyler develops an unusual solution to her money troubles. Hank enlists Walt to investigate a theory. Walt’s impatience with Jesse grows.",
+                  "airDate": "2011-09-04",
+                  "absoluteNumber": 41,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 9,
+                  "title": "Bug",
+                  "overview": "Skyler's past mistakes come back to haunt her. Gus takes action to thwart his rivals. Jesse seeks Walt's help, with mixed results.",
+                  "airDate": "2011-09-11",
+                  "absoluteNumber": 42,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 10,
+                  "title": "Salud",
+                  "overview": "Walt's family worries when he doesn't turn up for Walter, Jr.'s 16th birthday.  Jesse is forced to put his lab skills to the test without Walt's help.",
+                  "airDate": "2011-09-18",
+                  "absoluteNumber": 43,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 11,
+                  "title": "Crawl Space",
+                  "overview": "Walt takes drastic action to protect his secret and Gus. Skyler's efforts to solve Ted's financial problems hit a wall.",
+                  "airDate": "2011-09-25",
+                  "absoluteNumber": 44,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 12,
+                  "title": "End Times",
+                  "overview": "Hank pushes Gomez to pursue one last lead, while Walt struggles to protect the family. Jesse gets alarming news and rushes to meet with Walt.",
+                  "airDate": "2011-10-02",
+                  "absoluteNumber": 45,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 13,
+                  "title": "Face Off",
+                  "overview": "Walt and Jesse team up to take on Gus. With Saul's help, Walt finds an unexpected ally.",
+                  "airDate": "2011-10-09",
+                  "absoluteNumber": 46,
+                  "runtimeMinutes": 50
+                }
+              ]
+            },
+            {
+              "seasonNumber": 5,
+              "name": null,
+              "airDate": "2012-07-15",
+              "episodeCount": 16,
+              "episodes": [
+                {
+                  "episodeNumber": 1,
+                  "title": "Live Free or Die",
+                  "overview": "As Walt deals with the aftermath of the Casa Tranquila explosion, Hank works to wrap up his investigation of Gus' empire.",
+                  "airDate": "2012-07-15",
+                  "absoluteNumber": 47,
+                  "runtimeMinutes": 43
+                },
+                {
+                  "episodeNumber": 2,
+                  "title": "Madrigal",
+                  "overview": "Walt and Jesse seek out an unlikely partner for a new business venture. The DEA follows up new leads in its investigation.",
+                  "airDate": "2012-07-22",
+                  "absoluteNumber": 48,
+                  "runtimeMinutes": 48
+                },
+                {
+                  "episodeNumber": 3,
+                  "title": "Hazard Pay",
+                  "overview": "Walt and Jesse put a business plan into action. Walt confesses a secret to Marie.",
+                  "airDate": "2012-07-29",
+                  "absoluteNumber": 49,
+                  "runtimeMinutes": 48
+                },
+                {
+                  "episodeNumber": 4,
+                  "title": "Fifty-One",
+                  "overview": "Walt celebrates another birthday. Skyler considers her options. An associate complicates Walt and Jesse's plan.",
+                  "airDate": "2012-08-05",
+                  "absoluteNumber": 50,
+                  "runtimeMinutes": 48
+                },
+                {
+                  "episodeNumber": 5,
+                  "title": "Dead Freight",
+                  "overview": "Walt's team must get creative to obtain the materials they need to continue their operation.",
+                  "airDate": "2012-08-12",
+                  "absoluteNumber": 51,
+                  "runtimeMinutes": 48
+                },
+                {
+                  "episodeNumber": 6,
+                  "title": "Buyout",
+                  "overview": "Walt, Jesse, and Mike struggle over the future of their business, as occupational hazards weigh on Jesse.",
+                  "airDate": "2012-08-19",
+                  "absoluteNumber": 52,
+                  "runtimeMinutes": 48
+                },
+                {
+                  "episodeNumber": 7,
+                  "title": "Say My Name",
+                  "overview": "Walt takes control of business matters as Mike grapples with the consequences of his actions.",
+                  "airDate": "2012-08-26",
+                  "absoluteNumber": 53,
+                  "runtimeMinutes": 48
+                },
+                {
+                  "episodeNumber": 8,
+                  "title": "Gliding Over All",
+                  "overview": "Walt ties up loose ends. Seeing the evidence of his success, he makes a startling and dangerous decision.",
+                  "airDate": "2012-09-02",
+                  "absoluteNumber": 54,
+                  "runtimeMinutes": 48
+                },
+                {
+                  "episodeNumber": 9,
+                  "title": "Blood Money",
+                  "overview": "As Walt and Jesse adjust to life out of the business, Hank grapples with a troubling lead.",
+                  "airDate": "2013-08-11",
+                  "absoluteNumber": 55,
+                  "runtimeMinutes": 48
+                },
+                {
+                  "episodeNumber": 10,
+                  "title": "Buried",
+                  "overview": "While Skyler's past catches up with her, Walt covers his tracks. Jesse continues to struggle with his guilt.",
+                  "airDate": "2013-08-18",
+                  "absoluteNumber": 56,
+                  "runtimeMinutes": 48
+                },
+                {
+                  "episodeNumber": 11,
+                  "title": "Confessions",
+                  "overview": "Jesse decides to make a change, while Walt and Skyler try to deal with an unexpected demand.",
+                  "airDate": "2013-08-25",
+                  "absoluteNumber": 57,
+                  "runtimeMinutes": 48
+                },
+                {
+                  "episodeNumber": 12,
+                  "title": "Rabid Dog",
+                  "overview": "An unusual strategy starts to bear fruit, while plans are set in motion that could change everything.",
+                  "airDate": "2013-09-01",
+                  "absoluteNumber": 58,
+                  "runtimeMinutes": 48
+                },
+                {
+                  "episodeNumber": 13,
+                  "title": "To'hajiilee",
+                  "overview": "Things heat up for Walt in unexpected ways.",
+                  "airDate": "2013-09-08",
+                  "absoluteNumber": 59,
+                  "runtimeMinutes": 47
+                },
+                {
+                  "episodeNumber": 14,
+                  "title": "Ozymandias",
+                  "overview": "Everyone copes with radically changed circumstances.",
+                  "airDate": "2013-09-15",
+                  "absoluteNumber": 60,
+                  "runtimeMinutes": 48
+                },
+                {
+                  "episodeNumber": 15,
+                  "title": "Granite State",
+                  "overview": "Events set in motion long ago move toward a conclusion.",
+                  "airDate": "2013-09-22",
+                  "absoluteNumber": 61,
+                  "runtimeMinutes": 55
+                },
+                {
+                  "episodeNumber": 16,
+                  "title": "Felina",
+                  "overview": "All bad things must come to an end.",
+                  "airDate": "2013-09-29",
+                  "absoluteNumber": 62,
+                  "runtimeMinutes": 55
+                }
+              ]
+            }
+          ],
+          "attribution": {
+            "text": "TV metadata provided by TheTVDB",
+            "url": "https://thetvdb.com"
+          }
+        }
+      }
+    }
+  ]
+}

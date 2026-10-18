@@ -1,0 +1,25 @@
+{
+  "app": "sabnzbd",
+  "version": "5.1.3",
+  "state": "add-local-missing",
+  "recordedAt": "2026-10-18T10:43:10Z",
+  "note": "mode=addlocalfile with a path SABnzbd does not hold (SABnzbd 5.1.3 in Docker, the e2e stack's image and first settings file).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api?mode=addlocalfile&output=json&apikey=<scrubbed>&name=%2Fdownloads%2Fnothing%2FRecorded.Missing.nzb&nzbname=Recorded.Missing"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json;charset=UTF-8"
+        },
+        "body": {
+          "status": false,
+          "error": "file does not exist"
+        }
+      }
+    }
+  ]
+}

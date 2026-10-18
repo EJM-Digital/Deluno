@@ -1,0 +1,21 @@
+{
+  "app": "rtorrent",
+  "version": "0.16.25",
+  "state": "not-answering",
+  "recordedAt": "2026-10-18T10:52:03Z",
+  "note": "Nothing listening at the address: the connection is refused.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>system.client_version</methodName><params></params></methodCall>"
+      },
+      "reply": {
+        "status": 0,
+        "headers": {},
+        "error": "bad port"
+      }
+    }
+  ]
+}

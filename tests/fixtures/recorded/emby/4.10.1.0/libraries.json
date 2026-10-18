@@ -1,0 +1,112 @@
+{
+  "app": "emby",
+  "version": "4.10.1.0",
+  "state": "libraries",
+  "recordedAt": "2026-10-18T11:17:42Z",
+  "note": "The libraries and users as the connection test lists them (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Library/VirtualFolders"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "bodyText": "[{\"Name\":\"Movies\",\"Locations\":[\"/media/Movies\"],\"CollectionType\":\"movies\",\"LibraryOptions\":{\"EnableArchiveMediaFiles\":false,\"EnablePhotos\":true,\"EnableRealtimeMonitor\":true,\"EnableMarkerDetection\":false,\"EnableMarkerDetectionDuringLibraryScan\":false,\"IntroDetectionFingerprintLength\":10,\"EnableChapterImageExtraction\":false,\"ExtractChapterImagesDuringLibraryScan\":false,\"DownloadImagesInAdvance\":false,\"CacheImages\":false,\"ExcludeFromSearch\":false,\"EnablePlexIgnore\":false,\"PathInfos\":[{\"Path\":\"/media/Movies\"}],\"IgnoreHiddenFiles\":false,\"IgnoreFileExtensions\":[],\"SaveLocalMetadata\":false,\"SaveMetadataHidden\":false,\"SaveLocalThumbnailSets\":false,\"ImportPlaylists\":true,\"EnableAutomaticSeriesGrouping\":true,\"ShareEmbeddedMusicAlbumImages\":true,\"EnableEmbeddedTitles\":false,\"EnableAudioResume\":false,\"AutoGenerateChapters\":true,\"MergeTopLevelFolders\":false,\"AutoGenerateChapterIntervalMinutes\":5,\"AutomaticRefreshIntervalDays\":0,\"PlaceholderMetadataRefreshIntervalDays\":0,\"PreferredMetadataLanguage\":\"en\",\"ContentType\":\"movies\",\"MetadataCountryCode\":\"US\",\"MetadataSavers\":[\"Nfo\"],\"DisabledLocalMetadataReaders\":[],\"DisabledLyricsFetchers\":[],\"SaveLyricsWithMedia\":true,\"LyricsDownloadMaxAgeDays\":180,\"LyricsFetcherOrder\":[],\"LyricsDownloadLanguages\":[],\"DisabledSubtitleFetchers\":[],\"SubtitleFetcherOrder\":[],\"SkipSubtitlesIfEmbeddedSubtitlesPresent\":false,\"SkipSubtitlesIfAudioTrackMatches\":false,\"SubtitleDownloadLanguages\":[],\"SubtitleDownloadMaxAgeDays\":180,\"RequirePerfectSubtitleMatch\":true,\"SaveSubtitlesWithMedia\":true,\"ForcedSubtitlesOnly\":false,\"HearingImpairedSubtitlesOnly\":false,\"TypeOptions\":[{\"Type\":\"Movie\",\"MetadataFetchers\":[\"TheMovieDb\",\"The Open Movie Database\",\"TheTVDB\"],\"MetadataFetcherOrder\":[\"TheMovieDb\",\"The Open Movie Database\",\"TheTVDB\"],\"ImageFetchers\":[\"TheMovieDb\",\"TheTVDB\",\"FanArt\",\"The Open Movie Database\",\"Image Capture\"],\"ImageFetcherOrder\":[\"TheMovieDb\",\"TheTVDB\",\"FanArt\",\"The Open Movie Database\",\"Image Capture\"],\"ImageOptions\":[]}],\"CollapseSingleItemFolders\":false,\"ForceCollapseSingleItemFolders\":false,\"EnableAdultMetadata\":false,\"ImportCollections\":false,\"EnableMultiVersionByFiles\":true,\"EnableMultiVersionByMetadata\":true,\"EnableMultiPartItems\":true,\"MinCollectionItems\":2,\"MinResumePct\":2,\"MaxResumePct\":90,\"MinResumeDurationSeconds\":120,\"ThumbnailImagesIntervalSeconds\":-1,\"SampleIgnoreSize\":314572800},\"ItemId\":\"3\",\"Id\":\"3\",\"Guid\":\"9dc56421201e4993892822f21060f04b\",\"PrimaryImageItemId\":\"3\",\"PrimaryImageTag\":\"42cfad4dc43a0b8603de4265532dff85_639279186887628772\"},{\"Name\":\"Shows\",\"Locations\":[\"/media/Shows\"],\"CollectionType\":\"tvshows\",\"LibraryOptions\":{\"EnableArchiveMediaFiles\":false,\"EnablePhotos\":true,\"EnableRealtimeMonitor\":true,\"EnableMarkerDetection\":false,\"EnableMarkerDetectionDuringLibraryScan\":false,\"IntroDetectionFingerprintLength\":10,\"EnableChapterImageExtraction\":false,\"ExtractChapterImagesDuringLibraryScan\":false,\"DownloadImagesInAdvance\":false,\"CacheImages\":false,\"ExcludeFromSearch\":false,\"EnablePlexIgnore\":false,\"PathInfos\":[{\"Path\":\"/media/Shows\"}],\"IgnoreHiddenFiles\":false,\"IgnoreFileExtensions\":[],\"SaveLocalMetadata\":false,\"SaveMetadataHidden\":false,\"SaveLocalThumbnailSets\":false,\"ImportPlaylists\":true,\"EnableAutomaticSeriesGrouping\":true,\"ShareEmbeddedMusicAlbumImages\":true,\"EnableEmbeddedTitles\":false,\"EnableAudioResume\":false,\"AutoGenerateChapters\":true,\"MergeTopLevelFolders\":false,\"AutoGenerateChapterIntervalMinutes\":5,\"AutomaticRefreshIntervalDays\":0,\"PlaceholderMetadataRefreshIntervalDays\":0,\"PreferredMetadataLanguage\":\"en\",\"ContentType\":\"tvshows\",\"MetadataCountryCode\":\"US\",\"MetadataSavers\":[\"Nfo\"],\"DisabledLocalMetadataReaders\":[],\"DisabledLyricsFetchers\":[],\"SaveLyricsWithMedia\":true,\"LyricsDownloadMaxAgeDays\":180,\"LyricsFetcherOrder\":[],\"LyricsDownloadLanguages\":[],\"DisabledSubtitleFetchers\":[],\"SubtitleFetcherOrder\":[],\"SkipSubtitlesIfEmbeddedSubtitlesPresent\":false,\"SkipSubtitlesIfAudioTrackMatches\":false,\"SubtitleDownloadLanguages\":[],\"SubtitleDownloadMaxAgeDays\":180,\"RequirePerfectSubtitleMatch\":true,\"SaveSubtitlesWithMedia\":true,\"ForcedSubtitlesOnly\":false,\"HearingImpairedSubtitlesOnly\":false,\"TypeOptions\":[{\"Type\":\"Series\",\"MetadataFetchers\":[\"TheTVDB\",\"TheMovieDb\",\"The Open Movie Database\"],\"MetadataFetcherOrder\":[\"TheTVDB\",\"TheMovieDb\",\"The Open Movie Database\"],\"ImageFetchers\":[\"TheTVDB\",\"FanArt\",\"TheMovieDb\",\"The Open Movie Database\"],\"ImageFetcherOrder\":[\"TheTVDB\",\"FanArt\",\"TheMovieDb\",\"The Open Movie Database\"],\"ImageOptions\":[]},{\"Type\":\"Season\",\"MetadataFetchers\":[\"TheMovieDb\",\"TheTVDB\"],\"MetadataFetcherOrder\":[\"TheMovieDb\",\"TheTVDB\"],\"ImageFetchers\":[\"TheTVDB\",\"FanArt\",\"TheMovieDb\"],\"ImageFetcherOrder\":[\"TheTVDB\",\"FanArt\",\"TheMovieDb\"],\"ImageOptions\":[]},{\"Type\":\"Episode\",\"MetadataFetchers\":[\"TheTVDB\",\"TheMovieDb\",\"The Open Movie Database\"],\"MetadataFetcherOrder\":[\"TheTVDB\",\"TheMovieDb\",\"The Open Movie Database\"],\"ImageFetchers\":[\"TheTVDB\",\"TheMovieDb\",\"The Open Movie Database\",\"Image Capture\"],\"ImageFetcherOrder\":[\"TheTVDB\",\"TheMovieDb\",\"The Open Movie Database\",\"Image Capture\"],\"ImageOptions\":[]}],\"CollapseSingleItemFolders\":false,\"ForceCollapseSingleItemFolders\":false,\"EnableAdultMetadata\":false,\"ImportCollections\":false,\"EnableMultiVersionByFiles\":true,\"EnableMultiVersionByMetadata\":true,\"EnableMultiPartItems\":true,\"MinCollectionItems\":2,\"MinResumePct\":2,\"MaxResumePct\":90,\"MinResumeDurationSeconds\":120,\"ThumbnailImagesIntervalSeconds\":-1,\"SampleIgnoreSize\":314572800},\"ItemId\":\"15\",\"Id\":\"15\",\"Guid\":\"1059cd285b9a4090ac0e2db87b57cc2b\"}]"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Users"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "Name": "<scrubbed>",
+            "ServerId": "a8f5d36cc5ad4259880f1ff66bbdfbaa",
+            "Prefix": "R",
+            "DateCreated": "2026-10-18T11:11:14.6405646Z",
+            "Id": "cc5185767bf748dbbe109af7975fdbd7",
+            "HasPassword": true,
+            "HasConfiguredPassword": true,
+            "LastLoginDate": "2026-10-18T11:11:25.7701985Z",
+            "LastActivityDate": "2026-10-18T11:11:25.8424331Z",
+            "Configuration": {
+              "PlayDefaultAudioTrack": true,
+              "DisplayMissingEpisodes": false,
+              "SubtitleMode": "Smart",
+              "OrderedViews": [],
+              "LatestItemsExcludes": [],
+              "MyMediaExcludes": [],
+              "HidePlayedInLatest": true,
+              "HidePlayedInMoreLikeThis": false,
+              "HidePlayedInSuggestions": false,
+              "RememberAudioSelections": true,
+              "RememberSubtitleSelections": true,
+              "EnableNextEpisodeAutoPlay": true,
+              "ResumeRewindSeconds": 0,
+              "IntroSkipMode": "ShowButton",
+              "EnableLocalPassword": false
+            },
+            "Policy": {
+              "IsAdministrator": true,
+              "IsHidden": false,
+              "IsHiddenRemotely": true,
+              "IsHiddenFromUnusedDevices": false,
+              "IsDisabled": false,
+              "LockedOutDate": 0,
+              "AllowTagOrRating": false,
+              "BlockedTags": [],
+              "IsTagBlockingModeInclusive": false,
+              "IncludeTags": [],
+              "EnableUserPreferenceAccess": true,
+              "AccessSchedules": [],
+              "BlockUnratedItems": [],
+              "EnableRemoteControlOfOtherUsers": true,
+              "EnableSharedDeviceControl": true,
+              "EnableRemoteAccess": true,
+              "EnableLiveTvManagement": true,
+              "EnableLiveTvAccess": true,
+              "EnableMediaPlayback": true,
+              "EnableAudioPlaybackTranscoding": true,
+              "EnableVideoPlaybackTranscoding": true,
+              "EnableTranscodingQuality": true,
+              "AutoRemoteQuality": 0,
+              "EnablePlaybackRemuxing": true,
+              "EnableContentDeletion": true,
+              "RestrictedFeatures": [],
+              "EnableContentDeletionFromFolders": [],
+              "EnableContentDownloading": true,
+              "EnableSubtitleDownloading": true,
+              "EnableSubtitleManagement": true,
+              "EnableSyncTranscoding": true,
+              "EnableMediaConversion": true,
+              "EnabledChannels": [],
+              "EnableAllChannels": true,
+              "EnabledFolders": [],
+              "EnableAllFolders": true,
+              "InvalidLoginAttemptCount": 0,
+              "EnablePublicSharing": true,
+              "RemoteClientBitrateLimit": 0,
+              "AuthenticationProviderId": "Emby.Server.Implementations.Library.DefaultAuthenticationProvider",
+              "ExcludedSubFolders": [],
+              "SimultaneousStreamLimit": 0,
+              "EnabledDevices": [],
+              "EnableAllDevices": true,
+              "AllowCameraUpload": true,
+              "AllowSharingPersonalItems": true
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

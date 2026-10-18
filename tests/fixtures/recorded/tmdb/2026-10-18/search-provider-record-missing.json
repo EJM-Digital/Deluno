@@ -1,0 +1,26 @@
+{
+  "app": "tmdb",
+  "version": "2026-10-18",
+  "state": "search-provider-record-missing",
+  "recordedAt": "2026-10-18T10:45:10Z",
+  "note": "GET /metadata/search with a providerId TMDb has no record for: 404 with the error provider_record_missing. Through the deployed gateway (deluno-metadata-gateway.ejmdigital.workers.dev).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/metadata/search?mediaType=movies&query=Sintel&providerId=999999999"
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "error": "provider_record_missing",
+          "provider": "tmdb",
+          "providerId": "999999999"
+        }
+      }
+    }
+  ]
+}

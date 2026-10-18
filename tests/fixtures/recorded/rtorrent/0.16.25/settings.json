@@ -1,0 +1,37 @@
+{
+  "app": "rtorrent",
+  "version": "0.16.25",
+  "state": "settings",
+  "recordedAt": "2026-10-18T10:53:33Z",
+  "note": "directory.default and d.free_diskspace (the free space of a torrent's folder) as rTorrent answers them.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>directory.default</methodName><params></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><string>/downloads/temp/</string></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.free_diskspace</methodName><params><param><value><string>D3A2428E690FB2056D885BA960C5D85EA531454F</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><i8>993759977472</i8></value></param></params></methodResponse>"
+      }
+    }
+  ]
+}

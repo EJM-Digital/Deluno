@@ -45,6 +45,8 @@ public static class RecordedReplies
     /// <summary>Prowlarr's API (<c>/api/v1</c>), recorded from the real app with one indexer.</summary>
     public static Recording Prowlarr(string state) => RecordedReplies.LoadLatest("prowlarr", state);
     /// <summary>TheXEM's public scene-mapping API, a real unauthenticated GET from the internet.</summary>
+    /// <summary>The project's deployed metadata gateway (a Worker in front of TMDb and TheTVDB), a real unauthenticated GET from the internet.</summary>
+    public static Recording Tmdb(string state) => RecordedReplies.LoadLatest("tmdb", state);
     public static Recording Thexem(string state) => RecordedReplies.LoadLatest("thexem", state);
     public static Recording Weir(string state) => RecordedReplies.LoadLatest("weir", state);
     public static Recording Deluno(string state) => RecordedReplies.LoadLatest("deluno", state);
@@ -99,8 +101,8 @@ public static class RecordedReplies
                 // The Web UI's action (or list=1, or the token page) says what is asked; the token and the hash are the test's own.
                 return $"{method} {path} {(query["action"] ?? (query["list"] is not null ? "list" : ""))}";
             case "rtorrent":
-                // XML-RPC: one address, and the methodName in the body is the call.
-                return $"{method} {path} {System.Text.RegularExpressions.Regex.Match(body ?? string.Empty, "<methodName>([^<]+)</methodName>").Groups[1].Value}";
+                // XML-RPC: one address (a mount a person puts anywhere: /, /RPC2, /rutorrent/plugins/httprpc), and the methodName in the body is the call.
+                return $"{method} {System.Text.RegularExpressions.Regex.Match(body ?? string.Empty, "<methodName>([^<]+)</methodName>").Groups[1].Value}";
             case "flaresolverr":
                 return $"{method} {path} {System.Text.RegularExpressions.Regex.Match(body ?? string.Empty, "\"cmd\"\\s*:\\s*\"([^\"]+)\"").Groups[1].Value}";
             case "weir":

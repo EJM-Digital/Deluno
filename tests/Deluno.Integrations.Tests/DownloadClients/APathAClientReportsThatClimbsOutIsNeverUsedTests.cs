@@ -15,9 +15,9 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 ///
 /// <para>Each test below takes the client's own recorded reply (qBittorrent 5.2.1, Transmission 4.1.3, Deluge 2.2.0,
 /// SABnzbd 5.1.3, NZBGet 26.3) and swaps one value for a path with ".." in it: that is the only change, and a control
-/// shows the unswapped recording still reads. uTorrent and rTorrent have no recording yet (see
-/// tests/recorded-reply-allow-list.json, kind "pending"), so their tests use the same hand-built replies their other
-/// tests do, with the same single value swapped; they say so where they are.</para>
+/// shows the unswapped recording still reads. rTorrent's two tests do the same with its recording (0.16.25) in
+/// RtorrentDownloadClientTests. uTorrent has no recording (it is Windows-only: tests/recorded-reply-allow-list.json, kind "pending"), so its
+/// test uses the same hand-built reply its other tests do, with the same single value swapped; it says so where it is.</para>
 /// </summary>
 public sealed class APathAClientReportsThatClimbsOutIsNeverUsedTests
 {

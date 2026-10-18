@@ -1,0 +1,77 @@
+{
+  "app": "seerr",
+  "version": "3.5.0",
+  "state": "media-deleted",
+  "recordedAt": "2026-10-18T11:04:27Z",
+  "note": "The media record deleted (DELETE /api/v1/media/{id}) with its requests, then the request and media lists, and the same delete again (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/api/v1/media/1"
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/request?filter=all&sort=added&take=100&skip=0"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "pageInfo": {
+            "pages": 0,
+            "pageSize": 100,
+            "results": 0,
+            "page": 1
+          },
+          "results": [],
+          "serviceErrors": {
+            "radarr": [],
+            "sonarr": []
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/media?filter=all&sort=added&take=100&skip=0"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "pageInfo": {
+            "pages": 0,
+            "pageSize": 100,
+            "results": 0,
+            "page": 1
+          },
+          "results": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/api/v1/media/1"
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    }
+  ]
+}

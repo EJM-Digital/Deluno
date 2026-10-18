@@ -1,0 +1,39 @@
+{
+  "app": "rtorrent",
+  "version": "0.16.25",
+  "state": "login-refused",
+  "recordedAt": "2026-10-18T10:52:03Z",
+  "note": "The XML-RPC mount with a wrong password and with no login: nginx answers 401 with a basic-auth challenge.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>system.client_version</methodName><params></params></methodCall>"
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "text/html",
+          "www-authenticate": "Basic realm=\"rTorrent\""
+        },
+        "bodyText": "<html>\r\n<head><title>401 Authorization Required</title></head>\r\n<body>\r\n<center><h1>401 Authorization Required</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.multicall2</methodName><params><param><value><string></string></value></param><param><value><string>main</string></value></param><param><value><string>d.hash=</string></value></param><param><value><string>d.name=</string></value></param><param><value><string>d.is_active=</string></value></param><param><value><string>d.is_hash_checking=</string></value></param><param><value><string>d.complete=</string></value></param><param><value><string>d.bytes_done=</string></value></param><param><value><string>d.size_bytes=</string></value></param><param><value><string>d.down.rate=</string></value></param><param><value><string>d.up.rate=</string></value></param><param><value><string>d.ratio=</string></value></param><param><value><string>d.message=</string></value></param><param><value><string>d.directory=</string></value></param><param><value><string>d.peers_connected=</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "text/html",
+          "www-authenticate": "Basic realm=\"rTorrent\""
+        },
+        "bodyText": "<html>\r\n<head><title>401 Authorization Required</title></head>\r\n<body>\r\n<center><h1>401 Authorization Required</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n"
+      }
+    }
+  ]
+}

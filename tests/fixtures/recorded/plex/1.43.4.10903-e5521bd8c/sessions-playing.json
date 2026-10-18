@@ -1,0 +1,268 @@
+{
+  "app": "plex",
+  "version": "1.43.4.10903-e5521bd8c",
+  "state": "sessions-playing",
+  "recordedAt": "2026-10-18T10:35:57Z",
+  "note": "A player reports the film playing at the six-second mark (/:/timeline), and the server lists it under /status/sessions (Plex Media Server 1.43.4.10903-e5521bd8c in Docker, UNCLAIMED: no account is made, so every call is local and carries no token).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/:/timeline?ratingKey=1&key=%2Flibrary%2Fmetadata%2F1&state=playing&time=6000&duration=20000&X-Plex-Client-Identifier=deluno-recorder-2"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "MediaContainer": {
+            "size": 0,
+            "playbackState": "ignore",
+            "skipCount": 0,
+            "viewCount": 0,
+            "viewOffset": -1
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/status/sessions"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "MediaContainer": {
+            "size": 1,
+            "Metadata": [
+              {
+                "addedAt": 1792318512,
+                "art": "/library/metadata/1/art/1792319736",
+                "audienceRating": 7.4,
+                "audienceRatingImage": "rottentomatoes://image.rating.upright",
+                "contentRating": "PG",
+                "duration": 20023,
+                "guid": "plex://movie/5d77688123d5a3001f4ed3df",
+                "key": "/library/metadata/1",
+                "librarySectionID": "1",
+                "librarySectionKey": "/library/sections/1",
+                "librarySectionTitle": "Movies",
+                "originallyAvailableAt": "2010-09-30",
+                "ratingKey": "1",
+                "sessionKey": "1",
+                "slug": "sintel",
+                "studio": "Blender Foundation",
+                "summary": "A wandering warrior finds an unlikely friend in the form of a young dragon. The two develop a close bond, until one day the dragon is snatched away. She then sets out on a relentless quest to reclaim her friend, finding in the end that her quest exacts a far greater price than she had ever imagined.",
+                "thumb": "/library/metadata/1/thumb/1792319736",
+                "title": "Sintel",
+                "type": "movie",
+                "updatedAt": 1792319736,
+                "viewOffset": 6000,
+                "year": 2010,
+                "Media": [
+                  {
+                    "aspectRatio": "1.78",
+                    "audioChannels": 1,
+                    "audioCodec": "aac",
+                    "bitrate": 235,
+                    "container": "mkv",
+                    "duration": 20023,
+                    "height": 360,
+                    "id": "1",
+                    "videoCodec": "h264",
+                    "videoFrameRate": "24p",
+                    "videoProfile": "constrained baseline",
+                    "videoResolution": "sd",
+                    "width": 640,
+                    "Part": [
+                      {
+                        "container": "mkv",
+                        "duration": 20023,
+                        "file": "/media/Movies/Sintel (2010)/Sintel (2010) [WEB 1080p].mkv",
+                        "id": "1",
+                        "key": "/library/parts/1/1792318512/file.mkv",
+                        "size": 589148,
+                        "videoProfile": "constrained baseline",
+                        "Stream": [
+                          {
+                            "bitDepth": 8,
+                            "bitrate": 235,
+                            "chromaLocation": "left",
+                            "chromaSubsampling": "4:2:0",
+                            "codec": "h264",
+                            "codedHeight": 368,
+                            "codedWidth": 640,
+                            "colorRange": "tv",
+                            "displayTitle": "SD (H.264 Constrained Baseline)",
+                            "extendedDisplayTitle": "SD (H.264 Constrained Baseline)",
+                            "frameRate": 24,
+                            "hasScalingMatrix": false,
+                            "height": 360,
+                            "id": "1",
+                            "index": 0,
+                            "language": "English",
+                            "languageCode": "eng",
+                            "languageTag": "en",
+                            "level": 30,
+                            "profile": "constrained baseline",
+                            "refFrames": 1,
+                            "scanType": "progressive",
+                            "streamType": 1,
+                            "width": 640
+                          },
+                          {
+                            "channels": 1,
+                            "codec": "aac",
+                            "displayTitle": "English (AAC Mono)",
+                            "extendedDisplayTitle": "English (AAC Mono)",
+                            "id": "2",
+                            "index": 1,
+                            "language": "English",
+                            "languageCode": "eng",
+                            "languageTag": "en",
+                            "samplingRate": 44100,
+                            "selected": true,
+                            "streamType": 2
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ],
+                "UltraBlurColors": [
+                  {
+                    "bottomLeft": "0f2b3c",
+                    "bottomRight": "030f1b",
+                    "topLeft": "081c2a",
+                    "topRight": "020b14"
+                  }
+                ],
+                "Genre": [
+                  {
+                    "filter": "genre=6",
+                    "id": "6",
+                    "tag": "Animation"
+                  },
+                  {
+                    "filter": "genre=7",
+                    "id": "7",
+                    "tag": "Fantasy"
+                  },
+                  {
+                    "filter": "genre=8",
+                    "id": "8",
+                    "tag": "Short"
+                  },
+                  {
+                    "filter": "genre=9",
+                    "id": "9",
+                    "tag": "Action"
+                  },
+                  {
+                    "filter": "genre=10",
+                    "id": "10",
+                    "tag": "Adventure"
+                  },
+                  {
+                    "filter": "genre=11",
+                    "id": "11",
+                    "tag": "Drama"
+                  },
+                  {
+                    "filter": "genre=12",
+                    "id": "12",
+                    "tag": "Science Fiction"
+                  }
+                ],
+                "Country": [
+                  {
+                    "filter": "country=18",
+                    "id": "18",
+                    "tag": "Netherlands"
+                  }
+                ],
+                "Rating": [
+                  {
+                    "image": "imdb://image.rating",
+                    "type": "audience",
+                    "value": "7.4"
+                  },
+                  {
+                    "image": "rottentomatoes://image.rating.upright",
+                    "type": "audience",
+                    "value": "7.4"
+                  },
+                  {
+                    "image": "themoviedb://image.rating",
+                    "type": "audience",
+                    "value": "7.3"
+                  }
+                ],
+                "Director": [
+                  {
+                    "filter": "director=13",
+                    "id": "13",
+                    "tag": "Colin Levy",
+                    "tagKey": "5d77688123d5a3001f4ed40a",
+                    "thumb": "https://metadata-static.plex.tv/d/people/d8e05ba0778c6373127f8d8b07c17326.jpg"
+                  }
+                ],
+                "Writer": [
+                  {
+                    "filter": "writer=14",
+                    "id": "14",
+                    "tag": "Esther Wouda",
+                    "tagKey": "5d9c0904d4f2a9001f804e98"
+                  }
+                ],
+                "Role": [
+                  {
+                    "filter": "actor=15",
+                    "id": "15",
+                    "role": "Sintel (voice)",
+                    "tag": "Halina Reijn",
+                    "tagKey": "5d77682bf54112001f5bc663",
+                    "thumb": "https://metadata-static.plex.tv/9/people/95a33cf9743f24d12c2ac803a26941bc.jpg"
+                  },
+                  {
+                    "filter": "actor=16",
+                    "id": "16",
+                    "role": "Shaman (voice)",
+                    "tag": "Thom Hoffman",
+                    "tagKey": "5d7768275af944001f1f6b57",
+                    "thumb": "https://metadata-static.plex.tv/2/people/2f5a97329557ec9b911e8f82c0b0fcf8.jpg"
+                  }
+                ],
+                "Producer": [
+                  {
+                    "filter": "producer=17",
+                    "id": "17",
+                    "tag": "Ton Roosendaal",
+                    "tagKey": "5d776834103a2d001f567902",
+                    "thumb": "https://metadata-static.plex.tv/d/people/d0cd238b5a00353ddae78dd55720f7e3.jpg"
+                  }
+                ],
+                "User": {},
+                "Player": {
+                  "address": "192.168.1.10",
+                  "machineIdentifier": "deluno-recorder-1",
+                  "product": "Deluno Recorder",
+                  "state": "playing",
+                  "local": true,
+                  "relayed": false,
+                  "secure": false,
+                  "userID": 1
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

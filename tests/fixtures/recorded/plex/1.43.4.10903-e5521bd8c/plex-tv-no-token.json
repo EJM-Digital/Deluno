@@ -1,0 +1,109 @@
+{
+  "app": "plex",
+  "version": "1.43.4.10903-e5521bd8c",
+  "state": "plex-tv-no-token",
+  "recordedAt": "2026-10-18T10:59:59Z",
+  "note": "The plex.tv calls Deluno makes for the account, its resources, the people the server is shared with and the watchlist, asked with no token at all (plex.tv answers each; the path of a request here begins with the host) (Plex Media Server 1.43.4.10903-e5521bd8c in Docker, UNCLAIMED: no account is made, so every call is local and carries no token).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "plex.tv/api/v2/user"
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "errors": [
+            {
+              "code": 1001,
+              "message": "User could not be authenticated",
+              "status": 401
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "plex.tv/api/v2/resources?includeHttps=1&includeRelay=1"
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "errors": [
+            {
+              "code": 1001,
+              "message": "User could not be authenticated",
+              "status": 401
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "plex.tv/api/servers/a4ccd564e2a3e55fc0c0dc14092a100231d9afb1/shared_servers"
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "application/xml; charset=utf-8"
+        },
+        "bodyText": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<errors>\n  <error>Please sign in.</error>\n</errors>\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "plex.tv/api/users"
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "application/xml; charset=utf-8"
+        },
+        "bodyText": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<errors>\n  <error>Please sign in.</error>\n</errors>\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "plex.tv/api/home/<user>"
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "application/xml; charset=utf-8"
+        },
+        "bodyText": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<errors>\n  <error>Please sign in.</error>\n</errors>\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "discover.provider.plex.tv/library/sections/watchlist/all?X-Plex-Container-Start=0&X-Plex-Container-Size=500"
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Error": {
+            "error": "Unauthorized",
+            "message": "You must provide a token!",
+            "statusCode": 401
+          }
+        }
+      }
+    }
+  ]
+}

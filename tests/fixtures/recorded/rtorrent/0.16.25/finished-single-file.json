@@ -1,0 +1,93 @@
+{
+  "app": "rtorrent",
+  "version": "0.16.25",
+  "state": "finished-single-file",
+  "recordedAt": "2026-10-18T10:53:33Z",
+  "note": "The finished film: the list row (complete 1), d.directory, d.base_path, d.custom1, f.multicall (one file) and t.multicall.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.multicall2</methodName><params><param><value><string></string></value></param><param><value><string>main</string></value></param><param><value><string>d.hash=</string></value></param><param><value><string>d.name=</string></value></param><param><value><string>d.is_active=</string></value></param><param><value><string>d.is_hash_checking=</string></value></param><param><value><string>d.complete=</string></value></param><param><value><string>d.bytes_done=</string></value></param><param><value><string>d.size_bytes=</string></value></param><param><value><string>d.down.rate=</string></value></param><param><value><string>d.up.rate=</string></value></param><param><value><string>d.ratio=</string></value></param><param><value><string>d.message=</string></value></param><param><value><string>d.directory=</string></value></param><param><value><string>d.peers_connected=</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><array><data><value><string>D3A2428E690FB2056D885BA960C5D85EA531454F</string></value><value><string>Recorded.Rtorrent.Film.2024.1080p.WEB-DL.mkv</string></value><value><i8>1</i8></value><value><i8>0</i8></value><value><i8>1</i8></value><value><i8>41943040</i8></value><value><i8>41943040</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><string></string></value><value><string>/downloads/complete</string></value><value><i8>0</i8></value></data></array></value></data></array></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.directory</methodName><params><param><value><string>D3A2428E690FB2056D885BA960C5D85EA531454F</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><string>/downloads/complete</string></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.base_path</methodName><params><param><value><string>D3A2428E690FB2056D885BA960C5D85EA531454F</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><string>/downloads/complete/Recorded.Rtorrent.Film.2024.1080p.WEB-DL.mkv</string></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.custom1</methodName><params><param><value><string>D3A2428E690FB2056D885BA960C5D85EA531454F</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><string></string></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>f.multicall</methodName><params><param><value><string>D3A2428E690FB2056D885BA960C5D85EA531454F</string></value></param><param><value><string></string></value></param><param><value><string>f.path=</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><array><data><value><string>Recorded.Rtorrent.Film.2024.1080p.WEB-DL.mkv</string></value></data></array></value></data></array></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>t.multicall</methodName><params><param><value><string>D3A2428E690FB2056D885BA960C5D85EA531454F</string></value></param><param><value><string></string></value></param><param><value><string>t.is_enabled=</string></value></param><param><value><string>t.message=</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><fault><value><struct><member><name>faultCode</name><value><i8>-500</i8></value></member><member><name>faultString</name><value><string>Command \"t.message\" does not exist.</string></value></member></struct></value></fault></methodResponse>"
+      }
+    }
+  ]
+}

@@ -43,8 +43,7 @@ public sealed class ConnectionVersionParserTests
 
     [Fact]
     public void Plex_reads_the_identity_version_without_its_hash_kept_as_part_of_the_number()
-        => Assert.Equal("1.43.4.10903-e5521bd8c", ConnectionVersionParsers.FromPlexIdentity(
-            """{"MediaContainer":{"size":0,"claimed":true,"machineIdentifier":"abc123","version":"1.43.4.10903-e5521bd8c"}}"""));
+        => Assert.Equal("1.43.4.10903-e5521bd8c", ConnectionVersionParsers.FromPlexIdentity(RecordedReplies.Plex("identity").Single.Reply.Body));
 
     [Fact]
     public void Jellyfin_and_emby_read_the_version_field()
@@ -52,12 +51,14 @@ public sealed class ConnectionVersionParserTests
         // Jellyfin 12.2.0's real replies (#1237): the public identity and the full system info both carry the Version.
         Assert.Equal("12.2.0", ConnectionVersionParsers.FromEmbyFamily(RecordedReplies.Jellyfin("identity").Exchanges[0].Reply.Body));
         Assert.Equal("12.2.0", ConnectionVersionParsers.FromEmbyFamily(RecordedReplies.Jellyfin("identity").Exchanges[1].Reply.Body));
-        Assert.Equal("4.9.1.0", ConnectionVersionParsers.FromEmbyFamily("""{"ServerName":"emby","Version":"4.9.1.0","Id":"abc"}"""));
+        // Emby 4.10.1.0's real replies (Docker): the public identity and the full system info carry the Version the same way.
+        Assert.Equal("4.10.1.0", ConnectionVersionParsers.FromEmbyFamily(RecordedReplies.Emby("identity").Exchanges[0].Reply.Body));
+        Assert.Equal("4.10.1.0", ConnectionVersionParsers.FromEmbyFamily(RecordedReplies.Emby("identity").Exchanges[1].Reply.Body));
     }
 
     [Fact]
     public void Seerr_reads_the_status_version()
-        => Assert.Equal("3.5.0", ConnectionVersionParsers.FromSeerr("""{"version":"3.5.0","commitTag":"abc","updateAvailable":false,"commitsBehind":0,"restartRequired":false}"""));
+        => Assert.Equal("3.5.0", ConnectionVersionParsers.FromSeerr(RecordedReplies.Seerr("status").Single.Reply.Body));
 
     [Fact]
     public void A_processor_publishes_its_version_in_its_capabilities()

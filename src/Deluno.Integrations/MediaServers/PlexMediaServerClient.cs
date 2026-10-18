@@ -606,24 +606,49 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
             usedFallback));
     }
 
+    /// <summary>
+    /// Whether Plex can see a folder. Plex's folder browser takes the folder as the base64 of its path in the address
+    /// (<c>/services/browse/{base64}</c>) and ignores a <c>path</c> query, listing its own roots for any path whatever (recorded from
+    /// the real server), so the folder is looked for in its parent's listing.
+    /// </summary>
     public async Task<MediaServerAnswer<MediaServerPathMappingTest>> TestPathAsync(
         MediaServerConnection connection,
         string serverPath,
         CancellationToken cancellationToken)
     {
-        var browse = await GetAsync(connection, $"/services/browse?path={Uri.EscapeDataString(serverPath)}&includeFiles=0", cancellationToken);
+        var wanted = NormalizeForMatch(serverPath);
+        var parent = ParentOf(serverPath);
+        var browse = await GetAsync(connection, $"/services/browse/{Uri.EscapeDataString(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(parent ?? serverPath)))}?includeFiles=0", cancellationToken);
         if (!browse.Ok)
         {
             return new MediaServerAnswer<MediaServerPathMappingTest>.Unreachable(browse.Problem!);
         }
 
         using var document = TryParse(browse.Body);
-        var found = Container(document) is not null;
+        var container = Container(document);
+        // A root folder has no parent to look in: the server answering with a listing is the answer.
+        var found = container is not null
+            && (parent is null
+                || (container.Value.TryGetProperty("Path", out var entries) && entries.ValueKind == JsonValueKind.Array
+                    && entries.EnumerateArray().Any(entry => String(entry, "path") is { } path && string.Equals(NormalizeForMatch(path), wanted, StringComparison.OrdinalIgnoreCase))));
         return new MediaServerAnswer<MediaServerPathMappingTest>.Reported(new MediaServerPathMappingTest(
             found,
             found
                 ? $"{connection.Name} can see {serverPath}."
-                : $"{connection.Name} answered, but not with a folder listing for {serverPath}. Check the mapped path."));
+                : $"{connection.Name} answered, but {serverPath} is not among the folders it lists. Check the mapped path."));
+    }
+
+    /// <summary>The folder holding <paramref name="path"/>, or null for a root ("/", "C:\").</summary>
+    private static string? ParentOf(string path)
+    {
+        var trimmed = path.Trim().TrimEnd('/', '\\');
+        var separator = Math.Max(trimmed.LastIndexOf('/'), trimmed.LastIndexOf('\\'));
+        if (trimmed.Length == 0 || separator < 0 || (trimmed.Length == 2 && trimmed[1] == ':'))
+        {
+            return null;
+        }
+
+        return separator == 0 ? "/" : trimmed[..separator];
     }
 
     private static string NormalizeForMatch(string path) => path.Trim().TrimEnd('/', '\\').Replace('\\', '/');

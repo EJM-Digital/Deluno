@@ -1,0 +1,73 @@
+{
+  "app": "tmdb",
+  "version": "2026-10-18",
+  "state": "search-movie",
+  "recordedAt": "2026-10-18T10:45:08Z",
+  "note": "GET /metadata/search for a film by title and year. Through the deployed gateway (deluno-metadata-gateway.ejmdigital.workers.dev).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/metadata/search?mediaType=movies&query=Sintel&year=2010"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "public, max-age=300"
+        },
+        "body": {
+          "provider": "deluno-broker",
+          "mode": "broker",
+          "resultCount": 1,
+          "results": [
+            {
+              "provider": "tmdb",
+              "providerId": "45745",
+              "mediaType": "movies",
+              "runtimeMinutes": null,
+              "popularity": 3.4339,
+              "voteCount": 180,
+              "title": "Sintel",
+              "originalTitle": "Sintel",
+              "year": 2010,
+              "overview": "A wandering warrior finds an unlikely friend in the form of a young dragon. The two develop a close bond, until one day the dragon is snatched away. She then sets out on a relentless quest to reclaim her friend, finding in the end that her quest exacts a far greater price than she had ever imagined.",
+              "posterUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w780/l98Zns4oQe1BSvbF4hJ8oL6VSf0.jpg",
+              "backdropUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/original/msqeiEyIRpPAtrCeRGFNZQ9tkJL.jpg",
+              "rating": 7.333,
+              "ratings": [
+                {
+                  "source": "tmdb",
+                  "label": "TMDb",
+                  "score": 7.333,
+                  "maxScore": 10,
+                  "voteCount": 180,
+                  "url": "https://www.themoviedb.org/movie/45745",
+                  "kind": "community"
+                }
+              ],
+              "genres": [],
+              "keywords": [],
+              "cast": [],
+              "crew": [],
+              "imdbId": null,
+              "tvDbId": null,
+              "externalUrl": "https://www.themoviedb.org/movie/45745",
+              "certification": null,
+              "studio": null,
+              "network": null,
+              "collection": null,
+              "collectionProviderId": null,
+              "director": null,
+              "trailerUrl": null,
+              "tagline": null,
+              "homepage": null,
+              "originalLanguage": "en",
+              "status": null
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

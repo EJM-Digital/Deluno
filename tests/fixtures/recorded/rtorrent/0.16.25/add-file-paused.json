@@ -1,0 +1,65 @@
+{
+  "app": "rtorrent",
+  "version": "0.16.25",
+  "state": "add-file-paused",
+  "recordedAt": "2026-10-18T10:53:42Z",
+  "note": "load.raw (loaded, not started): the hashes before and after and the list row (not active, nothing downloaded).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>download_list</methodName><params></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data/></array></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>load.raw</methodName><params><param><value><string></string></value></param><param><value><base64>ZDg6YW5ub3VuY2UyODpodHRwOi8vdHJhY2tlcjo4MDgwL2Fubm91bmNlMTA6Y3JlYXRlZCBieTg6cmVjb3JkZXIxMzpjcmVhdGlvbiBkYXRlaTE3OTIzMjA4MjBlNDppbmZvZDY6bGVuZ3RoaTQxOTQzMDRlNDpuYW1lNDY6UmVjb3JkZWQuUnRvcnJlbnQuUGF1c2VkLjIwMjQuMTA4MHAuV0VCLURMLm1rdjEyOnBpZWNlIGxlbmd0aGkyNjIxNDRlNjpwaWVjZXMzMjA62BmJE6ZY6xwHwdlFZux2W8gNJc9FOBNZcGgzX0lbDiVTPoyRXJP8yZL09jSjNl+QpK4WQM65OTr1eamgbTc5AuVTiSp4eGYAI+/zZoo+0u4XmH/PbdMUfvQKlYCF9rZvuWXz8d1FOuwMbTXNGkbTH7ahIoiJbLWpMbQdXUSkyj020dcEc7gC2g7su2B50v2BIHzsC2aMO8PqCr/JJV4I6qv3crKbKP5w6omqiFUfo6rqj0MyfcX4IrRyaGoynPtGePytFPF/l9hBOPy2JCta7dMXfxp8cTZ4rzSUDWDiheAiDOpdszSH4/dc1yHdHCG6Cyz9YtkgMH2mqFUJE7ms0Rbd+thEc6RXX7nYhpwpwx6syaH9yIOrVgxBmNwTF9TK03ntIvKv8xWsloKNrdwbd7I0vnVBJjbYxzcw2CtzxL9lZQ==</base64></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><i8>0</i8></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>download_list</methodName><params></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><string>76BA904DD4DCDA9829D1E44ECA88725F20E9563E</string></value></data></array></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.multicall2</methodName><params><param><value><string></string></value></param><param><value><string>main</string></value></param><param><value><string>d.hash=</string></value></param><param><value><string>d.name=</string></value></param><param><value><string>d.is_active=</string></value></param><param><value><string>d.is_hash_checking=</string></value></param><param><value><string>d.complete=</string></value></param><param><value><string>d.bytes_done=</string></value></param><param><value><string>d.size_bytes=</string></value></param><param><value><string>d.down.rate=</string></value></param><param><value><string>d.up.rate=</string></value></param><param><value><string>d.ratio=</string></value></param><param><value><string>d.message=</string></value></param><param><value><string>d.directory=</string></value></param><param><value><string>d.peers_connected=</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><array><data><value><string>76BA904DD4DCDA9829D1E44ECA88725F20E9563E</string></value><value><string>Recorded.Rtorrent.Paused.2024.1080p.WEB-DL.mkv</string></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>4194304</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><string></string></value><value><string>/downloads/temp</string></value><value><i8>0</i8></value></data></array></value></data></array></value></param></params></methodResponse>"
+      }
+    }
+  ]
+}

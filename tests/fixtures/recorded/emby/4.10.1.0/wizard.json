@@ -1,0 +1,303 @@
+{
+  "app": "emby",
+  "version": "4.10.1.0",
+  "state": "wizard",
+  "recordedAt": "2026-10-18T11:11:25Z",
+  "note": "The first-run setup wizard, step by step, and the administrator's sign-in (the login and its token are removed) (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/System/Info/Public"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "LocalAddresses": [],
+          "RemoteAddresses": [],
+          "ServerName": "18663f3536c2",
+          "Version": "4.10.1.0",
+          "Id": "a8f5d36cc5ad4259880f1ff66bbdfbaa"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/System/Info/Public"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "LocalAddresses": [],
+          "RemoteAddresses": [],
+          "ServerName": "18663f3536c2",
+          "Version": "4.10.1.0",
+          "Id": "a8f5d36cc5ad4259880f1ff66bbdfbaa"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Startup/Configuration"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "UICulture": "en-us"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/emby/Startup/Configuration",
+        "body": {
+          "UICulture": "en-US",
+          "MetadataCountryCode": "US",
+          "PreferredMetadataLanguage": "en"
+        }
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Startup/User"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Name": "root"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/emby/Startup/User",
+        "body": {
+          "Name": "<scrubbed>",
+          "Password": "<scrubbed>"
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/emby/Startup/RemoteAccess",
+        "body": {
+          "EnableRemoteAccess": false,
+          "EnableAutomaticPortMapping": false
+        }
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/emby/Startup/Complete"
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/emby/Users/AuthenticateByName",
+        "body": {
+          "Username": "<scrubbed>",
+          "Pw": "<scrubbed>"
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "User": {
+            "Name": "<scrubbed>",
+            "ServerId": "a8f5d36cc5ad4259880f1ff66bbdfbaa",
+            "Prefix": "R",
+            "DateCreated": "2026-10-18T11:11:14.6405646Z",
+            "Id": "cc5185767bf748dbbe109af7975fdbd7",
+            "HasPassword": true,
+            "HasConfiguredPassword": true,
+            "LastLoginDate": "2026-10-18T11:11:25.7701985Z",
+            "LastActivityDate": "2026-10-18T11:11:25.7744571Z",
+            "Configuration": {
+              "PlayDefaultAudioTrack": true,
+              "DisplayMissingEpisodes": false,
+              "SubtitleMode": "Smart",
+              "OrderedViews": [],
+              "LatestItemsExcludes": [],
+              "MyMediaExcludes": [],
+              "HidePlayedInLatest": true,
+              "HidePlayedInMoreLikeThis": false,
+              "HidePlayedInSuggestions": false,
+              "RememberAudioSelections": true,
+              "RememberSubtitleSelections": true,
+              "EnableNextEpisodeAutoPlay": true,
+              "ResumeRewindSeconds": 0,
+              "IntroSkipMode": "ShowButton",
+              "EnableLocalPassword": false
+            },
+            "Policy": {
+              "IsAdministrator": true,
+              "IsHidden": false,
+              "IsHiddenRemotely": true,
+              "IsHiddenFromUnusedDevices": false,
+              "IsDisabled": false,
+              "LockedOutDate": 0,
+              "AllowTagOrRating": false,
+              "BlockedTags": [],
+              "IsTagBlockingModeInclusive": false,
+              "IncludeTags": [],
+              "EnableUserPreferenceAccess": true,
+              "AccessSchedules": [],
+              "BlockUnratedItems": [],
+              "EnableRemoteControlOfOtherUsers": true,
+              "EnableSharedDeviceControl": true,
+              "EnableRemoteAccess": true,
+              "EnableLiveTvManagement": true,
+              "EnableLiveTvAccess": true,
+              "EnableMediaPlayback": true,
+              "EnableAudioPlaybackTranscoding": true,
+              "EnableVideoPlaybackTranscoding": true,
+              "EnableTranscodingQuality": true,
+              "AutoRemoteQuality": 0,
+              "EnablePlaybackRemuxing": true,
+              "EnableContentDeletion": true,
+              "RestrictedFeatures": [],
+              "EnableContentDeletionFromFolders": [],
+              "EnableContentDownloading": true,
+              "EnableSubtitleDownloading": true,
+              "EnableSubtitleManagement": true,
+              "EnableSyncTranscoding": true,
+              "EnableMediaConversion": true,
+              "EnabledChannels": [],
+              "EnableAllChannels": true,
+              "EnabledFolders": [],
+              "EnableAllFolders": true,
+              "InvalidLoginAttemptCount": 0,
+              "EnablePublicSharing": true,
+              "RemoteClientBitrateLimit": 0,
+              "AuthenticationProviderId": "Emby.Server.Implementations.Library.DefaultAuthenticationProvider",
+              "ExcludedSubFolders": [],
+              "SimultaneousStreamLimit": 0,
+              "EnabledDevices": [],
+              "EnableAllDevices": true,
+              "AllowCameraUpload": true,
+              "AllowSharingPersonalItems": true
+            }
+          },
+          "SessionInfo": {
+            "PlayState": {
+              "CanSeek": false,
+              "IsPaused": false,
+              "IsMuted": false,
+              "RepeatMode": "RepeatNone",
+              "SleepTimerMode": "None",
+              "SubtitleOffset": 0,
+              "Shuffle": false,
+              "PlaybackRate": 1
+            },
+            "AdditionalUsers": [],
+            "RemoteEndPoint": "192.168.1.10",
+            "Protocol": "HTTP/1.1",
+            "PlayableMediaTypes": [],
+            "PlaylistIndex": 0,
+            "PlaylistLength": 0,
+            "Id": "3b8bd03c19e5b6666a03601d27d0f6b7",
+            "ServerId": "a8f5d36cc5ad4259880f1ff66bbdfbaa",
+            "UserId": "cc5185767bf748dbbe109af7975fdbd7",
+            "UserName": "<scrubbed>",
+            "Client": "Deluno Recorder",
+            "LastActivityDate": "2026-10-18T11:11:25.7744571Z",
+            "DeviceName": "Recorder",
+            "InternalDeviceId": 1,
+            "DeviceId": "deluno-recorder-1",
+            "ApplicationVersion": "1.0",
+            "SupportedCommands": [],
+            "SupportsRemoteControl": false
+          },
+          "AccessToken": "<scrubbed>",
+          "ServerId": "a8f5d36cc5ad4259880f1ff66bbdfbaa"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/emby/Auth/Keys?app=Deluno"
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Auth/Keys"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [
+            {
+              "Id": 2,
+              "AccessToken": "<scrubbed>",
+              "ReportedDeviceId": "a8f5d36cc5ad4259880f1ff66bbdfbaa",
+              "DeviceId": 2,
+              "AppName": "Deluno",
+              "AppVersion": "4.10.1.0",
+              "IpAddress": "192.168.1.10",
+              "DeviceName": "18663f3536c2",
+              "UserId": 0,
+              "DateCreated": "2026-10-18T11:11:25.0000000Z",
+              "IsActive": true
+            }
+          ],
+          "TotalRecordCount": 0
+        }
+      }
+    }
+  ]
+}

@@ -111,3 +111,13 @@ test('a Plex or Emby token in a query string is removed', () => {
   assert.ok(!out.includes('abcd1234') && !out.includes('zzzz9999'));
   assert.match(out, /name=Movies/);
 });
+
+test('a Plex item address under "key" is kept, an API key under "key" is not', () => {
+  const out = scrubValue({ Directory: [{ key: '1' }, { key: '/library/metadata/12' }], key: 'abcdef0123456789abcdef0123456789' });
+  assert.equal(out.Directory[0].key, '1');
+  assert.equal(out.Directory[1].key, '/library/metadata/12');
+  assert.equal(out.key, scrubbedValue);
+  assert.equal(scrubText('/:/scrobble?key=7&identifier=x'), '/:/scrobble?key=7&identifier=x');
+  assert.equal(scrubText('/x?key=%2Flibrary%2Fmetadata%2F7&a=b'), '/x?key=%2Flibrary%2Fmetadata%2F7&a=b');
+  assert.equal(scrubText('/x?key=abcdef0123456789abcdef0123456789'), `/x?key=${scrubbedValue}`);
+});

@@ -1,0 +1,65 @@
+{
+  "app": "rtorrent",
+  "version": "0.16.25",
+  "state": "add-url-dead",
+  "recordedAt": "2026-10-18T10:52:07Z",
+  "note": "load.start of a link the server answers 404 for, then the hashes and the list (rTorrent adds nothing, and says nothing).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>download_list</methodName><params></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data/></array></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>load.start</methodName><params><param><value><string></string></value></param><param><value><string>http://tracker:8080/dl/Recorded.Nothing.Here.torrent</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><i8>0</i8></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>download_list</methodName><params></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data/></array></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.multicall2</methodName><params><param><value><string></string></value></param><param><value><string>main</string></value></param><param><value><string>d.hash=</string></value></param><param><value><string>d.name=</string></value></param><param><value><string>d.is_active=</string></value></param><param><value><string>d.is_hash_checking=</string></value></param><param><value><string>d.complete=</string></value></param><param><value><string>d.bytes_done=</string></value></param><param><value><string>d.size_bytes=</string></value></param><param><value><string>d.down.rate=</string></value></param><param><value><string>d.up.rate=</string></value></param><param><value><string>d.ratio=</string></value></param><param><value><string>d.message=</string></value></param><param><value><string>d.directory=</string></value></param><param><value><string>d.peers_connected=</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data/></array></value></param></params></methodResponse>"
+      }
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "app": "tmdb",
+  "version": "2026-10-18",
+  "state": "search-no-results",
+  "recordedAt": "2026-10-18T10:45:10Z",
+  "note": "GET /metadata/search for a title nothing matches. Through the deployed gateway (deluno-metadata-gateway.ejmdigital.workers.dev).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/metadata/search?mediaType=movies&query=Zzqxjv%20Nonexistent%20Title%20Qwerty"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "public, max-age=300"
+        },
+        "body": {
+          "provider": "deluno-broker",
+          "mode": "broker",
+          "resultCount": 0,
+          "results": []
+        }
+      }
+    }
+  ]
+}

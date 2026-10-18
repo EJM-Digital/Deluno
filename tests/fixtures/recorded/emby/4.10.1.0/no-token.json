@@ -1,0 +1,22 @@
+{
+  "app": "emby",
+  "version": "4.10.1.0",
+  "state": "no-token",
+  "recordedAt": "2026-10-18T11:11:25Z",
+  "note": "System info with no key at all (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/System/Info"
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "bodyText": "Access token is invalid or expired."
+      }
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+{
+  "app": "plex",
+  "version": "1.43.4.10903-e5521bd8c",
+  "state": "sections",
+  "recordedAt": "2026-10-18T10:35:55Z",
+  "note": "The library sections as Deluno lists them (Plex Media Server 1.43.4.10903-e5521bd8c in Docker, UNCLAIMED: no account is made, so every call is local and carries no token).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/library/sections"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "MediaContainer": {
+            "size": 2,
+            "allowSync": false,
+            "title1": "Plex Library",
+            "Directory": [
+              {
+                "allowSync": false,
+                "filters": true,
+                "refreshing": false,
+                "key": "1",
+                "type": "movie",
+                "title": "Movies",
+                "agent": "tv.plex.agents.movie",
+                "scanner": "Plex Movie",
+                "language": "en-US",
+                "metadataAgentProviderGroupId": 1,
+                "uuid": "8abe45d8-a6c1-4cb0-8fcd-be2dea9ee912",
+                "updatedAt": 1792319735,
+                "createdAt": 1792319735,
+                "scannedAt": 1792319736,
+                "content": true,
+                "directory": true,
+                "contentChangedAt": 4,
+                "hidden": 0,
+                "Location": [
+                  {
+                    "id": 1,
+                    "path": "/media/Movies"
+                  }
+                ]
+              },
+              {
+                "allowSync": false,
+                "filters": true,
+                "refreshing": false,
+                "key": "2",
+                "type": "show",
+                "title": "Shows",
+                "agent": "tv.plex.agents.series",
+                "scanner": "Plex TV Series",
+                "language": "en-US",
+                "metadataAgentProviderGroupId": 2,
+                "uuid": "24eca3bf-d43c-4f42-a991-5414f8cb7f46",
+                "updatedAt": 1792319735,
+                "createdAt": 1792319735,
+                "scannedAt": 1792319737,
+                "content": true,
+                "directory": true,
+                "contentChangedAt": 15,
+                "hidden": 0,
+                "Location": [
+                  {
+                    "id": 2,
+                    "path": "/media/Shows"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

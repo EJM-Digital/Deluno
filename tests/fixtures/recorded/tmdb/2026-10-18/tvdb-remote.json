@@ -1,0 +1,31 @@
+{
+  "app": "tmdb",
+  "version": "2026-10-18",
+  "state": "tvdb-remote",
+  "recordedAt": "2026-10-18T10:45:22Z",
+  "note": "GET /tvdb/remote/{imdb id}: TheTVDB id for an IMDb id. Through the deployed gateway (deluno-metadata-gateway.ejmdigital.workers.dev).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/metadata/tvdb/remote/tt0903747"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "public, max-age=600"
+        },
+        "body": {
+          "provider": "tvdb",
+          "imdbId": "tt0903747",
+          "tvdbId": "81189",
+          "attribution": {
+            "text": "TV metadata provided by TheTVDB",
+            "url": "https://thetvdb.com"
+          }
+        }
+      }
+    }
+  ]
+}
