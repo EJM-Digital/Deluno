@@ -454,3 +454,53 @@ describe("Transfers while the processor is not answering", () => {
     expect(screen.getByText("one is not responding")).toBeVisible();
   });
 });
+
+describe("a failed hand-off's own drawer: Import original and Search for another release", () => {
+  const reason = "The processor could not read this file.";
+  const release = "Nosferatu.2024.1080p.BluRay-GROUP";
+
+  function openFailedHandoff() {
+    const item = download({
+      id: "deluge-1", clientId: "deluge-client", clientName: "Deluge", protocol: "deluge", title: "Nosferatu", releaseName: release,
+      status: "processingFailed", progress: 100, errorMessage: reason
+    });
+    queueLoaderData.telemetry = { ...queueLoaderData.telemetry, clients: [{ ...client([item]), clientId: "deluge-client", clientName: "Deluge", protocol: "deluge" } as DownloadClientTelemetrySnapshot] };
+    queueLoaderData.processorHandoffs = [{
+      id: "h1", libraryId: "library-1", mediaType: "movies", clientId: "deluge-client", queueItemId: "deluge-1", releaseName: release, sourcePath: "/downloads/nosferatu",
+      processorName: "Weir", status: "failed", outputPath: null, importJobId: null, failureMessage: reason, createdUtc: new Date().toISOString(), updatedUtc: new Date().toISOString()
+    }];
+    render(<MemoryRouter><QueuePage /></MemoryRouter>);
+    fireEvent.click(screen.getAllByText(release)[0]!);
+  }
+
+  it("Import original posts to the hand-off's import-original and says the release will be imported unprocessed", async () => {
+    authedFetchMock.mockResolvedValue({ ok: true, status: 202, json: async () => ({}) });
+    openFailedHandoff();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Import original" }));
+
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/integrations/processors/handoffs/h1/import-original", { method: "POST" }));
+    await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith(`${release} will be imported unprocessed`));
+  });
+
+  it("Import original, refused by the server, says its reason and does not claim to have imported anything", async () => {
+    authedFetchMock.mockResolvedValue({ ok: false, status: 409, json: async () => ({ message: "The original can only be imported once the processor has stopped working on it." }) });
+    openFailedHandoff();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Import original" }));
+
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith("The original can only be imported once the processor has stopped working on it."));
+    expect(toastMock.success).not.toHaveBeenCalled();
+  });
+
+  it("Search for another release posts to the hand-off's search-again, shows the server's sentence and closes the drawer", async () => {
+    authedFetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ message: "Removed it from the download client with its files, blocklisted it and started a search." }) });
+    openFailedHandoff();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Search for another release" }));
+
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/integrations/processors/handoffs/h1/search-again", { method: "POST" }));
+    await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith("Removed it from the download client with its files, blocklisted it and started a search."));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+});
