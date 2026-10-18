@@ -162,7 +162,7 @@ describe("Allowed Hosts: taking an added address off again", () => {
   // Defect: an address typed into the box and added is kept for the save but is not drawn in the list until it has been saved
   // (the rows come only from the detected addresses and the saved ones), so the box clears and nothing shows it was taken
   // (system-security-page.tsx, `rows`).
-  it.skip("an address that was just added shows in the list at once, ticked", () => {
+  it("an address that was just added shows in the list at once, ticked", () => {
     renderPage();
     fireEvent.change(screen.getByPlaceholderText("*.example.com"), { target: { value: "deluno.example.com" } });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
