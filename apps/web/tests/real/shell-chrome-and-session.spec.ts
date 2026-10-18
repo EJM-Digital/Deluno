@@ -56,8 +56,8 @@ test.describe("signing in carries the person back to where they were", () => {
     expect(await page.evaluate(() => localStorage.getItem("deluno-auth-token"))).toBeTruthy();
   });
 
-  // Defect: the sign-in address should carry the hash as well (return=<path+query+hash>), but the redirect to /login drops it:
-  // a visit to /movies?x=1#h arrives at /login?return=%2Fmovies%3Fx%3D1.
+  // The sign-in address carries the hash as well (return=<path+query+hash>): a visit to /movies?x=1#h arrives at
+  // /login?return=%2Fmovies%3Fx%3D1%23h (#1355).
   test("a signed-out visit to a screen with a hash carries the hash in the sign-in address", async ({ page }) => {
     await page.goto("/movies?x=1#h");
     await expect(page).toHaveURL(/\/login\?return=/);
@@ -228,9 +228,8 @@ test.describe("unsaved edits on a settings screen", () => {
 });
 
 test.describe("the slash key", () => {
-  // Defect: the shortcut list says "/" is "Focus search", but it only opens the phone search sheet, which is hidden from the
-  // large breakpoint up, so on a desktop pressing it does nothing visible (app-layout.tsx, useHotkeys("/") and the
-  // `lg:hidden` sheet in ContentTopbar).
+  // "/" is "Focus search": on a desktop it opens the search window, whose box takes the cursor (the phone sheet is hidden from
+  // the large width up). The hotkey was also never matching, as the library reads the key by its code name "slash" (#1355).
   test("pressing / on a desktop puts the cursor in a search box", async ({ page }) => {
     await openScreen(page, "/movies");
     await untilQuiet(page);

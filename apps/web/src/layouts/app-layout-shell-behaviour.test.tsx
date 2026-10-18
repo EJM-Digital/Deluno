@@ -214,6 +214,12 @@ describe("the theme button", () => {
 });
 
 describe("the phone search sheet", () => {
+  it("the / key opens the search sheet below the large width (the library matches no width here)", async () => {
+    await mount("/");
+    fireEvent.keyDown(document.body, { key: "/", code: "Slash" });
+    expect(await screen.findByRole("button", { name: "Done" })).toBeTruthy();
+  });
+
   it("the search icon opens a full-screen sheet; Done closes it", async () => {
     await mount("/");
     expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
