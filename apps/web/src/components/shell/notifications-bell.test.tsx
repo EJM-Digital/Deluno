@@ -412,3 +412,92 @@ describe("the bell is two sections, with the same buttons System's Health shows 
     expect(authedFetch.mock.calls[0][0]).toBe("/api/attention/no-release/movie/m1/dismiss");
   });
 });
+
+describe("each button on a bell row sends the request it says it will (#1098)", () => {
+  afterEach(() => {
+    fetchPageItems.mockReset();
+    queryClient.clear();
+    navigate.mockReset();
+    authedFetch.mockClear();
+  });
+
+  const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
+
+  function oneOfEach(): AttentionSnapshot {
+    const summary = summaryOf([
+      serverRow({ id: "import:j9", kind: "import", section: "media", tone: "bad", title: "Heat (1995)", text: "The disk was full.", to: "/queue", data: { id: "j9" } }),
+      serverRow({
+        id: "handoff:h9", kind: "handoff", section: "media", tone: "bad", title: "Metropolis (1927)", text: "The processor timed out.", to: "/queue",
+        data: { id: "h9", releaseName: "Metropolis.1927.1080p", status: "failed", outputPath: null, importJobId: null, outcome: null }
+      }),
+      serverRow({
+        id: "no-release:movie:m9", kind: "no-release", section: "media", title: "Obscure Film (1971)", to: "/movies/m9",
+        data: { mediaType: "movie", id: "m9", title: "Obscure Film", year: 1971, libraryId: "lib 1", lastSearchUtc: hoursAgo(1), missingSinceUtc: hoursAgo(5), reason: null }
+      }),
+      serverRow({ id: "health:system:disk", kind: "health:system", title: "A drive is nearly full", data: { id: "system:disk", category: "system", name: "A drive is nearly full", link: "/system" } })
+    ]);
+    return { ...attention, total: summary.count, summary };
+  }
+
+  /** Three old no-release titles are one pile, whose one button opens the wanted list. */
+  function oldPile(): AttentionSnapshot {
+    const rows = [1, 2, 3].map((n) => serverRow({
+      id: `no-release:movie:old${n}`, kind: "no-release", section: "media", title: `Old Film ${n} (1970)`, to: `/movies/old${n}`, sinceUtc: hoursAgo(48),
+      data: { mediaType: "movie", id: `old${n}`, title: `Old Film ${n}`, year: 1970, libraryId: "lib", lastSearchUtc: hoursAgo(1), missingSinceUtc: hoursAgo(48), reason: null }
+    }));
+    const summary = summaryOf(rows);
+    return { ...attention, total: summary.count, summary };
+  }
+
+  async function open(snapshot: AttentionSnapshot) {
+    fetchPageItems.mockResolvedValue([]);
+    const user = userEvent.setup();
+    render(<MemoryRouter><NotificationsBell attention={snapshot} /></MemoryRouter>);
+    await user.click(screen.getByRole("button", { name: /notifications/i }));
+    return { user, dialog: await screen.findByRole("dialog") };
+  }
+
+  const lastCall = () => {
+    const [path, init] = authedFetch.mock.calls.at(-1) as [string, RequestInit];
+    return { path, method: init?.method };
+  };
+
+  it("Try again on a failed import tries that job again", async () => {
+    const { user, dialog } = await open(oneOfEach());
+    await user.click(within(dialog).getByRole("button", { name: "Try again: failed import 1" }));
+    await waitFor(() => expect(authedFetch).toHaveBeenCalled());
+    expect(lastCall()).toEqual({ path: "/api/jobs/j9/retry", method: "POST" });
+  });
+
+  it("Retry on a refused hand-off sends the finished download to the processor again", async () => {
+    const { user, dialog } = await open(oneOfEach());
+    await user.click(within(dialog).getByRole("button", { name: "Retry: Metropolis (1927)" }));
+    await waitFor(() => expect(authedFetch).toHaveBeenCalled());
+    expect(lastCall()).toEqual({ path: "/api/integrations/processors/handoffs/h9/retry", method: "POST" });
+  });
+
+  it("Search now on a title with no acceptable release searches that film in its own library", async () => {
+    const { user, dialog } = await open(oneOfEach());
+    await user.click(within(dialog).getByRole("button", { name: "Search now: Obscure Film (1971)" }));
+    await waitFor(() => expect(authedFetch).toHaveBeenCalled());
+    expect(lastCall()).toEqual({ path: "/api/movies/m9/search?libraryId=lib%201", method: "POST" });
+  });
+
+  it("Open System on a Deluno problem is a link to System and sends nothing", async () => {
+    const { user, dialog } = await open(oneOfEach());
+    const deluno = within(dialog).getByRole("region", { name: "Deluno" });
+    const openSystem = within(deluno).getByRole("link", { name: /Open System/ });
+    expect(openSystem).toHaveAttribute("href", "/system");
+    await user.click(openSystem);
+    expect(authedFetch).not.toHaveBeenCalled();
+  });
+
+  it("Open Wanted on a pile of old titles is a link to the wanted list and sends nothing", async () => {
+    const { user, dialog } = await open(oldPile());
+    expect(within(dialog).getByText("3 titles have no acceptable release")).toBeInTheDocument();
+    const openWanted = within(dialog).getByRole("link", { name: /Open Wanted/ });
+    expect(openWanted).toHaveAttribute("href", "/search-cycles/missing");
+    await user.click(openWanted);
+    expect(authedFetch).not.toHaveBeenCalled();
+  });
+});
