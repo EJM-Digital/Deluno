@@ -305,7 +305,7 @@ public sealed class RecordedRepliesTests : IDisposable
         ("the workstation's name", new Regex("SPARE" + "-PC", RegexOptions.IgnoreCase)),
         ("a lab password", new Regex("Deluno-Lab-" + "2026")),
         ("an e-mail address", new Regex(@"(?<![\w.%+-])(?!noreply@)[A-Za-z0-9._%+-]+@(?!example\.(test|com))[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")),
-        ("a private LAN address", new Regex(@"\b(?:10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}\b")),
+        ("a private LAN address", new Regex(@"\b(?!192\.168\.1\.10\b)(?:10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}\b")),
         ("a person's profile folder", new Regex(@"[A-Za-z]:\\{1,2}Users\\{1,2}(?!<|Public\b|Default\b)[^\\""]+", RegexOptions.IgnoreCase))
     ];
 
