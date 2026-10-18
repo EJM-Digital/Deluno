@@ -1,0 +1,51 @@
+{
+  "app": "seerr",
+  "version": "3.5.0",
+  "state": "settings-main",
+  "recordedAt": "2026-10-18T11:04:16Z",
+  "note": "The key-protected settings Deluno reads to prove its key (applicationTitle) (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/settings/main"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "apiKey": "<scrubbed>",
+          "applicationTitle": "Seerr",
+          "applicationUrl": "",
+          "cacheImages": false,
+          "defaultPermissions": 32,
+          "defaultQuotas": {
+            "movie": {},
+            "tv": {}
+          },
+          "hideAvailable": false,
+          "hideBlocklisted": false,
+          "hideRequested": false,
+          "localLogin": true,
+          "mediaServerLogin": true,
+          "newPlexLogin": true,
+          "discoverRegion": "",
+          "streamingRegion": "",
+          "originalLanguage": "",
+          "blocklistRegion": "",
+          "blocklistLanguage": "",
+          "blocklistedTags": "",
+          "blocklistedTagsLimit": 50,
+          "mediaServerType": 2,
+          "partialRequestsEnabled": true,
+          "enableSpecialEpisodes": false,
+          "locale": "en",
+          "youtubeUrl": "",
+          "versionCheck": true
+        }
+      }
+    }
+  ]
+}

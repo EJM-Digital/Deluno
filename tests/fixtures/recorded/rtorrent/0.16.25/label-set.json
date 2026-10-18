@@ -1,0 +1,51 @@
+{
+  "app": "rtorrent",
+  "version": "0.16.25",
+  "state": "label-set",
+  "recordedAt": "2026-10-18T10:53:33Z",
+  "note": "d.custom1 (empty), d.custom1.set (the label field of rTorrent), then d.custom1 reads the label back.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.custom1</methodName><params><param><value><string>D3A2428E690FB2056D885BA960C5D85EA531454F</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><string></string></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.custom1.set</methodName><params><param><value><string>D3A2428E690FB2056D885BA960C5D85EA531454F</string></value></param><param><value><string>recorded-movies</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><string>recorded-movies</string></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.custom1</methodName><params><param><value><string>D3A2428E690FB2056D885BA960C5D85EA531454F</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><string>recorded-movies</string></value></param></params></methodResponse>"
+      }
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "app": "plex",
+  "version": "1.43.4.10903-e5521bd8c",
+  "state": "playlists",
+  "recordedAt": "2026-10-18T10:35:58Z",
+  "note": "The video playlists (none made) (Plex Media Server 1.43.4.10903-e5521bd8c in Docker, UNCLAIMED: no account is made, so every call is local and carries no token).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/playlists?playlistType=video"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "MediaContainer": {
+            "size": 0
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+# The apps the second Docker recording pass runs (rTorrent, Plex, Emby, Jellyfin, Seerr), on their own project name and ports, apart from
+# tests/e2e/compose.yaml. Start one with:  docker compose -p rec2 -f apps.compose.yaml up -d <service>
+# Ports are published on 127.0.0.1 only. Nothing here holds a real account: a Plex or Emby server is left unclaimed.
+name: rec2
+
+services:
+  # rTorrent with its XML-RPC mount (nginx in front, /RPC2) as crazymax publishes it. A login for the mount is set below.
+  rtorrent:
+    image: crazymax/rtorrent-rutorrent:latest
+    environment:
+      TZ: Etc/UTC
+      XMLRPC_PORT: "8000"
+      RT_INC_PORT: "50000"
+      RT_DHT_PORT: "6881"
+      RT_LOG_LEVEL: info
+    ports:
+      - "127.0.0.1:${REC2_RTORRENT_PORT:-38000}:8000"
+    volumes:
+      - rtorrent-data:/data
+      - rtorrent-downloads:/downloads
+  # The other rTorrent: it seeds the film the first one downloads (rate-limited), so a transfer really is in flight.
+  rtseed:
+    image: crazymax/rtorrent-rutorrent:latest
+    environment:
+      TZ: Etc/UTC
+      XMLRPC_PORT: "8000"
+      RT_INC_PORT: "50000"
+    ports:
+      - "127.0.0.1:${REC2_RTSEED_PORT:-38001}:8000"
+    volumes:
+      - rtseed-data:/data
+      - rtseed-downloads:/downloads
+  # Introduces the two to each other and serves their .torrent files by link (tracker.mjs). Not a recorded app.
+  tracker:
+    image: node:22-slim
+    command: ["node", "/tracker.mjs"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${REC2_TRACKER_PORT:-38080}:8080"
+    volumes:
+      - ./tracker.mjs:/tracker.mjs:ro
+  # SABnzbd 5.1.3 as the e2e stack pins it, with that stack's first settings file (its key; the news server it names is never reached).
+  sabnzbd:
+    image: lscr.io/linuxserver/sabnzbd@sha256:7a13af91cf296399e302d2fb6fc709d6e2ea15e3094f220684611fbe1dd43625
+    environment:
+      TZ: Etc/UTC
+      PUID: "1000"
+      PGID: "1000"
+    ports:
+      - "127.0.0.1:${REC2_SABNZBD_PORT:-38083}:8080"
+    volumes:
+      - ./sabnzbd.ini:/config/sabnzbd.ini   # a copy of tests/e2e/sabnzbd/sabnzbd.ini, placed beside this file in the private copy
+      - sabnzbd-downloads:/downloads
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    ports:
+      - "127.0.0.1:${REC2_JELLYFIN_PORT:-38096}:8096"
+    volumes:
+      - jellyfin-config:/config
+      - media:/media
+  emby:
+    image: emby/embyserver:latest
+    environment:
+      UID: "0"
+      GID: "0"
+    ports:
+      - "127.0.0.1:${REC2_EMBY_PORT:-38097}:8096"
+    volumes:
+      - emby-config:/config
+      - media:/media
+  plex:
+    image: plexinc/pms-docker:latest
+    environment:
+      TZ: Etc/UTC
+      ADVERTISE_IP: "http://127.0.0.1:32400/"
+    ports:
+      - "127.0.0.1:${REC2_PLEX_PORT:-32400}:32400"
+    volumes:
+      - plex-config:/config
+      - media:/media
+  seerr:
+    image: ghcr.io/seerr-team/seerr:latest
+    init: true
+    environment:
+      TZ: Etc/UTC
+      LOG_LEVEL: info
+    ports:
+      - "127.0.0.1:${REC2_SEERR_PORT:-35055}:5055"
+    volumes:
+      - seerr-config:/app/config
+
+volumes:
+  rtorrent-data: {}
+  rtorrent-downloads: {}
+  rtseed-data: {}
+  rtseed-downloads: {}
+  jellyfin-config: {}
+  emby-config: {}
+  plex-config: {}
+  seerr-config: {}
+  sabnzbd-downloads: {}
+  media: {}

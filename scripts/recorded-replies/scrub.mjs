@@ -66,16 +66,21 @@ export function scrubText(text, extraNames = []) {
   // Inside an XML or HTML document the marker is written escaped, so the document still parses.
   const marker = /^\s*<[?!a-zA-Z]/.test(out) ? '&lt;scrubbed&gt;' : scrubbedValue;
   // key=value pairs in a query string or a form body.
-  out = out.replace(/(^|[?&;,\s])(apikey|api_key|password|token|x-plex-token|x-emby-token|sid|key|username|user|nzbkey|ma_username|ma_password|rpc-password)=([^&\s"']+)/gi, (_, lead, key) => `${lead}${key}=${marker}`);
+  out = out.replace(/(^|[?&;,\s])(apikey|api_key|password|token|x-plex-token|x-emby-token|sid|key|username|user|nzbkey|ma_username|ma_password|rpc-password)=([^&\s"']+)/gi, (_, lead, key, val) => (key.toLowerCase() === 'key' && isPlexItemAddress(val) ? `${lead}${key}=${val}` : `${lead}${key}=${marker}`));
   // Cookie and token text that is not under a key we recognise.
   out = out.replace(/\b(SID|_session_id|session_id)=([^;\s"']+)/g, (_, key) => `${key}=${scrubbedValue}`);
   out = out.replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/g, `Bearer ${scrubbedValue}`);
   return out;
 }
 
+// Plex names a library item by a field called `key` ("1", "/library/metadata/1", "/library/sections/1/all"): an address inside the server,
+// never a secret. Only a value of that shape is kept; an API key is neither a short number nor a path.
+const plexItemAddress = /^(?:\d{1,8}|(?:\/|%2F)[A-Za-z0-9_\/:.%=+-]*)$/i;
+export const isPlexItemAddress = (value) => plexItemAddress.test(value);
+
 export function scrubValue(value, extraNames = [], key = null) {
   if (typeof value === 'string') {
-    if (key !== null && (secretKeys.test(key) || sensitiveKeyPart.test(key)) && value !== '') return scrubbedValue;
+    if (key !== null && (secretKeys.test(key) || sensitiveKeyPart.test(key)) && value !== '' && !(key.toLowerCase() === 'key' && isPlexItemAddress(value))) return scrubbedValue;
     return scrubText(value, extraNames);
   }
   if (Array.isArray(value)) return value.map((v) => scrubValue(v, extraNames, key));

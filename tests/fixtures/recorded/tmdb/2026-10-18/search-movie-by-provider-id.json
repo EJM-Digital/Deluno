@@ -1,0 +1,132 @@
+{
+  "app": "tmdb",
+  "version": "2026-10-18",
+  "state": "search-movie-by-provider-id",
+  "recordedAt": "2026-10-18T10:45:08Z",
+  "note": "GET /metadata/search with a providerId: how a refresh and the metadata link preview read one exact TMDb record. Through the deployed gateway (deluno-metadata-gateway.ejmdigital.workers.dev).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/metadata/search?mediaType=movies&query=Sintel&providerId=45745&year=2010"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "public, max-age=300"
+        },
+        "body": {
+          "provider": "deluno-broker",
+          "mode": "broker",
+          "resultCount": 1,
+          "results": [
+            {
+              "provider": "tmdb",
+              "providerId": "45745",
+              "mediaType": "movies",
+              "runtimeMinutes": 14,
+              "popularity": 3.4339,
+              "voteCount": 180,
+              "title": "Sintel",
+              "originalTitle": "Sintel",
+              "year": 2010,
+              "overview": "A wandering warrior finds an unlikely friend in the form of a young dragon. The two develop a close bond, until one day the dragon is snatched away. She then sets out on a relentless quest to reclaim her friend, finding in the end that her quest exacts a far greater price than she had ever imagined.",
+              "posterUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w780/l98Zns4oQe1BSvbF4hJ8oL6VSf0.jpg",
+              "backdropUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/original/msqeiEyIRpPAtrCeRGFNZQ9tkJL.jpg",
+              "rating": 7.333,
+              "ratings": [
+                {
+                  "source": "tmdb",
+                  "label": "TMDb",
+                  "score": 7.333,
+                  "maxScore": 10,
+                  "voteCount": 180,
+                  "url": "https://www.themoviedb.org/movie/45745",
+                  "kind": "community"
+                }
+              ],
+              "genres": [
+                "Animation",
+                "Fantasy"
+              ],
+              "keywords": [
+                "pet",
+                "dragon",
+                "blender",
+                "short film"
+              ],
+              "cast": [
+                {
+                  "personId": "39847",
+                  "name": "Halina Reijn",
+                  "character": "Sintel (voice)",
+                  "profileUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w185/su9FMcM5wKfZiSNs35OLlot4hLd.jpg",
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/39847/imdb"
+                },
+                {
+                  "personId": "7572",
+                  "name": "Thom Hoffman",
+                  "character": "Shaman (voice)",
+                  "profileUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w185/9idfzAANRjFDPnPHsRVVBb2LbNR.jpg",
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/7572/imdb"
+                }
+              ],
+              "crew": [
+                {
+                  "personId": "133631",
+                  "name": "Colin Levy",
+                  "job": "Director",
+                  "profileUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w185/aGFVsKopffZafgZjeF7GLlUvxO7.jpg",
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/133631/imdb"
+                },
+                {
+                  "personId": "133633",
+                  "name": "Esther Wouda",
+                  "job": "Writer",
+                  "profileUrl": null,
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/133633/imdb"
+                },
+                {
+                  "personId": "133632",
+                  "name": "Ton Roosendaal",
+                  "job": "Producer",
+                  "profileUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/artwork/w185/2iRRkA2oCsPLSSLz1HKDhwJZlgy.jpg",
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/133632/imdb"
+                },
+                {
+                  "personId": "133634",
+                  "name": "Jan Morgenstern",
+                  "job": "Music",
+                  "profileUrl": null,
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/133634/imdb"
+                },
+                {
+                  "personId": "1097826",
+                  "name": "David Revoy",
+                  "job": "Art Direction",
+                  "profileUrl": null,
+                  "imdbUrl": "https://deluno-metadata-gateway.ejmdigital.workers.dev/person/1097826/imdb"
+                }
+              ],
+              "imdbId": "tt1727587",
+              "tvDbId": null,
+              "externalUrl": "https://www.themoviedb.org/movie/45745",
+              "certification": "PG",
+              "studio": "Blender Foundation",
+              "network": null,
+              "collection": null,
+              "collectionProviderId": null,
+              "director": "Colin Levy",
+              "trailerUrl": "https://www.youtube.com/watch?v=HOfdboHvshg",
+              "tagline": null,
+              "homepage": "http://durian.blender.org/",
+              "originalLanguage": "en",
+              "status": "Released"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

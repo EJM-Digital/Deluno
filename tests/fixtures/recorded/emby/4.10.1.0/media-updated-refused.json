@@ -1,0 +1,34 @@
+{
+  "app": "emby",
+  "version": "4.10.1.0",
+  "state": "media-updated-refused",
+  "recordedAt": "2026-10-18T11:17:45Z",
+  "note": "POST /Library/Media/Updated with a body that is not the update list (the server refuses it), and with no body (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/emby/Library/Media/Updated",
+        "bodyText": "not json"
+      },
+      "reply": {
+        "status": 500,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "bodyText": "Type definitions should start with a '{', expecting serialized type 'PostUpdatedMedia', got string starting with: not json"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/emby/Library/Media/Updated"
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "app": "jellyfin",
+  "version": "12.2.0",
+  "state": "collection-unfavourited",
+  "recordedAt": "2026-10-18T10:28:43Z",
+  "note": "The collection taken off the home screen (DELETE /Users/{id}/FavoriteItems/{id}) (jellyfin 12.2.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/Users/a1c0903caf8e4c6893fe8a771ccf74c6/FavoriteItems/18da5b93435bf32b1375cc6efe0ca347"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "PlayedPercentage": 100,
+          "UnplayedItemCount": 0,
+          "PlaybackPositionTicks": 0,
+          "PlayCount": 0,
+          "IsFavorite": false,
+          "Played": true,
+          "Key": "<scrubbed>",
+          "ItemId": "18da5b93435bf32b1375cc6efe0ca347"
+        }
+      }
+    }
+  ]
+}

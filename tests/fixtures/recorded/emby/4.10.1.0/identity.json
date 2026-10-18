@@ -1,0 +1,75 @@
+{
+  "app": "emby",
+  "version": "4.10.1.0",
+  "state": "identity",
+  "recordedAt": "2026-10-18T11:11:25Z",
+  "note": "The public identity and the full system info Deluno reads for the version and server id (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/System/Info/Public"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "LocalAddresses": [],
+          "RemoteAddresses": [],
+          "ServerName": "18663f3536c2",
+          "Version": "4.10.1.0",
+          "Id": "a8f5d36cc5ad4259880f1ff66bbdfbaa"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/System/Info"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "SystemUpdateLevel": "Release",
+          "OperatingSystemDisplayName": "Unix",
+          "HasPendingRestart": true,
+          "IsShuttingDown": false,
+          "HasImageEnhancers": false,
+          "OperatingSystem": "Linux",
+          "SupportsLibraryMonitor": true,
+          "SupportsLocalPortConfiguration": true,
+          "SupportsWakeServer": false,
+          "WebSocketPortNumber": 8096,
+          "CompletedInstallations": [],
+          "CanSelfRestart": true,
+          "CanSelfUpdate": false,
+          "CanLaunchWebBrowser": false,
+          "HttpServerPortNumber": 8096,
+          "SupportsHttps": false,
+          "HttpsPortNumber": 8920,
+          "HasUpdateAvailable": false,
+          "SupportsAutoRunAtStartup": false,
+          "HardwareAccelerationRequiresPremiere": true,
+          "WakeOnLanInfo": [
+            {
+              "MacAddress": "C618B1D09A19",
+              "BroadcastAddress": "192.168.1.10",
+              "Port": 9
+            }
+          ],
+          "IsInMaintenanceMode": false,
+          "LocalAddresses": [],
+          "RemoteAddresses": [],
+          "ServerName": "18663f3536c2",
+          "Version": "4.10.1.0",
+          "Id": "a8f5d36cc5ad4259880f1ff66bbdfbaa"
+        }
+      }
+    }
+  ]
+}

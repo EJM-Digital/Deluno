@@ -1,0 +1,114 @@
+{
+  "app": "emby",
+  "version": "4.10.1.0",
+  "state": "sessions-playing",
+  "recordedAt": "2026-10-18T11:17:44Z",
+  "note": "A client reports the film playing at the six-second mark: the session list before and during (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Sessions"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "PlayState": {
+              "CanSeek": false,
+              "IsPaused": false,
+              "IsMuted": false,
+              "RepeatMode": "RepeatNone",
+              "SleepTimerMode": "None",
+              "SubtitleOffset": 0,
+              "Shuffle": false,
+              "PlaybackRate": 1
+            },
+            "AdditionalUsers": [],
+            "RemoteEndPoint": "192.168.1.10",
+            "Protocol": "HTTP/1.1",
+            "PlayableMediaTypes": [],
+            "PlaylistIndex": 0,
+            "PlaylistLength": 0,
+            "Id": "71e4c0ee2581888c8bd578bd5b48e6e7",
+            "ServerId": "a8f5d36cc5ad4259880f1ff66bbdfbaa",
+            "Client": "Deluno",
+            "LastActivityDate": "2026-10-18T11:17:42.5013124Z",
+            "DeviceName": "18663f3536c2",
+            "InternalDeviceId": 2,
+            "DeviceId": "a8f5d36cc5ad4259880f1ff66bbdfbaa",
+            "ApplicationVersion": "4.10.1.0",
+            "SupportedCommands": [],
+            "SupportsRemoteControl": false
+          },
+          {
+            "PlayState": {
+              "CanSeek": false,
+              "IsPaused": false,
+              "IsMuted": false,
+              "RepeatMode": "RepeatNone",
+              "SleepTimerMode": "None",
+              "SubtitleOffset": 0,
+              "Shuffle": false,
+              "PlaybackRate": 1
+            },
+            "AdditionalUsers": [],
+            "RemoteEndPoint": "192.168.1.10",
+            "Protocol": "HTTP/1.1",
+            "PlayableMediaTypes": [],
+            "PlaylistIndex": 0,
+            "PlaylistLength": 0,
+            "Id": "3b8bd03c19e5b6666a03601d27d0f6b7",
+            "ServerId": "a8f5d36cc5ad4259880f1ff66bbdfbaa",
+            "UserId": "cc5185767bf748dbbe109af7975fdbd7",
+            "UserName": "<scrubbed>",
+            "Client": "Deluno Recorder",
+            "LastActivityDate": "2026-10-18T11:11:25.8424331Z",
+            "DeviceName": "Recorder",
+            "InternalDeviceId": 1,
+            "DeviceId": "deluno-recorder-1",
+            "ApplicationVersion": "1.0",
+            "SupportedCommands": [],
+            "SupportsRemoteControl": false
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/emby/Sessions/Playing",
+        "body": {
+          "ItemId": "6",
+          "MediaSourceId": "mediasource_6",
+          "PlaySessionId": "<scrubbed>",
+          "PlayMethod": "DirectPlay",
+          "CanSeek": true,
+          "PositionTicks": 60000000,
+          "IsPaused": false
+        }
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Sessions"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "bodyText": "[{\"PlayState\":{\"CanSeek\":false,\"IsPaused\":false,\"IsMuted\":false,\"RepeatMode\":\"RepeatNone\",\"SleepTimerMode\":\"None\",\"SubtitleOffset\":0,\"Shuffle\":false,\"PlaybackRate\":1},\"AdditionalUsers\":[],\"RemoteEndPoint\":\"192.168.1.10\",\"Protocol\":\"HTTP/1.1\",\"PlayableMediaTypes\":[],\"PlaylistIndex\":0,\"PlaylistLength\":0,\"Id\":\"71e4c0ee2581888c8bd578bd5b48e6e7\",\"ServerId\":\"a8f5d36cc5ad4259880f1ff66bbdfbaa\",\"Client\":\"Deluno\",\"LastActivityDate\":\"2026-10-18T11:17:44.5823061Z\",\"DeviceName\":\"18663f3536c2\",\"InternalDeviceId\":2,\"DeviceId\":\"a8f5d36cc5ad4259880f1ff66bbdfbaa\",\"ApplicationVersion\":\"4.10.1.0\",\"SupportedCommands\":[],\"SupportsRemoteControl\":false},{\"PlayState\":{\"PositionTicks\":79979479,\"CanSeek\":true,\"IsPaused\":false,\"IsMuted\":false,\"MediaSourceId\":\"mediasource_6\",\"PlayMethod\":\"DirectPlay\",\"RepeatMode\":\"RepeatNone\",\"SleepTimerMode\":\"None\",\"SubtitleOffset\":0,\"Shuffle\":false,\"PlaybackRate\":1},\"AdditionalUsers\":[],\"RemoteEndPoint\":\"192.168.1.10\",\"Protocol\":\"HTTP/1.1\",\"PlayableMediaTypes\":[],\"PlaylistIndex\":0,\"PlaylistLength\":0,\"Id\":\"3b8bd03c19e5b6666a03601d27d0f6b7\",\"ServerId\":\"a8f5d36cc5ad4259880f1ff66bbdfbaa\",\"UserId\":\"cc5185767bf748dbbe109af7975fdbd7\",\"UserName\":\"<scrubbed>\",\"Client\":\"Deluno Recorder\",\"LastActivityDate\":\"2026-10-18T11:17:44.5613908Z\",\"DeviceName\":\"Recorder\",\"NowPlayingItem\":{\"Name\":\"Sintel\",\"OriginalTitle\":\"Sintel\",\"ServerId\":\"a8f5d36cc5ad4259880f1ff66bbdfbaa\",\"Id\":\"6\",\"DateCreated\":\"2026-10-18T10:15:12.0000000Z\",\"DateModified\":\"2026-10-18T10:15:12.0000000Z\",\"PresentationUniqueKey\":\"p-tmdb-Movie-45745-9dc56421201e4993892822f21060f04b\",\"Container\":\"mkv\",\"PremiereDate\":\"2010-09-30T00:00:00.0000000Z\",\"ExternalUrls\":[{\"Name\":\"IMDb\",\"Url\":\"https://www.imdb.com/title/tt1727587\"},{\"Name\":\"TheMovieDb\",\"Url\":\"https://www.themoviedb.org/movie/45745\"},{\"Name\":\"TheTVDB\",\"Url\":\"https://thetvdb.com/dereferrer/movie/9413\"},{\"Name\":\"Trakt\",\"Url\":\"https://trakt.tv/search/tmdb/45745?id_type=movie\"}],\"Path\":\"/media/Movies/Sintel (2010)/Sintel (2010) [WEB 1080p].mkv\",\"OfficialRating\":\"PG\",\"Overview\":\"A wandering warrior finds an unlikely friend in the form of a young dragon. The two develop a close bond, until one day the dragon is snatched away. She then sets out on a relentless quest to reclaim her friend, finding in the end that her quest exacts a far greater price than she had ever imagined.\",\"Taglines\":[],\"Genres\":[\"Animation\",\"Fantasy\"],\"CommunityRating\":7.4,\"RunTimeTicks\":200230000,\"Size\":589148,\"FileName\":\"Sintel (2010) [WEB 1080p].mkv\",\"Bitrate\":235388,\"ProductionYear\":2010,\"ProviderIds\":{\"Imdb\":\"tt1727587\",\"Tvdb\":\"9413\",\"Tmdb\":\"45745\",\"official website\":\"http://durian.blender.org/\"},\"IsFolder\":false,\"ParentId\":\"5\",\"Type\":\"Movie\",\"Studios\":[{\"Name\":\"Blender Foundation\",\"Id\":14}],\"GenreItems\":[{\"Name\":\"Animation\",\"Id\":12},{\"Name\":\"Fantasy\",\"Id\":13}],\"PrimaryImageAspectRatio\":0.6666666666666666,\"MediaStreams\":[{\"Codec\":\"h264\",\"TimeBase\":\"1/1000\",\"VideoRange\":\"SDR\",\"DisplayTitle\":\"SD H264\",\"NalLengthSize\":\"4\",\"IsInterlaced\":false,\"BitRate\":235388,\"BitDepth\":8,\"RefFrames\":1,\"IsDefault\":false,\"IsForced\":false,\"IsHearingImpaired\":false,\"Height\":360,\"Width\":640,\"AverageFrameRate\":24,\"RealFrameRate\":24,\"Profile\":\"Constrained Baseline\",\"Type\":\"Video\",\"AspectRatio\":\"16:9\",\"Index\":0,\"IsExternal\":false,\"IsTextSubtitleStream\":false,\"SupportsExternalStream\":false,\"Protocol\":\"File\",\"PixelFormat\":\"yuv420p\",\"Level\":30,\"IsAnamorphic\":false,\"ExtendedVideoType\":\"None\",\"ExtendedVideoSubType\":\"None\",\"ExtendedVideoSubTypeDescription\":\"None\",\"AttachmentSize\":0},{\"Codec\":\"aac\",\"TimeBase\":\"1/1000\",\"DisplayTitle\":\"AAC mono\",\"IsInterlaced\":false,\"ChannelLayout\":\"mono\",\"BitRate\":192000,\"Channels\":1,\"SampleRate\":44100,\"IsDefault\":false,\"IsForced\":false,\"IsHearingImpaired\":false,\"Profile\":\"LC\",\"Type\":\"Audio\",\"Index\":1,\"IsExternal\":false,\"IsTextSubtitleStream\":false,\"SupportsExternalStream\":false,\"Protocol\":\"File\",\"ExtendedVideoType\":\"None\",\"ExtendedVideoSubType\":\"None\",\"ExtendedVideoSubTypeDescription\":\"None\",\"AttachmentSize\":0}],\"ImageTags\":{\"Primary\":\"d3089449300db28424362789aa390ae5_639279186880754706\",\"Logo\":\"228266b3e9467b9df88625be363ed07a_639279186880757274\",\"Thumb\":\"8297e878ccd6f8f0e23b81deb2d2009e_639279186887229840\"},\"BackdropImageTags\":[\"7887b749f612140f47e91ff98d05e0c0_639279186880765975\"],\"Chapters\":[],\"MediaType\":\"Video\",\"MimeType\":\"video/x-matroska\",\"Width\":640,\"Height\":360},\"InternalDeviceId\":1,\"DeviceId\":\"deluno-recorder-1\",\"ApplicationVersion\":\"1.0\",\"SupportedCommands\":[],\"SupportsRemoteControl\":false}]"
+      }
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "app": "emby",
+  "version": "4.10.1.0",
+  "state": "collection-unfavourited",
+  "recordedAt": "2026-10-18T11:17:44Z",
+  "note": "The collection taken off the home screen (DELETE /Users/{id}/FavoriteItems/{id}) (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/emby/Users/cc5185767bf748dbbe109af7975fdbd7/FavoriteItems/22"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "PlaybackPositionTicks": 0,
+          "PlayCount": 0,
+          "IsFavorite": false,
+          "Played": false
+        }
+      }
+    }
+  ]
+}

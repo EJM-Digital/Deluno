@@ -1,0 +1,243 @@
+{
+  "app": "plex",
+  "version": "1.43.4.10903-e5521bd8c",
+  "state": "directory-contents",
+  "recordedAt": "2026-10-18T10:55:47Z",
+  "note": "The folder browser (/services/browse/<base64 of the folder>): the media folder, the root, a folder that does not exist, and the old path query that Plex ignores (Plex Media Server 1.43.4.10903-e5521bd8c in Docker, UNCLAIMED: no account is made, so every call is local and carries no token).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/services/browse/L21lZGlhL01vdmllcw==?includeFiles=0"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "MediaContainer": {
+            "size": 1,
+            "Path": [
+              {
+                "key": "/services/browse/L21lZGlhL01vdmllcy9TaW50ZWwgKDIwMTAp",
+                "title": "Sintel (2010)",
+                "path": "/media/Movies/Sintel (2010)"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/services/browse/Lw==?includeFiles=0"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "MediaContainer": {
+            "size": 23,
+            "Path": [
+              {
+                "key": "/services/browse/L2Jpbg==",
+                "title": "bin",
+                "path": "/bin"
+              },
+              {
+                "key": "/services/browse/L2Jvb3Q=",
+                "title": "boot",
+                "path": "/boot"
+              },
+              {
+                "key": "/services/browse/L2NvbmZpZw==",
+                "title": "config",
+                "path": "/config"
+              },
+              {
+                "key": "/services/browse/L2RhdGE=",
+                "title": "data",
+                "path": "/data"
+              },
+              {
+                "key": "/services/browse/L2Rldg==",
+                "title": "dev",
+                "path": "/dev"
+              },
+              {
+                "key": "/services/browse/L2V0Yw==",
+                "title": "etc",
+                "path": "/etc"
+              },
+              {
+                "key": "/services/browse/L2hvbWU=",
+                "title": "home",
+                "path": "/home"
+              },
+              {
+                "key": "/services/browse/L2xpYg==",
+                "title": "lib",
+                "path": "/lib"
+              },
+              {
+                "key": "/services/browse/L2xpYjY0",
+                "title": "lib64",
+                "path": "/lib64"
+              },
+              {
+                "key": "/services/browse/L2xpYmV4ZWM=",
+                "title": "libexec",
+                "path": "/libexec"
+              },
+              {
+                "key": "/services/browse/L21lZGlh",
+                "title": "media",
+                "path": "/media"
+              },
+              {
+                "key": "/services/browse/L21udA==",
+                "title": "mnt",
+                "path": "/mnt"
+              },
+              {
+                "key": "/services/browse/L29wdA==",
+                "title": "opt",
+                "path": "/opt"
+              },
+              {
+                "key": "/services/browse/L3Byb2M=",
+                "title": "proc",
+                "path": "/proc"
+              },
+              {
+                "key": "/services/browse/L3Jvb3Q=",
+                "title": "root",
+                "path": "/root"
+              },
+              {
+                "key": "/services/browse/L3J1bg==",
+                "title": "run",
+                "path": "/run"
+              },
+              {
+                "key": "/services/browse/L3NiaW4=",
+                "title": "sbin",
+                "path": "/sbin"
+              },
+              {
+                "key": "/services/browse/L3Nydg==",
+                "title": "srv",
+                "path": "/srv"
+              },
+              {
+                "key": "/services/browse/L3N5cw==",
+                "title": "sys",
+                "path": "/sys"
+              },
+              {
+                "key": "/services/browse/L3RtcA==",
+                "title": "tmp",
+                "path": "/tmp"
+              },
+              {
+                "key": "/services/browse/L3RyYW5zY29kZQ==",
+                "title": "transcode",
+                "path": "/transcode"
+              },
+              {
+                "key": "/services/browse/L3Vzcg==",
+                "title": "usr",
+                "path": "/usr"
+              },
+              {
+                "key": "/services/browse/L3Zhcg==",
+                "title": "var",
+                "path": "/var"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/services/browse/L25vd2hlcmU=?includeFiles=0"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "MediaContainer": {
+            "size": 0
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/services/browse?path=%2Fnowhere&includeFiles=0"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "MediaContainer": {
+            "size": 8,
+            "Path": [
+              {
+                "key": "/services/browse/Lw==",
+                "title": "/",
+                "path": "/"
+              },
+              {
+                "key": "/services/browse/L2Rldi9tcXVldWU=",
+                "title": "mqueue",
+                "path": "/dev/mqueue"
+              },
+              {
+                "key": "/services/browse/L2NvbmZpZw==",
+                "title": "config",
+                "path": "/config"
+              },
+              {
+                "key": "/services/browse/L21lZGlh",
+                "title": "media",
+                "path": "/media"
+              },
+              {
+                "key": "/services/browse/L3RyYW5zY29kZQ==",
+                "title": "transcode",
+                "path": "/transcode"
+              },
+              {
+                "key": "/services/browse/L2V0Yy9yZXNvbHYuY29uZg==",
+                "title": "resolv.conf",
+                "path": "/etc/resolv.conf"
+              },
+              {
+                "key": "/services/browse/L2V0Yy9ob3N0bmFtZQ==",
+                "title": "hostname",
+                "path": "/etc/hostname"
+              },
+              {
+                "key": "/services/browse/L2V0Yy9ob3N0cw==",
+                "title": "hosts",
+                "path": "/etc/hosts"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

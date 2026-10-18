@@ -1,0 +1,200 @@
+{
+  "app": "emby",
+  "version": "4.10.1.0",
+  "state": "library-empty",
+  "recordedAt": "2026-10-18T11:11:26Z",
+  "note": "Before any library exists: the virtual folders, the users and an empty catalogue (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Library/VirtualFolders"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": []
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Users"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "Name": "<scrubbed>",
+            "ServerId": "a8f5d36cc5ad4259880f1ff66bbdfbaa",
+            "Prefix": "R",
+            "DateCreated": "2026-10-18T11:11:14.6405646Z",
+            "Id": "cc5185767bf748dbbe109af7975fdbd7",
+            "HasPassword": true,
+            "HasConfiguredPassword": true,
+            "LastLoginDate": "2026-10-18T11:11:25.7701985Z",
+            "LastActivityDate": "2026-10-18T11:11:25.8424331Z",
+            "Configuration": {
+              "PlayDefaultAudioTrack": true,
+              "DisplayMissingEpisodes": false,
+              "SubtitleMode": "Smart",
+              "OrderedViews": [],
+              "LatestItemsExcludes": [],
+              "MyMediaExcludes": [],
+              "HidePlayedInLatest": true,
+              "HidePlayedInMoreLikeThis": false,
+              "HidePlayedInSuggestions": false,
+              "RememberAudioSelections": true,
+              "RememberSubtitleSelections": true,
+              "EnableNextEpisodeAutoPlay": true,
+              "ResumeRewindSeconds": 0,
+              "IntroSkipMode": "ShowButton",
+              "EnableLocalPassword": false
+            },
+            "Policy": {
+              "IsAdministrator": true,
+              "IsHidden": false,
+              "IsHiddenRemotely": true,
+              "IsHiddenFromUnusedDevices": false,
+              "IsDisabled": false,
+              "LockedOutDate": 0,
+              "AllowTagOrRating": false,
+              "BlockedTags": [],
+              "IsTagBlockingModeInclusive": false,
+              "IncludeTags": [],
+              "EnableUserPreferenceAccess": true,
+              "AccessSchedules": [],
+              "BlockUnratedItems": [],
+              "EnableRemoteControlOfOtherUsers": true,
+              "EnableSharedDeviceControl": true,
+              "EnableRemoteAccess": true,
+              "EnableLiveTvManagement": true,
+              "EnableLiveTvAccess": true,
+              "EnableMediaPlayback": true,
+              "EnableAudioPlaybackTranscoding": true,
+              "EnableVideoPlaybackTranscoding": true,
+              "EnableTranscodingQuality": true,
+              "AutoRemoteQuality": 0,
+              "EnablePlaybackRemuxing": true,
+              "EnableContentDeletion": true,
+              "RestrictedFeatures": [],
+              "EnableContentDeletionFromFolders": [],
+              "EnableContentDownloading": true,
+              "EnableSubtitleDownloading": true,
+              "EnableSubtitleManagement": true,
+              "EnableSyncTranscoding": true,
+              "EnableMediaConversion": true,
+              "EnabledChannels": [],
+              "EnableAllChannels": true,
+              "EnabledFolders": [],
+              "EnableAllFolders": true,
+              "InvalidLoginAttemptCount": 0,
+              "EnablePublicSharing": true,
+              "RemoteClientBitrateLimit": 0,
+              "AuthenticationProviderId": "Emby.Server.Implementations.Library.DefaultAuthenticationProvider",
+              "ExcludedSubFolders": [],
+              "SimultaneousStreamLimit": 0,
+              "EnabledDevices": [],
+              "EnableAllDevices": true,
+              "AllowCameraUpload": true,
+              "AllowSharingPersonalItems": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Fields=ProviderIds,Path,DateCreated,ProductionYear,PremiereDate,Genres,People,Tags,TagItems,CommunityRating,CriticRating,MediaSources,SeriesId,SeasonId,ParentIndexNumber,IndexNumber&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [],
+          "TotalRecordCount": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Sessions"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "PlayState": {
+              "CanSeek": false,
+              "IsPaused": false,
+              "IsMuted": false,
+              "RepeatMode": "RepeatNone",
+              "SleepTimerMode": "None",
+              "SubtitleOffset": 0,
+              "Shuffle": false,
+              "PlaybackRate": 1
+            },
+            "AdditionalUsers": [],
+            "RemoteEndPoint": "192.168.1.10",
+            "Protocol": "HTTP/1.1",
+            "PlayableMediaTypes": [],
+            "PlaylistIndex": 0,
+            "PlaylistLength": 0,
+            "Id": "71e4c0ee2581888c8bd578bd5b48e6e7",
+            "ServerId": "a8f5d36cc5ad4259880f1ff66bbdfbaa",
+            "Client": "Deluno",
+            "LastActivityDate": "2026-10-18T11:11:26.0160927Z",
+            "DeviceName": "18663f3536c2",
+            "InternalDeviceId": 2,
+            "DeviceId": "a8f5d36cc5ad4259880f1ff66bbdfbaa",
+            "ApplicationVersion": "4.10.1.0",
+            "SupportedCommands": [],
+            "SupportsRemoteControl": false
+          },
+          {
+            "PlayState": {
+              "CanSeek": false,
+              "IsPaused": false,
+              "IsMuted": false,
+              "RepeatMode": "RepeatNone",
+              "SleepTimerMode": "None",
+              "SubtitleOffset": 0,
+              "Shuffle": false,
+              "PlaybackRate": 1
+            },
+            "AdditionalUsers": [],
+            "RemoteEndPoint": "192.168.1.10",
+            "Protocol": "HTTP/1.1",
+            "PlayableMediaTypes": [],
+            "PlaylistIndex": 0,
+            "PlaylistLength": 0,
+            "Id": "3b8bd03c19e5b6666a03601d27d0f6b7",
+            "ServerId": "a8f5d36cc5ad4259880f1ff66bbdfbaa",
+            "UserId": "cc5185767bf748dbbe109af7975fdbd7",
+            "UserName": "<scrubbed>",
+            "Client": "Deluno Recorder",
+            "LastActivityDate": "2026-10-18T11:11:25.8424331Z",
+            "DeviceName": "Recorder",
+            "InternalDeviceId": 1,
+            "DeviceId": "deluno-recorder-1",
+            "ApplicationVersion": "1.0",
+            "SupportedCommands": [],
+            "SupportsRemoteControl": false
+          }
+        ]
+      }
+    }
+  ]
+}

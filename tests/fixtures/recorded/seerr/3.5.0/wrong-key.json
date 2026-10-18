@@ -1,0 +1,57 @@
+{
+  "app": "seerr",
+  "version": "3.5.0",
+  "state": "wrong-key",
+  "recordedAt": "2026-10-18T11:04:17Z",
+  "note": "The settings, the request list and the user list with a key Seerr does not know (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/settings/main"
+      },
+      "reply": {
+        "status": 403,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "status": 403,
+          "error": "You do not have permission to access this endpoint"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/request?filter=all&sort=added&take=100&skip=0"
+      },
+      "reply": {
+        "status": 403,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "status": 403,
+          "error": "You do not have permission to access this endpoint"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/user?sort=displayname&take=100&skip=0"
+      },
+      "reply": {
+        "status": 403,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "status": 403,
+          "error": "You do not have permission to access this endpoint"
+        }
+      }
+    }
+  ]
+}

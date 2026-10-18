@@ -1,0 +1,51 @@
+{
+  "app": "rtorrent",
+  "version": "0.16.25",
+  "state": "duplicate-add",
+  "recordedAt": "2026-10-18T10:52:11Z",
+  "note": "The same torrent file sent again while rTorrent holds it: load.raw_start answers 0 and the hash list does not change.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>download_list</methodName><params></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><string>D3A2428E690FB2056D885BA960C5D85EA531454F</string></value></data></array></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>load.raw_start</methodName><params><param><value><string></string></value></param><param><value><base64>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</base64></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><i8>0</i8></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>download_list</methodName><params></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><string>D3A2428E690FB2056D885BA960C5D85EA531454F</string></value></data></array></value></param></params></methodResponse>"
+      }
+    }
+  ]
+}

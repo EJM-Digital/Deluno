@@ -138,6 +138,38 @@ public sealed class RecordedJellyfinTests
         Assert.Equal(204, RecordedReplies.Jellyfin("sessions-playing").Exchanges[1].Reply.Status);
     }
 
+    [Fact]
+    public async Task When_Jellyfin_refuses_the_targeted_call_with_400_or_415_Deluno_asks_for_a_full_library_scan_instead()
+    {
+        // Recorded from Jellyfin 12.2.0 in Docker: a body it cannot read is 400, a call with no content type 415.
+        var refused = RecordedReplies.Jellyfin("media-updated-refused");
+        Assert.Equal([400, 415], refused.Exchanges.Select(e => e.Reply.Status));
+        foreach (var exchange in refused.Exchanges)
+        {
+            var calls = new List<string>();
+            var client = Client((request, _) =>
+            {
+                calls.Add($"{request.Method} {request.RequestUri!.AbsolutePath}");
+                return request.RequestUri!.AbsolutePath == "/Library/Media/Updated" ? exchange.Reply.ToResponse() : request.RequestUri.AbsolutePath == "/Library/Refresh" ? RecordedReplies.Jellyfin("refresh").Exchanges[0].Reply.ToResponse() : null;
+            });
+
+            var answer = await client.RefreshAsync(Server(), "movies", [new Deluno.Contracts.MediaServerPathChange("/media/Movies/X/X.mkv", Deluno.Contracts.MediaServerChangeKind.Created)], CancellationToken.None);
+
+            Assert.True(Assert.IsType<MediaServerAnswer<MediaServerRefresh>.Reported>(answer).Value.UsedFallbackScan);
+            Assert.Equal(["POST /Library/Media/Updated", "POST /Library/Refresh"], calls);
+        }
+    }
+
+    [Fact]
+    public void A_collection_taken_off_the_home_screen_is_answered_with_the_state_IsFavorite_false()
+    {
+        var reply = RecordedReplies.Jellyfin("collection-unfavourited").Single;
+
+        Assert.Equal("DELETE", reply.Request.Method);
+        Assert.Contains("/FavoriteItems/", reply.Request.Path, StringComparison.Ordinal);
+        Assert.Equal(200, reply.Reply.Status);
+    }
+
     private static MediaServerLibrary AssertReported(MediaServerAnswer<MediaServerLibrary> answer)
         => answer is MediaServerAnswer<MediaServerLibrary>.Reported reported ? reported.Value : throw new Xunit.Sdk.XunitException("Not reported: " + answer);
 

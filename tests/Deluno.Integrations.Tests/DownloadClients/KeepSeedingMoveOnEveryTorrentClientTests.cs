@@ -18,8 +18,8 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 ///
 /// <para>Every qBittorrent, Deluge and Transmission reply below is that client's own recording (#1237): the stand-in keeps what
 /// the client would hold (a category, a label, a list of labels) and answers each call with the recorded reply to the same call, changed
-/// only in the value it keeps. rTorrent and uTorrent are not recorded yet, so their stand-ins keep the shapes their documentation gives
-/// and are marked <c>TODO(#1237)</c>.</para>
+/// only in the value it keeps. rTorrent's is the same with its own recording (0.16.25); uTorrent is not recorded yet, so its stand-in keeps
+/// the shapes its documentation gives and is marked <c>TODO(#1237)</c>.</para>
 /// </summary>
 public sealed class KeepSeedingMoveOnEveryTorrentClientTests
 {
@@ -594,7 +594,11 @@ public sealed class KeepSeedingMoveOnEveryTorrentClientTests
         }
     }
 
-    /// <summary>TODO(#1237): replace with the recorded reply. Documented rTorrent XML-RPC shapes.</summary>
+    /// <summary>
+    /// rTorrent 0.16.25's own replies (tests/fixtures/recorded/rtorrent/0.16.25/label-set and unknown-hash-fault): the stand-in keeps the label
+    /// the client would hold and answers d.custom1 with the recorded reply carrying it, d.custom1.set with the recorded 0 (or the recorded fault
+    /// with a reason of the test's own), and the version as recorded.
+    /// </summary>
     private sealed class RtorrentFake : HttpMessageHandler
     {
         public string Label { get; set; } = "";
@@ -611,19 +615,19 @@ public sealed class KeepSeedingMoveOnEveryTorrentClientTests
             var parameters = Regex.Matches(xml, "<string>([^<]*)</string>").Select(match => System.Net.WebUtility.HtmlDecode(match.Groups[1].Value)).ToArray();
             Requests.Add((method, parameters));
             static HttpResponseMessage Xml(string body) => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "text/xml") };
-            static string Fault(string reason) => $"<?xml version=\"1.0\"?><methodResponse><fault><value><struct><member><name>faultCode</name><value><i4>-501</i4></value></member><member><name>faultString</name><value><string>{reason}</string></value></member></struct></value></fault></methodResponse>";
+            static string Fault(string reason) => RecordedReplies.Rtorrent("unknown-hash-fault").Exchanges[0].Reply.Body!.Replace("invalid parameters: info-hash not found", System.Security.SecurityElement.Escape(reason));
             switch (method)
             {
                 case "d.custom1":
                     return Has
-                        ? Xml($"<?xml version=\"1.0\"?><methodResponse><params><param><value><string>{Label}</string></value></param></params></methodResponse>")
-                        : Xml(Fault("Could not find info-hash."));
+                        ? Xml(RecordedReplies.Rtorrent("label-set").Exchanges[2].Reply.Body!.Replace("<string>recorded-movies</string>", $"<string>{System.Security.SecurityElement.Escape(Label)}</string>"))
+                        : Xml(RecordedReplies.Rtorrent("unknown-hash-fault").Exchanges[6].Reply.Body!);
                 case "d.custom1.set":
                     if (FaultOnSet is not null) return Xml(Fault(FaultOnSet));
                     Label = parameters[1];
-                    return Xml("<?xml version=\"1.0\"?><methodResponse><params><param><value><i4>0</i4></value></param></params></methodResponse>");
+                    return Xml(RecordedReplies.Rtorrent("label-set").Exchanges[1].Reply.Body!);
                 default:
-                    return Xml("<?xml version=\"1.0\"?><methodResponse><params><param><value><string>0.9.8</string></value></param></params></methodResponse>");
+                    return Xml(RecordedReplies.Rtorrent("version").Single.Reply.Body!);
             }
         }
     }

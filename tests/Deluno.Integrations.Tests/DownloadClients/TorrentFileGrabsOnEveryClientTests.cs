@@ -200,6 +200,10 @@ public sealed class TorrentFileGrabsOnEveryClientTests
         Assert.Equal(Hash, result.ExternalId);
     }
 
+    /// <summary>
+    /// rTorrent 0.16.25's own replies (tests/fixtures/recorded/rtorrent/0.16.25/add-file): load.raw_start answers the recorded 0, download_list the
+    /// recorded list (empty, or with the hash of the test's own put in), every other call the recorded 0 of d.pause.
+    /// </summary>
     private sealed class RtorrentHandler(IReadOnlyList<string> before, IReadOnlyList<string> after) : HttpMessageHandler
     {
         private bool loaded;
@@ -214,23 +218,24 @@ public sealed class TorrentFileGrabsOnEveryClientTests
             {
                 loaded = true;
                 LoadBody = body;
-                return Xml("<value><i4>0</i4></value>");
+                return Xml(RecordedReplies.Rtorrent("add-file").Exchanges[1].Reply.Body!);
             }
 
             if (method == "download_list")
             {
-                var values = (loaded ? after : before).Select(hash => $"<value><string>{hash}</string></value>");
-                return Xml($"<value><array><data>{string.Concat(values)}</data></array></value>");
+                var held = (loaded ? after : before).ToArray();
+                var recorded = RecordedReplies.Rtorrent("add-file").Exchanges[2].Reply.Body!;
+                var one = Regex.Match(recorded, "<value><string>[0-9A-F]{40}</string></value>").Value;
+                return Xml(held.Length == 0
+                    ? RecordedReplies.Rtorrent("idle").Exchanges[1].Reply.Body!
+                    : recorded.Replace(one, string.Concat(held.Select(hash => $"<value><string>{hash}</string></value>"))));
             }
 
-            return Xml("<value><i4>0</i4></value>");
+            return Xml(RecordedReplies.Rtorrent("paused").Exchanges[0].Reply.Body!);
         }
 
-        private static HttpResponseMessage Xml(string value)
-            => new(HttpStatusCode.OK)
-            {
-                Content = new StringContent($"<?xml version=\"1.0\"?><methodResponse><params><param>{value}</param></params></methodResponse>", Encoding.UTF8, "text/xml")
-            };
+        private static HttpResponseMessage Xml(string document)
+            => new(HttpStatusCode.OK) { Content = new StringContent(document, Encoding.UTF8, "text/xml") };
     }
 
     // ------------------------------------------------------------------ Transmission

@@ -1,0 +1,20 @@
+{
+  "app": "plex",
+  "version": "1.43.4.10903-e5521bd8c",
+  "state": "starting-up",
+  "recordedAt": "2026-10-18T10:34:05Z",
+  "note": "A library made while the server is still starting up (right after /identity first answered) (Plex Media Server 1.43.4.10903-e5521bd8c in Docker, UNCLAIMED: no account is made, so every call is local and carries no token).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/library/sections?name=Early&type=movie&agent=tv.plex.agents.movie&scanner=Plex%20Movie&language=en-US&location=%2Fmedia%2FMovies"
+      },
+      "reply": {
+        "status": 400,
+        "headers": {},
+        "bodyText": "the server is still starting up. Please retry later\r\n"
+      }
+    }
+  ]
+}

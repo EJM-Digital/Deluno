@@ -3,6 +3,7 @@ using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -145,17 +146,16 @@ public sealed class ContentBlocklistFileListingTests
     [Fact]
     public async Task Rtorrent_lists_files_from_f_multicall()
     {
-        var handler = new RtorrentFilesHandler(
-            "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data>"
-            + "<value><array><data><value><string>Example.Movie.2026.mkv</string></value></data></array></value>"
-            + "<value><array><data><value><string>Setup.exe</string></value></data></array></value>"
-            + "</data></array></value></param></params></methodResponse>");
+        // rTorrent 0.16.25's own f.multicall reply for a release folder of three files (tests/fixtures/recorded/rtorrent/0.16.25/finished-folder).
+        var handler = new RtorrentFilesHandler(RecordedReplies.Rtorrent("finished-folder").Exchanges[3].Reply.Body!);
 
         var files = await new RtorrentDownloadClient(new Factory(handler))
             .GetFilesAsync(RtorrentClient(), "abc123hash", CancellationToken.None);
 
         Assert.NotNull(files);
-        Assert.Equal(["Example.Movie.2026.mkv", "Setup.exe"], files);
+        Assert.Equal(
+            ["Recorded.Rtorrent.Show.S01.1080p.WEB-DL.S01E01.mkv", "Recorded.Rtorrent.Show.S01.1080p.WEB-DL.S01E02.mkv", "Recorded.Rtorrent.Show.S01.1080p.WEB-DL.S01E03.mkv"],
+            files);
     }
 
     [Fact]
@@ -302,7 +302,7 @@ public sealed class ContentBlocklistFileListingTests
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
             var xml = body.Contains("<methodName>f.multicall</methodName>", StringComparison.Ordinal)
                 ? reply
-                : """<?xml version="1.0"?><methodResponse><params><param><value><array><data></data></array></value></param></params></methodResponse>""";
+                : RecordedReplies.Rtorrent("idle").Exchanges[1].Reply.Body!;
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(xml, Encoding.UTF8, "text/xml") };
         }
     }

@@ -44,3 +44,21 @@ record as `MISSING ...` lines (added to `MISSING.md` by hand). Logins and keys a
 
 `Install.Lib.ps1` holds the shared in-VM helpers (verified downloads, GitHub release lookup, starting a program, secrets kept DPAPI-protected).
 rTorrent turns on the Windows Subsystem for Linux the first time, which needs one restart: the host script restarts the VM and runs the app again.
+
+## The Docker recorders (`docker/`, from 17 October 2026)
+
+The apps that run in a container are recorded on the developer's machine, not in the golden VM, from their published images, with
+Docker in WSL and a `wsl` session held open. `docker/apps.compose.yaml` is a compose project of its own (`name: rec2`, ports on 127.0.0.1) beside
+`tests/e2e/compose.yaml`; copy it, `tracker.mjs` and a copy of `tests/e2e/sabnzbd/sabnzbd.ini` to a folder on WSL's disk, then
+`docker compose -p rec2 -f apps.compose.yaml up -d <service>`, and run the recorder with Node from the repository:
+
+| Recorder | Records | Needs |
+|---|---|---|
+| `docker/rtorrent.mjs` | rTorrent (XML-RPC) through every state Deluno reads: adds, downloading from a second rTorrent, paused, stalled, finished, removed, label, faults, the login | services `rtorrent`, `rtseed`, `tracker` |
+| `docker/media.mjs jellyfin\|emby\|plex` | Jellyfin, Emby and an UNCLAIMED Plex: wizard, libraries, catalogue, watched, sessions, refresh, folder browser, collections, item delete; `REC_ONLY=state,state` writes only those states | the service; a fresh volume for Jellyfin and Emby; Plex waits out its start-up |
+| `docker/seerr.mjs` | Seerr linked to a Jellyfin: setup, requests pending, approved, declined, media available and deleted, and the webhooks Seerr sends | services `jellyfin` and `seerr` on fresh volumes, `tracker` |
+| `docker/sabnzbd.mjs` | SABnzbd's refused adds | service `sabnzbd` |
+| `docker/tmdb.mjs` | the deployed metadata gateway's replies to the broker calls (real GETs; no Docker) | internet |
+
+`docker/lib.mjs` is the shared recorder (cookies, the scrub, the leak check); `scrub.mjs` keeps a Plex item address under `key`. Nothing here
+writes a reply by hand: a state a recorder cannot reach is listed in `tests/fixtures/recorded/MISSING.md`.

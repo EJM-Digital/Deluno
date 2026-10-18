@@ -1,0 +1,61 @@
+{
+  "app": "plex",
+  "version": "1.43.4.10903-e5521bd8c",
+  "state": "refresh",
+  "recordedAt": "2026-10-18T10:35:58Z",
+  "note": "A refresh of one section, of one folder in it, and of a folder the server does not hold; the trash emptied (Plex Media Server 1.43.4.10903-e5521bd8c in Docker, UNCLAIMED: no account is made, so every call is local and carries no token).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/library/sections/1/refresh"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/html"
+        },
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/library/sections/1/refresh?path=%2Fmedia%2FMovies%2FSintel%20(2010)"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/html"
+        },
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/library/sections/1/refresh?path=%2Fnowhere"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/html"
+        },
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/library/sections/1/emptyTrash"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/html"
+        },
+        "bodyText": ""
+      }
+    }
+  ]
+}

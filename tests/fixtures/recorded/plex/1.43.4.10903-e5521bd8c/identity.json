@@ -1,0 +1,31 @@
+{
+  "app": "plex",
+  "version": "1.43.4.10903-e5521bd8c",
+  "state": "identity",
+  "recordedAt": "2026-10-18T10:33:46Z",
+  "note": "/identity: the unauthenticated identity reply that carries the version and whether the server is claimed (Plex Media Server 1.43.4.10903-e5521bd8c in Docker, UNCLAIMED: no account is made, so every call is local and carries no token).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/identity"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "MediaContainer": {
+            "size": 0,
+            "apiVersion": "1.2.3",
+            "claimed": false,
+            "machineIdentifier": "a4ccd564e2a3e55fc0c0dc14092a100231d9afb1",
+            "startState": "startingPlugins",
+            "version": "1.43.4.10903-e5521bd8c"
+          }
+        }
+      }
+    }
+  ]
+}

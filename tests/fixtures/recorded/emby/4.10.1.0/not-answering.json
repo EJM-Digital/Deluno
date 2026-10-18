@@ -1,0 +1,20 @@
+{
+  "app": "emby",
+  "version": "4.10.1.0",
+  "state": "not-answering",
+  "recordedAt": "2026-10-18T11:17:45Z",
+  "note": "A request sent to a port nothing listens on: the connection is refused.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/System/Info"
+      },
+      "reply": {
+        "status": 0,
+        "headers": {},
+        "error": "bad port"
+      }
+    }
+  ]
+}
