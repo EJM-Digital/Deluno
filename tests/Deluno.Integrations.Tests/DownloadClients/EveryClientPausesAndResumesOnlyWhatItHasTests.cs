@@ -142,7 +142,7 @@ public sealed class EveryClientPausesAndResumesOnlyWhatItHasTests
                     var groups = RecordedReplies.Nzbget("paused").Find("listgroups").Reply;
                     // NZBGet 26.3 still says DOWNLOADING right after a pause (recorded); what it shows is that all the remaining size is paused.
                     return Has
-                        ? groups.BodyWith(("result.1.PausedSizeMB", Paused ? 1610 : 0), ("result.1.RemainingSizeMB", Paused ? 1610 : 1611))
+                        ? groups.BodyWith(("result.1.PausedSizeMB", Paused ? 1610 : 0), ("result.1.PausedSizeLo", Paused ? 1688311206L : 0L), ("result.1.RemainingSizeMB", Paused ? 1610 : 1611))
                         : RecordedReplies.Nzbget("idle").Find("listgroups").Reply.Body!;
                 case "qbittorrent":
                     var info = RecordedReplies.Qbittorrent("paused").Find("torrents/info").Reply;

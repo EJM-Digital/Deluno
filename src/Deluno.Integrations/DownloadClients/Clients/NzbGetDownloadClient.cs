@@ -522,8 +522,13 @@ public sealed class NzbGetDownloadClient(
                     return new(ClientHas.No, false);
                 }
 
+                // The byte sizes, not the megabyte ones: NZBGet rounds RemainingSizeMB down to 0 under a megabyte (#1356),
+                // which made a job nearly done look as if nothing was left to pause.
+                var remainingBytes = job.RemainingSizeLo is { } remainingLo ? (job.RemainingSizeHi << 32) + remainingLo : (long?)null;
+                var pausedBytes = job.PausedSizeLo is { } pausedLo ? ((job.PausedSizeHi ?? 0) << 32) + pausedLo : (long?)null;
                 var paused = string.Equals(job.Status, "PAUSED", StringComparison.OrdinalIgnoreCase)
-                    || (job.RemainingSizeMb is > 0 && job.PausedSizeMb is { } pausedMb && pausedMb >= job.RemainingSizeMb);
+                    || (remainingBytes is > 0 && pausedBytes is { } pausedSoFar && pausedSoFar >= remainingBytes)
+                    || (remainingBytes is null && job.RemainingSizeMb is > 0 && job.PausedSizeMb is { } pausedMb && pausedMb >= job.RemainingSizeMb);
                 return new(ClientHas.Yes, paused);
             }
             catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException && !ClientCredentials.IsRefusal(exception))
@@ -987,7 +992,7 @@ public sealed class NzbGetDownloadClient(
     private sealed record NzbGetFile([property: JsonPropertyName("Filename")] string? Filename);
     private sealed record NzbGetLogEntry([property: JsonPropertyName("ID")] int Id, [property: JsonPropertyName("Kind")] string? Kind, [property: JsonPropertyName("Text")] string? Text, [property: JsonPropertyName("Time")] long Time = 0);
 
-    private sealed record NzbGetQueueItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("RemainingSizeHi")] long RemainingSizeHi, [property: JsonPropertyName("DestDir")] string? DestDir, [property: JsonPropertyName("FileSizeLo")] long? FileSizeLo = null, [property: JsonPropertyName("RemainingSizeLo")] long? RemainingSizeLo = null, [property: JsonPropertyName("FileSizeMB")] long? FileSizeMb = null, [property: JsonPropertyName("RemainingSizeMB")] long? RemainingSizeMb = null, [property: JsonPropertyName("PausedSizeMB")] long? PausedSizeMb = null);
+    private sealed record NzbGetQueueItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("RemainingSizeHi")] long RemainingSizeHi, [property: JsonPropertyName("DestDir")] string? DestDir, [property: JsonPropertyName("FileSizeLo")] long? FileSizeLo = null, [property: JsonPropertyName("RemainingSizeLo")] long? RemainingSizeLo = null, [property: JsonPropertyName("FileSizeMB")] long? FileSizeMb = null, [property: JsonPropertyName("RemainingSizeMB")] long? RemainingSizeMb = null, [property: JsonPropertyName("PausedSizeMB")] long? PausedSizeMb = null, [property: JsonPropertyName("PausedSizeLo")] long? PausedSizeLo = null, [property: JsonPropertyName("PausedSizeHi")] long? PausedSizeHi = null);
     private sealed record NzbGetHistoryItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Name")] string? Name, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("FileSizeLo")] long? FileSizeLo, [property: JsonPropertyName("FileSizeMB")] long? FileSizeMb, [property: JsonPropertyName("HistoryTime")] long? HistoryTime, [property: JsonPropertyName("DestDir")] string? DestDir, [property: JsonPropertyName("ScriptStatuses")] IReadOnlyList<NzbGetScriptStatus>? ScriptStatuses, [property: JsonPropertyName("FinalDir")] string? FinalDir = null);
 
     /// <summary>One post-processing script's own outcome, from NZBGet's history <c>ScriptStatuses</c> (#910) — SUCCESS, FAILURE or a script-specific warning wording.</summary>
