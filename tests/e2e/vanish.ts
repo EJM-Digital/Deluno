@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { CLIENT_KINDS, type ClientKind } from "./clients.ts";
+import { setUpTvStack, type Media } from "./tv.ts";
 import {
   activityLines, deleteCompletedFiles, handoffOf, importedFile, restoreWeir, sendFilm, setAutomation, sleep, telemetryRows, type Sent
 } from "./flow.ts";
@@ -23,7 +24,12 @@ async function filesGoneRow(stack: Stack, sent: Sent) {
     (String(row.releaseName ?? "").includes(sent.film.release) || String(row.title ?? "").includes(sent.film.title)) && row.status === "filesGone");
 }
 
-export function defineVanish(phase: Phase) {
+/** The clients a media type runs: the movies run all five; a TV episode runs one torrent and one Usenet client. */
+export const vanishKinds = (media: Media): ClientKind[] => (media === "tv" ? ["qbittorrent", "sabnzbd"] : CLIENT_KINDS);
+
+export function defineVanish(phase: Phase, media: Media = "movies") {
+  const kinds = vanishKinds(media);
+  const tv = media === "tv" ? "tv." : "";
   test.describe.configure({ mode: "serial" });
   let stack: Stack;
   const films = new Map<ClientKind, Sent>();
@@ -33,25 +39,25 @@ export function defineVanish(phase: Phase) {
 
   test.beforeAll(async () => {
     test.setTimeout(25 * 60_000);
-    stack = await setUpStack();
+    stack = media === "tv" ? await setUpTvStack() : await setUpStack();
     const removedAt = new Map<ClientKind, number>();
     try {
       if (phase === "before") await setAutomation(stack, false); else await setWeirPause(true);
-      for (const kind of CLIENT_KINDS) films.set(kind, await sendFilm(stack, kind, label, "file"));
-      for (const kind of CLIENT_KINDS) {
+      for (const kind of kinds) films.set(kind, await sendFilm(stack, kind, label, "file"));
+      for (const kind of kinds) {
         const { film } = films.get(kind)!;
         await until(`${kind} to finish ${film.release}`, 240, () => clientFinished(stack, kind, film), 1000);
         if (phase === "waiting") await until(`the hand-off of ${film.release}`, 90, () => handoffOf(stack, film.release), 1000);
       }
-      for (const kind of CLIENT_KINDS) {
+      for (const kind of kinds) {
         const n = await deleteCompletedFiles(films.get(kind)!.film.title);
         removedAt.set(kind, Date.now());
         console.log(`   ${kind}: deleted ${n} files`);
       }
       // While automation (or Weir) is still held, Deluno must say so itself within one check.
       const deadline = Date.now() + 90_000;
-      while (Date.now() < deadline && flaggedAfter.size < CLIENT_KINDS.length) {
-        for (const kind of CLIENT_KINDS) {
+      while (Date.now() < deadline && flaggedAfter.size < kinds.length) {
+        for (const kind of kinds) {
           if (!flaggedAfter.has(kind) && await filesGoneRow(stack, films.get(kind)!).catch(() => undefined)) flaggedAfter.set(kind, Math.round((Date.now() - removedAt.get(kind)!) / 100) / 10);
         }
         await sleep(500);
@@ -66,8 +72,8 @@ export function defineVanish(phase: Phase) {
       await sleep(45_000);
     } else {
       const deadline = Date.now() + SOURCE_GONE_WAIT_MIN * 60_000;
-      while (Date.now() < deadline && goneAt.size < CLIENT_KINDS.length) {
-        for (const kind of CLIENT_KINDS) {
+      while (Date.now() < deadline && goneAt.size < kinds.length) {
+        for (const kind of kinds) {
           if (goneAt.has(kind)) continue;
           const h = await handoffOf(stack, films.get(kind)!.film.release).catch(() => undefined);
           if (h && (h.status === "source-gone" || (h.status === "dismissed" && /gone|no longer/.test(String(h.failureMessage ?? ""))))) goneAt.set(kind, Date.now());
@@ -77,9 +83,9 @@ export function defineVanish(phase: Phase) {
     }
   });
 
-  for (const kind of CLIENT_KINDS) {
+  for (const kind of kinds) {
     if (phase === "before") {
-      test(`vanish.before.${kind}: A ${kind} download's files vanish before the hand-off: Files are gone, never handed off`, async () => {
+      test(`${tv}vanish.before.${kind}: A ${kind} download's files vanish before the hand-off: Files are gone, never handed off`, async () => {
         const sent = films.get(kind)!;
         const seen = flaggedAfter.get(kind);
         console.log(`vanish.${phase}.${kind}: Files are gone shown ${seen} s after the delete`);
@@ -89,7 +95,7 @@ export function defineVanish(phase: Phase) {
         expect.soft(await importedFile(sent.film.title), "Nothing of it was imported").toBeUndefined();
       });
     } else {
-      test(`vanish.waiting.${kind}: A ${kind} download's files vanish while the hand-off waits: it ends as source gone, nothing imported`, async () => {
+      test(`${tv}vanish.waiting.${kind}: A ${kind} download's files vanish while the hand-off waits: it ends as source gone, nothing imported`, async () => {
         const sent = films.get(kind)!;
         const h = await handoffOf(stack, sent.film.release);
         expect(h, "There was a hand-off").toBeTruthy();

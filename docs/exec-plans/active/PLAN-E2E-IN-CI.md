@@ -43,19 +43,19 @@ One row per golden-path scenario id (77 on 16 Oct 2026, 78 with `outage.tray`), 
 | `film.sabnzbd` | `linux-e2e:films` | ported (tests/e2e/films.spec.ts) |
 | `film.nzbget` | `linux-e2e:films` | ported (tests/e2e/films.spec.ts) |
 | `film.extra-left-out` | `linux-e2e:films` | ported (tests/e2e/films.spec.ts) |
-| `remove-copy.qbittorrent.folder` | `linux-e2e:removal` | ported (tests/e2e/removal.spec.ts) |
-| `remove-copy.transmission.folder` | `linux-e2e:removal` | ported (tests/e2e/removal.spec.ts) |
-| `remove-copy.deluge.folder` | `linux-e2e:removal` | ported (tests/e2e/removal.spec.ts) |
-| `remove-copy.sabnzbd.folder` | `linux-e2e:removal` | ported (tests/e2e/removal.spec.ts) |
-| `remove-copy.nzbget.folder` | `linux-e2e:removal` | ported (tests/e2e/removal.spec.ts) |
-| `remove-copy.qbittorrent.file` | `linux-e2e:removal` | ported (tests/e2e/removal.spec.ts) |
-| `remove-copy.transmission.file` | `linux-e2e:removal` | ported (tests/e2e/removal.spec.ts) |
-| `remove-copy.deluge.file` | `linux-e2e:removal` | ported (tests/e2e/removal.spec.ts) |
-| `resend.before.qbittorrent` | `linux-e2e:resendbefore` | ported (tests/e2e/resendbefore.spec.ts) |
-| `resend.before.transmission` | `linux-e2e:resendbefore` | ported (tests/e2e/resendbefore.spec.ts) |
-| `resend.before.deluge` | `linux-e2e:resendbefore` | ported (tests/e2e/resendbefore.spec.ts) |
-| `resend.before.sabnzbd` | `linux-e2e:resendbefore` | ported (tests/e2e/resendbefore.spec.ts) |
-| `resend.before.nzbget` | `linux-e2e:resendbefore` | ported (tests/e2e/resendbefore.spec.ts) |
+| `remove-copy.qbittorrent.folder` | `linux-e2e:removal` | ported (tests/e2e/removalcases.ts) |
+| `remove-copy.transmission.folder` | `linux-e2e:removal` | ported (tests/e2e/removalcases.ts) |
+| `remove-copy.deluge.folder` | `linux-e2e:removal` | ported (tests/e2e/removalcases.ts) |
+| `remove-copy.sabnzbd.folder` | `linux-e2e:removal` | ported (tests/e2e/removalcases.ts) |
+| `remove-copy.nzbget.folder` | `linux-e2e:removal` | ported (tests/e2e/removalcases.ts) |
+| `remove-copy.qbittorrent.file` | `linux-e2e:removal` | ported (tests/e2e/removalcases.ts) |
+| `remove-copy.transmission.file` | `linux-e2e:removal` | ported (tests/e2e/removalcases.ts) |
+| `remove-copy.deluge.file` | `linux-e2e:removal` | ported (tests/e2e/removalcases.ts) |
+| `resend.before.qbittorrent` | `linux-e2e:resendbefore` | ported (tests/e2e/resendbeforecases.ts) |
+| `resend.before.transmission` | `linux-e2e:resendbefore` | ported (tests/e2e/resendbeforecases.ts) |
+| `resend.before.deluge` | `linux-e2e:resendbefore` | ported (tests/e2e/resendbeforecases.ts) |
+| `resend.before.sabnzbd` | `linux-e2e:resendbefore` | ported (tests/e2e/resendbeforecases.ts) |
+| `resend.before.nzbget` | `linux-e2e:resendbefore` | ported (tests/e2e/resendbeforecases.ts) |
 | `resend.during.qbittorrent` | `linux-e2e:resendduringtorrent` | ported (tests/e2e/resendduringtorrent.spec.ts) |
 | `resend.during.transmission` | `linux-e2e:resendduringtorrent` | ported (tests/e2e/resendduringtorrent.spec.ts) |
 | `resend.during.deluge` | `linux-e2e:resendduringtorrent` | ported (tests/e2e/resendduringtorrent.spec.ts) |
@@ -67,35 +67,35 @@ One row per golden-path scenario id (77 on 16 Oct 2026, 78 with `outage.tray`), 
 | `resend.after.sabnzbd` | `linux-e2e:resendafterusenet` | ported (tests/e2e/resendafterusenet.spec.ts) |
 | `resend.after.nzbget` | `linux-e2e:resendafterusenet` | ported (tests/e2e/resendafterusenet.spec.ts) |
 | `resend.single-file.takeover` | `linux-e2e:resendduringtorrent` | ported (tests/e2e/resendduringtorrent.spec.ts) |
-| `stuck.zero.qbittorrent` | `linux-e2e:stuckprogress` | ported (tests/e2e/stuckprogress.spec.ts) |
-| `stuck.zero.transmission` | `linux-e2e:stuckprogress` | ported (tests/e2e/stuckprogress.spec.ts) |
-| `stuck.zero.deluge` | `linux-e2e:stuckprogress` | ported (tests/e2e/stuckprogress.spec.ts) |
-| `stuck.zero.sabnzbd` | `linux-e2e:stuckprogress` | ported (tests/e2e/stuckprogress.spec.ts) |
-| `stuck.zero.nzbget` | `linux-e2e:stuckprogress` | ported (tests/e2e/stuckprogress.spec.ts) |
-| `stuck.short.qbittorrent` | `linux-e2e:stuckprogress` | ported (tests/e2e/stuckprogress.spec.ts) |
-| `stuck.short.transmission` | `linux-e2e:stuckprogress` | ported (tests/e2e/stuckprogress.spec.ts) |
-| `stuck.short.deluge` | `linux-e2e:stuckprogress` | ported (tests/e2e/stuckprogress.spec.ts) |
-| `stuck.short.sabnzbd` | `linux-e2e:stuckprogress` | ported (tests/e2e/stuckprogress.spec.ts) |
-| `stuck.short.nzbget` | `linux-e2e:stuckprogress` | ported (tests/e2e/stuckprogress.spec.ts) |
-| `stuck.peers.qbittorrent` | `linux-e2e:stuckrate` | ported (tests/e2e/stuckrate.spec.ts) |
-| `stuck.peers.transmission` | `linux-e2e:stuckrate` | ported (tests/e2e/stuckrate.spec.ts) |
-| `stuck.peers.deluge` | `linux-e2e:stuckrate` | ported (tests/e2e/stuckrate.spec.ts) |
-| `stuck.slow.sabnzbd` | `linux-e2e:stuckrate` | ported (tests/e2e/stuckrate.spec.ts) |
-| `stuck.slow.nzbget` | `linux-e2e:stuckrate` | ported (tests/e2e/stuckrate.spec.ts) |
+| `stuck.zero.qbittorrent` | `linux-e2e:stuckprogress` | ported (tests/e2e/stuckprogresscases.ts) |
+| `stuck.zero.transmission` | `linux-e2e:stuckprogress` | ported (tests/e2e/stuckprogresscases.ts) |
+| `stuck.zero.deluge` | `linux-e2e:stuckprogress` | ported (tests/e2e/stuckprogresscases.ts) |
+| `stuck.zero.sabnzbd` | `linux-e2e:stuckprogress` | ported (tests/e2e/stuckprogresscases.ts) |
+| `stuck.zero.nzbget` | `linux-e2e:stuckprogress` | ported (tests/e2e/stuckprogresscases.ts) |
+| `stuck.short.qbittorrent` | `linux-e2e:stuckprogress` | ported (tests/e2e/stuckprogresscases.ts) |
+| `stuck.short.transmission` | `linux-e2e:stuckprogress` | ported (tests/e2e/stuckprogresscases.ts) |
+| `stuck.short.deluge` | `linux-e2e:stuckprogress` | ported (tests/e2e/stuckprogresscases.ts) |
+| `stuck.short.sabnzbd` | `linux-e2e:stuckprogress` | ported (tests/e2e/stuckprogresscases.ts) |
+| `stuck.short.nzbget` | `linux-e2e:stuckprogress` | ported (tests/e2e/stuckprogresscases.ts) |
+| `stuck.peers.qbittorrent` | `linux-e2e:stuckrate` | ported (tests/e2e/stuckratecases.ts) |
+| `stuck.peers.transmission` | `linux-e2e:stuckrate` | ported (tests/e2e/stuckratecases.ts) |
+| `stuck.peers.deluge` | `linux-e2e:stuckrate` | ported (tests/e2e/stuckratecases.ts) |
+| `stuck.slow.sabnzbd` | `linux-e2e:stuckrate` | ported (tests/e2e/stuckratecases.ts) |
+| `stuck.slow.nzbget` | `linux-e2e:stuckrate` | ported (tests/e2e/stuckratecases.ts) |
 | `keepseeding.moved.qbittorrent` | `linux-e2e:keepseeding` | ported (tests/e2e/keepseeding.spec.ts) |
 | `keepseeding.moved.transmission` | `linux-e2e:keepseeding` | ported (tests/e2e/keepseeding.spec.ts) |
 | `keepseeding.moved.deluge` | `linux-e2e:keepseeding` | ported (tests/e2e/keepseeding.spec.ts) |
 | `keepseeding.public-removed.qbittorrent` | `linux-e2e:keepseeding` | ported (tests/e2e/keepseeding.spec.ts) |
 | `keepseeding.public-removed.transmission` | `linux-e2e:keepseeding` | ported (tests/e2e/keepseeding.spec.ts) |
 | `keepseeding.public-removed.deluge` | `linux-e2e:keepseeding` | ported (tests/e2e/keepseeding.spec.ts) |
-| `outage.idle` | `linux-e2e:outage` | ported (tests/e2e/outage.spec.ts) |
-| `outage.inflight` | `linux-e2e:outage` | ported (tests/e2e/outage.spec.ts) |
+| `outage.idle` | `linux-e2e:outage` | ported (tests/e2e/outagecases.ts) |
+| `outage.inflight` | `linux-e2e:outage` | ported (tests/e2e/outagecases.ts) |
 | `outage.tray` | `windows` | ported (needs first CI run): tests/e2e-windows, leg `install`; the Deluno tray icon's hover text and dot going amber and green in the same watch (a tray exists only on Windows; the Linux outage group makes every other reading of `outage.idle` and `outage.inflight`) |
-| `tryagain.qbittorrent` | `linux-e2e:tryagain` | ported (tests/e2e/tryagain.spec.ts) |
-| `tryagain.transmission` | `linux-e2e:tryagain` | ported (tests/e2e/tryagain.spec.ts) |
-| `tryagain.deluge` | `linux-e2e:tryagain` | ported (tests/e2e/tryagain.spec.ts) |
-| `tryagain.sabnzbd` | `linux-e2e:tryagain` | ported (tests/e2e/tryagain.spec.ts) |
-| `tryagain.nzbget` | `linux-e2e:tryagain` | ported (tests/e2e/tryagain.spec.ts) |
+| `tryagain.qbittorrent` | `linux-e2e:tryagain` | ported (tests/e2e/tryagaincases.ts) |
+| `tryagain.transmission` | `linux-e2e:tryagain` | ported (tests/e2e/tryagaincases.ts) |
+| `tryagain.deluge` | `linux-e2e:tryagain` | ported (tests/e2e/tryagaincases.ts) |
+| `tryagain.sabnzbd` | `linux-e2e:tryagain` | ported (tests/e2e/tryagaincases.ts) |
+| `tryagain.nzbget` | `linux-e2e:tryagain` | ported (tests/e2e/tryagaincases.ts) |
 | `vanish.before.qbittorrent` | `linux-e2e:vanishbefore` | ported (tests/e2e/vanishbefore.spec.ts) |
 | `vanish.before.transmission` | `linux-e2e:vanishbefore` | ported (tests/e2e/vanishbefore.spec.ts) |
 | `vanish.before.deluge` | `linux-e2e:vanishbefore` | ported (tests/e2e/vanishbefore.spec.ts) |
@@ -130,7 +130,7 @@ How each client downloads with no internet:
 
 ## Step 2b result (17 Oct 2026)
 
-Groups `removal`, `tryagain` and `outage` are ported, each passing on a fresh stack: `tests/e2e/removal.spec.ts` (8 scenarios: the five clients as a folder and the three torrent clients as a single file; the fixture now makes single-file torrents with `layout: "file"`), `tests/e2e/tryagain.spec.ts` (5) and `tests/e2e/outage.spec.ts` (2). Shared helpers are in `tests/e2e/flow.ts`.
+Groups `removal`, `tryagain` and `outage` are ported, each passing on a fresh stack: `tests/e2e/removalcases.ts` (8 scenarios: the five clients as a folder and the three torrent clients as a single file; the fixture now makes single-file torrents with `layout: "file"`), `tests/e2e/tryagaincases.ts` (5) and `tests/e2e/outagecases.ts` (2). Shared helpers are in `tests/e2e/flow.ts`.
 
 - **Removal** keeps every check of G03-Removal.ps1 (on disk before, first removal succeeds, nothing left in the completed folders, library file untouched, second removal reads as a failure, no second Activity row) and also asks the client itself whether it still holds the download, before and after.
 - **Try again** stops Weir's container, sends the five films, reads each client's own API for the finish, waits for the failed hand-offs, starts Weir, and reads the drawer in a real browser (Playwright's Chromium, installed by a CI step for the groups that need it) every 200 ms. It also checks Weir's own record of the file at the end.
@@ -157,3 +157,12 @@ The four `windows` ids are ported to `tests/e2e-windows/` (a runner, `Run-Window
 - **Results** are in the golden path's JSON shape (`C:\e2e-windows\results\results.json`) with evidence, a picture of the desktop at the key moments, and Deluno's and Weir's logs, uploaded as `e2e-windows-<leg>`. A scenario a leg owns that never reports is an error.
 - **Unproven until a runner has run it:** that the runner has a taskbar and notification area for UI Automation to read; that the picker window can be driven there (Server Manager, the first-run firewall step); how long the five clients and Weir take to download; and that anonymous GitHub calls from a hosted runner's address can be used up.
 - **Offline checks:** `tests/e2e-windows/Test-WindowsE2E.ps1` (run by `npm run ci:check`).
+
+## Step 4 result (18 Oct 2026): TV episodes
+
+The films' path now runs for a real TV episode too (the show-detail rows `a-tv-episode-searched-grabbed-through-a-real`, `a-tv-episode-through-a-usenet-client-sabnzbd` and `remove-this-copy-resend-stuck-outage-try-again` of the register). These are not golden-path scenarios, so they are not in the parity table above; their ids start `tv.`.
+
+- **The stack.** `tests/e2e/tv.ts` adds to the movies stack what an episode needs: Weir's TV library (watched `/downloads/completed/TV`, output `/weir/Ready/TV`, linked to Deluno), the qBittorrent TV category, the metadata broker (the fixture lists five aired episodes for a show whose title begins `Gppack`, as in `seasonpack`), a profile with no size limits and a TV library that refines before import through Weir. The fixture's `/films` call takes `tvEpisode: N` and makes `Title.S01E0N.1080p.WEB-DL.x264-E2E` as a torrent (folder or single file) or a Usenet post, offered under the TV categories. `sendFilm` on a TV stack adds the show, takes its episodes from the broker and presses Search for S01E01 (`POST /api/series/{id}/episodes/search`); a resend uses `POST /api/series/{id}/grab`. So every film group's helper runs a TV episode unchanged.
+- **`tv.episode.<client>`** (group `tvepisodes`): all five clients. The checks are the films': the client's own API says it finished, Deluno handed it to Weir, the hand-off settled, the cleaned file is in the TV library and Activity says sent, handed over and imported. It also reads that the show owns exactly S01E01.
+- **The variants**, one torrent client (qBittorrent) and one Usenet client (SABnzbd) each: `tv.remove-copy.<client>.folder` (`tvremove`), `tv.resend.before|during|after.<client>` (`tvredobefore`, `tvredoduring`, `tvredoafter`), `tv.stuck.zero|short.<client>` (`tvstalledprogress`), `tv.stuck.peers.qbittorrent` and `tv.stuck.slow.sabnzbd` (`tvstalledrate`), `tv.outage.inflight.<client>` (`tvweirout`), `tv.tryagain.<client>` (`tvretry`), `tv.vanish.before.<client>` (`tvgonebefore`) and `tv.vanish.waiting.<client>` (`tvgonewaiting`). The scenarios of removal, try again, outage, resend before and the two stuck phases moved from their spec files to `removalcases.ts`, `tryagaincases.ts`, `outagecases.ts`, `resendbeforecases.ts`, `stuckprogresscases.ts` and `stuckratecases.ts` (as the resend during and after already were), each taking `"movies"` or `"tv"`; the movie spec files only call them. The register's proofs follow.
+- **The names matter.** Playwright picks a group by matching its name against the spec file's path, so a TV spec's name must not contain another group's name (`tvremove`, not `tvremoval`).

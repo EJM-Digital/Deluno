@@ -597,13 +597,14 @@ jobs:
     runs-on: ubuntu-latest
     # The films group (five clients) took about 90 seconds on a workstation once the images were pulled; the image build is the rest.
     # The resend and stuck groups wait on real clocks (Weir, a one-minute check and two strikes), so each is sharded to stay under 15 minutes of tests.
+    # The tv* groups are the TV episode versions of films, removal, resend, stuck, outage, try again and vanish, one torrent and one Usenet client each (tests/e2e/tv.ts).
     timeout-minutes: 40
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
-        group: [films, removal, tryagain, outage, resendbefore, resendduringtorrent, resendduringusenet, resendaftertorrent, resendafterusenet, stuckprogress, stuckrate, nzbgetsetup, vanishbefore, vanishwaiting, problems, layout, keepseeding, seasonpack, github]
+        group: [films, removal, tryagain, outage, resendbefore, resendduringtorrent, resendduringusenet, resendaftertorrent, resendafterusenet, stuckprogress, stuckrate, nzbgetsetup, vanishbefore, vanishwaiting, problems, layout, keepseeding, seasonpack, github, tvepisodes, tvremove, tvredobefore, tvredoduring, tvredoafter, tvstalledprogress, tvstalledrate, tvretry, tvweirout, tvgonebefore, tvgonewaiting]
     env:
       DELUNO_IMAGE: deluno-e2e:${{ github.sha }}
       # Group github adds GitHub's API with its allowance used up (a stand-in answering GitHub's own recorded reply, tests/e2e/fixture/github.mjs).
@@ -646,7 +647,7 @@ jobs:
 
       # The groups that read Deluno's screens (a drawer, System, the Dashboard) drive a real browser.
       - name: Install the browser
-        if: ${{ matrix.group == 'tryagain' || matrix.group == 'outage' || matrix.group == 'layout' || matrix.group == 'github' }}
+        if: ${{ matrix.group == 'tryagain' || matrix.group == 'outage' || matrix.group == 'tvretry' || matrix.group == 'tvweirout' || matrix.group == 'layout' || matrix.group == 'github' }}
         run: npx playwright install --with-deps chromium
 
       - name: Run the ${{ matrix.group }} group
