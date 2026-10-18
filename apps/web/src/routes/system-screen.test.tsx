@@ -119,6 +119,20 @@ describe("Activity timeline page size (#871)", () => {
     // re-run -- which is what actually re-fetches Activity at the new size.
     await waitFor(() => expect(screen.getByRole("combobox", { name: "Rows shown" })).toHaveTextContent("1000 rows"));
     expect(revalidateMock).toHaveBeenCalled();
+    expect(await screen.findByText("Page size saved")).toBeVisible();
+  });
+
+  it("offers exactly 50, 100, 250, 500 and 1000 rows", () => {
+    authedFetchMock.mockImplementation(() => jsonResponse([]));
+    render(
+      <MemoryRouter initialEntries={["/system/audit"]}>
+        <SystemPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Rows shown" }));
+
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["50 rows", "100 rows", "250 rows", "500 rows", "1000 rows"]);
   });
 });
 

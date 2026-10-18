@@ -48,4 +48,29 @@ describe("System's Health and the bell offer the same buttons (#1098)", () => {
     expect(keepAwake.to).toBeUndefined();
     expect(keepAwake.post).toMatchObject({ method: "PATCH", path: "/api/settings", body: { keepComputerAwake: true } });
   });
+
+  it("a snoozed problem is listed quietly with the day its snooze ends and an Unsnooze that posts to its own address", () => {
+    const model = buildHealth({
+      summary: emptySummary(), attention: summaryOf([]),
+      checks: [check("storage:disk", "A drive is nearly full", { category: "storage", snoozedUntilUtc: "2999-03-05T10:00:00Z" })]
+    });
+
+    const row = model.rows.find((candidate) => candidate.id === "snoozed:storage:disk")!;
+    expect(row.tone).toBe("idle");
+    expect(row.note).toBe(`Snoozed until ${new Date("2999-03-05T10:00:00Z").toLocaleDateString("en-AU", { day: "numeric", month: "short" })}`);
+    expect(model.rows.some((candidate) => candidate.id === "problem:storage:disk")).toBe(false);
+    expect(row.buttons.map((button) => button.label)).toEqual(["Unsnooze"]);
+    expect(row.buttons[0]!.post?.path).toBe("/api/system/health/storage%3Adisk/unsnooze");
+  });
+
+  it("once the snooze has ended the same problem is a live problem again, with Snooze offered", () => {
+    const model = buildHealth({
+      summary: emptySummary(), attention: summaryOf([]),
+      checks: [check("storage:disk", "A drive is nearly full", { category: "storage", snoozedUntilUtc: "2000-01-01T00:00:00Z" })]
+    });
+
+    expect(model.rows.some((candidate) => candidate.id === "snoozed:storage:disk")).toBe(false);
+    const live = model.rows.find((candidate) => candidate.id === "problem:storage:disk")!;
+    expect(live.buttons.map((button) => button.label)).toContain("Snooze 1 day");
+  });
 });

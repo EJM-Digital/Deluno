@@ -62,6 +62,24 @@ public sealed class SubtitleFetchTests
     }
 
     [Fact]
+    public async Task A_subtitle_that_is_written_carries_the_file_it_wrote_into_activity_so_everything_about_that_file_finds_it()
+    {
+        var provider = new FakeProvider("first", [Candidate("en")], Srt);
+        var activity = new RecordingActivityFeedRepository();
+        var writer = new FakeWriter();
+        var service = new SubtitleFetchService(
+            new SubtitleProviderRegistry([provider]), new FakeRepository([Connection("first")]), writer,
+            TimeProvider.System, NullLogger<SubtitleFetchService>.Instance, activity);
+
+        var outcome = await service.FetchAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", SubtitleHearingImpairedPreferences.PlainPreferred, CancellationToken.None);
+
+        Assert.True(outcome.Found);
+        var facts = ActivityHistory.FactsFromDetails(Assert.Single(activity.Details));
+        Assert.Equal(outcome.WrittenPath, facts.FilePaths);
+        Assert.Equal("first", facts.SourceName);
+    }
+
+    [Fact]
     public async Task Applies_the_library_content_policy_before_writing()
     {
         var provider = new FakeProvider(
@@ -893,6 +911,8 @@ public sealed class SubtitleFetchTests
     {
         public List<(string Category, string Message, string? RelatedEntityType, string? RelatedEntityId)> Recorded { get; } = [];
 
+        public List<string?> Details { get; } = [];
+
         public Task<IReadOnlyList<ActivityEventItem>> ListActivityAsync(
             int take, string? relatedEntityType, string? relatedEntityId, CancellationToken cancellationToken)
             => throw new NotSupportedException();
@@ -906,6 +926,7 @@ public sealed class SubtitleFetchTests
             string? relatedEntityType, string? relatedEntityId, CancellationToken cancellationToken)
         {
             Recorded.Add((category, message, relatedEntityType, relatedEntityId));
+            Details.Add(detailsJson);
             return Task.FromResult(new ActivityEventItem(
                 Id: Guid.NewGuid().ToString("n"), Category: category, Message: message, DetailsJson: detailsJson,
                 RelatedJobId: relatedJobId, RelatedEntityType: relatedEntityType, RelatedEntityId: relatedEntityId,

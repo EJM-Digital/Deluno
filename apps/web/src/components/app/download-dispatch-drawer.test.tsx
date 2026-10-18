@@ -71,4 +71,50 @@ describe("DownloadDispatchDrawer", () => {
     expect(screen.getByText("Chosen on Search")).toBeVisible();
     expect(screen.queryByText(/0a1b2c3d4e5f/)).not.toBeInTheDocument();
   });
+
+  it("opens a failed send with its hand-off, journey, why it failed (retry state, the client's detail, what to do, when it can go again) and the ids to trace it", () => {
+    render(
+      <DownloadDispatchDrawer
+        dispatch={{
+          ...failedGrab,
+          attemptCount: 3,
+          grabAttemptedUtc: "2026-09-24T02:00:01Z",
+          detectedUtc: "2026-09-24T02:05:00Z",
+          torrentHashOrItemId: "torrent-hash-42",
+          failure: { ...failedGrab.failure!, retryState: "RetryScheduled", retryAfterUtc: "2026-09-24T03:00:00Z", upstreamDetail: "No connection could be made because the target machine refused it.", externalId: "torrent-hash-42" }
+        } as DownloadDispatchItem}
+        onClose={() => undefined}
+      />
+    );
+
+    for (const section of ["Handoff", "Journey", "Why it failed", "Trace"]) {
+      expect(screen.getByText(section)).toBeVisible();
+    }
+    expect(screen.getByText("Fixture")).toBeVisible();
+    expect(screen.getByText("3")).toBeVisible();
+    expect(screen.getByText("Retry scheduled")).toBeVisible();
+    expect(screen.getByText("qBittorrent did not accept the release.")).toBeVisible();
+    expect(screen.getByText("Client detail: No connection could be made because the target machine refused it.")).toBeVisible();
+    expect(screen.getByText("Check the download client, then search for the title again.")).toBeVisible();
+    expect(screen.getByText(/Next eligible attempt/)).toBeVisible();
+    expect(screen.getByText("dispatch-1")).toBeVisible();
+    expect(screen.getAllByText("torrent-hash-42").length).toBeGreaterThan(0);
+    expect(screen.getByText("library-1")).toBeVisible();
+    expect(screen.queryByText("Why import failed")).not.toBeInTheDocument();
+  });
+
+  it("opens a send whose import failed with the reason the import gave, in place of why the send failed", () => {
+    const { failure: _failure, ...withoutFailure } = failedGrab;
+    render(
+      <DownloadDispatchDrawer
+        dispatch={{ ...withoutFailure, status: "imported", grabStatus: "succeeded", importStatus: "failed", importFailureMessage: "The processed file was shorter than the download." } as DownloadDispatchItem}
+        onClose={() => undefined}
+      />
+    );
+
+    expect(screen.getByText("Why import failed")).toBeVisible();
+    expect(screen.getByText("The processed file was shorter than the download.")).toBeVisible();
+    expect(screen.queryByText("Why it failed")).not.toBeInTheDocument();
+    expect(screen.getByText("Trace")).toBeVisible();
+  });
 });

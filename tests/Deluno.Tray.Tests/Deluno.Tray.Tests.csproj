@@ -19,6 +19,7 @@
   <!-- Windows only: it needs Deluno.Contracts, which comes through the tray reference below, and as a file linked in from
        outside this folder it would escape the "**/*.cs" removal at the bottom (rc.30.29 broke CI's Linux build). -->
   <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows')) and '$(SimulateLinuxCI)' != 'true'">
+    <Compile Include="../Deluno.Persistence.Tests/Support/Wait.cs" Link="Support/Wait.cs" />
     <Compile Include="../Support/ScriptedStateFileSystem.cs" Link="Support/ScriptedStateFileSystem.cs" />
   </ItemGroup>
 

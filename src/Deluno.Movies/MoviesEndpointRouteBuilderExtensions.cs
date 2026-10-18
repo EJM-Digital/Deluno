@@ -3479,7 +3479,16 @@ public static class MoviesEndpointRouteBuilderExtensions
                 }
 
                 await realtimeEventPublisher.PublishEntityChangedAsync("Movie", id, cancellationToken);
-                renamed.Add(new { movieId = id, movie.Title, from = Path.GetFileName(sourceDir), to = proposedName });
+                renamed.Add(new
+                {
+                    movieId = id,
+                    movie.Title,
+                    from = Path.GetFileName(sourceDir),
+                    to = proposedName,
+                    // The file's old and new path, so a search by the file finds the rename by either.
+                    oldPath = filePath,
+                    newPath = Path.Combine(destinationDir, Path.GetRelativePath(sourceDir, filePath))
+                });
             }
 
             if (renamed.Count > 0 || failures.Count > 0)
