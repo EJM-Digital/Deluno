@@ -16,6 +16,12 @@ import { readyRouteSources } from "../test/route-sources";
 const authedFetchMock = vi.fn();
 vi.mock("../lib/use-auth", () => ({ authedFetch: (...args: unknown[]) => authedFetchMock(...args) }));
 
+const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() }));
+vi.mock("../components/shell/toaster", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/shell/toaster")>()),
+  toast: toastMock
+}));
+
 const revalidateMock = vi.fn();
 const refetchMock = vi.fn();
 const queueLoaderData = {
@@ -92,6 +98,8 @@ afterEach(() => {
   queueLoaderData.heldReleases = [];
   authedFetchMock.mockReset();
   refetchMock.mockReset();
+  toastMock.success.mockReset();
+  toastMock.error.mockReset();
 });
 
 describe("the integration failure block in a download's drawer", () => {
@@ -351,5 +359,54 @@ describe("Transfers when its data cannot be read", () => {
     render(<MemoryRouter><QueuePage /></MemoryRouter>);
     expect(screen.getByRole("alert")).toHaveTextContent("This screen could not load everything it needs. Download activity could not be read. The server did not answer.");
     expect(screen.queryByText("Nothing in motion")).toBeNull();
+  });
+});
+
+describe("a release held for approval: Find another", () => {
+  const row: HeldReleaseRow = {
+    historyId: "h1", mediaType: "movie", id: "m1", episodeId: null, title: "Nosferatu", year: 1922, episodeLabel: null, libraryId: "lib 1",
+    releaseName: "Nosferatu.1922.1080p.BluRay-GRP", indexerName: "Nyaa", indexerId: "ix", downloadUrl: "https://x/get", quality: "BluRay 1080p",
+    sizeBytes: 1_000_000_000, seeders: 5, reason: "Held for your review.", heldUtc: "2026-10-08T00:00:00Z"
+  } as HeldReleaseRow;
+
+  it("refuses that release, starts a new search for the film, then drops the held row, and says so", async () => {
+    queueLoaderData.heldReleases = [row];
+    authedFetchMock.mockImplementation((path: string) => jsonResponse(path === "/api/blocked-releases" ? { id: "b1" } : {}));
+    render(<MemoryRouter><QueuePage /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole("button", { name: "Find another for Nosferatu (1922)" }));
+
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledTimes(3));
+    const calls = authedFetchMock.mock.calls.map((call) => ({ path: String(call[0]), method: (call[1] as RequestInit | undefined)?.method, body: (call[1] as RequestInit | undefined)?.body }));
+    expect(calls[0]).toMatchObject({ path: "/api/blocked-releases", method: "POST" });
+    expect(JSON.parse(String(calls[0]!.body))).toMatchObject({ releaseName: "Nosferatu.1922.1080p.BluRay-GRP", indexerName: "Nyaa", mediaType: "movie", entityId: "m1" });
+    expect(calls[1]).toEqual({ path: "/api/movies/m1/search?libraryId=lib%201", method: "POST", body: undefined });
+    expect(calls[2]).toEqual({ path: "/api/attention/held-releases/h1/dismiss", method: "POST", body: undefined });
+    await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith("Nosferatu.1922.1080p.BluRay-GRP will not be used again. Searching for another."));
+  });
+
+  it("an episode is searched for as that episode, not the whole show", async () => {
+    queueLoaderData.heldReleases = [{ ...row, mediaType: "series", id: "s1", episodeId: "e1", title: "The Wire", episodeLabel: "S01E04" } as HeldReleaseRow];
+    authedFetchMock.mockImplementation((path: string) => jsonResponse(path === "/api/blocked-releases" ? { id: "b1" } : {}));
+    render(<MemoryRouter><QueuePage /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole("button", { name: "Find another for The Wire S01E04" }));
+
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledTimes(3));
+    const search = authedFetchMock.mock.calls[1]!;
+    expect(search[0]).toBe("/api/series/s1/episodes/search");
+    expect(JSON.parse(String((search[1] as RequestInit).body))).toEqual({ episodeIds: ["e1"], monitoredOnly: false });
+  });
+
+  it("when the refusal cannot be saved nothing is searched and the row stays", async () => {
+    queueLoaderData.heldReleases = [row];
+    authedFetchMock.mockImplementation((path: string) => path === "/api/blocked-releases" ? jsonResponse({ message: "The blocklist is full." }, false, 500) : jsonResponse({}));
+    render(<MemoryRouter><QueuePage /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole("button", { name: "Find another for Nosferatu (1922)" }));
+
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalled());
+    expect(authedFetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Find another for Nosferatu (1922)" })).toBeVisible();
   });
 });
