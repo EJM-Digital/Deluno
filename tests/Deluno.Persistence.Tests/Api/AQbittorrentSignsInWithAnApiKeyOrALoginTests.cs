@@ -29,7 +29,7 @@ public sealed class AQbittorrentSignsInWithAnApiKeyOrALoginTests
         return await tested.Content.ReadFromJsonAsync<JsonElement>();
     }
 
-    [Fact(Skip = "DEFECT: Test connection ignores the API-key sign-in. With a blank username and the key in the password field, TestQbittorrentAsync (src/Deluno.Connections/ConnectionsEndpointRouteBuilderExtensions.cs) calls QbittorrentSignIn, which posts auth/login with username= and password=<key> and sends no Authorization: Bearer header, while QbittorrentDownloadClient.AuthenticateAsync sends the key as a bearer token. Observed requests: POST /api/v2/auth/login (username=&password=KEY), GET /api/v2/app/version, GET /api/v2/app/version, none with a bearer token. A real qBittorrent 5.2 answers that form login Fails/401, so a valid key reads as refused.")]
+    [Fact]
     public async Task A_blank_username_with_the_key_in_the_password_field_is_tested_with_a_bearer_token_and_never_signs_in()
     {
         await using var qbit = await RecordedAppServer.StartAsync("qbittorrent", new[] { "sign-in", "version", "settings" }.Select(RecordedReplies.Qbittorrent));
