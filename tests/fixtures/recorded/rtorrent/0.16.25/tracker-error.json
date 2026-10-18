@@ -1,0 +1,51 @@
+{
+  "app": "rtorrent",
+  "version": "0.16.25",
+  "state": "tracker-error",
+  "recordedAt": "2026-10-18T10:11:42Z",
+  "note": "A torrent whose tracker answers \"Registered torrents only\": the list row carries it in d.message, and t.multicall carries it in t.message.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.multicall2</methodName><params><param><value><string></string></value></param><param><value><string>main</string></value></param><param><value><string>d.hash=</string></value></param><param><value><string>d.name=</string></value></param><param><value><string>d.is_active=</string></value></param><param><value><string>d.is_hash_checking=</string></value></param><param><value><string>d.complete=</string></value></param><param><value><string>d.bytes_done=</string></value></param><param><value><string>d.size_bytes=</string></value></param><param><value><string>d.down.rate=</string></value></param><param><value><string>d.up.rate=</string></value></param><param><value><string>d.ratio=</string></value></param><param><value><string>d.message=</string></value></param><param><value><string>d.directory=</string></value></param><param><value><string>d.peers_connected=</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><array><data><value><string>F07E36C4192BDC796F15E70F1F92018E0142BFF4</string></value><value><string>Recorded.Rtorrent.Refused.2024.1080p.WEB-DL.mkv</string></value><value><i8>1</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>4194304</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><string>Tracker: [v4 : Failure reason \"Registered torrents only\"]</string></value><value><string>/downloads/temp</string></value><value><i8>0</i8></value></data></array></value></data></array></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>t.multicall</methodName><params><param><value><string>F07E36C4192BDC796F15E70F1F92018E0142BFF4</string></value></param><param><value><string></string></value></param><param><value><string>t.is_enabled=</string></value></param><param><value><string>t.message=</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><fault><value><struct><member><name>faultCode</name><value><i8>-500</i8></value></member><member><name>faultString</name><value><string>Command \"t.message\" does not exist.</string></value></member></struct></value></fault></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.message</methodName><params><param><value><string>F07E36C4192BDC796F15E70F1F92018E0142BFF4</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><string>Tracker: [v4 : Failure reason \"Registered torrents only\"]</string></value></param></params></methodResponse>"
+      }
+    }
+  ]
+}
