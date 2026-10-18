@@ -78,8 +78,14 @@ function AllowedHostsCard({ overview, onSaved }: { overview: AllowedHostsOvervie
       seen.add(host.toLowerCase());
       combined.push({ host, reason: "Added by hand" });
     }
+    // An address just added is listed at once, marked unsaved, until it is saved or unticked.
+    for (const host of selected) {
+      if (seen.has(host.toLowerCase())) continue;
+      seen.add(host.toLowerCase());
+      combined.push({ host, reason: "Added by hand, not saved yet" });
+    }
     return combined;
-  }, [overview.detectedHosts, overview.allowedHosts]);
+  }, [overview.detectedHosts, overview.allowedHosts, selected]);
 
   const dirty = enabled !== overview.enabled || JSON.stringify([...selected].sort()) !== JSON.stringify([...overview.allowedHosts].sort());
   const currentHostChecked = selected.some((host) => host.toLowerCase() === overview.currentHost.toLowerCase());
