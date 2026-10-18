@@ -45,6 +45,9 @@ const fullJobs = [
   job("ci-passed", "success", [{ name: "Every job that was due passed", conclusion: "success" }]),
   job("Frontend smoke (1/2)"),
   job("Frontend smoke (2/2)"),
+  job("Windows installer"),
+  job("Windows end-to-end (install)"),
+  job("End-to-end (films)"),
 ];
 
 test("a green run that ran the smoke shards qualifies", () => {
@@ -59,9 +62,16 @@ test("no run, a failed run, an unfinished run and a pull request run are refused
 });
 
 test("a green documents-only run, which skipped the smoke jobs, is refused", () => {
-  const docsOnly = [fullJobs[0], job("Frontend smoke (1/2)", "skipped"), job("Frontend smoke (2/2)", "skipped")];
+  const docsOnly = [...fullJobs.slice(0, 1), job("Frontend smoke (1/2)", "skipped"), job("Frontend smoke (2/2)", "skipped"), ...fullJobs.slice(3)];
   assert.match(checkCi([run()], () => docsOnly)[0], /did not run the jobs/);
-  assert.match(checkCi([run()], () => [fullJobs[0]])[0], /did not run the jobs/);
+});
+
+test("an ordinary push run, which never builds the installer or runs the end-to-end jobs, is refused: a tag needs a green manual run (#1356)", () => {
+  const push = fullJobs.slice(0, 3);
+  const reasons = checkCi([run()], () => push)[0];
+  assert.match(reasons, /Windows installer/);
+  assert.match(reasons, /gh workflow run ci\.yml/);
+  assert.deepEqual(checkCi([run({ event: "workflow_dispatch" })], () => fullJobs), []);
 });
 
 test("an earlier failed run does not hide a later green full run", () => {
