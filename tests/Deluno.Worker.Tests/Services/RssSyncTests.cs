@@ -41,6 +41,7 @@ public sealed class RssSyncTests
     private readonly List<EnqueueJobRequest> _queued = [];
     private readonly Dictionary<string, DateTimeOffset> _lastSeen = new(StringComparer.OrdinalIgnoreCase);
     private IndexerFeedResult _answer = new(true, []);
+    private readonly Mock<Deluno.Contracts.IMediaTagStore> _tags = new();
     private LibraryItem _movieLibrary = Library("lib-movies", "Movies", "movies");
 
     public RssSyncTests()
@@ -152,6 +153,43 @@ public sealed class RssSyncTests
         Assert.Single(_queued);
     }
 
+    /// <summary>#1354: the library's "Only for titles tagged" and "Never for titles tagged" choices for the indexer hold in RSS too.</summary>
+    [Theory]
+    [InlineData("kids", "", new string[0], false)]
+    [InlineData("kids", "", new[] { "kids" }, true)]
+    [InlineData("", "horror", new[] { "horror" }, false)]
+    [InlineData("", "horror", new[] { "kids" }, true)]
+    [InlineData("kids", "horror", new[] { "kids", "horror" }, false)]
+    public async Task A_new_release_searches_for_a_film_only_when_the_librarys_tag_choices_for_that_indexer_allow_it(string only, string never, string[] filmTags, bool searched)
+    {
+        _libraries.Setup(repo => repo.GetLibraryRoutingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string id, CancellationToken _) => new LibraryRoutingSnapshot(id, id, [Blank<LibrarySourceLinkItem>() with { IndexerId = "idx-1", RequiredTags = only, ExcludedTags = never }], []));
+        _tags.Setup(store => store.ListAllTitleTagsAsync(Deluno.Contracts.MediaKind.Movie, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new Deluno.Contracts.MediaTitleTags("m-general", "The General", true, filmTags)]);
+        _tags.Setup(store => store.ListAllTitleTagsAsync(Deluno.Contracts.MediaKind.Series, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        Feed("The.General.1926.1080p.BluRay.DTS-HD.MA.5.1.x264-DELUNO");
+
+        await Sync();
+
+        Assert.Equal(searched ? 1 : 0, _queued.Count(request => request.RelatedEntityId == "m-general"));
+    }
+
+    [Fact]
+    public async Task A_new_episode_release_is_left_alone_when_the_librarys_never_for_tag_is_on_the_show()
+    {
+        _libraries.Setup(repo => repo.GetLibraryRoutingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string id, CancellationToken _) => new LibraryRoutingSnapshot(id, id, [Blank<LibrarySourceLinkItem>() with { IndexerId = "idx-1", RequiredTags = "", ExcludedTags = "crime" }], []));
+        _tags.Setup(store => store.ListAllTitleTagsAsync(Deluno.Contracts.MediaKind.Movie, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _tags.Setup(store => store.ListAllTitleTagsAsync(Deluno.Contracts.MediaKind.Series, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new Deluno.Contracts.MediaTitleTags("s-bb", "Breaking Bad", true, ["crime"])]);
+        Feed("Breaking.Bad.S01E02.720p.WEB-DL.DDP5.1.H.264-DELUNO");
+
+        await Sync();
+
+        Assert.Empty(_queued);
+    }
+
     [Fact]
     public async Task A_feed_that_could_not_be_read_keeps_its_place()
     {
@@ -207,7 +245,7 @@ public sealed class RssSyncTests
             .Returns(Task.CompletedTask);
         await new RssSyncService(
             _connections.Object, _libraries.Object, _movies.Object, _series.Object, _feed.Object, state.Object,
-            _scheduler.Object, Mock.Of<IActivityFeedRepository>(), Mock.Of<IIndexerHistoryEventStore>(), new Clock(Now), NullLogger<RssSyncService>.Instance)
+            _scheduler.Object, Mock.Of<IActivityFeedRepository>(), Mock.Of<IIndexerHistoryEventStore>(), new Clock(Now), NullLogger<RssSyncService>.Instance, _tags.Object)
             .SyncAsync(CancellationToken.None);
     }
 
