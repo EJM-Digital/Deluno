@@ -71,6 +71,18 @@ public sealed class RtorrentOnRecordingsTests
             return this;
         }
 
+        /// <summary>Answers a call with a recorded reply in which one value (the path a test is about) is replaced.</summary>
+        public Scripted AddReply(string method, RecordedReply reply, string replace, string with)
+        {
+            if (!_replies.TryGetValue(method, out var list))
+            {
+                _replies[method] = list = [];
+            }
+
+            list.Add(reply with { Body = reply.Body!.Replace(replace, System.Security.SecurityElement.Escape(with)) });
+            return this;
+        }
+
         private RecordedReply? _fallback;
 
         /// <summary>Answers every call no recording was added for with this recorded reply (a mount that refuses the login refuses every call).</summary>
@@ -390,6 +402,76 @@ public sealed class RtorrentOnRecordingsTests
 
         Assert.True(result.Succeeded, result.Message);
         Assert.Equal(["d.check_hash"], handler.Methods);
+    }
+
+    // ---- removing (#1288) ----
+
+    private const string HeldHash = "D3A2428E690FB2056D885BA960C5D85EA531454F";
+
+    [Fact]
+    public async Task Delete_sends_d_erase_for_the_held_download_and_is_done_once_rTorrent_no_longer_holds_it()
+    {
+        var handler = new Scripted().Add(R("downloading"), 2).Add(R("removed-twice"), 1).Add(R("removed-without-data"), 0);
+
+        var result = await Over(handler).ExecuteActionAsync(Item(), DownloadClientActions.Delete, HeldHash, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Single(handler.Methods, m => m == "d.erase");
+        Assert.Contains(HeldHash, handler.Bodies[handler.Methods.IndexOf("d.erase")], StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(DownloadClientActions.Delete)]
+    [InlineData(DownloadClientActions.RemoveRefusedCopy)]
+    [InlineData(DownloadClientActions.DeleteWithData)]
+    public async Task A_second_removal_of_a_download_rTorrent_no_longer_holds_is_a_failure_and_sends_no_second_erase(string action)
+    {
+        var fault = R("removed-twice");
+        Assert.Contains("info-hash not found", fault.Exchanges[1].Reply.Body);
+        var handler = new Scripted().Add(fault, 1).Add(fault, 0);
+
+        var result = await Over(handler).ExecuteActionAsync(Item(), action, new string('0', 40), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("has no download with that id", result.Message);
+        Assert.DoesNotContain("d.erase", handler.Methods);
+    }
+
+    [Fact]
+    public async Task Delete_with_data_asks_rTorrent_for_the_base_path_erases_the_download_and_deletes_that_path_itself()
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"deluno-rt-{Guid.NewGuid():N}"));
+        var file = Path.Combine(folder.FullName, "Recorded.Rtorrent.Film.2024.1080p.WEB-DL.mkv");
+        await File.WriteAllTextAsync(file, "content");
+        try
+        {
+            var handler = new Scripted().Add(R("downloading"), 2).Add(R("removed-twice"), 1).Add(R("removed-without-data"), 0)
+                .AddReply("d.base_path", R("finished-single-file").Exchanges[2].Reply, "/downloads/complete/Recorded.Rtorrent.Film.2024.1080p.WEB-DL.mkv", file);
+
+            var result = await Over(handler).ExecuteActionAsync(Item(), DownloadClientActions.DeleteWithData, HeldHash, CancellationToken.None);
+
+            Assert.True(result.Succeeded, result.Message);
+            Assert.True(handler.Methods.IndexOf("d.base_path") < handler.Methods.IndexOf("d.erase"));
+            Assert.False(File.Exists(file));
+        }
+        finally
+        {
+            if (folder.Exists) folder.Delete(recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("/")]
+    [InlineData("C:\\")]
+    public async Task Delete_with_data_never_deletes_a_filesystem_root_rTorrent_reports_and_leaves_the_files(string root)
+    {
+        var handler = new Scripted().Add(R("downloading"), 2).Add(R("removed-twice"), 1).Add(R("removed-without-data"), 0)
+            .AddReply("d.base_path", R("finished-single-file").Exchanges[2].Reply, "/downloads/complete/Recorded.Rtorrent.Film.2024.1080p.WEB-DL.mkv", root);
+
+        var result = await Over(handler).ExecuteActionAsync(Item(), DownloadClientActions.DeleteWithData, HeldHash, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Contains("left on disk", result.Message, StringComparison.Ordinal);
     }
 
     // ---- adding ----
