@@ -148,18 +148,27 @@ $unitTests.Process.WaitForExit()
 
 $env:DELUNO_SMOKE_PREBUILT = "1"
 $env:DELUNO_SMOKE_DIST = $smokeDist
+# The shards run one after another in a chain (18 Oct 2026), beside the backend chain: three smoke hosts with their browsers plus
+# the backend tests starved the machine (a client call giving up after 8 seconds, a folder list taking over 5 seconds). Each
+# shard still has its own ports, database and Playwright cache folder, as in CI.
+# Playwright keeps its compiled copy of every spec and helper in one shared cache folder and writes each
+# file in place. Three shards starting together on a cold cache read each other's half-written files and
+# died before any test with "SyntaxError: missing ) after argument list" / "Unexpected end of input" at
+# eval (17 Oct 2026, shards 1 and 2 of 3). Each shard gets a cache folder of its own.
+$smokeBody = @("`$failed = 0")
 foreach ($shard in $shards) {
-    $env:DELUNO_SMOKE_API_PORT = [string]$shard.ApiPort
-    $env:DELUNO_SMOKE_WEB_PORT = [string]$shard.WebPort
     $output = Join-Path $logDir "playwright-output-$($shard.Id)"
-    # Playwright keeps its compiled copy of every spec and helper in one shared cache folder and writes each
-    # file in place. Three shards starting together on a cold cache read each other's half-written files and
-    # died before any test with "SyntaxError: missing ) after argument list" / "Unexpected end of input" at
-    # eval (17 Oct 2026, shards 1 and 2 of 3). Each shard gets a cache folder of its own.
-    $env:PWTEST_CACHE_DIR = Join-Path $logDir "playwright-cache-$($shard.Id)"
-    $running += Start-GateStep "Smoke shard $($shard.Shard)" $npm "--workspace apps/web run test:smoke -- --shard=$($shard.Shard) --reporter=dot --output=`"$output`""
+    $cache = Join-Path $logDir "playwright-cache-$($shard.Id)"
+    $shardLog = Join-Path $logDir (("Smoke shard $($shard.Shard)" -replace "[^A-Za-z0-9]", "") + ".log")
+    $smokeBody += "`$env:DELUNO_SMOKE_API_PORT = '$($shard.ApiPort)'; `$env:DELUNO_SMOKE_WEB_PORT = '$($shard.WebPort)'; `$env:PWTEST_CACHE_DIR = '$cache'"
+    $smokeBody += "`$sw = [System.Diagnostics.Stopwatch]::StartNew()"
+    $smokeBody += "& '$npm' --workspace apps/web run test:smoke -- --shard=$($shard.Shard) --reporter=dot --output='$output' *> '$shardLog'"
+    $smokeBody += "if (`$LASTEXITCODE -eq 0) { Write-Host ('  OK  Smoke shard $($shard.Shard) ({0:mm\:ss})' -f `$sw.Elapsed) } else { `$failed++; Write-Host ('  XX  Smoke shard $($shard.Shard) failed ({0:mm\:ss}); log: $shardLog' -f `$sw.Elapsed); Get-Content '$shardLog' -Tail 25 | ForEach-Object { Write-Host ('      ' + `$_) } }"
 }
-Remove-Item Env:\PWTEST_CACHE_DIR -ErrorAction SilentlyContinue
+$smokeBody += "exit `$(if (`$failed -gt 0) { 1 } else { 0 })"
+$smokeScript = Join-Path $logDir "smoke-chain.ps1"
+Set-Content -Path $smokeScript -Value $smokeBody -Encoding UTF8
+$running += Start-GateStep "Smoke shards one after another" $powershell "-NoProfile -ExecutionPolicy Bypass -File `"$smokeScript`""
 # Put the caller's smoke ports back for anything started later.
 $env:DELUNO_SMOKE_API_PORT = [string]$smokeApiPort
 $env:DELUNO_SMOKE_WEB_PORT = [string]$smokeWebPort
