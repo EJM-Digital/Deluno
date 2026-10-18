@@ -20,6 +20,8 @@ export const TV_FOLDERS = {
   weirOutput: "/weir/Ready/TV"
 };
 
+export type Media = "movies" | "tv";
+
 export const TV_CATEGORY = "deluno-tv";
 
 /** The show's title and release for a send: letters and digits only, and unique to the send. */
