@@ -11,7 +11,7 @@ namespace Deluno.Worker.HealthChecks.Machine;
 /// and the moment the setting is off, or Deluno stops, Windows goes back to its own timers. Does nothing off
 /// Windows. The setting starts off and is switched on only by a person pressing the button.
 /// </summary>
-public sealed class KeepAwakeService(IPlatformSettingsRepository settings, ILogger<KeepAwakeService> logger) : BackgroundService
+public sealed class KeepAwakeService(IPlatformSettingsRepository settings, ILogger<KeepAwakeService> logger, TimeProvider? time = null) : BackgroundService
 {
     internal static readonly TimeSpan Interval = TimeSpan.FromSeconds(30);
 
@@ -24,7 +24,7 @@ public sealed class KeepAwakeService(IPlatformSettingsRepository settings, ILogg
             return;
         }
 
-        using var timer = new PeriodicTimer(Interval);
+        using var timer = new PeriodicTimer(Interval, time ?? TimeProvider.System);
         do
         {
             try
