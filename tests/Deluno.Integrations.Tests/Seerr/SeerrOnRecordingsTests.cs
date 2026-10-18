@@ -316,6 +316,15 @@ public sealed class SeerrOnRecordingsTests
     }
 
     [Fact]
+    public async Task A_Seerr_connection_with_no_key_yet_is_still_asked_and_sends_an_empty_key()
+    {
+        var seerr = new Seerr(_ => Reply("lookup-unknown", 0));
+
+        Assert.Null(await seerr.Client().FindMediaIdAsync(Server(key: null), "movies", "45745", null, CancellationToken.None));
+        Assert.Equal("", seerr.Requests.Single().Headers.GetValues("X-Api-Key").Single());
+    }
+
+    [Fact]
     public async Task A_Seerr_that_does_not_answer_could_not_be_asked_on_every_call()
     {
         var client = new SeerrClient(new Factory(R("not-answering").NotAnswering()));
