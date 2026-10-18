@@ -134,12 +134,12 @@ describe("download drawer: the client's own buttons (In the client)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Pause" }));
 
-    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Pause sent to qBittorrent"));
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Pause sent to qBittorrent"), { timeout: 30_000 });
     const call = authedFetchMock.mock.calls.find(([path]) => String(path) === "/api/download-clients/qbit-client/queue/actions");
     expect(call).toBeDefined();
     expect(call![1]).toMatchObject({ method: "POST" });
     expect(JSON.parse(String((call![1] as { body: string }).body))).toEqual({ action: "pause", queueItemId: "qbit-1" });
-  });
+  }, 40_000);
 
   it("Resume posts the resume action for that download to its client and says Resume was sent to the client", async () => {
     openDrawerFor(queueItem({ status: "paused" }));

@@ -139,7 +139,10 @@ public sealed class ARemovedFilmTakesItsRealDownloadWithItTests
         Assert.True(removed.IsSuccessStatusCode, await removed.Content.ReadAsStringAsync());
         var cancel = Assert.Single(weir.Requests, request => request.Method == "DELETE");
         Assert.EndsWith($"/api/v1/intake/handoffs/deluno/{handoff.Id}", cancel.PathAndQuery, StringComparison.Ordinal);
-        Assert.Contains(qbit.Requests, request => request.PathAndQuery.EndsWith("/api/v2/torrents/delete", StringComparison.Ordinal) && request.Body.Contains("deleteFiles=true", StringComparison.Ordinal));
+        // Say what qBittorrent saw and what it could not answer, so a failure on a starved machine (the client gives up after 8 seconds) is told apart from a wrong request.
+        Assert.True(
+            qbit.Requests.Any(request => request.PathAndQuery.EndsWith("/api/v2/torrents/delete", StringComparison.Ordinal) && request.Body.Contains("deleteFiles=true", StringComparison.Ordinal)),
+            "qBittorrent saw: " + string.Join("; ", qbit.Requests.Select(request => $"{request.Method} {request.PathAndQuery}")) + " | unanswered: " + string.Join("; ", qbit.Unanswered));
         Assert.Equal(ProcessorHandoffStatuses.Dismissed, (await processors.GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))!.Status);
         Assert.Equal(0, await ApiScenes.ScalarAsync(app, "jobs", "SELECT COUNT(*) FROM blocked_releases;"));
         Assert.Equal(HttpStatusCode.NotFound, (await app.Client.GetAsync($"/api/movies/{movieId}")).StatusCode);

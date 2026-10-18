@@ -19,13 +19,13 @@ namespace Deluno.Tray.Tests;
 public sealed class UnexpectedStopGuardTests
 {
     // The monitor picks critical services by type name.
-    private sealed class DelunoHeartbeatWorker(bool fail) : BackgroundService
+    private sealed class DelunoHeartbeatWorker(Task? failWhen) : BackgroundService
     {
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            if (fail)
+            if (failWhen is not null)
             {
-                await Task.Delay(400, CancellationToken.None); // reason: a worker that fails a moment after it starts, as a real one does; the guard under test must still catch it
+                await failWhen; // the test lets it fail once it has seen this host serve: a worker that fails after it started, as a real one does
                 throw new InvalidOperationException("forced failure");
             }
 
@@ -53,7 +53,7 @@ public sealed class UnexpectedStopGuardTests
         public required string Url { get; init; }
     }
 
-    private static async Task<TestHost> StartHostAsync(bool failing)
+    private static async Task<TestHost> StartHostAsync(Task? failWhen)
     {
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
@@ -68,7 +68,7 @@ public sealed class UnexpectedStopGuardTests
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddSingleton<BackgroundServiceFailureMonitor>();
         builder.Services.AddSingleton<IHostedService>(p => p.GetRequiredService<BackgroundServiceFailureMonitor>());
-        builder.Services.AddSingleton<IHostedService>(new DelunoHeartbeatWorker(failing));
+        builder.Services.AddSingleton<IHostedService>(new DelunoHeartbeatWorker(failWhen));
         var app = builder.Build();
         app.MapGet("/api/health/ready", () => "ready");
         await app.StartAsync();
@@ -98,11 +98,12 @@ public sealed class UnexpectedStopGuardTests
         var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var recovered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var starts = 0;
+        var firstHostServed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         async Task StartAsync(CancellationToken _)
         {
             // The first host has the failing service; the replacement is healthy.
-            var host = await StartHostAsync(failing: Interlocked.Increment(ref starts) == 1);
+            var host = await StartHostAsync(failWhen: Interlocked.Increment(ref starts) == 1 ? firstHostServed.Task : null);
             var started = host;
             current = started;
             expectedStop = false;
@@ -128,6 +129,7 @@ public sealed class UnexpectedStopGuardTests
         await StartAsync(CancellationToken.None);
         var first = current!;
         Assert.True(await AnswersAsync(first.Url), "the first host serves until the service gives up");
+        firstHostServed.SetResult();
 
         await stopped.Task.WaitAsync(TimeSpan.FromSeconds(30));
         await recovered.Task.WaitAsync(TimeSpan.FromSeconds(30));
@@ -146,7 +148,7 @@ public sealed class UnexpectedStopGuardTests
     [Fact]
     public async Task A_normal_stop_never_raises_an_unexpected_stop()
     {
-        var host = await StartHostAsync(failing: false);
+        var host = await StartHostAsync(failWhen: null);
         var expectedStop = false;
         var raised = 0;
         UnexpectedStopGuard.Attach(host.App, () => expectedStop, () => Interlocked.Increment(ref raised), TimeSpan.FromSeconds(5));

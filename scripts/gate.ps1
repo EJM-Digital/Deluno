@@ -87,7 +87,7 @@ $running = @()
 #
 # The backend tests are split as CI splits them (.github/workflows/ci.yml, job backend; #1346): the other test
 # projects in one step, and Deluno.Persistence.Tests, which outgrew one job, in the parts of
-# scripts/persistence-parts.mjs, each its own step beside the rest. First the proof that the parts together run every
+# scripts/persistence-parts.mjs, one after another in one step (see below). First the proof that the parts together run every
 # Persistence test exactly once.
 $node = (Get-Command node).Source
 $partsCheck = Join-Path $logDir "Persistenceparts.log"
@@ -98,12 +98,27 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 Write-Host "  OK  Persistence parts run every test exactly once"
-$running += Start-GateStep "Backend tests other projects" $powershell "-NoProfile -ExecutionPolicy Bypass -File scripts\test-dotnet-serial.ps1 -NoBuild -Filter `"Category!=Timing`" -Except Deluno.Persistence.Tests"
+# One chain, not four steps at once (18 Oct 2026): since #1346 the gate started four backend legs, the web unit tests and three smoke
+# shards together, more than this workstation handles (socket-buffer errors, 5-second waits running out, a backend test's
+# 8-second client call giving up). The chain runs the other projects and then each Persistence part one after another, beside
+# ci:check, the web tests and the smoke shards, so at most one test host is busy with backend tests at a time.
 $partCount = [int](& $node scripts\persistence-parts.mjs count)
+$chainSteps = @(@{ Name = "Backend tests other projects"; Args = "-Filter `"Category!=Timing`" -Except Deluno.Persistence.Tests" })
 foreach ($part in 1..$partCount) {
     $partFilter = (& $node scripts\persistence-parts.mjs filter $part)
-    $running += Start-GateStep "Backend tests Persistence part $part of $partCount" $powershell "-NoProfile -ExecutionPolicy Bypass -File scripts\test-dotnet-serial.ps1 -NoBuild -Only Deluno.Persistence.Tests -Filter `"Category!=Timing&($partFilter)`""
+    $chainSteps += @{ Name = "Backend tests Persistence part $part of $partCount"; Args = "-Only Deluno.Persistence.Tests -Filter `"Category!=Timing&($partFilter)`"" }
 }
+$chainScript = Join-Path $logDir "backend-chain.ps1"
+$chainBody = @("`$ErrorActionPreference = 'Continue'", "`$failed = 0")
+foreach ($step in $chainSteps) {
+    $stepLog = Join-Path $logDir (($step.Name -replace "[^A-Za-z0-9]", "") + ".log")
+    $chainBody += "`$sw = [System.Diagnostics.Stopwatch]::StartNew()"
+    $chainBody += "& '$powershell' -NoProfile -ExecutionPolicy Bypass -File '$Root\scripts\test-dotnet-serial.ps1' -NoBuild $($step.Args) *> '$stepLog'"
+    $chainBody += "if (`$LASTEXITCODE -eq 0) { Write-Host ('  OK  $($step.Name) ({0:mm\:ss})' -f `$sw.Elapsed) } else { `$failed++; Write-Host ('  XX  $($step.Name) failed ({0:mm\:ss}); log: $stepLog' -f `$sw.Elapsed); Get-Content '$stepLog' -Tail 25 | ForEach-Object { Write-Host ('      ' + `$_) } }"
+}
+$chainBody += "exit `$(if (`$failed -gt 0) { 1 } else { 0 })"
+Set-Content -Path $chainScript -Value $chainBody -Encoding UTF8
+$running += Start-GateStep "Backend tests one after another" $powershell "-NoProfile -ExecutionPolicy Bypass -File `"$chainScript`""
 
 # CI builds the web app once and hands every smoke shard that build. The gate does the
 # same, and keeps its own copy of the bundle: ci:check builds the web app again into
