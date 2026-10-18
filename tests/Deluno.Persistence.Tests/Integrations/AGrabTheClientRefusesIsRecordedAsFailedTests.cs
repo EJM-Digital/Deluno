@@ -45,6 +45,33 @@ public sealed class AGrabTheClientRefusesIsRecordedAsFailedTests
     }
 
     [Theory]
+    [InlineData("deluge")]
+    [InlineData("qbittorrent")]
+    [InlineData("transmission")]
+    [InlineData("sabnzbd")]
+    [InlineData("nzbget")]
+    public async Task A_client_that_does_not_answer_is_stored_on_the_dispatch_as_a_failed_grab_naming_the_reason_and_is_never_a_send(string protocol)
+    {
+        var (result, stored) = await GrabAsync(protocol, new Func<IDownloadClient>(() => protocol switch
+        {
+            "qbittorrent" => new QbittorrentDownloadClient(() => RecordedReplies.Qbittorrent("not-answering").NotAnswering()),
+            "transmission" => new TransmissionDownloadClient(new Factory(RecordedReplies.Transmission("not-answering").NotAnswering())),
+            "deluge" => new DelugeDownloadClient(new Factory(RecordedReplies.Deluge("not-answering").NotAnswering())),
+            "sabnzbd" => new SabnzbdDownloadClient(new Factory(RecordedReplies.Sabnzbd("not-answering").NotAnswering())),
+            _ => new NzbGetDownloadClient(new Factory(RecordedReplies.Nzbget("not-answering").NotAnswering()))
+        })(), withTorrentFile: false);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("failed", result.Status);
+        Assert.False(string.IsNullOrWhiteSpace(result.Message));
+        Assert.Equal(IntegrationFailureKind.Unavailable, result.Failure?.Kind);
+        Assert.Contains("refused", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("failed", stored.GrabStatus);
+        Assert.Equal(result.Message, stored.GrabMessage);
+        Assert.Null(stored.TorrentHashOrItemId);
+    }
+
+    [Theory]
     [InlineData("qbittorrent")]
     [InlineData("transmission")]
     [InlineData("deluge")]
