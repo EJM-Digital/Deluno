@@ -194,11 +194,39 @@ public static class ActivityHistory
                 else if (PathKeys.Contains(property.Name, StringComparer.OrdinalIgnoreCase) && !paths.Contains(value, StringComparer.OrdinalIgnoreCase)) paths.Add(value);
             }
 
+            // A batch event (a rename of several titles) keeps each title's paths in a list of objects; read those too.
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                CollectNestedPaths(property.Value, 1, paths);
+            }
+
             return (Clip(title, 300), paths.Count == 0 ? null : Clip(string.Join('\n', paths), 1500), Clip(sourceName, 200));
         }
         catch (JsonException)
         {
             return (null, null, null);
+        }
+    }
+
+    private static void CollectNestedPaths(JsonElement element, int depth, List<string> paths)
+    {
+        if (depth > 5) return;
+        if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray()) CollectNestedPaths(item, depth + 1, paths);
+        }
+        else if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (property.Value.ValueKind == JsonValueKind.String)
+                {
+                    var value = property.Value.GetString();
+                    if (!string.IsNullOrWhiteSpace(value) && PathKeys.Contains(property.Name, StringComparer.OrdinalIgnoreCase)
+                        && !paths.Contains(value, StringComparer.OrdinalIgnoreCase)) paths.Add(value);
+                }
+                else CollectNestedPaths(property.Value, depth + 1, paths);
+            }
         }
     }
 

@@ -203,7 +203,7 @@ describe("the page follows the server (#1179)", () => {
   // DEFECT (found writing this test, 18 Oct 2026): the page copies the loader's items into its own state once, on the first render, so
   // when the router reads the loader again (on IndexerChanged) a new event never reaches the list; it shows only after a reload. The
   // test is the behaviour the live row promises, and it fails today.
-  it.skip("DEFECT: a new event the loader brings after IndexerChanged appears in the list without a reload", () => {
+  it("a new event the loader brings after IndexerChanged appears in the list without a reload", () => {
     mockFetch();
     const view = renderPage();
     expect(screen.queryByText("Searched EZTV for Sintel.")).toBeNull();
