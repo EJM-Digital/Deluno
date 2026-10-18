@@ -225,3 +225,7 @@ Still missing, and why:
 - weir `partial-season-pack` final state: with the failure policy hold, a pack with one unreadable episode was still queued 150 s after the hand-off, so only Deluno's request (`handoff-partial-season-pack`) is recorded for it, not Weir's end state.
 - qbittorrent, deluge, transmission, sabnzbd, weir: the other lines in this file that name states the Docker run did not need are unchanged.
 - plex, jellyfin, emby, seerr, utorrent, rtorrent: not asked for in this run; their lines above are unchanged.
+
+## uTorrent and rTorrent scenarios (#1288)
+
+- utorrent and rtorrent: the queue-area rows for delete against delete-with-data on uTorrent and rTorrent (rTorrent's d.erase, its own path delete and the second removal), and the scenario families film, resend, remove-copy, try-again, stuck (0 bytes, short, peers) and vanish for the two clients, need their real replies. Neither is installed on the golden VM, so nothing is recorded (see tests/recorded-reply-allow-list.json). Record the same calls as listed there, then move the pending tests onto them.
