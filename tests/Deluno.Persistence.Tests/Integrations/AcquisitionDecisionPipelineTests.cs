@@ -320,6 +320,58 @@ public sealed class AcquisitionDecisionPipelineTests
         Assert.Equal(2, animeTitle.SourceCount);
     }
 
+    /// <summary>
+    /// #1354: a library's "Only for titles tagged" and "Never for titles tagged" choices for an indexer decide which titles that
+    /// indexer is asked for, in an automatic search and in a manual (interactive) one, and a search that skips it says why.
+    /// </summary>
+    [Theory]
+    [InlineData("automatic")]
+    [InlineData("interactive")]
+    public async Task PlanAsync_keeps_a_library_indexer_to_the_titles_its_tag_choices_allow_and_says_why(string searchKind)
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-28T00:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, time),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteConnectionsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+        var indexer = await repository.CreateIndexerAsync(new CreateIndexerRequest(
+            "General indexer", "torznab", "public", "https://general.invalid/api", null, 1, "2000", null, "movies", true), CancellationToken.None);
+        await repository.UpdateIndexerHealthAsync(indexer.Id, "healthy", "Fixture source verified.", null, 1, CancellationToken.None);
+        var client = await repository.CreateDownloadClientAsync(new CreateDownloadClientRequest(
+            "External client", "qbittorrent", "localhost", 8080, null, null, null, "movies", "tv", null, 1, true), CancellationToken.None);
+        await repository.UpdateDownloadClientHealthAsync(client.Id, "healthy", "Fixture client verified.", null, null, CancellationToken.None);
+        var candidate = Candidate(status: "preferred", meetsCutoff: true, qualityDelta: 1);
+        var pipeline = new AcquisitionDecisionPipeline(
+            new StubPlanner(new MediaSearchPlan(candidate, [candidate], "best candidate")),
+            connectionsRepository: repository);
+        IReadOnlyList<LibraryDownloadClientLinkItem> clients =
+            [new LibraryDownloadClientLinkItem("client-link", "library", client.Id, client.Name, 1, time.GetUtcNow(), time.GetUtcNow())];
+
+        async Task<AcquisitionDecisionPlan> PlanFor(string only, string never, params string[] titleTags)
+            => await pipeline.PlanAsync(new AcquisitionDecisionRequest(
+                "Dune Part Two", 2024, "movies", null, "WEB 1080p",
+                [new LibrarySourceLinkItem("link", "library", indexer.Id, indexer.Name, 1, only, never, time.GetUtcNow(), time.GetUtcNow())],
+                clients, TagNames: titleTags, SearchKind: searchKind));
+
+        Assert.Equal(1, (await PlanFor("", "")).SourceCount);
+        Assert.Equal(1, (await PlanFor("kids", "", "kids", "other")).SourceCount);
+        Assert.Equal(1, (await PlanFor("", "horror", "kids")).SourceCount);
+
+        var withoutTheTag = await PlanFor("kids", "");
+        Assert.Equal(0, withoutTheTag.SourceCount);
+        Assert.Contains("General indexer is only used for titles tagged \"kids\"", withoutTheTag.SearchPlan.Summary);
+        Assert.Contains("Dune Part Two has none of them", withoutTheTag.SearchPlan.Summary);
+
+        var withTheTag = await PlanFor("", "horror", "horror");
+        Assert.Equal(0, withTheTag.SourceCount);
+        Assert.Contains("General indexer is never used for titles tagged \"horror\", and Dune Part Two has that tag.", withTheTag.SearchPlan.Summary);
+
+        // A never-for tag wins over an only-for tag the title also holds.
+        Assert.Equal(0, (await PlanFor("kids", "horror", "kids", "horror")).SourceCount);
+    }
+
     [Fact]
     public async Task ExplainIndexerRoutingAsync_only_explains_a_tagged_indexer_a_title_actually_matched()
     {

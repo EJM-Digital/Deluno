@@ -105,7 +105,7 @@ public sealed class ALibraryOnlySearchesAnIndexerForTheTitlesItIsTaggedForTests
         Assert.Equal("horror", source.GetProperty("excludedTags").GetString());
     }
 
-    [Fact(Skip = "DEFECT: a library's per-indexer \"Only for titles tagged\" choice is saved and shown but never read by the search. Sintel carries no tag and the library's only indexer is routed with requiredTags=kids; POST /api/movies/{id}/search?mode=preview still asks that indexer (Jackett saw GET .../torznab/api?t=search&q=Sintel%202010&cat=2000) and lists its release. LibrarySourceLinkItem.RequiredTags/ExcludedTags are read only by the routing store (SqliteLibrariesRepository) and the drawer; no search code reads them.")]
+    [Fact]
     public async Task An_indexer_routed_only_for_titles_tagged_is_not_asked_for_a_title_without_the_tag()
     {
         await using var rig = await RigAsync("kids", string.Empty);
@@ -116,7 +116,7 @@ public sealed class ALibraryOnlySearchesAnIndexerForTheTitlesItIsTaggedForTests
         Assert.Empty(preview.GetProperty("candidates").EnumerateArray());
     }
 
-    [Fact(Skip = "DEFECT: a library's per-indexer \"Never for titles tagged\" choice is saved and shown but never read by the search. Sintel carries the tag horror and the library's only indexer is routed with excludedTags=horror; POST /api/movies/{id}/search?mode=preview still asks that indexer (Jackett saw GET .../torznab/api?t=search&q=Sintel%202010&cat=2000) and lists its release. No search code reads LibrarySourceLinkItem.ExcludedTags.")]
+    [Fact]
     public async Task An_indexer_routed_never_for_titles_tagged_is_not_asked_for_a_title_with_the_tag()
     {
         await using var rig = await RigAsync(string.Empty, "horror", "horror");
