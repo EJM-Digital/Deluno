@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Deluno.Filesystem;
 using Deluno.Libraries.Contracts;
@@ -86,6 +87,30 @@ public sealed class ImportingAFilmOnDiskTests
         File.AppendAllText(library, "tail");
         Assert.Equal(new FileInfo(library).Length, new FileInfo(source).Length);
         AssertNoImportLeftovers(world);
+    }
+
+    // ---------------------------------------------------------------- the dispatch remembers the file's journey
+
+    [Fact]
+    public async Task A_real_import_leaves_a_journey_event_on_the_dispatch_with_the_exact_release_name_and_where_the_file_went()
+    {
+        await using var world = await StartWorldAsync(new ScriptedProbe(_ => ScriptedProbe.Good()));
+        var movie = await world.AddMovieAsync("Sintel", 2010);
+        var source = world.WriteDownload(Release + ".mkv", fill: 0x77);
+        var dispatch = await world.RecordDispatchAsync(movie.Id, Release);
+
+        var result = await world.ImportAsync(RealDiskLibrary.Request(source, "Sintel", 2010, mode: "copy", dispatchId: dispatch));
+
+        Assert.True(result.Succeeded, result.Message);
+        var library = result.Response!.Preview.DestinationPath;
+        Assert.True(File.Exists(library));
+        var read = await world.App.Client.GetFromJsonAsync<JsonElement>($"/api/v1/download-dispatches/{dispatch}");
+        var journey = read.GetProperty("timeline").EnumerateArray().Single(item => item.GetProperty("eventType").GetString() == "file_provenance_recorded");
+        using var details = JsonDocument.Parse(journey.GetProperty("detailsJson").GetString()!);
+        Assert.Equal(Release, details.RootElement.GetProperty("ReleaseNameEvidence").GetString());
+        Assert.Equal(source, details.RootElement.GetProperty("SourcePath").GetString());
+        Assert.Equal(library, details.RootElement.GetProperty("DestinationPath").GetString());
+        Assert.Equal("copy", details.RootElement.GetProperty("TransferModeUsed").GetString());
     }
 
     [Fact]
