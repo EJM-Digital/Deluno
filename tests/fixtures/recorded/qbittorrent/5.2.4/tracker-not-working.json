@@ -1,0 +1,210 @@
+{
+  "app": "qbittorrent",
+  "version": "5.2.4",
+  "state": "tracker-not-working",
+  "recordedAt": "2026-10-17T11:41:20Z",
+  "note": "A torrent whose only tracker (a refused connection) is not working: the tracker list shows status 4 with the reason, while the data came from a web seed and finished.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/torrents/add",
+        "bodyText": "torrents=<5374 bytes>&category=recorded-movies"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "added_torrent_ids": [
+            "d296fb474d2ff4bbd3762ba1c05dec0b5e46eb3c"
+          ],
+          "failure_count": 0,
+          "pending_count": 0,
+          "success_count": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/torrents/trackers?hash=d296fb474d2ff4bbd3762ba1c05dec0b5e46eb3c"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": [
+          {
+            "msg": "",
+            "num_downloaded": 0,
+            "num_leeches": 0,
+            "num_peers": 0,
+            "num_seeds": 0,
+            "status": 0,
+            "tier": -1,
+            "url": "** [DHT] **"
+          },
+          {
+            "msg": "",
+            "num_downloaded": 0,
+            "num_leeches": 0,
+            "num_peers": 0,
+            "num_seeds": 0,
+            "status": 0,
+            "tier": -1,
+            "url": "** [PeX] **"
+          },
+          {
+            "msg": "",
+            "num_downloaded": 0,
+            "num_leeches": 0,
+            "num_peers": 0,
+            "num_seeds": 0,
+            "status": 0,
+            "tier": -1,
+            "url": "** [LSD] **"
+          },
+          {
+            "endpoints": [
+              {
+                "bt_version": 1,
+                "min_announce": 1792237249,
+                "msg": "Connection refused",
+                "name": "127.0.0.1:44101",
+                "next_announce": 1792237304,
+                "num_downloaded": -1,
+                "num_leeches": -1,
+                "num_peers": -1,
+                "num_seeds": -1,
+                "status": 4,
+                "updating": false
+              },
+              {
+                "bt_version": 1,
+                "min_announce": 1792237249,
+                "msg": "timed out",
+                "name": "<interface>:44101",
+                "next_announce": 1792237296,
+                "num_downloaded": -1,
+                "num_leeches": -1,
+                "num_peers": -1,
+                "num_seeds": -1,
+                "status": 4,
+                "updating": false
+              },
+              {
+                "bt_version": 1,
+                "min_announce": 1792237249,
+                "msg": "skipping tracker announce (unreachable)",
+                "name": "[::1]:44101",
+                "next_announce": 1792237304,
+                "num_downloaded": -1,
+                "num_leeches": -1,
+                "num_peers": -1,
+                "num_seeds": -1,
+                "status": 6,
+                "updating": false
+              }
+            ],
+            "min_announce": 1792237249,
+            "msg": "timed out",
+            "next_announce": 1792237296,
+            "num_downloaded": -1,
+            "num_leeches": -1,
+            "num_peers": -1,
+            "num_seeds": -1,
+            "status": 4,
+            "tier": 0,
+            "updating": false,
+            "url": "http://127.0.0.1:1/announce"
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/torrents/info?hashes=d296fb474d2ff4bbd3762ba1c05dec0b5e46eb3c"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": [
+          {
+            "added_on": 1792237250,
+            "amount_left": 0,
+            "auto_tmm": false,
+            "availability": -1,
+            "category": "recorded-movies",
+            "comment": "Deluno end-to-end fixture",
+            "completed": 67037820,
+            "completion_on": 1792237250,
+            "connections_count": 0,
+            "connections_limit": 100,
+            "content_path": "/downloads/completed/Recorded qBittorrent Tracker 3.2008.1080p.WEB-DL.x264-E2E.mkv",
+            "created_by": "",
+            "creation_date": -1,
+            "dl_limit": 0,
+            "dlspeed": 25907,
+            "download_path": "/downloads/incomplete",
+            "downloaded": 67037820,
+            "downloaded_session": 67037820,
+            "eta": 8640000,
+            "f_l_piece_prio": false,
+            "force_start": false,
+            "has_metadata": true,
+            "hash": "d296fb474d2ff4bbd3762ba1c05dec0b5e46eb3c",
+            "inactive_seeding_time_limit": -2,
+            "infohash_v1": "d296fb474d2ff4bbd3762ba1c05dec0b5e46eb3c",
+            "infohash_v2": "",
+            "last_activity": 1792237250,
+            "magnet_uri": "magnet:?xt=urn:btih:d296fb474d2ff4bbd3762ba1c05dec0b5e46eb3c&dn=Recorded%20qBittorrent%20Tracker%203.2008.1080p.WEB-DL.x264-E2E.mkv&xl=67037820&tr=http%3A%2F%2F127.0.0.1%3A1%2Fannounce&ws=http%3A%2F%2Ffixture%3A8765%2Fwebseed%2F",
+            "max_inactive_seeding_time": -1,
+            "max_ratio": -1,
+            "max_seeding_time": -1,
+            "name": "Recorded qBittorrent Tracker 3.2008.1080p.WEB-DL.x264-E2E.mkv",
+            "num_complete": 0,
+            "num_incomplete": 0,
+            "num_leechs": 0,
+            "num_seeds": 0,
+            "piece_size": 262144,
+            "pieces_have": 256,
+            "pieces_num": 256,
+            "popularity": 0,
+            "priority": 0,
+            "private": false,
+            "progress": 1,
+            "ratio": 0,
+            "ratio_limit": -2,
+            "reannounce": 17,
+            "root_path": "",
+            "save_path": "/downloads/completed",
+            "seeding_time": 30,
+            "seeding_time_limit": -2,
+            "seen_complete": 1792237250,
+            "seq_dl": false,
+            "share_limit_action": "Default",
+            "size": 67037820,
+            "state": "stalledUP",
+            "super_seeding": false,
+            "tags": "",
+            "time_active": 30,
+            "total_size": 67037820,
+            "total_wasted": 0,
+            "tracker": "http://127.0.0.1:1/announce",
+            "trackers_count": 1,
+            "up_limit": 0,
+            "uploaded": 0,
+            "uploaded_session": 0,
+            "upspeed": 0
+          }
+        ]
+      }
+    }
+  ]
+}

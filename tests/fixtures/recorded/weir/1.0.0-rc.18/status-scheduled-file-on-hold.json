@@ -1,0 +1,31 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.18",
+  "state": "status-scheduled-file-on-hold",
+  "recordedAt": "2026-10-17T12:41:10Z",
+  "note": "The status poll of a hand-off for a file Weir holds because it could not read it to the end: state scheduled, with the time the hold ends and the words Weir gives for why.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/intake/handoffs/deluno/4b7ec6b3-e606-4a05-9e56-3acde6aad078"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "4b7ec6b3-e606-4a05-9e56-3acde6aad078",
+          "state": "scheduled",
+          "queuePosition": null,
+          "scheduledFor": "2026-10-17T12:46:09.141109Z",
+          "lastChangedUtc": "2026-10-17T12:41:10.183653Z",
+          "outputPath": null,
+          "outputFiles": null,
+          "message": "Weir could not read this media file from start to finish. It may still be downloading or may be incomplete, so Weir will wait."
+        }
+      }
+    }
+  ]
+}

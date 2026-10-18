@@ -49,3 +49,11 @@ c5850fc966af6d4d02fe96d2ca938843e8815c62af87c4237d3055aa247f3633  1.0.0-rc.30.32
 5e3a0c62d506d5d0bad0cbba871ba98303dd7dbd6c5f17ab87333143bfd90ae7  1.0.0-rc.30.32/reply-send-again-weir-not-finished.json
 d5e278252599284743b14cca21c17cfd5544dc330b8c989754410a15d3a37b46  1.0.0-rc.30.32/reply-send-again-weir-refuses-secret.json
 af090d25e7e08bb31b3b68611be79595cf910eb65a23ce383ca44b6767256ec7  1.0.0-rc.30.32/reply-send-again-weir-unreachable.json
+d3f9905b9ae47afeb09dbfffb5d5d1dbb9610976c8e77106fb8f8a225051ee7d  1.0.0-rc.30.33/events-failed-not-taken.json
+cc1956b79b8eefbebfa3965aa5627afe8bcb41fd6bf4c62bf61adaf652833a25  1.0.0-rc.30.33/events-failed-rejected-known-handoff.json
+657ff8d43e399c90a2f26c8671b1676bf4a574b3a5910e80a6204bbdf1ffddd8  1.0.0-rc.30.33/handoff-collision-keep-both.json
+ac3c7a126712dab06344022776adf2d222207122fefedb0bacd740a70b78c2f1  1.0.0-rc.30.33/handoff-collision-replace.json
+8b9e466982cba21c623536192c455868f5fe696bcfff0c1a6e6dba661cd0bac5  1.0.0-rc.30.33/handoff-partial-season-pack.json
+6bcf5c3ac52658ad40c17031c0284a923df3e7cbb7e6d9c83a55ce17db1da044  1.0.0-rc.30.33/handoff-rejected-release.json
+d3509f8036ac033468aa9841195a17f8c6c11f1ab6a17b8ab45081aa2a51c79d  1.0.0-rc.30.33/handoff-season-pack.json
+066688cc00e65950879d454a94f0341abd5d8a9b4a798cd54ba55e7d2af84642  1.0.0-rc.30.33/handoff-second-connection.json

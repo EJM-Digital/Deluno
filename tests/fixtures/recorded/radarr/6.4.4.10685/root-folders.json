@@ -1,0 +1,52 @@
+{
+  "app": "radarr",
+  "version": "6.4.4.10685",
+  "state": "root-folders",
+  "recordedAt": "2026-10-17T12:34:45Z",
+  "note": "GET /api/v3/rootfolder (6.4.4.10685, a fresh container set up through its own API with a public title, a tag, a custom format, qBittorrent and, for Radarr, a Torznab feed).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v3/rootfolder",
+        "body": {
+          "path": "/movies"
+        }
+      },
+      "reply": {
+        "status": 201,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "path": "/movies",
+          "accessible": true,
+          "freeSpace": 1001681244160,
+          "unmappedFolders": [],
+          "id": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v3/rootfolder"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "path": "/movies",
+            "accessible": true,
+            "freeSpace": 1001681244160,
+            "unmappedFolders": [],
+            "id": 1
+          }
+        ]
+      }
+    }
+  ]
+}

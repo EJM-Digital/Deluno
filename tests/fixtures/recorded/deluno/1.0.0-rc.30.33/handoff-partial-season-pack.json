@@ -1,0 +1,45 @@
+{
+  "app": "deluno",
+  "version": "1.0.0-rc.30.33",
+  "state": "handoff-partial-season-pack",
+  "recordedAt": "2026-10-17T12:31:27Z",
+  "note": "Deluno's hand-off of a season pack of two good episodes and one that cannot be read, failure policy hold (Deluno 1.0.0-rc.30.33, Weir 1.0.0-rc.18); Weir's state when the recording ended was queued, with 0 output file(s).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/webhook/deluno",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "idempotency-key": "01a149d62e8b727497087c3b01e47820:1792240135818",
+          "x-webhook-secret": "<scrubbed>"
+        },
+        "body": {
+          "eventType": "deluno.processor-handoff",
+          "handoffId": "01a149d62e8b727497087c3b01e47820",
+          "libraryId": "01a149ce796c72efa134eb4384ad310f",
+          "mediaType": "tv",
+          "sourcePath": "/downloads/completed/TV/Recorded.Partial.S01.1080p.WEB-DL.x264-E2E",
+          "releaseName": "Recorded.Partial.S01.1080p.WEB-DL.x264-E2E",
+          "queueItemId": "bd3037606d51724f36bf08ddb0042e65c59d3d60",
+          "callbackPath": "/api/integrations/processors/events",
+          "title": "Recorded Partial",
+          "year": 2020
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "status": "ok",
+          "source": "deluno",
+          "event": "handoff",
+          "media_scope": "tv",
+          "enqueued": "processing.file.remux_pass.v1"
+        }
+      }
+    }
+  ]
+}

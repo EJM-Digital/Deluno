@@ -1,0 +1,40 @@
+{
+  "app": "weir",
+  "version": "1.0.0-rc.18",
+  "state": "handoff-accepted-again-while-on-hold",
+  "recordedAt": "2026-10-17T12:41:10Z",
+  "note": "A second hand-off for the same cut-off file, sent while Weir holds the file: Weir accepts it.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/webhook/deluno",
+        "body": {
+          "eventType": "deluno.processor-handoff",
+          "handoffId": "4b7ec6b3-e606-4a05-9e56-3acde6aad078",
+          "libraryId": "01a149b6785e78dea5d9b11d83fd0daf",
+          "mediaType": "movie",
+          "sourcePath": "/downloads/completed/Movies/Recorded.Weir.CutOff.b4d951.mkv",
+          "releaseName": "Big Buck Bunny (2008) Recorded Cut Off",
+          "queueItemId": "15a24144-39d6-4c00-a9b5-edf715408bce",
+          "callbackPath": "/api/integrations/processors/events",
+          "title": "Big Buck Bunny (2008) Recorded Cut Off",
+          "year": 2008
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "status": "ok",
+          "source": "deluno",
+          "event": "handoff",
+          "media_scope": "movie",
+          "enqueued": "processing.file.remux_pass.v1"
+        }
+      }
+    }
+  ]
+}

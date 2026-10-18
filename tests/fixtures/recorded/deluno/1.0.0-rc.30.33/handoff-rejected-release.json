@@ -1,0 +1,45 @@
+{
+  "app": "deluno",
+  "version": "1.0.0-rc.30.33",
+  "state": "handoff-rejected-release",
+  "recordedAt": "2026-10-17T12:32:37Z",
+  "note": "Deluno's hand-off of an audio-only film under Weir's reject failure policy (Deluno 1.0.0-rc.30.33, Weir 1.0.0-rc.18); Weir ended it rejected.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/intake/webhook/deluno",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "idempotency-key": "01a149d8ef0d7699984fc7d92e0dfdd1:1792240316173",
+          "x-webhook-secret": "<scrubbed>"
+        },
+        "body": {
+          "eventType": "deluno.processor-handoff",
+          "handoffId": "01a149d8ef0d7699984fc7d92e0dfdd1",
+          "libraryId": "01a149b6785e78dea5d9b11d83fd0daf",
+          "mediaType": "movies",
+          "sourcePath": "/downloads/completed/Movies/Recorded.AudioOnly.2020.1080p.WEB-DL.x264-E2E.mkv",
+          "releaseName": "Recorded.AudioOnly.2020.1080p.WEB-DL.x264-E2E.mkv",
+          "queueItemId": "5315cd69939dc20030e17f0d679a150ecaa799cb",
+          "callbackPath": "/api/integrations/processors/events",
+          "title": "Recorded AudioOnly",
+          "year": 2020
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "status": "ok",
+          "source": "deluno",
+          "event": "handoff",
+          "media_scope": "movie",
+          "enqueued": "processing.file.remux_pass.v1"
+        }
+      }
+    }
+  ]
+}

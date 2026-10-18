@@ -1,0 +1,38 @@
+{
+  "app": "transmission",
+  "version": "4.1.3",
+  "state": "label-set-refused-comma",
+  "recordedAt": "2026-10-17T11:39:44Z",
+  "note": "torrent-set with a label that has a comma in it: Transmission answers 200 with the reason in \"result\".",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/transmission/rpc",
+        "body": {
+          "method": "torrent-set",
+          "arguments": {
+            "ids": [
+              "2098900d96d997681cde46bf090073d7596e3eb6"
+            ],
+            "labels": [
+              "recorded,movies"
+            ]
+          },
+          "tag": 19
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "arguments": {},
+          "result": "labels cannot contain comma (,) character",
+          "tag": 19
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,192 @@
+{
+  "app": "qbittorrent",
+  "version": "5.2.4",
+  "state": "add-link",
+  "recordedAt": "2026-10-17T11:41:23Z",
+  "note": "A torrent added by its link (the indexer's address) instead of by file: qBittorrent fetches the file itself.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/torrents/add",
+        "bodyText": "urls=http://fixture:8765/dl/Recorded qBittorrent Link 3.2008.1080p.WEB-DL.x264-E2E.torrent&category=recorded-movies"
+      },
+      "reply": {
+        "status": 202,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "added_torrent_ids": [],
+          "failure_count": 0,
+          "pending_count": 1,
+          "success_count": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/torrents/info?hashes=9edd12f2a86905430b16b95d613eecdc4df0af1b"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": [
+          {
+            "added_on": 1792237281,
+            "amount_left": 67037817,
+            "auto_tmm": false,
+            "availability": 0,
+            "category": "recorded-movies",
+            "comment": "Deluno end-to-end fixture",
+            "completed": 0,
+            "completion_on": -1,
+            "connections_count": 0,
+            "connections_limit": 100,
+            "content_path": "/downloads/incomplete/Recorded qBittorrent Link 3.2008.1080p.WEB-DL.x264-E2E.mkv",
+            "created_by": "",
+            "creation_date": -1,
+            "dl_limit": 0,
+            "dlspeed": 0,
+            "download_path": "/downloads/incomplete",
+            "downloaded": 0,
+            "downloaded_session": 0,
+            "eta": 8640000,
+            "f_l_piece_prio": false,
+            "force_start": false,
+            "has_metadata": true,
+            "hash": "9edd12f2a86905430b16b95d613eecdc4df0af1b",
+            "inactive_seeding_time_limit": -2,
+            "infohash_v1": "9edd12f2a86905430b16b95d613eecdc4df0af1b",
+            "infohash_v2": "",
+            "last_activity": 1792237281,
+            "magnet_uri": "magnet:?xt=urn:btih:9edd12f2a86905430b16b95d613eecdc4df0af1b&dn=Recorded%20qBittorrent%20Link%203.2008.1080p.WEB-DL.x264-E2E.mkv&xl=67037817&ws=http%3A%2F%2Ffixture%3A8765%2Fwebseed%2F",
+            "max_inactive_seeding_time": -1,
+            "max_ratio": -1,
+            "max_seeding_time": -1,
+            "name": "Recorded qBittorrent Link 3.2008.1080p.WEB-DL.x264-E2E.mkv",
+            "num_complete": 0,
+            "num_incomplete": 0,
+            "num_leechs": 0,
+            "num_seeds": 0,
+            "piece_size": 262144,
+            "pieces_have": 0,
+            "pieces_num": 256,
+            "popularity": 0,
+            "priority": 1,
+            "private": false,
+            "progress": 0,
+            "ratio": 0,
+            "ratio_limit": -2,
+            "reannounce": 0,
+            "root_path": "",
+            "save_path": "/downloads/completed",
+            "seeding_time": 0,
+            "seeding_time_limit": -2,
+            "seen_complete": -1,
+            "seq_dl": false,
+            "share_limit_action": "Default",
+            "size": 67037817,
+            "state": "checkingResumeData",
+            "super_seeding": false,
+            "tags": "",
+            "time_active": 0,
+            "total_size": 67037817,
+            "total_wasted": 0,
+            "tracker": "",
+            "trackers_count": 0,
+            "up_limit": 0,
+            "uploaded": 0,
+            "uploaded_session": 0,
+            "upspeed": 0
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/torrents/info?hashes=9edd12f2a86905430b16b95d613eecdc4df0af1b"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": [
+          {
+            "added_on": 1792237281,
+            "amount_left": 0,
+            "auto_tmm": false,
+            "availability": -1,
+            "category": "recorded-movies",
+            "comment": "Deluno end-to-end fixture",
+            "completed": 67037817,
+            "completion_on": 1792237281,
+            "connections_count": 0,
+            "connections_limit": 100,
+            "content_path": "/downloads/completed/Recorded qBittorrent Link 3.2008.1080p.WEB-DL.x264-E2E.mkv",
+            "created_by": "",
+            "creation_date": -1,
+            "dl_limit": 0,
+            "dlspeed": 0,
+            "download_path": "/downloads/incomplete",
+            "downloaded": 0,
+            "downloaded_session": 67037817,
+            "eta": 8640000,
+            "f_l_piece_prio": false,
+            "force_start": false,
+            "has_metadata": true,
+            "hash": "9edd12f2a86905430b16b95d613eecdc4df0af1b",
+            "inactive_seeding_time_limit": -2,
+            "infohash_v1": "9edd12f2a86905430b16b95d613eecdc4df0af1b",
+            "infohash_v2": "",
+            "last_activity": 1792237281,
+            "magnet_uri": "magnet:?xt=urn:btih:9edd12f2a86905430b16b95d613eecdc4df0af1b&dn=Recorded%20qBittorrent%20Link%203.2008.1080p.WEB-DL.x264-E2E.mkv&xl=67037817&ws=http%3A%2F%2Ffixture%3A8765%2Fwebseed%2F",
+            "max_inactive_seeding_time": -1,
+            "max_ratio": -1,
+            "max_seeding_time": -1,
+            "name": "Recorded qBittorrent Link 3.2008.1080p.WEB-DL.x264-E2E.mkv",
+            "num_complete": 0,
+            "num_incomplete": 0,
+            "num_leechs": 0,
+            "num_seeds": 0,
+            "piece_size": 262144,
+            "pieces_have": 256,
+            "pieces_num": 256,
+            "popularity": 0,
+            "priority": 0,
+            "private": false,
+            "progress": 1,
+            "ratio": 0,
+            "ratio_limit": -2,
+            "reannounce": 0,
+            "root_path": "",
+            "save_path": "/downloads/completed",
+            "seeding_time": 1,
+            "seeding_time_limit": -2,
+            "seen_complete": -1,
+            "seq_dl": false,
+            "share_limit_action": "Default",
+            "size": 67037817,
+            "state": "stalledUP",
+            "super_seeding": false,
+            "tags": "",
+            "time_active": 1,
+            "total_size": 67037817,
+            "total_wasted": 0,
+            "tracker": "",
+            "trackers_count": 0,
+            "up_limit": 0,
+            "uploaded": 0,
+            "uploaded_session": 0,
+            "upspeed": 0
+          }
+        ]
+      }
+    }
+  ]
+}

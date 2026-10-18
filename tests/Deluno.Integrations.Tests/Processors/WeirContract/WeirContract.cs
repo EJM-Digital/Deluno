@@ -28,7 +28,7 @@ internal static class WeirContract
     public static string HandoffIdOf(Recording recording, int exchange = 0)
     {
         var request = recording.Exchanges[exchange].Request;
-        var fromPath = Regex.Match(request.Path, @"/handoffs/deluno/([0-9a-fA-F-]{36})");
+        var fromPath = Regex.Match(request.Path, @"/handoffs/deluno/([0-9a-fA-F-]{32,36})");
         if (fromPath.Success)
         {
             return fromPath.Groups[1].Value;

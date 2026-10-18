@@ -565,10 +565,11 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
         var handoff = await HandoffAsync(app, scene);
         await RecordDispatchAsync(app, scene, imported: false);
 
-        // sourceRemoved false is Weir 1.0.0-rc.18's own report of an audio-only file under its reject policy (it left the file in place); the other
-        // two are the report with that member left out and set to true, which Weir was not seen sending.
+        // sourceRemoved false is Weir 1.0.0-rc.18's own report of an audio-only file under its reject policy (it left the file in place), for a hand-off
+        // the real Deluno sent (events-failed-rejected-known-handoff, recorded in Docker with Deluno's reply); the other two are the report with that
+        // member left out and set to true, which Weir was not seen sending.
         var response = sourceRemoved == false
-            ? await RecordedWeirReports.PostAsync(app.Client, RecordedWeirReports.Body(RecordedWeirReports.Exchange("events-failed-rejected"), scene.LibraryId, handoff.Id, scene.Output))
+            ? await RecordedWeirReports.PostAsync(app.Client, RecordedWeirReports.Body(RecordedWeirReports.Exchange("events-failed-rejected-known-handoff"), scene.LibraryId, handoff.Id, scene.Output))
             : await app.Client.PostAsJsonAsync("/api/integrations/processors/events", new
             {
                 libraryId = scene.LibraryId,
@@ -583,6 +584,16 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         var blocked = Assert.Single(await app.Services.GetRequiredService<IBlockedReleaseRepository>().ListAsync(CancellationToken.None));
         var stored = await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
+        if (sourceRemoved == false)
+        {
+            // Deluno's reply is the one it really gave the recorded report: 202, rejected, naming the release it blocked and the search it started.
+            var wanted = System.Text.Json.Nodes.JsonNode.Parse(RecordedWeirReports.Exchange("events-failed-rejected-known-handoff").Reply.Body!)!.AsObject();
+            var said = System.Text.Json.Nodes.JsonNode.Parse(await response.Content.ReadAsStringAsync())!.AsObject();
+            Assert.Equal(wanted["status"]!.GetValue<string>(), said["status"]!.GetValue<string>());
+            Assert.Equal(wanted.Select(p => p.Key).Order(), said.Select(p => p.Key).Order());
+            Assert.Equal(blocked.Id, said["blockedReleaseId"]!.GetValue<string>());
+        }
+
         if (processorRemoved)
         {
             Assert.Contains("and removed it", blocked.Reason);

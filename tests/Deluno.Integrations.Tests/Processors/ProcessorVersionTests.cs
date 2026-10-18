@@ -40,14 +40,15 @@ public sealed class ProcessorVersionTests
         var service = Service(request =>
         {
             paths.Add(request.RequestUri!.AbsolutePath);
-            // Weir's description of its API is not recorded (the golden VM's recorder does not ask for it); this is the
-            // shape its API description has, with Weir's refusal of a secret that is wrong for everything else.
+            // Weir 1.0.0-rc.18's description of its API as recorded (openapi: the version and identity of the document), and Weir's
+            // refusal of a secret that is wrong for everything else.
             return request.RequestUri.AbsolutePath == "/openapi.json"
-                ? Json("""{"openapi":"3.1.0","info":{"title":"Weir API","version":"1.0.0-rc.10"}}""")
+                ? RecordedReplies.Weir("openapi").Response("openapi.json")
                 : RecordedReplies.Weir("capabilities-wrong-secret").Response("capabilities");
         });
 
-        Assert.Equal("1.0.0-rc.10", await service.ReadVersionAsync(Connection(), CancellationToken.None));
+        var described = System.Text.Json.Nodes.JsonNode.Parse(RecordedReplies.Weir("openapi").Single.Reply.Body!)!["info"]!["version"]!.GetValue<string>();
+        Assert.Equal(described, await service.ReadVersionAsync(Connection(), CancellationToken.None));
         Assert.Equal(["/api/v1/intake/capabilities", "/openapi.json"], paths);
     }
 

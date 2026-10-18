@@ -38,6 +38,14 @@ public static class RecordedReplies
     public static Recording Plex(string state) => RecordedReplies.LoadLatest("plex", state);
     public static Recording Seerr(string state) => RecordedReplies.LoadLatest("seerr", state);
     public static Recording Flaresolverr(string state) => RecordedReplies.LoadLatest("flaresolverr", state);
+    /// <summary>Sonarr v4's API (<c>/api/v3</c>), recorded from the real app with one real series.</summary>
+    public static Recording Sonarr(string state) => RecordedReplies.LoadLatest("sonarr", state);
+    /// <summary>Radarr's API (<c>/api/v3</c>), recorded from the real app with one real film.</summary>
+    public static Recording Radarr(string state) => RecordedReplies.LoadLatest("radarr", state);
+    /// <summary>Prowlarr's API (<c>/api/v1</c>), recorded from the real app with one indexer.</summary>
+    public static Recording Prowlarr(string state) => RecordedReplies.LoadLatest("prowlarr", state);
+    /// <summary>TheXEM's public scene-mapping API, a real unauthenticated GET from the internet.</summary>
+    public static Recording Thexem(string state) => RecordedReplies.LoadLatest("thexem", state);
     public static Recording Weir(string state) => RecordedReplies.LoadLatest("weir", state);
     public static Recording Deluno(string state) => RecordedReplies.LoadLatest("deluno", state);
     /// <summary>GitHub's own replies (its release feeds, release downloads and REST API). A request path in a recording is host plus path.</summary>

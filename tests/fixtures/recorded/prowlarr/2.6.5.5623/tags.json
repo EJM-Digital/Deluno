@@ -1,0 +1,27 @@
+{
+  "app": "prowlarr",
+  "version": "2.6.5.5623",
+  "state": "tags",
+  "recordedAt": "2026-10-17T12:34:49Z",
+  "note": "GET /api/v1/tag (2.6.5.5623).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/tag"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "label": "recorded",
+            "id": 1
+          }
+        ]
+      }
+    }
+  ]
+}

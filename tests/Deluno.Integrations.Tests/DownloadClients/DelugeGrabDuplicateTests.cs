@@ -108,6 +108,37 @@ public sealed class DelugeGrabDuplicateTests
         Assert.Contains("decoding filedump failed", result.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A link, not a file: Deluge 2.2.0's recorded answer to core.add_torrent_url is the id of the torrent it fetched and added, which is
+    /// the id Deluno follows the download by.
+    /// </summary>
+    [Fact]
+    public async Task A_link_deluge_fetches_and_adds_is_followed_by_the_torrent_id_it_answers()
+    {
+        var recorded = RecordedReplies.Deluge("add-url");
+        var id = System.Text.Json.Nodes.JsonNode.Parse(recorded.Find("core.add_torrent_url").Reply.Body!)!["result"]!.GetValue<string>();
+        var handler = new DelugeHandler(recorded.Response("core.add_torrent_url"), sessionHashes: []);
+
+        var result = await new DelugeDownloadClient(new StubFactory(handler)).GrabAsync(Client(), Link(), CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(id, result.ExternalId);
+        Assert.False(result.IsDuplicateFollow);
+    }
+
+    /// <summary>A link the server answers 404 for: Deluge's recorded error object says so, and the release is dead, not held.</summary>
+    [Fact]
+    public async Task A_link_deluge_could_not_fetch_is_a_dead_release_with_its_own_words()
+    {
+        var handler = new DelugeHandler(RecordedReplies.Deluge("add-url-dead").Response("core.add_torrent_url"), sessionHashes: []);
+
+        var result = await new DelugeDownloadClient(new StubFactory(handler)).GrabAsync(Client(), Link(), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(DownloadQueueStatuses.DeadRelease, result.Status);
+        Assert.Contains("404 Not Found", result.Message, StringComparison.Ordinal);
+    }
+
     private static DownloadClientItem Client()
         => new(
             "client-1", "Deluge", "deluge", "localhost", 8112, null, "secret", "http://localhost:8112/", false, null,

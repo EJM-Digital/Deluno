@@ -1,0 +1,43 @@
+{
+  "app": "deluno",
+  "version": "1.0.0-rc.30.33",
+  "state": "events-failed-rejected-known-handoff",
+  "recordedAt": "2026-10-17T12:32:37Z",
+  "note": "The report Weir sent for an audio-only film under the reject failure policy, for a hand-off Deluno sent itself: Deluno's reply is the real one.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/integrations/processors/events",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "handoffId": "01a149d8ef0d7699984fc7d92e0dfdd1",
+          "status": "failed",
+          "processorName": "Weir",
+          "libraryId": "01a149b6785e78dea5d9b11d83fd0daf",
+          "releaseName": "Recorded.AudioOnly.2020.1080p.WEB-DL.x264-E2E.mkv",
+          "message": "Weir only processes movie and TV files that contain a video stream. This file contains no video, so it was rejected before any output was written.",
+          "disposition": "rejected",
+          "sourceRemoved": false,
+          "failureClass": "preflight",
+          "outputFiles": []
+        }
+      },
+      "reply": {
+        "status": 202,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "status": "rejected",
+          "handoffId": "01a149d8ef0d7699984fc7d92e0dfdd1",
+          "activityId": "01a149d98e657a5c8fdee97e234d9530",
+          "blockedReleaseId": "e57342dbc2db4f8aa39533e2a3cd495f",
+          "searchJobId": "01a149d98e617427a3b030c9b509b4a1"
+        }
+      }
+    }
+  ]
+}

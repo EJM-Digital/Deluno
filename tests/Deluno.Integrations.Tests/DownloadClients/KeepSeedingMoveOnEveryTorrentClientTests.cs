@@ -262,15 +262,18 @@ public sealed class KeepSeedingMoveOnEveryTorrentClientTests
         Assert.Contains("too old for labels", check.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task Transmission_refusing_the_change_in_its_result_is_a_failure_with_the_reason()
+    /// <summary>Transmission 4.1.3 refuses a label in the result of a 200 answer, with its own words (the recordings label-set-refused-comma and -empty).</summary>
+    [Theory]
+    [InlineData("label-set-refused-comma", "labels cannot contain comma")]
+    [InlineData("label-set-refused-empty", "labels cannot be empty")]
+    public async Task Transmission_refusing_the_change_in_its_result_is_a_failure_with_the_reason(string refusal, string reason)
     {
-        var transmission = new TransmissionFake { Labels = ["deluno-movies"], RefuseSetWith = "invalid argument" };
+        var transmission = new TransmissionFake { Labels = ["deluno-movies"], RefuseSetWith = refusal };
 
         var result = await new TransmissionDownloadClient(transmission.Factory()).SetCategoryAsync(Item("transmission"), Hash, "keep-seeding", "deluno-movies", CancellationToken.None);
 
         Assert.False(result.Succeeded);
-        Assert.Contains("invalid argument", result.Message, StringComparison.Ordinal);
+        Assert.Contains(reason, result.Message, StringComparison.Ordinal);
         Assert.Equal(["deluno-movies"], transmission.Labels);
     }
 
@@ -475,8 +478,8 @@ public sealed class KeepSeedingMoveOnEveryTorrentClientTests
             if (path.EndsWith("setAutoManagement", StringComparison.Ordinal))
             {
                 AutoManaged = !body.Contains("enable=false", StringComparison.Ordinal);
-                // The reply to this call is not recorded; qBittorrent answers its other changes with an empty 200, as for setCategory.
-                return RecordedReplies.Qbittorrent("category-moved").Response("torrents/setCategory");
+                // qBittorrent 5.2.4's own answer to setAutoManagement, recorded.
+                return RecordedReplies.Qbittorrent("auto-management-set").Response("torrents/setAutoManagement");
             }
 
             if (path.EndsWith("torrents/setCategory", StringComparison.Ordinal))
@@ -520,17 +523,17 @@ public sealed class KeepSeedingMoveOnEveryTorrentClientTests
                 case "web.connected":
                     return RecordedReplies.Deluge("sign-in").Response(method);
                 case "label.get_labels":
-                    // The recorded list of labels with the labels this stand-in holds. A Deluge with its Label plugin off is not recorded:
-                    // the nearest recording is an error object, here with Deluge's words for a method it does not have.
-                    return RecordedReplies.Json(LabelPluginOn
-                        ? RecordedReplies.Deluge("settings").Body("label.get_labels", ("result", new JsonArray(Labels.Select(label => (JsonNode?)JsonValue.Create(label)).ToArray())))
-                        : RecordedReplies.Deluge("unauthenticated-call").Body("web.connected", ("error.message", "Unknown method")));
+                    // The recorded list of labels with the labels this stand-in holds; a Deluge with its Label plugin off answers as recorded
+                    // (Deluge 2.2.0 after core.disable_plugin and a restart): an error object, "Unknown method".
+                    return LabelPluginOn
+                        ? RecordedReplies.Json(RecordedReplies.Deluge("settings").Body("label.get_labels", ("result", new JsonArray(Labels.Select(label => (JsonNode?)JsonValue.Create(label)).ToArray()))))
+                        : RecordedReplies.Deluge("label-plugin-off").Response("label.get_labels");
                 case "core.get_torrent_status":
-                    // The recorded status call for a torrent Deluge holds, asked here for its label; a hash it never had is not recorded
-                    // (the nearest is the same reply with nothing in it).
-                    return RecordedReplies.Json(RecordedReplies.Deluge("location-moved").Body(
-                        "core.get_torrent_status",
-                        ("result", Has ? new JsonObject { ["label"] = Label } : new JsonObject())));
+                    // The recorded status call for a torrent Deluge holds, asked here for its label; for a hash it never had, Deluge's own recorded
+                    // answer (an empty object).
+                    return Has
+                        ? RecordedReplies.Json(RecordedReplies.Deluge("location-moved").Body("core.get_torrent_status", ("result", new JsonObject { ["label"] = Label })))
+                        : RecordedReplies.Deluge("status-unknown-hash").Response("core.get_torrent_status");
                 case "label.set_torrent":
                     if (RefuseSetWith is not null)
                     {
@@ -579,8 +582,8 @@ public sealed class KeepSeedingMoveOnEveryTorrentClientTests
                 case "torrent-set":
                     if (RefuseSetWith is not null)
                     {
-                        // Transmission says why in the result; a refused torrent-set is not recorded, so this is the recorded success with that one word changed.
-                        return RecordedReplies.Json(RecordedReplies.Transmission("label-set").Body("torrent-set", ("result", RefuseSetWith)));
+                        // Transmission says why in the result of a 200 answer: the recording named by RefuseSetWith.
+                        return RecordedReplies.Transmission(RefuseSetWith).Response("torrent-set");
                     }
 
                     Labels = arguments.GetProperty("labels").EnumerateArray().Select(item => item.GetString()!).ToArray();

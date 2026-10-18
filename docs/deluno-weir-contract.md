@@ -304,3 +304,47 @@ itself and the recording's note says so. `WeirRealReportsTests` posts each body 
 | `completed`, answered `503` by the proxy; nothing more arrived in 300 s | `events-completed-answered-503-not-repeated` | (not answered by Deluno) | the report is owed; sent again, it imports once | `A_completed_report_Deluno_did_not_answer_is_imported_once_whenever_it_is_sent_again` |
 | `completed`, answered `401` by the proxy; nothing more in 130 s | `events-answered-401-not-repeated` | `401` (Deluno's own, `reply-no-sign-in`) | Weir does not send it again | `A_report_Deluno_refuses_for_its_credential_is_not_sent_again_and_the_refusal_is_Delunos_own` |
 | `completed`, answered `403` by the proxy; nothing more in 130 s | `events-answered-403-not-repeated` | `403` (Deluno's own, `reply-key-without-imports-scope`) | same | same |
+
+## 11. Recorded in Docker, Deluno 1.0.0-rc.30.33 and Weir 1.0.0-rc.18 (#1237, #1239)
+
+The rig is retiring, so these were recorded from the published images running in Docker (`scripts/recorded-replies/docker/`: `weir.mjs`, `flows.mjs`,
+`proxy.mjs`, `releases.mjs`, on the stack of `tests/e2e/compose.yaml` under a project name of its own). `flows.mjs` puts a recording proxy between the real
+Deluno and the real Weir in both directions and drives Deluno the way a person does (a release sent to qBittorrent through Deluno, the download finishes,
+Deluno hands the file to Weir), so the requests below are what Deluno really sent, not a body written for a test. `weir.mjs` asks Weir's own API. A state
+recorded for Weir lives in `weir/1.0.0-rc.18/`, a state recorded for Deluno in `deluno/1.0.0-rc.30.33/` (with its manifest line).
+
+What the run showed about Weir:
+
+- **The source key is the kind, not the connection.** A second media-manager connection of kind `deluno` answers on the same address
+  (`/api/v1/intake/webhook/deluno`); Weir tells the connections apart by their webhook secret. A status poll made with the secret of a different connection
+  than the one that sent the hand-off is `401`, the same words as a wrong secret (`status-other-connections-secret`).
+- **A second connection's send of a file the first connection's pass owns is cancelled at once**, with Weir's words, and Weir reports it `failed` with
+  `failureClass: "not_taken"` to the second connection's Deluno (`status-not-taken`, `events-failed-not-taken`). Deluno accepts that report (`202`,
+  `willRetry`, `retryAfterMinutes: 2`) and sends the file again.
+- **`scheduled` is not "outside the processing hours".** With a weekly grid that has no open hour the hand-off stays `queued`; Weir says `scheduled`, with
+  `scheduledFor`, when a hand-off waits on a file it holds because it cannot read it to the end (`status-scheduled-file-on-hold`).
+- **A hand-off to a source with no Deluno connection left** is `401` "No Deluno is set up in Weir ..." and the status poll `403` "Set a webhook secret in Weir ..."
+  (`handoff-refused-deluno-source-no-secret`, `status-deluno-source-no-secret`).
+- **`/openapi.json`** answers without a secret; `info.version` is Weir's version (`openapi`, shortened to the identity of the document).
+
+| Weir answers | Recording | Deluno reads | Deluno does | Test |
+|---|---|---|---|---|
+| `200` for a film that stops before its end; `200` again for the same file while Weir holds it | `handoff-accepted-cut-off-file`, `handoff-accepted-again-while-on-hold` | sent | recorded as submitted | `An_accepted_hand_off_is_recorded_as_submitted` |
+| `200` `scheduled`, `queuePosition` null, `scheduledFor` the end of the hold, Weir's words | `status-scheduled-file-on-hold` | state `scheduled`, the time, the message | stored and shown; waits | `A_hand_off_Weir_schedules_is_read_with_the_time_it_will_next_be_looked_at_and_Weirs_words`, `A_status_is_read_in_full` |
+| `200` `cancelled` "Weir is already working on this file for another connection ..." (polled with the second connection's secret) | `status-not-taken` | state `cancelled`, the message | as `cancelled` in section 4 | `A_status_is_read_as_Weir_said_it` |
+| `401` for the secret of a different connection than the sender's | `status-other-connections-secret` | Forbidden | as for a wrong secret | `A_status_poll_Weir_refuses_for_its_secret_is_forbidden_and_says_to_check_the_secret` |
+| `403` "Set a webhook secret in Weir ..." on Deluno's own source once no connection has a secret (with the old secret and with none) | `status-deluno-source-no-secret` | Forbidden | as the 401 | `A_status_poll_on_Deluno_own_source_once_no_connection_has_a_secret_is_forbidden_with_Weirs_instruction`, `A_refused_question_is_said_as_the_setting_to_change` |
+| `401` "No Deluno is set up in Weir ..." to a hand-off | `handoff-refused-deluno-source-no-secret` | refused with Weir's `detail` | the hand-off fails with HTTP 401 and Weir's words | `A_hand_off_to_a_source_with_no_connection_that_has_a_secret_is_refused_with_Weirs_instruction` |
+| `GET /openapi.json`, no secret: `{ openapi, info: { version }, servers }` | `openapi` | the version, when the capabilities answer cannot be had | the connection shows Weir's version | `When_the_capabilities_answer_cannot_be_had_the_version_comes_from_the_processors_api_description` |
+
+Deluno's side, recorded through the proxy (the request tests are `The_request_Deluno_sends_for_a_hand_off_is_the_request_it_was_recorded_sending`; Deluno's client
+sends the same call for the same hand-off, member for member and header for header, and Weir's reply is what it then reads):
+
+| Recording | What it holds | Test |
+|---|---|---|
+| `handoff-collision-replace`, `handoff-collision-keep-both` | the hand-off for a single file whose name is already in Weir's output from an earlier, different file; Weir finished it at the same path ("replace") or numbered beside the first (`stem (2).ext`, "keep both") | the request tests |
+| `handoff-season-pack`, `handoff-partial-season-pack` | the hand-off for a TV release folder of two episodes, and of three where one cannot be read (failure policy hold); `mediaType: "tv"` and `sourcePath` the folder | the request tests |
+| `handoff-rejected-release` | the hand-off for an audio-only film under Weir's reject policy | the request tests |
+| `handoff-second-connection` | the hand-off through a second processor connection to the same Weir for a file the first connection owns; Weir accepts the send with a `200` (it cancels it afterwards) | the request tests |
+| `events-failed-not-taken` | Weir's report of that send as `failed`, `failureClass: "not_taken"`, no disposition, `sourceRemoved: false`, and Deluno's real reply `202` `{ status: "failed", handoffId, activityId, willRetry: true, retryAfterMinutes: 2 }` | `A_hand_off_Weir_did_not_take_because_another_connection_owns_the_file_is_accepted_and_will_be_sent_again`, and `AHandOffWeirDidNotTakeBecauseAnotherConnectionOwnsTheFileTests` post this body |
+| `events-failed-rejected-known-handoff` | Weir's report for the audio-only film, and Deluno's real reply for a hand-off it holds: `202` `{ status: "rejected", handoffId, activityId, blockedReleaseId, searchJobId }` | `The_report_for_a_rejected_release_and_the_reply_Deluno_gave_it_are_what_the_rejection_tests_replay`, `A_rejection_says_who_removed_the_download` |

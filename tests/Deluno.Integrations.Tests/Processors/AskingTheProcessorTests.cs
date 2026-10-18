@@ -113,7 +113,8 @@ public sealed class AskingTheProcessorTests
     [Fact]
     public async Task A_refused_question_is_said_as_the_setting_to_change()
     {
-        var support = await Service(_ => new HttpResponseMessage(HttpStatusCode.Forbidden))
+        // Weir 1.0.0-rc.18's own 403, with its instruction as the body (status-deluno-source-no-secret).
+        var support = await Service(_ => RecordedReply("status-deluno-source-no-secret", "handoffs/deluno"))
             .GetStatusSupportAsync(Weir, CancellationToken.None);
 
         Assert.Equal(ProcessorAnswer.Forbidden, support.Answer);
@@ -141,20 +142,16 @@ public sealed class AskingTheProcessorTests
     [Fact]
     public async Task A_status_is_read_in_full()
     {
-        // Weir's recorded status of a hand-off waiting its turn, made a scheduled one: Weir's "scheduled" state (a library with
-        // processing hours) was not recorded, so this is the nearest recorded reply with the values of a scheduled hand-off set.
-        var queued = RecordedReplies.Weir("status-queued").Body(
-            "handoffs/deluno",
-            ("state", "scheduled"), ("queuePosition", 3), ("scheduledFor", "2026-09-17T01:00:00Z"), ("lastChangedUtc", "2026-09-16T10:00:00Z"),
-            ("message", "Outside this library's processing hours."));
-        var answer = await Service(_ => Json(HttpStatusCode.OK, queued)).GetHandoffStatusAsync(Weir, "h-1", CancellationToken.None);
+        // Weir 1.0.0-rc.18's own "scheduled" status (status-scheduled-file-on-hold): no place in line, the time of the next look, Weir's words.
+        var answer = await Service(_ => RecordedReply("status-scheduled-file-on-hold", "handoffs/deluno")).GetHandoffStatusAsync(Weir, "h-1", CancellationToken.None);
 
+        var said = System.Text.Json.Nodes.JsonNode.Parse(RecordedReplies.Weir("status-scheduled-file-on-hold").Single.Reply.Body!)!;
         Assert.Equal(ProcessorAnswer.Answered, answer.Answer);
         Assert.Equal("scheduled", answer.State);
-        Assert.Equal(3, answer.QueuePosition);
-        Assert.Equal(DateTimeOffset.Parse("2026-09-17T01:00:00Z"), answer.ScheduledForUtc);
-        Assert.Equal(DateTimeOffset.Parse("2026-09-16T10:00:00Z"), answer.LastChangedUtc);
-        Assert.Equal("Outside this library's processing hours.", answer.Message);
+        Assert.Null(answer.QueuePosition);
+        Assert.Equal(DateTimeOffset.Parse(said["scheduledFor"]!.GetValue<string>(), System.Globalization.CultureInfo.InvariantCulture), answer.ScheduledForUtc);
+        Assert.Equal(DateTimeOffset.Parse(said["lastChangedUtc"]!.GetValue<string>(), System.Globalization.CultureInfo.InvariantCulture), answer.LastChangedUtc);
+        Assert.Equal(said["message"]!.GetValue<string>(), answer.Message);
     }
 
     /// <summary>Every state Weir was recorded in is read as its own state, with the place in the line, the output and the words Weir gave.</summary>

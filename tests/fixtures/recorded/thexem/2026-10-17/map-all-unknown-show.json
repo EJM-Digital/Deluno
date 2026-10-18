@@ -1,0 +1,26 @@
+{
+  "app": "thexem",
+  "version": "2026-10-17",
+  "state": "map-all-unknown-show",
+  "recordedAt": "2026-10-17T12:35:46Z",
+  "note": "GET /map/all for a TVDB id TheXEM has no show for: HTTP 200 with result failure and an empty list.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/map/all?id=81189&origin=tvdb&output=json"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "result": "failure",
+          "data": [],
+          "message": "no show with the tvdb_id 81189 found"
+        }
+      }
+    }
+  ]
+}

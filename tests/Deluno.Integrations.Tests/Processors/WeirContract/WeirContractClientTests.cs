@@ -62,6 +62,21 @@ public sealed class WeirContractClientTests
         Assert.Contains("refused the webhook secret", support.Message);
     }
 
+    /// <summary>
+    /// When the capabilities answer is a refusal, the version is read from the description of its API that Weir publishes without a secret (the recording
+    /// openapi: the document's identity, shortened from 360 KB), and the capabilities are asked first.
+    /// </summary>
+    [Fact]
+    public async Task When_the_capabilities_cannot_be_had_the_version_is_read_from_the_API_description_Weir_publishes()
+    {
+        var replay = ReplayOf("capabilities-wrong-secret", "openapi");
+
+        var version = await Service(replay).ReadVersionAsync(Connection, CancellationToken.None);
+
+        Assert.Equal(Body(Rec("openapi").Single.Reply.Body)["info"]!["version"]!.GetValue<string>(), version);
+        Assert.Equal(["/api/v1/intake/capabilities", "/openapi.json"], replay.Sent.Select(sent => sent.Path).ToArray());
+    }
+
     // ----- library folders -----
 
     [Fact]
@@ -93,6 +108,9 @@ public sealed class WeirContractClientTests
     [InlineData("handoff-source-files-accepted")]
     [InlineData("handoff-resend-accepted")]
     [InlineData("resend-takeover-accepted")]
+    // Weir 1.0.0-rc.18: a film that stops before its end, sent, and sent again while Weir holds the file because it cannot read it to the end
+    [InlineData("handoff-accepted-cut-off-file")]
+    [InlineData("handoff-accepted-again-while-on-hold")]
     public async Task An_accepted_hand_off_is_recorded_as_submitted(string state)
     {
         var recording = Rec(state);
@@ -200,6 +218,9 @@ public sealed class WeirContractClientTests
     [InlineData("failed-partial-season-pack-corrupt-status-working", 0)]
     [InlineData("failed-rejected-status-queued", 0)]
     [InlineData("failed-rejected-status-rejected", 0)]
+    // Weir 1.0.0-rc.18, recorded in Docker (scripts/recorded-replies/docker/flows.mjs): a send Weir did not take because another connection's
+    // pass owns the file, read with the second connection's secret
+    [InlineData("status-not-taken", 0)]
     public async Task A_status_is_read_as_Weir_said_it(string state, int exchange)
     {
         var recording = Rec(state);
@@ -221,6 +242,41 @@ public sealed class WeirContractClientTests
         Assert.Equal(recorded.Request.Path, asked.Path);
         Assert.Equal(Secret, asked.Headers["X-Webhook-Secret"]);
         Assert.Null(asked.Body);
+    }
+
+    /// <summary>
+    /// Weir's "scheduled" state, as Weir 1.0.0-rc.18 really gives it (status-scheduled-file-on-hold): a second hand-off for a file Weir holds because it
+    /// could not read it to the end is not worked at once but scheduled for the time the hold ends, with no place in line and Weir's words for why.
+    /// </summary>
+    [Fact]
+    public async Task A_hand_off_Weir_schedules_is_read_with_the_time_it_will_next_be_looked_at_and_Weirs_words()
+    {
+        var recording = Rec("status-scheduled-file-on-hold");
+        var said = Body(recording.Exchanges[0].Reply.Body);
+
+        var status = await Service(new WeirReplay(recording)).GetHandoffStatusAsync(Connection, HandoffIdOf(recording), CancellationToken.None);
+
+        Assert.Equal(ProcessorAnswer.Answered, status.Answer);
+        Assert.Equal("scheduled", status.State);
+        Assert.Null(status.QueuePosition);
+        Assert.Equal(DateTimeOffset.Parse(said["scheduledFor"]!.GetValue<string>(), CultureInfo.InvariantCulture), status.ScheduledForUtc);
+        Assert.Equal(DateTimeOffset.Parse(said["lastChangedUtc"]!.GetValue<string>(), CultureInfo.InvariantCulture), status.LastChangedUtc);
+        Assert.Contains("could not read this media file from start to finish", status.Message);
+    }
+
+    /// <summary>
+    /// With no Deluno connection in Weir that has a secret, a hand-off sent to Deluno's source is refused 401 with Weir's own instruction (the
+    /// status poll, for the same cause, is 403). Deluno shows Weir's words and does not take the refusal for a wrong secret.
+    /// </summary>
+    [Fact]
+    public async Task A_hand_off_to_a_source_with_no_connection_that_has_a_secret_is_refused_with_Weirs_instruction()
+    {
+        var recording = Rec("handoff-refused-deluno-source-no-secret");
+        var result = await SubmitRecordedAsync(recording, new WeirReplay(recording));
+
+        Assert.False(result.IsAccepted);
+        Assert.Equal(401, result.StatusCode);
+        Assert.StartsWith("The processor refused the hand-off with HTTP 401: No Deluno is set up in Weir.", result.Message);
     }
 
     [Fact]

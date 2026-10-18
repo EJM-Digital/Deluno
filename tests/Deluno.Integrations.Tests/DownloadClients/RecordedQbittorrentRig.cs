@@ -28,9 +28,15 @@ internal static class RecordedQbittorrentRig
     public static string Info(string recording, params (string Field, object? Value)[] edits)
         => RecordedReplies.Qbittorrent(recording).Body("torrents/info", edits.Select(e => ("0." + e.Field, e.Value)).ToArray());
 
-    /// <summary>The recorded tracker list (the three pseudo-trackers a real torrent has) with its first entry made a real tracker in the given state.</summary>
+    /// <summary>
+    /// A tracker list in the given state. A tracker that is not working (status 4) is qBittorrent 5.2.4's own list for a torrent whose only
+    /// tracker did not answer (<c>tracker-not-working</c>), with the tracker's reason and address changed to what the test is about; a working one
+    /// is the recorded list of a finished torrent (three pseudo-trackers) with its first entry made a real tracker.
+    /// </summary>
     public static string Trackers(int status, string message, string url = "http://tracker.example/announce")
-        => RecordedReplies.Qbittorrent("trackers").Body("torrents/trackers", ("0.status", status), ("0.msg", message), ("0.url", url));
+        => status == 4
+            ? RecordedReplies.Qbittorrent("tracker-not-working").Body("torrents/trackers", ("3.msg", message), ("3.url", url))
+            : RecordedReplies.Qbittorrent("trackers").Body("torrents/trackers", ("0.status", status), ("0.msg", message), ("0.url", url));
 
     /// <summary>A qBittorrent answering from its recordings, with the torrent list (and optionally the tracker list) as given.</summary>
     public static HttpMessageHandler Handler(string info, string? trackers = null, Func<HttpRequestMessage, string, HttpResponseMessage?>? intercept = null)
