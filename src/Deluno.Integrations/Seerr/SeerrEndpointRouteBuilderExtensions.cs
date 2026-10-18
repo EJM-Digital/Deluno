@@ -122,6 +122,7 @@ public static class SeerrEndpointRouteBuilderExtensions
             HttpRequest request,
             [FromServices] ISeerrRepository repository,
             [FromServices] ISeerrAcquisitionService acquisitionService,
+            [FromServices] ISeerrClient seerrClient,
             [FromServices] ISeerrAcquisitionsRepository acquisitions,
             [FromServices] ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
@@ -175,9 +176,13 @@ public static class SeerrEndpointRouteBuilderExtensions
             var mediaType = TextOf(media, "media_type") == "tv" ? "tv" : "movies";
             var tmdbId = TextOf(media, "tmdbId");
             var tvdbId = TextOf(media, "tvdbId");
+            // Seerr 3.5.0's own payload has no media id, and a template asking for {{media_id}} gets that text back
+            // unchanged (#1356, recorded), so a missing or unreadable id is asked of Seerr by the title's TMDb/TVDb id.
+            // If Seerr cannot say just now the title is still added (0 = not known); only telling Seerr it is available
+            // later needs the id.
             if (!int.TryParse(TextOf(media, "media_id") ?? TextOf(media, "id"), out var seerrMediaId))
             {
-                return Results.Ok();
+                seerrMediaId = await seerrClient.FindMediaIdAsync(connection, mediaType, tmdbId, tvdbId, cancellationToken) ?? 0;
             }
 
             // Jellyseerr/Overseerr's webhook JSON payload template has no

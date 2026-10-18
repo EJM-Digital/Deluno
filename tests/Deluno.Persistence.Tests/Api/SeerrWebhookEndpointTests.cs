@@ -242,6 +242,9 @@ public sealed class SeerrWebhookEndpointTests : IAsyncDisposable
 
         public Task<MediaServerAnswer<bool>> MarkAvailableAsync(SeerrConnection connection, int seerrMediaId, CancellationToken cancellationToken)
             => Task.FromResult<MediaServerAnswer<bool>>(new MediaServerAnswer<bool>.Unreachable("not used"));
+
+        public Task<int?> FindMediaIdAsync(SeerrConnection connection, string mediaType, string? tmdbId, string? tvdbId, CancellationToken cancellationToken)
+            => Task.FromResult<int?>(null);
     }
 
     /// <summary>

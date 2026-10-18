@@ -45,6 +45,12 @@ public interface ISeerrClient
     /// </summary>
     /// <param name="seerrMediaId">Seerr's own media record id, not a TMDb/TVDb id.</param>
     Task<MediaServerAnswer<bool>> MarkAvailableAsync(SeerrConnection connection, int seerrMediaId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Seerr's own media record id for a title, found from its TMDb (or TVDb) id (#1356): Seerr's webhook payload carries no
+    /// media id (it sends <c>{{media_id}}</c> back as text), so the id is asked for. Null when Seerr has no record or cannot be reached.
+    /// </summary>
+    Task<int?> FindMediaIdAsync(SeerrConnection connection, string mediaType, string? tmdbId, string? tvdbId, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -134,13 +140,41 @@ public sealed class SeerrClient(IHttpClientFactory httpClientFactory) : ISeerrCl
 
     public async Task<MediaServerAnswer<SeerrClearing>> ClearAsync(SeerrConnection connection, string mediaType, string? tmdbId, string? tvdbId, CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(tmdbId) && string.IsNullOrWhiteSpace(tvdbId))
+        {
+            return new MediaServerAnswer<SeerrClearing>.NotSupported($"{connection.Name} knows titles by TMDb or TVDb id, and Deluno has neither for this one.");
+        }
+
+        var (mediaId, problem) = await LookUpMediaIdAsync(connection, mediaType, tmdbId, tvdbId, cancellationToken);
+        if (problem is not null)
+        {
+            return new MediaServerAnswer<SeerrClearing>.Unreachable(problem);
+        }
+
+        if (mediaId is null)
+        {
+            return new MediaServerAnswer<SeerrClearing>.Reported(new SeerrClearing(false, $"{connection.Name} had no record of it."));
+        }
+
+        var deleted = await SendAsync(httpClientFactory, HttpMethod.Delete, Address(connection, $"/api/v1/media/{mediaId.Value.ToString(CultureInfo.InvariantCulture)}"), Headers(connection), connection.Name, cancellationToken);
+        return deleted.Ok || deleted.StatusCode == 404
+            ? new MediaServerAnswer<SeerrClearing>.Reported(new SeerrClearing(true, $"{connection.Name} no longer lists it, and its requests are cleared."))
+            : new MediaServerAnswer<SeerrClearing>.Unreachable(deleted.Problem!);
+    }
+
+    public async Task<int?> FindMediaIdAsync(SeerrConnection connection, string mediaType, string? tmdbId, string? tvdbId, CancellationToken cancellationToken)
+        => (await LookUpMediaIdAsync(connection, mediaType, tmdbId, tvdbId, cancellationToken)).Id;
+
+    /// <returns>The media id (null when Seerr has no record), or why Seerr could not be asked.</returns>
+    private async Task<(int? Id, string? Problem)> LookUpMediaIdAsync(SeerrConnection connection, string mediaType, string? tmdbId, string? tvdbId, CancellationToken cancellationToken)
+    {
         int? mediaId = null;
         if (!string.IsNullOrWhiteSpace(tmdbId))
         {
             var lookup = await GetAsync(connection, $"/api/v1/{(mediaType == "tv" ? "tv" : "movie")}/{Uri.EscapeDataString(tmdbId)}", cancellationToken);
             if (!lookup.Ok && lookup.StatusCode != 404)
             {
-                return new MediaServerAnswer<SeerrClearing>.Unreachable(lookup.Problem!);
+                return (null, lookup.Problem);
             }
 
             using var document = lookup.Ok ? TryParse(lookup.Body) : null;
@@ -161,23 +195,11 @@ public sealed class SeerrClient(IHttpClientFactory httpClientFactory) : ISeerrCl
             }, cancellationToken);
             if (problem is not null)
             {
-                return new MediaServerAnswer<SeerrClearing>.Unreachable(problem);
+                return (null, problem);
             }
         }
-        else
-        {
-            return new MediaServerAnswer<SeerrClearing>.NotSupported($"{connection.Name} knows titles by TMDb or TVDb id, and Deluno has neither for this one.");
-        }
 
-        if (mediaId is null)
-        {
-            return new MediaServerAnswer<SeerrClearing>.Reported(new SeerrClearing(false, $"{connection.Name} had no record of it."));
-        }
-
-        var deleted = await SendAsync(httpClientFactory, HttpMethod.Delete, Address(connection, $"/api/v1/media/{mediaId.Value.ToString(CultureInfo.InvariantCulture)}"), Headers(connection), connection.Name, cancellationToken);
-        return deleted.Ok || deleted.StatusCode == 404
-            ? new MediaServerAnswer<SeerrClearing>.Reported(new SeerrClearing(true, $"{connection.Name} no longer lists it, and its requests are cleared."))
-            : new MediaServerAnswer<SeerrClearing>.Unreachable(deleted.Problem!);
+        return (mediaId, null);
     }
 
     public async Task<MediaServerAnswer<bool>> MarkAvailableAsync(SeerrConnection connection, int seerrMediaId, CancellationToken cancellationToken)
@@ -188,7 +210,9 @@ public sealed class SeerrClient(IHttpClientFactory httpClientFactory) : ISeerrCl
             Address(connection, $"/api/v1/media/{seerrMediaId.ToString(CultureInfo.InvariantCulture)}/available"),
             Headers(connection),
             connection.Name,
-            cancellationToken);
+            cancellationToken,
+            // Seerr 3.5.0 refuses a POST with no body (HTTP 415) and takes this one (#1356, recorded).
+            new StringContent("{\"is4k\":false}", System.Text.Encoding.UTF8, "application/json"));
         return result.Ok
             ? new MediaServerAnswer<bool>.Reported(true)
             : new MediaServerAnswer<bool>.Unreachable(result.Problem!);

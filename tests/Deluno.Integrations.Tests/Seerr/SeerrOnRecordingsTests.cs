@@ -234,20 +234,53 @@ public sealed class SeerrOnRecordingsTests
     }
 
     [Fact]
-    public async Task Marking_a_record_available_without_a_body_is_refused_415_by_the_real_Seerr_and_Deluno_says_it_could_not()
+    public async Task Marking_a_record_available_sends_the_JSON_body_the_real_Seerr_takes_and_is_told_it_was_taken()
     {
         var recording = R("media-available");
         Assert.Equal(415, recording.Exchanges[0].Reply.Status);
-        Assert.Equal(200, recording.Exchanges[1].Reply.Status);
-        Assert.Equal("POST", recording.Exchanges[0].Request.Method);
-        var seerr = new Seerr(_ => recording.Exchanges[0].Reply.ToResponse());
+        string? sentBody = null;
+        string? sentType = null;
+        var seerr = new Seerr(request =>
+        {
+            sentBody = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
+            sentType = request.Content?.Headers.ContentType?.MediaType;
+            return recording.Exchanges[sentType == "application/json" ? 1 : 0].Reply.ToResponse();
+        });
 
         var answer = await seerr.Client().MarkAvailableAsync(Server(), 1, CancellationToken.None);
 
-        // Seerr 3.5.0 wants {"is4k": false} as JSON; Deluno sends no body, so the real server refuses the call. (The recorded second call shows what it takes.)
-        Assert.IsType<MediaServerAnswer<bool>.Unreachable>(answer);
+        // Seerr 3.5.0 refuses a call with no body (415) and takes {"is4k": false} as JSON (#1356).
+        Assert.True(Assert.IsType<MediaServerAnswer<bool>.Reported>(answer).Value);
         Assert.True(seerr.Sent("POST /api/v1/media/1/available"));
-        Assert.Null(seerr.Requests[0].Content);
+        Assert.Equal("application/json", sentType);
+        Assert.True(System.Text.Json.Nodes.JsonNode.DeepEquals(System.Text.Json.Nodes.JsonNode.Parse(recording.Exchanges[1].Request.Body!), System.Text.Json.Nodes.JsonNode.Parse(sentBody!)), "Deluno sends the body the recorded accepted call sent.");
+    }
+
+    [Fact]
+    public async Task A_Seerr_that_still_refuses_the_mark_is_reported_as_could_not()
+    {
+        var recording = R("media-available");
+        var seerr = new Seerr(_ => recording.Exchanges[0].Reply.ToResponse());
+
+        Assert.IsType<MediaServerAnswer<bool>.Unreachable>(await seerr.Client().MarkAvailableAsync(Server(), 1, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task The_Seerr_media_id_of_a_film_is_found_from_its_TMDb_id_when_the_webhook_did_not_carry_it()
+    {
+        var seerr = new Seerr(request => request.RequestUri!.AbsolutePath == "/api/v1/movie/45745" ? Reply("media-available", 3) : null);
+
+        Assert.Equal(1, await seerr.Client().FindMediaIdAsync(Server(), "movies", "45745", null, CancellationToken.None));
+        Assert.True(seerr.Sent("GET /api/v1/movie/45745"));
+    }
+
+    [Fact]
+    public async Task The_Seerr_media_id_is_not_found_for_a_title_Seerr_has_no_record_of_or_a_Seerr_that_does_not_answer()
+    {
+        var unknown = R("lookup-unknown").Exchanges[0].Reply.ToResponse();
+        Assert.Null(await new Seerr(_ => unknown).Client().FindMediaIdAsync(Server(), "movies", "1", null, CancellationToken.None));
+        var client = new SeerrClient(new Factory(R("not-answering").NotAnswering()));
+        Assert.Null(await client.FindMediaIdAsync(Server(), "movies", "45745", null, CancellationToken.None));
     }
 
     [Fact]

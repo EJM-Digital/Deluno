@@ -308,6 +308,8 @@ public sealed class ImportPipelineServiceTests
 
         public Task<Deluno.Integrations.MediaServers.MediaServerAnswer<Deluno.Integrations.Seerr.SeerrClearing>> ClearAsync(SeerrConnection connection, string mediaType, string? tmdbId, string? tvdbId, CancellationToken cancellationToken) => throw new NotSupportedException();
 
+        public Task<int?> FindMediaIdAsync(SeerrConnection connection, string mediaType, string? tmdbId, string? tvdbId, CancellationToken cancellationToken) => throw new NotSupportedException();
+
         public Task<Deluno.Integrations.MediaServers.MediaServerAnswer<bool>> MarkAvailableAsync(SeerrConnection connection, int seerrMediaId, CancellationToken cancellationToken)
             => Task.FromResult<Deluno.Integrations.MediaServers.MediaServerAnswer<bool>>(new Deluno.Integrations.MediaServers.MediaServerAnswer<bool>.Unreachable($"{connection.Name} is unreachable"));
     }
@@ -321,6 +323,8 @@ public sealed class ImportPipelineServiceTests
         public Task<Deluno.Integrations.MediaServers.MediaServerAnswer<Deluno.Integrations.Seerr.SeerrLibrary>> ListRequestsAsync(SeerrConnection connection, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<Deluno.Integrations.MediaServers.MediaServerAnswer<Deluno.Integrations.Seerr.SeerrClearing>> ClearAsync(SeerrConnection connection, string mediaType, string? tmdbId, string? tvdbId, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<int?> FindMediaIdAsync(SeerrConnection connection, string mediaType, string? tmdbId, string? tvdbId, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<Deluno.Integrations.MediaServers.MediaServerAnswer<bool>> MarkAvailableAsync(SeerrConnection connection, int seerrMediaId, CancellationToken cancellationToken)
         {
