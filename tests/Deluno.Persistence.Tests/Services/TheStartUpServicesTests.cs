@@ -194,7 +194,7 @@ public sealed class TheStartUpServicesTests
         var service = Service(trainer, jobs, enabled: true);
 
         await service.StartAsync(CancellationToken.None);
-        await Wait.UntilAsync(async () => (await StateAsync(jobs)) is { LastResult: not null }, "the training run to be recorded");
+        await Wait.UntilAsync(async () => (await StateAsync(jobs)) is { LastResult: "completed" or "skipped" or "failed" or "cancelled" }, "the training run to be recorded");
         await service.StopAsync(CancellationToken.None);
 
         Assert.Equal(["startup"], trainer.Reasons);
@@ -209,7 +209,7 @@ public sealed class TheStartUpServicesTests
         var service = Service(new ScriptedTrainer(success: false), jobs, enabled: true);
 
         await service.StartAsync(CancellationToken.None);
-        await Wait.UntilAsync(async () => (await StateAsync(jobs)) is { LastResult: not null }, "the training run to be recorded");
+        await Wait.UntilAsync(async () => (await StateAsync(jobs)) is { LastResult: "completed" or "skipped" or "failed" or "cancelled" }, "the training run to be recorded");
         await service.StopAsync(CancellationToken.None);
 
         Assert.Equal("skipped", (await StateAsync(jobs))!.LastResult);
@@ -280,7 +280,7 @@ public sealed class TheStartUpServicesTests
             jobs);
 
         await service.StartAsync(CancellationToken.None);
-        await Wait.UntilAsync(async () => (await jobs.ListSystemTaskStatesAsync(CancellationToken.None)).Any(state => state.ScheduleKey == SystemTasks.ImportRecoveryRetention && state.LastResult is not null), "the failed clean-up to be recorded");
+        await Wait.UntilAsync(async () => (await jobs.ListSystemTaskStatesAsync(CancellationToken.None)).Any(state => state.ScheduleKey == SystemTasks.ImportRecoveryRetention && state.LastResult is "completed" or "failed" or "cancelled"), "the failed clean-up to be recorded");
         Assert.False(service.ExecuteTask!.IsCompleted, "a failed clean-up must not end the daily loop");
         await service.StopAsync(CancellationToken.None);
 
