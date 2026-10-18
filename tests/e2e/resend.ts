@@ -38,7 +38,7 @@ export async function sendAgain(stack: Stack, sent: Sent) {
   const usenet = sent.film.protocol === "usenet";
   // The library is routed to one client at a time and other films were sent since, so route it back first.
   await routeLibraryTo(stack, sent.kind);
-  return await stack.deluno.call("POST", `/api/movies/${sent.movieId}/grab`, {
+  return await stack.deluno.call("POST", sent.seriesId ? `/api/series/${sent.seriesId}/grab` : `/api/movies/${sent.movieId}/grab`, {
     releaseName: sent.film.release, indexerId: usenet ? stack.usenetIndexerId : stack.indexerId,
     indexerName: usenet ? "E2E Usenet feed" : "E2E feed", candidateQuality: "WEB 1080p",
     downloadUrl: sent.film.url, sizeBytes: sent.film.size, seeders: usenet ? 0 : 50, force: true, overrideReason: GRAB_NOTE, duplicateAction: null
