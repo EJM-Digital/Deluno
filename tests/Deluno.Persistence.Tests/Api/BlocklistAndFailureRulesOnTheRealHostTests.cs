@@ -3,8 +3,10 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Deluno.Api.BlockedReleases;
 using Deluno.Contracts;
+using Deluno.Jobs.Data;
 using Deluno.Persistence.Tests.Support;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Deluno.Persistence.Tests.Api;
 
@@ -43,6 +45,29 @@ public sealed class BlocklistAndFailureRulesOnTheRealHostTests
         Assert.True(outcome is "nothingToClear" or "clientUnavailable", $"unexpected outcome {outcome}");
         // A clean-up never lifts the block.
         Assert.Equal(1L, BlockedRows(app));
+    }
+
+    [Fact]
+    public async Task Refusing_a_proposal_makes_it_a_refusal_the_list_shows_and_searches_skip_and_an_unknown_one_is_404()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var blocklist = app.Services.GetRequiredService<IBlockedReleaseRepository>();
+        var proposal = await blocklist.BlockAsync(
+            new BlockedRelease(Guid.NewGuid().ToString("n"), BlockedReleaseKeys.For(Release, "TestIndexer"), Release, "TestIndexer", "movie", "movie-1", "Some Movie",
+                ImportFailurePolicy.LikelySample, "The file looks like a sample.", null, null, null, DateTimeOffset.MinValue) with { State = BlockedReleaseStates.Proposed },
+            CancellationToken.None);
+        async Task<string> StateAsync() => (await app.Client.GetFromJsonAsync<JsonElement>("/api/blocked-releases")).EnumerateArray()
+            .Single(item => item.GetProperty("id").GetString() == proposal.Id).GetProperty("state").GetString()!;
+        Assert.Equal(BlockedReleaseStates.Proposed, await StateAsync());
+        Assert.DoesNotContain(BlockedReleaseKeys.For(Release, "TestIndexer"), await blocklist.ListKeysAsync(CancellationToken.None));
+
+        using var refused = await app.Client.PostAsync($"/api/blocked-releases/{proposal.Id}/refuse", content: null);
+
+        Assert.Equal(HttpStatusCode.NoContent, refused.StatusCode);
+        Assert.Equal(BlockedReleaseStates.Refused, await StateAsync());
+        Assert.Contains(BlockedReleaseKeys.For(Release, "TestIndexer"), await blocklist.ListKeysAsync(CancellationToken.None));
+        using var unknown = await app.Client.PostAsync("/api/blocked-releases/does-not-exist/refuse", content: null);
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
     }
 
     [Fact]
