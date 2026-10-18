@@ -49,17 +49,12 @@
     {
       "file": "tests/Deluno.Integrations.Tests/MediaServers/LeavingSoonCollectionClientTests.cs",
       "kind": "pending",
-      "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the Plex replies are still built inline. Plex is not recorded (the record VM run was stopped before Plex was installed); see tests/fixtures/recorded/MISSING.md for how to record it."
+      "reason": "The Plex collection calls (list, create, describe, children, delete) are recorded from an unclaimed Plex 1.43.4 and replayed in PlexOnRecordingsTests. FakePlex here still builds Plex's collection replies inline because it also answers the home-screen promotion (/hubs/sections/{id}/manage), which the unclaimed server answers 404; a claimed server's reply is not recorded (tests/fixtures/recorded/MISSING.md, 'Plex, claimed'). The Jellyfin and Emby tests in this file are not Plex and carry no flagged reply."
     },
     {
       "file": "tests/Deluno.Integrations.Tests/MediaServers/MediaServerClientTests.cs",
       "kind": "pending",
-      "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the Emby and Jellyfin replies are still built inline. Jellyfin 12.2.0 is recorded (tests/fixtures/recorded/jellyfin: identity, libraries, movie and series catalogue, watched, sessions, refresh, collections, user and item calls); Emby and Plex are NOT recorded yet (not run on the record VM), so the Emby and Plex parts need those recordings first."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/MediaServers/MediaServerVersionTests.cs",
-      "kind": "pending",
-      "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the Emby and Jellyfin replies are still built inline. Jellyfin 12.2.0 is recorded (tests/fixtures/recorded/jellyfin: identity, libraries, movie and series catalogue, watched, sessions, refresh, collections, user and item calls); Emby and Plex are NOT recorded yet (not run on the record VM), so the Emby and Plex parts need those recordings first."
+      "reason": "Emby 4.10.1.0, Jellyfin 12.2.0 and an unclaimed Plex 1.43.4 are recorded (tests/fixtures/recorded/emby, jellyfin, plex), and the same operations are replayed from them in EmbyOnRecordingsTests, PlexOnRecordingsTests, RecordedJellyfinTests and JellyfinOperationsOnRecordingsTests. This file's tests still build their replies inline for what the recordings do not hold: Plex's 'is the account everyone' tests, ratings, favourites and watchlist, which need plex.tv's user, friend, shared-server and home lists and a token that names an owner (only plex.tv's own 401 with no token is recorded: it needs a claimed server, tests/fixtures/recorded/MISSING.md), and the synthetic Jellyfin and Emby cases that need several users, a second page of 500 films or a grouped listing. Move each onto a recording by changing one value of the Emby or Jellyfin catalogue reply as they are taken up."
     },
     {
       "file": "tests/Deluno.Integrations.Tests/Search/FeedMediaSearchPlannerReasonTests.cs",
@@ -70,16 +65,6 @@
       "file": "tests/Deluno.Integrations.Tests/Search/Trackers/TorznabFeedTests.cs",
       "kind": "pending",
       "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the test builds a Torznab or Newznab feed of crafted releases (chosen titles, sizes and seeders) to drive a decision or a screen. Real Torznab and Newznab replies are recorded (tests/fixtures/recorded/jackett and nzbhydra2: caps, feed, text, movie and TV searches, errors); to move this file, take the envelope from RecordedReplies.Jackett(\"search-feed\") and change only the items the test is about."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/Seerr/SeerrClientTests.cs",
-      "kind": "pending",
-      "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the Seerr replies are still built inline. Seerr is not recorded (its build from source in the record VM did not finish); see tests/fixtures/recorded/MISSING.md."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/Versions/ConnectionVersionParserTests.cs",
-      "kind": "pending",
-      "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the Jellyfin version is now read from Jellyfin 12.2.0's recorded identity; the Emby, Plex and Seerr version replies are still inline because those apps are not recorded (see tests/fixtures/recorded/MISSING.md)."
     },
     {
       "file": "tests/Deluno.Persistence.Tests/Api/AHandSendForSomethingAlreadyDownloadingAsksFirstTests.cs",
@@ -129,7 +114,7 @@
     {
       "file": "tests/Deluno.Persistence.Tests/Platform/MigrationAssistantServiceTests.cs",
       "kind": "pending",
-      "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the Seerr replies are still built inline. Seerr is not recorded (its build from source in the record VM did not finish); see tests/fixtures/recorded/MISSING.md."
+      "reason": "The guard finds one key it takes for a Seerr reply (#1237): the pasted Radarr export carries a movie file with \"mediaInfo\" (video and audio codec) and custom formats. That is a Radarr movie-file reply, not Seerr's. The recorded Radarr 6.4.4 (tests/fixtures/recorded/radarr) holds a film but no file, so no recorded reply has a movieFile. To move this test onto a recording, record Radarr holding the film file (put a film in its root folder, rescan, then GET /api/v3/movie): see tests/fixtures/recorded/MISSING.md."
     },
     {
       "file": "tests/Deluno.Integrations.Tests/Properties/ScoringAndFeedProperties.cs",

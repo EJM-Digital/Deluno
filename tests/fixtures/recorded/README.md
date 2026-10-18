@@ -9,7 +9,7 @@ reply in the test: a shape written from memory kept passing while the real apps 
 tests/fixtures/recorded/<app>/<version>/<state>.json
 ```
 
-`<app>` is `sabnzbd`, `nzbget`, `qbittorrent`, `transmission`, `deluge`, `weir`, and `deluno` (Deluno's
+`<app>` is `sabnzbd`, `nzbget`, `qbittorrent`, `transmission`, `deluge`, `rtorrent`, `emby`, `plex`, `jellyfin`, `seerr`, `tmdb` (the project's metadata gateway, versioned by the date of the recording), `weir`, and `deluno` (Deluno's
 own side of its talk with Weir, which Weir's tests replay). `<version>` is what the app reports.
 `<state>` is one situation, for example `queued`, `downloading`, `stalled`, `finished-folder`,
 `removed-twice`, `handoff-ended`.
