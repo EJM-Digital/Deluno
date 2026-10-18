@@ -2,7 +2,7 @@
   "app": "rtorrent",
   "version": "0.16.25",
   "state": "version",
-  "recordedAt": "2026-10-18T10:09:09Z",
+  "recordedAt": "2026-10-18T10:52:02Z",
   "note": "system.client_version: the plain version Deluno reads from the connection test.",
   "exchanges": [
     {

@@ -2,7 +2,7 @@
   "app": "rtorrent",
   "version": "0.16.25",
   "state": "add-url-dead",
-  "recordedAt": "2026-10-18T10:09:13Z",
+  "recordedAt": "2026-10-18T10:52:07Z",
   "note": "load.start of a link the server answers 404 for, then the hashes and the list (rTorrent adds nothing, and says nothing).",
   "exchanges": [
     {

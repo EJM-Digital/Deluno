@@ -2,7 +2,7 @@
   "app": "rtorrent",
   "version": "0.16.25",
   "state": "unknown-hash-fault",
-  "recordedAt": "2026-10-18T10:09:09Z",
+  "recordedAt": "2026-10-18T10:52:03Z",
   "note": "Every call Deluno makes about one torrent, for a hash rTorrent never had: each answers an XML-RPC fault (HTTP 200 with a <fault>).",
   "exchanges": [
     {
