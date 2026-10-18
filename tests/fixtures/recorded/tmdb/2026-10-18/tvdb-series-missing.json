@@ -1,0 +1,24 @@
+{
+  "app": "tmdb",
+  "version": "2026-10-18",
+  "state": "tvdb-series-missing",
+  "recordedAt": "2026-10-18T10:45:23Z",
+  "note": "GET /tvdb/tv/{id} for an id TheTVDB has no series for. Through the deployed gateway (deluno-metadata-gateway.ejmdigital.workers.dev).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/metadata/tvdb/tv/999999999"
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "error": "not_found"
+        }
+      }
+    }
+  ]
+}

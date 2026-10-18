@@ -1,0 +1,408 @@
+{
+  "app": "tmdb",
+  "version": "2026-10-18",
+  "state": "episode-groups-tv",
+  "recordedAt": "2026-10-18T10:45:10Z",
+  "note": "GET /metadata/tv/{id}/episode-groups: the alternate episode orderings of a series. Through the deployed gateway (deluno-metadata-gateway.ejmdigital.workers.dev).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/metadata/tv/1396/episode-groups"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "public, max-age=600"
+        },
+        "body": {
+          "provider": "deluno-broker",
+          "mode": "broker",
+          "providerId": "1396",
+          "groups": [
+            {
+              "type": 3,
+              "providerGroupId": "69f50757054263b7bc87e32a",
+              "name": "DVD / PVOD",
+              "episodes": [
+                {
+                  "originalSeasonNumber": 1,
+                  "originalEpisodeNumber": 1,
+                  "groupSeasonNumber": 1,
+                  "groupEpisodeNumber": 1
+                },
+                {
+                  "originalSeasonNumber": 1,
+                  "originalEpisodeNumber": 2,
+                  "groupSeasonNumber": 1,
+                  "groupEpisodeNumber": 2
+                },
+                {
+                  "originalSeasonNumber": 1,
+                  "originalEpisodeNumber": 3,
+                  "groupSeasonNumber": 1,
+                  "groupEpisodeNumber": 3
+                },
+                {
+                  "originalSeasonNumber": 1,
+                  "originalEpisodeNumber": 4,
+                  "groupSeasonNumber": 1,
+                  "groupEpisodeNumber": 4
+                },
+                {
+                  "originalSeasonNumber": 1,
+                  "originalEpisodeNumber": 5,
+                  "groupSeasonNumber": 1,
+                  "groupEpisodeNumber": 5
+                },
+                {
+                  "originalSeasonNumber": 1,
+                  "originalEpisodeNumber": 6,
+                  "groupSeasonNumber": 1,
+                  "groupEpisodeNumber": 6
+                },
+                {
+                  "originalSeasonNumber": 1,
+                  "originalEpisodeNumber": 7,
+                  "groupSeasonNumber": 1,
+                  "groupEpisodeNumber": 7
+                },
+                {
+                  "originalSeasonNumber": 2,
+                  "originalEpisodeNumber": 1,
+                  "groupSeasonNumber": 2,
+                  "groupEpisodeNumber": 1
+                },
+                {
+                  "originalSeasonNumber": 2,
+                  "originalEpisodeNumber": 2,
+                  "groupSeasonNumber": 2,
+                  "groupEpisodeNumber": 2
+                },
+                {
+                  "originalSeasonNumber": 2,
+                  "originalEpisodeNumber": 3,
+                  "groupSeasonNumber": 2,
+                  "groupEpisodeNumber": 3
+                },
+                {
+                  "originalSeasonNumber": 2,
+                  "originalEpisodeNumber": 4,
+                  "groupSeasonNumber": 2,
+                  "groupEpisodeNumber": 4
+                },
+                {
+                  "originalSeasonNumber": 2,
+                  "originalEpisodeNumber": 5,
+                  "groupSeasonNumber": 2,
+                  "groupEpisodeNumber": 5
+                },
+                {
+                  "originalSeasonNumber": 2,
+                  "originalEpisodeNumber": 6,
+                  "groupSeasonNumber": 2,
+                  "groupEpisodeNumber": 6
+                },
+                {
+                  "originalSeasonNumber": 2,
+                  "originalEpisodeNumber": 7,
+                  "groupSeasonNumber": 2,
+                  "groupEpisodeNumber": 7
+                },
+                {
+                  "originalSeasonNumber": 2,
+                  "originalEpisodeNumber": 8,
+                  "groupSeasonNumber": 2,
+                  "groupEpisodeNumber": 8
+                },
+                {
+                  "originalSeasonNumber": 2,
+                  "originalEpisodeNumber": 9,
+                  "groupSeasonNumber": 2,
+                  "groupEpisodeNumber": 9
+                },
+                {
+                  "originalSeasonNumber": 2,
+                  "originalEpisodeNumber": 10,
+                  "groupSeasonNumber": 2,
+                  "groupEpisodeNumber": 10
+                },
+                {
+                  "originalSeasonNumber": 2,
+                  "originalEpisodeNumber": 11,
+                  "groupSeasonNumber": 2,
+                  "groupEpisodeNumber": 11
+                },
+                {
+                  "originalSeasonNumber": 2,
+                  "originalEpisodeNumber": 12,
+                  "groupSeasonNumber": 2,
+                  "groupEpisodeNumber": 12
+                },
+                {
+                  "originalSeasonNumber": 2,
+                  "originalEpisodeNumber": 13,
+                  "groupSeasonNumber": 2,
+                  "groupEpisodeNumber": 13
+                },
+                {
+                  "originalSeasonNumber": 3,
+                  "originalEpisodeNumber": 1,
+                  "groupSeasonNumber": 3,
+                  "groupEpisodeNumber": 1
+                },
+                {
+                  "originalSeasonNumber": 3,
+                  "originalEpisodeNumber": 2,
+                  "groupSeasonNumber": 3,
+                  "groupEpisodeNumber": 2
+                },
+                {
+                  "originalSeasonNumber": 3,
+                  "originalEpisodeNumber": 3,
+                  "groupSeasonNumber": 3,
+                  "groupEpisodeNumber": 3
+                },
+                {
+                  "originalSeasonNumber": 3,
+                  "originalEpisodeNumber": 4,
+                  "groupSeasonNumber": 3,
+                  "groupEpisodeNumber": 4
+                },
+                {
+                  "originalSeasonNumber": 3,
+                  "originalEpisodeNumber": 5,
+                  "groupSeasonNumber": 3,
+                  "groupEpisodeNumber": 5
+                },
+                {
+                  "originalSeasonNumber": 3,
+                  "originalEpisodeNumber": 6,
+                  "groupSeasonNumber": 3,
+                  "groupEpisodeNumber": 6
+                },
+                {
+                  "originalSeasonNumber": 3,
+                  "originalEpisodeNumber": 7,
+                  "groupSeasonNumber": 3,
+                  "groupEpisodeNumber": 7
+                },
+                {
+                  "originalSeasonNumber": 3,
+                  "originalEpisodeNumber": 8,
+                  "groupSeasonNumber": 3,
+                  "groupEpisodeNumber": 8
+                },
+                {
+                  "originalSeasonNumber": 3,
+                  "originalEpisodeNumber": 9,
+                  "groupSeasonNumber": 3,
+                  "groupEpisodeNumber": 9
+                },
+                {
+                  "originalSeasonNumber": 3,
+                  "originalEpisodeNumber": 10,
+                  "groupSeasonNumber": 3,
+                  "groupEpisodeNumber": 10
+                },
+                {
+                  "originalSeasonNumber": 3,
+                  "originalEpisodeNumber": 11,
+                  "groupSeasonNumber": 3,
+                  "groupEpisodeNumber": 11
+                },
+                {
+                  "originalSeasonNumber": 3,
+                  "originalEpisodeNumber": 12,
+                  "groupSeasonNumber": 3,
+                  "groupEpisodeNumber": 12
+                },
+                {
+                  "originalSeasonNumber": 3,
+                  "originalEpisodeNumber": 13,
+                  "groupSeasonNumber": 3,
+                  "groupEpisodeNumber": 13
+                },
+                {
+                  "originalSeasonNumber": 4,
+                  "originalEpisodeNumber": 1,
+                  "groupSeasonNumber": 4,
+                  "groupEpisodeNumber": 1
+                },
+                {
+                  "originalSeasonNumber": 4,
+                  "originalEpisodeNumber": 2,
+                  "groupSeasonNumber": 4,
+                  "groupEpisodeNumber": 2
+                },
+                {
+                  "originalSeasonNumber": 4,
+                  "originalEpisodeNumber": 3,
+                  "groupSeasonNumber": 4,
+                  "groupEpisodeNumber": 3
+                },
+                {
+                  "originalSeasonNumber": 4,
+                  "originalEpisodeNumber": 4,
+                  "groupSeasonNumber": 4,
+                  "groupEpisodeNumber": 4
+                },
+                {
+                  "originalSeasonNumber": 4,
+                  "originalEpisodeNumber": 5,
+                  "groupSeasonNumber": 4,
+                  "groupEpisodeNumber": 5
+                },
+                {
+                  "originalSeasonNumber": 4,
+                  "originalEpisodeNumber": 6,
+                  "groupSeasonNumber": 4,
+                  "groupEpisodeNumber": 6
+                },
+                {
+                  "originalSeasonNumber": 4,
+                  "originalEpisodeNumber": 7,
+                  "groupSeasonNumber": 4,
+                  "groupEpisodeNumber": 7
+                },
+                {
+                  "originalSeasonNumber": 4,
+                  "originalEpisodeNumber": 8,
+                  "groupSeasonNumber": 4,
+                  "groupEpisodeNumber": 8
+                },
+                {
+                  "originalSeasonNumber": 4,
+                  "originalEpisodeNumber": 9,
+                  "groupSeasonNumber": 4,
+                  "groupEpisodeNumber": 9
+                },
+                {
+                  "originalSeasonNumber": 4,
+                  "originalEpisodeNumber": 10,
+                  "groupSeasonNumber": 4,
+                  "groupEpisodeNumber": 10
+                },
+                {
+                  "originalSeasonNumber": 4,
+                  "originalEpisodeNumber": 11,
+                  "groupSeasonNumber": 4,
+                  "groupEpisodeNumber": 11
+                },
+                {
+                  "originalSeasonNumber": 4,
+                  "originalEpisodeNumber": 12,
+                  "groupSeasonNumber": 4,
+                  "groupEpisodeNumber": 12
+                },
+                {
+                  "originalSeasonNumber": 4,
+                  "originalEpisodeNumber": 13,
+                  "groupSeasonNumber": 4,
+                  "groupEpisodeNumber": 13
+                },
+                {
+                  "originalSeasonNumber": 5,
+                  "originalEpisodeNumber": 1,
+                  "groupSeasonNumber": 5,
+                  "groupEpisodeNumber": 1
+                },
+                {
+                  "originalSeasonNumber": 5,
+                  "originalEpisodeNumber": 2,
+                  "groupSeasonNumber": 5,
+                  "groupEpisodeNumber": 2
+                },
+                {
+                  "originalSeasonNumber": 5,
+                  "originalEpisodeNumber": 3,
+                  "groupSeasonNumber": 5,
+                  "groupEpisodeNumber": 3
+                },
+                {
+                  "originalSeasonNumber": 5,
+                  "originalEpisodeNumber": 4,
+                  "groupSeasonNumber": 5,
+                  "groupEpisodeNumber": 4
+                },
+                {
+                  "originalSeasonNumber": 5,
+                  "originalEpisodeNumber": 5,
+                  "groupSeasonNumber": 5,
+                  "groupEpisodeNumber": 5
+                },
+                {
+                  "originalSeasonNumber": 5,
+                  "originalEpisodeNumber": 6,
+                  "groupSeasonNumber": 5,
+                  "groupEpisodeNumber": 6
+                },
+                {
+                  "originalSeasonNumber": 5,
+                  "originalEpisodeNumber": 7,
+                  "groupSeasonNumber": 5,
+                  "groupEpisodeNumber": 7
+                },
+                {
+                  "originalSeasonNumber": 5,
+                  "originalEpisodeNumber": 8,
+                  "groupSeasonNumber": 5,
+                  "groupEpisodeNumber": 8
+                },
+                {
+                  "originalSeasonNumber": 5,
+                  "originalEpisodeNumber": 9,
+                  "groupSeasonNumber": 6,
+                  "groupEpisodeNumber": 1
+                },
+                {
+                  "originalSeasonNumber": 5,
+                  "originalEpisodeNumber": 10,
+                  "groupSeasonNumber": 6,
+                  "groupEpisodeNumber": 2
+                },
+                {
+                  "originalSeasonNumber": 5,
+                  "originalEpisodeNumber": 11,
+                  "groupSeasonNumber": 6,
+                  "groupEpisodeNumber": 3
+                },
+                {
+                  "originalSeasonNumber": 5,
+                  "originalEpisodeNumber": 12,
+                  "groupSeasonNumber": 6,
+                  "groupEpisodeNumber": 4
+                },
+                {
+                  "originalSeasonNumber": 5,
+                  "originalEpisodeNumber": 13,
+                  "groupSeasonNumber": 6,
+                  "groupEpisodeNumber": 5
+                },
+                {
+                  "originalSeasonNumber": 5,
+                  "originalEpisodeNumber": 14,
+                  "groupSeasonNumber": 6,
+                  "groupEpisodeNumber": 6
+                },
+                {
+                  "originalSeasonNumber": 5,
+                  "originalEpisodeNumber": 15,
+                  "groupSeasonNumber": 6,
+                  "groupEpisodeNumber": 7
+                },
+                {
+                  "originalSeasonNumber": 5,
+                  "originalEpisodeNumber": 16,
+                  "groupSeasonNumber": 6,
+                  "groupEpisodeNumber": 8
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

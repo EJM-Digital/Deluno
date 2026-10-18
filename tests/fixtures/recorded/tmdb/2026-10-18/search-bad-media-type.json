@@ -1,0 +1,25 @@
+{
+  "app": "tmdb",
+  "version": "2026-10-18",
+  "state": "search-bad-media-type",
+  "recordedAt": "2026-10-18T10:45:10Z",
+  "note": "GET /metadata/search with a media type the gateway does not serve. Through the deployed gateway (deluno-metadata-gateway.ejmdigital.workers.dev).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/metadata/search?mediaType=books&query=Sintel"
+      },
+      "reply": {
+        "status": 400,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "error": "invalid_request",
+          "message": "mediaType must be movies or tv."
+        }
+      }
+    }
+  ]
+}

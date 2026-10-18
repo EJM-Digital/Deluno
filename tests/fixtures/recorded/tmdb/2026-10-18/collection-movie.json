@@ -1,0 +1,73 @@
+{
+  "app": "tmdb",
+  "version": "2026-10-18",
+  "state": "collection-movie",
+  "recordedAt": "2026-10-18T10:45:12Z",
+  "note": "GET /metadata/movie/{id}/collection with a TMDb collection id (2344, The Matrix Collection): the collection and its films. Through the deployed gateway (deluno-metadata-gateway.ejmdigital.workers.dev).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/metadata/movie/2344/collection"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "public, max-age=600"
+        },
+        "body": {
+          "provider": "deluno-broker",
+          "mode": "broker",
+          "providerId": "2344",
+          "name": "The Matrix Collection",
+          "overview": "The Matrix collection depicts a complex science fiction story incorporating many philosophical elements. Written and directed by the Wachowskis and produced by Joel Silver.",
+          "posterUrl": "https://image.tmdb.org/t/p/w780/bV9qTVHTVf0gkW0j7p7M0ILD4pG.jpg",
+          "backdropUrl": "https://image.tmdb.org/t/p/original/bRm2DEgUiYciDw3myHuYFInD7la.jpg",
+          "movies": [
+            {
+              "providerId": "603",
+              "title": "The Matrix",
+              "year": 1999,
+              "overview": "Set in the 22nd century, The Matrix tells the story of a computer hacker who joins a group of underground insurgents fighting the vast and powerful computers who now rule the earth.",
+              "posterUrl": "https://image.tmdb.org/t/p/w780/dXNAPwY7VrqMAo51EKhhCJfaGb5.jpg",
+              "backdropUrl": "https://image.tmdb.org/t/p/original/tlm8UkiQsitc8rSuIAscQDCnP8d.jpg",
+              "externalUrl": "https://www.themoviedb.org/movie/603",
+              "imdbId": null
+            },
+            {
+              "providerId": "604",
+              "title": "The Matrix Reloaded",
+              "year": 2003,
+              "overview": "The Resistance builds in numbers as humans are freed from the Matrix and brought to the city of Zion. Neo discovers his superpowers, including the ability to see the code inside the Matrix. With machine sentinels digging to Zion in 72 hours, Neo, Morpheus and Trinity must find the Keymaker to ultimately reach the Source.",
+              "posterUrl": "https://image.tmdb.org/t/p/w780/8xEVAe84zlL9rkfYT6dZXero4KK.jpg",
+              "backdropUrl": "https://image.tmdb.org/t/p/original/ihOJcrorpDQtHTzIOrobbOhpJsj.jpg",
+              "externalUrl": "https://www.themoviedb.org/movie/604",
+              "imdbId": null
+            },
+            {
+              "providerId": "605",
+              "title": "The Matrix Revolutions",
+              "year": 2003,
+              "overview": "The human city of Zion defends itself against the massive invasion of the machines as Neo fights to end the war at another front while also opposing the rogue Agent Smith.",
+              "posterUrl": "https://image.tmdb.org/t/p/w780/qEWiBXJGXK28jGBAm8oFKKTB0WD.jpg",
+              "backdropUrl": "https://image.tmdb.org/t/p/original/533xAMhhVyjTy8hwMUFEt5TuDfR.jpg",
+              "externalUrl": "https://www.themoviedb.org/movie/605",
+              "imdbId": null
+            },
+            {
+              "providerId": "624860",
+              "title": "The Matrix Resurrections",
+              "year": 2021,
+              "overview": "Plagued by strange memories, Neo's life takes an unexpected turn when he finds himself back inside the Matrix.",
+              "posterUrl": "https://image.tmdb.org/t/p/w780/8c4a8kE7PizaGQQnditMmI1xbRp.jpg",
+              "backdropUrl": "https://image.tmdb.org/t/p/original/eNI7PtK6DEYgZmHWP9gQNuff8pv.jpg",
+              "externalUrl": "https://www.themoviedb.org/movie/624860",
+              "imdbId": null
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

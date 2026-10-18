@@ -45,6 +45,8 @@ public static class RecordedReplies
     /// <summary>Prowlarr's API (<c>/api/v1</c>), recorded from the real app with one indexer.</summary>
     public static Recording Prowlarr(string state) => RecordedReplies.LoadLatest("prowlarr", state);
     /// <summary>TheXEM's public scene-mapping API, a real unauthenticated GET from the internet.</summary>
+    /// <summary>The project's deployed metadata gateway (a Worker in front of TMDb and TheTVDB), a real unauthenticated GET from the internet.</summary>
+    public static Recording Tmdb(string state) => RecordedReplies.LoadLatest("tmdb", state);
     public static Recording Thexem(string state) => RecordedReplies.LoadLatest("thexem", state);
     public static Recording Weir(string state) => RecordedReplies.LoadLatest("weir", state);
     public static Recording Deluno(string state) => RecordedReplies.LoadLatest("deluno", state);

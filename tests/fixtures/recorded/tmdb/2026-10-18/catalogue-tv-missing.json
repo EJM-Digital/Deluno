@@ -1,0 +1,24 @@
+{
+  "app": "tmdb",
+  "version": "2026-10-18",
+  "state": "catalogue-tv-missing",
+  "recordedAt": "2026-10-18T10:45:10Z",
+  "note": "GET /metadata/tv/{id}/catalogue for a TMDb id that has no series: 404 not_found. Through the deployed gateway (deluno-metadata-gateway.ejmdigital.workers.dev).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/metadata/tv/999999999/catalogue"
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "error": "not_found"
+        }
+      }
+    }
+  ]
+}

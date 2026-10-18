@@ -1,0 +1,24 @@
+{
+  "app": "tmdb",
+  "version": "2026-10-18",
+  "state": "collection-missing",
+  "recordedAt": "2026-10-18T10:45:13Z",
+  "note": "GET /metadata/movie/{id}/collection with an id TMDb has no collection for: 404 not_found. Through the deployed gateway (deluno-metadata-gateway.ejmdigital.workers.dev).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/metadata/movie/999999999/collection"
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "error": "not_found"
+        }
+      }
+    }
+  ]
+}
