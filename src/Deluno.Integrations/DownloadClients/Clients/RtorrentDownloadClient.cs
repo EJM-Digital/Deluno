@@ -157,16 +157,15 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory,
             .Select(row => MapRow(client, row!, capturedUtc))
             .ToArray();
 
-        // #878: d.multicall2 never carries a tracker's own message, so it
-        // could not tell an unregistered torrent apart from an ordinary
-        // stall (cleanup sheet C5) — the same gap qBittorrent had. One
-        // t.multicall per hash, read the same way, is the only way rTorrent
-        // exposes it.
-        var trackerStatusByHash = await GetTrackerStatusesAsync(http, baseUri, rows.Select(row => row.Id), cancellationToken);
+        // #878, #1356: the tracker's own message is d.message, which the list above already carries (MapRow keeps it
+        // as ErrorMessage). rTorrent 0.16 has no t.message, so a t.multicall for it faulted every time and the
+        // tracker status stayed Unknown. The shared phrase matcher decides whether the message means unregistered.
         var queue = rows
             .Select(item => item with
             {
-                TrackerStatus = trackerStatusByHash.TryGetValue(item.Id, out var status) ? status : DownloadTrackerStatuses.Unknown
+                TrackerStatus = DownloadClientHelpers.LooksUnregistered(item.ErrorMessage)
+                    ? DownloadTrackerStatuses.Unregistered
+                    : DownloadTrackerStatuses.Ok
             })
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
@@ -559,46 +558,6 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory,
         }
 
         return http;
-    }
-
-    /// <summary>
-    /// #878: t.multicall on a hash's own trackers, reading t.message the same
-    /// way qBittorrent's api/v2/torrents/trackers and Transmission's
-    /// trackerStats already do -- the shared phrase matcher decides whether a
-    /// tracker's own message means unregistered, never a duplicated list. A
-    /// tracker that cannot be reached at all says nothing either way and
-    /// stays Unknown, never Unregistered, so a local outage is never mistaken
-    /// for a bad release.
-    /// </summary>
-    private static async Task<Dictionary<string, string>> GetTrackerStatusesAsync(
-        HttpClient http, Uri baseUri, IEnumerable<string> hashes, CancellationToken cancellationToken)
-    {
-        var statusByHash = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var hash in hashes.Where(hash => !string.IsNullOrWhiteSpace(hash)).Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            try
-            {
-                var response = await SendAsync(http, baseUri, "t.multicall", [hash, string.Empty, "t.is_enabled=", "t.message="], cancellationToken);
-                var trackers = (AsArray(response) ?? [])
-                    .Select(AsArray)
-                    .Where(row => row is not null)
-                    .Select(row => AsString(Field(row!, 1)))
-                    .ToArray();
-                statusByHash[hash] = trackers.Any(DownloadClientHelpers.LooksUnregistered)
-                    ? DownloadTrackerStatuses.Unregistered
-                    : DownloadTrackerStatuses.Ok;
-            }
-            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException or RtorrentFaultException)
-            {
-                // A tracker read that fails says nothing either way (#901) --
-                // an outage never reads as unregistered. rTorrent 0.16 answers t.multicall with a fault for t.message
-                // ("Command \"t.message\" does not exist."), so for it every read lands here, and a tracker's refusal is
-                // still read from the row's own d.message.
-                statusByHash[hash] = DownloadTrackerStatuses.Unknown;
-            }
-        }
-
-        return statusByHash;
     }
 
     /// <summary>download_list with no view name -- every hash rTorrent currently holds.</summary>

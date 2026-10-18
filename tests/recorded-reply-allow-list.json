@@ -125,11 +125,6 @@
       "file": "tests/Deluno.Integrations.Tests/DownloadClients/APathAClientReportsThatClimbsOutIsNeverUsedTests.cs",
       "kind": "pending",
       "reason": "The uTorrent part builds its reply inline because uTorrent is not recorded (it needs the Windows CI runner; #1272). Every other client in the file, rTorrent included, replays its recorded reply with one path swapped. Delete this entry once uTorrent is recorded and this part loads it."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/RtorrentTrackerMessageReadingTests.cs",
-      "kind": "deliberate",
-      "reason": "Three tests of the tracker row t.multicall gives with t.message (a tracker's 'torrent not registered', a healthy one, a failing call). rTorrent 0.16.25, recorded in Docker, has no t.message and faults the call (tests/fixtures/recorded/rtorrent/0.16.25/downloading, tested in RtorrentOnRecordingsTests), so no recorded rTorrent gives a tracker row with a message. The list row beside them is the recorded one. Delete this file's entry if an rTorrent that answers t.message is recorded."
     }
   ],
   "noBehaviour": [
