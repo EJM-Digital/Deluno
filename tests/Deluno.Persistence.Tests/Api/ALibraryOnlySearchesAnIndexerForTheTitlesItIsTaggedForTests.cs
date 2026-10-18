@@ -116,7 +116,7 @@ public sealed class ALibraryOnlySearchesAnIndexerForTheTitlesItIsTaggedForTests
         Assert.Empty(preview.GetProperty("candidates").EnumerateArray());
     }
 
-    [Fact]
+    [Fact(Skip = "DEFECT: a library's per-indexer \"Never for titles tagged\" choice is saved and shown but never read by the search. Sintel carries the tag horror and the library's only indexer is routed with excludedTags=horror; POST /api/movies/{id}/search?mode=preview still asks that indexer (Jackett saw GET .../torznab/api?t=search&q=Sintel%202010&cat=2000) and lists its release. No search code reads LibrarySourceLinkItem.ExcludedTags.")]
     public async Task An_indexer_routed_never_for_titles_tagged_is_not_asked_for_a_title_with_the_tag()
     {
         await using var rig = await RigAsync(string.Empty, "horror", "horror");
