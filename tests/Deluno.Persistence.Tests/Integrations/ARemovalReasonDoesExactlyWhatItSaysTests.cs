@@ -313,6 +313,27 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
     }
 
     /// <summary>
+    /// #1356: "Just stop tracking it" closed the dispatch, but an archived dispatch still proves a download is Deluno's (#1062),
+    /// so the download stayed in Deluno's own list and the row stayed on Transfers. A download Deluno stopped tracking is no longer its own.
+    /// </summary>
+    [Theory]
+    [InlineData("qbittorrent", true)]
+    [InlineData("qbittorrent", false)]
+    [InlineData("sabnzbd", true)]
+    public async Task A_download_Deluno_stopped_tracking_is_no_longer_one_of_its_own(string protocol, bool throughTheDialogsReason)
+    {
+        using var world = await World.CreateAsync(protocol);
+        Assert.True((await world.CheckOwnershipAsync(QueueItemId)).Owned, "Before: it is Deluno's own download.");
+
+        var result = throughTheDialogsReason
+            ? await world.RemoveAsync(QueueRemovalReasons.Forget)
+            : await world.RemoveAsync(removeFromClient: false, blocklist: false, skipRedownload: false);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.False((await world.CheckOwnershipAsync(QueueItemId)).Owned, "After: the client keeps it, outside Deluno's view.");
+    }
+
+    /// <summary>
     /// #1022: the API's removeFromClient / blocklist / skipRedownload flags reach
     /// the same removal, each part on its own, with Radarr's meaning: only a
     /// blocklist searches again, and skipRedownload turns that off.
@@ -478,9 +499,11 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.True(kept.Succeeded);
         Assert.Null(world.Client.LastAction);
 
-        var deleted = await world.RemoveAsync(true, false, false);
+        // A download Deluno stopped tracking is no longer its own (#1356), so deleting is asked of another one.
+        using var another = await World.CreateAsync("qbittorrent", TitleKind.Movie);
+        var deleted = await another.RemoveAsync(true, false, false);
         Assert.True(deleted.Succeeded);
-        Assert.Equal(DownloadClientActions.DeleteWithData, world.Client.LastAction);
+        Assert.Equal(DownloadClientActions.DeleteWithData, another.Client.LastAction);
     }
 
     [Fact]
