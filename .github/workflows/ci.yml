@@ -240,8 +240,9 @@ jobs:
         run: node scripts/check-windows-icon.mjs
 
   backend:
-    # Four parallel legs (Refs #1346): Deluno.Persistence.Tests outgrew one job (more than 54 minutes with coverage on
-    # 15 Oct), so it runs in the parts of scripts/persistence-parts.mjs (split by namespace; every test in exactly one
+    # Seven parallel legs (Refs #1346): Deluno.Persistence.Tests outgrew one job (more than 54 minutes with coverage on
+    # 15 Oct), so it runs in the parts of scripts/persistence-parts.mjs (split by namespace, and the big Api namespace by the first letter of
+    # the class name into four parts, because part 1 alone was cancelled at 40 minutes on run 39100172223; every test in exactly one
     # part, proved by scripts/check-persistence-parts.mjs on the "other" leg), and the six other test projects run in
     # their own leg. A matrix job's result is the worst of its legs, so ci-passed (needs: backend) judges every part:
     # one failed or cancelled leg fails the verdict. Each leg builds the solution, which is a few minutes.
@@ -275,6 +276,18 @@ jobs:
             name: Persistence part 3
             args: -Only Deluno.Persistence.Tests
             part: 3
+          - leg: persistence-4
+            name: Persistence part 4
+            args: -Only Deluno.Persistence.Tests
+            part: 4
+          - leg: persistence-5
+            name: Persistence part 5
+            args: -Only Deluno.Persistence.Tests
+            part: 5
+          - leg: persistence-6
+            name: Persistence part 6
+            args: -Only Deluno.Persistence.Tests
+            part: 6
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -596,6 +609,13 @@ jobs:
       # Group github adds GitHub's API with its allowance used up (a stand-in answering GitHub's own recorded reply, tests/e2e/fixture/github.mjs).
       COMPOSE_PROFILES: ${{ matrix.group == 'github' && 'github' || '' }}
     steps:
+      # The runner's disk is nearly full once Deluno's image is built and the clients are pulled (4.3 GB left on run 39100172223), and
+      # Weir waits, as it should, when its output drive has less than 5 GB free: ten groups never got a film through. The runner's
+      # preinstalled toolchains (.NET, Android, Haskell, CodeQL) are not used by these jobs; removing them leaves tens of GB.
+      - name: Make room on the runner
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h /
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -916,7 +936,7 @@ jobs:
           pattern: coverage-*
           path: coverage-in
 
-      # ReportGenerator, pinned in .config/dotnet-tools.json, merges the seven test projects' coverage of the same file and the four backend legs' reports (Persistence is split in three parts, #1346).
+      # ReportGenerator, pinned in .config/dotnet-tools.json, merges the seven test projects' coverage of the same file and the seven backend legs' reports (Persistence is split in six parts, #1346).
       - name: Merge the .NET reports
         run: |
           dotnet tool restore
