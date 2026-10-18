@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { DownloadDispatchItem } from "../../lib/api";
 import { DownloadDispatchDrawer } from "./download-dispatch-drawer";
@@ -63,6 +63,40 @@ describe("DownloadDispatchDrawer", () => {
 
     expect(screen.getByText("Retry scheduled")).toBeVisible();
     expect(screen.getByText(/Next eligible attempt/)).toBeVisible();
+  });
+
+  it("lays a send out as Handoff, Journey and Trace: indexer, client, attempts, what the client detected, the import and the ids it was filed under", () => {
+    const imported: DownloadDispatchItem = {
+      ...failedGrab,
+      status: "imported",
+      failure: null,
+      grabStatus: "sent",
+      attemptCount: 2,
+      detectedUtc: "2026-09-24T02:05:00Z",
+      importStatus: "imported",
+      importedFilePath: "D:\Films\Wanted Film (2011)\Wanted Film (2011).mkv",
+      torrentHashOrItemId: "a779fa758f2229586eebc2e5960ee32fe5659596"
+    } as DownloadDispatchItem;
+
+    render(<DownloadDispatchDrawer dispatch={imported} onClose={() => undefined} />);
+
+    const section = (title: string) => screen.getByText(title).closest("section") as HTMLElement;
+    const handoff = within(section("Handoff"));
+    expect(handoff.getByText("Fixture")).toBeVisible();
+    expect(handoff.getByText("qBittorrent")).toBeVisible();
+    expect(handoff.getByText("Attempts")).toBeVisible();
+    expect(handoff.getByText("2")).toBeVisible();
+    const journey = within(section("Journey"));
+    expect(journey.getByText("Sent")).toBeVisible();
+    expect(journey.getByText("Imported")).toBeVisible();
+    expect(journey.getByText(/Wanted Film \(2011\)\.mkv/)).toBeVisible();
+    expect(journey.queryByText("Not detected")).not.toBeInTheDocument();
+    const trace = within(section("Trace"));
+    expect(trace.getByText("dispatch-1")).toBeVisible();
+    expect(trace.getByText("a779fa758f2229586eebc2e5960ee32fe5659596")).toBeVisible();
+    expect(trace.getByText("movie · movie-1")).toBeVisible();
+    expect(trace.getByText("library-1")).toBeVisible();
+    expect(screen.queryByText("Why it failed")).not.toBeInTheDocument();
   });
 
   it("says a release chosen on Search was chosen there, not a generated id (#1062)", () => {
