@@ -39,6 +39,7 @@ public sealed class RssSyncTests
     private readonly Mock<IIndexerFeedReader> _feed = new();
     private readonly Mock<IJobScheduler> _scheduler = new();
     private readonly List<EnqueueJobRequest> _queued = [];
+    private readonly List<RecordIndexerHistoryEventRequest> _history = [];
     private readonly Dictionary<string, DateTimeOffset> _lastSeen = new(StringComparer.OrdinalIgnoreCase);
     private IndexerFeedResult _answer = new(true, []);
     private LibraryItem _movieLibrary = Library("lib-movies", "Movies", "movies");
@@ -190,6 +191,58 @@ public sealed class RssSyncTests
         Assert.Equal(episode, parsed.Episode);
     }
 
+    private IIndexerHistoryEventStore HistoryStore()
+    {
+        var store = new Mock<IIndexerHistoryEventStore>();
+        store.Setup(item => item.RecordAsync(It.IsAny<RecordIndexerHistoryEventRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<RecordIndexerHistoryEventRequest, CancellationToken>((request, _) => _history.Add(request))
+            .Returns(Task.CompletedTask);
+        return store.Object;
+    }
+
+    [Fact]
+    public async Task Reading_a_feed_records_an_RSS_sync_event_that_says_how_many_new_releases_it_found()
+    {
+        Feed("The.General.1926.1080p.BluRay.DTS-HD.MA.5.1.x264-DELUNO", "Sintel.2010.1080p.BluRay.x264-DELUNO");
+
+        await Sync();
+
+        var recorded = Assert.Single(_history);
+        Assert.Equal("idx-1", recorded.IndexerId);
+        Assert.Equal("Soak Torznab", recorded.IndexerName);
+        Assert.Equal(IndexerHistoryEventTypes.RssSync, recorded.EventType);
+        Assert.Equal("read", recorded.Outcome);
+        Assert.Equal("Read Soak Torznab's RSS feed. 2 new releases.", recorded.Message);
+    }
+
+    [Fact]
+    public async Task A_feed_with_nothing_new_is_still_recorded_and_says_so()
+    {
+        Feed();
+
+        await Sync();
+
+        Assert.Equal("Read Soak Torznab's RSS feed. Nothing new.", Assert.Single(_history).Message);
+    }
+
+    [Fact]
+    public async Task A_feed_that_could_not_be_read_is_recorded_as_failed_and_one_refused_for_its_key_is_an_auth_failure()
+    {
+        _answer = new IndexerFeedResult(false, [], "Soak Torznab did not answer.");
+        await Sync();
+        var unreachable = Assert.Single(_history);
+        Assert.Equal(IndexerHistoryEventTypes.RssSync, unreachable.EventType);
+        Assert.Equal("failed", unreachable.Outcome);
+        Assert.Equal("Soak Torznab did not answer.", unreachable.Message);
+
+        _history.Clear();
+        _answer = new IndexerFeedResult(false, [], "Soak Torznab answered HTTP 401.");
+        await Sync();
+        var refused = Assert.Single(_history);
+        Assert.Equal(IndexerHistoryEventTypes.AuthFailure, refused.EventType);
+        Assert.Equal("failed", refused.Outcome);
+    }
+
     private void Feed(params string[] releases)
         => _answer = new IndexerFeedResult(true, releases.Select(name => new IndexerFeedRelease(name, Now.AddMinutes(-5))).ToArray());
 
@@ -207,7 +260,7 @@ public sealed class RssSyncTests
             .Returns(Task.CompletedTask);
         await new RssSyncService(
             _connections.Object, _libraries.Object, _movies.Object, _series.Object, _feed.Object, state.Object,
-            _scheduler.Object, Mock.Of<IActivityFeedRepository>(), Mock.Of<IIndexerHistoryEventStore>(), new Clock(Now), NullLogger<RssSyncService>.Instance)
+            _scheduler.Object, Mock.Of<IActivityFeedRepository>(), HistoryStore(), new Clock(Now), NullLogger<RssSyncService>.Instance)
             .SyncAsync(CancellationToken.None);
     }
 
