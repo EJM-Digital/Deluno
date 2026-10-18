@@ -47,6 +47,64 @@ public sealed class TitleSearchAndGrabRoutesAgainstRecordedAppsTests
         return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 
+    /// <summary>
+    /// qBittorrent's torrent list as the real one keeps it: the recorded downloading torrent, plus every torrent added by a link since
+    /// (taken from the add Deluno really sent), minus every one deleted. Deluno confirms an add by finding the torrent in this list; a
+    /// list that never shows it makes every add wait out its 6 second window (the test took 29 seconds for four adds).
+    /// </summary>
+    private static Func<HttpRequestMessage, string, HttpResponseMessage?> QbittorrentListing()
+    {
+        var recorded = RecordedReplies.Qbittorrent("downloading").Exchanges[0].Reply;
+        var held = new List<(string Hash, string Name)>();
+        return (request, body) =>
+        {
+            var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+            var form = request.Method == HttpMethod.Post ? System.Web.HttpUtility.ParseQueryString(body) : null;
+            lock (held)
+            {
+                if (form is not null && path.EndsWith("torrents/add", StringComparison.Ordinal))
+                {
+                    var link = System.Text.RegularExpressions.Regex.Match(form["urls"] ?? string.Empty, "btih:(?<hash>[0-9A-Za-z]+)(&dn=(?<name>[^&]*))?");
+                    if (link.Success)
+                    {
+                        held.RemoveAll(item => string.Equals(item.Hash, link.Groups["hash"].Value, StringComparison.OrdinalIgnoreCase));
+                        held.Add((link.Groups["hash"].Value.ToLowerInvariant(), link.Groups["name"].Value));
+                    }
+
+                    return null;
+                }
+
+                if (form is not null && path.EndsWith("torrents/delete", StringComparison.Ordinal))
+                {
+                    var gone = (form["hashes"] ?? string.Empty).Split('|', StringSplitOptions.RemoveEmptyEntries);
+                    held.RemoveAll(item => gone.Contains(item.Hash, StringComparer.OrdinalIgnoreCase));
+                    return null;
+                }
+
+                if (request.Method != HttpMethod.Get || !path.EndsWith("torrents/info", StringComparison.Ordinal))
+                {
+                    return null;
+                }
+
+                var list = recorded.Json().AsArray();
+                var template = list[0]!.AsObject();
+                var asked = System.Web.HttpUtility.ParseQueryString(request.RequestUri!.Query)["hashes"];
+                foreach (var (hash, name) in held)
+                {
+                    var torrent = template.DeepClone().AsObject();
+                    torrent["hash"] = hash;
+                    torrent["name"] = name;
+                    list.Add(torrent);
+                }
+
+                var answer = asked is null
+                    ? list
+                    : new System.Text.Json.Nodes.JsonArray(list.Where(item => asked.Split('|').Contains((string?)item!["hash"], StringComparer.OrdinalIgnoreCase)).Select(item => item!.DeepClone()).ToArray());
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(answer.ToJsonString(), System.Text.Encoding.UTF8, "application/json") };
+            }
+        };
+    }
+
     private static async Task<Rig> RigAsync(params string[] moreQbitStates)
     {
         var jackett = await RecordedAppServer.StartAsync(
@@ -65,8 +123,8 @@ public sealed class TitleSearchAndGrabRoutesAgainstRecordedAppsTests
                     ("search", RecordedReplies.Jackett("search-movie-imdb").Exchanges[1]))));
         var qbit = await RecordedAppServer.StartAsync(
             "qbittorrent",
-            new[] { "sign-in", "version", "settings", "resumed" }.Concat(moreQbitStates).Select(RecordedReplies.Qbittorrent),
-            RecordedAppServer.InOrder("torrents/info", RecordedReplies.Qbittorrent("downloading").Exchanges[0]));
+            new[] { "sign-in", "version", "settings", "resumed", "category-moved", "auto-management-set" }.Concat(moreQbitStates).Select(RecordedReplies.Qbittorrent),
+            QbittorrentListing());
         var app = await ApplicationTestHost.StartAsync();
 
         async Task<string> IndexerAsync(string path, string scope, string categories)
@@ -243,6 +301,7 @@ public sealed class TitleSearchAndGrabRoutesAgainstRecordedAppsTests
         await using var rig = await RigAsync("removed-with-data");
         const string recordedHash = "d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c";
         const string otherHash = "A779FA758F2229586EEBC2E5960EB32FE5659596";
+        const string thirdHash = "B889FA758F2229586EEBC2E5960EB32FE5659597";
         object Send(string release, string hash, string? duplicateAction) => new
         {
             releaseName = release, indexerName = "Fixture Indexer", downloadUrl = $"magnet:?xt=urn:btih:{hash}&dn={release}", candidateQuality = "Bluray 1080p",
@@ -252,8 +311,8 @@ public sealed class TitleSearchAndGrabRoutesAgainstRecordedAppsTests
         int Deletes() => rig.Qbit.Requests.Count(request => request.PathAndQuery.EndsWith("torrents/delete", StringComparison.Ordinal));
 
         var film = await AddFilmAsync(rig);
-        await PostOkAsync(rig.App, $"/api/movies/{film}/grab", Send("Sintel.2010.1080p.BluRay.x264-AAA", recordedHash, null));
-        Assert.Equal(1, Adds());
+        var firstSend = await PostOkAsync(rig.App, $"/api/movies/{film}/grab", Send("Sintel.2010.1080p.BluRay.x264-AAA", recordedHash, null));
+        Assert.True(Adds() == 1, $"{firstSend} | qbit saw: {string.Join(" ; ", rig.Qbit.Requests.Select(r => r.Method + " " + r.PathAndQuery))} | unanswered: {string.Join(" ; ", rig.Qbit.Unanswered)}");
 
         var asked = await rig.App.Client.PostAsJsonAsync($"/api/movies/{film}/grab", Send("Sintel.2010.2160p.BluRay.x265-BBB", otherHash, null));
         Assert.Equal(HttpStatusCode.Conflict, asked.StatusCode);
@@ -269,7 +328,7 @@ public sealed class TitleSearchAndGrabRoutesAgainstRecordedAppsTests
         var second = (await PostOkAsync(rig.App, "/api/movies", new { title = "Tears of Steel", releaseYear = 2012, imdbId = "tt2285752", monitored = true, libraryId = rig.FilmLibrary })).GetProperty("id").GetString()!;
         await PostOkAsync(rig.App, $"/api/movies/{second}/grab", Send("Tears.of.Steel.2012.1080p.BluRay.x264-AAA", recordedHash, null));
         Assert.Equal(3, Adds());
-        await PostOkAsync(rig.App, $"/api/movies/{second}/grab", Send("Tears.of.Steel.2012.2160p.BluRay.x265-BBB", otherHash, "replace"));
+        await PostOkAsync(rig.App, $"/api/movies/{second}/grab", Send("Tears.of.Steel.2012.2160p.BluRay.x265-BBB", thirdHash, "replace"));
         var delete = Assert.Single(rig.Qbit.Requests, request => request.PathAndQuery.EndsWith("torrents/delete", StringComparison.Ordinal));
         Assert.Contains($"hashes={recordedHash}", delete.Body, StringComparison.Ordinal);
         Assert.Contains("deleteFiles=true", delete.Body, StringComparison.Ordinal);
