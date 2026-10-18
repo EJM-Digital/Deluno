@@ -2,7 +2,7 @@
   "app": "seerr",
   "version": "3.5.0",
   "state": "requests-empty",
-  "recordedAt": "2026-10-18T10:41:16Z",
+  "recordedAt": "2026-10-18T11:04:17Z",
   "note": "The request, user and media lists as Deluno pages them, with no request yet (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
   "exchanges": [
     {
@@ -59,16 +59,16 @@
               "recoveryLinkExpirationDate": null,
               "userType": 3,
               "plexId": null,
-              "jellyfinUserId": "84c7ceb310214b03868ca6d2397c6404",
-              "avatar": "/avatarproxy/84c7ceb310214b03868ca6d2397c6404?v=undefined",
+              "jellyfinUserId": "32efb5e43ef147efb037ee86be67617a",
+              "avatar": "/avatarproxy/32efb5e43ef147efb037ee86be67617a?v=undefined",
               "avatarETag": null,
               "avatarVersion": null,
               "movieQuotaLimit": null,
               "movieQuotaDays": null,
               "tvQuotaLimit": null,
               "tvQuotaDays": null,
-              "createdAt": "2026-10-18T10:41:15.000Z",
-              "updatedAt": "2026-10-18T10:41:15.000Z",
+              "createdAt": "2026-10-18T11:04:16.000Z",
+              "updatedAt": "2026-10-18T11:04:16.000Z",
               "requestCount": 0,
               "displayName": "<scrubbed>"
             }

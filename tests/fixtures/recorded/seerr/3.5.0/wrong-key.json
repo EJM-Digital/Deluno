@@ -2,7 +2,7 @@
   "app": "seerr",
   "version": "3.5.0",
   "state": "wrong-key",
-  "recordedAt": "2026-10-18T10:41:16Z",
+  "recordedAt": "2026-10-18T11:04:17Z",
   "note": "The settings, the request list and the user list with a key Seerr does not know (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
   "exchanges": [
     {

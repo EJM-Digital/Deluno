@@ -2,7 +2,7 @@
   "app": "emby",
   "version": "4.10.1.0",
   "state": "user-created",
-  "recordedAt": "2026-10-18T10:29:48Z",
+  "recordedAt": "2026-10-18T11:17:45Z",
   "note": "A user made (POST /Users/New), given its policy back, listed, then removed (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {
@@ -10,7 +10,7 @@
         "method": "POST",
         "path": "/emby/Users/New",
         "body": {
-          "Name": "recadbc57"
+          "Name": "recb57af3"
         }
       },
       "reply": {
@@ -19,11 +19,11 @@
           "content-type": "application/json; charset=utf-8"
         },
         "body": {
-          "Name": "recadbc57",
-          "ServerId": "be642afd648049da98b3ab61acd23785",
+          "Name": "recb57af3",
+          "ServerId": "a8f5d36cc5ad4259880f1ff66bbdfbaa",
           "Prefix": "R",
-          "DateCreated": "2026-10-18T10:29:48.5856999Z",
-          "Id": "313b3db766204b2dacbbe21196691d0f",
+          "DateCreated": "2026-10-18T11:17:45.7432768Z",
+          "Id": "29a78b86d1fa434b9ed83801d5b375ea",
           "HasPassword": false,
           "HasConfiguredPassword": false,
           "Configuration": {
@@ -96,7 +96,7 @@
     {
       "request": {
         "method": "POST",
-        "path": "/emby/Users/313b3db766204b2dacbbe21196691d0f/Policy",
+        "path": "/emby/Users/29a78b86d1fa434b9ed83801d5b375ea/Policy",
         "body": {
           "IsAdministrator": false,
           "IsHidden": false,
@@ -164,14 +164,14 @@
         "body": [
           {
             "Name": "<scrubbed>",
-            "ServerId": "be642afd648049da98b3ab61acd23785",
+            "ServerId": "a8f5d36cc5ad4259880f1ff66bbdfbaa",
             "Prefix": "R",
-            "DateCreated": "2026-10-18T10:28:53.6756952Z",
-            "Id": "e0b3cbdd8da1492d88f03dd9cd168369",
+            "DateCreated": "2026-10-18T11:11:14.6405646Z",
+            "Id": "cc5185767bf748dbbe109af7975fdbd7",
             "HasPassword": true,
             "HasConfiguredPassword": true,
-            "LastLoginDate": "2026-10-18T10:29:45.2636597Z",
-            "LastActivityDate": "2026-10-18T10:29:47.3378249Z",
+            "LastLoginDate": "2026-10-18T11:17:42.5177246Z",
+            "LastActivityDate": "2026-10-18T11:17:44.5893118Z",
             "Configuration": {
               "PlayDefaultAudioTrack": true,
               "DisplayMissingEpisodes": false,
@@ -239,11 +239,11 @@
             }
           },
           {
-            "Name": "recadbc57",
-            "ServerId": "be642afd648049da98b3ab61acd23785",
+            "Name": "recb57af3",
+            "ServerId": "a8f5d36cc5ad4259880f1ff66bbdfbaa",
             "Prefix": "R",
-            "DateCreated": "2026-10-18T10:29:48.5856999Z",
-            "Id": "313b3db766204b2dacbbe21196691d0f",
+            "DateCreated": "2026-10-18T11:17:45.7432768Z",
+            "Id": "29a78b86d1fa434b9ed83801d5b375ea",
             "HasPassword": false,
             "HasConfiguredPassword": false,
             "Configuration": {
@@ -317,7 +317,7 @@
     {
       "request": {
         "method": "DELETE",
-        "path": "/emby/Users/313b3db766204b2dacbbe21196691d0f"
+        "path": "/emby/Users/29a78b86d1fa434b9ed83801d5b375ea"
       },
       "reply": {
         "status": 204,

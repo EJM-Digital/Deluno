@@ -2,7 +2,7 @@
   "app": "emby",
   "version": "4.10.1.0",
   "state": "catalogue-movies",
-  "recordedAt": "2026-10-18T10:29:45Z",
+  "recordedAt": "2026-10-18T11:17:42Z",
   "note": "The movie catalogue as Deluno asks for it (Fields with provider ids, paths, media sources; unpaged first page) (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {
@@ -15,128 +15,13 @@
         "headers": {
           "content-type": "application/json; charset=utf-8"
         },
-        "body": {
-          "Items": [
-            {
-              "Name": "Sintel",
-              "ServerId": "be642afd648049da98b3ab61acd23785",
-              "Id": "6",
-              "DateCreated": "2026-10-18T10:15:12.0000000Z",
-              "Container": "mkv",
-              "MediaSources": [
-                {
-                  "Chapters": [],
-                  "Protocol": "File",
-                  "Id": "mediasource_6",
-                  "Path": "/media/Movies/Sintel (2010)/Sintel (2010) [WEB 1080p].mkv",
-                  "Type": "Default",
-                  "Container": "mkv",
-                  "Size": 589148,
-                  "Name": "Sintel (2010) [WEB 1080p]",
-                  "IsRemote": false,
-                  "HasMixedProtocols": false,
-                  "RunTimeTicks": 200230000,
-                  "SupportsTranscoding": true,
-                  "SupportsDirectStream": true,
-                  "SupportsDirectPlay": true,
-                  "IsInfiniteStream": false,
-                  "RequiresOpening": false,
-                  "RequiresClosing": false,
-                  "RequiresLooping": false,
-                  "SupportsProbing": true,
-                  "MediaStreams": [
-                    {
-                      "Codec": "h264",
-                      "TimeBase": "1/1000",
-                      "VideoRange": "SDR",
-                      "DisplayTitle": "SD H264",
-                      "NalLengthSize": "4",
-                      "IsInterlaced": false,
-                      "BitRate": 235388,
-                      "BitDepth": 8,
-                      "RefFrames": 1,
-                      "IsDefault": false,
-                      "IsForced": false,
-                      "IsHearingImpaired": false,
-                      "Height": 360,
-                      "Width": 640,
-                      "AverageFrameRate": 24,
-                      "RealFrameRate": 24,
-                      "Profile": "Constrained Baseline",
-                      "Type": "Video",
-                      "AspectRatio": "16:9",
-                      "Index": 0,
-                      "IsExternal": false,
-                      "IsTextSubtitleStream": false,
-                      "SupportsExternalStream": false,
-                      "Protocol": "File",
-                      "PixelFormat": "yuv420p",
-                      "Level": 30,
-                      "IsAnamorphic": false,
-                      "ExtendedVideoType": "None",
-                      "ExtendedVideoSubType": "None",
-                      "ExtendedVideoSubTypeDescription": "None",
-                      "AttachmentSize": 0
-                    },
-                    {
-                      "Codec": "aac",
-                      "TimeBase": "1/1000",
-                      "DisplayTitle": "AAC mono",
-                      "IsInterlaced": false,
-                      "ChannelLayout": "mono",
-                      "BitRate": 192000,
-                      "Channels": 1,
-                      "SampleRate": 44100,
-                      "IsDefault": false,
-                      "IsForced": false,
-                      "IsHearingImpaired": false,
-                      "Profile": "LC",
-                      "Type": "Audio",
-                      "Index": 1,
-                      "IsExternal": false,
-                      "IsTextSubtitleStream": false,
-                      "SupportsExternalStream": false,
-                      "Protocol": "File",
-                      "ExtendedVideoType": "None",
-                      "ExtendedVideoSubType": "None",
-                      "ExtendedVideoSubTypeDescription": "None",
-                      "AttachmentSize": 0
-                    }
-                  ],
-                  "Formats": [],
-                  "Bitrate": 235388,
-                  "RequiredHttpHeaders": {},
-                  "AddApiKeyToDirectStreamUrl": false,
-                  "ReadAtNativeFramerate": false,
-                  "ItemId": "6",
-                  "MimeType": "video/x-matroska"
-                }
-              ],
-              "Path": "/media/Movies/Sintel (2010)/Sintel (2010) [WEB 1080p].mkv",
-              "Genres": [],
-              "RunTimeTicks": 200230000,
-              "Size": 589148,
-              "Bitrate": 235388,
-              "ProductionYear": 2010,
-              "ProviderIds": {},
-              "IsFolder": false,
-              "Type": "Movie",
-              "People": [],
-              "GenreItems": [],
-              "TagItems": [],
-              "ImageTags": {},
-              "BackdropImageTags": [],
-              "MediaType": "Video"
-            }
-          ],
-          "TotalRecordCount": 1
-        }
+        "bodyText": "{\"Items\":[{\"Name\":\"Sintel\",\"ServerId\":\"a8f5d36cc5ad4259880f1ff66bbdfbaa\",\"Id\":\"6\",\"DateCreated\":\"2026-10-18T10:15:12.0000000Z\",\"Container\":\"mkv\",\"PremiereDate\":\"2010-09-30T00:00:00.0000000Z\",\"MediaSources\":[{\"Chapters\":[],\"Protocol\":\"File\",\"Id\":\"mediasource_6\",\"Path\":\"/media/Movies/Sintel (2010)/Sintel (2010) [WEB 1080p].mkv\",\"Type\":\"Default\",\"Container\":\"mkv\",\"Size\":589148,\"Name\":\"Sintel (2010) [WEB 1080p]\",\"IsRemote\":false,\"HasMixedProtocols\":false,\"RunTimeTicks\":200230000,\"SupportsTranscoding\":true,\"SupportsDirectStream\":true,\"SupportsDirectPlay\":true,\"IsInfiniteStream\":false,\"RequiresOpening\":false,\"RequiresClosing\":false,\"RequiresLooping\":false,\"SupportsProbing\":true,\"MediaStreams\":[{\"Codec\":\"h264\",\"TimeBase\":\"1/1000\",\"VideoRange\":\"SDR\",\"DisplayTitle\":\"SD H264\",\"NalLengthSize\":\"4\",\"IsInterlaced\":false,\"BitRate\":235388,\"BitDepth\":8,\"RefFrames\":1,\"IsDefault\":false,\"IsForced\":false,\"IsHearingImpaired\":false,\"Height\":360,\"Width\":640,\"AverageFrameRate\":24,\"RealFrameRate\":24,\"Profile\":\"Constrained Baseline\",\"Type\":\"Video\",\"AspectRatio\":\"16:9\",\"Index\":0,\"IsExternal\":false,\"IsTextSubtitleStream\":false,\"SupportsExternalStream\":false,\"Protocol\":\"File\",\"PixelFormat\":\"yuv420p\",\"Level\":30,\"IsAnamorphic\":false,\"ExtendedVideoType\":\"None\",\"ExtendedVideoSubType\":\"None\",\"ExtendedVideoSubTypeDescription\":\"None\",\"AttachmentSize\":0},{\"Codec\":\"aac\",\"TimeBase\":\"1/1000\",\"DisplayTitle\":\"AAC mono\",\"IsInterlaced\":false,\"ChannelLayout\":\"mono\",\"BitRate\":192000,\"Channels\":1,\"SampleRate\":44100,\"IsDefault\":false,\"IsForced\":false,\"IsHearingImpaired\":false,\"Profile\":\"LC\",\"Type\":\"Audio\",\"Index\":1,\"IsExternal\":false,\"IsTextSubtitleStream\":false,\"SupportsExternalStream\":false,\"Protocol\":\"File\",\"ExtendedVideoType\":\"None\",\"ExtendedVideoSubType\":\"None\",\"ExtendedVideoSubTypeDescription\":\"None\",\"AttachmentSize\":0}],\"Formats\":[],\"Bitrate\":235388,\"RequiredHttpHeaders\":{},\"AddApiKeyToDirectStreamUrl\":false,\"ReadAtNativeFramerate\":false,\"ItemId\":\"6\",\"MimeType\":\"video/x-matroska\"}],\"Path\":\"/media/Movies/Sintel (2010)/Sintel (2010) [WEB 1080p].mkv\",\"Genres\":[\"Animation\",\"Fantasy\"],\"CommunityRating\":7.4,\"RunTimeTicks\":200230000,\"Size\":589148,\"Bitrate\":235388,\"ProductionYear\":2010,\"ProviderIds\":{\"Imdb\":\"tt1727587\",\"Tvdb\":\"9413\",\"Tmdb\":\"45745\",\"official website\":\"http://durian.blender.org/\"},\"IsFolder\":false,\"Type\":\"Movie\",\"People\":[{\"Name\":\"Halina Reijn\",\"Id\":\"7\",\"Role\":\"Sintel (voice)\",\"Type\":\"Actor\",\"PrimaryImageTag\":\"9eb550fd08e5fe63f356593aed54ffc2_639279186887282037\"},{\"Name\":\"Thom Hoffman\",\"Id\":\"8\",\"Role\":\"Shaman (voice)\",\"Type\":\"Actor\",\"PrimaryImageTag\":\"dcc053f02c72397e0e24ed22f2574356_639279186887311609\"},{\"Name\":\"Ton Roosendaal\",\"Id\":\"9\",\"Role\":\"Producer\",\"Type\":\"Producer\",\"PrimaryImageTag\":\"b0af97f3e0b9afa8a1c7d7be13e359b4_639279186887315674\"},{\"Name\":\"Colin Levy\",\"Id\":\"10\",\"Type\":\"Director\",\"PrimaryImageTag\":\"eb25f5a20875e829912a604ba2b214f9_639279186887318981\"},{\"Name\":\"Esther Wouda\",\"Id\":\"11\",\"Type\":\"Writer\"}],\"GenreItems\":[{\"Name\":\"Animation\",\"Id\":12},{\"Name\":\"Fantasy\",\"Id\":13}],\"TagItems\":[],\"ImageTags\":{\"Primary\":\"d3089449300db28424362789aa390ae5_639279186880754706\",\"Logo\":\"228266b3e9467b9df88625be363ed07a_639279186880757274\",\"Thumb\":\"8297e878ccd6f8f0e23b81deb2d2009e_639279186887229840\"},\"BackdropImageTags\":[\"7887b749f612140f47e91ff98d05e0c0_639279186880765975\"],\"MediaType\":\"Video\"}],\"TotalRecordCount\":1}"
       }
     },
     {
       "request": {
         "method": "GET",
-        "path": "/emby/Users/e0b3cbdd8da1492d88f03dd9cd168369/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Filters=IsPlayed&Fields=UserData"
+        "path": "/emby/Users/cc5185767bf748dbbe109af7975fdbd7/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&IsPlayed=true&Fields=UserData&StartIndex=0&Limit=500"
       },
       "reply": {
         "status": 200,
@@ -152,7 +37,7 @@
     {
       "request": {
         "method": "GET",
-        "path": "/emby/Users/e0b3cbdd8da1492d88f03dd9cd168369/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Filters=IsUnplayed&Fields=UserData"
+        "path": "/emby/Users/cc5185767bf748dbbe109af7975fdbd7/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&IsFavorite=true&Fields=UserData&StartIndex=0&Limit=500"
       },
       "reply": {
         "status": 200,
@@ -160,26 +45,24 @@
           "content-type": "application/json; charset=utf-8"
         },
         "body": {
-          "Items": [
-            {
-              "Name": "Sintel",
-              "ServerId": "be642afd648049da98b3ab61acd23785",
-              "Id": "6",
-              "RunTimeTicks": 200230000,
-              "IsFolder": false,
-              "Type": "Movie",
-              "UserData": {
-                "PlaybackPositionTicks": 0,
-                "PlayCount": 0,
-                "IsFavorite": false,
-                "Played": false
-              },
-              "ImageTags": {},
-              "BackdropImageTags": [],
-              "MediaType": "Video"
-            }
-          ],
-          "TotalRecordCount": 1
+          "Items": [],
+          "TotalRecordCount": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Users/cc5185767bf748dbbe109af7975fdbd7/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Filters=IsResumable&Fields=UserData&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [],
+          "TotalRecordCount": 0
         }
       }
     }

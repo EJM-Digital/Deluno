@@ -2,7 +2,7 @@
   "app": "seerr",
   "version": "3.5.0",
   "state": "webhook-auto-approved",
-  "recordedAt": "2026-10-18T10:41:33Z",
+  "recordedAt": "2026-10-18T11:04:34Z",
   "note": "The webhook Seerr sends for an administrator's own request, approved at once (MEDIA_AUTO_APPROVED). The request is what Seerr itself sent to the webhook address; the reply is the receiving container plain ok, not an answer from Deluno (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
   "exchanges": [
     {
@@ -31,7 +31,7 @@
             "request_id": "3",
             "requestedBy_email": "admin@example.com",
             "requestedBy_username": "<scrubbed>",
-            "requestedBy_avatar": "/avatarproxy/84c7ceb310214b03868ca6d2397c6404?v=undefined"
+            "requestedBy_avatar": "/avatarproxy/32efb5e43ef147efb037ee86be67617a?v=undefined"
           },
           "extra": []
         }

@@ -2,7 +2,7 @@
   "app": "seerr",
   "version": "3.5.0",
   "state": "webhook-test",
-  "recordedAt": "2026-10-18T10:41:20Z",
+  "recordedAt": "2026-10-18T11:04:21Z",
   "note": "The webhook Seerr sends from its own \"test\" button (a test notification, which Deluno must acknowledge and ignore). The request is what Seerr itself sent to the webhook address; the reply is the receiving container plain ok, not an answer from Deluno (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
   "exchanges": [
     {

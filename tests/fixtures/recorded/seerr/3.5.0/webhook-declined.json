@@ -2,9 +2,48 @@
   "app": "seerr",
   "version": "3.5.0",
   "state": "webhook-declined",
-  "recordedAt": "2026-10-18T10:41:29Z",
+  "recordedAt": "2026-10-18T11:04:30Z",
   "note": "The webhook Seerr sends when a request is declined (MEDIA_DECLINED). The request is what Seerr itself sent to the webhook address; the reply is the receiving container plain ok, not an answer from Deluno (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
   "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/seerr-servers/{id}/webhook",
+        "headers": {
+          "content-type": "application/json",
+          "authorization": "<scrubbed>",
+          "user-agent": "Seerr/3.5.0"
+        },
+        "body": {
+          "notification_type": "MEDIA_AVAILABLE",
+          "event": "Movie Request Now Available",
+          "subject": "Sintel (2010)",
+          "message": "A wandering warrior finds an unlikely friend in the form of a young dragon. The two develop a close bond, until one day the dragon is snatched away. She then sets out on a relentless quest to reclaim her friend, finding in the end that her quest exacts a far greater price than she had ever imagined.",
+          "image": "https://image.tmdb.org/t/p/w600_and_h900_bestv2/l98Zns4oQe1BSvbF4hJ8oL6VSf0.jpg",
+          "media": {
+            "media_type": "movie",
+            "tmdbId": "45745",
+            "tvdbId": "",
+            "status": "AVAILABLE",
+            "status4k": "UNKNOWN"
+          },
+          "request": {
+            "request_id": "1",
+            "requestedBy_email": "<scrubbed>@example.com",
+            "requestedBy_username": "<scrubbed>",
+            "requestedBy_avatar": "https://gravatar.com/avatar/b107b35d10886a77526c63a7c21cb61f?default=mm&size=200"
+          },
+          "extra": []
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "bodyText": "ok"
+      }
+    },
     {
       "request": {
         "method": "POST",
@@ -31,7 +70,7 @@
             "request_id": "2",
             "requestedBy_email": "<scrubbed>@example.com",
             "requestedBy_username": "<scrubbed>",
-            "requestedBy_avatar": "https://gravatar.com/avatar/e819dbf8d8cd57554163d78957690f22?default=mm&size=200"
+            "requestedBy_avatar": "https://gravatar.com/avatar/b107b35d10886a77526c63a7c21cb61f?default=mm&size=200"
           },
           "extra": [
             {
@@ -75,7 +114,7 @@
             "request_id": "2",
             "requestedBy_email": "<scrubbed>@example.com",
             "requestedBy_username": "<scrubbed>",
-            "requestedBy_avatar": "https://gravatar.com/avatar/e819dbf8d8cd57554163d78957690f22?default=mm&size=200"
+            "requestedBy_avatar": "https://gravatar.com/avatar/b107b35d10886a77526c63a7c21cb61f?default=mm&size=200"
           },
           "extra": [
             {

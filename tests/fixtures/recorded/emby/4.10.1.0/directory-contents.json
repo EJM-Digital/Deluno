@@ -2,7 +2,7 @@
   "app": "emby",
   "version": "4.10.1.0",
   "state": "directory-contents",
-  "recordedAt": "2026-10-18T10:29:47Z",
+  "recordedAt": "2026-10-18T11:17:44Z",
   "note": "The folder browser Deluno uses to map paths: a folder that exists, a folder that does not (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {

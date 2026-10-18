@@ -2,13 +2,13 @@
   "app": "emby",
   "version": "4.10.1.0",
   "state": "watched",
-  "recordedAt": "2026-10-18T10:29:45Z",
-  "note": "The film marked watched by the administrator, then the catalogue showing it played (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "recordedAt": "2026-10-18T11:17:42Z",
+  "note": "The film marked watched by the administrator, then the played, favourite and resumable listings as Deluno asks for them (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {
       "request": {
         "method": "POST",
-        "path": "/emby/Users/e0b3cbdd8da1492d88f03dd9cd168369/PlayedItems/6"
+        "path": "/emby/Users/cc5185767bf748dbbe109af7975fdbd7/PlayedItems/6"
       },
       "reply": {
         "status": 200,
@@ -19,7 +19,7 @@
           "PlaybackPositionTicks": 0,
           "PlayCount": 1,
           "IsFavorite": false,
-          "LastPlayedDate": "2026-10-18T10:29:45.0000000Z",
+          "LastPlayedDate": "2026-10-18T11:17:42.0000000Z",
           "Played": true
         }
       }
@@ -27,7 +27,20 @@
     {
       "request": {
         "method": "GET",
-        "path": "/emby/Users/e0b3cbdd8da1492d88f03dd9cd168369/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Filters=IsPlayed&Fields=UserData"
+        "path": "/emby/Users/cc5185767bf748dbbe109af7975fdbd7/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&IsPlayed=true&Fields=UserData&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "bodyText": "{\"Items\":[{\"Name\":\"Sintel\",\"ServerId\":\"a8f5d36cc5ad4259880f1ff66bbdfbaa\",\"Id\":\"6\",\"RunTimeTicks\":200230000,\"IsFolder\":false,\"Type\":\"Movie\",\"UserData\":{\"PlaybackPositionTicks\":0,\"PlayCount\":0,\"IsFavorite\":false,\"Played\":true},\"ImageTags\":{\"Primary\":\"d3089449300db28424362789aa390ae5_639279186880754706\",\"Logo\":\"228266b3e9467b9df88625be363ed07a_639279186880757274\",\"Thumb\":\"8297e878ccd6f8f0e23b81deb2d2009e_639279186887229840\"},\"BackdropImageTags\":[\"7887b749f612140f47e91ff98d05e0c0_639279186880765975\"],\"MediaType\":\"Video\"}],\"TotalRecordCount\":1}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Users/cc5185767bf748dbbe109af7975fdbd7/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&IsFavorite=true&Fields=UserData&StartIndex=0&Limit=500"
       },
       "reply": {
         "status": 200,
@@ -35,33 +48,15 @@
           "content-type": "application/json; charset=utf-8"
         },
         "body": {
-          "Items": [
-            {
-              "Name": "Sintel",
-              "ServerId": "be642afd648049da98b3ab61acd23785",
-              "Id": "6",
-              "RunTimeTicks": 200230000,
-              "IsFolder": false,
-              "Type": "Movie",
-              "UserData": {
-                "PlaybackPositionTicks": 0,
-                "PlayCount": 0,
-                "IsFavorite": false,
-                "Played": true
-              },
-              "ImageTags": {},
-              "BackdropImageTags": [],
-              "MediaType": "Video"
-            }
-          ],
-          "TotalRecordCount": 1
+          "Items": [],
+          "TotalRecordCount": 0
         }
       }
     },
     {
       "request": {
         "method": "GET",
-        "path": "/emby/Users/e0b3cbdd8da1492d88f03dd9cd168369/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Filters=IsUnplayed&Fields=UserData"
+        "path": "/emby/Users/cc5185767bf748dbbe109af7975fdbd7/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Filters=IsResumable&Fields=UserData&StartIndex=0&Limit=500"
       },
       "reply": {
         "status": 200,

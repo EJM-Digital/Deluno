@@ -2,7 +2,7 @@
   "app": "emby",
   "version": "4.10.1.0",
   "state": "wizard",
-  "recordedAt": "2026-10-18T10:29:04Z",
+  "recordedAt": "2026-10-18T11:11:25Z",
   "note": "The first-run setup wizard, step by step, and the administrator's sign-in (the login and its token are removed) (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {
@@ -18,9 +18,9 @@
         "body": {
           "LocalAddresses": [],
           "RemoteAddresses": [],
-          "ServerName": "6b9cb519c744",
+          "ServerName": "18663f3536c2",
           "Version": "4.10.1.0",
-          "Id": "be642afd648049da98b3ab61acd23785"
+          "Id": "a8f5d36cc5ad4259880f1ff66bbdfbaa"
         }
       }
     },
@@ -37,9 +37,9 @@
         "body": {
           "LocalAddresses": [],
           "RemoteAddresses": [],
-          "ServerName": "6b9cb519c744",
+          "ServerName": "18663f3536c2",
           "Version": "4.10.1.0",
-          "Id": "be642afd648049da98b3ab61acd23785"
+          "Id": "a8f5d36cc5ad4259880f1ff66bbdfbaa"
         }
       }
     },
@@ -149,14 +149,14 @@
         "body": {
           "User": {
             "Name": "<scrubbed>",
-            "ServerId": "be642afd648049da98b3ab61acd23785",
+            "ServerId": "a8f5d36cc5ad4259880f1ff66bbdfbaa",
             "Prefix": "R",
-            "DateCreated": "2026-10-18T10:28:53.6756952Z",
-            "Id": "e0b3cbdd8da1492d88f03dd9cd168369",
+            "DateCreated": "2026-10-18T11:11:14.6405646Z",
+            "Id": "cc5185767bf748dbbe109af7975fdbd7",
             "HasPassword": true,
             "HasConfiguredPassword": true,
-            "LastLoginDate": "2026-10-18T10:29:04.7583962Z",
-            "LastActivityDate": "2026-10-18T10:29:04.7622047Z",
+            "LastLoginDate": "2026-10-18T11:11:25.7701985Z",
+            "LastActivityDate": "2026-10-18T11:11:25.7744571Z",
             "Configuration": {
               "PlayDefaultAudioTrack": true,
               "DisplayMissingEpisodes": false,
@@ -241,11 +241,11 @@
             "PlaylistIndex": 0,
             "PlaylistLength": 0,
             "Id": "3b8bd03c19e5b6666a03601d27d0f6b7",
-            "ServerId": "be642afd648049da98b3ab61acd23785",
-            "UserId": "e0b3cbdd8da1492d88f03dd9cd168369",
+            "ServerId": "a8f5d36cc5ad4259880f1ff66bbdfbaa",
+            "UserId": "cc5185767bf748dbbe109af7975fdbd7",
             "UserName": "<scrubbed>",
             "Client": "Deluno Recorder",
-            "LastActivityDate": "2026-10-18T10:29:04.7622047Z",
+            "LastActivityDate": "2026-10-18T11:11:25.7744571Z",
             "DeviceName": "Recorder",
             "InternalDeviceId": 1,
             "DeviceId": "deluno-recorder-1",
@@ -254,7 +254,7 @@
             "SupportsRemoteControl": false
           },
           "AccessToken": "<scrubbed>",
-          "ServerId": "be642afd648049da98b3ab61acd23785"
+          "ServerId": "a8f5d36cc5ad4259880f1ff66bbdfbaa"
         }
       }
     },
@@ -284,14 +284,14 @@
             {
               "Id": 2,
               "AccessToken": "<scrubbed>",
-              "ReportedDeviceId": "be642afd648049da98b3ab61acd23785",
+              "ReportedDeviceId": "a8f5d36cc5ad4259880f1ff66bbdfbaa",
               "DeviceId": 2,
               "AppName": "Deluno",
               "AppVersion": "4.10.1.0",
               "IpAddress": "192.168.1.10",
-              "DeviceName": "6b9cb519c744",
+              "DeviceName": "18663f3536c2",
               "UserId": 0,
-              "DateCreated": "2026-10-18T10:29:04.0000000Z",
+              "DateCreated": "2026-10-18T11:11:25.0000000Z",
               "IsActive": true
             }
           ],
