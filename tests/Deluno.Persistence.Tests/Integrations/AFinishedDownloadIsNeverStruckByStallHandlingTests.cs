@@ -74,6 +74,46 @@ public sealed class AFinishedDownloadIsNeverStruckByStallHandlingTests
         Assert.True(refused > 0);
     }
 
+    /// <summary>
+    /// "Ignore for a week" on a stalled warning (Activity, the bell, Transfers): the download is exempt from the health rules
+    /// while the days last, and the finding counts again once they have passed.
+    /// </summary>
+    [Fact]
+    public async Task A_stalled_download_whose_warning_was_ignored_is_left_alone_for_those_days_and_struck_again_after_them()
+    {
+        using var world = await World.CreateAsync(DownloadQueueStatuses.Stalled, 42d, "Tracker unreachable");
+        await world.EnableEveryCleanupSettingAsync();
+        var first = await world.PollAsync();
+        var finding = Assert.Single(Assert.Single(Assert.Single(first.Clients).Queue).HealthFindings!, item => DownloadHealthStrikes.Counts(item.Kind));
+        world.Time.Advance(TimeSpan.FromMinutes(31));
+        await world.PollAsync();
+
+        var ignored = await world.IgnoreAsync(finding.Kind, 7);
+        Assert.NotNull(ignored);
+        var refusedWhileIgnored = 0;
+        for (var poll = 0; poll < 7; poll++)
+        {
+            var report = await world.RunRemediationAsync(await world.PollAsync());
+            refusedWhileIgnored += report.ReleasesRefused + report.ClientEntriesRemoved + report.PayloadsPurged;
+            world.Time.Advance(TimeSpan.FromMinutes(31));
+        }
+
+        Assert.Equal(0, refusedWhileIgnored);
+        Assert.Empty(await world.Blocklist.ListAsync(CancellationToken.None));
+        Assert.True(File.Exists(world.SourcePath), "an ignored warning never costs the download its files");
+
+        world.Time.Advance(TimeSpan.FromDays(8));
+        var refusedAfter = 0;
+        for (var poll = 0; poll < 7; poll++)
+        {
+            var report = await world.RunRemediationAsync(await world.PollAsync());
+            refusedAfter += report.ReleasesRefused;
+            world.Time.Advance(TimeSpan.FromMinutes(31));
+        }
+
+        Assert.True(refusedAfter > 0, "once the ignored days have passed the stalled download is struck again");
+    }
+
     private sealed class FixedStateClient(string protocol, string clientId, string clientName, Func<DownloadQueueItem> queueItemFactory) : IDownloadClient
     {
         public string Protocol => protocol;
@@ -196,6 +236,9 @@ public sealed class AFinishedDownloadIsNeverStruckByStallHandlingTests
 
             return new World(storage, time, service, settings, client, jobs, blocklist, sourcePath);
         }
+
+        public Task<DownloadHealthRecord?> IgnoreAsync(string kind, int days)
+            => new SqliteDownloadHealthRepository(_storage.Factory, Time).IgnoreDownloadHealthFindingAsync(ClientId, "queue-opp", kind, days, CancellationToken.None);
 
         public Task<DownloadTelemetryOverview> PollAsync() => _service.GetOverviewAsync(CancellationToken.None);
 

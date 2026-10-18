@@ -188,4 +188,11 @@ describe("recoveryDecisions (#1114)", () => {
     expect(decisions[3]!.confirm).toBeDefined();
     expect(decisions[0]!.confirm).toBeUndefined();
   });
+
+  it("Snooze 1 day and Snooze 1 week post the snooze to the problem's own address with the hours, and say what they did", () => {
+    const [day, week] = healthProblemActions({ id: "machine:reboot" });
+
+    expect(day!.request).toMatchObject({ method: "POST", path: "/api/system/health/machine%3Areboot/snooze", body: { hours: 24 }, done: "Snoozed for a day", failure: "That could not be snoozed." });
+    expect(week!.request).toMatchObject({ method: "POST", path: "/api/system/health/machine%3Areboot/snooze", body: { hours: 168 }, done: "Snoozed for a week" });
+  });
 });
