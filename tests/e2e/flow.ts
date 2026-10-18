@@ -133,12 +133,27 @@ export async function openDeluno(browser: Browser, stack: Stack, path: string, v
   const page = await context.newPage();
   await page.goto("/");
   const { accessToken, user, expiresUtc } = stack.deluno.session;
-  await page.evaluate(([token, who, expires]) => {
-    localStorage.setItem("deluno-auth-token", token as string);
-    localStorage.setItem("deluno-auth-user", JSON.stringify(who ?? {}));
-    if (expires) localStorage.setItem("deluno-auth-expires", expires as string);
-  }, [accessToken, user, expiresUtc]);
-  await page.goto(path);
+  // The first page may still be redirecting (to sign-in) when the storage is written; a destroyed context is tried again.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await page.waitForLoadState("load");
+      await page.evaluate(([token, who, expires]) => {
+        localStorage.setItem("deluno-auth-token", token as string);
+        localStorage.setItem("deluno-auth-user", JSON.stringify(who ?? {}));
+        if (expires) localStorage.setItem("deluno-auth-expires", expires as string);
+      }, [accessToken, user, expiresUtc]);
+      break;
+    } catch (error) {
+      if (attempt >= 3 || !/context was destroyed|navigation/i.test(String(error))) throw error;
+    }
+  }
+  // A redirect the first page started (to sign-in) can still be in flight and abort this navigation; it is tried again.
+  for (let attempt = 0; ; attempt++) {
+    try { await page.goto(path); break; } catch (error) {
+      if (attempt >= 3 || !/ERR_ABORTED|interrupted by another navigation/i.test(String(error))) throw error;
+      await sleep(500);
+    }
+  }
   return page;
 }
 
