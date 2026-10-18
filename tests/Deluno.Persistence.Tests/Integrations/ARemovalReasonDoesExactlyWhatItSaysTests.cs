@@ -804,6 +804,43 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
     }
 
     /// <summary>
+    /// "It's bad" on each client that was recorded: the real adapter is sent the remove call that takes the files, the release is
+    /// refused from every indexer in the real blocklist, and one new search is queued. The claim holds the same on all five.
+    /// </summary>
+    [Theory]
+    [InlineData("qbittorrent", "deleteFiles=true")]
+    [InlineData("deluge", "queue-item-1\",true")]
+    [InlineData("transmission", "\"delete-local-data\":true")]
+    [InlineData("nzbget", "GroupFinalDelete")]
+    [InlineData("sabnzbd", "del_files=1")]
+    public async Task Its_bad_on_each_recorded_client_takes_the_files_blocklists_the_release_everywhere_and_searches_again(string protocol, string takesFiles)
+    {
+        // The call each client was recorded taking for a removal that takes the files exists, so the markers above are real ones.
+        Assert.NotEmpty(protocol switch
+        {
+            "qbittorrent" => RecordedReplies.Qbittorrent("removed-with-data").Exchanges,
+            "deluge" => RecordedReplies.Deluge("removed-with-data").Exchanges,
+            "transmission" => RecordedReplies.Transmission("removed-with-data").Exchanges,
+            "nzbget" => RecordedReplies.Nzbget("removed-with-data").Exchanges,
+            _ => RecordedReplies.Sabnzbd("removed-with-data").Exchanges
+        });
+        var (world, traffic) = await World.CreateWithRealClientAsync(protocol);
+        using var _ = world;
+
+        var result = await world.RemoveAsync(QueueRemovalReasons.Failed);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.True(result.Blocklisted);
+        Assert.True(result.SearchStarted);
+        Assert.Contains(takesFiles, System.Text.RegularExpressions.Regex.Replace(string.Join(" ", traffic.Requests), @"\s", string.Empty), StringComparison.Ordinal);
+        var refused = Assert.Single(await world.Blocklist.ListAsync(CancellationToken.None));
+        Assert.True(refused.EveryIndexer);
+        Assert.Equal(BlockedReleaseOrigins.Manual, refused.Origin);
+        Assert.Equal("1", OnDisk(world, "jobs.db", $"SELECT COUNT(*) FROM blocked_releases WHERE release_name = '{Release}'"));
+        Assert.Equal("1", OnDisk(world, "jobs.db", "SELECT COUNT(*) FROM job_queue"));
+    }
+
+    /// <summary>
     /// The verbs the screens and the public API send (pause, resume, recheck, the three removals, the four queue moves and
     /// force-start) each get through the gateway to the client as that verb, for a download Deluno recorded sending, and leave
     /// Deluno's own record of the send where it was on disk.

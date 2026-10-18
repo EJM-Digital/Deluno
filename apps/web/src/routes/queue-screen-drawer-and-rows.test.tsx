@@ -410,3 +410,47 @@ describe("a release held for approval: Find another", () => {
     expect(screen.getByRole("button", { name: "Find another for Nosferatu (1922)" })).toBeVisible();
   });
 });
+
+describe("Transfers while the processor is not answering", () => {
+  const handoff = {
+    id: "h7", libraryId: "l", mediaType: "movies", clientId: "gone", queueItemId: "gone", releaseName: "Waiting.On.Weir.2026.1080p-GROUP", sourcePath: "D:/in/a",
+    processorName: "Weir", status: "failed", outputPath: null, importJobId: null, failureMessage: "Deluno could not reach Weir.",
+    createdUtc: "2026-10-01T00:00:00Z", updatedUtc: "2026-10-01T00:00:00Z"
+  };
+
+  function renderDuringTheOutage() {
+    queueLoaderData.telemetry = { ...queueLoaderData.telemetry, clients: [client([])] };
+    (queueLoaderData as { processorConnections: unknown[] }).processorConnections = [{ id: "w1", name: "Weir", isEnabled: true, healthStatus: "unreachable" }];
+    queueLoaderData.processorHandoffs = [handoff];
+    render(<MemoryRouter><QueuePage /></MemoryRouter>);
+  }
+
+  afterEach(() => { (queueLoaderData as { processorConnections: unknown[] }).processorConnections = []; });
+
+  it("the Processing connector chip says Weir is unreachable, while the download clients still read as responding", () => {
+    renderDuringTheOutage();
+
+    expect(screen.getByText("Weir · unreachable")).toBeVisible();
+    // The Clients counter is about the download clients, which are fine: a processor outage never turns it red.
+    expect(screen.getByText("1/1")).toBeVisible();
+    expect(screen.getByText("all responding")).toBeVisible();
+  });
+
+  it("the hand-off that could not be sent shows as a failed row with Weir's name and the reason, and opens its drawer", () => {
+    renderDuringTheOutage();
+
+    const row = screen.getAllByText("Waiting.On.Weir.2026.1080p-GROUP")[0]!;
+    expect(screen.getAllByText("Deluno could not reach Weir.").length).toBeGreaterThan(0);
+
+    fireEvent.click(row);
+    expect(within(screen.getByRole("dialog")).getAllByText(/Weir/).length).toBeGreaterThan(0);
+  });
+
+  it("when a download client is the one that stopped answering, the Clients counter says one is not responding", () => {
+    queueLoaderData.telemetry = { ...queueLoaderData.telemetry, clients: [{ ...client([]), healthStatus: "unreachable" } as DownloadClientTelemetrySnapshot] };
+    render(<MemoryRouter><QueuePage /></MemoryRouter>);
+
+    expect(screen.getByText("0/1")).toBeVisible();
+    expect(screen.getByText("one is not responding")).toBeVisible();
+  });
+});
