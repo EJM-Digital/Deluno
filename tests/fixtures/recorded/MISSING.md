@@ -266,3 +266,7 @@ Still missing, and why:
 - **SABnzbd**: an add of a real NZB (it needs a news server with the articles); `get_files` (s21) and the other lines in this file are unchanged.
 - **The gateway**: the 429 with `Retry-After` (it would use the shared hourly allowance of the address), the artwork route, the gateway down; and the replies of `api.themoviedb.org` itself (Deluno's direct mode with an install's own key; no key was used).
 - **Radarr holding a film file**: the migration import payload (`MigrationAssistantServiceTests`) carries a movie file with media info and custom formats, which the recorded Radarr (no file) does not give. To record: put the generated film in Radarr's root folder, rescan, `GET /api/v3/movie`.
+
+## IMDb list export (#1292)
+
+- imdb list export CSV (and the list page it comes from): IMDb answers an automated fetch with an empty HTTP 202 (its bot wall), so a real export of a public list could not be recorded from this machine. Needed: a real `ls...` list CSV export saved from a browser, trimmed to a few rows, to test the IMDb list provider (ls id, list URL and CSV export URL) in IntakeSyncServiceTests.
