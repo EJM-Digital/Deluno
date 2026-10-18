@@ -74,7 +74,8 @@ internal sealed class ApplicationTestHost : IAsyncDisposable
     public static async Task<ApplicationTestHost> StartAsync(
         CancellationToken cancellationToken = default,
         Action<IServiceCollection>? replaceServices = null,
-        bool withRateLimiting = false)
+        bool withRateLimiting = false,
+        IReadOnlyDictionary<string, string?>? settings = null)
     {
         var storage = TestStorage.Create();
 
@@ -83,7 +84,7 @@ internal sealed class ApplicationTestHost : IAsyncDisposable
         // check it. Each host still owns a private copy of the files.
         await MigratedDatabaseTemplate.CopyIntoAsync(storage.DataRoot);
 
-        var host = BuildHost(storage.DataRoot, replaceServices, withRateLimiting);
+        var host = BuildHost(storage.DataRoot, replaceServices, withRateLimiting, settings);
 
         await host.StartAsync(cancellationToken);
 
@@ -105,13 +106,13 @@ internal sealed class ApplicationTestHost : IAsyncDisposable
         await host.StopAsync();
     }
 
-    private static IHost BuildHost(string dataRoot, Action<IServiceCollection>? replaceServices, bool withRateLimiting)
+    private static IHost BuildHost(string dataRoot, Action<IServiceCollection>? replaceServices, bool withRateLimiting, IReadOnlyDictionary<string, string?>? settings = null)
     {
         return new HostBuilder()
             .ConfigureWebHost(web => web
                 .UseTestServer()
                 .ConfigureAppConfiguration(configuration => configuration.AddInMemoryCollection(
-                    new Dictionary<string, string?> { ["Storage:DataRoot"] = dataRoot }))
+                    new Dictionary<string, string?>(settings ?? new Dictionary<string, string?>()) { ["Storage:DataRoot"] = dataRoot }))
                 .ConfigureServices((context, services) =>
                 {
                     services.AddDelunoInfrastructure(context.Configuration);
