@@ -2,7 +2,7 @@
   "app": "seerr",
   "version": "3.5.0",
   "state": "settings-main",
-  "recordedAt": "2026-10-18T10:40:00Z",
+  "recordedAt": "2026-10-18T10:41:16Z",
   "note": "The key-protected settings Deluno reads to prove its key (applicationTitle) (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
   "exchanges": [
     {

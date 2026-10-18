@@ -39,6 +39,18 @@ services:
       - "127.0.0.1:${REC2_TRACKER_PORT:-38080}:8080"
     volumes:
       - ./tracker.mjs:/tracker.mjs:ro
+  # SABnzbd 5.1.3 as the e2e stack pins it, with that stack's first settings file (its key; the news server it names is never reached).
+  sabnzbd:
+    image: lscr.io/linuxserver/sabnzbd@sha256:7a13af91cf296399e302d2fb6fc709d6e2ea15e3094f220684611fbe1dd43625
+    environment:
+      TZ: Etc/UTC
+      PUID: "1000"
+      PGID: "1000"
+    ports:
+      - "127.0.0.1:${REC2_SABNZBD_PORT:-38083}:8080"
+    volumes:
+      - ./sabnzbd.ini:/config/sabnzbd.ini   # a copy of tests/e2e/sabnzbd/sabnzbd.ini, placed beside this file in the private copy
+      - sabnzbd-downloads:/downloads
   jellyfin:
     image: jellyfin/jellyfin:latest
     ports:
@@ -86,4 +98,5 @@ volumes:
   emby-config: {}
   plex-config: {}
   seerr-config: {}
+  sabnzbd-downloads: {}
   media: {}

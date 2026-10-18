@@ -2,7 +2,7 @@
   "app": "seerr",
   "version": "3.5.0",
   "state": "status",
-  "recordedAt": "2026-10-18T10:39:59Z",
+  "recordedAt": "2026-10-18T10:41:15Z",
   "note": "/api/v1/status: the public status reply that carries the version (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
   "exchanges": [
     {
