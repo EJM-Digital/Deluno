@@ -169,8 +169,9 @@ async function main() {
     const fin = await list();
     save('rtorrent', version, 'finished-single-file', 'The finished film: the list row (complete 1), d.directory, d.base_path, d.custom1, f.multicall (one file) and t.multicall.', [fin, await rt.rpc('d.directory', [upper(f)]), await rt.rpc('d.base_path', [upper(f)]), await rt.rpc('d.custom1', [upper(f)]), await files(f), await rt.rpc('t.multicall', [upper(f), '', 't.is_enabled=', 't.message='])]);
     save('rtorrent', version, 'settings', 'directory.default and d.free_diskspace (the free space of a torrent\'s folder) as rTorrent answers them.', [await rt.rpc('directory.default'), await rt.rpc('d.free_diskspace', [upper(f)])]);
+    const labelBefore = await rt.rpc('d.custom1', [upper(f)]);
     const set = await rt.rpc('d.custom1.set', [upper(f), 'recorded-movies']);
-    save('rtorrent', version, 'label-set', 'd.custom1.set (rTorrent\'s label field), then d.custom1 reads it back.', [await rt.rpc('d.custom1', [upper(f)]), set, await rt.rpc('d.custom1', [upper(f)])]);
+    save('rtorrent', version, 'label-set', 'd.custom1 (empty), d.custom1.set (the label field of rTorrent), then d.custom1 reads the label back.', [labelBefore, set, await rt.rpc('d.custom1', [upper(f)])]);
     const recheck = await rt.rpc('d.check_hash', [upper(f)]);
     const during = await list();
     await sleep(3000);

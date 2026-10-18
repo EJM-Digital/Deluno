@@ -2,7 +2,7 @@
   "app": "rtorrent",
   "version": "0.16.25",
   "state": "stalled",
-  "recordedAt": "2026-10-18T10:13:14Z",
+  "recordedAt": "2026-10-18T10:56:07Z",
   "note": "The only seeder holds 70% of the film: the download reaches that and stops. The list row twice, 6 seconds apart (bytes done unchanged and below the size, download rate 0, the torrent still active, not complete).",
   "exchanges": [
     {
@@ -16,7 +16,7 @@
         "headers": {
           "content-type": "text/xml"
         },
-        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><array><data><value><string>F539F8CBE7E0B53F2C358840FF387F3F2336B1B4</string></value><value><string>Recorded.Rtorrent.Stalled.2024.1080p.WEB-DL.mkv</string></value><value><i8>1</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>11534336</i8></value><value><i8>16777216</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><string></string></value><value><string>/downloads/temp</string></value><value><i8>1</i8></value></data></array></value></data></array></value></param></params></methodResponse>"
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><array><data><value><string>E427E955D62DD9BB5191ACECA3D2BCF336A9BDBE</string></value><value><string>Recorded.Rtorrent.Stalled.2024.1080p.WEB-DL.mkv</string></value><value><i8>1</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>11534336</i8></value><value><i8>16777216</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><string></string></value><value><string>/downloads/temp</string></value><value><i8>1</i8></value></data></array></value></data></array></value></param></params></methodResponse>"
       }
     },
     {
@@ -30,7 +30,7 @@
         "headers": {
           "content-type": "text/xml"
         },
-        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><array><data><value><string>F539F8CBE7E0B53F2C358840FF387F3F2336B1B4</string></value><value><string>Recorded.Rtorrent.Stalled.2024.1080p.WEB-DL.mkv</string></value><value><i8>1</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>11534336</i8></value><value><i8>16777216</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><string></string></value><value><string>/downloads/temp</string></value><value><i8>1</i8></value></data></array></value></data></array></value></param></params></methodResponse>"
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><array><data><value><string>E427E955D62DD9BB5191ACECA3D2BCF336A9BDBE</string></value><value><string>Recorded.Rtorrent.Stalled.2024.1080p.WEB-DL.mkv</string></value><value><i8>1</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>11534336</i8></value><value><i8>16777216</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><string></string></value><value><string>/downloads/temp</string></value><value><i8>1</i8></value></data></array></value></data></array></value></param></params></methodResponse>"
       }
     }
   ]

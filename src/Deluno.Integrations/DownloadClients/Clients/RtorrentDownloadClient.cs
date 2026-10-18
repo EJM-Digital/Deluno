@@ -253,8 +253,9 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory,
                 .Select(path => path!)
                 .ToArray();
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException or RtorrentFaultException)
         {
+            // A download rTorrent no longer holds answers a fault ("info-hash not found"): no listing, not an error.
             return null;
         }
     }
@@ -587,10 +588,12 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory,
                     ? DownloadTrackerStatuses.Unregistered
                     : DownloadTrackerStatuses.Ok;
             }
-            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException or RtorrentFaultException)
             {
                 // A tracker read that fails says nothing either way (#901) --
-                // an outage never reads as unregistered.
+                // an outage never reads as unregistered. rTorrent 0.16 answers t.multicall with a fault for t.message
+                // ("Command \"t.message\" does not exist."), so for it every read lands here, and a tracker's refusal is
+                // still read from the row's own d.message.
                 statusByHash[hash] = DownloadTrackerStatuses.Unknown;
             }
         }

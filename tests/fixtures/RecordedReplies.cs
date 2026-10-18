@@ -101,8 +101,8 @@ public static class RecordedReplies
                 // The Web UI's action (or list=1, or the token page) says what is asked; the token and the hash are the test's own.
                 return $"{method} {path} {(query["action"] ?? (query["list"] is not null ? "list" : ""))}";
             case "rtorrent":
-                // XML-RPC: one address, and the methodName in the body is the call.
-                return $"{method} {path} {System.Text.RegularExpressions.Regex.Match(body ?? string.Empty, "<methodName>([^<]+)</methodName>").Groups[1].Value}";
+                // XML-RPC: one address (a mount a person puts anywhere: /, /RPC2, /rutorrent/plugins/httprpc), and the methodName in the body is the call.
+                return $"{method} {System.Text.RegularExpressions.Regex.Match(body ?? string.Empty, "<methodName>([^<]+)</methodName>").Groups[1].Value}";
             case "flaresolverr":
                 return $"{method} {path} {System.Text.RegularExpressions.Regex.Match(body ?? string.Empty, "\"cmd\"\\s*:\\s*\"([^\"]+)\"").Groups[1].Value}";
             case "weir":

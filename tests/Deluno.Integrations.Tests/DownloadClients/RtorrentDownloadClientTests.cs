@@ -4,15 +4,17 @@ using System.Text.RegularExpressions;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 using Moq;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
 /// <summary>
 /// #803: rTorrent's XML-RPC over HTTP, exercised the same way the other
-/// adapters are — a fake handler answering by method name rather than a live
-/// instance (this session had none), asserting the request that went out and
-/// the queue item the response is read back into.
+/// adapters are — a handler answering by method name with rTorrent 0.16.25's
+/// recorded replies (tests/fixtures/recorded/rtorrent, #1237; the whole run of
+/// each state is replayed in RtorrentOnRecordingsTests), asserting the request
+/// that went out and the queue item the response is read back into.
 /// </summary>
 public sealed class RtorrentDownloadClientTests
 {
@@ -188,8 +190,8 @@ public sealed class RtorrentDownloadClientTests
 
     /// <summary>
     /// #1306: a path rTorrent reports that climbs out ("..") is never deleted, even when it resolves to a real
-    /// folder. No rTorrent reply is recorded yet (tests/recorded-reply-allow-list.json, kind "pending"), so this uses
-    /// the hand-built reply of the test above with the one value, the base path, swapped for a climbing path.
+    /// folder. This uses rTorrent's recorded
+    /// d.base_path reply with the one value, the base path, swapped for a climbing path.
     /// </summary>
     [Fact]
     public async Task DeleteWithData_never_deletes_a_base_path_that_climbs_out_even_if_it_resolves_to_a_real_folder()
@@ -217,7 +219,7 @@ public sealed class RtorrentDownloadClientTests
 
     /// <summary>
     /// #1328: a base path rTorrent reports that is, holds or sits inside a library root is never deleted. A real library
-    /// folder holding a real film, rTorrent's hand-built reply (no recording yet) with only the base path swapped in.
+    /// folder holding a real film, rTorrent's recorded d.base_path reply with only the base path swapped in.
     /// </summary>
     [Theory]
     [InlineData("inside")]
@@ -285,7 +287,7 @@ public sealed class RtorrentDownloadClientTests
         return repository.Object;
     }
 
-    /// <summary>#1306: the folder rTorrent lists for a download is dropped when it climbs out (hand-built reply, one value swapped).</summary>
+    /// <summary>#1306: the folder rTorrent lists for a download is dropped when it climbs out (the recorded list row with one value swapped).</summary>
     [Fact]
     public async Task A_listed_download_folder_that_climbs_out_is_not_used()
     {
@@ -383,46 +385,6 @@ public sealed class RtorrentDownloadClientTests
         Assert.Equal("Couldn't open file (disk full)", item.ErrorMessage);
     }
 
-    /// <summary>
-    /// #878, cleanup sheet C5: rTorrent's own d.multicall2 never carries a
-    /// tracker's message, so a tracker's "torrent not registered" answer read
-    /// through t.multicall must map onto the same Unregistered status
-    /// qBittorrent/Transmission/Deluge already produce, not stay Unknown.
-    /// </summary>
-    [Fact]
-    public async Task An_unregistered_tracker_message_is_read_as_unregistered()
-    {
-        var handler = new RtorrentSnapshotHandler(trackerMessage: "torrent not registered with this tracker");
-        var snapshot = await new RtorrentDownloadClient(new StubFactory(handler))
-            .GetSnapshotAsync(Client(), DateTimeOffset.UtcNow, CancellationToken.None);
-
-        var item = Assert.Single(snapshot!.Queue);
-        Assert.Equal(Deluno.Contracts.DownloadTrackerStatuses.Unregistered, item.TrackerStatus);
-    }
-
-    [Fact]
-    public async Task A_healthy_tracker_message_reads_as_ok()
-    {
-        var handler = new RtorrentSnapshotHandler(trackerMessage: string.Empty);
-        var snapshot = await new RtorrentDownloadClient(new StubFactory(handler))
-            .GetSnapshotAsync(Client(), DateTimeOffset.UtcNow, CancellationToken.None);
-
-        var item = Assert.Single(snapshot!.Queue);
-        Assert.Equal(Deluno.Contracts.DownloadTrackerStatuses.Ok, item.TrackerStatus);
-    }
-
-    /// <summary>A tracker rTorrent cannot reach at all is a local/outage problem, never a bad release (#901).</summary>
-    [Fact]
-    public async Task A_tracker_call_that_fails_stays_unknown_rather_than_unregistered()
-    {
-        var handler = new RtorrentSnapshotHandler(trackerCallFails: true);
-        var snapshot = await new RtorrentDownloadClient(new StubFactory(handler))
-            .GetSnapshotAsync(Client(), DateTimeOffset.UtcNow, CancellationToken.None);
-
-        var item = Assert.Single(snapshot!.Queue);
-        Assert.Equal(Deluno.Contracts.DownloadTrackerStatuses.Unknown, item.TrackerStatus);
-    }
-
     [Fact]
     public async Task Basic_auth_is_sent_when_a_username_and_secret_are_configured()
     {
@@ -445,6 +407,21 @@ public sealed class RtorrentDownloadClientTests
     }
 
     // ── Fixtures ─────────────────────────────────────────────────────────────
+    // Every reply below is rTorrent 0.16.25's recorded reply to the same call (tests/fixtures/recorded/rtorrent), with only the values a
+    // test is about changed: the hash it lists, the path it reports, the message it carries.
+
+    private static Recording R(string state) => RecordedReplies.Rtorrent(state);
+
+    private static string Recorded(string state, int exchange) => R(state).Exchanges[exchange].Reply.Body!;
+
+    /// <summary>What rTorrent answers a call that works and has nothing to return: the 0 of d.pause.</summary>
+    private static string Done() => Recorded("paused", 0);
+
+    /// <summary>What rTorrent answers d.name for a download it holds.</summary>
+    private static string Name() => Recorded("downloading", 2);
+
+    /// <summary>What rTorrent answers a call about a download it does not hold: a fault (d.name after the erase).</summary>
+    private static string NoSuchDownload() => Recorded("removed-twice", 1);
 
     private static DownloadClientGrabRequest Request()
         => new("Example.Movie.2024.1080p", "http://indexer.test/download/1", "movies", "movies", "Fixture indexer");
@@ -465,10 +442,30 @@ public sealed class RtorrentDownloadClientTests
     private static string MethodNameOf(string requestXml)
         => Regex.Match(requestXml, "<methodName>(.*?)</methodName>", RegexOptions.Singleline).Groups[1].Value;
 
+    /// <summary>download_list as rTorrent answers it holding exactly these hashes (the recorded list holds one; none is the recorded empty one).</summary>
+    private static string HashList(IEnumerable<string> hashes)
+    {
+        var held = hashes.ToArray();
+        if (held.Length == 0)
+        {
+            return Recorded("idle", 1);
+        }
+
+        var recorded = Recorded("add-file", 2);
+        var one = Regex.Match(recorded, "<value><string>[0-9A-F]{40}</string></value>").Value;
+        return recorded.Replace(one, string.Concat(held.Select(hash => $"<value><string>{System.Security.SecurityElement.Escape(hash)}</string></value>")));
+    }
+
+    private static IEnumerable<string> HashesOf(string list)
+        => list.Trim('[', ']').Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(value => value.Trim('"'));
+
+    /// <summary>The recorded fault with the reason it gives replaced (the shape and code are rTorrent's own).</summary>
+    private static string FaultResponse(string faultMessage)
+        => Recorded("unknown-hash-fault", 0).Replace("invalid parameters: info-hash not found", System.Security.SecurityElement.Escape(faultMessage));
+
     /// <summary>
-    /// Answers download_list with one array before the add and a different
-    /// one after, and everything else (load.*, d.*) with a bare integer
-    /// success value -- the shape every one-arg rTorrent command returns.
+    /// Answers download_list with one array before the add and a different one after, and everything else with the recorded replies
+    /// of the same calls: load.* with the 0 of load.raw_start, d.name with the name of a held download until d.erase, then the fault.
     /// </summary>
     private sealed class RtorrentHandler(string downloadListBefore, string downloadListAfter) : HttpMessageHandler
     {
@@ -493,27 +490,25 @@ public sealed class RtorrentDownloadClientTests
             if (method == "d.erase") _erased = true;
             if (method == "d.name")
             {
-                return XmlResponse(_erased ? FaultResponse("Could not find info-hash.") : MethodResponse(AsValue(TypedString("Some.Film"))));
+                return XmlResponse(_erased ? NoSuchDownload() : Name());
             }
 
             if (method.StartsWith("load.", StringComparison.Ordinal))
             {
                 _loaded = true;
-                return XmlResponse(IntResponse(0));
+                return XmlResponse(Recorded("add-file", 1));
             }
 
             if (method == "download_list")
             {
-                var hashes = _loaded ? downloadListAfter : downloadListBefore;
-                var values = hashes.Trim('[', ']').Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(value => value.Trim('"'));
-                return XmlResponse(MethodResponse(AsValue(ArrayOf(values.Select(hash => AsValue(TypedString(hash)))))));
+                return XmlResponse(HashList(HashesOf(_loaded ? downloadListAfter : downloadListBefore)));
             }
 
-            return XmlResponse(IntResponse(0));
+            return XmlResponse(Done());
         }
     }
 
-    /// <summary>Answers any load.* call with an XML-RPC &lt;fault&gt; carrying the given message, everything else with success.</summary>
+    /// <summary>Answers any load.* call with an XML-RPC fault carrying the given reason, everything else as the recorded rTorrent did.</summary>
     private sealed class RtorrentFaultHandler(string faultMessage) : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -528,17 +523,14 @@ public sealed class RtorrentDownloadClientTests
 
             if (method == "download_list")
             {
-                return XmlResponse(MethodResponse(AsValue(ArrayOf([]))));
+                return XmlResponse(HashList([]));
             }
 
-            return XmlResponse(IntResponse(0));
+            return XmlResponse(Done());
         }
     }
 
-    private static string FaultResponse(string faultMessage)
-        => $"""<?xml version="1.0"?><methodResponse><fault>{AsValue(TypedString(faultMessage))}</fault></methodResponse>""";
-
-    /// <summary>Answers d.base_path with a fixed path and everything else (d.erase) with success, recording every method called.</summary>
+    /// <summary>Answers d.base_path with the recorded reply carrying a path of the test's own and everything else (d.erase) with the recorded 0, recording every method called.</summary>
     private sealed class RtorrentDeleteWithDataHandler(string basePath) : HttpMessageHandler
     {
         private bool _erased;
@@ -555,25 +547,23 @@ public sealed class RtorrentDownloadClientTests
             if (method == "d.erase") _erased = true;
             if (method == "d.name")
             {
-                return XmlResponse(_erased ? FaultResponse("Could not find info-hash.") : MethodResponse(AsValue(TypedString("Some.Film"))));
+                return XmlResponse(_erased ? NoSuchDownload() : Name());
             }
 
             if (method == "d.base_path")
             {
-                return XmlResponse(MethodResponse(AsValue(TypedString(basePath))));
+                return XmlResponse(Recorded("finished-single-file", 2).Replace("/downloads/complete/Recorded.Rtorrent.Film.2024.1080p.WEB-DL.mkv", System.Security.SecurityElement.Escape(basePath)));
             }
 
-            return XmlResponse(IntResponse(0));
+            return XmlResponse(Done());
         }
     }
 
     /// <summary>
-    /// Answers d.multicall2 with one row of canned per-torrent values, in
-    /// MapRow's own field order, and t.multicall (#878) with a single
-    /// tracker's own enabled flag and message -- or a failure, when asked to
-    /// simulate a tracker rTorrent cannot reach at all.
+    /// Answers d.multicall2 with the recorded row of a downloading torrent, in MapRow's own field order, with the values this test is about
+    /// replaced; the tracker call is answered with the fault the real rTorrent gives (it has no t.message), and the version as recorded.
     /// </summary>
-    private sealed class RtorrentSnapshotHandler(string? message = null, string? trackerMessage = null, bool trackerCallFails = false, int peers = 0, string directory = "/downloads/Example.Movie.2024.1080p") : HttpMessageHandler
+    private sealed class RtorrentSnapshotHandler(string? message = null, int peers = 0, string directory = "/downloads/Example.Movie.2024.1080p") : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -582,48 +572,30 @@ public sealed class RtorrentDownloadClientTests
 
             if (method == "t.multicall")
             {
-                if (trackerCallFails)
-                {
-                    return new HttpResponseMessage(HttpStatusCode.InternalServerError);
-                }
-
-                var tracker = AsValue(ArrayOf([AsValue(TypedInt(1)), AsValue(TypedString(trackerMessage ?? string.Empty))]));
-                return XmlResponse(MethodResponse(AsValue(ArrayOf([tracker]))));
+                return XmlResponse(Recorded("downloading", 4));
             }
 
-            var fields = new[]
+            if (method == "system.client_version")
             {
-                AsValue(TypedString("abcdef0123456789abcdef0123456789abcdef01")),
-                AsValue(TypedString("Example.Movie.2024.1080p")),
-                AsValue(TypedInt(1)), // is_active
-                AsValue(TypedInt(0)), // is_hash_checking
-                AsValue(TypedInt(0)), // complete
-                AsValue(TypedInt(500_000_000)), // bytes_done
-                AsValue(TypedInt(1_000_000_000)), // size_bytes
-                AsValue(TypedInt(1_000_000)), // down.rate
-                AsValue(TypedInt(0)), // up.rate
-                AsValue(TypedInt(1500)), // ratio (x1000)
-                AsValue(TypedString(message ?? string.Empty)),
-                AsValue(TypedString(directory)),
-                AsValue(TypedInt(peers)) // peers_connected (seeds included)
-            };
-            var row = AsValue(ArrayOf(fields));
-            return XmlResponse(MethodResponse(AsValue(ArrayOf([row]))));
+                return XmlResponse(Recorded("version", 0));
+            }
+
+            return XmlResponse(Row(
+                (0, "abcdef0123456789abcdef0123456789abcdef01"), (1, "Example.Movie.2024.1080p"), (2, 1), (3, 0), (4, 0), (5, 500_000_000L), (6, 1_000_000_000L),
+                (7, 1_000_000L), (8, 0), (9, 1500), (10, message ?? string.Empty), (11, directory), (12, peers)));
         }
     }
 
-    private static string MethodResponse(string valueXml)
-        => $"""<?xml version="1.0"?><methodResponse><params><param>{valueXml}</param></params></methodResponse>""";
+    /// <summary>The recorded list row of a downloading torrent with the given fields (by position in MapRow's order) set to the test's own values.</summary>
+    private static string Row(params (int Index, object Value)[] fields)
+    {
+        var document = System.Xml.Linq.XDocument.Parse(Recorded("downloading", 0));
+        var values = document.Descendants("data").First().Elements("value").First().Descendants("data").First().Elements("value").ToList();
+        foreach (var (index, value) in fields)
+        {
+            values[index].Elements().First().Value = Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)!;
+        }
 
-    private static string IntResponse(int value) => MethodResponse(AsValue(TypedInt(value)));
-
-    /// <summary>Wraps an already-typed fragment (e.g. &lt;string&gt;x&lt;/string&gt;) as an XML-RPC &lt;value&gt;.</summary>
-    private static string AsValue(string typed) => $"<value>{typed}</value>";
-
-    private static string TypedString(string value) => $"<string>{value}</string>";
-
-    private static string TypedInt(long value) => $"<i4>{value}</i4>";
-
-    /// <summary>An &lt;array&gt; built from already-&lt;value&gt;-wrapped items.</summary>
-    private static string ArrayOf(IEnumerable<string> valueFragments) => $"<array><data>{string.Concat(valueFragments)}</data></array>";
+        return document.Declaration + document.ToString(System.Xml.Linq.SaveOptions.DisableFormatting);
+    }
 }

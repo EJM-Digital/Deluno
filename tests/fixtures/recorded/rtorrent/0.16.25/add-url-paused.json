@@ -2,7 +2,7 @@
   "app": "rtorrent",
   "version": "0.16.25",
   "state": "add-url-paused",
-  "recordedAt": "2026-10-18T10:11:04Z",
+  "recordedAt": "2026-10-18T10:53:56Z",
   "note": "load.normal (a link, loaded without starting): the answer, the hashes and the list row.",
   "exchanges": [
     {
@@ -30,7 +30,7 @@
         "headers": {
           "content-type": "text/xml"
         },
-        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><string>56218A13CD7B04B6BD7666EF4A088115E4363C0D</string></value></data></array></value></param></params></methodResponse>"
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><string>76BA904DD4DCDA9829D1E44ECA88725F20E9563E</string></value></data></array></value></param></params></methodResponse>"
       }
     },
     {
@@ -44,7 +44,7 @@
         "headers": {
           "content-type": "text/xml"
         },
-        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><array><data><value><string>56218A13CD7B04B6BD7666EF4A088115E4363C0D</string></value><value><string>Recorded.Rtorrent.Paused.2024.1080p.WEB-DL.mkv</string></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>4194304</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><string></string></value><value><string>/downloads/temp</string></value><value><i8>0</i8></value></data></array></value></data></array></value></param></params></methodResponse>"
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><array><data><value><string>76BA904DD4DCDA9829D1E44ECA88725F20E9563E</string></value><value><string>Recorded.Rtorrent.Paused.2024.1080p.WEB-DL.mkv</string></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>4194304</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><string></string></value><value><string>/downloads/temp</string></value><value><i8>0</i8></value></data></array></value></data></array></value></param></params></methodResponse>"
       }
     }
   ]

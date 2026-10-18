@@ -2,7 +2,7 @@
   "app": "rtorrent",
   "version": "0.16.25",
   "state": "tracker-error",
-  "recordedAt": "2026-10-18T10:11:42Z",
+  "recordedAt": "2026-10-18T10:54:35Z",
   "note": "A torrent whose tracker answers \"Registered torrents only\": the list row carries it in d.message, and t.multicall carries it in t.message.",
   "exchanges": [
     {
@@ -16,14 +16,14 @@
         "headers": {
           "content-type": "text/xml"
         },
-        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><array><data><value><string>F07E36C4192BDC796F15E70F1F92018E0142BFF4</string></value><value><string>Recorded.Rtorrent.Refused.2024.1080p.WEB-DL.mkv</string></value><value><i8>1</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>4194304</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><string>Tracker: [v4 : Failure reason \"Registered torrents only\"]</string></value><value><string>/downloads/temp</string></value><value><i8>0</i8></value></data></array></value></data></array></value></param></params></methodResponse>"
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><array><data><value><string>DEA8A13D861AEE3A1789BCF71DF17C1DB55F8366</string></value><value><string>Recorded.Rtorrent.Refused.2024.1080p.WEB-DL.mkv</string></value><value><i8>1</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>4194304</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><string>Tracker: [v4 : Failure reason \"Registered torrents only\"]</string></value><value><string>/downloads/temp</string></value><value><i8>0</i8></value></data></array></value></data></array></value></param></params></methodResponse>"
       }
     },
     {
       "request": {
         "method": "POST",
         "path": "/RPC2",
-        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>t.multicall</methodName><params><param><value><string>F07E36C4192BDC796F15E70F1F92018E0142BFF4</string></value></param><param><value><string></string></value></param><param><value><string>t.is_enabled=</string></value></param><param><value><string>t.message=</string></value></param></params></methodCall>"
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>t.multicall</methodName><params><param><value><string>DEA8A13D861AEE3A1789BCF71DF17C1DB55F8366</string></value></param><param><value><string></string></value></param><param><value><string>t.is_enabled=</string></value></param><param><value><string>t.message=</string></value></param></params></methodCall>"
       },
       "reply": {
         "status": 200,
@@ -37,7 +37,7 @@
       "request": {
         "method": "POST",
         "path": "/RPC2",
-        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.message</methodName><params><param><value><string>F07E36C4192BDC796F15E70F1F92018E0142BFF4</string></value></param></params></methodCall>"
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.message</methodName><params><param><value><string>DEA8A13D861AEE3A1789BCF71DF17C1DB55F8366</string></value></param></params></methodCall>"
       },
       "reply": {
         "status": 200,

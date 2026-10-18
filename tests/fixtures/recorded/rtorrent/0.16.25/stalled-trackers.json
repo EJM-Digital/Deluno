@@ -2,14 +2,14 @@
   "app": "rtorrent",
   "version": "0.16.25",
   "state": "stalled-trackers",
-  "recordedAt": "2026-10-18T10:13:14Z",
+  "recordedAt": "2026-10-18T10:56:07Z",
   "note": "The trackers of the stalled torrent asked for the fields rTorrent has (t.url, t.is_enabled, t.latest_event, t.failed_counter, t.success_counter).",
   "exchanges": [
     {
       "request": {
         "method": "POST",
         "path": "/RPC2",
-        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>t.multicall</methodName><params><param><value><string>F539F8CBE7E0B53F2C358840FF387F3F2336B1B4</string></value></param><param><value><string></string></value></param><param><value><string>t.url=</string></value></param><param><value><string>t.is_enabled=</string></value></param><param><value><string>t.latest_event=</string></value></param><param><value><string>t.failed_counter=</string></value></param><param><value><string>t.success_counter=</string></value></param></params></methodCall>"
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>t.multicall</methodName><params><param><value><string>E427E955D62DD9BB5191ACECA3D2BCF336A9BDBE</string></value></param><param><value><string></string></value></param><param><value><string>t.url=</string></value></param><param><value><string>t.is_enabled=</string></value></param><param><value><string>t.latest_event=</string></value></param><param><value><string>t.failed_counter=</string></value></param><param><value><string>t.success_counter=</string></value></param></params></methodCall>"
       },
       "reply": {
         "status": 200,
@@ -23,7 +23,7 @@
       "request": {
         "method": "POST",
         "path": "/RPC2",
-        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.is_active</methodName><params><param><value><string>F539F8CBE7E0B53F2C358840FF387F3F2336B1B4</string></value></param></params></methodCall>"
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.is_active</methodName><params><param><value><string>E427E955D62DD9BB5191ACECA3D2BCF336A9BDBE</string></value></param></params></methodCall>"
       },
       "reply": {
         "status": 200,

@@ -2,14 +2,14 @@
   "app": "rtorrent",
   "version": "0.16.25",
   "state": "paused",
-  "recordedAt": "2026-10-18T10:10:47Z",
+  "recordedAt": "2026-10-18T10:53:39Z",
   "note": "d.pause of a downloading torrent, then d.is_active (0) and the list row (not complete).",
   "exchanges": [
     {
       "request": {
         "method": "POST",
         "path": "/RPC2",
-        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.pause</methodName><params><param><value><string>185F1704AC20FAB307DDED835F106E27A2C94E0E</string></value></param></params></methodCall>"
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.pause</methodName><params><param><value><string>32D1344054DE51B455ADFBC448B8737A5AFD21F1</string></value></param></params></methodCall>"
       },
       "reply": {
         "status": 200,
@@ -23,7 +23,7 @@
       "request": {
         "method": "POST",
         "path": "/RPC2",
-        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.is_active</methodName><params><param><value><string>185F1704AC20FAB307DDED835F106E27A2C94E0E</string></value></param></params></methodCall>"
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.is_active</methodName><params><param><value><string>32D1344054DE51B455ADFBC448B8737A5AFD21F1</string></value></param></params></methodCall>"
       },
       "reply": {
         "status": 200,
@@ -44,7 +44,7 @@
         "headers": {
           "content-type": "text/xml"
         },
-        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><array><data><value><string>185F1704AC20FAB307DDED835F106E27A2C94E0E</string></value><value><string>Recorded.Rtorrent.PauseTest.2024.1080p.WEB-DL.mkv</string></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>507904</i8></value><value><i8>41943040</i8></value><value><i8>8735</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><string></string></value><value><string>/downloads/temp</string></value><value><i8>0</i8></value></data></array></value></data></array></value></param></params></methodResponse>"
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><array><data><value><string>32D1344054DE51B455ADFBC448B8737A5AFD21F1</string></value><value><string>Recorded.Rtorrent.PauseTest.2024.1080p.WEB-DL.mkv</string></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>507904</i8></value><value><i8>41943040</i8></value><value><i8>8736</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><string></string></value><value><string>/downloads/temp</string></value><value><i8>0</i8></value></data></array></value></data></array></value></param></params></methodResponse>"
       }
     }
   ]

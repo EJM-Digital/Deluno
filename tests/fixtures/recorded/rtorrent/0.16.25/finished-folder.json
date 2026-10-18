@@ -2,7 +2,7 @@
   "app": "rtorrent",
   "version": "0.16.25",
   "state": "finished-folder",
-  "recordedAt": "2026-10-18T10:11:25Z",
+  "recordedAt": "2026-10-18T10:54:18Z",
   "note": "A release folder of three files, finished: the list row, d.directory, d.base_path and f.multicall (three files).",
   "exchanges": [
     {
@@ -16,14 +16,14 @@
         "headers": {
           "content-type": "text/xml"
         },
-        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><array><data><value><string>C0AC27C2100D9A5F178A0503582957A129FCBD41</string></value><value><string>Recorded.Rtorrent.Show.S01.1080p.WEB-DL</string></value><value><i8>1</i8></value><value><i8>0</i8></value><value><i8>1</i8></value><value><i8>9437184</i8></value><value><i8>9437184</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><string></string></value><value><string>/downloads/complete/Recorded.Rtorrent.Show.S01.1080p.WEB-DL</string></value><value><i8>0</i8></value></data></array></value></data></array></value></param></params></methodResponse>"
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><array><data><value><string>C703E0C4CD781E6772DDF298A5486ABA003F5353</string></value><value><string>Recorded.Rtorrent.Show.S01.1080p.WEB-DL</string></value><value><i8>1</i8></value><value><i8>0</i8></value><value><i8>1</i8></value><value><i8>9437184</i8></value><value><i8>9437184</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><string></string></value><value><string>/downloads/complete/Recorded.Rtorrent.Show.S01.1080p.WEB-DL</string></value><value><i8>0</i8></value></data></array></value></data></array></value></param></params></methodResponse>"
       }
     },
     {
       "request": {
         "method": "POST",
         "path": "/RPC2",
-        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.directory</methodName><params><param><value><string>C0AC27C2100D9A5F178A0503582957A129FCBD41</string></value></param></params></methodCall>"
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.directory</methodName><params><param><value><string>C703E0C4CD781E6772DDF298A5486ABA003F5353</string></value></param></params></methodCall>"
       },
       "reply": {
         "status": 200,
@@ -37,7 +37,7 @@
       "request": {
         "method": "POST",
         "path": "/RPC2",
-        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.base_path</methodName><params><param><value><string>C0AC27C2100D9A5F178A0503582957A129FCBD41</string></value></param></params></methodCall>"
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.base_path</methodName><params><param><value><string>C703E0C4CD781E6772DDF298A5486ABA003F5353</string></value></param></params></methodCall>"
       },
       "reply": {
         "status": 200,
@@ -51,7 +51,7 @@
       "request": {
         "method": "POST",
         "path": "/RPC2",
-        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>f.multicall</methodName><params><param><value><string>C0AC27C2100D9A5F178A0503582957A129FCBD41</string></value></param><param><value><string></string></value></param><param><value><string>f.path=</string></value></param></params></methodCall>"
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>f.multicall</methodName><params><param><value><string>C703E0C4CD781E6772DDF298A5486ABA003F5353</string></value></param><param><value><string></string></value></param><param><value><string>f.path=</string></value></param></params></methodCall>"
       },
       "reply": {
         "status": 200,

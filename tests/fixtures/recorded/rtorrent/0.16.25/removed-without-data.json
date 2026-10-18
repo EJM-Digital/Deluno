@@ -2,14 +2,14 @@
   "app": "rtorrent",
   "version": "0.16.25",
   "state": "removed-without-data",
-  "recordedAt": "2026-10-18T10:10:44Z",
+  "recordedAt": "2026-10-18T10:53:36Z",
   "note": "d.erase of a finished torrent: the answer and the list afterwards. rTorrent leaves the files where they were.",
   "exchanges": [
     {
       "request": {
         "method": "POST",
         "path": "/RPC2",
-        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.erase</methodName><params><param><value><string>F202CF547C4BE27D3C49AE85A1F96AFFFCA21ABA</string></value></param></params></methodCall>"
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.erase</methodName><params><param><value><string>D3A2428E690FB2056D885BA960C5D85EA531454F</string></value></param></params></methodCall>"
       },
       "reply": {
         "status": 200,

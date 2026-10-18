@@ -2,7 +2,7 @@
   "app": "rtorrent",
   "version": "0.16.25",
   "state": "magnet-no-metadata",
-  "recordedAt": "2026-10-18T10:09:16Z",
+  "recordedAt": "2026-10-18T10:52:10Z",
   "note": "load.start of a magnet link nobody can supply metadata for: the hashes before and after, and the list row while it waits.",
   "exchanges": [
     {
