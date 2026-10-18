@@ -1,0 +1,51 @@
+{
+  "app": "rtorrent",
+  "version": "0.16.25",
+  "state": "label-set",
+  "recordedAt": "2026-10-18T10:10:41Z",
+  "note": "d.custom1.set (rTorrent's label field), then d.custom1 reads it back.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.custom1</methodName><params><param><value><string>F202CF547C4BE27D3C49AE85A1F96AFFFCA21ABA</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><string>recorded-movies</string></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.custom1.set</methodName><params><param><value><string>F202CF547C4BE27D3C49AE85A1F96AFFFCA21ABA</string></value></param><param><value><string>recorded-movies</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><string>recorded-movies</string></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.custom1</methodName><params><param><value><string>F202CF547C4BE27D3C49AE85A1F96AFFFCA21ABA</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><string>recorded-movies</string></value></param></params></methodResponse>"
+      }
+    }
+  ]
+}

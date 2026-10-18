@@ -1,0 +1,23 @@
+{
+  "app": "rtorrent",
+  "version": "0.16.25",
+  "state": "version",
+  "recordedAt": "2026-10-18T10:09:09Z",
+  "note": "system.client_version: the plain version Deluno reads from the connection test.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>system.client_version</methodName><params></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><string>0.16.25</string></value></param></params></methodResponse>"
+      }
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "app": "rtorrent",
+  "version": "0.16.25",
+  "state": "rechecked",
+  "recordedAt": "2026-10-18T10:10:44Z",
+  "note": "d.check_hash of the finished torrent: its answer, the list row while it checks (d.is_hash_checking) and after.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.check_hash</methodName><params><param><value><string>F202CF547C4BE27D3C49AE85A1F96AFFFCA21ABA</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><i8>0</i8></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.multicall2</methodName><params><param><value><string></string></value></param><param><value><string>main</string></value></param><param><value><string>d.hash=</string></value></param><param><value><string>d.name=</string></value></param><param><value><string>d.is_active=</string></value></param><param><value><string>d.is_hash_checking=</string></value></param><param><value><string>d.complete=</string></value></param><param><value><string>d.bytes_done=</string></value></param><param><value><string>d.size_bytes=</string></value></param><param><value><string>d.down.rate=</string></value></param><param><value><string>d.up.rate=</string></value></param><param><value><string>d.ratio=</string></value></param><param><value><string>d.message=</string></value></param><param><value><string>d.directory=</string></value></param><param><value><string>d.peers_connected=</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><array><data><value><string>F202CF547C4BE27D3C49AE85A1F96AFFFCA21ABA</string></value><value><string>Recorded.Rtorrent.Film.2024.1080p.WEB-DL.mkv</string></value><value><i8>0</i8></value><value><i8>1</i8></value><value><i8>1</i8></value><value><i8>19398656</i8></value><value><i8>41943040</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><string></string></value><value><string>/downloads/complete</string></value><value><i8>0</i8></value></data></array></value></data></array></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.multicall2</methodName><params><param><value><string></string></value></param><param><value><string>main</string></value></param><param><value><string>d.hash=</string></value></param><param><value><string>d.name=</string></value></param><param><value><string>d.is_active=</string></value></param><param><value><string>d.is_hash_checking=</string></value></param><param><value><string>d.complete=</string></value></param><param><value><string>d.bytes_done=</string></value></param><param><value><string>d.size_bytes=</string></value></param><param><value><string>d.down.rate=</string></value></param><param><value><string>d.up.rate=</string></value></param><param><value><string>d.ratio=</string></value></param><param><value><string>d.message=</string></value></param><param><value><string>d.directory=</string></value></param><param><value><string>d.peers_connected=</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><array><data><value><string>F202CF547C4BE27D3C49AE85A1F96AFFFCA21ABA</string></value><value><string>Recorded.Rtorrent.Film.2024.1080p.WEB-DL.mkv</string></value><value><i8>1</i8></value><value><i8>0</i8></value><value><i8>1</i8></value><value><i8>41943040</i8></value><value><i8>41943040</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><string></string></value><value><string>/downloads/complete</string></value><value><i8>0</i8></value></data></array></value></data></array></value></param></params></methodResponse>"
+      }
+    }
+  ]
+}
