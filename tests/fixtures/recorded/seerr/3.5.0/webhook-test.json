@@ -1,0 +1,37 @@
+{
+  "app": "seerr",
+  "version": "3.5.0",
+  "state": "webhook-test",
+  "recordedAt": "2026-10-18T10:40:04Z",
+  "note": "The webhook Seerr sends from its own \"test\" button (a test notification, which Deluno must acknowledge and ignore). The request is what Seerr itself sent to the webhook address; the reply is the receiving container plain ok, not an answer from Deluno (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/seerr-servers/{id}/webhook",
+        "headers": {
+          "content-type": "application/json",
+          "authorization": "<scrubbed>",
+          "user-agent": "Seerr/3.5.0"
+        },
+        "body": {
+          "notification_type": "TEST_NOTIFICATION",
+          "event": "",
+          "subject": "Test Notification",
+          "message": "Check check, 1, 2, 3. Are we coming in clear?",
+          "image": "",
+          "media": null,
+          "request": null,
+          "extra": []
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "bodyText": "ok"
+      }
+    }
+  ]
+}

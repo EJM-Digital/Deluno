@@ -1,0 +1,1249 @@
+{
+  "app": "seerr",
+  "version": "3.5.0",
+  "state": "media-available",
+  "recordedAt": "2026-10-18T10:40:11Z",
+  "note": "The media record marked available (POST /api/v1/media/{id}/available), then the media list (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/media/1/available"
+      },
+      "reply": {
+        "status": 415,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "message": "unsupported media type undefined",
+          "errors": [
+            {
+              "path": "/api/v1/media/:mediaId/:status",
+              "message": "unsupported media type undefined"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/media?filter=all&sort=added&take=100&skip=0"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "pageInfo": {
+            "pages": 1,
+            "pageSize": 100,
+            "results": 1,
+            "page": 1
+          },
+          "results": [
+            {
+              "downloadStatus": [],
+              "downloadStatus4k": [],
+              "id": 1,
+              "mediaType": "movie",
+              "tmdbId": 45745,
+              "tvdbId": null,
+              "imdbId": null,
+              "status": 3,
+              "status4k": 1,
+              "createdAt": "2026-10-18T10:40:04.000Z",
+              "updatedAt": "2026-10-18T10:40:07.000Z",
+              "lastSeasonChange": "2026-10-18T10:40:04.000Z",
+              "mediaAddedAt": "2026-10-18T10:40:04.000Z",
+              "serviceId": null,
+              "serviceId4k": null,
+              "externalServiceId": null,
+              "externalServiceId4k": null,
+              "externalServiceSlug": null,
+              "externalServiceSlug4k": null,
+              "ratingKey": null,
+              "ratingKey4k": null,
+              "jellyfinMediaId": null,
+              "jellyfinMediaId4k": null,
+              "seasons": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/movie/45745"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "id": 45745,
+          "adult": false,
+          "budget": 450000,
+          "genres": [
+            {
+              "id": 16,
+              "name": "Animation"
+            },
+            {
+              "id": 14,
+              "name": "Fantasy"
+            }
+          ],
+          "relatedVideos": [
+            {
+              "site": "YouTube",
+              "key": "<scrubbed>",
+              "name": "Trailer",
+              "size": 1080,
+              "type": "Trailer",
+              "url": "https://www.youtube.com/watch?v=HOfdboHvshg"
+            }
+          ],
+          "originalLanguage": "en",
+          "originalTitle": "Sintel",
+          "popularity": 3.4339,
+          "productionCompanies": [
+            {
+              "id": 6908,
+              "name": "Blender Foundation",
+              "originCountry": "NL",
+              "logoPath": "/l7mhd4PXPeJPOxSL1MqSfKUtTRW.png"
+            }
+          ],
+          "productionCountries": [
+            {
+              "iso_3166_1": "NL",
+              "name": "Netherlands"
+            }
+          ],
+          "releaseDate": "2010-09-30",
+          "releases": {
+            "results": [
+              {
+                "iso_3166_1": "AU",
+                "release_dates": [
+                  {
+                    "certification": "PG",
+                    "descriptors": [],
+                    "iso_639_1": "",
+                    "note": "",
+                    "release_date": "2010-09-30T00:00:00.000Z",
+                    "type": 3
+                  }
+                ]
+              },
+              {
+                "iso_3166_1": "FI",
+                "release_dates": [
+                  {
+                    "certification": "K-12",
+                    "descriptors": [],
+                    "iso_639_1": "",
+                    "note": "",
+                    "release_date": "2010-09-30T00:00:00.000Z",
+                    "type": 3
+                  }
+                ]
+              },
+              {
+                "iso_3166_1": "NL",
+                "release_dates": [
+                  {
+                    "certification": "12",
+                    "descriptors": [],
+                    "iso_639_1": "",
+                    "note": "",
+                    "release_date": "2010-09-30T00:00:00.000Z",
+                    "type": 3
+                  }
+                ]
+              },
+              {
+                "iso_3166_1": "US",
+                "release_dates": [
+                  {
+                    "certification": "PG",
+                    "descriptors": [],
+                    "iso_639_1": "",
+                    "note": "",
+                    "release_date": "2010-09-30T00:00:00.000Z",
+                    "type": 3
+                  }
+                ]
+              }
+            ]
+          },
+          "revenue": 0,
+          "spokenLanguages": [
+            {
+              "english_name": "English",
+              "iso_639_1": "en",
+              "name": "English"
+            },
+            {
+              "english_name": "Dutch",
+              "iso_639_1": "nl",
+              "name": "Nederlands"
+            }
+          ],
+          "status": "Released",
+          "title": "Sintel",
+          "video": false,
+          "voteAverage": 7.333,
+          "voteCount": 180,
+          "backdropPath": "/msqeiEyIRpPAtrCeRGFNZQ9tkJL.jpg",
+          "homepage": "http://durian.blender.org/",
+          "imdbId": "tt1727587",
+          "overview": "A wandering warrior finds an unlikely friend in the form of a young dragon. The two develop a close bond, until one day the dragon is snatched away. She then sets out on a relentless quest to reclaim her friend, finding in the end that her quest exacts a far greater price than she had ever imagined.",
+          "posterPath": "/l98Zns4oQe1BSvbF4hJ8oL6VSf0.jpg",
+          "runtime": 14,
+          "tagline": "",
+          "credits": {
+            "cast": [
+              {
+                "castId": 5,
+                "character": "Sintel (voice)",
+                "creditId": "52fe46d1c3a36847f8113e3f",
+                "id": 39847,
+                "name": "Halina Reijn",
+                "order": 0,
+                "gender": 1,
+                "profilePath": "/su9FMcM5wKfZiSNs35OLlot4hLd.jpg"
+              },
+              {
+                "castId": 6,
+                "character": "Shaman (voice)",
+                "creditId": "52fe46d1c3a36847f8113e43",
+                "id": 7572,
+                "name": "Thom Hoffman",
+                "order": 1,
+                "gender": 2,
+                "profilePath": "/9idfzAANRjFDPnPHsRVVBb2LbNR.jpg"
+              }
+            ],
+            "crew": [
+              {
+                "creditId": "52fe46d1c3a36847f8113e29",
+                "department": "Directing",
+                "id": 133631,
+                "job": "Director",
+                "name": "Colin Levy",
+                "gender": 2,
+                "profilePath": "/aGFVsKopffZafgZjeF7GLlUvxO7.jpg"
+              },
+              {
+                "creditId": "52fe46d1c3a36847f8113e2f",
+                "department": "Production",
+                "id": 133632,
+                "job": "Producer",
+                "name": "Ton Roosendaal",
+                "gender": 2,
+                "profilePath": "/2iRRkA2oCsPLSSLz1HKDhwJZlgy.jpg"
+              },
+              {
+                "creditId": "52fe46d1c3a36847f8113e35",
+                "department": "Writing",
+                "id": 133633,
+                "job": "Writer",
+                "name": "Esther Wouda",
+                "gender": 0,
+                "profilePath": null
+              },
+              {
+                "creditId": "52fe46d1c3a36847f8113e3b",
+                "department": "Sound",
+                "id": 133634,
+                "job": "Music",
+                "name": "Jan Morgenstern",
+                "gender": 0,
+                "profilePath": null
+              },
+              {
+                "creditId": "5ebfb79c8e2e00002117e6d5",
+                "department": "Art",
+                "id": 1097826,
+                "job": "Art Direction",
+                "name": "David Revoy",
+                "gender": 0,
+                "profilePath": null
+              }
+            ]
+          },
+          "externalIds": {
+            "facebookId": null,
+            "imdbId": "tt1727587",
+            "instagramId": null,
+            "twitterId": null
+          },
+          "mediaInfo": {
+            "downloadStatus": [],
+            "downloadStatus4k": [],
+            "id": 1,
+            "mediaType": "movie",
+            "tmdbId": 45745,
+            "tvdbId": null,
+            "imdbId": null,
+            "status": 3,
+            "status4k": 1,
+            "createdAt": "2026-10-18T10:40:04.000Z",
+            "updatedAt": "2026-10-18T10:40:07.000Z",
+            "lastSeasonChange": "2026-10-18T10:40:04.000Z",
+            "mediaAddedAt": "2026-10-18T10:40:04.000Z",
+            "serviceId": null,
+            "serviceId4k": null,
+            "externalServiceId": null,
+            "externalServiceId4k": null,
+            "externalServiceSlug": null,
+            "externalServiceSlug4k": null,
+            "ratingKey": null,
+            "ratingKey4k": null,
+            "jellyfinMediaId": null,
+            "jellyfinMediaId4k": null,
+            "requests": [
+              {
+                "id": 1,
+                "status": 2,
+                "createdAt": "2026-10-18T10:40:04.000Z",
+                "updatedAt": "2026-10-18T10:40:07.000Z",
+                "type": "movie",
+                "is4k": false,
+                "serverId": null,
+                "profileId": null,
+                "rootFolder": null,
+                "languageProfileId": null,
+                "tags": null,
+                "isAutoRequest": false,
+                "ignoreQuota": false,
+                "media": {
+                  "downloadStatus": [],
+                  "downloadStatus4k": [],
+                  "id": 1,
+                  "mediaType": "movie",
+                  "tmdbId": 45745,
+                  "tvdbId": null,
+                  "imdbId": null,
+                  "status": 3,
+                  "status4k": 1,
+                  "createdAt": "2026-10-18T10:40:04.000Z",
+                  "updatedAt": "2026-10-18T10:40:07.000Z",
+                  "lastSeasonChange": "2026-10-18T10:40:04.000Z",
+                  "mediaAddedAt": "2026-10-18T10:40:04.000Z",
+                  "serviceId": null,
+                  "serviceId4k": null,
+                  "externalServiceId": null,
+                  "externalServiceId4k": null,
+                  "externalServiceSlug": null,
+                  "externalServiceSlug4k": null,
+                  "ratingKey": null,
+                  "ratingKey4k": null,
+                  "jellyfinMediaId": null,
+                  "jellyfinMediaId4k": null
+                },
+                "requestedBy": {
+                  "permissions": 32,
+                  "warnings": [],
+                  "id": 2,
+                  "plexUsername": null,
+                  "jellyfinUsername": null,
+                  "username": "<scrubbed>",
+                  "recoveryLinkExpirationDate": null,
+                  "userType": 2,
+                  "jellyfinUserId": null,
+                  "avatar": "https://gravatar.com/avatar/0003cea90dd161594d6f268b4620be78?default=mm&size=200",
+                  "avatarETag": null,
+                  "avatarVersion": null,
+                  "movieQuotaLimit": null,
+                  "movieQuotaDays": null,
+                  "tvQuotaLimit": null,
+                  "tvQuotaDays": null,
+                  "createdAt": "2026-10-18T10:40:01.000Z",
+                  "updatedAt": "2026-10-18T10:40:01.000Z",
+                  "requestCount": 1,
+                  "displayName": "<scrubbed>"
+                },
+                "modifiedBy": {
+                  "permissions": 2,
+                  "warnings": [],
+                  "id": 1,
+                  "plexUsername": null,
+                  "jellyfinUsername": "<scrubbed>",
+                  "username": null,
+                  "recoveryLinkExpirationDate": null,
+                  "userType": 3,
+                  "jellyfinUserId": "1ddf6fe552a843e1add40d0a694ead20",
+                  "avatar": "/avatarproxy/1ddf6fe552a843e1add40d0a694ead20?v=undefined",
+                  "avatarETag": null,
+                  "avatarVersion": null,
+                  "movieQuotaLimit": null,
+                  "movieQuotaDays": null,
+                  "tvQuotaLimit": null,
+                  "tvQuotaDays": null,
+                  "createdAt": "2026-10-18T10:40:00.000Z",
+                  "updatedAt": "2026-10-18T10:40:00.000Z",
+                  "requestCount": 0,
+                  "displayName": "<scrubbed>"
+                },
+                "seasons": [],
+                "seasonCount": 0
+              }
+            ],
+            "issues": [],
+            "seasons": []
+          },
+          "watchProviders": [
+            {
+              "iso_3166_1": "AD",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=AD",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "AG",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=AG",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "AL",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=AL",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "AO",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=AO",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "AR",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=AR",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "AT",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=AT",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "AU",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=AU",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "AZ",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=AZ",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "BA",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=BA",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "BB",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=BB",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "BE",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=BE",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "BF",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=BF",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "BG",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=BG",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "BM",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=BM",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "BO",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=BO",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "BR",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=BR",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "BS",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=BS",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "BY",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=BY",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "BZ",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=BZ",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "CA",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=CA",
+              "buy": [
+                {
+                  "displayPriority": 33,
+                  "logoPath": "/5Maob4o5w8oZnNeYpCDyVFD3M7X.png",
+                  "id": 192,
+                  "name": "YouTube"
+                }
+              ],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "CH",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=CH",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "CI",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=CI",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "CL",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=CL",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "CM",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=CM",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "CO",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=CO",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "CR",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=CR",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "CV",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=CV",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "CY",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=CY",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "CZ",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=CZ",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "DE",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=DE",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "DK",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=DK",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "DO",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=DO",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "DZ",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=DZ",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "EC",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=EC",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "EE",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=EE",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "ES",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=ES",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "FI",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=FI",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "FJ",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=FJ",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "FR",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=FR",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "GB",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=GB",
+              "buy": [
+                {
+                  "displayPriority": 22,
+                  "logoPath": "/5Maob4o5w8oZnNeYpCDyVFD3M7X.png",
+                  "id": 192,
+                  "name": "YouTube"
+                }
+              ],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "GF",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=GF",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "GG",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=GG",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "GH",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=GH",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "GI",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=GI",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "GQ",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=GQ",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "GR",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=GR",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "GT",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=GT",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "GY",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=GY",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "HK",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=HK",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "HN",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=HN",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "HR",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=HR",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "HU",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=HU",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "ID",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=ID",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "IE",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=IE",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "IL",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=IL",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "IN",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=IN",
+              "buy": [
+                {
+                  "displayPriority": 10,
+                  "logoPath": "/5Maob4o5w8oZnNeYpCDyVFD3M7X.png",
+                  "id": 192,
+                  "name": "YouTube"
+                }
+              ],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "IQ",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=IQ",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "IS",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=IS",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "IT",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=IT",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "JM",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=JM",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "JO",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=JO",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "JP",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=JP",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "KE",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=KE",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "KR",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=KR",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "KW",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=KW",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "LB",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=LB",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "LC",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=LC",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "LI",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=LI",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "LT",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=LT",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "LU",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=LU",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "LV",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=LV",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "LY",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=LY",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "MA",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=MA",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "MC",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=MC",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "MD",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=MD",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "ME",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=ME",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "MG",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=MG",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "MK",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=MK",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "ML",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=ML",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "MT",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=MT",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "MU",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=MU",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "MW",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=MW",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "MX",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=MX",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "MY",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=MY",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "MZ",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=MZ",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "NE",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=NE",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "NG",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=NG",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "NI",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=NI",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "NL",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=NL",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "NO",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=NO",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "NZ",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=NZ",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "OM",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=OM",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "PA",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=PA",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "PE",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=PE",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "PF",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=PF",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "PG",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=PG",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "PH",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=PH",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "PK",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=PK",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "PL",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=PL",
+              "buy": [
+                {
+                  "displayPriority": 7,
+                  "logoPath": "/5Maob4o5w8oZnNeYpCDyVFD3M7X.png",
+                  "id": 192,
+                  "name": "YouTube"
+                }
+              ],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "PS",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=PS",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "PT",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=PT",
+              "buy": [
+                {
+                  "displayPriority": 8,
+                  "logoPath": "/5Maob4o5w8oZnNeYpCDyVFD3M7X.png",
+                  "id": 192,
+                  "name": "YouTube"
+                }
+              ],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "PY",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=PY",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "RO",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=RO",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "RS",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=RS",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "SC",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=SC",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "SE",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=SE",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "SG",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=SG",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "SI",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=SI",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "SK",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=SK",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "SM",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=SM",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "SN",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=SN",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "SV",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=SV",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "TC",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=TC",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "TD",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=TD",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "TH",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=TH",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "TN",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=TN",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "TT",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=TT",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "TW",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=TW",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "TZ",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=TZ",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "UA",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=UA",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "UG",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=UG",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "US",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=US",
+              "buy": [
+                {
+                  "displayPriority": 20,
+                  "logoPath": "/aZRENwYILujqs0RVOZutTh0BVGV.png",
+                  "id": 3,
+                  "name": "Google Play Movies"
+                },
+                {
+                  "displayPriority": 21,
+                  "logoPath": "/5Maob4o5w8oZnNeYpCDyVFD3M7X.png",
+                  "id": 192,
+                  "name": "YouTube"
+                }
+              ],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "UY",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=UY",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "VA",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=VA",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "VE",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=VE",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "XK",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=XK",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "YE",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=YE",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "ZM",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=ZM",
+              "buy": [],
+              "flatrate": []
+            },
+            {
+              "iso_3166_1": "ZW",
+              "link": "https://www.themoviedb.org/movie/45745-sintel/watch?locale=ZW",
+              "buy": [],
+              "flatrate": []
+            }
+          ],
+          "keywords": [
+            {
+              "id": 2551,
+              "name": "pet"
+            },
+            {
+              "id": 12554,
+              "name": "dragon"
+            },
+            {
+              "id": 222333,
+              "name": "blender"
+            },
+            {
+              "id": 263548,
+              "name": "short film"
+            }
+          ],
+          "onUserWatchlist": false
+        }
+      }
+    }
+  ]
+}

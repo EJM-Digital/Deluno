@@ -1,0 +1,97 @@
+{
+  "app": "seerr",
+  "version": "3.5.0",
+  "state": "webhook-declined",
+  "recordedAt": "2026-10-18T10:40:14Z",
+  "note": "The webhook Seerr sends when a request is declined (MEDIA_DECLINED). The request is what Seerr itself sent to the webhook address; the reply is the receiving container plain ok, not an answer from Deluno (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/seerr-servers/{id}/webhook",
+        "headers": {
+          "content-type": "application/json",
+          "authorization": "<scrubbed>",
+          "user-agent": "Seerr/3.5.0"
+        },
+        "body": {
+          "notification_type": "MEDIA_PENDING",
+          "event": "New Series Request",
+          "subject": "Breaking Bad (2008)",
+          "message": "Walter White, a New Mexico chemistry teacher, is diagnosed with Stage III cancer and given a prognosis of only two years left to live. He becomes filled with a sense of fearlessness and an unrelenting desire to secure his family's financial future at any cost as he enters the dangerous world of drugs and crime.",
+          "image": "https://image.tmdb.org/t/p/w600_and_h900_bestv2/anFx9aTOOYqgS3v7x3R84Kz67ly.jpg",
+          "media": {
+            "media_type": "tv",
+            "tmdbId": "1396",
+            "tvdbId": "81189",
+            "status": "PENDING",
+            "status4k": "UNKNOWN"
+          },
+          "request": {
+            "request_id": "2",
+            "requestedBy_email": "<scrubbed>@example.com",
+            "requestedBy_username": "<scrubbed>",
+            "requestedBy_avatar": "https://gravatar.com/avatar/0003cea90dd161594d6f268b4620be78?default=mm&size=200"
+          },
+          "extra": [
+            {
+              "name": "Requested Seasons",
+              "value": "1"
+            }
+          ]
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "bodyText": "ok"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/seerr-servers/{id}/webhook",
+        "headers": {
+          "content-type": "application/json",
+          "authorization": "<scrubbed>",
+          "user-agent": "Seerr/3.5.0"
+        },
+        "body": {
+          "notification_type": "MEDIA_DECLINED",
+          "event": "Series Request Declined",
+          "subject": "Breaking Bad (2008)",
+          "message": "Walter White, a New Mexico chemistry teacher, is diagnosed with Stage III cancer and given a prognosis of only two years left to live. He becomes filled with a sense of fearlessness and an unrelenting desire to secure his family's financial future at any cost as he enters the dangerous world of drugs and crime.",
+          "image": "https://image.tmdb.org/t/p/w600_and_h900_bestv2/anFx9aTOOYqgS3v7x3R84Kz67ly.jpg",
+          "media": {
+            "media_type": "tv",
+            "tmdbId": "1396",
+            "tvdbId": "81189",
+            "status": "PENDING",
+            "status4k": "UNKNOWN"
+          },
+          "request": {
+            "request_id": "2",
+            "requestedBy_email": "<scrubbed>@example.com",
+            "requestedBy_username": "<scrubbed>",
+            "requestedBy_avatar": "https://gravatar.com/avatar/0003cea90dd161594d6f268b4620be78?default=mm&size=200"
+          },
+          "extra": [
+            {
+              "name": "Requested Seasons",
+              "value": "1"
+            }
+          ]
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "bodyText": "ok"
+      }
+    }
+  ]
+}

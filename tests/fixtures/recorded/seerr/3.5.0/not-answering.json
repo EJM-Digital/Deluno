@@ -1,0 +1,20 @@
+{
+  "app": "seerr",
+  "version": "3.5.0",
+  "state": "not-answering",
+  "recordedAt": "2026-10-18T10:40:17Z",
+  "note": "A request sent to a port nothing listens on: the connection is refused.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/status"
+      },
+      "reply": {
+        "status": 0,
+        "headers": {},
+        "error": "bad port"
+      }
+    }
+  ]
+}

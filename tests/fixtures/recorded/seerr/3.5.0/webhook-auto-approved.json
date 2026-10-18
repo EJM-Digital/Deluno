@@ -1,0 +1,48 @@
+{
+  "app": "seerr",
+  "version": "3.5.0",
+  "state": "webhook-auto-approved",
+  "recordedAt": "2026-10-18T10:40:17Z",
+  "note": "The webhook Seerr sends for an administrator's own request, approved at once (MEDIA_AUTO_APPROVED). The request is what Seerr itself sent to the webhook address; the reply is the receiving container plain ok, not an answer from Deluno (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/seerr-servers/{id}/webhook",
+        "headers": {
+          "content-type": "application/json",
+          "authorization": "<scrubbed>",
+          "user-agent": "Seerr/3.5.0"
+        },
+        "body": {
+          "notification_type": "MEDIA_AUTO_APPROVED",
+          "event": "Movie Request Automatically Approved",
+          "subject": "The Matrix (1999)",
+          "message": "Set in the 22nd century, The Matrix tells the story of a computer hacker who joins a group of underground insurgents fighting the vast and powerful computers who now rule the earth.",
+          "image": "https://image.tmdb.org/t/p/w600_and_h900_bestv2/dXNAPwY7VrqMAo51EKhhCJfaGb5.jpg",
+          "media": {
+            "media_type": "movie",
+            "tmdbId": "603",
+            "tvdbId": "",
+            "status": "PENDING",
+            "status4k": "UNKNOWN"
+          },
+          "request": {
+            "request_id": "3",
+            "requestedBy_email": "admin@example.com",
+            "requestedBy_username": "<scrubbed>",
+            "requestedBy_avatar": "/avatarproxy/1ddf6fe552a843e1add40d0a694ead20?v=undefined"
+          },
+          "extra": []
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "bodyText": "ok"
+      }
+    }
+  ]
+}

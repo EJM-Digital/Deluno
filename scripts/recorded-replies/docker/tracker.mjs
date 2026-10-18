@@ -2,18 +2,22 @@
 // containers. It is the only part of the stack that is not a real app, and nothing it says is recorded: it only introduces the two
 // clients to each other (compact peer lists) so one really downloads from the other, and serves the .torrent files by link.
 //   POST /torrents/<name>   body = the torrent file          GET /dl/<name>.torrent    the file again
+//   POST /hook/<name>   keeps the request exactly as it came (method, headers, body) for the Seerr recorder; GET /hooks lists them, DELETE /hooks clears
 //   POST /fail/<infohash hex>   the tracker then answers that torrent with a failure reason (a tracker that is up and refuses)
 import http from 'node:http';
 
 const torrents = new Map();
 const peers = new Map(); // infohash(latin1) -> Map(ip:port -> {ip,port,at})
 const failing = new Set();
+const hooks = [];
 
 const bencodeString = (b) => Buffer.concat([Buffer.from(`${b.length}:`), b]);
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://tracker');
   const chunks = []; for await (const c of req) chunks.push(c);
   const body = Buffer.concat(chunks);
+  if (url.pathname.startsWith('/hook/')) { hooks.push({ name: url.pathname.slice(6), method: req.method, headers: req.headers, body: body.toString('utf8') }); res.end('ok'); return; }
+  if (url.pathname === '/hooks') { if (req.method === 'DELETE') hooks.length = 0; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(hooks)); return; }
   if (req.method === 'POST' && url.pathname.startsWith('/torrents/')) { torrents.set(decodeURIComponent(url.pathname.slice(10)), body); res.end('ok'); return; }
   if (req.method === 'POST' && url.pathname.startsWith('/fail/')) { failing.add(url.pathname.slice(6).toLowerCase()); res.end('ok'); return; }
   if (url.pathname.startsWith('/dl/')) { const t = torrents.get(decodeURIComponent(url.pathname.slice(4))); if (!t) { res.statusCode = 404; res.end('not found'); return; } res.setHeader('content-type', 'application/x-bittorrent'); res.end(t); return; }

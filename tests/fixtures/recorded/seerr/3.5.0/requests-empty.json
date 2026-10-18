@@ -1,0 +1,101 @@
+{
+  "app": "seerr",
+  "version": "3.5.0",
+  "state": "requests-empty",
+  "recordedAt": "2026-10-18T10:40:00Z",
+  "note": "The request, user and media lists as Deluno pages them, with no request yet (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/request?filter=all&sort=added&take=100&skip=0"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "pageInfo": {
+            "pages": 0,
+            "pageSize": 100,
+            "results": 0,
+            "page": 1
+          },
+          "results": [],
+          "serviceErrors": {
+            "radarr": [],
+            "sonarr": []
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/user?sort=displayname&take=100&skip=0"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "pageInfo": {
+            "pages": 1,
+            "pageSize": 100,
+            "results": 1,
+            "page": 1
+          },
+          "results": [
+            {
+              "permissions": 2,
+              "warnings": [],
+              "id": 1,
+              "email": "admin@example.com",
+              "plexUsername": null,
+              "jellyfinUsername": "<scrubbed>",
+              "username": null,
+              "recoveryLinkExpirationDate": null,
+              "userType": 3,
+              "plexId": null,
+              "jellyfinUserId": "1ddf6fe552a843e1add40d0a694ead20",
+              "avatar": "/avatarproxy/1ddf6fe552a843e1add40d0a694ead20?v=undefined",
+              "avatarETag": null,
+              "avatarVersion": null,
+              "movieQuotaLimit": null,
+              "movieQuotaDays": null,
+              "tvQuotaLimit": null,
+              "tvQuotaDays": null,
+              "createdAt": "2026-10-18T10:40:00.000Z",
+              "updatedAt": "2026-10-18T10:40:00.000Z",
+              "requestCount": 0,
+              "displayName": "<scrubbed>"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/media?filter=all&sort=added&take=100&skip=0"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "pageInfo": {
+            "pages": 0,
+            "pageSize": 100,
+            "results": 0,
+            "page": 1
+          },
+          "results": []
+        }
+      }
+    }
+  ]
+}

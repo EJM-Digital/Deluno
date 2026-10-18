@@ -1,0 +1,93 @@
+{
+  "app": "seerr",
+  "version": "3.5.0",
+  "state": "setup",
+  "recordedAt": "2026-10-18T10:40:00Z",
+  "note": "The first sign-in (a Jellyfin administrator) that initialises Seerr, then the public settings (Seerr 3.5.0 in Docker, linked to a Jellyfin; titles from TMDb through Seerr's own key).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/auth/jellyfin",
+        "body": {
+          "username": "<scrubbed>",
+          "password": "<scrubbed>",
+          "hostname": "<scrubbed>",
+          "port": 8096,
+          "useSsl": false,
+          "urlBase": "",
+          "email": "admin@example.com",
+          "serverType": 2
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "permissions": 2,
+          "warnings": [],
+          "id": 1,
+          "jellyfinUsername": "<scrubbed>",
+          "jellyfinUserId": "1ddf6fe552a843e1add40d0a694ead20",
+          "userType": 3,
+          "avatar": "/avatarproxy/1ddf6fe552a843e1add40d0a694ead20?v=undefined",
+          "plexUsername": null,
+          "username": null,
+          "recoveryLinkExpirationDate": null,
+          "avatarETag": null,
+          "avatarVersion": null,
+          "movieQuotaLimit": null,
+          "movieQuotaDays": null,
+          "tvQuotaLimit": null,
+          "tvQuotaDays": null,
+          "createdAt": "2026-10-18T10:40:00.000Z",
+          "updatedAt": "2026-10-18T10:40:00.000Z"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/settings/public"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "initialized": false,
+          "applicationTitle": "Seerr",
+          "applicationUrl": "",
+          "hideAvailable": false,
+          "hideBlocklisted": false,
+          "hideRequested": false,
+          "localLogin": true,
+          "mediaServerLogin": true,
+          "jellyfinExternalHost": "",
+          "jellyfinForgotPasswordUrl": "",
+          "movie4kEnabled": false,
+          "series4kEnabled": false,
+          "discoverRegion": "",
+          "streamingRegion": "",
+          "originalLanguage": "",
+          "mediaServerType": 2,
+          "partialRequestsEnabled": true,
+          "enableSpecialEpisodes": false,
+          "cacheImages": false,
+          "vapidPublic": "BIU_Mmw3s0J22BE7uiGSUny2ekVJ_ah5FTYVEHXmWOxx0UUJBYcpuOyDz1418cDPgHue7UyQ1RdXD_hoMkdNsSA",
+          "enablePushRegistration": false,
+          "locale": "en",
+          "emailEnabled": false,
+          "userEmailRequired": false,
+          "newPlexLogin": true,
+          "youtubeUrl": "",
+          "versionCheck": true,
+          "plexClientIdentifier": "38781139-e1c9-4373-bd73-15761ef10d4b"
+        }
+      }
+    }
+  ]
+}
