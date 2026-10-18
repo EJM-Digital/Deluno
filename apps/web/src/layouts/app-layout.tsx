@@ -268,8 +268,15 @@ function AppLayoutContent() {
   }, [location.pathname]);
 
   useHotkeys("mod+k", (e) => { e.preventDefault(); setCommandOpen(true); }, { enableOnFormTags: true }, []);
-  useHotkeys("shift+/", (e) => { if (isEditableTarget(e.target)) return; e.preventDefault(); setHelpOpen(true); }, [], []);
-  useHotkeys("/", (e) => { if (isEditableTarget(e.target)) return; e.preventDefault(); setSearchOpen(true); }, [], []);
+  useHotkeys("shift+slash", (e) => { if (isEditableTarget(e.target)) return; e.preventDefault(); setHelpOpen(true); }, [], []);
+  useHotkeys("slash", (e) => {
+    if (isEditableTarget(e.target)) return;
+    e.preventDefault();
+    // The search sheet is hidden from `lg` up, where the search box in the top bar opens the search and navigate window,
+    // whose box takes the cursor. Below `lg` the sheet is the search.
+    if (typeof window.matchMedia === "function" && window.matchMedia("(min-width: 1024px)").matches) setCommandOpen(true);
+    else setSearchOpen(true);
+  }, [], []);
 
   useEffect(() => {
     let armed = false;

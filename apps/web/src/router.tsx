@@ -64,10 +64,19 @@ function withSkeleton(loadModule: () => Promise<LazyRouteModule>) {
 
 const requiresSetup = readRequiresSetup;
 
+/**
+ * Where the person was, with its # part. A loader's request never carries the # part (the browser keeps it to itself),
+ * so on the page being opened it is read from the address bar. The sign-in page still checks the result with
+ * safeReturnAddress.
+ */
+function returnAddressOf(url: URL): string {
+  const hash = url.hash || (typeof window !== "undefined" && window.location.pathname === url.pathname ? window.location.hash : "");
+  return `${url.pathname}${url.search}${hash}`;
+}
+
 async function requireSessionLoader({ request }: { request: Request }) {
   if (await requiresSetup()) {
-    const url = new URL(request.url);
-    const returnTo = `${url.pathname}${url.search}${url.hash}`;
+    const returnTo = returnAddressOf(new URL(request.url));
     throw redirect(`/setup?return=${encodeURIComponent(returnTo)}`);
   }
 
@@ -76,8 +85,7 @@ async function requireSessionLoader({ request }: { request: Request }) {
     return null;
   }
 
-  const url = new URL(request.url);
-  const returnTo = `${url.pathname}${url.search}${url.hash}`;
+  const returnTo = returnAddressOf(new URL(request.url));
   throw redirect(`/login?return=${encodeURIComponent(returnTo)}`);
 }
 

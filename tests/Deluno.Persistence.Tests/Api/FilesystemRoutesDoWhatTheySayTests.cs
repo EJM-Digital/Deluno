@@ -99,6 +99,39 @@ public sealed class FilesystemRoutesDoWhatTheySayTests
     }
 
     [Fact]
+    public async Task Scanning_a_season_pack_folder_lists_the_episodes_in_its_subfolders_and_leaves_a_file_it_cannot_place_unmatched()
+    {
+        await using var app = await StartAsync();
+        await ApiScenes.CreateLibraryAsync(app, "tv");
+        var pack = Directory.CreateDirectory(Path.Combine(app.DataRoot, "to-sort", "Some.Show.S01.1080p.WEB-DL-GRP")).FullName;
+        var extras = Directory.CreateDirectory(Path.Combine(pack, "Season 1 Extras")).FullName;
+        await File.WriteAllBytesAsync(Path.Combine(pack, "Some.Show.S01E01.1080p.WEB-DL-GRP.mkv"), [1, 2]);
+        await File.WriteAllBytesAsync(Path.Combine(pack, "Some.Show.S01E02.1080p.WEB-DL-GRP.mkv"), [3, 4]);
+        await File.WriteAllBytesAsync(Path.Combine(extras, "Some.Show.S01E03.1080p.WEB-DL-GRP.mkv"), [5, 6]);
+        await File.WriteAllBytesAsync(Path.Combine(pack, "readme.nfo"), [7]);
+        await File.WriteAllBytesAsync(Path.Combine(pack, "1080p.mkv"), [8]);
+
+        var scan = await PostOkAsync(app, "/api/filesystem/import/scan-folder", new { folderPath = Path.GetDirectoryName(pack), mediaType = "tv", libraryId = (string?)null, seriesId = (string?)null });
+
+        var items = scan.GetProperty("items").EnumerateArray().ToArray();
+        // Every video file is listed, the one inside a subfolder as well, and a file that is not a video is not.
+        Assert.Equal(4, items.Length);
+        Assert.Equal(
+            ["1080p.mkv", "Some.Show.S01E01.1080p.WEB-DL-GRP.mkv", "Some.Show.S01E02.1080p.WEB-DL-GRP.mkv", "Some.Show.S01E03.1080p.WEB-DL-GRP.mkv"],
+            items.Select(item => item.GetProperty("fileName").GetString()!).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+        var inSubfolder = items.Single(item => item.GetProperty("fileName").GetString()!.Contains("S01E03", StringComparison.Ordinal));
+        Assert.Equal(Path.Combine(extras, "Some.Show.S01E03.1080p.WEB-DL-GRP.mkv"), inSubfolder.GetProperty("sourcePath").GetString());
+        // A guess is made from the file name; a file with no title in its name has no guess and is left unmatched for a person to name.
+        Assert.All(items.Where(item => item.GetProperty("fileName").GetString()!.StartsWith("Some.Show", StringComparison.Ordinal)), item => Assert.Equal("Some Show", item.GetProperty("guessedTitle").GetString()));
+        Assert.All(items.Where(item => item.GetProperty("fileName").GetString()!.StartsWith("Some.Show", StringComparison.Ordinal)), item => Assert.True(item.GetProperty("matched").GetBoolean()));
+        var unplaced = items.Single(item => item.GetProperty("fileName").GetString() == "1080p.mkv");
+        Assert.False(unplaced.GetProperty("matched").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, unplaced.GetProperty("guessedTitle").ValueKind);
+        // Scanning never moves, renames or deletes anything.
+        Assert.Equal(5, Directory.GetFiles(pack, "*", SearchOption.AllDirectories).Length);
+    }
+
+    [Fact]
     public async Task Scanning_a_folder_that_does_not_exist_or_holds_no_video_says_so()
     {
         await using var app = await StartAsync();

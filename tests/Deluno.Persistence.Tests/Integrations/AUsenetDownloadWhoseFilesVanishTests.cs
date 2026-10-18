@@ -1,4 +1,7 @@
+using Deluno.Connections.Contracts;
 using Deluno.Contracts;
+using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Platform.Contracts;
 
@@ -89,6 +92,80 @@ public sealed class AUsenetDownloadWhoseFilesVanishTests
         var result = DownloadClientTelemetryService.MarkDownloadsWhoseFilesAreGone(snapshot, OnlyTheCategoryFolderIsThere, [], []);
 
         Assert.Equal(DownloadQueueStatuses.FilesGone, Assert.Single(result.Queue).Status);
+    }
+
+    private sealed class RecordedHttp(Func<HttpRequestMessage, string, HttpResponseMessage> answer) : HttpMessageHandler, IHttpClientFactory
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => answer(request, request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken));
+
+        public HttpClient CreateClient(string name) => new(this, disposeHandler: false);
+    }
+
+    private static DownloadClientItem ClientItem(string protocol)
+        => new("client-1", protocol, protocol, "localhost", 1234, "user", "secret", "http://localhost:1234/", false, null,
+            "Movies", "TV", null, 1, true, "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+
+    /// <summary>
+    /// The same thing on what the clients really said (SABnzbd 5.1.3 and NZBGet 26.3, tests/fixtures/recorded: a finished job, with only
+    /// the place it says its files are changed to a real folder on this disk) and a real file check: with the job's own folder gone
+    /// and the category folder still there, the job reads "Files are gone", is not offered to the processor, and the words are the
+    /// ones the Transfers row shows. With the files there, it reads as finished.
+    /// </summary>
+    [Theory]
+    [InlineData("sabnzbd")]
+    [InlineData("nzbget")]
+    public async Task A_recorded_finished_job_whose_folder_was_deleted_from_a_real_download_area_reads_Files_are_gone_and_is_not_handed_on(string protocol)
+    {
+        var category = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "deluno-files-gone-" + Guid.NewGuid().ToString("n"), "completed", "movies")).FullName;
+        try
+        {
+            const string job = "Recorded.Vanishing.Film.2020.1080p.WEB-DL.x264-GOLDEN";
+            var jobFolder = Path.Combine(category, job);
+            var finishedFile = Path.Combine(jobFolder, job + ".mkv");
+
+            async Task<IReadOnlyList<DownloadClientHistoryItem>> HistoryAsync()
+            {
+                if (protocol == "sabnzbd")
+                {
+                    var history = RecordedReplies.Sabnzbd("finished-folder").Body("mode=history&output", ("history.slots.0.storage", finishedFile), ("history.slots.0.name", job), ("history.slots.0.nzb_name", job + ".nzb"));
+                    var empty = RecordedReplies.Sabnzbd("removed-without-data").Body("mode=queue&output", ("queue.slots", new System.Text.Json.Nodes.JsonArray()));
+                    var handler = new RecordedHttp((request, _) => RecordedReplies.Json(request.RequestUri!.Query.Contains("mode=history", StringComparison.Ordinal) ? history : empty));
+                    return await new SabnzbdDownloadClient(handler).GetHistoryAsync(ClientItem(protocol), DateTimeOffset.UtcNow, CancellationToken.None);
+                }
+
+                var nzbget = RecordedReplies.Nzbget("finished-single-file").Body(
+                    "history\"", ("^result", 1), ("result.0.Status", "SUCCESS/UNPACK"), ("result.0.Category", "Movies"),
+                    ("result.0.NZBName", job), ("result.0.Name", job), ("result.0.DestDir", jobFolder));
+                return await new NzbGetDownloadClient(new RecordedHttp((_, _) => RecordedReplies.Json(nzbget))).GetHistoryAsync(ClientItem(protocol), DateTimeOffset.UtcNow, CancellationToken.None);
+            }
+
+            DownloadClientTelemetrySnapshot Snapshot(IReadOnlyList<DownloadClientHistoryItem> history)
+                => new("client-1", protocol, protocol, "http://localhost:1234/", "healthy", null,
+                    new DownloadClientTelemetryCapabilities(true, true, true, true, false, true, "apikey"),
+                    new DownloadTelemetrySummary(0, 0, 0, 0, 0, 0, 0), [], history, Done);
+
+            // The job folder is gone: the recorded history names a path that is not on this disk, though the category folder is.
+            var history = await HistoryAsync();
+            var named = history.First(item => item.ReleaseName == job);
+            history = [named];
+            Assert.StartsWith(category, named.SourcePath!, StringComparison.OrdinalIgnoreCase);
+            var gone = DownloadClientTelemetryService.MarkDownloadsWhoseFilesAreGone(Snapshot(history), (path => File.Exists(path) || Directory.Exists(path)), [], []);
+            var row = Assert.Single(gone.Queue);
+            Assert.Equal(DownloadQueueStatuses.FilesGone, row.Status);
+            Assert.Equal(DownloadFilesGone.Message, row.ErrorMessage);
+            Assert.False(DownloadFilesGone.ExpectsItsFiles(row.Status), "a download whose files are gone is not one the processor is offered");
+
+            // The folder is there again: the same recorded job is an ordinary finished download.
+            Directory.CreateDirectory(jobFolder);
+            await File.WriteAllBytesAsync(finishedFile, new byte[1024]);
+            var there = DownloadClientTelemetryService.MarkDownloadsWhoseFilesAreGone(Snapshot([(await HistoryAsync()).First(item => item.ReleaseName == job)]), (path => File.Exists(path) || Directory.Exists(path)), [], []);
+            Assert.Empty(there.Queue);
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(Path.GetDirectoryName(category))!, recursive: true);
+        }
     }
 
     private static DownloadClientTelemetrySnapshot UsenetHistoryOnly(string protocol, string id, string release, string sourcePath)

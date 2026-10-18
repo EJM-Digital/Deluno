@@ -144,6 +144,32 @@ describe("Allowed Hosts: adding an address", () => {
   });
 });
 
+describe("Allowed Hosts: taking an added address off again", () => {
+  it("an address added by hand is listed as such, and unticking it removes it from what is saved", async () => {
+    renderPage({ allowedHosts: { allowedHosts: ["deluno.example.com", "my-pc"] } });
+    const typed = screen.getByRole("checkbox", { name: /deluno.example.com/ });
+    expect(typed).toBeChecked();
+    expect(screen.getByText("Added by hand")).toBeInTheDocument();
+
+    fireEvent.click(typed);
+    expect(typed).not.toBeChecked();
+    fetchJsonMock.mockResolvedValueOnce({});
+    fireEvent.click(screen.getByRole("button", { name: "Save Allowed Hosts" }));
+    await waitFor(() => expect(fetchJsonMock).toHaveBeenCalled());
+    expect(JSON.parse(fetchJsonMock.mock.calls[0]![1].body as string)).toEqual({ enabled: false, allowedHosts: ["my-pc"] });
+  });
+
+  // Defect: an address typed into the box and added is kept for the save but is not drawn in the list until it has been saved
+  // (the rows come only from the detected addresses and the saved ones), so the box clears and nothing shows it was taken
+  // (system-security-page.tsx, `rows`).
+  it("an address that was just added shows in the list at once, ticked", () => {
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText("*.example.com"), { target: { value: "deluno.example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(screen.getByRole("checkbox", { name: /deluno.example.com/ })).toBeChecked();
+  });
+});
+
 describe("Allowed Hosts: saving", () => {
   it("Save Allowed Hosts is off until something changes", () => {
     renderPage();

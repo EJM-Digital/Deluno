@@ -87,7 +87,9 @@ export default defineConfig({
         // real install. See MoviesLargeLibrarySeedEndpoints's doc comment.
         Testing__EnableLargeLibrarySeedEndpoint: "true",
         // #1178 — lets realtime-dashboard-live.spec.ts make the server raise events.
-        Testing__EnableRealtimePushEndpoint: "true"
+        Testing__EnableRealtimePushEndpoint: "true",
+        // Lets the real Transfers specs start from a sent download and its hand-off (TransfersSeedTestEndpoints).
+        Testing__EnableTransfersSeedEndpoint: "true"
       }
     },
     {
