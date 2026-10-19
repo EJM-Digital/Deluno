@@ -48,19 +48,19 @@ public sealed class TheDailyDatabaseCheckKeepsItsScheduleTests
         await service.StartAsync(CancellationToken.None);
         try
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(700));
+            await Task.Delay(TimeSpan.FromMilliseconds(700)); // reason: proving nothing happens before the start delay can only be done by letting time pass
             Assert.Null(DatabaseMaintenanceLog.Read(app.DataRoot).IntegrityCheckedUtc);
 
             var deadline = DateTime.UtcNow.AddSeconds(15);
             DateTimeOffset? first = null;
             while (DateTime.UtcNow < deadline && (first = DatabaseMaintenanceLog.Read(app.DataRoot).IntegrityCheckedUtc) is null)
             {
-                await Task.Delay(100);
+                await Task.Delay(100); // reason: poll step inside a 15-second bounded wait for the first pass
             }
 
             Assert.NotNull(first);
             // Many looks later (the tick is 150 ms), the claim has kept it to the one pass.
-            await Task.Delay(TimeSpan.FromMilliseconds(1200));
+            await Task.Delay(TimeSpan.FromMilliseconds(1200)); // reason: proving no second pass happens can only be done by letting several ticks pass
             Assert.Equal(first, DatabaseMaintenanceLog.Read(app.DataRoot).IntegrityCheckedUtc);
             var state = (await app.Services.GetRequiredService<IJobQueueRepository>().ListSystemTaskStatesAsync(CancellationToken.None))
                 .Single(item => item.ScheduleKey == SystemTasks.DatabaseIntegrity);
