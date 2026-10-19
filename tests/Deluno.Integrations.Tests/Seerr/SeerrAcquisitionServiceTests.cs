@@ -386,4 +386,76 @@ public sealed class SeerrAcquisitionServiceTests
         fixture.Acquisitions.Verify(repo => repo.RecordAsync(
             "seerr-1", "Lab Seerr", "movies", string.Empty, It.IsAny<string>(), 47, "failed", It.IsAny<string>(), null, It.IsAny<CancellationToken>(), null, null), Times.Once);
     }
+
+    [Fact]
+    public async Task The_TMDb_id_is_what_the_title_is_looked_up_by_when_both_ids_are_sent_and_the_TVDb_id_only_when_it_is_the_only_one()
+    {
+        var fixture = new Fixture();
+        fixture.Libraries.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([MovieLibrary("library-movies")]);
+        fixture.Libraries.Setup(repo => repo.ListDestinationRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        var asked = new List<MetadataLookupRequest>();
+        fixture.SetupHappyMoviePath(Movie(), "library-movies");
+        fixture.Metadata.Setup(provider => provider.ResolveProviderRecordAsync(It.IsAny<MetadataLookupRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<MetadataLookupRequest, CancellationToken>((request, _) => asked.Add(request))
+            .ReturnsAsync(new MetadataProviderRecordLookup(MetadataProviderRecordStatus.Found, "tmdb", "603", Movie()));
+        var service = fixture.BuildService();
+
+        await service.AcquireAsync(Connection(movieLibraryId: "library-movies"), "movies", tmdbId: "603", tvdbId: "81189", seerrMediaId: 1, is4k: false, requestedBy: null, CancellationToken.None);
+        await service.AcquireAsync(Connection(movieLibraryId: "library-movies"), "movies", tmdbId: null, tvdbId: "81189", seerrMediaId: 2, is4k: false, requestedBy: null, CancellationToken.None);
+        await service.AcquireAsync(Connection(movieLibraryId: "library-movies"), "movies", tmdbId: " ", tvdbId: "81189", seerrMediaId: 3, is4k: false, requestedBy: null, CancellationToken.None);
+
+        Assert.Equal([("tmdb", "603"), ("tvdb", "81189"), ("tvdb", "81189")], asked.Select(request => (request.IdSource, request.ProviderId)));
+    }
+
+    [Fact]
+    public async Task An_unexpected_error_becomes_a_failed_acquisition_in_plain_words_and_is_never_thrown()
+    {
+        var fixture = new Fixture();
+        fixture.Libraries.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([MovieLibrary("library-movies")]);
+        fixture.Libraries.Setup(repo => repo.ListDestinationRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        fixture.Metadata.Setup(provider => provider.ResolveProviderRecordAsync(It.IsAny<MetadataLookupRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Sequence contains no elements at Deluno.Internal.Thing.Method()"));
+
+        var outcome = await fixture.BuildService().AcquireAsync(Connection(), "movies", tmdbId: "603", tvdbId: null, seerrMediaId: 9, is4k: false, requestedBy: "Ben", CancellationToken.None);
+
+        Assert.False(outcome.Ok);
+        Assert.DoesNotContain("at Deluno", outcome.Message, StringComparison.Ordinal);
+        Assert.False(string.IsNullOrWhiteSpace(outcome.Message));
+        fixture.Acquisitions.Verify(repo => repo.RecordAsync(
+            "seerr-1", "Lab Seerr", "movies", string.Empty, "Unexpected error", 9, "failed", outcome.Message, "Ben", It.IsAny<CancellationToken>(), null, null), Times.Once);
+        fixture.Activity.Verify(repo => repo.RecordActivityAsync("seerr.acquire-failed", $"Lab Seerr: {outcome.Message}", null, null, "seerr-server", "seerr-1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(false, AutoTagTrigger.Added)]
+    [InlineData(true, AutoTagTrigger.Edited)]
+    public async Task The_tags_the_auto_tagging_rules_would_give_are_known_before_routing_so_a_tag_rule_places_the_request_and_the_rules_run_again_once_the_title_exists(bool alreadyInTheCatalogue, AutoTagTrigger trigger)
+    {
+        var fixture = new Fixture();
+        fixture.Libraries.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([MovieLibrary("library-movies"), MovieLibrary("library-kids")]);
+        fixture.Libraries.Setup(repo => repo.ListDestinationRulesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Rule("rule-kids", "tag", "kids", "library-kids")]);
+        fixture.SetupHappyMoviePath(Movie(), "library-kids");
+        if (alreadyInTheCatalogue)
+        {
+            fixture.Movies.Setup(repo => repo.FindExistingIdAsync(It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync("movie-matrix");
+        }
+
+        var autoTagging = new Mock<IAutoTaggingService>();
+        autoTagging.Setup(service => service.PredictAsync(It.IsAny<AutoTagFacts>(), It.IsAny<CancellationToken>())).ReturnsAsync(["kids"]);
+        autoTagging.Setup(service => service.ApplyAsync(It.IsAny<MediaKind>(), It.IsAny<string>(), It.IsAny<AutoTagTrigger>(), It.IsAny<AutoTagAddFacts?>(), It.IsAny<IReadOnlyList<string>?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(default(AutoTagOutcome)!);
+        var service = new SeerrAcquisitionService(
+            fixture.Libraries.Object, new LibraryRoutingResolver(), fixture.Movies.Object, fixture.Series.Object, fixture.Metadata.Object, fixture.Decisions.Object,
+            fixture.JobQueue.Object, fixture.Activity.Object, fixture.Acquisitions.Object, NullLogger<SeerrAcquisitionService>.Instance, null, autoTagging.Object);
+
+        var outcome = await service.AcquireAsync(Connection(movieLibraryId: "library-movies"), "movies", tmdbId: "603", tvdbId: null, seerrMediaId: 50, is4k: false, requestedBy: null, CancellationToken.None);
+
+        Assert.True(outcome.Ok);
+        fixture.JobQueue.Verify(repo => repo.RequestLibrarySearchAsync(It.Is<LibraryAutomationPlanItem>(item => item.LibraryId == "library-kids"), It.IsAny<CancellationToken>()), Times.Once);
+        autoTagging.Verify(service => service.PredictAsync(It.IsAny<AutoTagFacts>(), It.IsAny<CancellationToken>()), Times.Once);
+        autoTagging.Verify(service => service.ApplyAsync(MediaKind.Movie, "movie-matrix", trigger, It.IsAny<AutoTagAddFacts?>(), It.Is<IReadOnlyList<string>?>(libraries => libraries != null && libraries.SequenceEqual(new[] { "library-kids" })), It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

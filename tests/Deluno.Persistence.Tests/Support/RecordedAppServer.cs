@@ -32,7 +32,11 @@ internal sealed class RecordedAppServer : IAsyncDisposable
     }
 
     /// <summary>One request the app received.</summary>
-    public sealed record Seen(string Method, string PathAndQuery, string Body, string Authorization = "");
+    public sealed record Seen(string Method, string PathAndQuery, string Body, string Authorization = "", IReadOnlyDictionary<string, string>? Headers = null)
+    {
+        /// <summary>A request header by name, as the app was sent it (empty when it was not sent).</summary>
+        public string Header(string name) => Headers is not null && Headers.TryGetValue(name.ToLowerInvariant(), out var value) ? value : string.Empty;
+    }
 
     public Uri BaseUri { get; }
 
@@ -118,7 +122,8 @@ internal sealed class RecordedAppServer : IAsyncDisposable
 
             lock (requests)
             {
-                requests.Add(new Seen(context.Request.Method, context.Request.Path + context.Request.QueryString, body, context.Request.Headers.Authorization.ToString()));
+                requests.Add(new Seen(context.Request.Method, context.Request.Path + context.Request.QueryString, body, context.Request.Headers.Authorization.ToString(),
+                    context.Request.Headers.ToDictionary(header => header.Key.ToLowerInvariant(), header => header.Value.ToString())));
             }
 
             var message = new HttpRequestMessage(new HttpMethod(context.Request.Method), $"http://127.0.0.1{context.Request.Path}{context.Request.QueryString}")

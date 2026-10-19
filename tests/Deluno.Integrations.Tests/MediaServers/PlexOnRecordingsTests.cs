@@ -279,6 +279,73 @@ public sealed class PlexOnRecordingsTests
         Assert.True(plex.Sent("PUT /library/sections/1/emptyTrash"));
     }
 
+
+    // ---- what a refresh does when the server cannot do all of it ----
+
+    [Fact]
+    public async Task A_created_or_modified_file_never_empties_the_trash()
+    {
+        var plex = new Plex();
+
+        await plex.Client().RefreshAsync(Server(), "movies", [new MediaServerPathChange(File, MediaServerChangeKind.Created), new MediaServerPathChange(Folder + "/Sintel (2010).nfo", MediaServerChangeKind.Modified)], CancellationToken.None);
+
+        Assert.True(plex.Sent($"GET /library/sections/1/refresh?path={Uri.EscapeDataString(Folder)}"), string.Join(" | ", plex.Calls));
+        Assert.DoesNotContain(plex.Calls, call => call.Contains("emptyTrash", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_server_with_no_library_of_the_kind_asked_for_has_nothing_to_refresh_and_no_refresh_is_sent()
+    {
+        var noFilms = R("sections").Single.Reply.BodyWith(("MediaContainer.Directory.0.type", "artist"));
+        var plex = new Plex(request => request.RequestUri!.AbsolutePath == "/library/sections" ? RecordedReplies.Json(noFilms) : null);
+
+        var answer = await plex.Client().RefreshAsync(Server(), "movies", [new MediaServerPathChange(File, MediaServerChangeKind.Created)], CancellationToken.None);
+
+        Assert.Contains("has no movie library", Assert.IsType<MediaServerAnswer<MediaServerRefresh>.NotSupported>(answer).Reason, StringComparison.Ordinal);
+        Assert.DoesNotContain(plex.Calls, call => call.Contains("/refresh", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_libraries_listing_that_fails_means_the_server_could_not_be_asked_and_no_refresh_is_sent()
+    {
+        var plex = new Plex(request => request.RequestUri!.AbsolutePath == "/library/sections" ? new HttpResponseMessage(HttpStatusCode.InternalServerError) : null);
+
+        var answer = await plex.Client().RefreshAsync(Server(), "movies", [new MediaServerPathChange(File, MediaServerChangeKind.Created)], CancellationToken.None);
+
+        Assert.IsType<MediaServerAnswer<MediaServerRefresh>.Unreachable>(answer);
+        Assert.DoesNotContain(plex.Calls, call => call.Contains("/refresh", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task When_every_refresh_call_fails_the_server_is_reported_as_not_told_and_the_trash_is_left_alone()
+    {
+        var plex = new Plex(request => request.RequestUri!.AbsolutePath.EndsWith("/refresh", StringComparison.Ordinal) ? new HttpResponseMessage(HttpStatusCode.InternalServerError) : null);
+
+        var answer = await plex.Client().RefreshAsync(Server(), "movies", [new MediaServerPathChange(File, MediaServerChangeKind.Deleted)], CancellationToken.None);
+
+        Assert.IsType<MediaServerAnswer<MediaServerRefresh>.Unreachable>(answer);
+        Assert.DoesNotContain(plex.Calls, call => call.Contains("emptyTrash", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task When_one_folder_refreshes_and_another_call_fails_the_server_is_still_reported_as_told_for_what_was_touched()
+    {
+        var other = "/media/Movies/Arrival (2016)";
+        var plex = new Plex(request => request.RequestUri!.AbsolutePath.EndsWith("/refresh", StringComparison.Ordinal) && request.RequestUri.Query.Contains("Arrival", StringComparison.Ordinal)
+            ? new HttpResponseMessage(HttpStatusCode.InternalServerError)
+            : null);
+
+        var answer = await plex.Client().RefreshAsync(
+            Server(), "movies",
+            [new MediaServerPathChange(File, MediaServerChangeKind.Created), new MediaServerPathChange(other + "/Arrival (2016).mkv", MediaServerChangeKind.Created)],
+            CancellationToken.None);
+
+        var refresh = Assert.IsType<MediaServerAnswer<MediaServerRefresh>.Reported>(answer).Value;
+        Assert.False(refresh.UsedFallbackScan);
+        Assert.Contains("2 changed folders", refresh.Message, StringComparison.Ordinal);
+        Assert.True(plex.Sent($"GET /library/sections/1/refresh?path={Uri.EscapeDataString(Folder)}"));
+        Assert.True(plex.Sent($"GET /library/sections/1/refresh?path={Uri.EscapeDataString(other)}"));
+    }
     // ---- the folder browser ----
 
     [Fact]
