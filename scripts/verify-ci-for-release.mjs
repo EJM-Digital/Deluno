@@ -35,6 +35,13 @@ export const REQUIRED_EVIDENCE = [{ job: "ci-passed", steps: ["Every job that wa
 // cannot prove a release candidate: each prefix must match at least one job that concluded `success`.
 export const MANUAL_ONLY_JOBS = ["Windows installer", "Windows end-to-end (", "End-to-end ("];
 
+// While the Windows jobs run on a self-hosted runner (the DELUNO_WINDOWS_RUNS_ON repository variable is set) the Windows
+// end-to-end legs are skipped on purpose, because they install Deluno and its clients on their machine and must never run
+// on that PC. Their ground is then covered by the golden-path status, which a release requires as well
+// (verify-golden-path-for-release.mjs). So for this prefix a skipped leg counts, but only beside a passed installer job:
+// a leg skipped because the installer failed is still refused by the installer's own line.
+export const COVERED_BY_GOLDEN_PATH_WHEN_SKIPPED = "Windows end-to-end (";
+
 // Judges one run against the evidence. `run` has event, status, conclusion; `jobs` is the run's jobs, each with
 // name, conclusion and steps[{name, conclusion}]. Returns the reasons it does not qualify; empty means it does.
 export function evaluateRun(run, jobs, evidence = REQUIRED_EVIDENCE) {
@@ -49,7 +56,11 @@ export function evaluateRun(run, jobs, evidence = REQUIRED_EVIDENCE) {
   if (run.conclusion !== "success") problems.push(`concluded ${run.conclusion}`);
   if (evidence === REQUIRED_EVIDENCE) {
     for (const prefix of MANUAL_ONLY_JOBS) {
-      if (!jobs.some((job) => job.name.startsWith(prefix) && job.conclusion === "success")) {
+      const matching = jobs.filter((job) => job.name.startsWith(prefix));
+      const coveredByGoldenPath = prefix === COVERED_BY_GOLDEN_PATH_WHEN_SKIPPED && matching.length > 0 &&
+        matching.every((job) => job.conclusion === "skipped") &&
+        jobs.some((job) => job.name.startsWith("Windows installer") && job.conclusion === "success");
+      if (!coveredByGoldenPath && !matching.some((job) => job.conclusion === "success")) {
         problems.push(`no "${prefix.replace(/ \($/, "")}" job passed: it runs only on a manual run (gh workflow run ci.yml), the one full run before a tag`);
       }
     }
