@@ -150,6 +150,20 @@ public static class MediaServerEndpointRouteBuilderExtensions
                 });
             }
 
+            // One mapping per Deluno folder per server: say so, instead of letting the
+            // database's own refusal come back as a server error.
+            static string Bare(string path) => path.Trim().TrimEnd('/', (char)92);
+            var alreadyMapped = (await repository.ListPathMappingsAsync(id, cancellationToken))
+                .FirstOrDefault(existing => string.Equals(Bare(existing.DelunoPath), Bare(request.DelunoPath), StringComparison.Ordinal));
+            if (alreadyMapped is not null)
+            {
+                return Results.Conflict(new
+                {
+                    title = "That folder is already mapped",
+                    detail = $"{request.DelunoPath.Trim()} already maps to {alreadyMapped.ServerPath} on this server. Change or remove that mapping first."
+                });
+            }
+
             var item = await repository.CreatePathMappingAsync(id, request, cancellationToken);
             return item is null ? Results.NotFound() : Results.Ok(item);
         });
@@ -247,12 +261,12 @@ public static class MediaServerEndpointRouteBuilderExtensions
                 return;
             }
 
-            await notificationService.DispatchAsync(
+            await NotificationOutboundDispatch.GuardAsync(async () => await notificationService.DispatchAsync(
                 "health.degraded",
                 $"{providerName} degraded",
                 message ?? $"{providerName} is unhealthy.",
                 null,
-                cancellationToken);
+                cancellationToken), "health.degraded");
             return;
         }
 
@@ -268,12 +282,12 @@ public static class MediaServerEndpointRouteBuilderExtensions
             return;
         }
 
-        await notificationService.DispatchAsync(
+        await NotificationOutboundDispatch.GuardAsync(async () => await notificationService.DispatchAsync(
             "health.restored",
             $"{providerName} is healthy again",
             message ?? $"{providerName} recovered.",
             null,
-            cancellationToken);
+            cancellationToken), "health.restored");
     }
 
     private static Dictionary<string, string[]> Validate(SaveMediaServerRequest request, MediaServerConnection? stored)

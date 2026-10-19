@@ -363,6 +363,9 @@ export function SettingsNotificationsPage() {
     await run("test", async () => {
       const response = await authedFetch(`/api/notification-webhooks/${id}/test`, { method: "POST" });
       if (!response.ok) throw new Error(await readErrorText(response, "Test notification could not be sent."));
+      // The endpoint answers 200 with sent:false when notifications are paused, the webhook is off or every attempt failed.
+      const result = (await response.json().catch(() => null)) as { sent?: boolean; message?: string; error?: string } | null;
+      if (result?.sent === false) throw new Error(result.message ?? result.error ?? "Test notification could not be sent.");
     }, `Test event sent to ${editing?.name ?? "the webhook"}`);
   }
 

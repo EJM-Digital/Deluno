@@ -239,12 +239,12 @@ public sealed class UnmatchedImportGiveUpService(
                 (await notificationPreferences.GetPreferencesAsync(cancellationToken)).UnmatchedImportGivenUpEnabled;
             if (enabled)
             {
-                await outboundNotificationService.DispatchAsync(
+                await NotificationOutboundDispatch.GuardAsync(async () => await outboundNotificationService.DispatchAsync(
                     "filesystem.import.unmatched-given-up",
                     $"Gave up waiting to match: {title}",
                     giveUpMessage,
                     giveUpDetails,
-                    cancellationToken);
+                    cancellationToken), "filesystem.import.unmatched-given-up");
             }
         }
 

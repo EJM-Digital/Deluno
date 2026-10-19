@@ -1725,12 +1725,12 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 return;
             }
 
-            await notificationService.DispatchAsync(
+            await NotificationOutboundDispatch.GuardAsync(async () => await notificationService.DispatchAsync(
                 "health.degraded",
                 $"{providerName} degraded",
                 message ?? $"{providerName} is unhealthy.",
                 null,
-                cancellationToken);
+                cancellationToken), "health.degraded");
             return;
         }
 
@@ -1746,12 +1746,12 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             return;
         }
 
-        await notificationService.DispatchAsync(
+        await NotificationOutboundDispatch.GuardAsync(async () => await notificationService.DispatchAsync(
             "health.restored",
             $"{providerName} is healthy again",
             message ?? $"{providerName} recovered.",
             null,
-            cancellationToken);
+            cancellationToken), "health.restored");
     }
 
     private static Dictionary<string, string[]> ValidateProcessorConnection(

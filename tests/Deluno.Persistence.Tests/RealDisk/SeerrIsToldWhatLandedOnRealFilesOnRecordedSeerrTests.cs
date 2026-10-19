@@ -147,7 +147,7 @@ public sealed class SeerrIsToldWhatLandedOnRealFilesOnRecordedSeerrTests
         Assert.False(string.IsNullOrWhiteSpace(acquisition.Message));
     }
 
-    [Fact(Skip = "Defect: a season pack imported for a series Seerr asked for never tells Seerr it is available. ReportSeerrAvailabilityAsync is called only on the single-file path of ImportPipelineService (the pack path, around the 'season pack imported N files' Activity line, has no call), so Seerr keeps showing the request as not available until its own scanner finds the files (found 19 Oct 2026).")]
+    [Fact]
     public async Task An_imported_season_pack_of_a_series_Seerr_asked_for_is_reported_available()
     {
         await using var world = await StartAsync(seerrTakesTheMark: true);
@@ -168,7 +168,7 @@ public sealed class SeerrIsToldWhatLandedOnRealFilesOnRecordedSeerrTests
         Assert.Equal("available", Assert.Single(await world.AcquisitionsAsync()).Status);
     }
 
-    [Fact(Skip = "Defect: a report to Seerr that failed ('available-failed') is never made again. SqliteSeerrAcquisitionsRepository.FindLatestAddedAsync looks only at status 'added', so a later import of the same title (an upgrade, a re-import) finds no acquisition and Seerr is never told, though it would now answer (found 19 Oct 2026).")]
+    [Fact]
     public async Task A_report_Seerr_refused_is_made_again_the_next_time_the_title_is_imported()
     {
         await using var world = await StartAsync(seerrTakesTheMark: false);

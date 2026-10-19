@@ -1150,13 +1150,13 @@ public static class MoviesEndpointRouteBuilderExtensions
             if (forcedImportPreferences.ForcedImportEnabled)
             {
                 var forcedTitleTags = (await tagStore.ListAsync(MediaKind.Movie, id, cancellationToken)).Select(assignment => assignment.Name).ToArray();
-                await outboundNotificationService.DispatchAsync(
+                await NotificationOutboundDispatch.GuardAsync(async () => await outboundNotificationService.DispatchAsync(
                     "acquisition.override",
                     $"Forced re-download: {item.Title}",
                     forceRedownloadMessage,
                     forceRedownloadDetails,
                     cancellationToken,
-                    forcedTitleTags);
+                    forcedTitleTags), "acquisition.override");
             }
 
             return Results.Ok(answer);
@@ -2179,13 +2179,13 @@ public static class MoviesEndpointRouteBuilderExtensions
             if (movie.CreatedUtc >= requestStartedUtc &&
                 (await notificationPreferences.GetPreferencesAsync(cancellationToken)).AddedEnabled)
             {
-                await notificationService.DispatchAsync(
+                await NotificationOutboundDispatch.GuardAsync(async () => await notificationService.DispatchAsync(
                     "title.added",
                     $"Added: {movie.Title}",
                     $"{movie.Title} was added to the library.",
                     JsonSerializer.Serialize(new { movie.Id, movie.Title, mediaType = "movies" }),
                     cancellationToken,
-                    titleTags: await titleTagService.ListNamesAsync(MediaKind.Movie, movie.Id, cancellationToken));
+                    titleTags: await titleTagService.ListNamesAsync(MediaKind.Movie, movie.Id, cancellationToken)), "title.added");
             }
 
             return Results.Created($"/api/movies/{movie.Id}", movie);
@@ -2855,6 +2855,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IRealtimeEventPublisher realtimeEventPublisher,
             IAutoTaggingService autoTagging,
             [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
+            [FromServices] IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -3146,6 +3147,24 @@ public static class MoviesEndpointRouteBuilderExtensions
                 foreach (var movieId in idsToReassign.Distinct(StringComparer.OrdinalIgnoreCase))
                     await realtimeEventPublisher.PublishEntityChangedAsync("Movie", movieId, cancellationToken);
 
+                // The file left one library's folder for another's: the media servers hear it gone from the old place and there in the new.
+                await MediaServerTell.QueueAsync(
+                    jobScheduler,
+                    "movies",
+                    movedForUndo
+                        .Where(moved => idsToReassign.Contains(moved.MovieId) && movedFilePaths.ContainsKey(moved.MovieId))
+                        .SelectMany(moved => new[]
+                        {
+                            new MediaServerPathChange(moved.FilePath, MediaServerChangeKind.Deleted),
+                            new MediaServerPathChange(movedFilePaths[moved.MovieId], MediaServerChangeKind.Created)
+                        })
+                        .ToArray(),
+                    "movie.moved",
+                    "library",
+                    request.ToLibraryId,
+                    null,
+                    cancellationToken);
+
                 // #1024: a rule can depend on the library or its folder.
                 await autoTagging.ApplyEditedAsync(MediaKind.Movie, idsToReassign, cancellationToken);
             }
@@ -3365,6 +3384,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             ILibrariesRepository librariesRepository,
             IActivityFeedRepository activityFeedRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
+            [FromServices] IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -3479,6 +3499,18 @@ public static class MoviesEndpointRouteBuilderExtensions
                 }
 
                 await realtimeEventPublisher.PublishEntityChangedAsync("Movie", id, cancellationToken);
+                await MediaServerTell.QueueAsync(
+                    jobScheduler,
+                    "movies",
+                    [
+                        new MediaServerPathChange(filePath, MediaServerChangeKind.Deleted),
+                        new MediaServerPathChange(Path.Combine(destinationDir, Path.GetRelativePath(sourceDir, filePath)), MediaServerChangeKind.Created)
+                    ],
+                    "movie.renamed",
+                    "movie",
+                    id,
+                    null,
+                    cancellationToken);
                 renamed.Add(new
                 {
                     movieId = id,
