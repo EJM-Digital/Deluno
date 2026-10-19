@@ -98,6 +98,16 @@ describe("Save import settings", () => {
     expect(JSON.parse(String((patches()[0][1] as RequestInit).body)).removeAndDeletePackedArchivesFromClient).toBe(true);
   });
 
+  it("saves the names typed under 'Never count these as leftovers' exactly as typed, one per line or comma separated", async () => {
+    renderPage();
+    const patterns = screen.getByRole("textbox", { name: /Never count these as leftovers/ });
+    expect((patterns as HTMLTextAreaElement).value).toBe("");
+    fireEvent.change(patterns, { target: { value: "*.nfo, Thumbs.db\n.DS_Store" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save import settings" }));
+    await waitFor(() => expect(patches()).toHaveLength(1));
+    expect(JSON.parse(String((patches()[0][1] as RequestInit).body)).leftoverExcludePatterns).toBe("*.nfo, Thumbs.db\n.DS_Store");
+  });
+
   it("shows the server's refusal and keeps the edits when the save fails", async () => {
     renderPage();
     fireEvent.click(screen.getByRole("switch", { name: /Rename files when imported/ }));

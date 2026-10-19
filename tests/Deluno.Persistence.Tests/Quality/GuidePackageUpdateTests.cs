@@ -40,14 +40,16 @@ public sealed class GuidePackageUpdateTests
         var active = await store.GetCurrentAsync(CancellationToken.None);
         Assert.Equal(applied.IntegritySha256, active.IntegritySha256);
         var versions = await store.ListAsync(CancellationToken.None);
-        Assert.Single(versions);
-        Assert.Equal(applied.IntegritySha256, versions[0].IntegritySha256);
+        // The shipped package is kept beside the applied one, so it can be gone back to.
+        Assert.Equal(2, versions.Count);
+        Assert.Contains(versions, item => item.Package.Version == current.Package.Version);
+        Assert.Single(versions, item => item.IsActive && item.IntegritySha256 == applied.IntegritySha256);
 
         var repeated = await store.ApplyAsync(
             new GuidePackageUpdateRequest(proposed, applied.IntegritySha256),
             CancellationToken.None);
         Assert.Equal(applied.IntegritySha256, repeated.IntegritySha256);
-        Assert.Single(await store.ListAsync(CancellationToken.None));
+        Assert.Equal(2, (await store.ListAsync(CancellationToken.None)).Count);
     }
 
     /// <summary>
@@ -92,9 +94,10 @@ public sealed class GuidePackageUpdateTests
         // going back must not throw away the version you came from, or the
         // rollback is one-way.
         var versions = await store.ListAsync(CancellationToken.None);
-        Assert.Equal(2, versions.Count);
+        Assert.Equal(3, versions.Count);
         Assert.Single(versions, item => item.IsActive);
         Assert.Contains(versions, item => item.Package.Version == latest.Package.Version);
+        Assert.Contains(versions, item => item.Package.Version == bootstrap.Package.Version);
 
         // Idempotent, and honest about a version that was never retained.
         Assert.True((await store.ActivateAsync(second.Id, second.Version, CancellationToken.None)).IsActive);

@@ -137,6 +137,23 @@ public sealed class SqliteGuidePackageStore(
             await deactivate.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        if (current.StoredUtc == DateTimeOffset.MinValue)
+        {
+            // The package Deluno shipped has never been stored. Keep it as the first retained version, so the
+            // person can go back to it after any later one is applied.
+            using var keepShipped = connection.CreateCommand();
+            keepShipped.Transaction = transaction;
+            keepShipped.CommandText =
+                "INSERT OR IGNORE INTO guide_package_versions (package_id, package_version, integrity_sha256, package_json, source_revision, is_active, stored_utc) VALUES (@packageId, @version, @integrity, @json, @sourceRevision, 0, @storedUtc);";
+            AddParameter(keepShipped, "@packageId", current.Package.Id);
+            AddParameter(keepShipped, "@version", current.Package.Version);
+            AddParameter(keepShipped, "@integrity", current.IntegritySha256);
+            AddParameter(keepShipped, "@json", JsonSerializer.Serialize(current.Package, JsonOptions));
+            AddParameter(keepShipped, "@sourceRevision", current.Package.Source.UpstreamRevision);
+            AddParameter(keepShipped, "@storedUtc", DateTimeOffset.UnixEpoch.ToString("O"));
+            await keepShipped.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         if (existing is null)
         {
             using var insert = connection.CreateCommand();
@@ -240,9 +257,17 @@ public sealed class SqliteGuidePackageStore(
     {
         var errors = new List<string>();
         var warnings = new List<string>();
-        if (request.Package is null)
+        var incomplete = request.Package is not null
+            && (request.Package.Source is null
+                || request.Package.QualityTiers is null
+                || request.Package.CustomFormats is null
+                || request.Package.QualityProfiles is null
+                || request.Package.Bundles is null);
+        if (request.Package is null || incomplete)
         {
-            errors.Add("A guide package is required.");
+            errors.Add(incomplete
+                ? "A guide package must carry its source, quality tiers, custom formats, quality profiles and bundles."
+                : "A guide package is required.");
             return new GuidePackageUpdatePreview(
                 current,
                 current.Package,

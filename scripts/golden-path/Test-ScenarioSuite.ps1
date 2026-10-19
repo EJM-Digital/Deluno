@@ -1283,7 +1283,7 @@ try {
     Save-Results
     Check 'the first save writes results.json' (Test-Path $script:S.ResultsFile)
     $reader = [IO.File]::Open($script:S.ResultsFile, 'Open', 'Read', 'Read')
-    $releaser = [powershell]::Create().AddScript({ param($r) Start-Sleep -Milliseconds 700; $r.Dispose() }).AddArgument($reader)
+    $releaser = [powershell]::Create().AddScript({ param($r) Start-Sleep -Milliseconds 700; $r.Dispose() }).AddArgument($reader) # reason: gives the reader a moment to hold the file before the offline test releases it; no event to wait on
     $handle = $releaser.BeginInvoke()
     $threw = $false
     try { Save-Results } catch { $threw = $true }

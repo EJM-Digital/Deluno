@@ -126,6 +126,7 @@ function RuleModeCard({ mode, onChanged }: { mode: ReleaseRuleMode; onChanged: (
 function ProperRepackCard({ settings }: { settings: PlatformSettingsSnapshot }) {
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const [mode, setMode] = useState(settings.properRepackAcquisitionMode);
+  useEffect(() => setMode(settings.properRepackAcquisitionMode), [settings.properRepackAcquisitionMode]);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   async function onChange(nextMode: string) {
