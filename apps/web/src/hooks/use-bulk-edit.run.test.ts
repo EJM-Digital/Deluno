@@ -24,7 +24,7 @@ const item = (id: string, over: Partial<MediaItem> = {}): MediaItem => ({
   genres: [], added: "1 Jan", overview: "", libraryId: "lib-a", minimumAvailability: "released", tags: [], ...over
 });
 
-function useHarness(initial: MediaItem[], variant: "movies" | "series" = "movies") {
+function useHarness(initial: MediaItem[], variant: "movies" | "shows" = "movies") {
   const [items, setItems] = useState<MediaItem[]>(initial);
   const bulk = useBulkEdit({ libraryItems: items, setLibraryItems: setItems, variant });
   return { items, bulk };
@@ -73,7 +73,7 @@ describe("Monitor and Unmonitor (bulk)", () => {
   });
 
   it("Unmonitor runs the same flow with monitored false on the shows route, and says Unmonitor selected titles", async () => {
-    const { result } = renderHook(() => useHarness([item("s1", { type: "series" }), item("s2", { type: "series" })], "series"));
+    const { result } = renderHook(() => useHarness([item("s1", { type: "show" }), item("s2", { type: "show" })], "shows"));
     open(result, ["s1", "s2"], "monitoring", false);
     expect(result.current.bulk.bulkMonitored).toBe(false);
 
@@ -199,7 +199,7 @@ describe("Apply tags (bulk)", () => {
   });
 
   it("Remove takes only the named tags (any case) and Replace sets exactly the typed ones, on the shows route", async () => {
-    const { result } = renderHook(() => useHarness([item("s1", { type: "series", tags: ["Anime", "kids"] })], "series"));
+    const { result } = renderHook(() => useHarness([item("s1", { type: "show", tags: ["Anime", "kids"] })], "shows"));
     open(result, ["s1"], "tags");
     act(() => { result.current.bulk.setBulkTagsMode("remove"); result.current.bulk.setBulkTagsInput("KIDS"); });
     await review(result);
@@ -268,7 +268,7 @@ describe("Search now (bulk dialog)", () => {
   });
 
   it("posts the selected shows to /api/series/bulk/search", async () => {
-    const { result } = renderHook(() => useHarness([item("s1", { type: "series" })], "series"));
+    const { result } = renderHook(() => useHarness([item("s1", { type: "show" })], "shows"));
     open(result, ["s1"], "search");
     await review(result);
     await review(result);

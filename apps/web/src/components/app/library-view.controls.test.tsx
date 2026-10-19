@@ -25,7 +25,7 @@ window.matchMedia ??= ((query: string) => ({ matches: false, media: query, addEv
 globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
 Element.prototype.scrollIntoView = vi.fn();
 
-const { LibraryView } = await import("./library-view");
+let LibraryView: typeof import("./library-view").LibraryView;
 
 const film = (id: string, name: string, over: Record<string, unknown> = {}) => ({
   id, title: name, releaseYear: 2020, monitored: true, wantedStatus: "missing", imdbId: null, posterUrl: null, libraryId: "lib-a", metadataJson: null,
@@ -45,7 +45,10 @@ let paged: URLSearchParams[];
 let writes: Array<{ url: string; method: string; body: any }>;
 let restoreLayout: () => void;
 
-beforeEach(() => {
+beforeEach(async () => {
+  // The shelf keeps a snapshot of what it last read in module memory; each test starts from a fresh copy of it.
+  vi.resetModules();
+  ({ LibraryView } = await import("./library-view"));
   restoreLayout = stubVirtualLayout();
   window.localStorage.clear();
   window.sessionStorage.clear();

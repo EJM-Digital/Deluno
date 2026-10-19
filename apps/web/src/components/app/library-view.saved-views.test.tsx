@@ -36,7 +36,7 @@ const CONTROLS = {
   sortFields: [{ id: "title", label: "Title", hint: "A to Z." }, { id: "year", label: "Year", hint: "Release year." }, { id: "added", label: "Date added", hint: "Newest first." }],
   posterOptions: []
 };
-const SAVED = {
+const SAVED: Record<string, unknown> & { automationAction: string | null; id: string; name: string } = {
   id: "view-1", userId: "u", variant: "movies", libraryId: "lib-b", name: "Recent kids films", quickFilter: "missing", monitoring: "monitored",
   sortField: "year", sortDirection: "asc", viewMode: "list", cardSize: "lg", displayOptionsJson: JSON.stringify({ showRating: true }),
   rulesJson: JSON.stringify([{ field: "year", operator: "min", values: ["2015"] }]), automationAction: null, createdUtc: "2026-01-01T00:00:00Z", updatedUtc: "2026-01-01T00:00:00Z"
@@ -168,7 +168,7 @@ describe("applying a saved filter", () => {
   });
 
   it("says where it looks and what it narrows, and an unreadable condition list reads as no narrowing", async () => {
-    views = [SAVED, { ...SAVED, id: "view-2", name: "Everything", libraryId: null as never, rulesJson: "not json", quickFilter: "all", monitoring: "any" }];
+    views = [SAVED, { ...SAVED, id: "view-2", name: "Everything", libraryId: null, rulesJson: "not json", quickFilter: "all", monitoring: "any" }];
     const drawer = await openFilterDrawer();
 
     expect(await within(drawer).findByText(/Kids films · Year at least 2015/)).toBeInTheDocument();
