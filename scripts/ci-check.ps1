@@ -281,6 +281,8 @@ $workflowChecks = @(
     @{ Label = "a real Playwright spec (apps/web/tests/real) stubs no request, directly or through a helper"; Args = @("scripts/check-real-specs.mjs") },
     @{ Label = "the real-spec guard works"; Args = @("--test", "scripts/check-real-specs.test.mjs") },
     @{ Label = "the repository gates behave as written: the hook, the gate, which jobs are due, the workflow, private-detail and closing-keyword checks"; Args = @("--test", "scripts/platform-gates.test.mjs") },
+    @{ Label = "every Node test file is run by a CI job"; Args = @("scripts/check-node-tests-run.mjs") },
+    @{ Label = "the Node-test-coverage check works"; Args = @("--test", "scripts/check-node-tests-run.test.mjs") },
     @{ Label = "the TypeScript SDK sends the right request and reports a refusal"; Args = @("--test", "sdk/typescript/tests/delunoclient.test.mjs") }
 )
 foreach ($check in $workflowChecks) {
