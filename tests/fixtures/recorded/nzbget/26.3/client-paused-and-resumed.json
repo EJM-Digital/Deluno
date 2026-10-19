@@ -1,0 +1,141 @@
+{
+  "app": "nzbget",
+  "version": "26.3",
+  "state": "client-paused-and-resumed",
+  "recordedAt": "2026-10-19T10:06:00Z",
+  "note": "The whole client paused (pausedownload, pausepost, pausescan) and resumed (resumedownload, resumepost, resumescan) (NZBGet 26.3 in Docker, the e2e stack's image and default settings).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "pausedownload",
+          "params": [],
+          "id": 105
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 105,
+          "result": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "pausepost",
+          "params": [],
+          "id": 106
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 106,
+          "result": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "pausescan",
+          "params": [],
+          "id": 107
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 107,
+          "result": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "resumedownload",
+          "params": [],
+          "id": 108
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 108,
+          "result": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "resumepost",
+          "params": [],
+          "id": 109
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 109,
+          "result": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "resumescan",
+          "params": [],
+          "id": 110
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 110,
+          "result": true
+        }
+      }
+    }
+  ]
+}
