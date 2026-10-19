@@ -1,0 +1,22 @@
+{
+  "app": "gestdown",
+  "version": "2026-10-19",
+  "state": "show-not-found",
+  "recordedAt": "2026-10-19T10:12:37Z",
+  "note": "GET /shows/search for a title Gestdown does not hold: 404 with a plain sentence naming the title.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/shows/search/Zzzz%20Not%20A%20Show%20Zzzz"
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "bodyText": "\"Couldn't find show: Zzzz Not A Show Zzzz\""
+      }
+    }
+  ]
+}

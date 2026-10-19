@@ -70,7 +70,7 @@ var handler = RecordedReplies.Qbittorrent("resumed").Sequence(RecordedReplies.Qb
 var down = RecordedReplies.Deluge("not-answering").NotAnswering();
 ```
 
-Replies are the newest version recorded of each app (`MISSING.md` lists what the VM could not produce). Also recorded from the real apps: `jackett` (Torznab), `nzbhydra2` (Newznab), `flaresolverr` and `jellyfin`. rTorrent, uTorrent, Emby, Plex and Seerr are not recorded yet; a test of those keeps its own shape and says so in `tests/recorded-reply-allow-list.json`.
+Replies are the newest version recorded of each app (`MISSING.md` lists what the VM could not produce). Also recorded from the real apps: `jackett` (Torznab), `nzbhydra2` (Newznab), `flaresolverr`, `jellyfin`, `gestdown` (Addic7ed's subtitles, public) and `ntfy` (the publish API of an open server and of one that needs an account, from `scripts/recorded-replies/docker/ntfy.mjs`). rTorrent, uTorrent, Emby, Plex and Seerr are not recorded yet; a test of those keeps its own shape and says so in `tests/recorded-reply-allow-list.json`.
 
 ## Recording
 
