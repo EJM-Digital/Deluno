@@ -5,6 +5,7 @@ using Deluno.Contracts;
 using Deluno.Integrations.MediaServers;
 using Deluno.Integrations.Seerr;
 using Deluno.Intake.Data;
+using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
@@ -1637,6 +1638,31 @@ public sealed class RetentionRuleTests
         Assert.Equal(["m2", "m3"], evaluation.Candidates.Where(item => item.Outcome == RetentionItemOutcomes.Undecided).Select(item => item.EntityId).Order());
     }
 
+    /// <summary>#1365: the files a season leaves are told to the media servers as Deleted, as a title removal does.</summary>
+    [Fact]
+    public async Task A_season_removed_by_a_rule_tells_the_media_servers_each_episode_file_is_Deleted()
+    {
+        SeasonLibrary();
+        var scheduler = new Mock<IJobScheduler>();
+        EnqueueJobRequest? queued = null;
+        scheduler.Setup(item => item.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<EnqueueJobRequest, CancellationToken>((request, _) => queued = request)
+            .ReturnsAsync((JobQueueItem)null!);
+        var rule = Rule(Keep("server.allEpisodesSeenBy:everyone:")) with { Level = RetentionLevels.Season, WaitDays = 1 };
+        _store.Add(rule);
+        await Service(scheduler: scheduler.Object).CheckAsync(rule, "schedule", CancellationToken.None);
+
+        _clock.Now = Now.AddDays(2);
+        await Service(scheduler: scheduler.Object).CheckAsync(rule, "schedule", CancellationToken.None);
+
+        Assert.NotNull(queued);
+        Assert.Equal(MediaServerJobTypes.Refresh, queued!.JobType);
+        var payload = System.Text.Json.JsonSerializer.Deserialize<MediaServerRefreshJobPayload>(queued.PayloadJson!)!;
+        Assert.Equal("tv", payload.MediaType);
+        Assert.Equal(2, payload.Changes.Count);
+        Assert.All(payload.Changes, change => { Assert.Equal(MediaServerChangeKind.Deleted, change.Kind); Assert.Contains("Season 1", change.Path, StringComparison.Ordinal); });
+    }
+
     private RetentionEvaluator Evaluator()
         => new(
             new RetentionUnitReader(_movies.Object, _series.Object, _libraries.Object, _clock),
@@ -1647,13 +1673,13 @@ public sealed class RetentionRuleTests
             _clock,
             _qualityModel.Object);
 
-    private RetentionService Service(Mock<IActivityFeedRepository>? feed = null, ITitleTagService? tags = null)
+    private RetentionService Service(Mock<IActivityFeedRepository>? feed = null, ITitleTagService? tags = null, IJobScheduler? scheduler = null)
     {
         var intake = new Mock<IIntakeRepository>();
         var removal = new TitleRemovalService(_libraries.Object, intake.Object, Mock.Of<IJobQueueRepository>(), Mock.Of<IActivityFeedRepository>(), _recycleBin.Object);
         return new RetentionService(_store, Evaluator(), removal, _movies.Object, _series.Object, _libraries.Object, _recycleBin.Object, _exclusions.Object,
             new MediaServerClientRegistry([_jellyfin.Object, _other.Object]), _seerr, (feed ?? new Mock<IActivityFeedRepository>()).Object, _notifications.Object, _clock, NullLogger<RetentionService>.Instance, _notificationPreferences.Object,
-            null, tags, _servers.Object);
+            null, tags, _servers.Object, scheduler);
     }
 
     private static void Said(Mock<IActivityFeedRepository> feed, string category, string containing, Times times)

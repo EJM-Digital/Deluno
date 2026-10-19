@@ -130,7 +130,7 @@ public sealed class SqliteSeerrAcquisitionsRepository(
         command.CommandText =
             $"""
              SELECT {Columns} FROM seerr_acquisitions
-             WHERE media_type = @mediaType AND entity_id = @entityId AND status = 'added'
+             WHERE media_type = @mediaType AND entity_id = @entityId AND status IN ('added', 'available-failed')
              ORDER BY created_utc DESC
              LIMIT 1;
              """;

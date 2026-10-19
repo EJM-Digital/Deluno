@@ -79,6 +79,7 @@ public static class EpisodeFilesEndpointRouteBuilderExtensions
             [FromServices] IOutboundNotificationService? outboundNotificationService,
             [FromServices] INotificationService? notificationService,
             [FromServices] IMediaTagStore? mediaTagStore,
+            [FromServices] Deluno.Jobs.Data.IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
             var seriesId = await repository.GetEpisodeSeriesIdAsync(episodeId, cancellationToken);
@@ -148,6 +149,15 @@ public static class EpisodeFilesEndpointRouteBuilderExtensions
                 episodeId,
                 cancellationToken);
             await realtimeEventPublisher.PublishEntityChangedAsync("Series", seriesId, cancellationToken);
+            await Deluno.Jobs.Data.MediaServerTell.QueueAsync(
+                jobScheduler,
+                "tv",
+                [new MediaServerPathChange(fullPath, MediaServerChangeKind.Deleted)],
+                "episode.file-deleted",
+                "series",
+                seriesId,
+                logger,
+                cancellationToken);
 
             var tags = mediaTagStore is null
                 ? null

@@ -252,12 +252,12 @@ public sealed class OrphanedDownloadService(
                 (await notificationPreferences.GetPreferencesAsync(cancellationToken)).OrphanedDownloadRemovedEnabled;
             if (enabled)
             {
-                await outboundNotificationService.DispatchAsync(
+                await NotificationOutboundDispatch.GuardAsync(async () => await outboundNotificationService.DispatchAsync(
                     "download.orphan.removed",
                     $"Orphaned download removed: {item.Name}",
                     message,
                     null,
-                    cancellationToken);
+                    cancellationToken), "download.orphan.removed");
             }
         }
 

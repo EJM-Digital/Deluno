@@ -563,13 +563,27 @@ public sealed class OutboundNotificationService(
         {
             Content = new StringContent(message, System.Text.Encoding.UTF8, "text/plain")
         };
-        request.Headers.Add("Title", title);
+        request.Headers.Add("Title", NtfyHeaderValue(title));
         if (!string.IsNullOrWhiteSpace(config.AccessToken))
         {
             request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", config.AccessToken.Trim());
         }
 
         return request;
+    }
+
+    // .NET refuses a header value outside ASCII, so an accent or a dash in a title
+    // never left the machine. ntfy reads an RFC 2047 encoded-word (UTF-8, base64)
+    // in its Title header, which is what it is sent as when plain ASCII will not do.
+    internal static string NtfyHeaderValue(string title)
+    {
+        if (title.All(c => c >= 0x20 && c < 0x7f))
+        {
+            return title;
+        }
+
+        var flat = string.Join(" ", title.Split(new[] { (char)13, (char)10 }, StringSplitOptions.RemoveEmptyEntries));
+        return "=?UTF-8?B?" + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(flat)) + "?=";
     }
 
     // https://gotify.net/docs/pushmsg

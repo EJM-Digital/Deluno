@@ -183,10 +183,16 @@ public sealed class SeerrAcquisitionService(
                     isNewlyAdded = false;
                 }
 
-                var decision = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
-                    MediaType: library.MediaType, HasFile: false, CurrentQuality: null, CutoffQuality: library.CutoffQuality,
-                    UpgradeUntilCutoff: library.UpgradeUntilCutoff, UpgradeUnknownItems: library.UpgradeUnknownItems, IsReleased: true));
-                await seriesCatalogRepository.EnsureWantedStateAsync(entityId, library.Id, decision.WantedStatus, decision.WantedReason, false, decision.CurrentQuality, decision.TargetQuality, decision.QualityCutoffMet, cancellationToken);
+                // A title Deluno already holds a file for stays as it is: the wanted-state upsert overwrites
+                // has_file and the status, so an approval used to put an owned title back on the wanted list.
+                var owned = isNewlyAdded ? null : await seriesCatalogRepository.GetByIdAsync(entityId, cancellationToken);
+                if (owned?.HasFile != true)
+                {
+                    var decision = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
+                        MediaType: library.MediaType, HasFile: false, CurrentQuality: null, CutoffQuality: library.CutoffQuality,
+                        UpgradeUntilCutoff: library.UpgradeUntilCutoff, UpgradeUnknownItems: library.UpgradeUnknownItems, IsReleased: true));
+                    await seriesCatalogRepository.EnsureWantedStateAsync(entityId, library.Id, decision.WantedStatus, decision.WantedReason, false, decision.CurrentQuality, decision.TargetQuality, decision.QualityCutoffMet, cancellationToken);
+                }
                 if (!string.IsNullOrWhiteSpace(qualityProfileId))
                 {
                     await seriesCatalogRepository.UpdateQualityProfileAsync(entityId, qualityProfileId!, cancellationToken);
@@ -207,10 +213,16 @@ public sealed class SeerrAcquisitionService(
                     isNewlyAdded = false;
                 }
 
-                var decision = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
-                    MediaType: library.MediaType, HasFile: false, CurrentQuality: null, CutoffQuality: library.CutoffQuality,
-                    UpgradeUntilCutoff: library.UpgradeUntilCutoff, UpgradeUnknownItems: library.UpgradeUnknownItems, IsReleased: true));
-                await movieCatalogRepository.EnsureWantedStateAsync(entityId, library.Id, decision.WantedStatus, decision.WantedReason, false, decision.CurrentQuality, decision.TargetQuality, decision.QualityCutoffMet, cancellationToken);
+                // A title Deluno already holds a file for stays as it is: the wanted-state upsert overwrites
+                // has_file and the status, so an approval used to put an owned title back on the wanted list.
+                var owned = isNewlyAdded ? null : await movieCatalogRepository.GetByIdAsync(entityId, cancellationToken);
+                if (owned?.HasFile != true)
+                {
+                    var decision = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
+                        MediaType: library.MediaType, HasFile: false, CurrentQuality: null, CutoffQuality: library.CutoffQuality,
+                        UpgradeUntilCutoff: library.UpgradeUntilCutoff, UpgradeUnknownItems: library.UpgradeUnknownItems, IsReleased: true));
+                    await movieCatalogRepository.EnsureWantedStateAsync(entityId, library.Id, decision.WantedStatus, decision.WantedReason, false, decision.CurrentQuality, decision.TargetQuality, decision.QualityCutoffMet, cancellationToken);
+                }
                 if (!string.IsNullOrWhiteSpace(qualityProfileId))
                 {
                     await movieCatalogRepository.UpdateQualityProfileAsync(entityId, qualityProfileId!, cancellationToken);

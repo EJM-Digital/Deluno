@@ -287,12 +287,12 @@ public sealed class LibraryAvailabilityService(
             // already knows -- once, not on every tick -- that it changed.
             if (notificationService is not null)
             {
-                await notificationService.DispatchAsync(
+                await NotificationOutboundDispatch.GuardAsync(async () => await notificationService.DispatchAsync(
                     isBlocked ? "library.paused" : "library.resumed",
                     isBlocked ? $"{library.Name} paused" : $"{library.Name} resumed",
                     message,
                     null,
-                    cancellationToken);
+                    cancellationToken), "library.paused");
             }
         }
     }
