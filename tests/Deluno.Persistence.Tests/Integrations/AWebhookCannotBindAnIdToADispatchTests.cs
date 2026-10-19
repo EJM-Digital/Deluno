@@ -91,6 +91,119 @@ public sealed class AWebhookCannotBindAnIdToADispatchTests
         Assert.False(result.Accepted);
     }
 
+    // ---- #1301, shared-download-client-l.x8: what a completion or failure a client script reports does to the dispatch ----
+
+    [Theory]
+    [InlineData("completed")]
+    [InlineData("download.completed")]
+    [InlineData("torrent_completed")]
+    [InlineData("nzb_completed")]
+    [InlineData("finished")]
+    public async Task A_completion_in_any_of_the_clients_words_marks_the_download_seen_and_leaves_a_timeline_entry(string eventName)
+    {
+        using var world = await World.CreateAsync();
+        var dispatchId = await world.SendAsync(existingId: "real-hash");
+
+        var result = await world.Webhook.HandleAsync(
+            world.ClientId, new DownloadClientWebhookRequest(eventName, dispatchId, null, null, "/downloads/done", 123456, null), CancellationToken.None);
+
+        Assert.True(result.Accepted);
+        Assert.Equal("Download completion recorded.", result.Message);
+        var dispatch = await world.Dispatches.GetDispatchAsync(dispatchId, CancellationToken.None);
+        Assert.NotNull(dispatch!.ClientCompletedUtc);
+        Assert.Equal(123456, dispatch.DownloadedBytes);
+        var timeline = await world.Dispatches.GetDispatchTimelineAsync(dispatchId, CancellationToken.None);
+        var entry = Assert.Single(timeline, e => e.EventType == "webhook-completed");
+        Assert.Contains("/downloads/done", entry.DetailsJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_second_completion_after_polling_or_an_earlier_webhook_saw_it_is_skipped_and_adds_nothing()
+    {
+        using var world = await World.CreateAsync();
+        var dispatchId = await world.SendAsync(existingId: "real-hash");
+        var completed = new DownloadClientWebhookRequest("completed", dispatchId, null, null, null, 10, null);
+        await world.Webhook.HandleAsync(world.ClientId, completed, CancellationToken.None);
+
+        var again = await world.Webhook.HandleAsync(world.ClientId, completed, CancellationToken.None);
+
+        Assert.True(again.Accepted);
+        Assert.Contains("skipped duplicate", again.Message, StringComparison.Ordinal);
+        var timeline = await world.Dispatches.GetDispatchTimelineAsync(dispatchId, CancellationToken.None);
+        Assert.Single(timeline, e => e.EventType == "webhook-completed");
+    }
+
+    [Theory]
+    [InlineData("failed")]
+    [InlineData("download.failed")]
+    [InlineData("torrent_failed")]
+    [InlineData("nzb_failed")]
+    [InlineData("error")]
+    public async Task A_failure_the_client_reports_ends_the_dispatch_as_failed_with_the_clients_own_reason(string eventName)
+    {
+        using var world = await World.CreateAsync();
+        var dispatchId = await world.SendAsync(existingId: "real-hash");
+
+        var result = await world.Webhook.HandleAsync(
+            world.ClientId, new DownloadClientWebhookRequest(eventName, dispatchId, null, null, null, null, "Aborted, ran out of articles"), CancellationToken.None);
+
+        Assert.True(result.Accepted);
+        Assert.Equal("Download failure recorded.", result.Message);
+        var dispatch = await world.Dispatches.GetDispatchAsync(dispatchId, CancellationToken.None);
+        Assert.Equal("failed", dispatch!.ImportStatus);
+        Assert.Equal("Aborted, ran out of articles", dispatch.ImportFailureMessage);
+        var timeline = await world.Dispatches.GetDispatchTimelineAsync(dispatchId, CancellationToken.None);
+        Assert.Single(timeline, e => e.EventType == "webhook-failed");
+    }
+
+    [Fact]
+    public async Task A_failure_with_no_reason_says_the_client_reported_it_and_a_second_failure_is_skipped()
+    {
+        using var world = await World.CreateAsync();
+        var dispatchId = await world.SendAsync(existingId: "real-hash");
+        var failed = new DownloadClientWebhookRequest("failed", dispatchId, null, null, null, null, null);
+
+        await world.Webhook.HandleAsync(world.ClientId, failed, CancellationToken.None);
+        var again = await world.Webhook.HandleAsync(world.ClientId, failed, CancellationToken.None);
+
+        var dispatch = await world.Dispatches.GetDispatchAsync(dispatchId, CancellationToken.None);
+        Assert.Equal("Download client reported failure.", dispatch!.ImportFailureMessage);
+        Assert.Contains("skipped duplicate", again.Message, StringComparison.Ordinal);
+        var timeline = await world.Dispatches.GetDispatchTimelineAsync(dispatchId, CancellationToken.None);
+        Assert.Single(timeline, e => e.EventType == "webhook-failed");
+    }
+
+    [Fact]
+    public async Task An_event_Deluno_does_not_know_is_acknowledged_and_changes_nothing()
+    {
+        using var world = await World.CreateAsync();
+        var dispatchId = await world.SendAsync(existingId: "real-hash");
+        var before = (await world.Dispatches.GetDispatchTimelineAsync(dispatchId, CancellationToken.None)).Count;
+
+        var result = await world.Webhook.HandleAsync(
+            world.ClientId, new DownloadClientWebhookRequest("paused", dispatchId, null, null, null, null, null), CancellationToken.None);
+
+        Assert.True(result.Accepted);
+        Assert.Contains("no action taken", result.Message, StringComparison.Ordinal);
+        var dispatch = await world.Dispatches.GetDispatchAsync(dispatchId, CancellationToken.None);
+        Assert.Null(dispatch!.ClientCompletedUtc);
+        Assert.Null(dispatch.ImportStatus);
+        Assert.Equal(before, (await world.Dispatches.GetDispatchTimelineAsync(dispatchId, CancellationToken.None)).Count);
+    }
+
+    [Fact]
+    public async Task A_dispatch_of_another_client_is_not_reached_by_this_clients_webhook()
+    {
+        using var world = await World.CreateAsync();
+        var dispatchId = await world.SendAsync(existingId: "real-hash");
+
+        var result = await world.Webhook.HandleAsync(
+            "some-other-client", new DownloadClientWebhookRequest("completed", dispatchId, null, null, null, 10, null), CancellationToken.None);
+
+        Assert.False(result.Accepted);
+        Assert.Null((await world.Dispatches.GetDispatchAsync(dispatchId, CancellationToken.None))!.ClientCompletedUtc);
+    }
+
     private sealed class World : IDisposable
     {
         private readonly TestStorage _storage;
