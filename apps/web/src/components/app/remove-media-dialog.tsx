@@ -1,3 +1,4 @@
+import { removalDownloadSentence } from "../../lib/removal-download-words";
 import * as Dialog from "../ui/dialog-primitives";
 import { AlertTriangle, FolderX, ListMinus } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -76,7 +77,7 @@ export function RemoveMediaDialog({
               <div>
                 <Dialog.Title className="font-semibold text-foreground">Remove {title}?</Dialog.Title>
                 <Dialog.Description id="remove-media-description" className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                  Choose what should happen before Deluno stops managing this {mediaLabel}. Your download client is never changed here.
+                  Choose what should happen before Deluno stops managing this {mediaLabel}. {removalDownloadSentence}
                 </Dialog.Description>
               </div>
             </div>

@@ -116,7 +116,7 @@ describe("the Follow a collection form", () => {
   // DEFECT (wording): the screen toasts the raw body of a refusal. A 400 from the server is a problem document, so the person
   // reads JSON instead of "Enter a numeric TMDb collection id.", "Choose a movie library for the collection." and, for a 404,
   // {"message":"TMDb did not return that collection."}. The sentences exist on the server (MovieCollectionsOnTheRecordedGatewayTests).
-  it.skip("DEFECT: a refused follow toasts the server's sentence, not the raw reply", async () => {
+  it("a refused follow toasts the server's sentence, not the raw reply", async () => {
     mocks.authedFetch.mockImplementation(() => reply(false, problem({ providerId: ["Enter a numeric TMDb collection id."] })));
     await openForm();
     fireEvent.change(within(form()).getByPlaceholderText("645"), { target: { value: "matrix" } });
@@ -125,6 +125,14 @@ describe("the Follow a collection form", () => {
 
     await waitFor(() => expect(mocks.toast.error).toHaveBeenCalled());
     expect(mocks.toast.error).toHaveBeenCalledWith("Enter a numeric TMDb collection id.");
+  });
+
+  it("a 404 toasts the server's sentence, not the {\"message\"} document", async () => {
+    mocks.authedFetch.mockImplementation(() => reply(false, JSON.stringify({ message: "TMDb did not return that collection." })));
+    await openForm();
+    fireEvent.change(within(form()).getByPlaceholderText("645"), { target: { value: "999999999" } });
+    fireEvent.submit(form());
+    await waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith("TMDb did not return that collection."));
   });
 
   it("a refusal keeps the form open with what was typed, and the toast carries the reply it was given", async () => {

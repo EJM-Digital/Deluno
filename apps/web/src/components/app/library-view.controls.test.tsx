@@ -273,7 +273,7 @@ describe("a very large library", () => {
 
   // DEFECT (not virtualised): the register promises virtualised rows for the Overview layout at 5000+ titles. LibraryOverview maps
   // every item to a row, so 5000 titles draw 5000 rows of poster, text and badges at once.
-  it.skip("DEFECT: the Overview layout draws only the rows near the screen", async () => {
+  it("the Overview layout draws only the rows near the screen", async () => {
     pageFor = () => page(BIG);
     await renderShelf();
     await chooseLayout("Overview");
