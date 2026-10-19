@@ -27,9 +27,7 @@ function waitFor(check, seconds) {
   return false;
 }
 
-test("DOK-08: a data folder Deluno cannot write ends with a plain sentence saying so, not an unhandled exception and exit code 139", {
-  skip: "DEFECT (DOK-08): with /data read-only (or owned by another user) the container logs a stack trace ('SQLite Error 14: unable to open database file', or 'Access to the path /data/secrets is denied') and exits with code 139. Nothing says in plain words that the data folder is not writable."
-}, () => {
+test("DOK-08: a data folder Deluno cannot write ends with a plain sentence saying so, not an unhandled exception and exit code 139", () => {
   const name = `deluno-defect-dok08-${process.pid}`;
   const volume = `${name}-data`;
   try {
@@ -46,9 +44,7 @@ test("DOK-08: a data folder Deluno cannot write ends with a plain sentence sayin
   }
 });
 
-test("DOK-10 and DAT-10: after docker stop every database is checkpointed, so no -wal file keeps data the .db file does not hold", {
-  skip: "DEFECT (DOK-10, DAT-10): after a clean docker stop (exit 0 in under a second) cache.db, jobs.db, movies.db and series.db have no -wal file, but platform.db is 4096 bytes with a 2.8 MB platform.db-wal beside it. Reproduced on two runs. Copying platform.db alone (a file-level backup, a volume snapshot of one file) holds none of the data."
-}, () => {
+test("DOK-10 and DAT-10: after docker stop every database is checkpointed, so no -wal file keeps data the .db file does not hold", () => {
   const name = `deluno-defect-dat10-${process.pid}`;
   const volume = `${name}-data`;
   try {
@@ -65,33 +61,32 @@ test("DOK-10 and DAT-10: after docker stop every database is checkpointed, so no
   }
 });
 
-test("DOK-07: the container's HEALTHCHECK asks whether Deluno is ready, so a broken database or a full data folder reads unhealthy", {
-  skip: "DEFECT (DOK-07): the Dockerfile and compose.yaml HEALTHCHECK call /health, which answers 200 while the process serves. With a full data folder /api/health/ready answers 503 ('storage:writable ... No space left on device') while docker inspect keeps saying healthy."
-}, () => {
+test("DOK-07: the container's HEALTHCHECK asks whether Deluno is ready, so a broken database or a full data folder reads unhealthy", () => {
   for (const file of ["Dockerfile", "compose.yaml"]) {
     const text = read(file);
     assert.match(text, /\/api\/health\/ready/, `${file} health check calls the readiness endpoint`);
   }
 });
 
-test("DAT-11: a write that fails because the data folder is full tells the person the data folder is full", {
-  skip: "DEFECT (DAT-11): with /data full (tmpfs of 40 MB filled), POST /api/movies answers 500 with only 'An unexpected error occurred.', and the Health screen lists nothing. Only /api/health/ready says why ('storage:writable: Storage root is not writable: No space left on device'). Deluno stays up, which is right."
-}, () => {
+test("DAT-11: a write that fails because the data folder is full tells the person the data folder is full", () => {
   const name = `deluno-defect-dat11-${process.pid}`;
   try {
     docker("run", "--detach", "--name", name, "--mount", "type=tmpfs,dst=/data,tmpfs-size=40m,tmpfs-mode=1777", image);
     assert.ok(waitFor(() => docker("exec", name, "curl", "--fail", "--silent", "http://127.0.0.1:8080/api/health/ready").status === 0, 90));
+    // Sign in while there is still room, then fill the folder, then write.
+    const signedIn = docker("exec", name, "curl", "--silent", "--header", "Content-Type: application/json", "--data",
+      '{"username":"owner","displayName":"Owner","password":"owner-password-1"}', "http://127.0.0.1:8080/api/auth/bootstrap").out;
+    const token = /"accessToken":"([^"]+)"/.exec(signedIn)?.[1];
+    assert.ok(token, `signed in: ${signedIn}`);
     docker("exec", name, "sh", "-c", "dd if=/dev/zero of=/data/filler bs=1M >/dev/null 2>&1");
-    const reply = docker("exec", name, "curl", "--silent", "--header", "Content-Type: application/json", "--data", '{"title":"Full","releaseYear":2026,"monitored":false}', "http://127.0.0.1:8080/api/movies").out;
+    const reply = docker("exec", name, "curl", "--silent", "--header", `Authorization: Bearer ${token}`, "--header", "Content-Type: application/json", "--data", '{"title":"Full","releaseYear":2026,"monitored":false}', "http://127.0.0.1:8080/api/movies").out;
     assert.match(reply, /(full|space)/i);
   } finally {
     docker("rm", "--force", name);
   }
 });
 
-test("DOK-18: the release builds the image for arm64 as well as amd64", {
-  skip: "GAP (DOK-18): release.yml and ci.yml build platforms: linux/amd64 only, so a Synology, Raspberry Pi or Apple-silicon Docker host gets an emulated or missing image."
-}, () => {
+test("DOK-18: the release builds the image for arm64 as well as amd64", () => {
   assert.match(read(".github/workflows/release.yml"), /platforms: linux\/amd64,linux\/arm64|platforms: linux\/arm64,linux\/amd64/);
 });
 
@@ -135,21 +130,25 @@ test("AUT-20: a backup file alone does not unlock the saved passwords: it carrie
   }
 });
 
-test("DOK-16: an older image started on a volume a newer image has migrated refuses to run, with a plain message, or leaves the data untouched", {
-  skip: "DEFECT (DOK-16): the August baseline image (baseline/schema-upgrade-2026-08-30) started on a volume the current image had already migrated and answered ready with 'platform ... migrations are current', exit code 0, no refusal and no protection, so a rollback to an older tag runs old code on a newer schema. Set DELUNO_BASELINE_IMAGE to the older image to run this."
-}, () => {
-  const older = process.env.DELUNO_BASELINE_IMAGE ?? "deluno-schema-baseline:local";
+test("DOK-16: an older image started on a volume a newer image has migrated refuses to run, with a plain message, or leaves the data untouched", () => {
+  // An older image cannot be built from this commit, so the newer volume is made the other way round: the volume's platform
+  // database is stamped with a change number this image has never heard of, as a later release would have left it.
   const volume = `deluno-defect-dok16-${process.pid}-data`;
   const names = [`deluno-defect-dok16-${process.pid}-new`, `deluno-defect-dok16-${process.pid}-old`];
   try {
     docker("volume", "create", volume);
     docker("run", "--detach", "--name", names[0], "--mount", `type=volume,src=${volume},dst=/data`, image);
     assert.ok(waitFor(() => docker("exec", names[0], "curl", "--fail", "--silent", "http://127.0.0.1:8080/api/health/ready").status === 0, 90));
-    docker("stop", "--time", "30", names[0]);
-    docker("run", "--detach", "--name", names[1], "--mount", `type=volume,src=${volume},dst=/data`, older);
-    const stopped = waitFor(() => docker("inspect", "--format", "{{.State.Status}}", names[1]).out === "exited", 60);
-    assert.ok(stopped, "the older image should refuse to run on a newer volume");
-    assert.match(docker("logs", names[1]).out, /newer (version|build) of Deluno/i);
+    assert.equal(docker("stop", "--time", "30", names[0]).status, 0);
+    const stamped = docker("run", "--rm", "--entrypoint", "python3", "--mount", `type=volume,src=${volume},dst=/data`, "python:3.13-alpine", "-c",
+      "import sqlite3;c=sqlite3.connect('/data/platform.db');c.execute(\"insert into schema_migrations(version,name,checksum,applied_utc) values (99999,'FromANewerRelease','x','2099-01-01T00:00:00Z')\");c.commit();c.close()");
+    assert.equal(stamped.status, 0, stamped.out);
+    docker("run", "--detach", "--name", names[1], "--mount", `type=volume,src=${volume},dst=/data`, image);
+    assert.ok(waitFor(() => docker("inspect", "--format", "{{.State.Status}}", names[1]).out === "exited", 60), "the image should refuse to run on a newer volume");
+    const log = docker("logs", names[1]).out;
+    assert.match(log, /newer (version|build) of Deluno/i);
+    assert.doesNotMatch(log, /Unhandled exception/);
+    assert.notEqual(docker("inspect", "--format", "{{.State.ExitCode}}", names[1]).out, "0");
   } finally {
     for (const name of names) docker("rm", "--force", name);
     docker("volume", "rm", volume);

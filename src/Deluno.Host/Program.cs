@@ -83,6 +83,13 @@ var configuredDataRoot = builder.Configuration["Storage:DataRoot"];
 var dataRoot = Path.GetFullPath(
     string.IsNullOrWhiteSpace(configuredDataRoot) ? "data" : configuredDataRoot,
     builder.Environment.ContentRootPath);
+// A data folder Deluno cannot write is told in one plain sentence, before any database opens (#1361).
+if (DataFolderCheck.Problem(dataRoot) is { } dataFolderProblem)
+{
+    Console.Error.WriteLine(dataFolderProblem);
+    return 1;
+}
+
 builder.Services
     .AddDataProtection()
     .SetApplicationName("Deluno")
@@ -99,4 +106,15 @@ var app = builder.Build();
 
 app.UseDelunoRequestPipeline();
 
-app.Run();
+try
+{
+    app.Run();
+}
+catch (NewerDatabaseException refusal)
+{
+    // A database a newer Deluno has updated: stop in plain words, nothing changed (#1361).
+    Console.Error.WriteLine(refusal.Message);
+    return 1;
+}
+
+return 0;

@@ -55,6 +55,15 @@ public sealed class SqliteDatabaseMigrator(
         await EnsureHistoryTableAsync(connection, cancellationToken);
 
         var applied = await ReadAppliedMigrationsAsync(connection, cancellationToken);
+
+        var newest = orderedMigrations[^1].Version;
+        var newerApplied = applied.Keys.Where(version => version > newest).DefaultIfEmpty(0).Max();
+        if (newerApplied > 0)
+        {
+            throw new NewerDatabaseException(
+                $"The {databaseName} database was updated by a newer version of Deluno (it has changes up to number {newerApplied}; this version only knows up to {newest}). "
+                + "This older version will not open it, and nothing has been changed. Start the newer version of Deluno again, or restore a backup made before the update.");
+        }
         foreach (var migration in orderedMigrations)
         {
             if (applied.TryGetValue(migration.Version, out var existing))
