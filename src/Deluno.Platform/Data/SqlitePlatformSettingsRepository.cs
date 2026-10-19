@@ -121,6 +121,7 @@ public sealed class SqlitePlatformSettingsRepository(
             FirstTitleMonitored: request.FirstTitleMonitored,
             SkipSignInLocalNetwork: request.SkipSignInLocalNetwork,
             UpdateAutomatically: request.UpdateAutomatically,
+            CheckForUpdates: request.CheckForUpdates,
             Automation: request.Automation is null
                 ? null
                 : request.Automation
