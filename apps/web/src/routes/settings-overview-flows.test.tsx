@@ -71,7 +71,7 @@ describe("the setup overview page", () => {
     expect(liveSpec.current?.events).toContain("SettingsChanged");
   });
 
-  it.skip("DEFECT: reads again when a library, indexer, download client or quality profile is added or removed elsewhere (it listens to SettingsChanged only, so a step's status goes stale)", () => {
+  it("reads again when a library, indexer, download client or quality profile is added or removed elsewhere (it listens to SettingsChanged only, so a step's status goes stale)", () => {
     render(<MemoryRouter><SettingsOverviewPage /></MemoryRouter>);
     expect(liveSpec.current?.events).toEqual(expect.arrayContaining(["LibraryChanged", "IndexerChanged", "QualityProfileChanged"]));
   });

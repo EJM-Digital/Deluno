@@ -106,7 +106,7 @@ describe("size rules", () => {
     expect((screen.getByRole("spinbutton", { name: "WEB 1080p movie maximum value" }) as HTMLInputElement).value).toBe("12");
   });
 
-  it.skip("DEFECT: shows a size changed elsewhere in the open page once it reads the model again (the page copies the loader's model once and is never re-synced)", () => {
+  it("shows a size changed elsewhere in the open page once it reads the model again (the page copies the loader's model once and is never re-synced)", () => {
     const rendered = render(view());
     expect((screen.getByRole("spinbutton", { name: "WEB 1080p movie maximum value" }) as HTMLInputElement).value).toBe("10");
     loaderData.qualityModel = { ...freshModel(), tiers: [tier("WEB 1080p", 70, { movieMaxGb: 33 }), tier("Bluray 2160p", 100), tier("WEB 480p", 20)] };

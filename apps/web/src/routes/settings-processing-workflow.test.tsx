@@ -120,7 +120,7 @@ describe("how finished downloads are handled, per library", () => {
     expect(sent("PUT", "/api/libraries/lib-1/workflow")).toHaveLength(0);
   });
 
-  it.skip("DEFECT: tells the person to choose the processed output folder when a refine workflow has none (Save workflow is switched off, so the sentence in the page is never shown)", async () => {
+  it("tells the person to choose the processed output folder when a refine workflow has none (Save workflow is switched off, so the sentence in the page is never shown)", async () => {
     load([standardLibrary], [processor]);
     renderPage();
     fireEvent.click(screen.getByText("Films"));

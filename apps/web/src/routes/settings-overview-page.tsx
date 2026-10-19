@@ -40,7 +40,9 @@ export async function settingsOverviewLoader(): Promise<SettingsOverviewLoaderDa
 }
 
 /** What makes this page read its data again (#1179). */
-const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["SettingsChanged"] };
+const SETTINGS_REFRESH: LiveRefreshSpec = {
+  events: ["SettingsChanged", "LibraryChanged", "IndexerChanged", "DownloadClientChanged", "QualityProfileChanged", "PolicySetChanged", "IntakeSourceChanged"]
+};
 
 export function SettingsOverviewPage() {
   useLiveRefresh(SETTINGS_REFRESH);
