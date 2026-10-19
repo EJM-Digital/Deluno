@@ -83,7 +83,7 @@ async function topDialog() {
 }
 
 function switchOf(scope: ReturnType<typeof within>, label: string) {
-  const row = scope.getAllByText(label).map((element) => element.closest("label")).find((candidate) => candidate !== null);
+  const row = scope.getAllByText(label).map((element: HTMLElement) => element.closest("label")).find((candidate: HTMLLabelElement | null) => candidate !== null);
   const found = (row?.htmlFor ? document.getElementById(row.htmlFor) : row?.querySelector("[role=switch]")) as HTMLElement | null | undefined;
   if (!found) throw new Error(`No switch labelled ${label}`);
   return found;
