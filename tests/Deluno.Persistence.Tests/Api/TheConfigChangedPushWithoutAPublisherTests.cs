@@ -41,4 +41,13 @@ public sealed class TheConfigChangedPushWithoutAPublisherTests
 
         Assert.Equal(status, context.Response.StatusCode);
     }
+
+    [Fact]
+    public void Only_a_write_under_api_to_a_screen_with_its_own_event_is_told_so()
+    {
+        Assert.False(ConfigChangedPush.HasOwnEvent(default));
+        Assert.False(ConfigChangedPush.HasOwnEvent(new PathString("/health")));
+        Assert.False(ConfigChangedPush.HasOwnEvent(new PathString("/api/tags/1")));
+        Assert.True(ConfigChangedPush.HasOwnEvent(new PathString("/api/movie-collections/1")));
+    }
 }
