@@ -47,10 +47,8 @@ public sealed class TheEveryWriteRouteHasItsPushTests
         => Assert.Equal(ConfigAreas.DownloadHealth, ConfigChangedPush.AreaFor(new Microsoft.AspNetCore.Http.PathString(path)));
 
     [Theory]
-    [InlineData("/api/backups/settings")]
-    [InlineData("/api/updates/preferences")]
-    [InlineData("/api/recycle-bin/settings")]
     [InlineData("/api/movie-collections/bulk")]
+    [InlineData("/api/movie-collections/abc/refresh")]
     public void A_settings_write_on_a_screen_that_follows_its_own_event_publishes_that_event(string path)
         => Assert.True(ConfigChangedPush.HasOwnEvent(new Microsoft.AspNetCore.Http.PathString(path)));
 
@@ -75,6 +73,7 @@ public sealed class TheEveryWriteRouteHasItsPushTests
         "/api/backups/",
         "/api/backups/{id}",
         "/api/backups/restore",
+        "/api/backups/settings",
         "/api/backups/restore/preview",
         // runs a command the job store publishes
         "/api/command/",
@@ -236,6 +235,7 @@ public sealed class TheEveryWriteRouteHasItsPushTests
         "/api/recycle-bin/{id}",
         "/api/recycle-bin/{id}/restore",
         "/api/recycle-bin/cleanup",
+        "/api/recycle-bin/settings",
         // a manual search or grab; the grab publishes the dispatch events
         "/api/search",
         "/api/search/grab",
@@ -313,6 +313,7 @@ public sealed class TheEveryWriteRouteHasItsPushTests
         "/api/trackers/definitions/update-check/run",
         // the update orchestrator publishes UpdateStatusChanged
         "/api/updates/check",
+        "/api/updates/preferences",
         "/api/updates/download",
         "/api/updates/restart-now",
         // dispatch dismissal publishes the DownloadDispatch event; guide previews change nothing
