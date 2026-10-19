@@ -1157,6 +1157,7 @@ function BackupCard({
   const [restorePreview, setRestorePreview] = useState<RestorePreviewResponse | null>(null);
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+  const [restorePassword, setRestorePassword] = useState("");
   const dirty = useMemo(() => JSON.stringify(settings) !== JSON.stringify(savedSettings), [settings, savedSettings]);
   // A backup made, deleted or rescheduled anywhere (a scheduled one included) arrives as a newer list;
   // typed-in schedule edits are never overwritten by it (#1179).
@@ -1231,6 +1232,7 @@ function BackupCard({
     setBusy("preview");
     actionStatus.markSyncing("Checking backup…");
     setRestoreFile(file);
+    setRestorePassword("");
     const formData = new FormData();
     formData.append("file", file);
     try {
@@ -1261,14 +1263,19 @@ function BackupCard({
     actionStatus.markSyncing("Restoring backup…");
     const formData = new FormData();
     formData.append("file", restoreFile);
+    if (restorePassword) formData.append("password", restorePassword);
     try {
       const response = await authedFetch(restorePreview?.newerThanThisVersion ? "/api/backups/restore?confirmNewer=true" : "/api/backups/restore", {
         method: "POST",
         body: formData
       });
       if (!response.ok) throw new Error(await response.text());
-      const result = await response.json() as { message?: string };
-      actionStatus.markSaved(result.message ?? "Restore completed. Restart Deluno before continuing.");
+      const result = await response.json() as { message?: string; restored?: boolean };
+      if (result.restored === false) {
+        actionStatus.markError(result.message ?? "The backup could not be restored.");
+      } else {
+        actionStatus.markSaved(result.message ?? "Restore completed. Restart Deluno before continuing.");
+      }
     } catch (error) {
       actionStatus.markError(error instanceof Error ? error.message : "Restore failed");
     } finally {
@@ -1356,6 +1363,31 @@ function BackupCard({
               browseTitle="Choose backup folder"
             />
           </Field>
+          <Field label="Backup password" className="mt-2">
+            <Input
+              type="password"
+              autoComplete="new-password"
+              value={settings.backupPassword ?? ""}
+              onChange={(event) => setSettings((current) => ({ ...current, backupPassword: event.target.value, clearBackupPassword: false }))}
+              placeholder={settings.passwordSet ? "A password is set. Type a new one to change it." : "Choose a backup password"}
+            />
+          </Field>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            {settings.passwordSet
+              ? "Each backup also holds Deluno's keys, locked with this password. Restoring asks for it, so keep it somewhere safe."
+              : "With no password, backups leave Deluno's keys out. A restore then asks you to enter your saved passwords and API keys again."}
+          </p>
+          {settings.passwordSet ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="mt-1"
+              onClick={() => setSettings((current) => ({ ...current, backupPassword: "", clearBackupPassword: true, passwordSet: false }))}
+            >
+              Remove backup password
+            </Button>
+          ) : null}
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">
               Next run: {settings.nextRunUtc ? formatWhen(settings.nextRunUtc, preferences) : "Not scheduled"} · Retains latest {settings.retentionCount} backup{settings.retentionCount === 1 ? "" : "s"}
@@ -1392,11 +1424,22 @@ function BackupCard({
                   {restorePreview.manifest.files.length} files · {formatWhen(restorePreview.manifest.createdUtc, preferences)}
                 </p>
               ) : null}
+              {restorePreview.needsPassword ? (
+                <Field label="Backup password for this file" className="mt-3">
+                  <Input
+                    type="password"
+                    autoComplete="off"
+                    value={restorePassword}
+                    onChange={(event) => setRestorePassword(event.target.value)}
+                    placeholder="The password you set when it was made"
+                  />
+                </Field>
+              ) : null}
               <Button
                 type="button"
                 className="mt-3"
                 variant="outline"
-                disabled={!restorePreview.valid || busy === "restore"}
+                disabled={!restorePreview.valid || busy === "restore" || (restorePreview.needsPassword === true && !restorePassword)}
                 onClick={() => void restoreBackup()}
               >
                 {busy === "restore" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
