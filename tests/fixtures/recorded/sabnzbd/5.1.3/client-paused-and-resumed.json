@@ -1,0 +1,137 @@
+{
+  "app": "sabnzbd",
+  "version": "5.1.3",
+  "state": "client-paused-and-resumed",
+  "recordedAt": "2026-10-19T10:05:58Z",
+  "note": "The whole queue paused (mode=pause) and resumed (mode=resume), the queue read after each (SABnzbd 5.1.3 in Docker, the e2e stack's image and first settings file).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api?mode=pause&output=json&apikey=<scrubbed>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json;charset=UTF-8"
+        },
+        "body": {
+          "status": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api?mode=queue&output=json&apikey=<scrubbed>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json;charset=UTF-8"
+        },
+        "body": {
+          "queue": {
+            "version": "5.1.3",
+            "paused": true,
+            "pause_int": "0",
+            "paused_all": false,
+            "diskspace1": "915.11",
+            "diskspace2": "915.11",
+            "diskspace1_norm": "915.1 G",
+            "diskspace2_norm": "915.1 G",
+            "diskspacetotal1": "1006.85",
+            "diskspacetotal2": "1006.85",
+            "speedlimit": "0",
+            "speedlimit_abs": "0",
+            "have_warnings": "16",
+            "finishaction": null,
+            "quota": "0 B",
+            "have_quota": false,
+            "left_quota": "0 B",
+            "cache_art": "0",
+            "cache_size": "0 B",
+            "kbpersec": "0.00",
+            "speed": "0",
+            "mbleft": "0.00",
+            "mb": "0.00",
+            "sizeleft": "0 B",
+            "size": "0 B",
+            "noofslots_total": 0,
+            "noofslots": 0,
+            "start": 0,
+            "limit": 0,
+            "finish": 0,
+            "status": "Paused",
+            "timeleft": "0:00:00",
+            "slots": []
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api?mode=resume&output=json&apikey=<scrubbed>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json;charset=UTF-8"
+        },
+        "body": {
+          "status": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api?mode=queue&output=json&apikey=<scrubbed>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json;charset=UTF-8"
+        },
+        "body": {
+          "queue": {
+            "version": "5.1.3",
+            "paused": false,
+            "pause_int": "0",
+            "paused_all": false,
+            "diskspace1": "915.11",
+            "diskspace2": "915.11",
+            "diskspace1_norm": "915.1 G",
+            "diskspace2_norm": "915.1 G",
+            "diskspacetotal1": "1006.85",
+            "diskspacetotal2": "1006.85",
+            "speedlimit": "0",
+            "speedlimit_abs": "0",
+            "have_warnings": "16",
+            "finishaction": null,
+            "quota": "0 B",
+            "have_quota": false,
+            "left_quota": "0 B",
+            "cache_art": "0",
+            "cache_size": "0 B",
+            "kbpersec": "0.00",
+            "speed": "0",
+            "mbleft": "0.00",
+            "mb": "0.00",
+            "sizeleft": "0 B",
+            "size": "0 B",
+            "noofslots_total": 0,
+            "noofslots": 0,
+            "start": 0,
+            "limit": 0,
+            "finish": 0,
+            "status": "Idle",
+            "timeleft": "0:00:00",
+            "slots": []
+          }
+        }
+      }
+    }
+  ]
+}
