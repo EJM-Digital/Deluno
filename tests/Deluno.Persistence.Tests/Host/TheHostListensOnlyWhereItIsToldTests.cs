@@ -134,7 +134,7 @@ public sealed class TheHostListensOnlyWhereItIsToldTests
         var compose = File.ReadAllText(RepositoryFile("compose.yaml"));
 
         Assert.Contains("restart: unless-stopped", compose, StringComparison.Ordinal);
-        Assert.Contains("http://127.0.0.1:8080/health", compose, StringComparison.Ordinal);
+        Assert.Contains("http://127.0.0.1:8080/api/health/ready", compose, StringComparison.Ordinal);
         Assert.Contains("HEALTHCHECK", File.ReadAllText(RepositoryFile("Dockerfile")), StringComparison.Ordinal);
     }
 
