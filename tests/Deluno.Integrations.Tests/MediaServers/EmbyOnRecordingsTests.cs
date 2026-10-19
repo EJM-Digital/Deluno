@@ -390,4 +390,23 @@ public sealed class EmbyOnRecordingsTests
         Assert.Equal([200, 204, 200, 204], user.Select(e => e.Reply.Status));
         Assert.Equal(HttpStatusCode.OK, user[0].Reply.StatusCode);
     }
+
+    [Fact]
+    public async Task Created_Modified_and_Deleted_files_go_to_the_server_in_one_call_each_with_its_own_kind_in_the_order_given()
+    {
+        var emby = new Emby();
+        MediaServerPathChange[] changes =
+        [
+            new("/media/Movies/Sintel (2010)/Sintel (2010) [WEB 1080p].mkv", MediaServerChangeKind.Created),
+            new("/media/Movies/Sintel (2010)/Sintel (2010) [WEB 720p].mkv", MediaServerChangeKind.Deleted),
+            new("/media/Movies/Sintel (2010)/Sintel (2010).nfo", MediaServerChangeKind.Modified)
+        ];
+
+        var answer = await emby.Client().RefreshAsync(Server(), "movies", changes, CancellationToken.None);
+
+        Assert.False(Assert.IsType<MediaServerAnswer<MediaServerRefresh>.Reported>(answer).Value.UsedFallbackScan);
+        var sent = JsonNode.Parse(Assert.Single(emby.Calls)["POST /emby/Library/Media/Updated ".Length..])!["Updates"]!.AsArray();
+        Assert.Equal(changes.Select(change => change.Path), sent.Select(update => (string?)update!["Path"]));
+        Assert.Equal(["Created", "Deleted", "Modified"], sent.Select(update => (string?)update!["UpdateType"]));
+    }
 }
