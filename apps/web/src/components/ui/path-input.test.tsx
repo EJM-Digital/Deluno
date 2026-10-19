@@ -125,23 +125,23 @@ describe("PathInput: the Windows folder window and the Check button", () => {
   });
 
   it("applies the folder the Windows window on the server machine returns, after asking the server to open it at the current path", async () => {
-    fetchJsonMock.mockResolvedValue({ path: "D:\Media\Films", cancelled: false });
+    fetchJsonMock.mockResolvedValue({ path: "/srv/media/Films", cancelled: false });
     const onChange = vi.fn();
-    render(<PathInput value={"D:\Media"} onChange={onChange} />);
+    render(<PathInput value={"/srv/media"} onChange={onChange} />);
 
     fireEvent.click(screen.getByRole("button", { name: /Choose folder/ }));
 
-    await waitFor(() => expect(onChange).toHaveBeenCalledWith("D:\Media\Films"));
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith("/srv/media/Films"));
     const [path, init] = fetchJsonMock.mock.calls[0];
     expect(path).toBe("/api/filesystem/native-folder-picker");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body)).toEqual({ initialPath: "D:\Media" });
+    expect(JSON.parse(init.body)).toEqual({ initialPath: "/srv/media" });
   });
 
   it("changes nothing when the Windows window is closed without choosing", async () => {
     fetchJsonMock.mockResolvedValue({ path: null, cancelled: true });
     const onChange = vi.fn();
-    render(<PathInput value={"D:\Media"} onChange={onChange} />);
+    render(<PathInput value={"/srv/media"} onChange={onChange} />);
 
     fireEvent.click(screen.getByRole("button", { name: /Choose folder/ }));
 

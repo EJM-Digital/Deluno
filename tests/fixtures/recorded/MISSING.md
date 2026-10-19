@@ -270,3 +270,13 @@ Still missing, and why:
 ## IMDb list export (#1292)
 
 - imdb list export CSV (and the list page it comes from): IMDb answers an automated fetch with an empty HTTP 202 (its bot wall), so a real export of a public list could not be recorded from this machine. Needed: a real `ls...` list CSV export saved from a browser, trimmed to a few rows, to test the IMDb list provider (ls id, list URL and CSV export URL) in IntakeSyncServiceTests.
+
+## TRaSH Guides sync (`github`, settings-library rows of #1291)
+
+The weekly check, "Check now", "Preview a sync", "Sync", the version history and the change report read two public replies from GitHub that no recording holds yet. Both are plain unauthenticated GETs from the internet; the rows stay gaps until they are recorded:
+
+- `https://github.com/TRaSH-Guides/Guides.git/info/refs?service=git-upload-pack` (the first step of `GuideUpstreamTreeClient`; a text reply of about 150 KB listing every branch, so a recording keeps the HEAD line and the `refs/heads/master` line and says it was shortened).
+- `https://codeload.github.com/TRaSH-Guides/Guides/zip/<commit>` for two real commits (the commit Deluno ships its source inventory from, `Deluno.Quality/Guides/trash-guide-source-inventory.json`, and a newer one). The reply is a binary zip of about 25 MB. `RecordedReplies` holds JSON and text bodies only, so the recorder needs a base64 body (or a stored file beside the recording) first, and a shortened archive must keep every file under `docs/json/{radarr,sonarr}/{cf,cf-groups,quality-profiles}/` or the change report counts the missing ones as removed upstream.
+- The API fallback (`api.github.com/repos/TRaSH-Guides/Guides/git/ref/heads/master`, `/git/commits/<sha>`, `/git/trees/<sha>?recursive=1`) is the second route when the archive cannot be read; its tree reply is large and is shortened the same way.
+
+Until then the existing tests in `tests/Deluno.Persistence.Tests/Quality/GuideUpdateCheckServiceTests.cs` and `GuidePackageSyncServiceTests.cs` stay partial proofs: they answer from invented sources ("remote-guide-revision", "remote-custom-format-blob"), which the recording bar does not accept.
