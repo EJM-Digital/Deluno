@@ -24,6 +24,21 @@ public sealed class LeftoverScanMemory
         }
     }
 
+    /// <summary>
+    /// One leftover left the count (the person kept it or removed it): the bell and the Dashboard read this, so they stop counting it
+    /// at once instead of at the next scan. The scan time stays: it is when the folders were last walked.
+    /// </summary>
+    public void Forget(long bytes)
+    {
+        lock (_gate)
+        {
+            if (_last is { } last)
+            {
+                _last = last with { Count = Math.Max(0, last.Count - 1), Bytes = Math.Max(0, last.Bytes - Math.Max(0, bytes)) };
+            }
+        }
+    }
+
     public void Record(int count, long bytes, DateTimeOffset scannedUtc)
     {
         lock (_gate)

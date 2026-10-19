@@ -174,6 +174,7 @@ public sealed class OrphanedDownloadService(
 
         await keptDownloadsRepository.KeepAsync(item.Path, cancellationToken);
         cache?.Forget(item.Path);
+        scanMemory?.Forget(item.SizeBytes);
         await activityFeedRepository.RecordActivityAsync(
             "download.orphan.kept",
             $"{item.Name} was kept in the {item.LibraryName} library's download folder. Deluno will not count it again.",
@@ -230,6 +231,7 @@ public sealed class OrphanedDownloadService(
         }
 
         cache?.Forget(item.Path);
+        scanMemory?.Forget(item.SizeBytes);
         var noticeSuffix = reason is { Length: > 0 } ? $", {reason}." : ".";
         var message = $"{item.Name} was moved to the recycle bin from the {item.LibraryName} library's download folder ({FormatSize(item.SizeBytes)}). No client, import or hand-off was using it{noticeSuffix}";
         await activityFeedRepository.RecordActivityAsync(
