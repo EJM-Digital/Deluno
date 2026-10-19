@@ -87,6 +87,38 @@ public sealed class ARemovedFilmTakesItsRealDownloadWithItTests
         Assert.Equal(HttpStatusCode.OK, (await app.Client.GetAsync($"/api/movies/{keep}")).StatusCode);
     }
 
+    [Fact]
+    public async Task Removing_a_show_sends_qBittorrent_the_recorded_delete_for_a_download_recorded_under_one_of_its_episodes_and_blocklists_nothing()
+    {
+        await using var qbit = await RecordedAppServer.StartAsync(
+            "qbittorrent",
+            new[] { "sign-in", "version", "settings", "resumed", "removed-with-data" }.Select(RecordedReplies.Qbittorrent));
+        await using var app = await ApplicationTestHost.StartAsync();
+        var client = await app.Client.PostAsJsonAsync("/api/download-clients", new
+        {
+            protocol = "qbittorrent", host = qbit.Host, port = qbit.Port, username = "deluno", password = "a-test-password",
+            moviesCategory = "movies", tvCategory = "tv", priority = 10, isEnabled = true
+        });
+        var clientId = (await client.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        var show = await ApiScenes.ShowOnDiskAsync(app, "Severance", 2022);
+        var other = await ApiScenes.ShowOnDiskAsync(app, "Andor", 2022, show.LibraryId);
+        var jobs = app.Services.GetRequiredService<IJobQueueRepository>();
+        var dispatchId = await jobs.RecordDownloadDispatchAsync(
+            show.LibraryId, "tv", "episode", show.EpisodeId, "Severance.S01E01.1080p.WEB-DL-GRP", "Fixture Indexer", clientId, "qBittorrent", "sent", null,
+            clientExternalId: RecordedHash, cancellationToken: CancellationToken.None);
+
+        var removed = await app.Client.PostAsJsonAsync("/api/series/bulk", new { seriesIds = new[] { show.SeriesId }, operation = "remove" });
+
+        Assert.True(removed.IsSuccessStatusCode, await removed.Content.ReadAsStringAsync());
+        var delete = Assert.Single(qbit.Requests, request => request.PathAndQuery.EndsWith("/api/v2/torrents/delete", StringComparison.Ordinal));
+        Assert.Contains($"hashes={RecordedHash}", delete.Body, StringComparison.Ordinal);
+        Assert.Contains("deleteFiles=true", delete.Body, StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.NotFound, (await app.Client.GetAsync($"/api/series/{show.SeriesId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await app.Client.GetAsync($"/api/series/{other.SeriesId}")).StatusCode);
+        Assert.Equal(0, await ApiScenes.ScalarAsync(app, "jobs", "SELECT COUNT(*) FROM blocked_releases;"));
+        Assert.Equal("archived", await ApiScenes.TextAsync(app, "jobs", $"SELECT status FROM download_dispatches WHERE id = '{dispatchId}';"));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
