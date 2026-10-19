@@ -18,6 +18,10 @@ public sealed class TheConfigChangedPushWithoutAPublisherTests
     [InlineData("POST", "/health", 200)]
     [InlineData("GET", "/api/tags/", 200)]
     [InlineData("POST", "/api/tags/", 500)]
+    [InlineData("POST", "/api/tags/", 199)]
+    [InlineData("HEAD", "/api/tags/", 200)]
+    [InlineData("OPTIONS", "/api/tags/", 204)]
+    [InlineData("DELETE", "/api/tags/1", 204)]
     public async Task A_write_is_answered_as_it_was_when_nothing_is_listening(string method, string path, int status)
     {
         var app = new ApplicationBuilder(new ServiceCollection().BuildServiceProvider());
