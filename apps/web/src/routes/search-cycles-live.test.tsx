@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfigAreas } from "../lib/config-areas";
@@ -38,11 +38,13 @@ const films = {
   searchWindowStartHour: null, searchWindowEndHour: null, searchWindowDays: 127, randomizeSearchOrder: false
 };
 
+let settingsNow: Record<string, unknown> = {};
+
 function loaderData() {
   return {
     automationStates: [{ libraryId: "lib-1", status: "idle", lastError: null, nextSearchUtc: null }], libraries: [films],
     qualityModel: { version: "1", tiers: [], upgradeStop: { stopWhenCutoffMet: true, requireCustomFormatGainForSameQuality: false }, updatedUtc: "2026-10-01T00:00:00Z" },
-    settings: { ...emptyPlatformSettingsSnapshot, autoStartJobs: true }, searchCycles: [], blockedReleases: [], failureRules: [],
+    settings: { ...emptyPlatformSettingsSnapshot, autoStartJobs: true, ...settingsNow }, searchCycles: [], blockedReleases: [], failureRules: [],
     recycleBinSettings: { retentionDays: 30, maxSizeMb: 102400 }, contentBlocklist: emptyContentBlocklistSettings
   };
 }
@@ -51,14 +53,22 @@ function reply(body: unknown) {
   return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body), clone() { return this; }, text: () => Promise.resolve(JSON.stringify(body)) } as unknown as Response);
 }
 
-function open() {
-  const router = createMemoryRouter([{ path: "/search-cycles", element: <SearchCyclesPage />, loader: () => { mocks.loader(); return loaderData(); } }], { initialEntries: ["/search-cycles"] });
+function open(path = "/search-cycles") {
+  const router = createMemoryRouter([{ path: "/search-cycles/*", element: <SearchCyclesPage />, loader: () => { mocks.loader(); return loaderData(); } }], { initialEntries: [path] });
   render(<RouterProvider router={router} />);
 }
 
 const fire = (name: string, payload: unknown = null) => act(() => { for (const handler of mocks.many) handler(name, payload); });
 
+function controlFor(label: string): HTMLElement {
+  const element = screen.getAllByText(label).map((found) => found.closest("label")).find((candidate) => candidate !== null);
+  const control = element?.htmlFor ? document.getElementById(element.htmlFor) : element?.querySelector("button, select, input");
+  if (!control) throw new Error(`No control labelled ${label}`);
+  return control as HTMLElement;
+}
+
 beforeEach(() => {
+  settingsNow = {};
   mocks.singles = {};
   mocks.many = [];
   mocks.loader.mockReset();
@@ -110,5 +120,33 @@ describe("the Automation screen follows the server", () => {
     expect(asked).toContain("/api/library-automation?pageSize=50");
     expect(asked).toContain("/api/search-cycles?pageSize=50");
     expect(mocks.loader, "the rest of the screen is not read again").toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the screen adopts the server's newer settings only when the form has nothing unsaved", () => {
+  it("shows a change made in another tab at once while the form is clean", async () => {
+    open("/search-cycles/failed-downloads");
+    await screen.findByText("Hourly search cap");
+    expect(controlFor("Hourly search cap")).toHaveAttribute("aria-checked", "false");
+
+    settingsNow = { maxSearchesPerHourEnabled: true, maxSearchesPerHour: 200 };
+    fire("SettingsChanged");
+
+    await waitFor(() => expect(controlFor("Hourly search cap")).toHaveAttribute("aria-checked", "true"), { timeout: 3000 });
+  });
+
+  it("keeps an edit in progress and does not overwrite it with the server's newer settings", async () => {
+    open("/search-cycles/failed-downloads");
+    await screen.findByText("Hourly search cap");
+    fireEvent.click(controlFor("Download integrity check"));
+    expect(controlFor("Download integrity check")).toHaveAttribute("aria-checked", "true");
+
+    settingsNow = { maxSearchesPerHourEnabled: true, maxSearchesPerHour: 200 };
+    fire("SettingsChanged");
+    await waitFor(() => expect(mocks.loader).toHaveBeenCalledTimes(2), { timeout: 3000 });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(controlFor("Download integrity check"), "the edit is kept").toHaveAttribute("aria-checked", "true");
+    expect(controlFor("Hourly search cap"), "the other tab's change waits until the edit is saved or dropped").toHaveAttribute("aria-checked", "false");
   });
 });

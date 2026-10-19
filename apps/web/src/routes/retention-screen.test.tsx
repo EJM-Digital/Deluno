@@ -41,7 +41,7 @@ const mark = (overrides: Record<string, unknown> = {}) => ({
 
 const loaderData = {
   rules: [] as ReturnType<typeof rule>[],
-  servers: [] as unknown[],
+  servers: [] as Array<Record<string, unknown>>,
   marks: [] as ReturnType<typeof mark>[],
   keeps: [] as unknown[],
   fields: { movie: movieFields, show: movieFields, season: movieFields, episode: movieFields }
@@ -87,6 +87,7 @@ beforeEach(() => {
   revalidateMock.mockReset();
   unsavedMock.mockReset();
   loaderData.rules = [];
+  loaderData.servers = [];
   loaderData.marks = [];
   loaderData.keeps = [];
   authedFetchMock.mockImplementation((path: string) => reply(String(path).includes("/trial") ? { considered: 120, stepCounts: [{ count: 7 }], matchedCount: 7, matchedBytes: 2_000_000_000, undecidedCount: 0, unreachableServers: [], problems: [], unmanaged: [], expiryAction: "log", expiryDescription: "" } : []));
@@ -353,5 +354,117 @@ describe("Leaving soon: Postpone", () => {
     await waitFor(() => expect(calls("POST", "/api/retention/leaving-soon/postpone")).toHaveLength(1));
     expect(JSON.parse(String((calls("POST", "/api/retention/leaving-soon/postpone")[0][1] as RequestInit).body))).toEqual({ ruleId: "rule-1", entityIds: ["movie-9"], days: 30 });
     expect(await screen.findByText(/Dementia 13 is postponed by 30 days: .* It is not kept\./)).toBeVisible();
+  });
+});
+
+describe("Media servers in a rule", () => {
+  const server = (overrides: Record<string, unknown> = {}) => ({ id: "srv-1", name: "Living room", kind: "jellyfin", baseUrl: "http://192.168.1.20:8096", serverName: null, ...overrides });
+
+  it("says none are connected and where to connect one, when there are none", async () => {
+    render_();
+    fireEvent.click(screen.getByRole("button", { name: "New rule" }));
+    const drawer = within(await screen.findByRole("dialog"));
+
+    expect(drawer.getByText("none connected")).toBeVisible();
+    expect(drawer.getByText(/Connect Plex, Jellyfin or Emby under Find & Download/)).toBeVisible();
+  });
+
+  it("has one switch per connected server with its name and what it reports itself as, or its address", async () => {
+    loaderData.servers = [server(), server({ id: "srv-2", name: "Study", kind: "plex", serverName: "Study Plex" })];
+    render_();
+    fireEvent.click(screen.getByRole("button", { name: "New rule" }));
+    const drawer = within(await screen.findByRole("dialog"));
+
+    expect(switchOf(drawer, "Living room")).toHaveAttribute("aria-checked", "false");
+    expect(drawer.getByText("http://192.168.1.20:8096")).toBeVisible();
+    expect(switchOf(drawer, "Study")).toHaveAttribute("aria-checked", "false");
+    expect(drawer.getByText("Reports itself as Study Plex")).toBeVisible();
+    expect(drawer.queryByText("none connected")).not.toBeInTheDocument();
+  });
+
+  it("the servers switched on are the ones the saved rule reads", async () => {
+    loaderData.servers = [server(), server({ id: "srv-2", name: "Study", kind: "plex" })];
+    authedFetchMock.mockImplementation((path: string, init?: RequestInit) => reply(init?.method === "POST" && path === "/api/retention/rules" ? rule({ id: "rule-new" }) : path.includes("/trial") ? { considered: 0, stepCounts: [], matchedCount: 0, matchedBytes: 0, undecidedCount: 0, unreachableServers: [], problems: [], unmanaged: [], expiryDescription: "" } : []));
+    render_();
+    fireEvent.click(screen.getByRole("button", { name: "New rule" }));
+    const drawer = within(await screen.findByRole("dialog"));
+
+    fireEvent.change(drawer.getByLabelText("Name"), { target: { value: "Old films" } });
+    fireEvent.click(switchOf(drawer, "Study"));
+    fireEvent.click(drawer.getByRole("button", { name: "Add rule" }));
+
+    await waitFor(() => expect(calls("POST", "/api/retention/rules")).toHaveLength(1));
+    expect(JSON.parse(String((calls("POST", "/api/retention/rules")[0][1] as RequestInit).body)).mediaServerIds).toEqual(["srv-2"]);
+  });
+
+  it("the list names the servers a rule reads, and a server that was removed", async () => {
+    loaderData.servers = [server()];
+    loaderData.rules = [rule({ mediaServerIds: ["srv-1", "gone"] })];
+    render_();
+
+    expect(screen.getByText(/Movies · Living room, Removed server/)).toBeVisible();
+  });
+});
+
+describe("The Enabled switch in a rule's drawer", () => {
+  it("saves a rule that is off, which is not checked and marks nothing", async () => {
+    loaderData.rules = [rule()];
+    authedFetchMock.mockImplementation((path: string, init?: RequestInit) => reply(init?.method === "PUT" ? rule({ isEnabled: false }) : path.includes("/trial") ? { considered: 0, stepCounts: [], matchedCount: 0, matchedBytes: 0, undecidedCount: 0, unreachableServers: [], problems: [], unmanaged: [], expiryDescription: "" } : []));
+    render_();
+    fireEvent.click(screen.getByText("Unwatched films"));
+    const drawer = within(await screen.findByRole("dialog"));
+    expect(drawer.getByText("A rule that is off is not checked, and marks nothing.")).toBeVisible();
+    expect(switchOf(drawer, "Enabled")).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(switchOf(drawer, "Enabled"));
+    fireEvent.click(drawer.getByRole("button", { name: "Save rule" }));
+
+    await waitFor(() => expect(calls("PUT", "/api/retention/rules/rule-1")).toHaveLength(1));
+    expect(JSON.parse(String((calls("PUT", "/api/retention/rules/rule-1")[0][1] as RequestInit).body)).isEnabled).toBe(false);
+  });
+});
+
+describe("The Kept card", () => {
+  const keep = (overrides: Record<string, unknown> = {}) => ({ id: "keep-1", entityId: "movie-9", level: "movie", title: "Dementia 13", ruleId: "rule-1", ruleName: "Unwatched films", note: "Kids' favourite", createdUtc: "2026-10-02T10:00:00Z", ...overrides });
+
+  it("is not drawn at all while nothing is kept", () => {
+    render_();
+    expect(screen.queryByText("Kept")).not.toBeInTheDocument();
+  });
+
+  it("lists each keep with its title and level, the rule it was kept from, its note and date", () => {
+    loaderData.keeps = [keep(), keep({ id: "keep-2", entityId: "show-1", level: "show", title: "Dark Shadows", ruleId: null, ruleName: null, note: null }), keep({ id: "keep-3", title: "Orphan", ruleName: null, note: null })];
+    render_();
+
+    expect(screen.getByText("3 titles")).toBeVisible();
+    expect(screen.getByText("Dementia 13")).toBeVisible();
+    expect(screen.getByText("“Unwatched films”")).toBeVisible();
+    expect(screen.getByText("Kids' favourite")).toBeVisible();
+    expect(screen.getByText("Every rule")).toBeVisible();
+    expect(screen.getByText("“Deleted rule”")).toBeVisible();
+    expect(screen.getAllByRole("button", { name: "Undo" })).toHaveLength(3);
+  });
+
+  it("Undo takes the keep off the list at the server and reads the page again", async () => {
+    loaderData.keeps = [keep()];
+    authedFetchMock.mockImplementation(() => reply({}, true, 204));
+    render_();
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+
+    await waitFor(() => expect(calls("DELETE", "/api/retention/keeps/keep-1")).toHaveLength(1));
+    await waitFor(() => expect(revalidateMock).toHaveBeenCalled());
+  });
+
+  it("an undo the server refuses says so and keeps the keep", async () => {
+    loaderData.keeps = [keep()];
+    authedFetchMock.mockImplementation(() => reply({ message: "No such keep." }, false, 404));
+    render_();
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+
+    expect(await screen.findByText(/No such keep|could not be taken off the keep list/)).toBeVisible();
+    expect(revalidateMock).not.toHaveBeenCalled();
+    expect(screen.getByText("Dementia 13")).toBeVisible();
   });
 });

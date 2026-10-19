@@ -625,6 +625,63 @@ describe("Search automation card", () => {
     expect(within(card).getAllByRole("button", { name: "Run now" })).toHaveLength(5);
   });
 
+  const cycle = (overrides: Record<string, unknown> = {}) => ({
+    id: "c1", libraryId: "lib-1", libraryName: "Films", mediaType: "movies", triggerKind: "schedule", status: "completed",
+    plannedCount: 12, queuedCount: 3, skippedCount: 9, notesJson: null, startedUtc: "2026-10-15T09:00:00Z", completedUtc: "2026-10-15T09:01:00Z", searchKind: "combined", ...overrides
+  });
+
+  it("counts the libraries working now, the runs it remembers and the searches still waiting, and says so for a quiet instance", () => {
+    loaderData.automation = [
+      { ...automationRow(1), status: "running" }, { ...automationRow(2), searchRequested: true }, automationRow(3)
+    ];
+    loaderData.searchCycles = [cycle(), cycle({ id: "c2" })];
+    loaderData.retryWindows = [
+      { entityType: "movie", entityId: "a", libraryId: "lib-1", mediaType: "movies", actionKind: "missing", nextEligibleUtc: "2099-01-01T00:00:00Z", lastAttemptUtc: "2026-10-15T08:00:00Z", attemptCount: 1, lastResult: "Nothing found.", updatedUtc: "2026-10-15T08:00:00Z" },
+      { entityType: "movie", entityId: "b", libraryId: "lib-1", mediaType: "movies", actionKind: "upgrade", nextEligibleUtc: "2000-01-01T00:00:00Z", lastAttemptUtc: "2026-10-15T08:00:00Z", attemptCount: 1, lastResult: null, updatedUtc: "2026-10-15T08:00:00Z" }
+    ];
+    renderSystem();
+
+    const card = within(screen.getByText("Search automation").closest("section, div")!.parentElement!);
+    const metric = (label: string) => card.getAllByText(label)[0].parentElement!;
+    expect(within(metric("Active")).getByText("2")).toBeInTheDocument();
+    expect(within(metric("Runs")).getByText("2")).toBeInTheDocument();
+    expect(within(metric("Waiting")).getByText("1")).toBeInTheDocument();
+  });
+
+  it("shows the latest cycle with what it checked, sent and left to retry", () => {
+    loaderData.searchCycles = [cycle(), cycle({ id: "older", libraryName: "Shows", plannedCount: 1, queuedCount: 1, skippedCount: 0 })];
+    renderSystem();
+
+    const card = within(screen.getByText("Search automation").closest("section, div")!.parentElement!);
+    expect(card.getByText("Films")).toBeInTheDocument();
+    expect(card.getByText(/^schedule \//)).toBeInTheDocument();
+    const metric = (label: string) => card.getByText(label).parentElement!;
+    expect(within(metric("Checked")).getByText("12")).toBeInTheDocument();
+    expect(within(metric("Sent")).getByText("3")).toBeInTheDocument();
+    expect(within(metric("Retry")).getByText("9")).toBeInTheDocument();
+    expect(card.queryByText("Shows")).toBeNull();
+  });
+
+  it("says no cycle has run yet when none has", () => {
+    renderSystem();
+    expect(screen.getByText(/No search cycles have run yet/)).toBeInTheDocument();
+  });
+
+  it("lists the first four searches held back with what was found last and when they can run again", () => {
+    loaderData.retryWindows = [1, 2, 3, 4, 5].map((n) => ({
+      entityType: "movie", entityId: `film-${n}`, libraryId: "lib-1", mediaType: n === 1 ? "tv" : "movies", actionKind: n === 1 ? "upgrade" : "missing",
+      nextEligibleUtc: "2099-01-01T00:00:00Z", lastAttemptUtc: "2026-10-15T08:00:00Z", attemptCount: 1, lastResult: n === 1 ? "Nothing better found." : null, updatedUtc: "2026-10-15T08:00:00Z"
+    }));
+    renderSystem();
+
+    const card = within(screen.getByText("Search automation").closest("section, div")!.parentElement!);
+    expect(card.getByText("Searches held back until")).toBeInTheDocument();
+    expect(card.getByText("tv / upgrade")).toBeInTheDocument();
+    expect(card.getByText("Nothing better found.")).toBeInTheDocument();
+    expect(card.getAllByText("movies / missing")).toHaveLength(3);
+    expect(card.getAllByText("Last search recorded")).toHaveLength(3);
+  });
+
   it("Run now asks for a search of that library and reads the card again", async () => {
     loaderData.automation = [automationRow(1)];
     answerPost({});
