@@ -39,12 +39,13 @@ const films = {
 };
 
 let settingsNow: Record<string, unknown> = {};
+let blockedNow: unknown[] = [];
 
 function loaderData() {
   return {
     automationStates: [{ libraryId: "lib-1", status: "idle", lastError: null, nextSearchUtc: null }], libraries: [films],
     qualityModel: { version: "1", tiers: [], upgradeStop: { stopWhenCutoffMet: true, requireCustomFormatGainForSameQuality: false }, updatedUtc: "2026-10-01T00:00:00Z" },
-    settings: { ...emptyPlatformSettingsSnapshot, autoStartJobs: true, ...settingsNow }, searchCycles: [], blockedReleases: [], failureRules: [],
+    settings: { ...emptyPlatformSettingsSnapshot, autoStartJobs: true, ...settingsNow }, searchCycles: [], blockedReleases: blockedNow, failureRules: [],
     recycleBinSettings: { retentionDays: 30, maxSizeMb: 102400 }, contentBlocklist: emptyContentBlocklistSettings
   };
 }
@@ -69,6 +70,7 @@ function controlFor(label: string): HTMLElement {
 
 beforeEach(() => {
   settingsNow = {};
+  blockedNow = [];
   mocks.singles = {};
   mocks.many = [];
   mocks.loader.mockReset();
@@ -102,6 +104,23 @@ describe("the Automation screen follows the server", () => {
 
     fire("ConfigChanged", { area });
     await waitFor(() => expect(mocks.loader).toHaveBeenCalledTimes(2), { timeout: 3000 });
+  });
+
+  it("shows a release blocked elsewhere on the Blocklist tab as soon as the server says the download-health settings changed (#1358)", async () => {
+    open("/search-cycles/blocklist");
+    expect(await screen.findByText(/0 releases to decide|Blocklist/i)).toBeTruthy();
+    expect(screen.queryByText("Arrival.2016.2160p")).not.toBeInTheDocument();
+
+    // Another tab, the Queue or the search screen blocks a release: the server pushes the area every blocklist write names.
+    blockedNow = [{
+      id: "block-1", releaseKey: "arrival.2016.2160p|nebula", releaseName: "Arrival.2016.2160p", indexerName: "Nebula", mediaType: "movies", entityId: "movie-1",
+      title: "Arrival", reasonCode: "manualFailure", reason: "You blocked this release from Deluno.", torrentHashOrItemId: "hash-1", downloadClientId: null,
+      downloadClientName: null, blockedUtc: "2026-10-19T12:00:00Z", state: "refused", origin: "manual"
+    }];
+    fire("ConfigChanged", { area: ConfigAreas.downloadHealth });
+
+    expect(await screen.findByText("Arrival.2016.2160p", undefined, { timeout: 3000 })).toBeInTheDocument();
+    expect(mocks.loader).toHaveBeenCalledTimes(2);
   });
 
   it.each([["AutomationStateChanged"], ["SearchRunCompleted"]])("a %s push reads only the two schedule lists and the library's chip changes without a reload", async (event) => {

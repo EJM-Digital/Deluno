@@ -190,9 +190,7 @@ public sealed class TheAutomationScreenRoutesAnswerOnTheRealHostTests
 
     // ---- the Blocklist tab follows the server ------------------------------------------------------------------------------------
 
-    [Fact(Skip = "DEFECT (coverage register): blocking or lifting a release over /api/blocked-releases pushes nothing live. "
-        + "ConfigChangedPush.Areas has no 'blocked-releases' prefix and BlockedReleasesEndpointRouteBuilderExtensions never publishes, so the Blocklist tab (search-cycles-page.tsx, which listens to LibraryChanged, SettingsChanged, QualityProfileChanged and the download-health and quality-model areas only) "
-        + "does not change when a release is blocked or lifted in another tab, from the queue or from the search screen.")]
+    [Fact]
     public async Task Blocking_a_release_tells_every_open_screen_so_the_Blocklist_tab_changes_by_itself()
     {
         var publisher = new RecordingRealtimeEventPublisher();
