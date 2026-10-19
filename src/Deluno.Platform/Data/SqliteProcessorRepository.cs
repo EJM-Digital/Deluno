@@ -824,8 +824,28 @@ public sealed class SqliteProcessorRepository(
         return await update.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
-    public async Task<ProcessorHandoffItem?> UpdateProcessorHandoffAsync(
+    public Task<ProcessorHandoffItem?> UpdateProcessorHandoffAsync(
         string id,
+        string status,
+        string? outputPath,
+        string? importJobId,
+        string? failureMessage,
+        CancellationToken cancellationToken)
+        => UpdateProcessorHandoffCoreAsync(id, null, status, outputPath, importJobId, failureMessage, cancellationToken);
+
+    public async Task<bool> UpdateProcessorHandoffIfStatusAsync(
+        string id,
+        string expectedStatus,
+        string status,
+        string? outputPath,
+        string? importJobId,
+        string? failureMessage,
+        CancellationToken cancellationToken)
+        => await UpdateProcessorHandoffCoreAsync(id, expectedStatus, status, outputPath, importJobId, failureMessage, cancellationToken) is not null;
+
+    private async Task<ProcessorHandoffItem?> UpdateProcessorHandoffCoreAsync(
+        string id,
+        string? expectedStatus,
         string status,
         string? outputPath,
         string? importJobId,
@@ -865,9 +885,12 @@ public sealed class SqliteProcessorRepository(
                         ELSE processor_checked_utc END,
                     processor_unreachable_since_utc = CASE WHEN @status = 'waiting' THEN NULL ELSE processor_unreachable_since_utc END,
                     processor_answering_since_utc = CASE WHEN @status = 'waiting' THEN NULL ELSE processor_answering_since_utc END
-                WHERE id = @id;
+                WHERE id = @id
+                  -- A poller writes only over the status it read (#1363): a report that moved the hand-off since wins.
+                  AND (@expectedStatus IS NULL OR status = @expectedStatus);
                 """;
             AddParameter(update, "@id", id.Trim());
+            AddParameter(update, "@expectedStatus", expectedStatus is null ? null : NormalizeProcessorHandoffStatus(expectedStatus));
             AddParameter(update, "@status", NormalizeProcessorHandoffStatus(status));
             AddParameter(update, "@outputPath", NormalizePath(outputPath));
             AddParameter(update, "@importJobId", NormalizeName(importJobId));

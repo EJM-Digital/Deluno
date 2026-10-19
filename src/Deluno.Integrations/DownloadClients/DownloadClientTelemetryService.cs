@@ -1501,8 +1501,8 @@ public sealed class DownloadClientTelemetryService(
                     : stoppedTracking
                         ? ProcessorHandoffRemovalReasons.StoppedTracking(handoff.ReleaseName)
                         : ProcessorHandoffRemovalReasons.Removed(handoff.ReleaseName, client.Name);
-                await processorRepository.UpdateProcessorHandoffAsync(
-                    handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null, reason, cancellationToken);
+                await processorRepository.UpdateProcessorHandoffIfStatusAsync(
+                    handoff.Id, handoff.Status, ProcessorHandoffStatuses.Dismissed, null, null, reason, cancellationToken);
                 await activityFeedRepository.RecordActivityAsync(
                     "processing.dismissed",
                     $"{handoff.ReleaseName}'s hand-off to {handoff.ProcessorName ?? "the processor"} was closed, because Deluno {(movedToCategory is null ? "removed the download" : "moved the download to keep it seeding")}.",

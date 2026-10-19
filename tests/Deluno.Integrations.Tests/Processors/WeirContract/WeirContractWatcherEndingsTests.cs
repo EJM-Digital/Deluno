@@ -23,7 +23,7 @@ namespace Deluno.Integrations.Tests.Processors.WeirContract;
 /// </summary>
 public sealed class WeirContractWatcherEndingsTests : IDisposable
 {
-    private readonly Mock<IProcessorRepository> _repository = new();
+    private readonly Mock<IProcessorRepository> _repository = new() { CallBase = true };
     private readonly Mock<IActivityFeedRepository> _activity = new();
     private readonly Mock<IMovieCatalogRepository> _movies = new();
     private readonly Mock<ISeriesCatalogRepository> _series = new();
