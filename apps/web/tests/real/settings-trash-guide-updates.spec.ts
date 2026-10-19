@@ -127,7 +127,7 @@ test.describe("TRaSH guide updates", () => {
     expect(after.filter((item) => item.isActive).map((item) => item.package.version)).toEqual([older]);
   });
 
-  test.fixme("DEFECT: the guide package Deluno shipped stays in the history after the first sync, so it can be gone back to (after one applied version the server lists only that version)", async ({ page }) => {
+  test("the guide package Deluno shipped stays in the history after the first sync, so it can be gone back to (after one applied version the server lists only that version)", async ({ page }) => {
     await openScreen(page, "/settings/custom-formats");
     const shippedVersion = (await api<{ version: number }>(page, "GET", "/api/v1/guides/trash/package")).body.version;
     await applyNextVersion(page);

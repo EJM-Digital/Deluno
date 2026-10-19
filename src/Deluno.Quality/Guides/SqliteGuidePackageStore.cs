@@ -137,6 +137,23 @@ public sealed class SqliteGuidePackageStore(
             await deactivate.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        if (current.StoredUtc == DateTimeOffset.MinValue)
+        {
+            // The package Deluno shipped has never been stored. Keep it as the first retained version, so the
+            // person can go back to it after any later one is applied.
+            using var keepShipped = connection.CreateCommand();
+            keepShipped.Transaction = transaction;
+            keepShipped.CommandText =
+                "INSERT OR IGNORE INTO guide_package_versions (package_id, package_version, integrity_sha256, package_json, source_revision, is_active, stored_utc) VALUES (@packageId, @version, @integrity, @json, @sourceRevision, 0, @storedUtc);";
+            AddParameter(keepShipped, "@packageId", current.Package.Id);
+            AddParameter(keepShipped, "@version", current.Package.Version);
+            AddParameter(keepShipped, "@integrity", current.IntegritySha256);
+            AddParameter(keepShipped, "@json", JsonSerializer.Serialize(current.Package, JsonOptions));
+            AddParameter(keepShipped, "@sourceRevision", current.Package.Source.UpstreamRevision);
+            AddParameter(keepShipped, "@storedUtc", DateTimeOffset.UnixEpoch.ToString("O"));
+            await keepShipped.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         if (existing is null)
         {
             using var insert = connection.CreateCommand();

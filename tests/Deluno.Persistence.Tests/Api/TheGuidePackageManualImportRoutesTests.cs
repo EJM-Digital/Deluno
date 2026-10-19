@@ -92,4 +92,19 @@ public sealed class TheGuidePackageManualImportRoutesTests
         Assert.True(response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Conflict or HttpStatusCode.UnprocessableEntity, $"{(int)response.StatusCode}");
         Assert.Equal(before, await StoredAsync(app));
     }
+
+    [Fact]
+    public async Task The_package_Deluno_shipped_stays_in_the_history_after_a_newer_one_is_applied_and_can_be_gone_back_to()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var shipped = GuidePackageCatalog.Current.Version;
+
+        var applied = await app.Client.PostAsJsonAsync("/api/v1/guides/trash/apply", new { package = Package(shipped + 1), expectedCurrentIntegritySha256 = Integrity });
+        Assert.Equal(HttpStatusCode.Created, applied.StatusCode);
+
+        var versions = (await app.Client.GetFromJsonAsync<JsonElement>("/api/v1/guides/trash/versions")).EnumerateArray()
+            .Select(item => item.GetProperty("package").GetProperty("version").GetInt32()).ToArray();
+        Assert.Contains(shipped, versions);
+        Assert.Contains(shipped + 1, versions);
+    }
 }

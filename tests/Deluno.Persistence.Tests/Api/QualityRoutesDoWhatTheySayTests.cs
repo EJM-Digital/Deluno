@@ -152,7 +152,7 @@ public sealed class QualityRoutesDoWhatTheySayTests
         Assert.Equal(second.Version, activated["package"]!["version"]!.GetValue<int>());
         Assert.Equal(second.Version, (await app.Client.GetFromJsonAsync<JsonObject>("/api/v1/guides/trash/package"))!["version"]!.GetValue<int>());
         var versions = await app.Client.GetFromJsonAsync<JsonArray>("/api/v1/guides/trash/versions");
-        Assert.Equal(2, versions!.Count);
+        Assert.Equal(3, versions!.Count);
         Assert.Single(versions, item => item!["isActive"]!.GetValue<bool>());
         Assert.Equal(1, await ScalarAsync(app, DelunoDatabaseNames.Platform, "SELECT COUNT(*) FROM guide_package_versions WHERE is_active = 1;"));
 
