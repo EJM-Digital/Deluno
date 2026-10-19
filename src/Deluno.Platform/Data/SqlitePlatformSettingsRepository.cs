@@ -51,8 +51,8 @@ public sealed class SqlitePlatformSettingsRepository(
     {
         var updatedUtc = timeProvider.GetUtcNow();
         // #1034 split the guide into two stages, so it now has 12 steps
-        // (indices 0-11) and the clamp moved from 6 to 11.
-        var lastCompletedStep = Math.Clamp(request.LastCompletedStep, 0, 11);
+        // (indices 0-11) and the clamp moved from 6 to 11, and the Start step made it 13 (0-12).
+        var lastCompletedStep = Math.Clamp(request.LastCompletedStep, 0, 12);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -104,7 +104,7 @@ public sealed class SqlitePlatformSettingsRepository(
             MovieDownloadsPath: NormalizeSetupText(request.MovieDownloadsPath),
             SeriesDownloadsPath: NormalizeSetupText(request.SeriesDownloadsPath),
             QualityPreset: NormalizeSetupChoice(request.QualityPreset, "", "", "balanced1080p", "premium4k"),
-            FormatGoal: NormalizeSetupChoice(request.FormatGoal, "", "", "simpleClean", "balanced", "homeTheater", "storageSaver", "anime"),
+            FormatGoal: NormalizeSetupChoice(request.FormatGoal, "", "", "simpleClean", "balanced", "homeTheater", "storageSaver", "anime", "archive"),
             IndexerName: NormalizeSetupText(request.IndexerName),
             IndexerProtocol: NormalizeSetupChoice(request.IndexerProtocol, "torznab", "torznab", "newznab", "rss"),
             IndexerUrl: NormalizeSetupText(request.IndexerUrl),
@@ -783,7 +783,7 @@ public sealed class SqlitePlatformSettingsRepository(
     {
         // #1034: kept in step with the write-side clamp in SaveSetupProgressAsync.
         var lastCompletedStep = int.TryParse(GetValue(settings, "setup.lastCompletedStep"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
-            ? Math.Clamp(parsed, 0, 11)
+            ? Math.Clamp(parsed, 0, 12)
             : 0;
         var isSkipped = string.Equals(GetValue(settings, "setup.isSkipped"), "true", StringComparison.OrdinalIgnoreCase);
         var isCompleted = string.Equals(GetValue(settings, "setup.isCompleted"), "true", StringComparison.OrdinalIgnoreCase);
