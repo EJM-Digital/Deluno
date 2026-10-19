@@ -180,9 +180,9 @@ test.describe("first-run and auth screens", () => {
     await page.getByRole("button", { name: /^(?:\d+ )?Updates\b/ }).click();
 
     await expect(page.getByRole("heading", { name: "Updates", exact: true })).toBeVisible();
-    await expect(page.getByText("Update Deluno automatically?")).toBeVisible();
-    await expect(page.getByRole("radio", { name: "Update Deluno automatically? Yes" })).toHaveAttribute("aria-checked", "false");
-    await expect(page.getByRole("radio", { name: "Update Deluno automatically? No" })).toHaveAttribute("aria-checked", "false");
+    await expect(page.getByText("Check for updates by itself?", { exact: true })).toBeVisible();
+    await expect(page.getByRole("radio", { name: "Check for updates by itself? Yes" })).toHaveAttribute("aria-checked", "false");
+    await expect(page.getByRole("radio", { name: "Check for updates by itself? No" })).toHaveAttribute("aria-checked", "false");
 
     await page.getByRole("button", { name: /^(?:\d+ )?Start\b/ }).click();
     await expect(page.getByRole("button", { name: "Create baseline" })).toBeDisabled();

@@ -70,6 +70,7 @@ test("the guided setup's Yes/No answers survive a reload, and the Start page nam
   await page.getByRole("button", { name: /How you sign in/ }).click();
   await page.getByRole("radio", { name: "Skip sign-in for devices on your home network? No" }).click();
   await page.getByRole("button", { name: /^(?:\d+ )?Updates\b/ }).click();
+  await page.getByRole("radio", { name: "Check for updates by itself? Yes" }).click();
   await page.getByRole("radio", { name: "Update Deluno automatically? Yes" }).click();
   await page.getByRole("button", { name: /^(?:\d+ )?Automation\b/ }).click();
   // The draft is saved half a second after the last change: wait for that save, not for a guessed time.
@@ -81,6 +82,7 @@ test("the guided setup's Yes/No answers survive a reload, and the Start page nam
   await page.getByRole("button", { name: /How you sign in/ }).click();
   await expect(page.getByRole("radio", { name: "Skip sign-in for devices on your home network? No" })).toHaveAttribute("aria-checked", "true");
   await page.getByRole("button", { name: /^(?:\d+ )?Updates\b/ }).click();
+  await expect(page.getByRole("radio", { name: "Check for updates by itself? Yes" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("radio", { name: "Update Deluno automatically? Yes" })).toHaveAttribute("aria-checked", "true");
 
   await page.getByRole("button", { name: /^(?:\d+ )?Start\b/ }).click();
