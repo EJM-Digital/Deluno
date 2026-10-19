@@ -1,0 +1,155 @@
+{
+  "app": "sabnzbd",
+  "version": "5.1.3",
+  "state": "usenet-provider-set",
+  "recordedAt": "2026-10-19T10:05:59Z",
+  "note": "mode=get_config for the servers, then mode=set_config giving it a news server (news.example.test, port 563, SSL, 8 connections), then mode=get_config again: the server is there (SABnzbd 5.1.3 in Docker, the e2e stack's image and first settings file).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api?mode=get_config&output=json&apikey=<scrubbed>&section=servers"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json;charset=UTF-8"
+        },
+        "body": {
+          "config": {
+            "servers": [
+              {
+                "name": "fixture",
+                "displayname": "The suite's news server",
+                "host": "fixture",
+                "port": 1119,
+                "timeout": 60,
+                "username": "<scrubbed>",
+                "password": "<scrubbed>",
+                "connections": 4,
+                "ssl": 0,
+                "ssl_verify": 3,
+                "ssl_ciphers": "",
+                "enable": 1,
+                "required": 0,
+                "optional": 0,
+                "pipelining_requests": 1,
+                "retention": 0,
+                "expire_date": "",
+                "quota": "",
+                "usage_at_start": 0,
+                "priority": 0,
+                "notes": ""
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api?mode=set_config&output=json&apikey=<scrubbed>&section=servers&keyword=Deluno+Usenet+provider&displayname=Deluno+Usenet+provider&host=news.example.test&port=563&username=<scrubbed>&password=<scrubbed>&connections=8&ssl=1&enable=1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json;charset=UTF-8"
+        },
+        "body": {
+          "config": {
+            "servers": [
+              {
+                "name": "Deluno Usenet provider",
+                "displayname": "Deluno Usenet provider",
+                "host": "news.example.test",
+                "port": 563,
+                "timeout": 60,
+                "username": "<scrubbed>",
+                "password": "<scrubbed>",
+                "connections": 8,
+                "ssl": 1,
+                "ssl_verify": 3,
+                "ssl_ciphers": "",
+                "enable": 1,
+                "required": 0,
+                "optional": 0,
+                "pipelining_requests": 2,
+                "retention": 0,
+                "expire_date": "",
+                "quota": "",
+                "usage_at_start": 0,
+                "priority": 0,
+                "notes": ""
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api?mode=get_config&output=json&apikey=<scrubbed>&section=servers"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json;charset=UTF-8"
+        },
+        "body": {
+          "config": {
+            "servers": [
+              {
+                "name": "fixture",
+                "displayname": "The suite's news server",
+                "host": "fixture",
+                "port": 1119,
+                "timeout": 60,
+                "username": "<scrubbed>",
+                "password": "<scrubbed>",
+                "connections": 4,
+                "ssl": 0,
+                "ssl_verify": 3,
+                "ssl_ciphers": "",
+                "enable": 1,
+                "required": 0,
+                "optional": 0,
+                "pipelining_requests": 1,
+                "retention": 0,
+                "expire_date": "",
+                "quota": "",
+                "usage_at_start": 0,
+                "priority": 0,
+                "notes": ""
+              },
+              {
+                "name": "Deluno Usenet provider",
+                "displayname": "Deluno Usenet provider",
+                "host": "news.example.test",
+                "port": 563,
+                "timeout": 60,
+                "username": "<scrubbed>",
+                "password": "<scrubbed>",
+                "connections": 8,
+                "ssl": 1,
+                "ssl_verify": 3,
+                "ssl_ciphers": "",
+                "enable": 1,
+                "required": 0,
+                "optional": 0,
+                "pipelining_requests": 2,
+                "retention": 0,
+                "expire_date": "",
+                "quota": "",
+                "usage_at_start": 0,
+                "priority": 0,
+                "notes": ""
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

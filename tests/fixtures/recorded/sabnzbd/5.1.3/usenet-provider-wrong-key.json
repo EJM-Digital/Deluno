@@ -1,0 +1,35 @@
+{
+  "app": "sabnzbd",
+  "version": "5.1.3",
+  "state": "usenet-provider-wrong-key",
+  "recordedAt": "2026-10-19T10:05:59Z",
+  "note": "mode=set_config with an API key SABnzbd does not know, then mode=get_config with it (SABnzbd 5.1.3 in Docker, the e2e stack's image and first settings file).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api?mode=set_config&output=json&apikey=<scrubbed>&section=servers&keyword=Deluno+Usenet+provider&displayname=Deluno+Usenet+provider&host=news.example.test&port=563&username=<scrubbed>&password=<scrubbed>&connections=8&ssl=1&enable=1"
+      },
+      "reply": {
+        "status": 403,
+        "headers": {
+          "content-type": "text/html;charset=utf-8"
+        },
+        "bodyText": "API Key Incorrect"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api?mode=get_config&output=json&apikey=<scrubbed>&section=servers"
+      },
+      "reply": {
+        "status": 403,
+        "headers": {
+          "content-type": "text/html;charset=utf-8"
+        },
+        "bodyText": "API Key Incorrect"
+      }
+    }
+  ]
+}
