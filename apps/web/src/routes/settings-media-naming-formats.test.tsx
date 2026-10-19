@@ -205,7 +205,7 @@ describe("multi-episode style, season folders and colons", () => {
 });
 
 describe("a naming setting saved elsewhere", () => {
-  it.skip("DEFECT: shows in the open form once the page reads the settings again (the form copies the loader's settings once and is never re-synced)", () => {
+  it("shows in the open form once the page reads the settings again (the form copies the loader's settings once and is never re-synced)", () => {
     const view = render(page());
     expect((within(screen.getByRole("radiogroup", { name: "movie-folder naming style" })).getByRole("radio", { name: "Title + year" })).getAttribute("aria-checked")).toBe("true");
     loaderData.settings = { ...emptyPlatformSettingsSnapshot, movieFolderFormat: "{Movie Title}" };

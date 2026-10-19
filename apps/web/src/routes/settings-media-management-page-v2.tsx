@@ -14,6 +14,7 @@ import { SecretUnreadableNotice } from "../components/app/secret-unreadable-noti
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { PageLink } from "../components/app/page-link";
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator } from "react-router-dom";
+import { useFollowLoaded } from "../hooks/use-follow-loaded";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { Loader2, Plus, Trash2, Wifi } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -157,6 +158,7 @@ function FileHandlingPage() {
   const state: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   const customDrawerDirty = customDrawer !== null && customDrawer.value !== customDrawer.previousValue;
   useUnsavedChanges(dirty);
+  useFollowLoaded(settings, dirty, (next) => { setSaved(next); setForm(next); setSeasonSubfoldersEnabled(Boolean(next.seasonFolderFormat.trim() || next.specialsFolderFormat.trim())); });
   useEffect(() => {
     if (shouldClearSaveState(saveState, dirty)) setSaveState(undefined);
   }, [dirty, saveState]);
@@ -407,6 +409,7 @@ function ImportPolicyPage() {
   const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(saved), [form, saved]);
   const state: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);
+  useFollowLoaded(settings, dirty, (next) => { setSaved(next); setForm(next); });
   useEffect(() => {
     if (shouldClearSaveState(saveState, dirty)) setSaveState(undefined);
   }, [dirty, saveState]);
@@ -1123,7 +1126,7 @@ function ProcessingWorkflowPage() {
             </DrawerSection>
             {isRefined ? (
               <DrawerSection title="External processing">
-                <Field label="Processed output folder" help="A separate folder where your processor writes cleaned files. Deluno waits until the file is readable and stable, matches it to the waiting download, then imports it.">
+                <Field label="Processed output folder" error={workflow.processorOutputPath.trim() ? undefined : "Choose the folder where the processor will write cleaned files."} help="A separate folder where your processor writes cleaned files. Deluno waits until the file is readable and stable, matches it to the waiting download, then imports it.">
                   <PathInput value={workflow.processorOutputPath} onChange={(value) => setWorkflow((current) => ({ ...current, processorOutputPath: value }))} browseTitle="Choose processed-output folder" />
                 </Field>
                 <FieldRow>

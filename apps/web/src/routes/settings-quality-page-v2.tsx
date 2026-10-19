@@ -11,6 +11,7 @@
  */
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useLoaderData } from "react-router-dom";
+import { useFollowLoaded } from "../hooks/use-follow-loaded";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { ConfigAreas } from "../lib/config-areas";
 import { ChevronRight } from "lucide-react";
@@ -59,6 +60,7 @@ export function SettingsQualityPage() {
   const dirty = useMemo(() => JSON.stringify(model) !== JSON.stringify(saved), [model, saved]);
   const state: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);
+  useFollowLoaded(loaded, dirty, (next) => { setSaved(next); setModel(next); });
 
   useEffect(() => {
     if (shouldClearSaveState(saveState, dirty)) setSaveState(undefined);

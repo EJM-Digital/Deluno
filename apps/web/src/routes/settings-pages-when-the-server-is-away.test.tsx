@@ -63,7 +63,7 @@ describe("a settings page while the server is away", () => {
     expect(screen.getByRole("switch", { name: /Keep seeding without a second copy/ }).getAttribute("aria-checked")).toBe(before);
   });
 
-  it.skip("DEFECT: says in plain words that the server could not be reached, not the browser's own 'Failed to fetch' (the footer shows the raw error text)", async () => {
+  it("says in plain words that the server could not be reached, not the browser's own 'Failed to fetch' (the footer shows the raw error text)", async () => {
     view("/settings/file-handling");
     fireEvent.click(screen.getByRole("switch", { name: /Replace illegal characters/ }));
     vi.mocked(authedFetch).mockRejectedValue(away());

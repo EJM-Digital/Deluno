@@ -16,11 +16,18 @@ export function useApiMutation<TReq, TRes>(path: string, method: string) {
       setFieldErrors({});
 
       try {
-        const response = await authedFetch(path, {
-          method,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(request)
-        });
+        let response: Response;
+        try {
+          response = await authedFetch(path, {
+            method,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(request)
+          });
+        } catch (failure) {
+          // The browser says "Failed to fetch" (or "Load failed") when nothing answered; say it in plain words.
+          if (failure instanceof TypeError) throw new Error("Deluno could not reach its server, so nothing was saved. Check that it is running and try again.");
+          throw failure;
+        }
 
         if (!response.ok) {
           const problem = await readValidationProblem(response.clone());
