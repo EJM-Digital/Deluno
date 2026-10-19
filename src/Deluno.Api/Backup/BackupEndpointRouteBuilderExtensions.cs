@@ -75,11 +75,12 @@ public static class BackupEndpointRouteBuilderExtensions
         backup.MapPost("/restore", async (
             IFormFile file,
             bool? confirmNewer,
+            [FromForm(Name = "password")] string? password,
             IDelunoBackupService service,
             CancellationToken cancellationToken) =>
         {
             await using var stream = file.OpenReadStream();
-            var result = await service.RestoreAsync(stream, cancellationToken, confirmNewer == true);
+            var result = await service.RestoreAsync(stream, cancellationToken, confirmNewer == true, password);
             return Results.Ok(result);
         }).DisableAntiforgery();
 
