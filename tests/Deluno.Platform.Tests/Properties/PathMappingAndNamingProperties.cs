@@ -308,7 +308,8 @@ public sealed class PathMappingAndNamingProperties
                 {
                     var oldTitle = OldTitle(title);
                     var old = template.Replace("{Title}", oldTitle).Replace("{Year}", "2001").Replace("{Quality}", "WEBDL-1080p").Trim();
-                    if (oldTitle.Length == 0 || old.EndsWith('.') || old.EndsWith(' ') || old.Any(char.IsControl) || Bytes(old) > 255)
+                    // A name that starts with a dot was a hidden file on Linux, so it was never fine (a title of "." alone).
+                    if (oldTitle.Length == 0 || old.StartsWith('.') || old.EndsWith('.') || old.EndsWith(' ') || old.Any(char.IsControl) || Bytes(old) > 255)
                     {
                         continue;
                     }
