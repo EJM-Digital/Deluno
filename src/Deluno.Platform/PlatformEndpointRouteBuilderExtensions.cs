@@ -79,11 +79,23 @@ public static class PlatformEndpointRouteBuilderExtensions
             IActivityFeedRepository activity,
             IEnumerable<ITitleRestorer> restorers,
             IRealtimeEventPublisher realtime,
+            [FromServices] IJobScheduler jobScheduler,
+            [FromServices] Microsoft.Extensions.Logging.ILogger<IRecycleBinService> logger,
             CancellationToken cancellationToken) =>
         {
             var result = await service.RestoreAsync(id, cancellationToken);
             if (result.Success && result.Item is { } restored)
             {
+                // A file (or a whole title's files) is back in the library: the media servers are told it is there again.
+                await MediaServerTell.QueueAsync(
+                    jobScheduler,
+                    restored.MediaType,
+                    RestoredPaths(restored).Select(path => new MediaServerPathChange(path, MediaServerChangeKind.Created)).ToArray(),
+                    "recycle.restored",
+                    null,
+                    null,
+                    logger,
+                    cancellationToken);
                 // #1161: a title removed with its files comes back as the same
                 // title (same id, library, profile, monitoring, tags, history),
                 // not only as a folder on disk.
@@ -1110,6 +1122,23 @@ public static class PlatformEndpointRouteBuilderExtensions
         return errors;
     }
 
+
+    private static IEnumerable<string> RestoredPaths(RecycleBinItem item)
+    {
+        if (!item.IsDirectory)
+        {
+            return [item.OriginalPath];
+        }
+
+        try
+        {
+            return Directory.EnumerateFiles(item.OriginalPath, "*", SearchOption.AllDirectories).Take(5000).ToArray();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
 }
 
 public sealed record SetupCompletedRequest(

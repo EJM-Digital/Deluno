@@ -281,12 +281,12 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             var strikesPurgedPreferences = await notificationPreferences.GetPreferencesAsync(cancellationToken);
             if (strikesPurgedPreferences.StrikesPurgedEnabled)
             {
-                await outboundNotificationService.DispatchAsync(
+                await NotificationOutboundDispatch.GuardAsync(async () => await outboundNotificationService.DispatchAsync(
                     "download.health.strikes-purged",
                     "Download-health strikes purged",
                     purgeMessage,
                     null,
-                    cancellationToken);
+                    cancellationToken), "download.health.strikes-purged");
             }
             return Results.Ok(new PurgeDownloadHealthStrikesResult(purged));
         });

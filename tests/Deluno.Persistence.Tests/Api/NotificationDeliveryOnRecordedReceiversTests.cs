@@ -170,7 +170,7 @@ public sealed class NotificationDeliveryOnRecordedReceiversTests
         Assert.Contains("HTTP 401", (await WebhookAsync(app, id)).GetProperty("lastError").GetString(), StringComparison.Ordinal);
     }
 
-    [Fact(Skip = "Defect: a title with an accent (Amélie, Léon, Pokémon) never reaches ntfy. BuildNtfyRequest puts the title raw in the Title header and .NET refuses it (\"Request headers must contain only ASCII characters.\"), so all three attempts fail before anything is sent and the delivery dead-letters. The real ntfy 2.32.0 reads an RFC 2047 encoded Title (recorded: ntfy/title-encoded) and shows the accent (found 19 Oct 2026).")]
+    [Fact]
     public async Task A_title_with_an_accent_reaches_ntfy_as_the_encoded_header_the_real_ntfy_reads_back_with_its_accent()
     {
         await using var ntfy = await OpenNtfyAsync();

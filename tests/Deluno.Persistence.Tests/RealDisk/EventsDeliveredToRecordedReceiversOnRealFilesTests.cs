@@ -386,7 +386,7 @@ public sealed class EventsDeliveredToRecordedReceiversOnRealFilesTests
         }
     }
 
-    [Fact(Skip = "Defect: adding a film (POST /api/movies, the On Title Added notice) calls the notification service directly instead of through NotificationOutboundDispatch, so a notification service that throws fails the add with an HTTP 500 after the film has already been saved (MoviesEndpointRouteBuilderExtensions, the title.added dispatch). The import, the file delete, the removal and the grab are guarded; the add is not (found 19 Oct 2026).")]
+    [Fact]
     public async Task A_notification_service_that_throws_never_fails_the_add_of_a_film()
     {
         var broken = new ThrowingOutbound();
@@ -407,7 +407,7 @@ public sealed class EventsDeliveredToRecordedReceiversOnRealFilesTests
         Assert.Equal(1, broken.Attempts);
     }
 
-    [Fact(Skip = "Defect: recording a grab (SqliteJobStore.RecordDownloadDispatchAsync, the On Grab notice) calls the notification service directly with no guard, so a notification service that throws makes recording the dispatch throw after the release was already sent to the download client, and the caller sees a failed grab for a download that is running (found 19 Oct 2026).")]
+    [Fact]
     public async Task A_notification_service_that_throws_never_fails_the_recording_of_a_grab()
     {
         var broken = new ThrowingOutbound();
@@ -503,7 +503,7 @@ public sealed class EventsDeliveredToRecordedReceiversOnRealFilesTests
         Assert.Contains("Nosferatu", failed.Body, StringComparison.Ordinal);
     }
 
-    [Fact(Skip = "Defect: importing a TV season pack fires no import.completed, upgrade or rename notice. The pack path of ImportPipelineService (the \"season pack imported N files\" Activity line) has no outbound dispatch at all, so a person with every switch on hears about a film and about a single episode, but never about a season (found 19 Oct 2026).")]
+    [Fact]
     public async Task An_imported_season_pack_is_told_to_the_phone_like_any_other_import()
     {
         await using var world = await StartAsync();

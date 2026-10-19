@@ -278,7 +278,7 @@ describe("closing the drawer and the test button", () => {
     expect(putCalls()).toHaveLength(0);
   });
 
-  it.skip("Defect: says 'Test event sent' for any 2xx answer, though the endpoint answers 200 with sent false when notifications are paused, the webhook is off or three attempts failed (sendTest never reads the answer; replay does). Found 19 Oct 2026.", async () => {
+  it("says why the test event was not sent when the endpoint answers 200 with sent false", async () => {
     loader.webhooks = [hook({ id: "e9", name: "Quiet one" })];
     vi.mocked(authedFetch).mockImplementation(async (input: RequestInfo | URL) =>
       String(input).startsWith("/api/tags") ? json([]) : String(input).endsWith("/test") ? json({ sent: false, message: "Notifications are paused. Turn on Send notifications to test this webhook." }) : json({}));

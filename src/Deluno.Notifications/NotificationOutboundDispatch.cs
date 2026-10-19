@@ -54,4 +54,28 @@ public static class NotificationOutboundDispatch
             logger.LogWarning(ex, "Outbound notification dispatch failed for {Outcome} — notifications may be misconfigured.", outcomeLabel);
         }
     }
+
+    /// <summary>
+    /// The guard for a caller that already decided to tell (its own switch, its own
+    /// wording): whatever the notifier does, the action that led here is not failed
+    /// by it (#1365). Cancellation still stops the caller; anything else is logged.
+    /// </summary>
+    public static async Task GuardAsync(Func<Task> tell, string outcomeLabel, ILogger? logger = null)
+    {
+        try
+        {
+            await tell();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            if (logger is not null)
+            {
+                logger.LogWarning(ex, "Outbound notification dispatch failed for {Outcome}; notifications may be misconfigured.", outcomeLabel);
+            }
+            else
+            {
+                System.Diagnostics.Trace.TraceWarning("Outbound notification dispatch failed for {0}: {1}", outcomeLabel, ex.Message);
+            }
+        }
+    }
 }

@@ -1134,13 +1134,13 @@ public static class SeriesEndpointRouteBuilderExtensions
             if (forcedImportPreferences.ForcedImportEnabled)
             {
                 var forcedTitleTags = (await tagStore.ListAsync(MediaKind.Series, id, cancellationToken)).Select(assignment => assignment.Name).ToArray();
-                await outboundNotificationService.DispatchAsync(
+                await NotificationOutboundDispatch.GuardAsync(async () => await outboundNotificationService.DispatchAsync(
                     "acquisition.override",
                     $"Forced re-download: {item.Title}",
                     forceRedownloadMessage,
                     forceRedownloadDetails,
                     cancellationToken,
-                    forcedTitleTags);
+                    forcedTitleTags), "acquisition.override");
             }
 
             return Results.Ok(answer);
@@ -2822,6 +2822,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             IRealtimeEventPublisher realtimeEventPublisher,
             IAutoTaggingService autoTagging,
             [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
+            [FromServices] IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -3031,6 +3032,25 @@ public static class SeriesEndpointRouteBuilderExtensions
             {
                 foreach (var seriesId in idsToReassign.Distinct(StringComparer.OrdinalIgnoreCase))
                     await realtimeEventPublisher.PublishEntityChangedAsync("Series", seriesId, cancellationToken);
+
+                // The show's folder left one library for another: the media servers hear every episode file gone from the old place and there in the new.
+                await MediaServerTell.QueueAsync(
+                    jobScheduler,
+                    "tv",
+                    moved
+                        .Where(item => idsToReassign.Contains(item.SeriesId))
+                        .SelectMany(item => item.Files)
+                        .SelectMany(file => new[]
+                        {
+                            new MediaServerPathChange(file.Previous, MediaServerChangeKind.Deleted),
+                            new MediaServerPathChange(file.New, MediaServerChangeKind.Created)
+                        })
+                        .ToArray(),
+                    "series.moved",
+                    "library",
+                    request.ToLibraryId,
+                    null,
+                    cancellationToken);
 
                 // #1024: a rule can depend on the library or its folder.
                 await autoTagging.ApplyEditedAsync(MediaKind.Series, idsToReassign, cancellationToken);
@@ -3242,6 +3262,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             ILibrariesRepository librariesRepository,
             IActivityFeedRepository activityFeedRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
+            [FromServices] IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -3363,6 +3384,21 @@ public static class SeriesEndpointRouteBuilderExtensions
                 }
 
                 await realtimeEventPublisher.PublishEntityChangedAsync("Series", id, cancellationToken);
+                await MediaServerTell.QueueAsync(
+                    jobScheduler,
+                    "tv",
+                    episodeFiles
+                        .SelectMany(file => new[]
+                        {
+                            new MediaServerPathChange(file.FilePath, MediaServerChangeKind.Deleted),
+                            new MediaServerPathChange(Path.Combine(plan.DestinationDirectory, Path.GetRelativePath(plan.SourceDirectory, file.FilePath)), MediaServerChangeKind.Created)
+                        })
+                        .ToArray(),
+                    "series.renamed",
+                    "series",
+                    id,
+                    null,
+                    cancellationToken);
                 renamed.Add(new
                 {
                     seriesId = id,
@@ -3791,13 +3827,13 @@ public static class SeriesEndpointRouteBuilderExtensions
             if (item.CreatedUtc >= requestStartedUtc &&
                 (await notificationPreferences.GetPreferencesAsync(cancellationToken)).AddedEnabled)
             {
-                await notificationService.DispatchAsync(
+                await NotificationOutboundDispatch.GuardAsync(async () => await notificationService.DispatchAsync(
                     "title.added",
                     $"Added: {item.Title}",
                     $"{item.Title} was added to the library.",
                     JsonSerializer.Serialize(new { item.Id, item.Title, mediaType = "tv" }),
                     cancellationToken,
-                    titleTags: await titleTagService.ListNamesAsync(MediaKind.Series, item.Id, cancellationToken));
+                    titleTags: await titleTagService.ListNamesAsync(MediaKind.Series, item.Id, cancellationToken)), "title.added");
             }
 
             return Results.Created($"/api/series/{item.Id}", item);

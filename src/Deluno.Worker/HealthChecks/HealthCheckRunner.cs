@@ -194,12 +194,12 @@ public sealed class HealthCheckRunner(
         var outboundCategory = (started ? "health.problem" : "health.resolved")
             + (HealthCheckCategories.IsWarningTier(result.Category) ? HealthCheckCategories.OutboundWarningSuffix : string.Empty);
 
-        await notificationService.DispatchAsync(
+        await NotificationOutboundDispatch.GuardAsync(async () => await notificationService.DispatchAsync(
             outboundCategory,
             title,
             message,
             result.DetailsJson,
-            cancellationToken);
+            cancellationToken), "notice");
     }
 
     private static string BuildProblemMessage(HealthCheckResultItem result)

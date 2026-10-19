@@ -203,6 +203,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
             [FromServices] IOutboundNotificationService? outboundNotificationService,
             [FromServices] INotificationService? notificationService,
             [FromServices] IMediaTagStore? mediaTagStore,
+            [FromServices] Deluno.Jobs.Data.IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
             var movie = await repository.GetByIdAsync(id, cancellationToken);
@@ -294,6 +295,15 @@ public static class MovieFilesEndpointRouteBuilderExtensions
                 id,
                 cancellationToken);
             await realtimeEventPublisher.PublishEntityChangedAsync("Movie", id, cancellationToken);
+            await Deluno.Jobs.Data.MediaServerTell.QueueAsync(
+                jobScheduler,
+                "movies",
+                [new MediaServerPathChange(targetPath, MediaServerChangeKind.Deleted)],
+                "movie.file-deleted",
+                "movie",
+                id,
+                logger,
+                cancellationToken);
 
             // Same "file delete" concept the import pipeline fires for a
             // replaced file (#856) - a person deleting a file by hand from

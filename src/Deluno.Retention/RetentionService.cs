@@ -61,7 +61,9 @@ public sealed class RetentionService(
     // #1011: the "tag" expiry action gives the title a Deluno tag.
     ITitleTagService? titleTags = null,
     // #1012: every server a rule reads is asked what is being played before a removal.
-    IMediaServerRepository? mediaServers = null)
+    IMediaServerRepository? mediaServers = null,
+    // #1365: a season or episode removal tells the media servers its files are gone, as a title removal does.
+    Deluno.Jobs.Data.IJobScheduler? mediaServerJobScheduler = null)
 {
     public const string LeavingSoonEvent = "retention.leaving-soon";
     public const string RemovedEvent = "retention.removed";
@@ -1176,6 +1178,15 @@ public sealed class RetentionService(
         }
 
         await series.UpdateEpisodeMonitoredAsync(episodeIds.ToArray(), false, cancellationToken);
+        await Deluno.Jobs.Data.MediaServerTell.QueueAsync(
+            mediaServerJobScheduler,
+            "tv",
+            files.Select(file => new MediaServerPathChange(file.FilePath, MediaServerChangeKind.Deleted)).ToArray(),
+            "retention.removed",
+            "series",
+            unit.ShowId,
+            logger,
+            cancellationToken);
         var sentence = char.ToUpperInvariant(reason[0]) + reason[1..];
         foreach (var file in files.DistinctBy(file => file.EpisodeId, StringComparer.OrdinalIgnoreCase))
         {
