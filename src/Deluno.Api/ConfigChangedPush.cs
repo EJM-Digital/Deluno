@@ -42,13 +42,10 @@ public static class ConfigChangedPush
         ("trakt", ConfigAreas.Lists)
     ];
 
-    // Routes whose screen already follows its own event (the System screen's backups, updates and recycle bin),
-    // so a settings write there publishes that event instead of a Settings-area one.
+    // Routes whose screen follows an event of its own that the route's service does not publish, so the write publishes it here
+    // instead of a Settings-area one. (The backup, update and recycle-bin settings publish theirs in their own services.)
     private static readonly (string Prefix, Func<IRealtimeEventPublisher?, CancellationToken, Task> Publish)[] OwnEvents =
     [
-        ("backups/settings", (publisher, token) => publisher.PublishBackupChangedAsync(token)),
-        ("updates/preferences", (publisher, token) => publisher.PublishUpdateStatusChangedAsync(token)),
-        ("recycle-bin/settings", (publisher, token) => publisher.PublishRecycleBinChangedAsync(token)),
         // The Collections screen follows MovieChanged; a collection write moves the movies it groups.
         ("movie-collections", (publisher, token) => publisher is null ? Task.CompletedTask : publisher.PublishEntityChangedAsync("Movie", "collections", token))
     ];
