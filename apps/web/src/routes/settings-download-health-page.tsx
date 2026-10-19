@@ -26,7 +26,7 @@
  * purge-all-strikes (#826), both part of the same engine rather than
  * separate screens.
  */
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { PageLink } from "../components/app/page-link";
 import { Link, useLoaderData, useRevalidator } from "react-router-dom";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
@@ -156,6 +156,7 @@ export async function settingsDownloadHealthLoader(): Promise<LoaderData> {
 function DryRunCard({ settings }: { settings: PlatformSettingsSnapshot }) {
   const mutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const [enabled, setEnabled] = useState(settings.downloadHealthDryRunEnabled);
+  useEffect(() => setEnabled(settings.downloadHealthDryRunEnabled), [settings.downloadHealthDryRunEnabled]);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   async function onChange(checked: boolean) {
@@ -386,6 +387,14 @@ function ConnectivityCheckCard({
   const { preferences } = useDisplayPreferences();
   const [enabled, setEnabled] = useState(settings.downloadHealthConnectivityCheckEnabled);
   const [urls, setUrls] = useState(settings.downloadHealthConnectivityCheckUrls);
+  useEffect(() => setEnabled(settings.downloadHealthConnectivityCheckEnabled), [settings.downloadHealthConnectivityCheckEnabled]);
+  // The address list is the person's typing: it follows the saved value only while it holds no unsaved edit.
+  const lastSavedUrls = useRef(settings.downloadHealthConnectivityCheckUrls);
+  useEffect(() => {
+    const incoming = settings.downloadHealthConnectivityCheckUrls;
+    setUrls((current) => (current === lastSavedUrls.current ? incoming : current));
+    lastSavedUrls.current = incoming;
+  }, [settings.downloadHealthConnectivityCheckUrls]);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const dirty = urls !== settings.downloadHealthConnectivityCheckUrls;
 
