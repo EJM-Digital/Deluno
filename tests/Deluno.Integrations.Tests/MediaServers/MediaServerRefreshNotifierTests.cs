@@ -237,6 +237,42 @@ public sealed class MediaServerRefreshNotifierTests
         Assert.Empty(client.Calls);
     }
 
+    [Fact]
+    public async Task A_disabled_server_and_a_server_of_a_kind_with_no_client_are_skipped_while_the_others_are_told()
+    {
+        var disabled = Server("off", MediaServerKinds.Jellyfin) with { IsEnabled = false };
+        var odd = Server("odd", "kodi");
+        var ok = Server("ok", MediaServerKinds.Jellyfin);
+        var client = new FakeClient(MediaServerKinds.Jellyfin);
+        var notifier = new MediaServerRefreshNotifier(new FakeRepository([disabled, odd, ok], []), new FakeRegistry(client), TimeProvider.System);
+
+        await notifier.NotifyAsync("movies", [new MediaServerPathChange("/media/Movies/Sintel.mkv", MediaServerChangeKind.Created)], CancellationToken.None);
+
+        Assert.Single(client.Calls);
+    }
+
+    [Fact]
+    public async Task A_retry_for_a_server_that_is_gone_switched_off_or_of_a_kind_with_no_client_drops_its_backlog_without_asking_anyone()
+    {
+        var disabled = Server("off", MediaServerKinds.Jellyfin) with { IsEnabled = false };
+        var odd = Server("odd", "kodi");
+        var client = new FakeClient(MediaServerKinds.Jellyfin);
+        var backlog = new FakeBacklogRepository();
+        foreach (var id in new[] { "gone", "off", "odd" })
+        {
+            await backlog.RecordFailureAsync(id, "movies", [new MediaServerPathChange("/media/Movies/Sintel.mkv", MediaServerChangeKind.Created)], CancellationToken.None);
+        }
+
+        var notifier = new MediaServerRefreshNotifier(new FakeRepository([disabled, odd], []), new FakeRegistry(client), TimeProvider.System, backlog, new FakeJobScheduler(), new FakeActivityFeed());
+
+        Assert.True(await notifier.RetryAsync("gone", "movies", CancellationToken.None));
+        Assert.True(await notifier.RetryAsync("off", "movies", CancellationToken.None));
+        Assert.True(await notifier.RetryAsync("odd", "movies", CancellationToken.None));
+
+        Assert.Empty(backlog.All());
+        Assert.Empty(client.Calls);
+    }
+
     private sealed class FakeBacklogRepository : IMediaServerRefreshBacklogRepository
     {
         private readonly Dictionary<(string ServerId, string MediaType), MediaServerRefreshBacklogItem> _items = [];
