@@ -980,7 +980,7 @@ public sealed class WorkPlanner(
         {
             if (await ImportedDownloads.WasImportedAsync(jobQueueRepository, handoff.ClientId, handoff.ReleaseName, cancellationToken))
             {
-                await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Completed, null, null, null, cancellationToken);
+                await processorRepository.UpdateProcessorHandoffIfStatusAsync(handoff.Id, handoff.Status, ProcessorHandoffStatuses.Completed, null, null, null, cancellationToken);
                 await activityFeedRepository.RecordActivityAsync(
                     "processing.handoff.closed-imported",
                     $"{handoff.ReleaseName} was already imported, so Deluno closed its hand-off to the processor.",
@@ -2225,7 +2225,7 @@ public sealed class WorkPlanner(
             {
                 // A second copy of a download Deluno already imported (#1155).
                 var deleted = Deluno.Platform.Processing.ProcessorOutputPathPolicy.DeleteSecondCopy(outputPath, library.ProcessorOutputPath, handoff.SourcePath, allLibraries);
-                await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, "completed", outputPath, null, null, cancellationToken);
+                await processorRepository.UpdateProcessorHandoffIfStatusAsync(handoff.Id, handoff.Status, "completed", outputPath, null, null, cancellationToken);
                 queuedThisPass.Add(NormalizeSourceKey(outputPath));
                 await activityFeedRepository.RecordActivityAsync(
                     "processing.output.already-imported",
@@ -2243,7 +2243,7 @@ public sealed class WorkPlanner(
             if (importJob.NotImportedBecause is { } removed)
             {
                 var message = $"{handoff.ReleaseName} was processed, but {removed}, so Deluno did not import it. The processed file is still at {outputPath}.";
-                await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, "completed", outputPath, null, message, cancellationToken);
+                await processorRepository.UpdateProcessorHandoffIfStatusAsync(handoff.Id, handoff.Status, "completed", outputPath, null, message, cancellationToken);
                 queuedThisPass.Add(NormalizeSourceKey(outputPath));
                 await activityFeedRepository.RecordActivityAsync(
                     NotImportedCategory,
@@ -2256,8 +2256,9 @@ public sealed class WorkPlanner(
                 continue;
             }
 
-            await processorRepository.UpdateProcessorHandoffAsync(
+            await processorRepository.UpdateProcessorHandoffIfStatusAsync(
                 handoff.Id,
+                handoff.Status,
                 "completed",
                 outputPath,
                 importJob.JobId,

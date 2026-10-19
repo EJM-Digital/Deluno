@@ -27,7 +27,7 @@ public sealed class WeirContractBehaviourTests
 {
     private static readonly DateTimeOffset Start = DateTimeOffset.Parse("2026-10-13T20:50:00Z", CultureInfo.InvariantCulture);
 
-    private readonly Mock<IProcessorRepository> _repository = new();
+    private readonly Mock<IProcessorRepository> _repository = new() { CallBase = true };
     private readonly Mock<IActivityFeedRepository> _activity = new();
     private readonly Mock<IMovieCatalogRepository> _movies = new();
     private readonly Mock<ISeriesCatalogRepository> _series = new();

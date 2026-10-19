@@ -89,6 +89,24 @@ public interface IProcessorRepository
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// The same write, made only while the hand-off still has <paramref name="expectedStatus"/> (compare-and-set, #1363). A poller
+    /// that read a status, then asked the processor, writes through this, so a report that moved the hand-off in between wins.
+    /// False when the hand-off had moved and nothing was written.
+    /// </summary>
+    async Task<bool> UpdateProcessorHandoffIfStatusAsync(
+        string id,
+        string expectedStatus,
+        string status,
+        string? outputPath,
+        string? importJobId,
+        string? failureMessage,
+        CancellationToken cancellationToken)
+    {
+        await UpdateProcessorHandoffAsync(id, status, outputPath, importJobId, failureMessage, cancellationToken);
+        return true;
+    }
+
+    /// <summary>
     /// Records what the processor last said about a hand-off. Does not move the
     /// hand-off's <c>updated_utc</c>: asking is not a change.
     /// </summary>
