@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
-  checkCi, checkGoldenPath, describeGoldenPath, checkPropsVersion, checkPushed, checkReleaseNotes, checkVersionFormat, checkWorkingTree,
+  checkCi, checkGoldenPath, describeGoldenPath, missingSmokeShards, checkPropsVersion, checkPushed, checkReleaseNotes, checkVersionFormat, checkWorkingTree,
 } from "./tag-release-checks.mjs";
 
 const sha = "a".repeat(40);
@@ -90,4 +90,13 @@ test("the golden path outcome decides: a pass counts, anything else is a refusal
 test("a carried-over pass is named, with the commit it came from", () => {
   assert.match(describeGoldenPath({ ok: true, sha, carried: true, reason: "no file that ships changed" }), new RegExp(`${sha}.*identical`));
   assert.equal(describeGoldenPath({ ok: true, sha, carried: false }), "The golden path passed on HEAD.");
+});
+
+test("the smoke shards are read from the job names: all of 1..N must have passed", () => {
+  const ok = (name) => ({ name, conclusion: "success" });
+  assert.deepEqual(missingSmokeShards([ok("Frontend smoke (1/2)"), ok("Frontend smoke (2/2)")]), []);
+  assert.deepEqual(missingSmokeShards([ok("Frontend smoke (1/3)"), { name: "Frontend smoke (2/3)", conclusion: "failure" }, ok("Frontend smoke (3/3)")]), ["Frontend smoke (2/3)"]);
+  assert.deepEqual(missingSmokeShards([ok("Frontend smoke (3/3)")]), ["Frontend smoke (1/3)", "Frontend smoke (2/3)"]);
+  assert.deepEqual(missingSmokeShards([ok("Build"), ok("Frontend smoke")]), ["Frontend smoke"]);
+  assert.deepEqual(missingSmokeShards([]), ["Frontend smoke"]);
 });
