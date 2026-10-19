@@ -63,7 +63,7 @@ public sealed class CompanionToolsServiceTests : IDisposable
             var tools = await service.ListAsync(CancellationToken.None);
             if (!tools.Any(tool => tool.Job?.Status is "queued" or "running")) return tools;
             if (DateTime.UtcNow > deadline) throw new TimeoutException("The tools did not finish.");
-            await Task.Delay(10);
+            await Task.Delay(10); // reason: polling a background runner until it reaches a state, with a 15 second ceiling
         }
     }
 
@@ -91,7 +91,7 @@ public sealed class CompanionToolsServiceTests : IDisposable
         do
         {
             tools = await service.ListAsync(CancellationToken.None);
-            await Task.Delay(10);
+            await Task.Delay(10); // reason: polling a background runner until it reaches a state, with a 15 second ceiling
         }
         while (tools.First(tool => tool.Id == "sabnzbd").Job?.Status != "running" && DateTime.UtcNow < deadline);
 
