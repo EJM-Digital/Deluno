@@ -42,7 +42,7 @@ public sealed class NotificationProviderPayloadTests
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
         await EnableOutboundNotificationsAsync(storage);
 
-        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider);
+        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
         await repository.CreateNotificationWebhookAsync(
             new CreateNotificationWebhookRequest("Test", url, "all", true, provider, configJson),
             CancellationToken.None);

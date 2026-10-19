@@ -452,7 +452,7 @@ public sealed class EventsDeliveredToRecordedReceiversOnRealFilesTests
         }
     }
 
-    [Fact(Skip = "Defect: when a delivery fails, OutboundNotificationService writes the full webhook address to the log (\"Webhook {WebhookId} ({Url}) failed for event {Category}\"). A Discord or Slack address embeds its secret token in the path, so the log file and anything that ships it carry a working key to post to the person's channel (found 19 Oct 2026).")]
+    [Fact]
     public async Task A_failed_delivery_never_writes_the_secret_in_the_webhook_address_to_the_log()
     {
         const string secret = "SECRETwebhookTOKEN0123456789";

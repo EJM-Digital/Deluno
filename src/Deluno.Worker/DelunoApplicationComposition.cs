@@ -86,6 +86,7 @@ public static class DelunoApplicationComposition
         services.AddHostedService<Deluno.Infrastructure.Storage.IndexerIdentityBackfillService>();
         // #1076: after the history link-up, which matches by the names history was written under.
         services.AddHostedService<Deluno.Connections.Data.IndexerNamesUpgradeService>();
+        services.AddHostedService<Deluno.Notifications.Data.NotificationSecretsUpgradeService>();
         // #1174: after every module has its schema, clears an episode wrongly linked to another episode's file.
         services.AddHostedService<Services.EpisodeFileLinkRepairService>();
         services.AddHostedService<Services.MislabelledEpisodeFileRepairService>();

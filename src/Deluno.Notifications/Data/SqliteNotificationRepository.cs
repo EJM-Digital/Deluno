@@ -1,6 +1,7 @@
 using Deluno.Infrastructure.Storage;
 using Deluno.Notifications.Contracts;
 using Deluno.Contracts;
+using Deluno.Security;
 using System.Text.Json;
 using static Deluno.Infrastructure.Storage.SqliteRecordHelpers;
 
@@ -13,7 +14,8 @@ namespace Deluno.Notifications.Data;
 /// </summary>
 public sealed class SqliteNotificationRepository(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ISecretProtector secretProtector)
     : INotificationRepository
 {
     public async Task<bool> AreOutboundNotificationsEnabledAsync(CancellationToken cancellationToken)
@@ -30,7 +32,13 @@ public sealed class SqliteNotificationRepository(
         return string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
     }
 
-    public async Task<IReadOnlyList<NotificationWebhookItem>> ListNotificationWebhooksAsync(CancellationToken cancellationToken)
+    public Task<IReadOnlyList<NotificationWebhookItem>> ListNotificationWebhooksAsync(CancellationToken cancellationToken)
+        => ListAsync(reveal: false, cancellationToken);
+
+    public Task<IReadOnlyList<NotificationWebhookItem>> ListNotificationWebhooksWithSecretsAsync(CancellationToken cancellationToken)
+        => ListAsync(reveal: true, cancellationToken);
+
+    private async Task<IReadOnlyList<NotificationWebhookItem>> ListAsync(bool reveal, CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -48,7 +56,7 @@ public sealed class SqliteNotificationRepository(
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            items.Add(ReadNotificationWebhook(reader));
+            items.Add(ReadNotificationWebhook(reader, reveal));
         }
 
         return items;
@@ -99,20 +107,20 @@ public sealed class SqliteNotificationRepository(
 
         AddParameter(command, "@id", id);
         AddParameter(command, "@name", await NameForAsync(connection, id, NotificationProviders.Normalize(request.Provider), request.Url, cancellationToken));
-        AddParameter(command, "@url", request.Url?.Trim() ?? string.Empty);
+        AddParameter(command, "@url", ProtectUrl(request.Url?.Trim() ?? string.Empty));
         AddParameter(command, "@eventFilters", NormalizeCsv(request.EventFilters));
         AddParameter(command, "@isEnabled", request.IsEnabled ? 1 : 0);
         AddParameter(command, "@createdUtc", now.ToString("O"));
         AddParameter(command, "@updatedUtc", now.ToString("O"));
         AddParameter(command, "@provider", NotificationProviders.Normalize(request.Provider));
-        AddParameter(command, "@configJson", string.IsNullOrWhiteSpace(request.ConfigJson) ? null : request.ConfigJson);
+        AddParameter(command, "@configJson", ProtectConfig(request.ConfigJson));
         AddParameter(command, "@tags", NormalizeCsv(request.Tags));
         // A new connection starts without health warnings, as in Radarr and Sonarr; only the migration keeps existing ones on (#936).
         AddParameter(command, "@includeHealthWarnings", request.IncludeHealthWarnings == true ? 1 : 0);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         await reader.ReadAsync(cancellationToken);
-        return ReadNotificationWebhook(reader);
+        return ReadNotificationWebhook(reader, reveal: false);
     }
 
     public async Task<NotificationWebhookItem?> UpdateNotificationWebhookAsync(
@@ -125,6 +133,10 @@ public sealed class SqliteNotificationRepository(
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
             cancellationToken);
+
+        var (storedUrl, storedConfig) = await StoredSecretsAsync(connection, id, cancellationToken);
+        var url = NotificationSecrets.KeepMaskedUrl(request.Url, storedUrl);
+        var config = NotificationSecrets.KeepMaskedConfig(request.ConfigJson, storedConfig);
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -141,18 +153,18 @@ public sealed class SqliteNotificationRepository(
             """;
 
         AddParameter(command, "@id", id);
-        AddParameter(command, "@name", await NameForAsync(connection, id, request.Provider is null ? await ProviderOfAsync(connection, id, cancellationToken) : NotificationProviders.Normalize(request.Provider), request.Url, cancellationToken));
-        AddParameter(command, "@url", request.Url?.Trim() ?? string.Empty);
+        AddParameter(command, "@name", await NameForAsync(connection, id, request.Provider is null ? await ProviderOfAsync(connection, id, cancellationToken) : NotificationProviders.Normalize(request.Provider), url, cancellationToken));
+        AddParameter(command, "@url", ProtectUrl(url));
         AddParameter(command, "@eventFilters", NormalizeCsv(request.EventFilters));
         AddParameter(command, "@isEnabled", request.IsEnabled ? 1 : 0);
         AddParameter(command, "@updatedUtc", now.ToString("O"));
         AddParameter(command, "@provider", request.Provider is null ? null : NotificationProviders.Normalize(request.Provider));
-        AddParameter(command, "@configJson", string.IsNullOrWhiteSpace(request.ConfigJson) ? null : request.ConfigJson);
+        AddParameter(command, "@configJson", ProtectConfig(config));
         AddParameter(command, "@tags", request.Tags is null ? null : NormalizeCsv(request.Tags));
         AddParameter(command, "@includeHealthWarnings", request.IncludeHealthWarnings is null ? null : request.IncludeHealthWarnings.Value ? 1 : 0);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken) ? ReadNotificationWebhook(reader) : null;
+        return await reader.ReadAsync(cancellationToken) ? ReadNotificationWebhook(reader, reveal: false) : null;
     }
 
     public async Task<bool> DeleteNotificationWebhookAsync(string id, CancellationToken cancellationToken)
@@ -325,7 +337,7 @@ public sealed class SqliteNotificationRepository(
         "FROM notification_webhook_deliveries d " +
         "LEFT JOIN notification_webhooks w ON w.id = d.webhook_id";
 
-    private static NotificationWebhookDeliveryRecord ReadDelivery(System.Data.Common.DbDataReader reader)
+    private NotificationWebhookDeliveryRecord ReadDelivery(System.Data.Common.DbDataReader reader)
     {
         var item = new NotificationWebhookDeliveryItem(
             Id: reader.GetString(0),
@@ -345,11 +357,11 @@ public sealed class SqliteNotificationRepository(
 
         return new NotificationWebhookDeliveryRecord(
             item,
-            reader.IsDBNull(16) ? null : reader.GetString(16),
+            reader.IsDBNull(16) ? null : Reveal(NotificationSecrets.UrlPurpose, reader.GetString(16)),
             reader.GetString(4),
             reader.IsDBNull(5) ? null : reader.GetString(5),
             reader.IsDBNull(17) ? NotificationProviders.Generic : reader.GetString(17),
-            reader.IsDBNull(18) ? null : reader.GetString(18));
+            reader.IsDBNull(18) ? null : Reveal(NotificationSecrets.ConfigPurpose, reader.GetString(18)));
     }
 
     private static IntegrationFailure? DeserializeFailure(string json)
@@ -367,12 +379,12 @@ public sealed class SqliteNotificationRepository(
     private static DateTimeOffset? ReadOptionalTimestamp(System.Data.Common.DbDataReader reader, int ordinal)
         => reader.IsDBNull(ordinal) ? null : ParseTimestamp(reader.GetString(ordinal));
 
-    private static NotificationWebhookItem ReadNotificationWebhook(System.Data.Common.DbDataReader reader)
+    private NotificationWebhookItem ReadNotificationWebhook(System.Data.Common.DbDataReader reader, bool reveal)
     {
         return new NotificationWebhookItem(
             Id: reader.GetString(0),
             Name: reader.GetString(1),
-            Url: reader.GetString(2),
+            Url: reveal ? Reveal(NotificationSecrets.UrlPurpose, reader.GetString(2)) ?? string.Empty : NotificationSecrets.MaskUrl(Reveal(NotificationSecrets.UrlPurpose, reader.GetString(2))),
             EventFilters: reader.GetString(3),
             IsEnabled: reader.GetInt64(4) == 1,
             LastFiredUtc: reader.IsDBNull(5) ? null : ParseTimestamp(reader.GetString(5)),
@@ -380,9 +392,69 @@ public sealed class SqliteNotificationRepository(
             CreatedUtc: ParseTimestamp(reader.GetString(7)),
             UpdatedUtc: ParseTimestamp(reader.GetString(8)),
             Provider: reader.IsDBNull(9) ? NotificationProviders.Generic : reader.GetString(9),
-            ConfigJson: reader.IsDBNull(10) ? null : reader.GetString(10),
+            ConfigJson: reader.IsDBNull(10) ? null : reveal ? Reveal(NotificationSecrets.ConfigPurpose, reader.GetString(10)) : NotificationSecrets.MaskConfig(Reveal(NotificationSecrets.ConfigPurpose, reader.GetString(10))),
             Tags: reader.FieldCount > 11 && !reader.IsDBNull(11) ? reader.GetString(11) : "",
             IncludeHealthWarnings: reader.FieldCount > 12 && !reader.IsDBNull(12) && reader.GetInt64(12) == 1);
     }
 
+    private string ProtectUrl(string url)
+        => string.IsNullOrWhiteSpace(url) ? string.Empty : secretProtector.Protect(NotificationSecrets.UrlPurpose, url);
+
+    private string? ProtectConfig(string? configJson)
+        => string.IsNullOrWhiteSpace(configJson) ? null : secretProtector.Protect(NotificationSecrets.ConfigPurpose, configJson);
+
+    /// <summary>A stored value in clear. One saved elsewhere and unreadable here comes back empty, so the screen asks for it again.</summary>
+    private string? Reveal(string purpose, string? stored)
+        => string.IsNullOrWhiteSpace(stored) ? null : secretProtector.TryUnprotect(purpose, stored).Value;
+
+    private async Task<(string? Url, string? Config)> StoredSecretsAsync(System.Data.Common.DbConnection connection, string id, CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT url, config_json FROM notification_webhooks WHERE id = @id;";
+        AddParameter(command, "@id", id);
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? (Reveal(NotificationSecrets.UrlPurpose, reader.GetString(0)), reader.IsDBNull(1) ? null : Reveal(NotificationSecrets.ConfigPurpose, reader.GetString(1)))
+            : (null, null);
+    }
+
+    /// <summary>
+    /// #1364: protects every address and setting saved in clear by an earlier build. Safe to run again: a value
+    /// already protected is left as it is. Returns how many connections it changed.
+    /// </summary>
+    public async Task<int> ProtectStoredSecretsAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        var rows = new List<(string Id, string Url, string? Config)>();
+        using (var read = connection.CreateCommand())
+        {
+            read.CommandText = "SELECT id, url, config_json FROM notification_webhooks;";
+            using var reader = await read.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                rows.Add((reader.GetString(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2)));
+            }
+        }
+
+        var changed = 0;
+        foreach (var (id, url, config) in rows)
+        {
+            var urlClear = !string.IsNullOrWhiteSpace(url) && !secretProtector.IsProtected(url);
+            var configClear = !string.IsNullOrWhiteSpace(config) && !secretProtector.IsProtected(config);
+            if (!urlClear && !configClear)
+            {
+                continue;
+            }
+
+            using var write = connection.CreateCommand();
+            write.CommandText = "UPDATE notification_webhooks SET url = @url, config_json = @config WHERE id = @id;";
+            AddParameter(write, "@id", id);
+            AddParameter(write, "@url", urlClear ? ProtectUrl(url) : url);
+            AddParameter(write, "@config", configClear ? ProtectConfig(config) : config);
+            await write.ExecuteNonQueryAsync(cancellationToken);
+            changed++;
+        }
+
+        return changed;
+    }
 }
