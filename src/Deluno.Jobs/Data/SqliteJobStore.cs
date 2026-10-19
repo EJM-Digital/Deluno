@@ -3246,13 +3246,13 @@ public sealed class SqliteJobStore(
             if (enabled)
             {
                 var grabTitleTags = await mediaTagStore.ListTitleTagNamesAsync(entityType, entityId, cancellationToken);
-                await outboundNotificationService.DispatchAsync(
+                await NotificationOutboundDispatch.GuardAsync(async () => await outboundNotificationService.DispatchAsync(
                     "grab",
                     $"Grabbed: {releaseName}",
                     $"Deluno sent {releaseName} to {downloadClientName}.",
                     notesJson,
                     cancellationToken,
-                    grabTitleTags);
+                    grabTitleTags), "grab");
             }
         }
 

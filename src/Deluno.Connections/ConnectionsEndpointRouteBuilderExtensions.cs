@@ -1071,12 +1071,12 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             if ((!automatic || changed)
                 && (await notificationPreferences.GetPreferencesAsync(cancellationToken)).ProviderHealthChangedEnabled)
             {
-                await notificationService.DispatchAsync(
+                await NotificationOutboundDispatch.GuardAsync(async () => await notificationService.DispatchAsync(
                     "health.degraded",
                     $"Indexer degraded: {item.Name}",
                     health.Message,
                     null,
-                    cancellationToken);
+                    cancellationToken), "health.degraded");
             }
         }
         else
@@ -1139,12 +1139,12 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             if ((!automatic || changed)
                 && (await notificationPreferences.GetPreferencesAsync(cancellationToken)).ProviderHealthChangedEnabled)
             {
-                await notificationService.DispatchAsync(
+                await NotificationOutboundDispatch.GuardAsync(async () => await notificationService.DispatchAsync(
                     "health.degraded",
                     $"Download client degraded: {item.Name}",
                     health.Message,
                     null,
-                    cancellationToken);
+                    cancellationToken), "health.degraded");
             }
         }
         else
@@ -2045,12 +2045,12 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             return;
         }
 
-        await notificationService.DispatchAsync(
+        await NotificationOutboundDispatch.GuardAsync(async () => await notificationService.DispatchAsync(
             "health.restored",
             $"{providerName} is healthy again",
             message ?? $"{providerName} recovered.",
             null,
-            cancellationToken);
+            cancellationToken), "health.restored");
     }
 
     private sealed record TransmissionRequest(

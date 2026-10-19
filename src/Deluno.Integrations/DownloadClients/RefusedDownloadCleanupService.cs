@@ -511,6 +511,6 @@ public sealed class RefusedDownloadCleanupService(
             }
         }
 
-        await outboundNotificationService.DispatchAsync(eventCategory, title, message, null, cancellationToken, titleTags);
+        await NotificationOutboundDispatch.GuardAsync(async () => await outboundNotificationService.DispatchAsync(eventCategory, title, message, null, cancellationToken, titleTags), "notice");
     }
 }

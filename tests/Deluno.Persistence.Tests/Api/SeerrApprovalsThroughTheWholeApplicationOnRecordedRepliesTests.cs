@@ -253,7 +253,7 @@ public sealed class SeerrApprovalsThroughTheWholeApplicationOnRecordedRepliesTes
         Assert.DoesNotContain(rig.Gateway.Unanswered, call => call.Contains("/metadata/search", StringComparison.Ordinal));
     }
 
-    [Fact(Skip = "Defect: an approval for a film Deluno already holds a file for passes HasFile false to EnsureWantedStateAsync, whose upsert overwrites has_file and the wanted status, so an owned film goes back on the wanted list (found 19 Oct 2026; the manual add path guards exactly this, MoviesEndpointRouteBuilderExtensions re-adding a film you already had).")]
+    [Fact]
     public async Task An_approval_for_a_film_Deluno_already_holds_a_file_for_leaves_it_owned_and_off_the_wanted_list()
     {
         // The file is the film's own, on disk in the Films library. Seerr approves a request for it, and the approval must not put it back on the wanted list.

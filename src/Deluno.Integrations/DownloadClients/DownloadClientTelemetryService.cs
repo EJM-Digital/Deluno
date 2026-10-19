@@ -94,7 +94,7 @@ public sealed class DownloadClientTelemetryService(
             }
         }
 
-        await outboundNotificationService.DispatchAsync(eventCategory, title, message, detailsJson, cancellationToken, titleTags);
+        await NotificationOutboundDispatch.GuardAsync(async () => await outboundNotificationService.DispatchAsync(eventCategory, title, message, detailsJson, cancellationToken, titleTags), "notice");
     }
 
     /// <summary>

@@ -1982,6 +1982,51 @@ public sealed partial class ImportPipelineService(
                 request.Preview.SeriesId,
                 cancellationToken);
 
+            // A season pack is told to Seerr and to the phone the same way a single
+            // file is: availability once, then the completed, upgrade and rename notices.
+            var packEntityId = request.Preview.SeriesId ?? catalog.EntityId;
+            await ReportSeerrAvailabilityAsync("tv", packEntityId, cancellationToken);
+            var packTags = await ResolveTitleTagsAsync("tv", packEntityId, cancellationToken);
+            var packTitle = TitleForActivity(request.Preview);
+            await DispatchImportOutcomeNotificationAsync(
+                "import.completed",
+                $"Import completed: {packTitle}",
+                $"{packTitle} season pack imported {placements.Count} files covering {plan.Numbers.Episodes.Count} episodes.",
+                JsonSerializer.Serialize(new { title = packTitle, mediaType = "tv", transferMode = provenance.TransferModeUsed }),
+                prefs => prefs.ImportCompletedEnabled,
+                "completion",
+                cancellationToken,
+                packTags);
+            if (catalog.ReplacedFilePaths.Count > 0)
+            {
+                await DispatchImportOutcomeNotificationAsync(
+                    "upgrade",
+                    $"Upgraded: {packTitle}",
+                    $"{packTitle} was upgraded by this import.",
+                    JsonSerializer.Serialize(new { title = packTitle, mediaType = "tv" }),
+                    prefs => prefs.UpgradeEnabled,
+                    "upgrade",
+                    cancellationToken,
+                    packTags);
+            }
+
+            var renamedCount = placements.Count(placement => !string.Equals(
+                Path.GetFileName(placement.File.Preview.SourcePath),
+                Path.GetFileName(placement.File.Preview.DestinationPath),
+                StringComparison.Ordinal));
+            if (renamedCount > 0)
+            {
+                await DispatchImportOutcomeNotificationAsync(
+                    "rename",
+                    $"Renamed: {packTitle}",
+                    $"{renamedCount} of the {placements.Count} files in {packTitle} were renamed.",
+                    JsonSerializer.Serialize(new { sourcePath = request.Preview.SourcePath, destinationFolder = plan.Summary.DestinationFolder }),
+                    prefs => prefs.RenameEnabled,
+                    "rename",
+                    cancellationToken,
+                    packTags);
+            }
+
             // #889: search again, but only for the episodes this pack left
             // missing - never the whole show, and never for an extra/sample
             // that was never a wanted episode in the first place.

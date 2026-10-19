@@ -303,7 +303,7 @@ public sealed class MediaServerIsToldWhatChangedOnRealFilesOnRecordedJellyfinTes
         Assert.Null(await backlog.FindAsync(world.ServerId, "movies", CancellationToken.None));
     }
 
-    [Fact(Skip = "Defect: adding a second path mapping for the same Deluno folder to one media server is a database error that reaches the caller as an HTTP 500 (UNIQUE constraint failed: media_server_path_mappings.media_server_id, deluno_path) instead of a plain 4xx that says the folder is already mapped (found 19 Oct 2026, SqliteMediaServerRepository.CreatePathMappingAsync).")]
+    [Fact]
     public async Task A_second_mapping_for_a_folder_already_mapped_is_refused_in_plain_words_not_with_a_server_error()
     {
         await using var world = await StartAsync();
@@ -314,7 +314,7 @@ public sealed class MediaServerIsToldWhatChangedOnRealFilesOnRecordedJellyfinTes
         Assert.InRange((int)again.StatusCode, 400, 499);
     }
 
-    [Fact(Skip = "Defect: deleting one movie file from the Files tab (DELETE /api/movies/{id}/files) never tells a media server the file is gone. Only the import pipeline and whole-title removal (Deluno.Media TitleRemoval) build a MediaServerPathChange; the single-file delete, the episode-file delete, a rename, a restore from the recycle bin and a retention rule removing a season or episode do not, though the notifier's own summary says rename and manual removal end up there (found 19 Oct 2026).")]
+    [Fact]
     public async Task A_movie_file_deleted_from_the_Files_tab_tells_the_server_the_file_is_Deleted()
     {
         await using var world = await StartAsync();
@@ -355,5 +355,90 @@ public sealed class MediaServerIsToldWhatChangedOnRealFilesOnRecordedJellyfinTes
         Assert.True(removed.IsSuccessStatusCode, await removed.Content.ReadAsStringAsync());
         Assert.All(episodes, episode => Assert.False(File.Exists(episode)));
         Assert.Equal(episodes.Select(episode => (episode, "Deleted")).OrderBy(change => change.episode, StringComparer.Ordinal), world.Told().OrderBy(change => change.Path, StringComparer.Ordinal));
+    }
+
+    // ---- #1365: every other way a file changes place tells the server too ----
+
+    [Fact]
+    public async Task An_episode_file_deleted_from_the_Files_tab_tells_the_server_the_file_is_Deleted()
+    {
+        await using var world = await StartAsync();
+        var show = await ApiScenes.ShowOnDiskAsync(world.App);
+
+        var removed = await world.App.Client.DeleteAsync($"/api/series/episodes/{show.EpisodeId}/file");
+        await world.RunQueuedRefreshesAsync();
+
+        Assert.True(removed.IsSuccessStatusCode, await removed.Content.ReadAsStringAsync());
+        Assert.Equal([(show.FilePath, "Deleted")], world.Told());
+    }
+
+    [Fact]
+    public async Task A_film_restored_from_the_recycle_bin_tells_the_server_the_file_is_back_as_Created()
+    {
+        await using var world = await StartAsync();
+        var film = await ApiScenes.FilmOnDiskAsync(world.App, "Dune", 2021, world.Disk.Library.Id);
+        var request = new HttpRequestMessage(HttpMethod.Delete, $"/api/movies/{film.MovieId}/files") { Content = JsonContent.Create(new { path = film.FilePath }) };
+        Assert.True((await world.App.Client.SendAsync(request)).IsSuccessStatusCode);
+        var bin = await world.App.Client.GetFromJsonAsync<JsonElement>("/api/recycle-bin");
+        var itemId = bin.EnumerateArray().Single().GetProperty("id").GetString();
+
+        var restored = await world.App.Client.PostAsync($"/api/recycle-bin/{itemId}/restore", null);
+        await world.RunQueuedRefreshesAsync();
+
+        Assert.True(restored.IsSuccessStatusCode, await restored.Content.ReadAsStringAsync());
+        Assert.True(File.Exists(film.FilePath));
+        Assert.Equal([(film.FilePath, "Created"), (film.FilePath, "Deleted")], world.Told().OrderBy(change => change.Kind, StringComparer.Ordinal).ToArray());
+    }
+
+    [Fact]
+    public async Task A_film_folder_renamed_tells_the_server_the_old_file_is_Deleted_and_the_new_one_Created()
+    {
+        await using var world = await StartAsync();
+        var film = await ApiScenes.FilmOnDiskAsync(world.App, "Dune", 2021, world.Disk.Library.Id);
+        await ApiScenes.ExecuteAsync(world.App, "movies", $"UPDATE movie_entries SET title = 'Dune Part Two' WHERE id = '{film.MovieId}'");
+
+        var renamed = await world.App.Client.PostAsJsonAsync("/api/movies/bulk/rename-apply", new { movieIds = new[] { film.MovieId } });
+        await world.RunQueuedRefreshesAsync();
+
+        Assert.True(renamed.IsSuccessStatusCode, await renamed.Content.ReadAsStringAsync());
+        Assert.False(File.Exists(film.FilePath));
+        var told = world.Told();
+        Assert.Contains((film.FilePath, "Deleted"), told);
+        var created = Assert.Single(told, change => change.Kind == "Created");
+        Assert.True(File.Exists(created.Path), created.Path);
+    }
+
+    [Fact]
+    public async Task A_film_moved_to_another_library_tells_the_server_the_old_file_is_Deleted_and_the_new_one_Created()
+    {
+        await using var world = await StartAsync();
+        var film = await ApiScenes.FilmOnDiskAsync(world.App, "Dune", 2021, world.Disk.Library.Id);
+        var other = await ApiScenes.CreateLibraryAsync(world.App, "movies");
+
+        var moved = await world.App.Client.PostAsJsonAsync("/api/movies/bulk/reassign-library", new { movieIds = new[] { film.MovieId }, fromLibraryId = film.LibraryId, toLibraryId = other, moveFiles = true });
+        await world.RunQueuedRefreshesAsync();
+
+        Assert.True(moved.IsSuccessStatusCode, await moved.Content.ReadAsStringAsync());
+        var told = world.Told();
+        Assert.Contains((film.FilePath, "Deleted"), told);
+        var created = Assert.Single(told, change => change.Kind == "Created");
+        Assert.True(File.Exists(created.Path), created.Path);
+    }
+
+    [Fact]
+    public async Task A_show_folder_renamed_or_moved_tells_the_server_each_episode_file_old_and_new()
+    {
+        await using var world = await StartAsync();
+        var show = await ApiScenes.ShowOnDiskAsync(world.App, "The Wire", 2002);
+        await ApiScenes.ExecuteAsync(world.App, "series", $"UPDATE series_entries SET title = 'The Wire Again' WHERE id = '{show.SeriesId}'");
+
+        var renamed = await world.App.Client.PostAsJsonAsync("/api/series/bulk/rename-apply", new { seriesIds = new[] { show.SeriesId } });
+        await world.RunQueuedRefreshesAsync();
+
+        Assert.True(renamed.IsSuccessStatusCode, await renamed.Content.ReadAsStringAsync());
+        var told = world.Told();
+        Assert.Contains((show.FilePath, "Deleted"), told);
+        var created = Assert.Single(told, change => change.Kind == "Created");
+        Assert.True(File.Exists(created.Path), created.Path);
     }
 }
