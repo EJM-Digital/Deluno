@@ -1,0 +1,107 @@
+{
+  "app": "qbittorrent",
+  "version": "5.2.4",
+  "state": "login-banned",
+  "recordedAt": "2026-10-19T09:45:24Z",
+  "note": "Six sign-ins with a wrong password in a row (the first five answer 401), then a sign-in with the right password: qBittorrent has banned the address after too many failed attempts and answers 403 to both.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/auth/login",
+        "bodyText": "username=<scrubbed>&password=<scrubbed>"
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": "Unauthorized"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/auth/login",
+        "bodyText": "username=<scrubbed>&password=<scrubbed>"
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": "Unauthorized"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/auth/login",
+        "bodyText": "username=<scrubbed>&password=<scrubbed>"
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": "Unauthorized"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/auth/login",
+        "bodyText": "username=<scrubbed>&password=<scrubbed>"
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": "Unauthorized"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/auth/login",
+        "bodyText": "username=<scrubbed>&password=<scrubbed>"
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": "Unauthorized"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/auth/login",
+        "bodyText": "username=<scrubbed>&password=<scrubbed>"
+      },
+      "reply": {
+        "status": 403,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": "Your IP address has been banned after too many failed authentication attempts."
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/auth/login",
+        "bodyText": "username=<scrubbed>&password=<scrubbed>"
+      },
+      "reply": {
+        "status": 403,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": "Your IP address has been banned after too many failed authentication attempts."
+      }
+    }
+  ]
+}

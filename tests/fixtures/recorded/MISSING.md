@@ -278,3 +278,13 @@ Still missing, and why:
 ## TRaSH Guides sync (`github`, settings-library rows of #1291)
 
 Recorded on 19 Oct 2026 (`github/2022-11-28/trash-guides-*`): the Git address reply (`trash-guides-master-ref`, shortened to the service, HEAD and `refs/heads/master` lines) and the codeload archive at two real commits (`trash-guides-archive-529bd9c`, master at the time, and `trash-guides-archive-a63c1d0`, the commit Deluno ships its source inventory from). The real archives are about 25 MB each; each recorded zip (about 460 KB) holds only the `.json` files directly under `docs/json/{radarr,sonarr}/{cf,cf-groups,quality-profiles}/`, byte for byte, which is everything `GuideUpstreamTreeClient` reads. "Check now", "Preview a sync", "Sync" and the change report are tested against them. Still not recorded: the API fallback (`api.github.com/repos/TRaSH-Guides/Guides/git/ref/heads/master`, `/git/commits/<sha>`, `/git/trees/<sha>?recursive=1`), used only when the archive cannot be read, and GitHub's rate-limit reply on that route.
+
+## Recorded on 19 October 2026 for the client rows of #1301 (`scripts/recorded-replies/docker/clientgaps.mjs`)
+
+Recorded from the real clients in Docker (qBittorrent 5.2.4 and 4.6.7, SABnzbd 5.1.3, NZBGet 26.3). These lines above are now recorded and replayed by `ClientGapsOnRecordingsTests`; the older lines stay as history:
+
+- qbittorrent `login-banned` (the address banned after too many wrong logins, HTTP 403, q7), `stop-start-missing` (a 4.x client: 404 for stop and start, then `pause` and `resume`, q12), `queue-moved` (topPrio, increasePrio, decreasePrio, bottomPrio, q40), `force-start-set` (setForceStart, q41) and `old-pause-resume-names` (the 4.x names answered 404 by a 5.x).
+- sabnzbd `client-paused-resumed` (`mode=pause` and `mode=resume` for the whole client, s23) and `priority-tiers` (`mode=queue&name=priority` with `value2`, s31).
+- nzbget `client-paused-resumed` (`pausedownload`, `pausepost`, `pausescan`, then `resumedownload`, `resumepost`, `resumescan`, n19) and `queue-moved` (`GroupMoveTop`, `GroupMoveOffset`, `GroupMoveBottom`, n27).
+
+Still not recordable from the apps: a client's own timeout and an HTTP 429 with `Retry-After` (no client sends one; the tests build the status only), and the Torznab/Newznab replies listed above.
