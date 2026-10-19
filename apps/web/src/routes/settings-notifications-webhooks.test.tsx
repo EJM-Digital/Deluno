@@ -193,6 +193,18 @@ describe("webhook drawer", () => {
     expect(await screen.findByText("Webhook could not be saved.")).toBeInTheDocument();
   });
 
+  it("edits a connection whose token came back masked (#1364): the mask goes back as it came, so the server keeps what it stored", async () => {
+    const mask = "••••••••";
+    loader.webhooks = [hook({ id: "m1", name: "Phone", provider: "telegram", url: "", configJson: JSON.stringify({ botToken: mask, chatId: "42" }) })];
+    renderPage();
+    fireEvent.click(screen.getByText("Phone"));
+    expect(screen.getByDisplayValue(mask)).toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue("42"), { target: { value: "43" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save webhook" }));
+    await waitFor(() => expect(putCalls()).toHaveLength(1));
+    expect(JSON.parse(JSON.parse((putCalls()[0][1] as RequestInit).body as string).configJson)).toEqual({ botToken: mask, chatId: "43" });
+  });
+
   it("sends a test event only from a saved form: dimmed with 'Save your changes first.' while edited, then POSTs the test and toasts", async () => {
     loader.webhooks = [hook({ id: "e2", name: "Test target" })];
     renderPage();

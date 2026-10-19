@@ -9,7 +9,14 @@ namespace Deluno.Notifications.Data;
 /// </summary>
 public interface INotificationRepository
 {
+    /// <summary>Every connection with its address and tokens masked (#1364): what a list or a read may show.</summary>
     Task<IReadOnlyList<NotificationWebhookItem>> ListNotificationWebhooksAsync(CancellationToken cancellationToken);
+
+    /// <summary>Every connection with its address and tokens in clear, for sending only. Never returned by a route.</summary>
+    Task<IReadOnlyList<NotificationWebhookItem>> ListNotificationWebhooksWithSecretsAsync(CancellationToken cancellationToken);
+
+    /// <summary>Protects secrets an earlier build saved in clear; returns how many connections changed.</summary>
+    Task<int> ProtectStoredSecretsAsync(CancellationToken cancellationToken);
 
     Task<NotificationWebhookItem> CreateNotificationWebhookAsync(CreateNotificationWebhookRequest request, CancellationToken cancellationToken);
 

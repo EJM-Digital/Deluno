@@ -10,7 +10,9 @@ public static class NotificationsServiceCollectionExtensions
         services.AddSingleton<INotificationRepository, SqliteNotificationRepository>();
         services.AddSingleton<IOutboundNotificationService, OutboundNotificationService>();
         services.AddSingleton<INotificationService, SqliteNotificationService>();
-        services.AddHttpClient("notifications");
+        // #1364: the client's own request log line carries the whole address, and a Discord or Slack address holds its token in the path.
+        // The service logs the host alone.
+        services.AddHttpClient("notifications").RemoveAllLoggers();
         return services;
     }
 }

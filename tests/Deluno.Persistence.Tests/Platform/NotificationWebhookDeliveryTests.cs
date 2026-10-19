@@ -50,7 +50,7 @@ public sealed class NotificationWebhookDeliveryTests
             new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
         await EnableOutboundNotificationsAsync(storage);
-        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider);
+        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
         await repository.CreateNotificationWebhookAsync(new CreateNotificationWebhookRequest("Everything", "https://hooks.example.test/all", filters, true), CancellationToken.None);
         var handler = new SequencedHandler([]);
         var service = new OutboundNotificationService(repository, new SingleClientFactory(handler), NullLogger<OutboundNotificationService>.Instance);
@@ -76,7 +76,7 @@ public sealed class NotificationWebhookDeliveryTests
             new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
         await EnableOutboundNotificationsAsync(storage);
-        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider);
+        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
         await repository.CreateNotificationWebhookAsync(
             new CreateNotificationWebhookRequest("Anime channel", "https://hooks.example.test/anime", "all", true, Tags: "anime"),
             CancellationToken.None);
@@ -111,7 +111,7 @@ public sealed class NotificationWebhookDeliveryTests
             new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
         await EnableOutboundNotificationsAsync(storage);
-        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider);
+        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
         await repository.CreateNotificationWebhookAsync(
             new CreateNotificationWebhookRequest("Anime channel", "https://hooks.example.test/anime", "all", true, Tags: "anime"),
             CancellationToken.None);
@@ -143,7 +143,7 @@ public sealed class NotificationWebhookDeliveryTests
             new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
         await EnableOutboundNotificationsAsync(storage);
-        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider);
+        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
         var errorsOnly = await repository.CreateNotificationWebhookAsync(
             new CreateNotificationWebhookRequest("Errors only", "https://hooks.example.test/errors", "health", true),
             CancellationToken.None);
@@ -191,7 +191,7 @@ public sealed class NotificationWebhookDeliveryTests
             new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
         await EnableOutboundNotificationsAsync(storage);
-        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider);
+        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
         await repository.CreateNotificationWebhookAsync(new CreateNotificationWebhookRequest("Updates", "https://hooks.example.test/u", filters, true), CancellationToken.None);
         var handler = new SequencedHandler([]);
 
@@ -238,7 +238,7 @@ public sealed class NotificationWebhookDeliveryTests
         Assert.Equal(["kids"], episodeTags);
         Assert.Null(await tagStore.ListTitleTagNamesAsync("episode", "no-such-episode", CancellationToken.None));
 
-        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider);
+        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
         await repository.CreateNotificationWebhookAsync(
             new CreateNotificationWebhookRequest("Adults channel", "https://hooks.example.test/adults", "all", true, Tags: "adults"),
             CancellationToken.None);
@@ -269,7 +269,8 @@ public sealed class NotificationWebhookDeliveryTests
 
         var repository = new SqliteNotificationRepository(
             storage.Factory,
-            timeProvider);
+            timeProvider,
+            TestSecretProtection.Create(storage));
 
         var webhook = await repository.CreateNotificationWebhookAsync(
             new CreateNotificationWebhookRequest(
@@ -328,7 +329,7 @@ public sealed class NotificationWebhookDeliveryTests
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
         await EnableOutboundNotificationsAsync(storage);
 
-        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider);
+        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
         var webhook = await repository.CreateNotificationWebhookAsync(
             new CreateNotificationWebhookRequest("Operations", "https://hooks.example.test/ops", "", true),
             CancellationToken.None);
@@ -384,7 +385,8 @@ public sealed class NotificationWebhookDeliveryTests
 
         var repository = new SqliteNotificationRepository(
             storage.Factory,
-            timeProvider);
+            timeProvider,
+            TestSecretProtection.Create(storage));
 
         await repository.CreateNotificationWebhookAsync(
             new CreateNotificationWebhookRequest(
@@ -422,7 +424,7 @@ public sealed class NotificationWebhookDeliveryTests
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
         await EnableOutboundNotificationsAsync(storage);
 
-        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider);
+        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
         var webhook = await repository.CreateNotificationWebhookAsync(
             new CreateNotificationWebhookRequest("Operations", "https://hooks.example.test/ops", "", true),
             CancellationToken.None);
@@ -469,7 +471,8 @@ public sealed class NotificationWebhookDeliveryTests
 
         var repository = new SqliteNotificationRepository(
             storage.Factory,
-            timeProvider);
+            timeProvider,
+            TestSecretProtection.Create(storage));
 
         await repository.CreateNotificationWebhookAsync(
             new CreateNotificationWebhookRequest(

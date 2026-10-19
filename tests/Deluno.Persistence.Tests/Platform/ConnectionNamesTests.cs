@@ -155,7 +155,7 @@ public sealed class ConnectionNamesTests
     {
         var (storage, clock) = await StartAsync();
         using var _ = storage;
-        var repository = new SqliteNotificationRepository(storage.Factory, clock);
+        var repository = new SqliteNotificationRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
 
         var discord = await repository.CreateNotificationWebhookAsync(
             new CreateNotificationWebhookRequest("Home", "https://discord.com/api/webhooks/1/x", "all", true, NotificationProviders.Discord), CancellationToken.None);

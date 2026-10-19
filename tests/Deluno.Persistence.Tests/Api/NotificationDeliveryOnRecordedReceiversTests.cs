@@ -412,7 +412,7 @@ public sealed class NotificationDeliveryOnRecordedReceiversTests
     private const string BotToken = "123456789:SECRET-telegram-bot-token-4f9a";
     private const string DiscordUrl = "https://discord.com/api/webhooks/1234567890/SECRET-discord-token-8c2d";
 
-    [Fact(Skip = "Defect: GET /api/notification-webhooks hands back each connection's whole address and configJson in clear (NotificationWebhookItem.Url and .ConfigJson), so a Telegram bot token, a Pushover app token and user key, a Gotify app token, an ntfy access token and a Discord or Slack address (which embeds its secret) come back to any caller with a Write key. Every other connection list says only that a secret is held (found 19 Oct 2026; NoListOfConnectionsEverReturnsASecretTests does not walk this one).")]
+    [Fact]
     public async Task The_list_of_connections_says_a_secret_is_held_and_never_what_it_is()
     {
         await using var app = await ApplicationTestHost.StartAsync();
@@ -425,7 +425,7 @@ public sealed class NotificationDeliveryOnRecordedReceiversTests
         Assert.DoesNotContain("SECRET-discord-token-8c2d", listed, StringComparison.Ordinal);
     }
 
-    [Fact(Skip = "Defect: a connection's provider tokens (config_json) and its address are stored in notification_webhooks as plain text, unlike the Seerr key, the media server token and the processor secret, which go through the secret protector. Anyone who can read the database file or a backup of it reads every token (found 19 Oct 2026).")]
+    [Fact]
     public async Task A_connections_tokens_and_address_are_stored_protected_not_as_plain_text()
     {
         await using var app = await ApplicationTestHost.StartAsync();
