@@ -73,7 +73,7 @@ public sealed class GuidedSetupRoutesTests
         Assert.True(progress.GetProperty("isSkipped").GetBoolean());
     }
 
-    [Fact(Skip = "DEFECT: SaveSetupProgressAsync clamps the step to 0..11 (src/Deluno.Platform/Data/SqlitePlatformSettingsRepository.cs line 55) but the guide has 13 steps, 0..12; the Start step (12) comes back as 11.")]
+    [Fact]
     public async Task The_step_is_clamped_to_the_guides_real_range_of_thirteen_steps()
     {
         await using var app = await ApplicationTestHost.StartAsync();
@@ -175,7 +175,7 @@ public sealed class GuidedSetupRoutesTests
         Assert.Equal(goal, read.GetProperty("formatGoal").GetString());
     }
 
-    [Fact(Skip = "DEFECT: the draft's format-goal allow-list (SqlitePlatformSettingsRepository.SaveSetupDraftAsync, line 107) omits \"archive\", the sixth release preference the guide offers, so an Archive choice is dropped to blank on reload.")]
+    [Fact]
     public async Task The_archive_release_preference_survives_a_reload()
     {
         await using var app = await ApplicationTestHost.StartAsync();

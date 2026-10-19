@@ -38,7 +38,9 @@ function input(overrides: Partial<Input> = {}): Input {
       clients: installerClients,
       guide: { bundles: [] },
       updatePreferences: { mode: "ask", autoCheck: true, channel: "stable" },
-      contentBlocklist: { enabled: false, mode: "block", patterns: [] }
+      contentBlocklist: { enabled: false, mode: "block", patterns: [] },
+      allowedHosts: { enabled: false, allowedHosts: [] },
+      localNetworkAuth: { enabled: false, additionalLocalNetworks: [], trustedProxies: [], allowList: [] }
     } as unknown as Input["data"],
     form: {
       mediaIntent: "both",
@@ -312,18 +314,18 @@ describe("what the Yes/No answers write when the baseline is created (#1194, #99
   it("a Yes to skipping sign-in writes the real setting with the ticked addresses, a No writes it off, and no answer writes nothing", async () => {
     fetchJsonMock.mockResolvedValue({});
 
-    await guide.saveLocalNetworkAuth(form({ skipSignInLocalNetwork: true, localNetworkAllowList: ["192.168.1.20"] }));
+    await guide.saveLocalNetworkAuth(form({ skipSignInLocalNetwork: true, localNetworkAllowList: ["192.168.1.20"] }), { additionalLocalNetworks: [], trustedProxies: [] });
     expect(fetchJsonMock).toHaveBeenLastCalledWith("/api/security/local-network-auth", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled: true, additionalLocalNetworks: [], allowList: ["192.168.1.20"], trustedProxies: [] })
     });
 
-    await guide.saveLocalNetworkAuth(form({ skipSignInLocalNetwork: false, localNetworkAllowList: [] }));
+    await guide.saveLocalNetworkAuth(form({ skipSignInLocalNetwork: false, localNetworkAllowList: [] }), { additionalLocalNetworks: [], trustedProxies: [] });
     expect(JSON.parse(fetchJsonMock.mock.lastCall![1].body).enabled).toBe(false);
 
     fetchJsonMock.mockClear();
-    await guide.saveLocalNetworkAuth(form({ skipSignInLocalNetwork: null }));
+    await guide.saveLocalNetworkAuth(form({ skipSignInLocalNetwork: null }), { additionalLocalNetworks: [], trustedProxies: [] });
     expect(fetchJsonMock).not.toHaveBeenCalled();
   });
 
