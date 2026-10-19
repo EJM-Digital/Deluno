@@ -48,6 +48,10 @@ public static class RecordedReplies
     /// <summary>The project's deployed metadata gateway (a Worker in front of TMDb and TheTVDB), a real unauthenticated GET from the internet.</summary>
     public static Recording Tmdb(string state) => RecordedReplies.LoadLatest("tmdb", state);
     public static Recording Thexem(string state) => RecordedReplies.LoadLatest("thexem", state);
+    /// <summary>ntfy, the self-hosted push service, recorded from the real server: a message to a topic, with and without an access token.</summary>
+    public static Recording Ntfy(string state) => RecordedReplies.LoadLatest("ntfy", state);
+    /// <summary>Gotify, the self-hosted push service, recorded from the real server: a message pushed with an application token.</summary>
+    public static Recording Gotify(string state) => RecordedReplies.LoadLatest("gotify", state);
     public static Recording Weir(string state) => RecordedReplies.LoadLatest("weir", state);
     public static Recording Deluno(string state) => RecordedReplies.LoadLatest("deluno", state);
     /// <summary>GitHub's own replies (its release feeds, release downloads and REST API). A request path in a recording is host plus path.</summary>

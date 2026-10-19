@@ -1,0 +1,56 @@
+{
+  "app": "ntfy",
+  "version": "2.32.0",
+  "state": "title-encoded",
+  "recordedAt": "2026-10-19T10:01:59Z",
+  "note": "A message whose Title header is the RFC 2047 encoding of a title with an accent, then the topic read back: ntfy keeps the accent (ntfy 2.32.0 in Docker).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/deluno-ac1c1a-accent",
+        "bodyText": "Sintel (2010) was imported from Sintel.2010.WEB.1080p using copy.",
+        "headers": {
+          "content-type": "text/plain; charset=utf-8",
+          "title": "=?UTF-8?B?SW1wb3J0IGNvbXBsZXRlZDogQW3DqWxpZSAoMjAwMSk=?="
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "id": "W68opQr1qbbN",
+          "time": 1792404119,
+          "expires": 1792447319,
+          "event": "message",
+          "topic": "deluno-ac1c1a-accent",
+          "title": "Import completed: Amélie (2001)",
+          "message": "Sintel (2010) was imported from Sintel.2010.WEB.1080p using copy."
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/deluno-ac1c1a-accent/json?poll=1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/x-ndjson; charset=utf-8"
+        },
+        "body": {
+          "id": "W68opQr1qbbN",
+          "time": 1792404119,
+          "expires": 1792447319,
+          "event": "message",
+          "topic": "deluno-ac1c1a-accent",
+          "title": "Import completed: Amélie (2001)",
+          "message": "Sintel (2010) was imported from Sintel.2010.WEB.1080p using copy."
+        }
+      }
+    }
+  ]
+}

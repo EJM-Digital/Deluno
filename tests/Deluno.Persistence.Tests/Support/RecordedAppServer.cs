@@ -130,6 +130,12 @@ internal sealed class RecordedAppServer : IAsyncDisposable
             {
                 Content = new StringContent(body, Encoding.UTF8, context.Request.ContentType?.Split(';')[0] ?? "text/plain")
             };
+            // The headers the app was sent travel with the call, so a recorded reply can depend on them (a token that is right or wrong).
+            foreach (var header in context.Request.Headers.Where(header => !header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase) && !string.Equals(header.Key, "Host", StringComparison.OrdinalIgnoreCase)))
+            {
+                message.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
+            }
+
             HttpResponseMessage reply;
             try
             {

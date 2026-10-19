@@ -1,0 +1,59 @@
+{
+  "app": "gotify",
+  "version": "3.1.1",
+  "state": "refused",
+  "recordedAt": "2026-10-19T10:02:00Z",
+  "note": "The same message with a key Gotify does not know, and with no key at all: both are refused (Gotify 3.1.1 in Docker, the default administrator).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/message",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "title": "Import completed: Sintel (2010)",
+          "message": "Sintel (2010) was imported from Sintel.2010.WEB.1080p using copy.",
+          "priority": 5
+        }
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "error": "Unauthorized",
+          "errorCode": 401,
+          "errorDescription": "you need to provide a valid access token or user credentials to access this api"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/message",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "title": "Import completed: Sintel (2010)",
+          "message": "Sintel (2010) was imported from Sintel.2010.WEB.1080p using copy.",
+          "priority": 5
+        }
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "error": "Unauthorized",
+          "errorCode": 401,
+          "errorDescription": "you need to provide a valid access token or user credentials to access this api"
+        }
+      }
+    }
+  ]
+}

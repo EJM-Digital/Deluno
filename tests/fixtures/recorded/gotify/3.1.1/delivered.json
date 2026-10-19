@@ -1,0 +1,37 @@
+{
+  "app": "gotify",
+  "version": "3.1.1",
+  "state": "delivered",
+  "recordedAt": "2026-10-19T10:02:00Z",
+  "note": "A message pushed with an application's token the way Deluno sends one (POST /message, X-Gotify-Key, JSON title, message, priority) (Gotify 3.1.1 in Docker, the default administrator).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/message",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "title": "Import completed: Sintel (2010)",
+          "message": "Sintel (2010) was imported from Sintel.2010.WEB.1080p using copy.",
+          "priority": 5
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "id": 1,
+          "appid": 1,
+          "message": "Sintel (2010) was imported from Sintel.2010.WEB.1080p using copy.",
+          "title": "Import completed: Sintel (2010)",
+          "priority": 5,
+          "date": "2026-10-19T10:02:00.500598389Z"
+        }
+      }
+    }
+  ]
+}
