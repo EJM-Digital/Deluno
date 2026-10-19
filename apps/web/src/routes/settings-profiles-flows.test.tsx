@@ -62,6 +62,11 @@ const profile = {
   formatIntents: { "cf-hdr": "preferred" }, acquisition: null, scoreLimits: null, languagePreference: null, releasePreferencePlan: null
 };
 
+const liveSpec = vi.hoisted(() => ({ current: undefined as { events?: readonly string[]; areas?: readonly string[] } | undefined }));
+vi.mock("../lib/live-refresh", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/live-refresh")>()),
+  useLiveRefresh: (spec: { events?: readonly string[]; areas?: readonly string[] }) => { liveSpec.current = spec; }
+}));
 const revalidate = vi.fn();
 const loaderData: Record<string, unknown> = {};
 vi.mock("react-router-dom", async (importOriginal) => ({
@@ -377,5 +382,14 @@ describe("deleting a profile", () => {
 
     await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith("Films removed"));
     expect(vi.mocked(authedFetch)).toHaveBeenCalledWith("/api/quality-profiles/qp-1", { method: "DELETE" });
+  });
+});
+
+describe("Quality Profiles: a change made elsewhere", () => {
+  it("is followed with no reload: the screen reads again for QualityProfileChanged, LibraryChanged", () => {
+    reset();
+    renderPage();
+    expect(liveSpec.current?.events).toEqual(expect.arrayContaining(["QualityProfileChanged","LibraryChanged"]));
+    
   });
 });

@@ -28,6 +28,11 @@ const authedFetchMock = vi.fn(async (path: string, init: { method?: string; body
 });
 vi.mock("../lib/use-auth", () => ({ authedFetch: (...args: unknown[]) => (authedFetchMock as (...a: unknown[]) => unknown)(...args) }));
 
+const liveSpec = vi.hoisted(() => ({ current: undefined as { events?: readonly string[]; areas?: readonly string[] } | undefined }));
+vi.mock("../lib/live-refresh", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/live-refresh")>()),
+  useLiveRefresh: (spec: { events?: readonly string[]; areas?: readonly string[] }) => { liveSpec.current = spec; }
+}));
 const revalidate = vi.fn();
 const loaderData: Record<string, unknown> = {};
 vi.mock("react-router-dom", async (importOriginal) => ({
@@ -334,5 +339,14 @@ describe("Library Profiles opened from a library", () => {
     expect((within(dialog).getByPlaceholderText("Name this library profile") as HTMLInputElement).value).toBe("");
     expect(within(dialog).getByRole("button", { name: "Create library profile" })).toBeTruthy();
     expect(within(dialog).getByRole("switch", { name: /Spare films/ }).getAttribute("aria-checked")).toBe("true");
+  });
+});
+
+describe("Library Profiles: a change made elsewhere", () => {
+  it("is followed with no reload: the screen reads again for PolicySetChanged, LibraryChanged, QualityProfileChanged", () => {
+    reset();
+    renderPage();
+    expect(liveSpec.current?.events).toEqual(expect.arrayContaining(["PolicySetChanged","LibraryChanged","QualityProfileChanged"]));
+    
   });
 });

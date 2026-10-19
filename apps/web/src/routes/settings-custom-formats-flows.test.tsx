@@ -60,6 +60,11 @@ const customRule = {
 const hdrRule = { id: "cf-hdr", name: "HDR10", mediaType: "movies", score: 100, upgradeAllowed: true, trashId: "hdr10", conditions: "[]", createdUtc: "2026-01-01T00:00:00Z", updatedUtc: "2026-01-01T00:00:00Z" };
 const profile = { id: "qp-1", name: "Films", mediaType: "movies", allowedQualities: "WEB 1080p", cutoffQuality: "WEB 1080p" };
 
+const liveSpec = vi.hoisted(() => ({ current: undefined as { events?: readonly string[]; areas?: readonly string[] } | undefined }));
+vi.mock("../lib/live-refresh", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/live-refresh")>()),
+  useLiveRefresh: (spec: { events?: readonly string[]; areas?: readonly string[] }) => { liveSpec.current = spec; }
+}));
 const revalidate = vi.fn();
 const loaderData: Record<string, unknown> = {};
 vi.mock("react-router-dom", async (importOriginal) => ({
@@ -363,5 +368,14 @@ describe("Test a release", () => {
     const dialog = await openTest();
     expect((within(dialog).getByRole("button", { name: "Test" }) as HTMLButtonElement).disabled).toBe(true);
     expect(sent("POST", "/api/custom-formats/dry-run")).toHaveLength(0);
+  });
+});
+
+describe("Release Preferences: a change made elsewhere", () => {
+  it("is followed with no reload: the screen reads again for QualityProfileChanged, PolicySetChanged, SettingsChanged", () => {
+    load([]);
+    renderPage();
+    expect(liveSpec.current?.events).toEqual(expect.arrayContaining(["QualityProfileChanged","PolicySetChanged","SettingsChanged"]));
+    
   });
 });

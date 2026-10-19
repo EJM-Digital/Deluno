@@ -25,6 +25,11 @@ const rule: ReleaseProfileItem = {
 const loaderData = { profiles: [rule], indexers: [] as IndexerItem[], settings: { ...emptyPlatformSettingsSnapshot }, ruleMode: "combine" };
 const authedFetchMock = vi.fn();
 vi.mock("../lib/use-auth", () => ({ authedFetch: (...args: unknown[]) => authedFetchMock(...args) }));
+const liveSpec = vi.hoisted(() => ({ current: undefined as { events?: readonly string[]; areas?: readonly string[] } | undefined }));
+vi.mock("../lib/live-refresh", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/live-refresh")>()),
+  useLiveRefresh: (spec: { events?: readonly string[]; areas?: readonly string[] }) => { liveSpec.current = spec; }
+}));
 const revalidate = vi.fn();
 vi.mock("react-router-dom", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router-dom")>()),
@@ -166,5 +171,13 @@ describe("Proper and Repack choice", () => {
 
     expect(await screen.findByText("Could not save. Try again.")).toBeTruthy();
     expect(select.value).toBe(before);
+  });
+});
+
+describe("Acquisition rules: a change made elsewhere", () => {
+  it("is followed with no reload: the screen reads again for IndexerChanged, SettingsChanged", () => {
+    renderPage();
+    expect(liveSpec.current?.events).toEqual(expect.arrayContaining(["IndexerChanged","SettingsChanged"]));
+    
   });
 });
