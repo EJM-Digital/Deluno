@@ -133,7 +133,7 @@ public sealed class RetentionChecksAndTheScheduleOnRealFilesTests
         Assert.False(firstCheck.IsCompleted, "saving the rule did not wait for the check, and the check is still reading");
 
         var secondCheck = world.App.Client.PostAsync($"/api/retention/rules/{rule}/check", null);
-        await Task.Delay(800);
+        await Task.Delay(800); // reason: proves a negative, that the second check did not start while the first was still reading; the wait is the window in which it would have
         Assert.False(secondCheck.IsCompleted, "the second check of the same rule waits for the first");
         Assert.Equal(readsBefore + 1, jellyfin.Count("GET /Items"));
 
