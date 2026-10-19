@@ -240,9 +240,17 @@ public sealed class SqliteGuidePackageStore(
     {
         var errors = new List<string>();
         var warnings = new List<string>();
-        if (request.Package is null)
+        var incomplete = request.Package is not null
+            && (request.Package.Source is null
+                || request.Package.QualityTiers is null
+                || request.Package.CustomFormats is null
+                || request.Package.QualityProfiles is null
+                || request.Package.Bundles is null);
+        if (request.Package is null || incomplete)
         {
-            errors.Add("A guide package is required.");
+            errors.Add(incomplete
+                ? "A guide package must carry its source, quality tiers, custom formats, quality profiles and bundles."
+                : "A guide package is required.");
             return new GuidePackageUpdatePreview(
                 current,
                 current.Package,

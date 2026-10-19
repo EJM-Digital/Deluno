@@ -69,12 +69,14 @@ public static partial class ReleaseDecisionEngine
             Refuse("Release name contains a blocked token such as CAM, Telesync, workprint, or screener.");
         }
 
-        foreach (var term in profileRules.MustContain)
+        // "Only take releases naming" reads "any one of these words" on screen, so one match is enough.
+        if (profileRules.MustContain.Count > 0
+            && !profileRules.MustContain.Any(term => ReleaseProfileRuleEvaluator.ContainsTerm(input.ReleaseName, term)))
         {
-            if (!ReleaseProfileRuleEvaluator.ContainsTerm(input.ReleaseName, term))
-            {
-                Refuse($"Release name is missing required term '{term}'.");
-            }
+            var list = string.Join(", ", profileRules.MustContain.Select(term => $"'{term}'"));
+            Refuse(profileRules.MustContain.Count == 1
+                ? $"Release name is missing required term {list}."
+                : $"Release name is missing required term (any one of {list}).");
         }
 
         foreach (var term in profileRules.MustNotContain)
