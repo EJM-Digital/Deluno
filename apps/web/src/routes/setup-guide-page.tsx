@@ -334,7 +334,10 @@ export function hasAnsweredAllAutomationQuestions(automation: AutomationChoices)
  * item (null) is treated as off here too — the caller is expected to have
  * already refused to finish setup until every item has a real answer.
  */
-export function buildAutomationSettingsPayload(automation: AutomationChoices) {
+export function buildAutomationSettingsPayload(
+  automation: AutomationChoices,
+  kept?: Pick<PlatformSettingsSnapshot, "downloadHealthNoProgressEnabled" | "downloadHealthMinSpeedEnabled" | "downloadHealthMinSpeedKbps" | "downloadHealthStrikeThreshold" | "downloadHealthDefaultStrikeWindowMinutes">
+) {
   return {
     // The plain "start now?" answer is the scheduler switch itself. A Yes to
     // the individual searches below only says what runs once it is started.
@@ -346,9 +349,10 @@ export function buildAutomationSettingsPayload(automation: AutomationChoices) {
     cleanupQueueReplacementAfterThreshold: automation.stallStrikes === true,
     downloadHealthNoProgressEnabled: automation.stallStrikes === true,
     downloadHealthMinSpeedEnabled: automation.stallStrikes === true,
-    downloadHealthMinSpeedKbps: STALL_SPEED_LIMIT_KBPS,
-    downloadHealthStrikeThreshold: STALL_STRIKE_COUNT,
-    downloadHealthDefaultStrikeWindowMinutes: STALL_CHECK_EVERY_MINUTES,
+    // The numbers the question showed apply to a new Yes; a rule already on keeps its own (#1357).
+    downloadHealthMinSpeedKbps: kept?.downloadHealthMinSpeedEnabled && automation.stallStrikes === true ? kept.downloadHealthMinSpeedKbps : STALL_SPEED_LIMIT_KBPS,
+    downloadHealthStrikeThreshold: kept?.downloadHealthNoProgressEnabled && automation.stallStrikes === true ? kept.downloadHealthStrikeThreshold : STALL_STRIKE_COUNT,
+    downloadHealthDefaultStrikeWindowMinutes: kept?.downloadHealthNoProgressEnabled && automation.stallStrikes === true ? kept.downloadHealthDefaultStrikeWindowMinutes : STALL_CHECK_EVERY_MINUTES,
     cleanupPurgePayloadAfterThreshold: automation.deleteBadDownloadFiles === true,
     subtitleFetchAutomaticEnabled: automation.subtitleFetching === true,
     // #932: the age threshold is not asked here - it keeps its own 24-hour
@@ -471,6 +475,30 @@ export function answeredAutomation(automation: AutomationChoices): Record<string
     if (typeof value === "boolean") answered[key] = value;
   }
   return answered;
+}
+
+/**
+ * Each Automation question's answer as the install stands now, read from the live settings, libraries, search sources and
+ * dangerous-file check. The draft is deleted when setup completes, so a re-run reads these instead (#1357).
+ */
+export function liveAutomationAnswers(data: Pick<SetupGuideLoaderData, "settings" | "libraries" | "indexers" | "contentBlocklist">): AutomationChoices {
+  const s = data.settings;
+  return {
+    startAutomation: Boolean(s.autoStartJobs),
+    searchMissingTitles: data.libraries.some((item) => item.missingSearchEnabled),
+    rssGrabs: data.indexers.some((item) => item.rssEnabled),
+    qualityUpgrades: data.libraries.some((item) => item.upgradeSearchEnabled),
+    renameOnImport: Boolean(s.renameOnImport),
+    subtitleFetching: Boolean(s.subtitleFetchAutomaticEnabled),
+    removeBadDownloads: Boolean(s.cleanupRemoveClientEntryAfterThreshold),
+    deleteBadDownloadFiles: Boolean(s.cleanupPurgePayloadAfterThreshold),
+    stallStrikes: Boolean(s.downloadHealthNoProgressEnabled && s.downloadHealthMinSpeedEnabled),
+    leftoverCleanup: data.libraries.some((item) => item.removeEmptySourceFolders),
+    leftoverDownloadCleanup: Boolean(s.leftoverDownloadCleanupEnabled),
+    forceImport: Boolean(s.forceImportEnabled),
+    pauseSearchWhenQueueLong: Boolean(s.pauseSearchWhenQueueLongEnabled),
+    dangerousFileCheck: Boolean(data.contentBlocklist?.enabled)
+  };
 }
 
 /** A saved draft's automation answers, limited to the questions Deluno still asks. */
@@ -709,7 +737,7 @@ export function SetupGuidePage() {
     firstTitleYear: data.draft.firstTitleYear,
     firstTitleMonitored: data.draft.firstTitleMonitored,
     firstTitleMetadata: null,
-    automation: restoreDraftAutomation(data.draft.automation),
+    automation: rerun ? liveAutomationAnswers(data) : restoreDraftAutomation(data.draft.automation),
     ...restoreDraftRefine(data.draft.automation),
     movieProcessedPath: suggestedProcessedFolder(data.draft.movieRootPath || data.settings.movieRootPath || "", "Movies"),
     seriesProcessedPath: suggestedProcessedFolder(data.draft.seriesRootPath || data.settings.seriesRootPath || "", "TV"),
@@ -740,7 +768,7 @@ export function SetupGuidePage() {
           restrictAllowedHosts: data.allowedHosts.enabled,
           skipSignInLocalNetwork: data.localNetworkAuth.enabled,
           updateAutomatically: data.updatePreferences.mode === "download-apply-on-restart",
-          automation: restoreDraftAutomation(data.draft.automation),
+          automation: liveAutomationAnswers(data),
           ...restoreDraftRefine(data.draft.automation)
         }
       : null
@@ -2539,7 +2567,7 @@ async function recordSetupCompleted(result: SetupCompletion) {
 }
 
 async function saveSettings(settings: PlatformSettingsSnapshot, form: GuideForm, automation: AutomationChoices) {
-  const automationSettings = buildAutomationSettingsPayload(automation);
+  const automationSettings = buildAutomationSettingsPayload(automation, settings);
   const payload = {
     movieRootPath: form.movieRootPath.trim() || settings.movieRootPath,
     seriesRootPath: form.seriesRootPath.trim() || settings.seriesRootPath,
@@ -2579,12 +2607,14 @@ async function saveSettings(settings: PlatformSettingsSnapshot, form: GuideForm,
   });
 }
 
-export async function saveAllowedHosts(form: GuideForm) {
-  if (!form.restrictAllowedHosts) return;
+export async function saveAllowedHosts(form: GuideForm, loaded: Pick<AllowedHostsOverview, "enabled">) {
+  // A No changes nothing when the restriction is already off; when it is on, the No switches it off (a re-run, #1357).
+  if (form.restrictAllowedHosts === null) return;
+  if (!form.restrictAllowedHosts && !loaded.enabled) return;
   await fetchJson("/api/security/allowed-hosts", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ enabled: true, allowedHosts: form.allowedHostsSelection })
+    body: JSON.stringify(form.restrictAllowedHosts ? { enabled: true, allowedHosts: form.allowedHostsSelection } : { enabled: false, allowedHosts: [] })
   });
 }
 
@@ -2594,16 +2624,17 @@ export async function saveAllowedHosts(form: GuideForm) {
  * frozen on the way #936's automation defaults can, so there is no
  * "only ever turns on" rule to preserve here.
  */
-export async function saveLocalNetworkAuth(form: GuideForm) {
+export async function saveLocalNetworkAuth(form: GuideForm, loaded: Pick<LocalNetworkAuthOverview, "additionalLocalNetworks" | "trustedProxies">) {
   if (form.skipSignInLocalNetwork === null) return;
   await fetchJson("/api/security/local-network-auth", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       enabled: form.skipSignInLocalNetwork,
-      additionalLocalNetworks: [],
+      // The Security page's own lists are kept as they were: the guide never asks about them (#1357).
+      additionalLocalNetworks: loaded.additionalLocalNetworks ?? [],
       allowList: form.localNetworkAllowList,
-      trustedProxies: []
+      trustedProxies: loaded.trustedProxies ?? []
     })
   });
 }
@@ -2656,6 +2687,8 @@ export async function saveStallStrikeRules(form: GuideForm) {
   for (const kind of ["no-progress", "too-slow"] as const) {
     const existing = rules.find((rule) => rule.kind === kind);
     if (!answer && (!existing || !existing.enabled)) continue;
+    // A Yes to a rule that is already on keeps its own strike count and speed limit (#1357).
+    if (answer && existing?.enabled) continue;
     const base = existing ?? {
       id: "new", kind, enabled: false, strikeLimit: STALL_STRIKE_COUNT, timerMinutes: STALL_CHECK_EVERY_MINUTES, appliesTo: "both",
       minCompletionPercent: 0, maxCompletionPercent: 100, resetStrikesOnProgress: true, actionPreset: "replace", threshold: 0,
@@ -2773,10 +2806,10 @@ export async function createBaseline(input: CreateBaselineInput, createdEntities
   // #939: only ever turned on by an explicit Yes here, and refused
   // server-side (so left off) if the address answering this very
   // request was not ticked -- setup can never lock itself out.
-  await saveAllowedHosts(form).catch(() => notApplied.push("which addresses Deluno answers on"));
+  await saveAllowedHosts(form, data.allowedHosts).catch(() => notApplied.push("which addresses Deluno answers on"));
   // #993: unlike Allowed Hosts, an explicit No here always writes the
   // real (off) setting -- there is no lock-out risk to guard against.
-  await saveLocalNetworkAuth(form).catch(() => notApplied.push("skipping sign-in on your home network"));
+  await saveLocalNetworkAuth(form, data.localNetworkAuth).catch(() => notApplied.push("skipping sign-in on your home network"));
   // #1034: same as Local Network Auth -- an explicit Yes or No here
   // always writes the real setting.
   await saveUpdatePreferences(form, data.updatePreferences).catch(() => notApplied.push("how Deluno updates"));
@@ -2929,7 +2962,7 @@ async function ensureIndexer(existing: IndexerItem[], form: GuideForm, tested: b
     ? await fetchJson<IndexerItem>(`/api/indexers/${existing[0].id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildIndexerPayload(form))
+        body: JSON.stringify(buildIndexerPayload(form, existing[0]))
       })
     : await fetchJson<IndexerItem>("/api/indexers", {
         method: "POST",
@@ -3001,7 +3034,7 @@ async function ensureClients(existing: DownloadClientItem[], form: GuideForm, te
       ? await fetchJson<DownloadClientItem>(`/api/download-clients/${same.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(buildClientPayload(form))
+          body: JSON.stringify(buildClientPayload(form, same))
         })
       : same
     : await fetchJson<DownloadClientItem>("/api/download-clients", {
@@ -3018,18 +3051,19 @@ async function ensureClients(existing: DownloadClientItem[], form: GuideForm, te
   return [...connected.filter((client) => client.id !== item.id), item];
 }
 
-function buildIndexerPayload(form: GuideForm) {
+function buildIndexerPayload(form: GuideForm, current?: IndexerItem) {
   return {
     protocol: form.indexerProtocol,
     baseUrl: form.indexerUrl.trim(),
     apiKey: form.indexerApiKey.trim() || null,
-    priority: 10,
-    categories: form.mediaIntent === "tv"
+    // An indexer that is already saved keeps its own priority, categories and tags (#1357).
+    priority: current?.priority ?? 10,
+    categories: current?.categories?.trim() ? current.categories : form.mediaIntent === "tv"
       ? "5000,5010,5020,5030,5040,5045,5050"
       : form.mediaIntent === "movies"
         ? "2000,2010,2020,2030,2040,2045,2050"
         : "2000,2010,2020,2030,2040,2045,2050,5000,5010,5020,5030,5040,5045,5050",
-    tags: "",
+    tags: current?.tags ?? "",
     mediaScope: form.mediaIntent === "both" ? "both" : form.mediaIntent,
     isEnabled: true,
     // #936: nothing automatic is on until the Automation step says so.
@@ -3037,18 +3071,19 @@ function buildIndexerPayload(form: GuideForm) {
   };
 }
 
-function buildClientPayload(form: GuideForm) {
+function buildClientPayload(form: GuideForm, current?: DownloadClientItem) {
   return {
     protocol: form.clientProtocol,
     host: form.clientHost.trim(),
     port: Number(form.clientPort || defaultClientPort(form.clientProtocol)),
     username: form.clientUsername.trim() || null,
     password: form.clientPassword || null,
-    endpointUrl: null,
-    moviesCategory: "deluno-movies",
-    tvCategory: "deluno-tv",
-    categoryTemplate: "deluno-{mediaType}",
-    priority: 10,
+    // A client that is already saved keeps its own categories, priority and address (#1357).
+    endpointUrl: current?.endpointUrl ?? null,
+    moviesCategory: current?.moviesCategory ?? "deluno-movies",
+    tvCategory: current?.tvCategory ?? "deluno-tv",
+    categoryTemplate: current?.categoryTemplate ?? "deluno-{mediaType}",
+    priority: current?.priority ?? 10,
     isEnabled: true
   };
 }
