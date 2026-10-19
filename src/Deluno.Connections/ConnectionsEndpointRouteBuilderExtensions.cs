@@ -1787,6 +1787,11 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             {
                 // #1251: a refused login reads in plain words, with where to check it.
                 var qbitKind = string.IsNullOrWhiteSpace(item.Username) ? DownloadClientCredential.ApiKey : DownloadClientCredential.UsernameAndPassword;
+                if (login.Banned)
+                {
+                    return ("degraded", DownloadClientCredentialText.Banned("qBittorrent"), "auth");
+                }
+
                 return login.Rejected || DownloadClientCredentialText.IsRefusal(login.Status)
                     ? ("degraded", DownloadClientCredentialText.Refused("qBittorrent", qbitKind), "auth")
                     : ("degraded", $"qBittorrent rejected the login with {(int)login.Status}.", "auth");
@@ -1925,7 +1930,14 @@ public static class ConnectionsEndpointRouteBuilderExtensions
     {
         using var handler = new SocketsHttpHandler { ConnectCallback = Deluno.Infrastructure.Http.LoopbackFirstConnection.ConnectAsync, CookieContainer = new CookieContainer(), Credentials = BuildCredential(item) };
         using var client = new HttpClient(handler) { BaseAddress = uri, Timeout = timeout };
-        var html = await client.GetStringAsync("gui/token.html", cancellationToken);
+        // #1362: GetAsync, not GetStringAsync, so a refused login is read as one and not thrown as "401" and filed as unreachable.
+        using var tokenResponse = await client.GetAsync("gui/token.html", cancellationToken);
+        if (!tokenResponse.IsSuccessStatusCode)
+        {
+            return HealthFromStatusCode("uTorrent", tokenResponse.StatusCode, DownloadClientCredential.UsernameAndPassword);
+        }
+
+        var html = await tokenResponse.Content.ReadAsStringAsync(cancellationToken);
         return html.Contains("<div", StringComparison.OrdinalIgnoreCase)
             ? ("healthy", $"Connected to uTorrent at {uri.Host}:{uri.Port}.", null)
             : ("degraded", "uTorrent token endpoint did not return the expected response.", "unexpected-response");
@@ -1947,7 +1959,10 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         using var response = await client.PostAsync(uri, content, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            return ("degraded", $"rTorrent returned {(int)response.StatusCode} at {uri.Host}:{uri.Port}.", "unreachable");
+            // #1362: a refused login is said as that, like every other client.
+            return IsAuthenticationFailure(response.StatusCode)
+                ? HealthFromStatusCode("rTorrent", response.StatusCode, DownloadClientCredential.UsernameAndPassword)
+                : ("degraded", $"rTorrent returned {(int)response.StatusCode} at {uri.Host}:{uri.Port}.", "unreachable");
         }
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken);

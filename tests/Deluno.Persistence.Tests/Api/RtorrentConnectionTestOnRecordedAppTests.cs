@@ -84,7 +84,7 @@ public sealed class RtorrentConnectionTestOnRecordedAppTests
     // "rTorrent returned 401 at <address>." with category "unreachable" (failure kind Unavailable), not the refused-login wording
     // ("refused Deluno's username and password...") and Authentication kind that qBittorrent, SABnzbd, Transmission, Deluge and NZBGet give through
     // HealthFromStatusCode. Evidence: the real mount's recorded 401 (rtorrent/0.16.25/login-refused) through POST /api/download-clients/test.
-    [Fact(Skip = "DEFECT: the Test button says 'rTorrent returned 401 at <address>.' (unreachable) for a wrong login instead of the refused-login wording every other client gets (TestRtorrentAsync does not use HealthFromStatusCode).")]
+    [Fact]
     public async Task A_mount_that_refuses_the_login_says_so_in_plain_words_like_every_other_client()
     {
         await using var rtorrent = await RecordedAppServer.StartAsync("rtorrent", [RecordedReplies.Rtorrent("login-refused")]);

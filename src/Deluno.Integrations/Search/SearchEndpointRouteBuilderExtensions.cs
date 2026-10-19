@@ -441,7 +441,8 @@ public static class SearchEndpointRouteBuilderExtensions
         IReadOnlyList<string>? tagNames = null)
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
-        if (!allowMissingValues && string.IsNullOrWhiteSpace(name))
+        // #1362: an update that leaves the name out keeps it, but one that sends a blank name is refused, as create is.
+        if (allowMissingValues ? name is not null && string.IsNullOrWhiteSpace(name) : string.IsNullOrWhiteSpace(name))
         {
             errors["name"] = ["Give this release profile a name."];
         }
