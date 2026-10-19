@@ -311,3 +311,51 @@ describe("Bulk dialog options", () => {
     expect(second.result.current.bulk.bulkOptionsLoading).toBe(false);
   });
 });
+
+describe("a 5000-title selection", () => {
+  const many = Array.from({ length: 5000 }, (_, index) => item(`m${index}`));
+
+  it("is selected across the whole library by select-all, and monitor, quality and tags each go out as one request naming all 5000", async () => {
+    vi.mocked(fetchJson).mockImplementation(async (url: string) =>
+      (url === "/api/quality-profiles" ? [{ id: "p-4k", name: "Ultra 4K", mediaType: "movies" }] : []) as never);
+    vi.mocked(authedFetch).mockImplementation(async (url) => (String(url).endsWith("/api/movies/m0") || /\/api\/movies\/m\d+$/.test(String(url))
+      ? answer({ qualityProfileId: "p-hd" }) : answer({ updated: 5000 })));
+    const { result } = renderHook(() => useHarness(many));
+
+    act(() => { result.current.bulk.toggleSelectAllVisible(); });
+    expect(result.current.bulk.selectedIds).toHaveLength(5000);
+    expect(result.current.bulk.selectAllActive).toBe(true);
+
+    act(() => { result.current.bulk.openBulkTools("monitoring", false); });
+    await review(result);
+    await review(result);
+    const monitoring = sent().filter((call) => call.url === "/api/movies/monitoring");
+    expect(monitoring).toHaveLength(1);
+    expect(monitoring[0].body.movieIds).toHaveLength(5000);
+    expect(result.current.items.every((entry) => entry.monitored === false)).toBe(true);
+
+    vi.mocked(authedFetch).mockClear();
+    act(() => { result.current.bulk.toggleSelectAllVisible(); });
+    act(() => { result.current.bulk.openBulkTools("tags"); });
+    act(() => { result.current.bulk.setBulkTagsInput("kids"); });
+    await review(result);
+    await review(result);
+    const tags = sent().filter((call) => call.url === "/api/movies/bulk/tags");
+    expect(tags).toHaveLength(1);
+    expect(tags[0].body).toMatchObject({ tags: "kids", mode: "add" });
+    expect(tags[0].body.movieIds).toHaveLength(5000);
+    expect(result.current.items.every((entry) => entry.tags?.includes("kids"))).toBe(true);
+
+    vi.mocked(authedFetch).mockClear();
+    act(() => { result.current.bulk.toggleSelectAllVisible(); });
+    act(() => { result.current.bulk.openBulkTools("quality"); });
+    await act(async () => { await Promise.resolve(); });
+    act(() => { result.current.bulk.setBulkQualityProfileId("p-4k"); });
+    await review(result);
+    await review(result);
+    const quality = sent().filter((call) => call.url === "/api/movies/bulk/quality-profile");
+    expect(quality).toHaveLength(1);
+    expect(quality[0].body.qualityProfileId).toBe("p-4k");
+    expect(quality[0].body.movieIds).toHaveLength(5000);
+  });
+});
