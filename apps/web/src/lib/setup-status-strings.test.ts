@@ -76,7 +76,7 @@ describe("the Automation & Recovery step wording", () => {
     ["on but no library automation", true, [library(false)], "No library automation is enabled", false],
     ["one library active", true, [library(true)], "1 library automation setting active", true],
     ["two libraries active", true, [library(true), library(true)], "2 library automation settings active", true]
-  ] as const)("%s", (_name, autoStartJobs, libraries, status, complete) => {
+  ] as const)("the automation step with %s", (_name, autoStartJobs, libraries, status, complete) => {
     const model = buildSetupStatus(input({ libraries: [...libraries], settings: { autoStartJobs } as PlatformSettingsSnapshot }));
     expect(step(model, "automation")).toMatchObject({ status, complete });
   });
