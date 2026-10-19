@@ -109,3 +109,71 @@ describe("PathInput: example folders follow the server (#1138)", () => {
     expect(screen.queryByRole("button", { name: "D:\\Downloads" })).toBeNull();
   });
 });
+
+describe("PathInput: the Windows folder window and the Check button", () => {
+  const diagnostic = {
+    normalizedPath: "/downloads/movies", exists: true, isDirectory: true, readable: true, writable: false,
+    isUncPath: false, isLikelyDockerPath: true, message: "This folder is readable but Deluno cannot write to it.", warnings: ["Give Deluno write access."]
+  };
+
+  beforeEach(() => {
+    fetchJsonMock.mockReset();
+    vi.stubGlobal("location", { hostname: "localhost" });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("applies the folder the Windows window on the server machine returns, after asking the server to open it at the current path", async () => {
+    fetchJsonMock.mockResolvedValue({ path: "D:\Media\Films", cancelled: false });
+    const onChange = vi.fn();
+    render(<PathInput value={"D:\Media"} onChange={onChange} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Choose folder/ }));
+
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith("D:\Media\Films"));
+    const [path, init] = fetchJsonMock.mock.calls[0];
+    expect(path).toBe("/api/filesystem/native-folder-picker");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ initialPath: "D:\Media" });
+  });
+
+  it("changes nothing when the Windows window is closed without choosing", async () => {
+    fetchJsonMock.mockResolvedValue({ path: null, cancelled: true });
+    const onChange = vi.fn();
+    render(<PathInput value={"D:\Media"} onChange={onChange} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Choose folder/ }));
+
+    await waitFor(() => expect(fetchJsonMock).toHaveBeenCalled());
+    await waitFor(() => expect((screen.getByRole("button", { name: /Choose folder/ }) as HTMLButtonElement).disabled).toBe(false));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("Check asks the server about the typed path and shows its message with Exists, Directory, Readable, Docker path and the warnings", async () => {
+    fetchJsonMock.mockResolvedValue(diagnostic);
+    render(<PathInput value="/downloads/movies" onChange={() => {}} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Check" }));
+
+    expect(await screen.findByText("This folder is readable but Deluno cannot write to it.")).toBeInTheDocument();
+    const [path, init] = fetchJsonMock.mock.calls[0];
+    expect(path).toBe("/api/filesystem/path-diagnostics");
+    expect(JSON.parse(init.body)).toEqual({ path: "/downloads/movies" });
+    for (const badge of ["Exists", "Directory", "Readable", "Writable", "Docker path"]) expect(screen.getByText(badge)).toBeInTheDocument();
+    expect(screen.getByText("Give Deluno write access.")).toBeInTheDocument();
+  });
+
+  it("will not Check an empty path, so nothing is sent", () => {
+    render(<PathInput value="" onChange={() => {}} />);
+    expect((screen.getByRole("button", { name: "Check" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(fetchJsonMock).not.toHaveBeenCalled();
+  });
+
+  it("shows the server's own words when the check itself fails", async () => {
+    fetchJsonMock.mockRejectedValue(new Error("The check could not run."));
+    render(<PathInput value="/x" onChange={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Check" }));
+    expect(await screen.findByText("The check could not run.")).toBeInTheDocument();
+  });
+});
