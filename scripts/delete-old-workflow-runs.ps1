@@ -14,10 +14,13 @@
     ./scripts/delete-old-workflow-runs.ps1 -Before 2026-10-04
 #>
 param(
-    [string]$Repo = 'jampat000/Deluno',
+    [string]$Repo = $env:GITHUB_REPOSITORY,
     [int]$Keep = 20,
     [datetime]$Before
 )
+# One value for the repository (repository.json); the Actions environment's own name wins when set.
+if (-not $Repo) { $Repo = (Get-Content -Raw (Join-Path $PSScriptRoot '..\repository.json') | ConvertFrom-Json).deluno }
+
 $ErrorActionPreference = 'Stop'
 
 Write-Host "Reading every Actions run in $Repo ..."

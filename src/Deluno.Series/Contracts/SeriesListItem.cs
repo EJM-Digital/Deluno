@@ -102,7 +102,7 @@ public sealed record SeriesListItem(
     /// would drag the bar down for a reason that is not about subtitles, and the
     /// dot above it already says the show is Missing.
     ///
-    /// Zero until Subber ([#301](https://github.com/jampat000/Deluno/issues/301))
+    /// Zero until Subber (#301)
     /// exists.
     /// </summary>
     int SubtitleLanguagesWanted = 0,

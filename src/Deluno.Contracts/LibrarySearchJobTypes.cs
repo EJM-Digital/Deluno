@@ -30,7 +30,7 @@ public static class LibrarySearchJobTypes
     ///
     /// Kept as a constant because rows written by an older build are migrated by
     /// version 28, and because a name that no longer routes anywhere is exactly
-    /// how [#303](https://github.com/jampat000/Deluno/issues/303) happened — a
+    /// how #303 happened — a
     /// job with no lane never runs, and nothing looks wrong.
     /// </summary>
     public const string Legacy = "library.search";

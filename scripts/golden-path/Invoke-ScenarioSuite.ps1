@@ -101,7 +101,7 @@ param(
     [string[]] $Scenarios = @(),
     [switch] $UseReadyCheckpoint,
     [string] $ReadyCheckpoint,
-    [string] $Repository = 'jampat000/Deluno',
+    [string] $Repository = $env:GITHUB_REPOSITORY,
     [string] $ResultsUrl,
     [int] $TimeoutMinutes = 240,
     [switch] $DryRun,
@@ -111,8 +111,12 @@ param(
     [string] $AfterSuiteScript
 )
 
+# One value for the repository (repository.json); the Actions environment's own name wins when set.
+if (-not $Repository) { $Repository = (Get-Content -Raw (Join-Path $PSScriptRoot '..\..\repository.json') | ConvertFrom-Json).deluno }
+
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$script:ProjectRepositories = Get-Content -Raw (Join-Path $repoRoot 'repository.json') | ConvertFrom-Json
 $suiteDir = Join-Path $PSScriptRoot 'suite'
 . (Join-Path $suiteDir 'ScenarioPlan.ps1')
 . (Join-Path $suiteDir 'SuiteHost.Lib.ps1')
@@ -521,7 +525,8 @@ function Invoke-GithubPickerPhase {
         $rigP = New-PSSession -ComputerName $RigHost -Credential (Import-Clixml $RigCredentialFile)
         try {
             $vmCredP = Import-Clixml $VmCredentialFile
-            $evidence = Invoke-InVmVia -Session $rigP -Name $VmName -Credential $vmCredP -Block {
+            $evidence = Invoke-InVmVia -Session $rigP -Name $VmName -Credential $vmCredP -ArgumentList @($script:ProjectRepositories.weir) -Block {
+                param($weirRepository)
                 $o = [ordered]@{ Limit = ''; HookLog = ''; PickerLog = ''; WeirVersion = ''; DelunoBuild = ''; Tags = @(); LimitAfter = '' }
                 if (Test-Path 'C:\golden\github-limit-before-install.json') { $o.Limit = Get-Content -Raw 'C:\golden\github-limit-before-install.json' }
                 $hook = Join-Path $env:LOCALAPPDATA 'Deluno\logs\install-hook.log'
@@ -532,7 +537,7 @@ function Invoke-GithubPickerPhase {
                 $exe = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'Deluno') -Recurse -Filter 'Deluno.exe' -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '\\current\\' } | Select-Object -First 1
                 if ($exe) { $o.DelunoBuild = $exe.VersionInfo.ProductVersion }
                 try {
-                    $atom = (Invoke-WebRequest -Uri 'https://github.com/jampat000/Weir/releases.atom' -UseBasicParsing -TimeoutSec 40).Content
+                    $atom = (Invoke-WebRequest -Uri ("https://github.com/$weirRepository/releases.atom") -UseBasicParsing -TimeoutSec 40).Content
                     $o.Tags = @([regex]::Matches($atom, '<link[^>]*href="[^"]*/releases/tag/([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
                 } catch { }
                 try { $c = (Invoke-RestMethod -Uri 'https://api.github.com/rate_limit' -UseBasicParsing -TimeoutSec 20).resources.core; $o.LimitAfter = "$($c.remaining) of $($c.limit) left" } catch { }

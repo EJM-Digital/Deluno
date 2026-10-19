@@ -131,6 +131,80 @@ public sealed class AppSettingsTests : IDisposable
         Assert.Equal(customDataRoot, persisted!.DataRoot);
     }
 
+    // The shape a current install writes to deluno.json (camelCase, update address spelled out), with the address of
+    // Deluno's repository before the move to its new owner.
+    private const string FormerInstallFile = """
+        {
+          "port": 7879,
+          "dataRoot": "{DATAROOT}",
+          "updateMode": "download-background",
+          "updateChannel": "rc",
+          "autoCheckUpdates": true,
+          "updateSource": "{SOURCE}",
+          "allowedHostsForceDisabled": false
+        }
+        """;
+
+    private string WriteInstallFile(string source)
+    {
+        var path = Path.Combine(_root, "local", "DelunoConfig", "deluno.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var dataRoot = Path.Combine(_root, "data").Replace("\\", "/");
+        File.WriteAllText(path, FormerInstallFile.Replace("{DATAROOT}", dataRoot).Replace("{SOURCE}", source));
+        return path;
+    }
+
+    [Theory]
+    [InlineData("https://github.com/jampat000/Deluno")]
+    [InlineData("https://github.com/JamPat000/deluno/")]
+    [InlineData("https://github.com/jampat000/Deluno.git")]
+    public void Load_ReadsASavedFormerDefaultUpdateAddressAsTheBuiltInDefault(string saved)
+    {
+        WriteInstallFile(saved);
+
+        var settings = AppSettings.Load();
+
+        Assert.Equal(Deluno.Contracts.ProjectRepositories.DelunoWebUrl, settings.UpdateSource);
+        Assert.Equal("rc", settings.UpdateChannel);
+    }
+
+    [Fact]
+    public void Load_KeepsARealUpdateAddressOverride()
+    {
+        WriteInstallFile("https://github.com/someone-else/Deluno-fork");
+
+        Assert.Equal("https://github.com/someone-else/Deluno-fork", AppSettings.Load().UpdateSource);
+    }
+
+    [Fact]
+    public void Save_DoesNotWriteTheDefaultUpdateAddress_ButWritesARealOverride()
+    {
+        var path = WriteInstallFile("https://github.com/jampat000/Deluno");
+        var settings = AppSettings.Load();
+        Assert.Null(settings.Save());
+        Assert.DoesNotContain("updateSource", File.ReadAllText(path), StringComparison.OrdinalIgnoreCase);
+
+        settings.UpdateSource = "https://example.invalid/Deluno";
+        Assert.Null(settings.Save());
+        Assert.Contains("https://example.invalid/Deluno", File.ReadAllText(path));
+
+        // Back to the default: the override is dropped from the file again, and a reload gets the built-in address.
+        settings.UpdateSource = Deluno.Contracts.ProjectRepositories.DelunoWebUrl;
+        Assert.Null(settings.Save());
+        Assert.DoesNotContain("updateSource", File.ReadAllText(path), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(Deluno.Contracts.ProjectRepositories.DelunoWebUrl, AppSettings.Load().UpdateSource);
+    }
+
+    [Fact]
+    public void FreshInstall_UsesTheBuiltInUpdateAddressAndWritesNoneToTheFile()
+    {
+        var settings = AppSettings.Load();
+        Assert.Equal(Deluno.Contracts.ProjectRepositories.DelunoWebUrl, settings.UpdateSource);
+        Assert.Null(settings.Save());
+        var path = Path.Combine(_root, "local", "DelunoConfig", "deluno.json");
+        Assert.DoesNotContain("updateSource", File.ReadAllText(path), StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>
     /// #939: the tray's "Let any address in" recovery action round-trips
     /// through Save/Load the same as every other setting, so

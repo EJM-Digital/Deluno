@@ -76,7 +76,7 @@ public static class SubtitleProviderHttp
     /// block by user agent, and pretending to be a browser is how a source
     /// decides to block the whole application later.
     /// </summary>
-    public const string UserAgent = "Deluno/1.0 (+https://github.com/jampat000/Deluno)";
+    public const string UserAgent = Deluno.Contracts.ProjectRepositories.DelunoUserAgent;
 
     public static HttpClient Create(
         IHttpClientFactory factory,
