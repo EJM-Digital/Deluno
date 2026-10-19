@@ -897,6 +897,7 @@ public sealed class PlatformSettingsPersistenceTests
             FirstTitle: "Example Movie",
             SkipSignInLocalNetwork: false,
             UpdateAutomatically: true,
+            CheckForUpdates: false,
             Automation: new Dictionary<string, bool> { ["rssGrabs"] = true, ["forceImport"] = false }), CancellationToken.None);
 
         var loaded = await repository.GetSetupDraftAsync(CancellationToken.None);
@@ -904,6 +905,8 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.Equal("D:\\Downloads\\Completed\\Movies", loaded.MovieDownloadsPath);
         Assert.Equal(false, loaded.SkipSignInLocalNetwork);
         Assert.Equal(true, loaded.UpdateAutomatically);
+        // A "no" to checking for updates is an answer, so it must come back as false, not as unanswered.
+        Assert.Equal(false, loaded.CheckForUpdates);
         Assert.True(loaded.Automation!["rssGrabs"]);
         Assert.False(loaded.Automation["forceImport"]);
         Assert.Equal("D:\\Media\\Movies", loaded.MovieRootPath);

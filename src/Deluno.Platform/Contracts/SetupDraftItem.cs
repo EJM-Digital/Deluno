@@ -32,6 +32,7 @@ public sealed record SetupDraftItem(
     bool FirstTitleMonitored = true,
     bool? SkipSignInLocalNetwork = null,
     bool? UpdateAutomatically = null,
+    bool? CheckForUpdates = null,
     IReadOnlyDictionary<string, bool>? Automation = null,
     DateTimeOffset UpdatedUtc = default);
 
@@ -61,4 +62,5 @@ public sealed record UpdateSetupDraftRequest(
     bool FirstTitleMonitored = true,
     bool? SkipSignInLocalNetwork = null,
     bool? UpdateAutomatically = null,
+    bool? CheckForUpdates = null,
     IReadOnlyDictionary<string, bool>? Automation = null);
