@@ -290,6 +290,13 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
             // #1251: a wrong password is said as that, not as "returned 401" or "refused the password".
             return ClientCredentials.Failure(client, queueItemId, action, ClientCredentials.MessageFor(client, exception)!);
         }
+        catch (System.Text.Json.JsonException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // #1362: an address that answers with another app's page is a failure in words, not a crash.
+            return DownloadClientHelpers.ActionFailure(client, queueItemId, action,
+                "The address did not answer the way Deluge does, so it may not be Deluge's web address. Check it in the client's settings.",
+                category: "unreachable");
+        }
     }
 
     private async Task<DownloadClientActionResult> ExecuteActionCoreAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)

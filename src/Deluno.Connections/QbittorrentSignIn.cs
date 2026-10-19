@@ -6,7 +6,7 @@ namespace Deluno.Connections;
 /// <param name="SignedIn">The session is signed in and can be used.</param>
 /// <param name="Rejected">qBittorrent answered, and the answer was "no" (wrong login, or an answer that did not sign in).</param>
 /// <param name="Status">The last HTTP status it answered with.</param>
-public sealed record QbittorrentSignInResult(bool SignedIn, bool Rejected, HttpStatusCode Status);
+public sealed record QbittorrentSignInResult(bool SignedIn, bool Rejected, HttpStatusCode Status, bool Banned = false);
 
 /// <summary>
 /// The one way Deluno signs in to qBittorrent, used by the connection test and by every
@@ -63,7 +63,11 @@ public static class QbittorrentSignIn
         using var response = await http.PostAsync("api/v2/auth/login", body, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            return new(false, false, response.StatusCode);
+            // #1362: a 403 that says the address is banned is a ban (it lifts by itself), not a wrong password.
+            var refusal = response.StatusCode == HttpStatusCode.Forbidden
+                ? await response.Content.ReadAsStringAsync(cancellationToken)
+                : string.Empty;
+            return new(false, false, response.StatusCode, refusal.Contains("banned", StringComparison.OrdinalIgnoreCase));
         }
 
         var text = await response.Content.ReadAsStringAsync(cancellationToken);

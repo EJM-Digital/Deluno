@@ -1,0 +1,347 @@
+{
+  "app": "qbittorrent",
+  "version": "4.6.7",
+  "state": "stop-start-missing",
+  "recordedAt": "2026-10-19T09:46:28Z",
+  "note": "A qBittorrent 4.x: a torrent added and listed downloading, then stop (the 5.x name) answered 404, pause answered 200 and the torrent listed as paused (twice, before and after a resume was asked for); then start (5.x) answered 404, resume answered 200 and the torrent listed again.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/torrents/add",
+        "bodyText": "torrents=<5331 bytes>&category=recorded-movies"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": "Ok."
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/torrents/info?hashes=873c1b7c64f46f975f2c1935dd3bf00f6290c408"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": [
+          {
+            "added_on": 1792403185,
+            "amount_left": 67037817,
+            "auto_tmm": false,
+            "availability": 0,
+            "category": "recorded-movies",
+            "completed": 0,
+            "completion_on": 0,
+            "content_path": "/downloads/incomplete/Recorded qBittorrent Four 2.2008.1080p.WEB-DL.x264-E2E.mkv",
+            "dl_limit": 0,
+            "dlspeed": 0,
+            "download_path": "/downloads/incomplete",
+            "downloaded": 0,
+            "downloaded_session": 0,
+            "eta": 8640000,
+            "f_l_piece_prio": false,
+            "force_start": false,
+            "hash": "873c1b7c64f46f975f2c1935dd3bf00f6290c408",
+            "inactive_seeding_time_limit": -2,
+            "infohash_v1": "873c1b7c64f46f975f2c1935dd3bf00f6290c408",
+            "infohash_v2": "",
+            "last_activity": 1792403185,
+            "magnet_uri": "magnet:?xt=urn:btih:873c1b7c64f46f975f2c1935dd3bf00f6290c408&dn=Recorded%20qBittorrent%20Four%202.2008.1080p.WEB-DL.x264-E2E.mkv&ws=http://fixture:8765/webseed/",
+            "max_inactive_seeding_time": -1,
+            "max_ratio": -1,
+            "max_seeding_time": -1,
+            "name": "Recorded qBittorrent Four 2.2008.1080p.WEB-DL.x264-E2E.mkv",
+            "num_complete": 0,
+            "num_incomplete": 0,
+            "num_leechs": 0,
+            "num_seeds": 0,
+            "priority": 1,
+            "progress": 0,
+            "ratio": 0,
+            "ratio_limit": -2,
+            "save_path": "/downloads/completed",
+            "seeding_time": 0,
+            "seeding_time_limit": -2,
+            "seen_complete": 0,
+            "seq_dl": false,
+            "size": 67037817,
+            "state": "checkingResumeData",
+            "super_seeding": false,
+            "tags": "",
+            "time_active": 0,
+            "total_size": 67037817,
+            "tracker": "",
+            "trackers_count": 0,
+            "up_limit": 0,
+            "uploaded": 0,
+            "uploaded_session": 0,
+            "upspeed": 0
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/torrents/stop",
+        "bodyText": "hashes=873c1b7c64f46f975f2c1935dd3bf00f6290c408"
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": "Not Found"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/torrents/pause",
+        "bodyText": "hashes=873c1b7c64f46f975f2c1935dd3bf00f6290c408"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/torrents/info?hashes=873c1b7c64f46f975f2c1935dd3bf00f6290c408"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": [
+          {
+            "added_on": 1792403185,
+            "amount_left": 67037817,
+            "auto_tmm": false,
+            "availability": 0,
+            "category": "recorded-movies",
+            "completed": 0,
+            "completion_on": 0,
+            "content_path": "/downloads/incomplete/Recorded qBittorrent Four 2.2008.1080p.WEB-DL.x264-E2E.mkv",
+            "dl_limit": 0,
+            "dlspeed": 0,
+            "download_path": "/downloads/incomplete",
+            "downloaded": 0,
+            "downloaded_session": 0,
+            "eta": 8640000,
+            "f_l_piece_prio": false,
+            "force_start": false,
+            "hash": "873c1b7c64f46f975f2c1935dd3bf00f6290c408",
+            "inactive_seeding_time_limit": -2,
+            "infohash_v1": "873c1b7c64f46f975f2c1935dd3bf00f6290c408",
+            "infohash_v2": "",
+            "last_activity": 1792403185,
+            "magnet_uri": "magnet:?xt=urn:btih:873c1b7c64f46f975f2c1935dd3bf00f6290c408&dn=Recorded%20qBittorrent%20Four%202.2008.1080p.WEB-DL.x264-E2E.mkv&ws=http://fixture:8765/webseed/",
+            "max_inactive_seeding_time": -1,
+            "max_ratio": -1,
+            "max_seeding_time": -1,
+            "name": "Recorded qBittorrent Four 2.2008.1080p.WEB-DL.x264-E2E.mkv",
+            "num_complete": 0,
+            "num_incomplete": 0,
+            "num_leechs": 0,
+            "num_seeds": 0,
+            "priority": 1,
+            "progress": 0,
+            "ratio": 0,
+            "ratio_limit": -2,
+            "save_path": "/downloads/completed",
+            "seeding_time": 0,
+            "seeding_time_limit": -2,
+            "seen_complete": 0,
+            "seq_dl": false,
+            "size": 67037817,
+            "state": "pausedDL",
+            "super_seeding": false,
+            "tags": "",
+            "time_active": 0,
+            "total_size": 67037817,
+            "tracker": "",
+            "trackers_count": 0,
+            "up_limit": 0,
+            "uploaded": 0,
+            "uploaded_session": 0,
+            "upspeed": 0
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/torrents/info?hashes=873c1b7c64f46f975f2c1935dd3bf00f6290c408"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": [
+          {
+            "added_on": 1792403185,
+            "amount_left": 67037817,
+            "auto_tmm": false,
+            "availability": 0,
+            "category": "recorded-movies",
+            "completed": 0,
+            "completion_on": 0,
+            "content_path": "/downloads/incomplete/Recorded qBittorrent Four 2.2008.1080p.WEB-DL.x264-E2E.mkv",
+            "dl_limit": 0,
+            "dlspeed": 0,
+            "download_path": "/downloads/incomplete",
+            "downloaded": 0,
+            "downloaded_session": 0,
+            "eta": 8640000,
+            "f_l_piece_prio": false,
+            "force_start": false,
+            "hash": "873c1b7c64f46f975f2c1935dd3bf00f6290c408",
+            "inactive_seeding_time_limit": -2,
+            "infohash_v1": "873c1b7c64f46f975f2c1935dd3bf00f6290c408",
+            "infohash_v2": "",
+            "last_activity": 1792403185,
+            "magnet_uri": "magnet:?xt=urn:btih:873c1b7c64f46f975f2c1935dd3bf00f6290c408&dn=Recorded%20qBittorrent%20Four%202.2008.1080p.WEB-DL.x264-E2E.mkv&ws=http://fixture:8765/webseed/",
+            "max_inactive_seeding_time": -1,
+            "max_ratio": -1,
+            "max_seeding_time": -1,
+            "name": "Recorded qBittorrent Four 2.2008.1080p.WEB-DL.x264-E2E.mkv",
+            "num_complete": 0,
+            "num_incomplete": 0,
+            "num_leechs": 0,
+            "num_seeds": 0,
+            "priority": 1,
+            "progress": 0,
+            "ratio": 0,
+            "ratio_limit": -2,
+            "save_path": "/downloads/completed",
+            "seeding_time": 0,
+            "seeding_time_limit": -2,
+            "seen_complete": 0,
+            "seq_dl": false,
+            "size": 67037817,
+            "state": "pausedDL",
+            "super_seeding": false,
+            "tags": "",
+            "time_active": 0,
+            "total_size": 67037817,
+            "tracker": "",
+            "trackers_count": 0,
+            "up_limit": 0,
+            "uploaded": 0,
+            "uploaded_session": 0,
+            "upspeed": 0
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/torrents/start",
+        "bodyText": "hashes=873c1b7c64f46f975f2c1935dd3bf00f6290c408"
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": "Not Found"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/torrents/resume",
+        "bodyText": "hashes=873c1b7c64f46f975f2c1935dd3bf00f6290c408"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/torrents/info?hashes=873c1b7c64f46f975f2c1935dd3bf00f6290c408"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": [
+          {
+            "added_on": 1792403185,
+            "amount_left": 0,
+            "auto_tmm": false,
+            "availability": -1,
+            "category": "recorded-movies",
+            "completed": 67037817,
+            "completion_on": 1792403187,
+            "content_path": "/downloads/completed/Recorded qBittorrent Four 2.2008.1080p.WEB-DL.x264-E2E.mkv",
+            "dl_limit": 0,
+            "dlspeed": 0,
+            "download_path": "/downloads/incomplete",
+            "downloaded": 0,
+            "downloaded_session": 67037817,
+            "eta": 8640000,
+            "f_l_piece_prio": false,
+            "force_start": false,
+            "hash": "873c1b7c64f46f975f2c1935dd3bf00f6290c408",
+            "inactive_seeding_time_limit": -2,
+            "infohash_v1": "873c1b7c64f46f975f2c1935dd3bf00f6290c408",
+            "infohash_v2": "",
+            "last_activity": 1792403187,
+            "magnet_uri": "magnet:?xt=urn:btih:873c1b7c64f46f975f2c1935dd3bf00f6290c408&dn=Recorded%20qBittorrent%20Four%202.2008.1080p.WEB-DL.x264-E2E.mkv&ws=http://fixture:8765/webseed/",
+            "max_inactive_seeding_time": -1,
+            "max_ratio": -1,
+            "max_seeding_time": -1,
+            "name": "Recorded qBittorrent Four 2.2008.1080p.WEB-DL.x264-E2E.mkv",
+            "num_complete": 0,
+            "num_incomplete": 0,
+            "num_leechs": 0,
+            "num_seeds": 0,
+            "priority": 0,
+            "progress": 1,
+            "ratio": 0,
+            "ratio_limit": -2,
+            "save_path": "/downloads/completed",
+            "seeding_time": 1,
+            "seeding_time_limit": -2,
+            "seen_complete": 0,
+            "seq_dl": false,
+            "size": 67037817,
+            "state": "stalledUP",
+            "super_seeding": false,
+            "tags": "",
+            "time_active": 2,
+            "total_size": 67037817,
+            "tracker": "",
+            "trackers_count": 0,
+            "up_limit": 0,
+            "uploaded": 0,
+            "uploaded_session": 0,
+            "upspeed": 0
+          }
+        ]
+      }
+    }
+  ]
+}

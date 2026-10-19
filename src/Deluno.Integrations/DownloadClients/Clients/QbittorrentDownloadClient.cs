@@ -1236,6 +1236,11 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         // The same sign-in the connection test uses (#1061): a login the test accepted is never refused here.
         var result = await Deluno.Connections.QbittorrentSignIn.SignInAsync(http, client.Username, client.Secret, cancellationToken);
         if (result.SignedIn) return;
+        if (result.Banned)
+        {
+            throw new ClientCredentialsRefusedException(Deluno.Connections.DownloadClientCredentialText.Banned("qBittorrent"));
+        }
+
         if (!result.Rejected)
         {
             throw new HttpRequestException($"qBittorrent answered the sign-in with {(int)result.Status}.", null, result.Status);

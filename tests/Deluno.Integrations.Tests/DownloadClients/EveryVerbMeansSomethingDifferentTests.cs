@@ -176,6 +176,40 @@ public sealed class EveryVerbMeansSomethingDifferentTests
         Assert.Contains("value2=-2", bottom, StringComparison.Ordinal);
     }
 
+    /// <summary>#1301, qbittorrent.q40: each queue move is its own qBittorrent endpoint, sent for the torrent's hash.</summary>
+    [Theory]
+    [InlineData(DownloadClientActions.MoveToTop, "api/v2/torrents/topPrio")]
+    [InlineData(DownloadClientActions.MoveUp, "api/v2/torrents/increasePrio")]
+    [InlineData(DownloadClientActions.MoveDown, "api/v2/torrents/decreasePrio")]
+    [InlineData(DownloadClientActions.MoveToBottom, "api/v2/torrents/bottomPrio")]
+    public async Task Qbittorrent_queue_moves_each_use_their_own_priority_endpoint_with_the_hash(string action, string endpoint)
+    {
+        var sent = await CaptureAsync("qbittorrent", action);
+
+        var request = Assert.Single(sent, line => line.Contains(endpoint, StringComparison.Ordinal));
+        Assert.Contains("hashes=0123456789abcdef0123456789abcdef01234567", request, StringComparison.Ordinal);
+        Assert.DoesNotContain(sent, line => line.Contains("torrents/stop", StringComparison.Ordinal) || line.Contains("torrents/delete", StringComparison.Ordinal));
+    }
+
+    /// <summary>#1301, nzbget.n27: top, up, down and bottom are NZBGet's GroupMoveTop, GroupMoveOffset (-1 / +1) and GroupMoveBottom on the group's id.</summary>
+    [Theory]
+    [InlineData(DownloadClientActions.MoveToTop, "GroupMoveTop")]
+    [InlineData(DownloadClientActions.MoveUp, "GroupMoveOffset")]
+    [InlineData(DownloadClientActions.MoveDown, "GroupMoveOffset")]
+    [InlineData(DownloadClientActions.MoveToBottom, "GroupMoveBottom")]
+    public async Task Nzbget_queue_moves_use_the_group_move_commands_on_the_job(string action, string command)
+    {
+        var sent = await CaptureAsync("nzbget", action);
+
+        var request = Assert.Single(sent, line => line.Contains(command, StringComparison.Ordinal));
+        Assert.Contains("42", request, StringComparison.Ordinal);
+        if (command == "GroupMoveOffset")
+        {
+            if (action == DownloadClientActions.MoveUp) Assert.Contains("-1", request, StringComparison.Ordinal);
+            else Assert.DoesNotContain("-1", request, StringComparison.Ordinal);
+        }
+    }
+
     /// <summary>uTorrent's queue API could not be independently confirmed this session (#810), so it is refused rather than guessed at.</summary>
     [Theory]
     [InlineData(DownloadClientActions.MoveToTop)]

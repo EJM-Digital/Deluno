@@ -881,6 +881,12 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
             bool? status = root.TryGetProperty("status", out var s)
                 ? s.ValueKind switch { JsonValueKind.True => true, JsonValueKind.False => false, _ => null }
                 : null;
+            // A queue move (mode=queue&name=priority) answers {"position":N} with no status: its new place in the queue is the yes.
+            if (status is null && root.TryGetProperty("position", out var position) && position.ValueKind == JsonValueKind.Number)
+            {
+                status = true;
+            }
+
             var error = root.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.String ? e.GetString() : null;
             var idsEmpty = root.TryGetProperty("nzo_ids", out var ids) && ids.ValueKind == JsonValueKind.Array && ids.GetArrayLength() == 0;
             return new SabAnswer(status, error, idsEmpty);

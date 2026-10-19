@@ -33,6 +33,10 @@ public static class DownloadClientCredentialText
             _ => $"{clientName} refused Deluno's username and password; check them in the client's settings. {WhereToCheck}"
         };
 
+    /// <summary>qBittorrent bans an address after too many wrong sign-ins (#1362); the ban lifts by itself, so the password is not the fault.</summary>
+    public static string Banned(string clientName)
+        => $"{clientName} has banned Deluno's address after too many wrong sign-ins, so it refuses even the right password for now. The ban lifts by itself (about an hour) or when {clientName} is restarted. {WhereToCheck}";
+
     /// <summary>Whether a status is a client saying "not with that key or login".</summary>
     public static bool IsRefusal(HttpStatusCode status)
         => status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden;

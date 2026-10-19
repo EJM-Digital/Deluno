@@ -252,7 +252,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory,
                 .Select(path => path!)
                 .ToArray();
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException or RtorrentFaultException)
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException or System.Xml.XmlException or RtorrentFaultException)
         {
             // A download rTorrent no longer holds answers a fault ("info-hash not found"): no listing, not an error.
             return null;
@@ -269,6 +269,13 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory,
         {
             // #1251: a wrong login is said as that, not as "returned 401".
             return ClientCredentials.Failure(client, queueItemId, action, ClientCredentials.MessageFor(client, exception)!);
+        }
+        catch (System.Xml.XmlException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // #1362: an address that answers 200 with a page that is not XML-RPC (another app, a login page) is a failure in words, not a crash.
+            return DownloadClientHelpers.ActionFailure(client, queueItemId, action,
+                "The address did not answer with an XML-RPC response, so it is not rTorrent's XML-RPC address. Check the address in the client's settings.",
+                category: "unreachable");
         }
     }
 
@@ -299,7 +306,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory,
                         // rTorrent answers a hash it does not hold with a fault.
                         return new ClientPauseReading(ClientHas.No, false);
                     }
-                    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException && !ClientCredentials.IsRefusal(exception) && exception is not ClientCredentialsRefusedException)
+                    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException or System.Xml.XmlException && !ClientCredentials.IsRefusal(exception) && exception is not ClientCredentialsRefusedException)
                     {
                         return new ClientPauseReading(ClientHas.Unknown, false);
                     }
@@ -324,7 +331,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory,
                         // rTorrent answers a hash it does not hold with a fault.
                         return ClientHas.No;
                     }
-                    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException && !ClientCredentials.IsRefusal(exception))
+                    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException or System.Xml.XmlException && !ClientCredentials.IsRefusal(exception))
                     {
                         return ClientHas.Unknown;
                     }
@@ -363,7 +370,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory,
             await SendAsync(http, baseUri, method, [queueItemId], cancellationToken);
             return DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "rTorrent action sent.");
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException && !ClientCredentials.IsRefusal(exception))
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException or System.Xml.XmlException && !ClientCredentials.IsRefusal(exception))
         {
             return DownloadClientHelpers.ActionFailure(client, queueItemId, action, exception.Message, null);
         }
@@ -393,7 +400,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory,
                 path = AsString(await SendAsync(http, baseUri, "d.directory", [queueItemId], cancellationToken));
             }
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException)
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException or System.Xml.XmlException)
         {
             return DownloadClientHelpers.ActionFailure(client, queueItemId, DownloadClientActions.DeleteWithData, $"Could not ask rTorrent where this download's files are: {exception.Message}", null);
         }
@@ -402,7 +409,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory,
         {
             await SendAsync(http, baseUri, "d.erase", [queueItemId], cancellationToken);
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException)
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException or System.Xml.XmlException)
         {
             return DownloadClientHelpers.ActionFailure(client, queueItemId, DownloadClientActions.DeleteWithData, exception.Message, null);
         }
@@ -500,7 +507,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory,
                     // rTorrent answers a hash it does not hold with a fault.
                     return new ClientCategoryReading(ClientHas.No, null);
                 }
-                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException)
+                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException or System.Xml.XmlException)
                 {
                     return new ClientCategoryReading(ClientHas.Unknown, null);
                 }
@@ -516,7 +523,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory,
                 {
                     return DownloadClientHelpers.ActionFailure(client, queueItemId, action, $"rTorrent refused to set the label: {fault.FaultMessage}.");
                 }
-                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException)
+                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException or System.Xml.XmlException)
                 {
                     return DownloadClientHelpers.ActionFailure(client, queueItemId, action, exception.Message, null);
                 }
@@ -540,7 +547,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory,
             return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Ready,
                 $"rTorrent does not list its labels, so Deluno can't check this one. It sets the {name} label when it moves a download.", Supported: true, Found: false);
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException or RtorrentFaultException)
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException or System.Xml.XmlException or RtorrentFaultException)
         {
             return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Unreachable,
                 $"Deluno could not reach rTorrent: {exception.Message}", Supported: true, Found: false);
@@ -572,7 +579,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory,
                 .Select(value => value!)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException or System.Xml.XmlException)
         {
             return null;
         }
