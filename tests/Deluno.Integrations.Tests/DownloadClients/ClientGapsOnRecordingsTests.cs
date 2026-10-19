@@ -63,7 +63,7 @@ public sealed class ClientGapsOnRecordingsTests
     // DEFECT (found by #1301, qbittorrent.q7): qBittorrent's real 403 for a banned address carries the words "Your IP address has been banned after too many
     // failed authentication attempts.", but a 403 on the sign-in is turned into "qBittorrent refused Deluno's username and password; check them in the client's
     // settings", which sends a person with the right password to change it. The ban lifts by itself (an hour, or a restart of qBittorrent).
-    [Fact(Skip = "DEFECT: a banned address is told to check the username and password; the recorded 403 says it is banned (ClientCredentials / QbittorrentSignIn read every 403 as a refused login).")]
+    [Fact]
     public async Task A_banned_address_is_said_to_be_banned_not_to_have_a_wrong_password()
     {
         var refusal = RecordedReplies.Qbittorrent("login-banned").Exchanges[5].Reply;
@@ -219,7 +219,7 @@ public sealed class ClientGapsOnRecordingsTests
     // DEFECT (found by #1301, sabnzbd.s31): SABnzbd's real answer to mode=queue&name=priority is {"position":N} with no "status", and
     // SabnzbdDownloadClient reads an answer as accepted only when status is true, so every queue move on a real SABnzbd is reported
     // "SABnzbd's answer could not be read, so Deluno cannot tell that it did anything" although SABnzbd did it (the recorded queue shows the new place).
-    [Fact(Skip = "DEFECT: a queue move on the real SABnzbd is reported as failed because its answer is {\"position\":N}, not {\"status\":true} (SabnzbdDownloadClient.SendAsync / ReadAnswer).")]
+    [Fact]
     public async Task SABnzbd_takes_its_recorded_position_answer_to_a_priority_change_as_done()
     {
         var recording = RecordedReplies.Sabnzbd("priority-tiers");

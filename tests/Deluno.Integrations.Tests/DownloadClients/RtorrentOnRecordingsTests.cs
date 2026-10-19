@@ -756,7 +756,7 @@ public sealed class RtorrentOnRecordingsTests
     // a web page: a ruTorrent or nginx login page, another app). The pause, resume, delete or recheck throws out of the client instead of
     // answering "not done" in plain words, and DownloadClientTelemetryService.RunActionCoreAsync does not catch it either. Evidence: this test,
     // with qBittorrent's real reply to its version call standing for "the wrong page", throws System.Xml.XmlException: Data at the root level is invalid.
-    [Fact(Skip = "DEFECT: an rTorrent address that answers 200 with a page that is not XML-RPC makes pause/resume/delete throw XmlException instead of a plain failed result (RtorrentDownloadClient.ExecuteActionAsync does not catch XmlException).")]
+    [Fact]
     public async Task A_pause_against_an_address_that_answers_with_another_apps_page_is_a_plain_failure_not_an_exception()
     {
         var wrongApp = RecordedReplies.Qbittorrent("version").Exchanges[0].Reply;
