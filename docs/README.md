@@ -45,6 +45,7 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 - `exec-plans/active/E2E-live-test-rc28-2026-10-03.md`: the current live test plan: a fresh install of the released build, used the way a person would use it.
 - `exec-plans/active/FIX-BATCH-rc30-live-test.md`: the fix batch for every issue the rc.30 live test found, by area, with the rules each fix is held to.
 - `exec-plans/active/live-test-rc30-user-action-tests.md`: for every rc.30 live test issue, the browser test or golden path step that does what the person did.
+- `exec-plans/active/PLAN-ORG-MOVE.md`: moving Deluno to the EJM-Digital organisation: what is already one value, the exact flip list and the checks after the transfer.
 - `exec-plans/completed/`: completed plan history.
 - `exec-plans/templates/`: starting points for large feature work and post-merge cleanup.
 - `exec-plans/tech-debt-tracker.md`: recurring cleanup queue.

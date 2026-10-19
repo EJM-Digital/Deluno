@@ -72,7 +72,7 @@ public sealed class GithubReleaseFallbackTests
 
         var lookup = await GithubLatestRelease.LookupAsync(Weir(), CancellationToken.None, replay.Handler);
 
-        Assert.Equal($"https://github.com/jampat000/Weir/releases/download/{Rc13}/Weir-win-Setup.exe", lookup.Asset?.AssetUrl);
+        Assert.Equal($"https://github.com/EJM-Digital/Weir/releases/download/{Rc13}/Weir-win-Setup.exe", lookup.Asset?.AssetUrl);
         Assert.Equal(Rc13InstallerSha, lookup.Asset?.Sha256);
         Assert.Equal(Rc13, lookup.Tag);
         Assert.Contains(lookup.Skipped ?? [], skipped => skipped.StartsWith(Rc17, StringComparison.Ordinal));
@@ -213,7 +213,7 @@ public sealed class GithubReleaseFallbackTests
 
         // rc.17's installer, then rc.13's: the next release that has its files.
         Assert.Equal(
-            [$"https://github.com/jampat000/Weir/releases/download/{Rc17}/Weir-win-Setup.exe", $"https://github.com/jampat000/Weir/releases/download/{Rc13}/Weir-win-Setup.exe"],
+            [$"https://github.com/EJM-Digital/Weir/releases/download/{Rc17}/Weir-win-Setup.exe", $"https://github.com/EJM-Digital/Weir/releases/download/{Rc13}/Weir-win-Setup.exe"],
             downloader.Urls);
         Assert.Equal(ComponentInstallOutcome.DownloadFailed, result.Outcome);
         Assert.Contains(log.Lines, line => line.Contains($"using {Rc13}", StringComparison.Ordinal)

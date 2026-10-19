@@ -31,10 +31,13 @@ param(
     [string] $Head = 'HEAD',
     [string] $ShipPathsScript,
     [string] $OutDirectory,
-    [string] $Repository = 'jampat000/Deluno',
+    [string] $Repository = $env:GITHUB_REPOSITORY,
     [string] $ResultsUrl,
     [switch] $DryRun
 )
+
+# One value for the repository (repository.json); the Actions environment's own name wins when set.
+if (-not $Repository) { $Repository = (Get-Content -Raw (Join-Path $PSScriptRoot '..\..\repository.json') | ConvertFrom-Json).deluno }
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path

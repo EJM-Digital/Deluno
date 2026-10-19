@@ -173,7 +173,7 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddHttpClient(Metadata.SceneMapping.XemSceneMappingProvider.HttpClientName, client =>
         {
             client.Timeout = TimeSpan.FromSeconds(15);
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("Deluno/1.0 (+https://github.com/jampat000/Deluno)");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(Deluno.Contracts.ProjectRepositories.DelunoUserAgent);
         });
         services.AddSingleton<Metadata.SceneMapping.ISceneMappingProvider, Metadata.SceneMapping.XemSceneMappingProvider>();
         return services;

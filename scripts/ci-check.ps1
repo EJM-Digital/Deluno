@@ -282,6 +282,8 @@ $workflowChecks = @(
     @{ Label = "the real-spec guard works"; Args = @("--test", "scripts/check-real-specs.test.mjs") },
     @{ Label = "the repository gates behave as written: the hook, the gate, which jobs are due, the workflow, private-detail and closing-keyword checks"; Args = @("--test", "scripts/platform-gates.test.mjs") },
     @{ Label = "every Node test file is run by a CI job"; Args = @("scripts/check-node-tests-run.mjs") },
+    @{ Label = "the repository owner is written only in the single-value files"; Args = @("scripts/check-repository-references.mjs") },
+    @{ Label = "the repository-reference guard and the image-by-version rule work"; Args = @("--test", "scripts/check-repository-references.test.mjs", "scripts/deluno-image.test.mjs") },
     @{ Label = "the Node-test-coverage check works"; Args = @("--test", "scripts/check-node-tests-run.test.mjs") },
     @{ Label = "the TypeScript SDK sends the right request and reports a refusal"; Args = @("--test", "sdk/typescript/tests/delunoclient.test.mjs") }
 )

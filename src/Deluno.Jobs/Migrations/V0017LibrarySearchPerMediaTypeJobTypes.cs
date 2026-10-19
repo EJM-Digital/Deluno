@@ -7,10 +7,10 @@ namespace Deluno.Jobs.Migrations;
 ///
 /// `library.search` became `library.search.movies` and `library.search.tv` so
 /// each catalogue gets its own worker lane and neither can starve the other
-/// ([#304](https://github.com/jampat000/Deluno/issues/304)).
+/// (#304).
 ///
 /// **A job whose type no lane leases never runs, and nothing looks wrong** —
-/// that is exactly what [#303](https://github.com/jampat000/Deluno/issues/303)
+/// that is exactly what #303
 /// was, and it went unnoticed for a long time. Any row still queued or failed
 /// at upgrade would sit there forever without this.
 ///

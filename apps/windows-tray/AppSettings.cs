@@ -19,7 +19,12 @@ public sealed class AppSettings
     /// before the choice was asked keeps what it did), off for an install with no file yet: the setup guide asks and sets it (#1361).
     /// </summary>
     public bool AutoCheckUpdates { get; set; } = true;
-    public string UpdateSource { get; set; } = "https://github.com/jampat000/Deluno";
+    /// <summary>
+    /// Where updates come from: the built-in <see cref="ProjectRepositories.DelunoWebUrl"/> unless the person chose another.
+    /// Only a real override is written to the file, and a saved value that is a former built-in default is read as the
+    /// current default, so a repository move reaches copies installed before it.
+    /// </summary>
+    public string UpdateSource { get; set; } = ProjectRepositories.DelunoWebUrl;
 
     /// <summary>
     /// The tray's own "Let any address in" recovery action (#939): written by
@@ -119,9 +124,9 @@ public sealed class AppSettings
             loaded.UpdateChannel = GetDefaultUpdateChannel();
         }
 
-        if (string.IsNullOrWhiteSpace(loaded.UpdateSource))
+        if (string.IsNullOrWhiteSpace(loaded.UpdateSource) || ProjectRepositories.IsFormerDelunoDefault(loaded.UpdateSource))
         {
-            loaded.UpdateSource = "https://github.com/jampat000/Deluno";
+            loaded.UpdateSource = ProjectRepositories.DelunoWebUrl;
         }
 
         // If settings were loaded from the legacy path, transparently persist a normalized
@@ -235,7 +240,7 @@ public sealed class AppSettings
         }
 
         DataRoot = NormalizeDataRoot(DataRoot);
-        var problem = StateFile.Write(GetConfigPath(), JsonSerializer.Serialize(this, JsonOptions), Io);
+        var problem = StateFile.Write(GetConfigPath(), Serialize(this), Io);
         return problem is null ? null : $"Deluno could not save its settings: {problem}.";
     }
 
@@ -297,7 +302,7 @@ public sealed class AppSettings
         var normalized = settings.Copy();
         normalized.DataRoot = NormalizeDataRoot(settings.DataRoot);
         // A failure to keep the copy is not worth stopping for: the next load reads the legacy path again and tries once more.
-        _ = StateFile.Write(GetConfigPath(), JsonSerializer.Serialize(normalized, JsonOptions), Io);
+        _ = StateFile.Write(GetConfigPath(), Serialize(normalized), Io);
     }
 
     private static string ResolveFallbackDataRoot()
@@ -393,6 +398,20 @@ public sealed class AppSettings
         return string.IsNullOrWhiteSpace(configuredChannel)
             ? "stable"
             : configuredChannel.Trim().ToLowerInvariant();
+    }
+
+    /// <summary>The file text: the update address only when it is a real override of the built-in default.</summary>
+    internal static string Serialize(AppSettings settings)
+    {
+        var copy = settings.Copy();
+        if (string.IsNullOrWhiteSpace(copy.UpdateSource)
+            || string.Equals(copy.UpdateSource.Trim().TrimEnd('/'), ProjectRepositories.DelunoWebUrl, StringComparison.OrdinalIgnoreCase)
+            || ProjectRepositories.IsFormerDelunoDefault(copy.UpdateSource))
+        {
+            copy.UpdateSource = null!;
+        }
+
+        return JsonSerializer.Serialize(copy, JsonOptions);
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
