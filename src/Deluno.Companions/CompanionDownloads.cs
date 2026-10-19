@@ -50,7 +50,7 @@ public static class CompanionCatalog
     public const string QbittorrentVersion = "5.2.1";
     public const string SabnzbdVersion = "5.1.3";
 
-    public const string WeirRepository = "jampat000/Weir";
+    public const string WeirRepository = Deluno.Contracts.ProjectRepositories.Weir;
     public const string WeirSetupAsset = "Weir-win-Setup.exe";
     public const string WeirChecksumsAsset = "SHA256SUMS.txt";
 }

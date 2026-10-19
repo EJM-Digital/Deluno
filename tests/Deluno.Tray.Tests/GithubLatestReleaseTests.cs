@@ -213,7 +213,7 @@ public sealed class DirectoryListingLatestReleaseTests
         var resolved = await GithubLatestRelease.ResolveAsync(weir, CancellationToken.None, handler.Handler);
 
         // rc.17 is the newest tag but has no files: the newest release that has them is used.
-        Assert.Equal("https://github.com/jampat000/Weir/releases/download/v1.0.0-rc.13/Weir-win-Setup.exe", resolved!.AssetUrl);
+        Assert.Equal("https://github.com/EJM-Digital/Weir/releases/download/v1.0.0-rc.13/Weir-win-Setup.exe", resolved!.AssetUrl);
         Assert.Equal("444a5d166c92dde2730cc37977830358d77b26869b7ba86a0c3d5278d36189b7", resolved.Sha256);
         Assert.DoesNotContain(handler.Requests, url => url.Contains("api.github.com", StringComparison.Ordinal));
     }

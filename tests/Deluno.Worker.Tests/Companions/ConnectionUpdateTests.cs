@@ -390,6 +390,9 @@ public sealed class ConnectionUpdateTests : IDisposable
 
     private const string Rc17 = StubGitHub.Rc17;
 
+    /// <summary>The owner in GitHub's recorded Weir replies: the address before Weir moved.</summary>
+    private const string RecordedWeirRepository = "jampat000/Weir";
+
     private static string DownloadUrl(string tag, string asset) => $"https://github.com/{CompanionCatalog.WeirRepository}/releases/download/{tag}/{asset}";
 
     /// <summary>GitHub's recorded 404 for a release file that was not uploaded.</summary>
@@ -433,7 +436,9 @@ public sealed class ConnectionUpdateTests : IDisposable
 
         Assert.Contains(requested, url => url.Contains("api.github.com/repos/", StringComparison.Ordinal));
         Assert.DoesNotContain(DownloadUrl(Rc17, CompanionCatalog.WeirSetupAsset), requested);
-        Assert.Contains(DownloadUrl(StubGitHub.Newest, CompanionCatalog.WeirChecksumsAsset), requested);
+        // The API route follows the download addresses inside GitHub's recorded reply, which was recorded under the address
+        // Weir had before it moved (the replay serves it for either). Re-record from the new address to retire this.
+        Assert.Contains(DownloadUrl(StubGitHub.Newest, CompanionCatalog.WeirChecksumsAsset).Replace(CompanionCatalog.WeirRepository, RecordedWeirRepository), requested);
         system.Verify(item => item.RunAsync(It.Is<string>(path => path.EndsWith(CompanionCatalog.WeirSetupAsset, StringComparison.Ordinal)), "--silent", It.IsAny<CancellationToken>()), Times.Once);
     }
 

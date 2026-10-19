@@ -16,7 +16,7 @@ public static class IndexerApiEndpoint
     /// with no User-Agent ("Invalid User Agent"), and neither searches nor the
     /// connection test sent one.
     /// </summary>
-    public const string UserAgent = "Deluno/1.0 (+https://github.com/jampat000/Deluno)";
+    public const string UserAgent = ProjectRepositories.DelunoUserAgent;
 
     /// <summary>
     /// The base URL with <c>/api</c> on the end, unless it already has it or

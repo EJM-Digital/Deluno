@@ -75,6 +75,13 @@ public static class RecordedReplies
     /// <summary>The kind of call a request is, for matching it to a recorded one.</summary>
     public static string OperationOf(string app, string method, string pathAndQuery, string? body)
     {
+        // Weir moved to a new owner after its replies were recorded under the old address. GitHub answers both addresses
+        // alike, so the recorded reply stands for either: the owner is not part of what is asked.
+        if (app == "github")
+        {
+            pathAndQuery = System.Text.RegularExpressions.Regex.Replace(pathAndQuery, "(?i)/(?:jampat000|EJM-Digital)/Weir\\b", "/{weir-owner}/Weir");
+        }
+
         var split = pathAndQuery.Split('?', 2);
         var path = split[0];
         var query = System.Web.HttpUtility.ParseQueryString(split.Length > 1 ? split[1] : string.Empty);

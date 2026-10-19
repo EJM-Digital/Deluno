@@ -9,7 +9,7 @@ namespace Deluno.Platform.Migrations;
 /// one global list cannot say "English on everything, Japanese on anime". It
 /// sits beside <c>quality_profile_id</c> and <c>cutoff_quality</c>, where "what
 /// I want for this shelf" already lives. See DESIGN-002 and
-/// [#301](https://github.com/jampat000/Deluno/issues/301).
+/// #301.
 ///
 /// <c>subtitle_language_mode</c> is the simplification of Bazarr's ordered list
 /// plus a cutoff index, which conflates two different intentions:

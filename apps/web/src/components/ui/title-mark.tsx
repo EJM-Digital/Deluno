@@ -873,7 +873,7 @@ export function titleBarGradient(settledPercent: number, heldPercent: number): s
 }
 
 /**
- * The legend for the bar — [#327](https://github.com/jampat000/Deluno/issues/327).
+ * The legend for the bar — #327.
  *
  * <b>On the chip row, after Upcoming, behind a divider.</b> A first attempt put
  * it in the View drawer, on #327's own argument that a second row of

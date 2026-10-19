@@ -11,7 +11,7 @@ namespace Deluno.Series.Migrations;
 ///
 /// It also retires <c>wanted</c>, which <c>ListEligibleWantedEpisodesAsync</c>
 /// read and nothing ever wrote — the value whose absence is what
-/// [#303](https://github.com/jampat000/Deluno/issues/303) is about. Any row
+/// #303 is about. Any row
 /// holding it means an episode Deluno should be looking for.
 /// </summary>
 public sealed class V0015SeriesWantedStatusVocabulary : SqliteSqlMigration
