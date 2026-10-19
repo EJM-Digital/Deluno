@@ -269,4 +269,53 @@ public sealed class GuidedSetupRoutesTests
             Directory.Delete(folder, recursive: true);
         }
     }
+
+    private static object LibraryBody(string root) => new
+    {
+        name = "Movies", mediaType = "movies", purpose = "Main library", rootPath = root, downloadsPath = (string?)null,
+        qualityProfileId = (string?)null, searchIntervalMinutes = 720, retryDelayHours = 6, maxItemsPerRun = 10
+    };
+
+    [Fact]
+    public async Task A_root_that_does_not_exist_is_refused_with_a_message_before_any_library_is_made()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var missing = Path.Combine(Path.GetTempPath(), "deluno-no-such-root-" + Guid.NewGuid().ToString("N"));
+
+        var response = await app.Client.PostAsJsonAsync("/api/libraries", LibraryBody(missing));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.False(string.IsNullOrWhiteSpace(await response.Content.ReadAsStringAsync()));
+        Assert.Empty((await app.Client.GetFromJsonAsync<JsonElement>("/api/libraries")).EnumerateArray());
+    }
+
+    [Fact]
+    public async Task A_root_that_is_not_an_absolute_path_is_refused_with_a_message_before_any_library_is_made()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+
+        var response = await app.Client.PostAsJsonAsync("/api/libraries", LibraryBody("Media/Movies"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.False(string.IsNullOrWhiteSpace(await response.Content.ReadAsStringAsync()));
+        Assert.Empty((await app.Client.GetFromJsonAsync<JsonElement>("/api/libraries")).EnumerateArray());
+    }
+
+    [Fact]
+    public async Task A_root_that_exists_makes_the_library()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var root = Directory.CreateTempSubdirectory("deluno-root-").FullName;
+        try
+        {
+            var response = await app.Client.PostAsJsonAsync("/api/libraries", LibraryBody(root));
+
+            Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+            Assert.Single((await app.Client.GetFromJsonAsync<JsonElement>("/api/libraries")).EnumerateArray());
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
 }
