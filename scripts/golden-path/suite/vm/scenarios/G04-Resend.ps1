@@ -97,6 +97,13 @@ function Assert-ResendSettled {
         $firstImported = [bool]($firstNow -and $firstNow.status -eq 'completed' -and $firstNow.importJobId)
         if ($firstImported) { Add-Note "$What : the first send was imported before the removal landed; the resent torrent (same info-hash) counts as that import." }
     }
+    if (-not $second -and -not $firstImported) {
+        # No second hand-off: keep what Deluno holds for the film (every hand-off row, the Activity lines, the queue row) so the cause is read from evidence.
+        $tag = ($What -replace '[^A-Za-z0-9]+', '-').Trim('-')
+        try { Save-Evidence -Name "resend-$tag-handoffs.json" -Text ((@(Find-Handoffs -Name $Film.Release)) | ConvertTo-Json -Depth 8) } catch { Write-SuiteLog "   could not keep the hand-off rows: $($_.Exception.Message)" }
+        try { Save-Evidence -Name "resend-$tag-activity.txt" -Text ((@(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($Film.Title) })) -join "`n") } catch { Write-SuiteLog "   could not keep the Activity lines: $($_.Exception.Message)" }
+        try { Save-Evidence -Name "resend-$tag-queue.json" -Text ((Find-QueueRow -Name $Film.Release -IncludeHistory) | ConvertTo-Json -Depth 8) } catch { Write-SuiteLog "   could not keep the queue row: $($_.Exception.Message)" }
+    }
     Add-Check "$What : the new hand-off settles on its own" ($w.Ok -or $firstImported) $(if ($second) { "status $($second.status), processor $($second.processor.state), output $($second.outputPath), after $($w.Seconds) s" } elseif ($firstImported) { 'the first send was imported; the same torrent counts as imported' } else { 'there is no second hand-off' })
     $lib = Wait-Until -TimeoutSec 60 -IntervalSec 1 -Condition { Find-Imported -Title $Film.Title }
     Add-Check "$What : the film is in the library" $lib.Ok ''

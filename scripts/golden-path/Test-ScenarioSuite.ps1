@@ -452,6 +452,79 @@ Check 'the pattern does not take unrelated processor lines' (-not ('Processor co
 Check 'Collect-Logs searches the machine-wide and per-user data folders and says what was searched and what is missing' ($collect -match 'ProgramData' -and $collect -match 'processors-events-requests\.diag\.txt' -and $collect -match 'MISSING: no Deluno log file' -and $collect -match 'MISSING: Deluno''''s log has lines')
 Check 'the host names what is missing when there are no events lines' ($hostText -match 'diagMissing' -and $hostText -match 'processors-events-requests\.diag\.txt')
 
+Write-Host 'A full run plus passing re-runs counts as the gate only when everything holds (Complete-SuiteRun)'
+$cSha = '2d6cf09add0f1ba7b32796a4b48227161c26aeca'
+$cBuild = "1.0.0-rc.30.33+$cSha"
+function New-CombineFull([string[]] $FailIds = @(), [string[]] $GroupErrors = @(), [string] $Commit = $cSha, [string] $Build = $cBuild) {
+    $all = @($plan | ForEach-Object { $g = $_; $g.Ids | ForEach-Object { [pscustomobject]@{ Group = $g.Name; Id = $_; Status = $(if ($_ -in $FailIds) { 'fail' } else { 'pass' }) } } })
+    $all += @($GroupErrors | ForEach-Object { [pscustomobject]@{ Group = $_; Id = "group.$_"; Status = 'error' } })
+    [pscustomobject]@{ version = '1.0.0-rc.30.33'; commit = $Commit; harnessCommit = 'abc'; harnessDirty = $false; installedBuild = $Build; state = 'failure'; passed = 0; total = $all.Count; failed = @($FailIds); scenarios = $all }
+}
+function New-CombineRerun([string[]] $Ids, [bool] $Passed = $true, [string] $Commit = $cSha, [string] $Build = $cBuild, [string[]] $BrokenGroups = @()) {
+    $sc = @($Ids | ForEach-Object { [pscustomobject]@{ Group = ''; Id = $_; Status = 'pass' } })
+    $sc += @($BrokenGroups | ForEach-Object { [pscustomobject]@{ Group = $_; Id = "group.$_"; Status = 'error' } })
+    [pscustomobject]@{ commit = $Commit; installedBuild = $Build; chosenPassed = $Passed; scenarios = $sc }
+}
+$shipOk = [pscustomobject]@{ Ok = $true; Reason = 'no file that ships changed' }
+$shipBad = [pscustomobject]@{ Ok = $false; Reason = '1 file(s) that ship changed: src/Deluno.Api/Program.cs' }
+$ksIds = @(($plan | Where-Object Name -eq 'keepseeding').Ids)
+$takeover = 'resend.single-file.takeover'
+$fullBoth = New-CombineFull -FailIds @($takeover) -GroupErrors @('keepseeding')
+$good = Get-CombinedRunJudgement -Full $fullBoth -Reruns @((New-CombineRerun @($takeover)), (New-CombineRerun $ksIds)) -Plan $plan -ShipPaths $shipOk
+Check 'the full run plus a passing re-run of each failure is the gate' ($good.Ok -and $good.Problems.Count -eq 0) ($good.Problems -join '; ')
+Check 'every planned scenario is vouched for as a pass, and the re-run is named' (@($good.Combined | Where-Object { $_.Status -ne 'pass' }).Count -eq 0 -and (@($good.Combined | Where-Object { $_.Id -eq $takeover }).By -eq 're-run 1') -and @($good.Combined).Count -eq (($plan | ForEach-Object { $_.Ids.Count } | Measure-Object -Sum).Sum))
+$noTakeover = Get-CombinedRunJudgement -Full $fullBoth -Reruns @((New-CombineRerun $ksIds)) -Plan $plan -ShipPaths $shipOk
+Check 'a failed scenario with no passing re-run is not the gate, and is named' (-not $noTakeover.Ok -and ($noTakeover.Problems -join ' ') -match [regex]::Escape($takeover))
+$noGroup = Get-CombinedRunJudgement -Full $fullBoth -Reruns @((New-CombineRerun @($takeover)), (New-CombineRerun @($ksIds[0]))) -Plan $plan -ShipPaths $shipOk
+Check 'a group that broke as a whole needs a re-run of the whole group' (-not $noGroup.Ok -and ($noGroup.Problems -join ' ') -match 'group\.keepseeding')
+$groupAgain = Get-CombinedRunJudgement -Full $fullBoth -Reruns @((New-CombineRerun @($takeover)), (New-CombineRerun $ksIds -BrokenGroups @('keepseeding'))) -Plan $plan -ShipPaths $shipOk
+Check 'a group that breaks again in the re-run is not the gate' (-not $groupAgain.Ok -and ($groupAgain.Problems -join ' ') -match 'broke again')
+$otherCommit = Get-CombinedRunJudgement -Full $fullBoth -Reruns @((New-CombineRerun @($takeover) -Commit ('f' * 40) -Build ('1.0.0-rc.30.33+' + ('f' * 40))), (New-CombineRerun $ksIds)) -Plan $plan -ShipPaths $shipOk
+Check 'a re-run on another commit is not the gate' (-not $otherCommit.Ok -and ($otherCommit.Problems -join ' ') -match 'not commit')
+$otherBuild = Get-CombinedRunJudgement -Full $fullBoth -Reruns @((New-CombineRerun @($takeover) -Build '1.0.0-rc.30.32+1111111111111111111111111111111111111111'), (New-CombineRerun $ksIds)) -Plan $plan -ShipPaths $shipOk
+Check 'a re-run whose installed build is not the commit is not the gate' (-not $otherBuild.Ok -and ($otherBuild.Problems -join ' ') -match 'installed build')
+$fullOtherBuild = Get-CombinedRunJudgement -Full (New-CombineFull -FailIds @($takeover) -GroupErrors @('keepseeding') -Build '1.0.0-rc.30.32+1111111111111111111111111111111111111111') -Reruns @((New-CombineRerun @($takeover)), (New-CombineRerun $ksIds)) -Plan $plan -ShipPaths $shipOk
+Check 'a full run whose installed build is not the commit is not the gate' (-not $fullOtherBuild.Ok)
+$failedRerun = Get-CombinedRunJudgement -Full $fullBoth -Reruns @((New-CombineRerun @($takeover) -Passed $false), (New-CombineRerun $ksIds)) -Plan $plan -ShipPaths $shipOk
+Check 'a re-run that did not pass is not the gate' (-not $failedRerun.Ok)
+$shipped = Get-CombinedRunJudgement -Full $fullBoth -Reruns @((New-CombineRerun @($takeover)), (New-CombineRerun $ksIds)) -Plan $plan -ShipPaths $shipBad -FullHarnessCommit 'abc'
+Check 'a change to a shipped file since the full run is not the gate' (-not $shipped.Ok -and ($shipped.Problems -join ' ') -match 'ships') ("exit ${badExit}: " + ($runBad -join ' '))
+$neverRan = New-CombineFull -FailIds @()
+$neverRan.scenarios = @($neverRan.scenarios | Select-Object -SkipLast 1)
+$lastId = @($plan[-1].Ids)[-1]
+$missingOne = Get-CombinedRunJudgement -Full $neverRan -Reruns @((New-CombineRerun @($takeover))) -Plan $plan -ShipPaths $shipOk
+Check 'a scenario the full run never reported needs a passing re-run too' (-not $missingOne.Ok -and ($missingOne.Problems -join ' ') -match [regex]::Escape($lastId))
+
+$shipTmp = Join-Path ([IO.Path]::GetTempPath()) ('shipstub-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $shipTmp | Out-Null
+try {
+    $stubOk = Join-Path $shipTmp 'ok.mjs'; $stubBad = Join-Path $shipTmp 'bad.mjs'
+    Set-Content -Path $stubOk -Value 'console.log("Same shipped files: stub."); process.exit(0);'
+    Set-Content -Path $stubBad -Value 'console.log("Different: 1 file(s) that ship changed: src/x.cs."); process.exit(1);'
+    $okCall = Invoke-ShipPathsCheck -Script $stubOk -Base 'a' -Head 'b'
+    $badCall = Invoke-ShipPathsCheck -Script $stubBad -Base 'a' -Head 'b'
+    $noCall = Invoke-ShipPathsCheck -Script (Join-Path $shipTmp 'missing.mjs') -Base 'a' -Head 'b'
+    Check 'the ship-paths module saying nothing shipped changed is a yes' ($okCall.Ok -and $okCall.Reason -match 'Same shipped files')
+    Check 'the ship-paths module naming a shipped change is a no, with its reason' (-not $badCall.Ok -and $badCall.Reason -match 'src/x\.cs')
+    Check 'no ship-paths module is a no, never a yes' (-not $noCall.Ok -and $noCall.Reason -match 'suite-carry')
+
+    # The whole script, end to end on result folders (a dry run records no status).
+    foreach ($folderName in 'full', 'r1', 'r2') { New-Item -ItemType Directory -Path (Join-Path $shipTmp $folderName) | Out-Null }
+    (New-CombineFull -FailIds @($takeover) -GroupErrors @('keepseeding')) | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $shipTmp 'full\scenario-suite-results.json')
+    (New-CombineRerun @($takeover)) | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $shipTmp 'r1\scenario-suite-results.json')
+    (New-CombineRerun $ksIds) | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $shipTmp 'r2\scenario-suite-results.json')
+    $complete = Join-Path $root 'Complete-SuiteRun.ps1'
+    $outOk = Join-Path $shipTmp 'out-ok'; $outBad = Join-Path $shipTmp 'out-bad'
+    $runOk = & powershell -NoProfile -ExecutionPolicy Bypass -File $complete -FullRun (Join-Path $shipTmp 'full') -Reruns ((Join-Path $shipTmp 'r1') + ',' + (Join-Path $shipTmp 'r2')) -ShipPathsScript $stubOk -OutDirectory $outOk -DryRun 2>&1
+    Check 'the script, with every check holding, would set golden-path=success on the full run''s commit' ($LASTEXITCODE -eq 0 -and ($runOk -join ' ') -match 'context=golden-path' -and ($runOk -join ' ') -match 'state=success' -and ($runOk -join ' ') -match $cSha) ($runOk -join ' ')
+    $recordText = if (Test-Path (Join-Path $outOk 'scenario-suite-results.md')) { Get-Content -Raw (Join-Path $outOk 'scenario-suite-results.md') } else { '' }
+    Check 'the one record lists the full run and each re-run' ($recordText -match 'Full run' -and $recordText -match 'Re-run 1' -and $recordText -match 'Re-run 2' -and $recordText -match [regex]::Escape($takeover))
+    $runBad = & powershell -NoProfile -ExecutionPolicy Bypass -File $complete -FullRun (Join-Path $shipTmp 'full') -Reruns (Join-Path $shipTmp 'r1') -ShipPathsScript $stubBad -OutDirectory $outBad -DryRun 2>&1
+    $badExit = $LASTEXITCODE
+    Check 'the script, with a failing check, exits 1, sets nothing and says why' ($badExit -eq 1 -and ($runBad -join ' ') -notmatch 'state=success' -and ($runBad -join ' ') -match 'no re-run ran the whole group' -and ($runBad -join ' ') -match 'ships') ("exit ${badExit}: " + ($runBad -join ' '))
+}
+finally { Remove-Item -LiteralPath $shipTmp -Recurse -Force -ErrorAction SilentlyContinue }
+
 if ($env:OS -ne 'Windows_NT') {
     Write-Host 'The VM-side checks need Windows (HttpListener, UI Automation, Edge): skipped here.'
     Write-Host ("{0} checks passed, {1} failed." -f $script:passes, $script:failures)
@@ -1201,6 +1274,29 @@ finally {
     $okPs.Stop(); $okPs.Dispose(); $silentPs.Stop(); $silentPs.Dispose()
     Remove-Item -LiteralPath $coldRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
+
+Write-Host 'Saving results survives a reader holding results.json'
+$saveDir = Join-Path ([IO.Path]::GetTempPath()) ('saveres-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $saveDir | Out-Null
+try {
+    $script:S = @{ Started = [DateTime]::UtcNow; Results = (New-Object System.Collections.ArrayList); ResultsFile = (Join-Path $saveDir 'results.json'); LogFile = (Join-Path $saveDir 'suite.log'); Secrets = @{}; Token = $null }
+    Save-Results
+    Check 'the first save writes results.json' (Test-Path $script:S.ResultsFile)
+    $reader = [IO.File]::Open($script:S.ResultsFile, 'Open', 'Read', 'Read')
+    $releaser = [powershell]::Create().AddScript({ param($r) Start-Sleep -Milliseconds 700; $r.Dispose() }).AddArgument($reader)
+    $handle = $releaser.BeginInvoke()
+    $threw = $false
+    try { Save-Results } catch { $threw = $true }
+    $releaser.EndInvoke($handle); $releaser.Dispose()
+    Check 'saving while a reader holds the file never throws' (-not $threw)
+    Check 'the save lands once the reader lets go' ((Get-Content -Raw $script:S.ResultsFile) -match 'updatedUtc')
+    $reader2 = [IO.File]::Open($script:S.ResultsFile, 'Open', 'Read', 'None')
+    $threw = $false
+    try { Save-Results } catch { $threw = $true }
+    $reader2.Dispose()
+    Check 'saving while a reader never lets go still does not throw (the next save carries it)' (-not $threw)
+}
+finally { Remove-Item -LiteralPath $saveDir -Recurse -Force -ErrorAction SilentlyContinue }
 
 Write-Host ''
 Write-Host ("{0} checks passed, {1} failed." -f $script:passes, $script:failures) -ForegroundColor $(if ($script:failures -eq 0) { 'Green' } else { 'Red' })
