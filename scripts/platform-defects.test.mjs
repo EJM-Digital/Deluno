@@ -134,3 +134,24 @@ test("AUT-20: a backup file alone does not unlock the saved passwords: it carrie
     docker("rm", "--force", name);
   }
 });
+
+test("DOK-16: an older image started on a volume a newer image has migrated refuses to run, with a plain message, or leaves the data untouched", {
+  skip: "DEFECT (DOK-16): the August baseline image (baseline/schema-upgrade-2026-08-30) started on a volume the current image had already migrated and answered ready with 'platform ... migrations are current', exit code 0, no refusal and no protection, so a rollback to an older tag runs old code on a newer schema. Set DELUNO_BASELINE_IMAGE to the older image to run this."
+}, () => {
+  const older = process.env.DELUNO_BASELINE_IMAGE ?? "deluno-schema-baseline:local";
+  const volume = `deluno-defect-dok16-${process.pid}-data`;
+  const names = [`deluno-defect-dok16-${process.pid}-new`, `deluno-defect-dok16-${process.pid}-old`];
+  try {
+    docker("volume", "create", volume);
+    docker("run", "--detach", "--name", names[0], "--mount", `type=volume,src=${volume},dst=/data`, image);
+    assert.ok(waitFor(() => docker("exec", names[0], "curl", "--fail", "--silent", "http://127.0.0.1:8080/api/health/ready").status === 0, 90));
+    docker("stop", "--time", "30", names[0]);
+    docker("run", "--detach", "--name", names[1], "--mount", `type=volume,src=${volume},dst=/data`, older);
+    const stopped = waitFor(() => docker("inspect", "--format", "{{.State.Status}}", names[1]).out === "exited", 60);
+    assert.ok(stopped, "the older image should refuse to run on a newer volume");
+    assert.match(docker("logs", names[1]).out, /newer (version|build) of Deluno/i);
+  } finally {
+    for (const name of names) docker("rm", "--force", name);
+    docker("volume", "rm", volume);
+  }
+});
