@@ -34,6 +34,11 @@ vi.mock("../lib/api", async (importOriginal) => ({
   }
 }));
 
+const liveSpec = vi.hoisted(() => ({ current: undefined as { events?: readonly string[]; areas?: readonly string[] } | undefined }));
+vi.mock("../lib/live-refresh", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/live-refresh")>()),
+  useLiveRefresh: (spec: { events?: readonly string[]; areas?: readonly string[] }) => { liveSpec.current = spec; }
+}));
 const revalidate = vi.fn();
 const loaderData: Record<string, unknown> = {};
 vi.mock("react-router-dom", async (importOriginal) => ({
@@ -246,5 +251,14 @@ describe("Test a title", () => {
     const dialog = await open();
     fireEvent.click(within(dialog).getByRole("button", { name: "Run preview" }));
     expect(await within(dialog).findByText("That source folder does not exist.")).toBeTruthy();
+  });
+});
+
+describe("Final destinations: a change made elsewhere", () => {
+  it("is followed with no reload: the screen reads again for LibraryChanged, PolicySetChanged", () => {
+    reset();
+    renderPage();
+    expect(liveSpec.current?.events).toEqual(expect.arrayContaining(["LibraryChanged","PolicySetChanged"]));
+    
   });
 });

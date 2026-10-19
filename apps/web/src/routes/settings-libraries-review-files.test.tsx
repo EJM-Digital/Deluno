@@ -5,8 +5,9 @@ import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 
 /**
- * Settings > Libraries: the Review existing files button in a saved library drawer (a copy of the page scaffold with the review dialog shown as a marker) (what it asks, what it refuses, what a created
- * library starts as), editing a library's folder and quality profile, a server refusal in the drawer's footer, and Remove.
+ * Settings > Libraries: the Review existing files button in a saved library drawer opens the review dialog for that library, and is off
+ * while the form has unsaved changes. The page scaffold is the same as in settings-libraries-page.test.tsx, with the review dialog
+ * shown as a marker.
  */
 
 vi.setConfig({ testTimeout: 30_000 });
