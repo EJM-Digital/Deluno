@@ -53,7 +53,7 @@ env:
 jobs:
   ci-passed:
     name: CI passed on the tagged commit
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 5
     permissions:
       actions: read
@@ -78,7 +78,7 @@ jobs:
   # (docs/golden-path.md).
   golden-path:
     name: Golden path passed on the tagged commit
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -98,7 +98,7 @@ jobs:
   # reads RELEASE_NOTES.md, so a tag that disagrees with either would ship a build that calls itself something else.
   validate:
     name: Release version and notes
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -122,7 +122,7 @@ jobs:
 
   windows:
     name: Windows Velopack packages
-    runs-on: windows-latest
+    runs-on: ${{ vars.DELUNO_WINDOWS_RUNS_ON && fromJSON(vars.DELUNO_WINDOWS_RUNS_ON) || 'windows-latest' }}
     # Observed 4.5 to 7 minutes. Windows minutes bill at twice the rate, so a hang is expensive.
     timeout-minutes: 20
     permissions:
@@ -451,7 +451,7 @@ jobs:
   # (not a registry), so publish-docker rebuilds from them instead of from scratch.
   docker-candidate:
     name: Docker release candidate
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     # Observed 4 to 5 minutes for the build, scan and start.
     timeout-minutes: 30
     permissions:
@@ -510,7 +510,7 @@ jobs:
   # touches the registry. It is the only job allowed to write to the repository.
   publish-windows:
     name: Publish GitHub Release
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     # Observed under a minute.
     timeout-minutes: 15
     # Without ci-passed a commit CI never passed could ship; without golden-path, one the golden path never passed;
@@ -616,7 +616,7 @@ jobs:
   # build, and nothing in it touches the Releases page. It is the only job allowed to write packages and log in to the registry.
   publish-docker:
     name: Publish Docker image
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     # Observed under five minutes for the push and the smoke.
     timeout-minutes: 30
     # Without ci-passed a commit CI never passed could ship; without docker-candidate an image that was never built,

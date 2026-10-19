@@ -33,8 +33,12 @@ export const GATES = {
   mutation: "run_mutation",
 };
 
-// Returns one line per problem; empty means CI passed.
-export function verdict(needs) {
+// The job that installs Deluno and the download clients on its own machine. While the Windows jobs run on a self-hosted runner
+// (the DELUNO_WINDOWS_RUNS_ON repository variable is set) it is skipped on purpose, and the golden-path status covers it.
+export const NEVER_SELF_HOSTED = "e2e-windows";
+
+// Returns one line per problem; empty means CI passed. options.windowsSelfHosted: DELUNO_WINDOWS_RUNS_ON is set.
+export function verdict(needs, options = {}) {
   const problems = [];
   const changes = needs.changes;
   if (!changes || changes.result !== "success") {
@@ -55,7 +59,7 @@ export function verdict(needs) {
       problems.push(`changes published no usable ${flag} (got ${JSON.stringify(flags[flag])}).`);
       continue;
     }
-    const due = flag === null || flags[flag] === "true";
+    const due = (flag === null || flags[flag] === "true") && !(options.windowsSelfHosted && job === NEVER_SELF_HOSTED);
     const expected = due ? "success" : "skipped";
     if (result !== expected) {
       problems.push(`${job} ended ${result}; it ${due ? "was due, so it must pass" : "was not due, so it must be skipped"}.`);
@@ -66,7 +70,7 @@ export function verdict(needs) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const needs = JSON.parse(process.env.NEEDS || "{}");
-  const problems = verdict(needs);
+  const problems = verdict(needs, { windowsSelfHosted: (process.env.DELUNO_WINDOWS_RUNS_ON || "").trim() !== "" });
   for (const [job, flag] of Object.entries(GATES)) {
     const due = flag === null ? "always" : needs.changes?.outputs?.[flag] === "true" ? "due" : "not due";
     console.log(`${job.padEnd(22)} ${due.padEnd(8)} ${needs[job]?.result ?? "missing"}`);
