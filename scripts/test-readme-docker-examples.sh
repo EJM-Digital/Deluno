@@ -41,8 +41,14 @@ mkdir -p "$work/config" "$work/data" "$work/qbittorrent-config"
 chmod -R 0777 "$work"
 compose_file="$work/docker-compose.yml"
 
+# The published image is named from the one place the repository is written (repository.json), lower-cased, as the
+# release workflow does; no owner is spelled in this script.
+published_image="ghcr.io/$(sed -n 's/.*"deluno"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$root/repository.json" | tr '[:upper:]' '[:lower:]')"
+[[ "$published_image" != "ghcr.io/" ]] || { echo "repository.json has no deluno repository." >&2; exit 1; }
+published_pattern="$(printf '%s' "$published_image" | sed 's/\./\\./g')"
+
 localize() {
-  sed -e "s#ghcr\.io/jampat000/deluno:[A-Za-z0-9._-]*#${image}#g" \
+  sed -e "s#${published_pattern}:[A-Za-z0-9._-]*#${image}#g" \
       -e "s#/srv/deluno-config#${work}/config#g" \
       -e "s#/srv/qbittorrent-config#${work}/qbittorrent-config#g" \
       -e "s#/srv/data#${work}/data#g"

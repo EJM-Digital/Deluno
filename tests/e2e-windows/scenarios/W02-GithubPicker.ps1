@@ -29,7 +29,7 @@ function Invoke-LegGithubPicker {
         $weirVersion = if ($weir) { $weir.VersionInfo.ProductVersion } else { '' }
         $tags = @()
         try {
-            $atom = (Invoke-WebRequest -Uri 'https://github.com/jampat000/Weir/releases.atom' -UseBasicParsing -TimeoutSec 40).Content
+            $atom = (Invoke-WebRequest -Uri 'https://github.com/EJM-Digital/Weir/releases.atom' -UseBasicParsing -TimeoutSec 40).Content
             $tags = @([regex]::Matches($atom, '<link[^>]*href="[^"]*/releases/tag/([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
         } catch { }
         $after = Get-GitHubLimitState

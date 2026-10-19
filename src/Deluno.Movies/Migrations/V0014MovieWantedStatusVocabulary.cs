@@ -3,7 +3,7 @@ using Deluno.Infrastructure.Storage.Migrations;
 namespace Deluno.Movies.Migrations;
 
 /// <summary>
-/// One word per meaning, for [#300](https://github.com/jampat000/Deluno/issues/300).
+/// One word per meaning, for #300.
 ///
 /// <c>waiting</c> was set by the workflow service on a movie that <em>has</em> a
 /// file and already meets its target — finished, and nothing more to do. The
