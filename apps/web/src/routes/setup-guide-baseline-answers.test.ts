@@ -32,6 +32,8 @@ function build(overrides: { data?: Record<string, unknown>; form?: Record<string
       libraries: [], qualityProfiles: [], customFormats: [], indexers: [], clients: [], guide,
       updatePreferences: { mode: "ask", autoCheck: true, channel: "stable" },
       contentBlocklist: { enabled: false, mode: "block", patterns: [] },
+      allowedHosts: { enabled: false, allowedHosts: [] },
+      localNetworkAuth: { enabled: false, additionalLocalNetworks: [], trustedProxies: [], allowList: [] },
       ...data
     } as unknown as Input["data"],
     form: {
@@ -192,7 +194,7 @@ describe("time and region", () => {
 });
 
 describe("re-running the guide with the sign-in and address answers", () => {
-  it.skip("DEFECT: re-running the guide wipes the Security page's extra local networks and trusted proxies, because saveLocalNetworkAuth always sends empty lists for both", async () => {
+  it("re-running the guide keeps the Security page's extra local networks and trusted proxies", async () => {
     wire();
     const loaded = { enabled: true, additionalLocalNetworks: ["10.9.0.0/16"], trustedProxies: ["192.168.1.5"] };
     await createBaseline(build({ data: { localNetworkAuth: loaded }, form: { skipSignInLocalNetwork: true } }), []);
@@ -201,7 +203,7 @@ describe("re-running the guide with the sign-in and address answers", () => {
     expect(body.trustedProxies).toEqual(["192.168.1.5"]);
   });
 
-  it.skip("DEFECT: flipping a current Yes to No for Only answer on the addresses you use does not switch the restriction off, because saveAllowedHosts returns before writing unless the answer is Yes", async () => {
+  it("a No to Only answer on the addresses you use switches a current Yes off", async () => {
     wire();
     await createBaseline(build({ data: { allowedHosts: { enabled: true, allowedHosts: ["192.168.1.10"] } }, form: { restrictAllowedHosts: false } }), []);
     expect(calls("PUT", "/api/security/allowed-hosts")).toEqual([{ enabled: false, allowedHosts: [] }]);
@@ -300,5 +302,55 @@ describe("the completion message", () => {
     expect(result.message.startsWith("Movies and TV Shows baseline created.")).toBe(true);
     expect(authedFetchMock.mock.calls.some(([url, init]) => url === "/api/setup/completed" && init?.method === "POST")).toBe(true);
     expect(authedCalls("DELETE", "/api/setup/draft")).toHaveLength(1);
+  });
+});
+
+describe("re-running the guide changes only what the person answers (#1357)", () => {
+  const ALL_ON = {
+    autoStartJobs: true, renameOnImport: true, subtitleFetchAutomaticEnabled: true, cleanupRemoveClientEntryAfterThreshold: true, cleanupPurgePayloadAfterThreshold: true,
+    downloadHealthNoProgressEnabled: true, downloadHealthMinSpeedEnabled: true, leftoverDownloadCleanupEnabled: true, forceImportEnabled: true, pauseSearchWhenQueueLongEnabled: true,
+    downloadHealthMinSpeedKbps: 120, downloadHealthStrikeThreshold: 7, downloadHealthDefaultStrikeWindowMinutes: 45
+  };
+  const library = { id: "lib-m", name: "Movies", mediaType: "movies", rootPath: "D:\Media\Movies", missingSearchEnabled: true, upgradeSearchEnabled: true, removeEmptySourceFolders: true };
+  const indexer = { id: "ix1", name: "Source", priority: 3, categories: "2000", tags: "mine", rssEnabled: true, isEnabled: true };
+  const client = { id: "c1", name: "qB", protocol: "qbittorrent", host: "localhost", port: 8081, username: "old", isEnabled: true, healthStatus: "healthy", moviesCategory: "my-films", tvCategory: "my-tv", categoryTemplate: "t", endpointUrl: "http://x", priority: 4 };
+  const live = {
+    settings: { movieRootPath: "D:\Media\Movies", seriesRootPath: "D:\Media\TV", hostBindAddress: "127.0.0.1", hostPort: 5099, uiLanguage: "en-US", timezone: "UTC", ...ALL_ON },
+    libraries: [library], indexers: [indexer], clients: [client],
+    contentBlocklist: { enabled: true, mode: "block", patterns: ["*.exe"] },
+    updatePreferences: { mode: "download-apply-on-restart", autoCheck: true, channel: "beta" },
+    allowedHosts: { enabled: false, allowedHosts: [] },
+    localNetworkAuth: { enabled: true, additionalLocalNetworks: ["10.9.0.0/16"], trustedProxies: ["192.168.1.5"], allowList: ["192.168.1.20"] }
+  };
+
+  it("reads each of the fourteen answers from the live settings", () => {
+    expect(page.liveAutomationAnswers(live as never)).toEqual(choices({}, true));
+    const off = page.liveAutomationAnswers({ settings: {}, libraries: [], indexers: [], contentBlocklist: { enabled: false } } as never);
+    expect(off).toEqual(choices({}, false));
+  });
+
+  it("every step that saves writes back what it loaded when the answers are the ones already in force", async () => {
+    wire((url) => (url === "/api/download-health/rules"
+      ? [{ id: "r1", kind: "no-progress", enabled: true, strikeLimit: 7 }, { id: "r2", kind: "too-slow", enabled: true, strikeLimit: 7, threshold: 120 }]
+      : undefined));
+    await createBaseline(build({
+      data: live,
+      liveClients: [client] as unknown as Input["liveClients"],
+      indexerTested: true, clientTested: true,
+      form: {
+        automation: page.liveAutomationAnswers(live as never), restrictAllowedHosts: false, skipSignInLocalNetwork: true, localNetworkAllowList: ["192.168.1.20"],
+        updateAutomatically: true, indexerUrl: "https://indexer.example/api", clientHost: "localhost", clientPort: "8081", clientUsername: "new", clientPassword: "pw"
+      }
+    }), []);
+    const settings = calls("PUT", "/api/settings")[0];
+    expect(settings).toMatchObject(ALL_ON);
+    expect(calls("PUT", "/api/updates/preferences")).toEqual([{ mode: "download-apply-on-restart", channel: "beta", autoCheck: true }]);
+    expect(calls("PUT", "/api/security/allowed-hosts")).toEqual([]);
+    expect(calls("PUT", "/api/security/local-network-auth")[0]).toMatchObject({ enabled: true, additionalLocalNetworks: ["10.9.0.0/16"], trustedProxies: ["192.168.1.5"], allowList: ["192.168.1.20"] });
+    expect(calls("PUT", "/api/download-health/content-blocklist")).toEqual([{ ...live.contentBlocklist, enabled: true }]);
+    expect(calls("PUT", "/api/download-health/rules/r1")).toEqual([]);
+    expect(calls("PUT", "/api/download-health/rules/r2")).toEqual([]);
+    expect(calls("PUT", "/api/indexers/ix1")[0]).toMatchObject({ priority: 3, categories: "2000", tags: "mine", rssEnabled: true });
+    expect(calls("PUT", "/api/download-clients/c1")[0]).toMatchObject({ moviesCategory: "my-films", tvCategory: "my-tv", categoryTemplate: "t", endpointUrl: "http://x", priority: 4 });
   });
 });

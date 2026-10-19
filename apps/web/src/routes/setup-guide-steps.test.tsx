@@ -152,7 +152,7 @@ describe("the draft is saved 500 ms after any change", () => {
     expect(radio(AUTOMATION_QUESTIONS[2].question, "No").getAttribute("aria-checked")).toBe("false");
   });
 
-  it.skip("DEFECT: on a re-run each Automation question shows Current setting, but the saved answers come only from the draft, which is deleted when the guide completes, so none is shown", async () => {
+  it("on a re-run each Automation question shows its Current setting, read from the live settings rather than the deleted draft", async () => {
     renderStep({ stepId: "automation", completed: true });
     await button(/^Continue$/);
     expect(screen.getAllByText(/^Current setting: /).length).toBe(AUTOMATION_QUESTIONS.length);

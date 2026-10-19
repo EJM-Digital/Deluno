@@ -272,13 +272,13 @@ describe("setup guide Security step (#939)", () => {
   });
 
   it("answering No saves nothing -- a fresh install behaves exactly like before this feature (#936)", async () => {
-    await saveAllowedHosts({ restrictAllowedHosts: false, allowedHostsSelection: [] } as unknown as SecurityForm);
+    await saveAllowedHosts({ restrictAllowedHosts: false, allowedHostsSelection: [] } as unknown as SecurityForm, { enabled: false });
 
     expect(fetchJsonMock).not.toHaveBeenCalled();
   });
 
   it("answering Yes saves the ticked addresses turned on", async () => {
-    await saveAllowedHosts({ restrictAllowedHosts: true, allowedHostsSelection: ["localhost", "my-pc"] } as unknown as SecurityForm);
+    await saveAllowedHosts({ restrictAllowedHosts: true, allowedHostsSelection: ["localhost", "my-pc"] } as unknown as SecurityForm, { enabled: false });
 
     expect(fetchJsonMock).toHaveBeenCalledWith("/api/security/allowed-hosts", {
       method: "PUT",
