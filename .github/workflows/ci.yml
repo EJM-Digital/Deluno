@@ -182,7 +182,7 @@ jobs:
       - name: Every Node test file is run by a CI job
         run: |
           node scripts/check-node-tests-run.mjs
-          node --test scripts/check-node-tests-run.test.mjs scripts/check-persistence-parts.test.mjs scripts/check-component-pins.test.mjs scripts/check-recorded-manifest.test.mjs scripts/verify-ci-for-release.test.mjs scripts/verify-golden-path-for-release.test.mjs scripts/tag-release.test.mjs scripts/check-release-workflow-gates.test.mjs scripts/coverage/testindex.test.mjs sdk/typescript/tests/delunoclient.test.mjs
+          node --test scripts/check-node-tests-run.test.mjs scripts/check-persistence-parts.test.mjs scripts/check-component-pins.test.mjs scripts/check-recorded-manifest.test.mjs scripts/verify-ci-for-release.test.mjs scripts/verify-golden-path-for-release.test.mjs scripts/tag-release.test.mjs scripts/check-release-workflow-gates.test.mjs scripts/coverage/testindex.test.mjs scripts/check-repository-references.test.mjs scripts/deluno-image.test.mjs sdk/typescript/tests/delunoclient.test.mjs
 
       - name: Validate agent-readable repository map
         shell: pwsh
