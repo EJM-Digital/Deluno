@@ -199,6 +199,12 @@ export interface BackupSettingsSnapshot {
   nextRunUtc: string | null;
   /** Plain words when the saved settings could not be read and the standard ones are in use; saving again repairs them. */
   problem?: string | null;
+  /** True when a backup password is saved: Deluno's keys then go into each backup, sealed with it. The password itself is never sent back. */
+  passwordSet?: boolean;
+  /** Sent when saving: a new backup password. Leave out to keep the current one. */
+  backupPassword?: string;
+  /** Sent when saving: true removes the saved password. */
+  clearBackupPassword?: boolean;
 }
 
 export interface BackupItem {
@@ -208,6 +214,7 @@ export interface BackupItem {
   sizeBytes: number;
   createdUtc: string;
   reason: string;
+  keysIncluded?: boolean;
 }
 
 export interface RestorePreviewResponse {
@@ -222,6 +229,8 @@ export interface RestorePreviewResponse {
   } | null;
   warnings: string[];
   newerThanThisVersion?: boolean;
+  /** True when the backup holds Deluno's keys, locked with a backup password that restoring must be given. */
+  needsPassword?: boolean;
 }
 
 export interface UpdateStatusResponse {

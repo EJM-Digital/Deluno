@@ -311,6 +311,7 @@ export interface SetupDraftItem {
   /** The Yes/No answers; null / missing means "not answered yet". */
   skipSignInLocalNetwork?: boolean | null;
   updateAutomatically?: boolean | null;
+  checkForUpdates?: boolean | null;
   automation?: Record<string, boolean> | null;
   updatedUtc: string;
 }

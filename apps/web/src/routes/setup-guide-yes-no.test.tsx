@@ -15,7 +15,7 @@ const { SetupGuidePage, STEPS, AUTOMATION_QUESTIONS } = await import("./setup-gu
 const SINGLE_QUESTIONS = [
   { step: "signIn", question: "Skip sign-in for devices on your home network?" },
   { step: "addresses", question: "Only answer on the addresses you use?" },
-  { step: "updates", question: "Update Deluno automatically?" }
+  { step: "updates", question: "Check for updates by itself?" }
 ] as const;
 
 function loaderData(overrides: { stepId: string; completed?: boolean; draft?: Record<string, unknown>; hostsEnabled?: boolean; skipSignIn?: boolean; autoUpdate?: boolean }) {
@@ -83,6 +83,20 @@ describe("a re-run shows each saved answer, labelled as the current setting (#12
     renderStep({ stepId: step, completed: true, hostsEnabled: true, skipSignIn: true, autoUpdate: true });
     await continueButton();
     expect(answers(question).yes.getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByText("Current setting: Yes")).toBeTruthy();
+    expect(screen.getAllByText("Current setting: Yes").length).toBeGreaterThan(0);
+  });
+});
+
+describe("the install question follows the check question (#1361)", () => {
+  it("Update Deluno automatically? is not asked until Check for updates by itself? is Yes", async () => {
+    renderStep({ stepId: "updates" });
+    const button = await continueButton();
+    expect(screen.queryByRole("radio", { name: "Update Deluno automatically? Yes" })).toBeNull();
+    fireEvent.click(answers("Check for updates by itself?").no);
+    expect(button.disabled).toBe(false);
+    fireEvent.click(answers("Check for updates by itself?").yes);
+    expect((await continueButton()).disabled).toBe(true);
+    fireEvent.click(answers("Update Deluno automatically?").no);
+    expect((await continueButton()).disabled).toBe(false);
   });
 });

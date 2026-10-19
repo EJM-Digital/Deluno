@@ -18,6 +18,12 @@ Default packaged Windows paths:
 
 Backup and restore operations are managed in `System > Backups`.
 
+## The Backup Password
+
+A backup holds Deluno's master key and protection keys (they unlock saved passwords and API keys) only when a backup password is set under System, Backups. The keys are sealed with it (PBKDF2-SHA256, AES-GCM), and restoring asks for it. A wrong password is refused and nothing is restored. A backup made with no password leaves the keys out; after restoring it you enter your saved passwords and API keys again. Keep the password somewhere safe: nothing can open the keys without it.
+
+Native Linux (systemd) is not supported yet. On Linux, run Deluno in Docker.
+
 ## Before You Upgrade
 
 1. Open `System > Backups`.

@@ -25,7 +25,8 @@ const {
   resolveDraftFormatGoal,
   saveAllowedHosts,
   saveDangerousFileCheck,
-  saveUpdatePreferences
+  saveUpdatePreferences,
+  updatesAnswered
 } = await import("./setup-guide-page");
 type AutomationChoices = Parameters<typeof buildAutomationSettingsPayload>[0];
 type SecurityForm = Parameters<typeof saveAllowedHosts>[0];
@@ -387,6 +388,34 @@ describe("setup guide Updates step (#1034, #936)", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode: "notify-only", channel: "stable", autoCheck: true })
     });
+  });
+
+  // #1361: the check is off on a fresh install, and this question is what turns it on.
+  it("answering No to checking turns the background check off and applies nothing, whatever the install question held", async () => {
+    await saveUpdatePreferences({ checkForUpdates: false, updateAutomatically: true } as unknown as UpdatesForm, { mode: "download-apply-on-restart", channel: "stable", autoCheck: true });
+
+    expect(fetchJsonMock).toHaveBeenCalledWith("/api/updates/preferences", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "notify-only", channel: "stable", autoCheck: false })
+    });
+  });
+
+  it("answering Yes to checking and Yes to installing turns both on", async () => {
+    await saveUpdatePreferences({ checkForUpdates: true, updateAutomatically: true } as unknown as UpdatesForm, { mode: "notify-only", channel: "stable", autoCheck: false });
+
+    expect(fetchJsonMock).toHaveBeenCalledWith("/api/updates/preferences", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "download-apply-on-restart", channel: "stable", autoCheck: true })
+    });
+  });
+
+  it("the step counts as answered only when checking is answered and, if Yes, installing too", () => {
+    expect(updatesAnswered({ checkForUpdates: null, updateAutomatically: null })).toBe(false);
+    expect(updatesAnswered({ checkForUpdates: true, updateAutomatically: null })).toBe(false);
+    expect(updatesAnswered({ checkForUpdates: true, updateAutomatically: false })).toBe(true);
+    expect(updatesAnswered({ checkForUpdates: false, updateAutomatically: null })).toBe(true);
   });
 });
 
