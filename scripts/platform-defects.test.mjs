@@ -113,3 +113,24 @@ test("GAT-03: the Windows tray tests run in CI, so a push that skipped the local
   const ci = read(".github/workflows/ci.yml");
   assert.match(ci, /runs-on: windows-latest[\s\S]{0,4000}Deluno\.Tray\.Tests/);
 });
+
+test("AUT-20: a backup file alone does not unlock the saved passwords: it carries neither the master key nor the keys that open them", {
+  skip: "DEFECT (AUT-20): a backup made by a container without DELUNO_MASTER_KEY lists data/secrets/master.key and data/protection-keys/*.xml beside the databases that hold the encrypted indexer and client passwords, so anyone holding the zip can read every saved password. With DELUNO_MASTER_KEY supplied the key is not in the zip, but protection-keys still are."
+}, async () => {
+  const name = `deluno-defect-aut20-${process.pid}`;
+  const port = 18499;
+  try {
+    docker("run", "--detach", "--name", name, "--publish", `127.0.0.1:${port}:8080`, image);
+    assert.ok(waitFor(() => docker("exec", name, "curl", "--fail", "--silent", "http://127.0.0.1:8080/api/health/ready").status === 0, 90));
+    const base = `http://127.0.0.1:${port}`;
+    const json = { "Content-Type": "application/json" };
+    const signedIn = await (await fetch(`${base}/api/auth/bootstrap`, { method: "POST", headers: json, body: JSON.stringify({ username: "owner", displayName: "Owner", password: "owner-password-1" }) })).json();
+    const auth = { Authorization: `Bearer ${signedIn.accessToken}` };
+    const made = await (await fetch(`${base}/api/backups`, { method: "POST", headers: { ...json, ...auth }, body: JSON.stringify({ reason: "manual" }) })).json();
+    const zip = Buffer.from(await (await fetch(`${base}/api/backups/${made.backup.id}/download`, { headers: auth })).arrayBuffer());
+    assert.ok(!zip.includes("secrets/master.key"), "the backup carries the master key");
+    assert.ok(!zip.includes("protection-keys/"), "the backup carries the data-protection keys");
+  } finally {
+    docker("rm", "--force", name);
+  }
+});
