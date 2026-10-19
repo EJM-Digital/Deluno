@@ -1,0 +1,81 @@
+{
+  "app": "ntfy",
+  "version": "2.32.0",
+  "state": "access-token",
+  "recordedAt": "2026-10-19T10:02:00Z",
+  "note": "A server that refuses everyone without a login: a message with a valid access token as a Bearer value (accepted), with none (refused) and with a wrong one (refused) (ntfy 2.32.0 in Docker).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/deluno-ac1c1a-auth",
+        "bodyText": "Sintel (2010) was imported from Sintel.2010.WEB.1080p using copy.",
+        "headers": {
+          "content-type": "text/plain; charset=utf-8",
+          "title": "Import completed: Sintel (2010)"
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "id": "ZC47zwzh11a8",
+          "time": 1792404120,
+          "expires": 1792447320,
+          "event": "message",
+          "topic": "deluno-ac1c1a-auth",
+          "title": "Import completed: Sintel (2010)",
+          "message": "Sintel (2010) was imported from Sintel.2010.WEB.1080p using copy."
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/deluno-ac1c1a-auth",
+        "bodyText": "Sintel (2010) was imported from Sintel.2010.WEB.1080p using copy.",
+        "headers": {
+          "content-type": "text/plain; charset=utf-8",
+          "title": "Import completed: Sintel (2010)"
+        }
+      },
+      "reply": {
+        "status": 403,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "code": 40301,
+          "http": 403,
+          "error": "forbidden",
+          "link": "https://ntfy.sh/docs/publish/#authentication"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/deluno-ac1c1a-auth",
+        "bodyText": "Sintel (2010) was imported from Sintel.2010.WEB.1080p using copy.",
+        "headers": {
+          "content-type": "text/plain; charset=utf-8",
+          "title": "Import completed: Sintel (2010)"
+        }
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "code": 40101,
+          "http": 401,
+          "error": "unauthorized",
+          "link": "https://ntfy.sh/docs/publish/#authentication"
+        }
+      }
+    }
+  ]
+}

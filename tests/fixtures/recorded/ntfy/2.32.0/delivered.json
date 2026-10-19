@@ -1,0 +1,56 @@
+{
+  "app": "ntfy",
+  "version": "2.32.0",
+  "state": "delivered",
+  "recordedAt": "2026-10-19T10:01:59Z",
+  "note": "A message published to a topic the way Deluno sends one (POST, text body, Title header), then the topic read back to show what ntfy kept (ntfy 2.32.0 in Docker).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/deluno-ac1c1a",
+        "bodyText": "Sintel (2010) was imported from Sintel.2010.WEB.1080p using copy.",
+        "headers": {
+          "content-type": "text/plain; charset=utf-8",
+          "title": "Import completed: Sintel (2010)"
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "id": "6TQESuhVrv3L",
+          "time": 1792404119,
+          "expires": 1792447319,
+          "event": "message",
+          "topic": "deluno-ac1c1a",
+          "title": "Import completed: Sintel (2010)",
+          "message": "Sintel (2010) was imported from Sintel.2010.WEB.1080p using copy."
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/deluno-ac1c1a/json?poll=1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/x-ndjson; charset=utf-8"
+        },
+        "body": {
+          "id": "6TQESuhVrv3L",
+          "time": 1792404119,
+          "expires": 1792447319,
+          "event": "message",
+          "topic": "deluno-ac1c1a",
+          "title": "Import completed: Sintel (2010)",
+          "message": "Sintel (2010) was imported from Sintel.2010.WEB.1080p using copy."
+        }
+      }
+    }
+  ]
+}
