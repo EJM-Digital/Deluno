@@ -110,10 +110,10 @@ public sealed class AnAutomaticCycleHuntsAnUpgradeForEachKindOfTitleTests
     }
 
     /// <summary>The cycle of the real planner and the real handler: the library is due, its search job is queued and then run.</summary>
-    private static async Task RunTheCycleAsync(Rig rig, string libraryId, string name, string mediaType)
+    private static async Task RunTheCycleAsync(Rig rig, string libraryId, string name, string mediaType, bool missing = false, bool upgrades = true)
     {
         var jobs = rig.App.Services.GetRequiredService<IJobQueueRepository>();
-        var due = new LibraryAutomationPlanItem(libraryId, name, mediaType, true, false, true, 1, 24, 25, null, null);
+        var due = new LibraryAutomationPlanItem(libraryId, name, mediaType, true, missing, upgrades, 1, 24, 25, null, null);
         Assert.True(await jobs.RequestLibrarySearchAsync(due, CancellationToken.None));
         await jobs.PlanLibrarySearchesAsync([due], CancellationToken.None);
         var queued = Assert.Single(await jobs.ListAsync(100, CancellationToken.None), item => Deluno.Contracts.LibrarySearchJobTypes.IsLibrarySearch(item.JobType));
@@ -176,5 +176,62 @@ public sealed class AnAutomaticCycleHuntsAnUpgradeForEachKindOfTitleTests
         Assert.Equal(1, await ApiScenes.ScalarAsync(rig.App, "jobs", $"SELECT COUNT(*) FROM download_dispatches WHERE entity_id = '{episodeId}' AND status = 'sent';"));
         Assert.Equal(1, await ApiScenes.ScalarAsync(rig.App, "jobs", $"SELECT replacement_authorized FROM download_dispatches WHERE entity_id = '{episodeId}';"));
         Assert.True(File.Exists(file), "the file already in the library stays until the better one is imported");
+    }
+
+    [Fact]
+    public async Task A_due_cycle_finds_a_film_that_is_missing_grabs_it_and_hands_it_to_the_client_end_to_end()
+    {
+        await using var rig = await RigAsync();
+        var films = await RoutedLibraryAsync(rig, "movies", "Films", rig.FilmIndexerId);
+        var added = await PostOkAsync(rig.App, "/api/movies/", new { title = "Sintel", releaseYear = 2010, imdbId = "tt1727587", monitored = true, libraryId = films, searchForMissingNow = false });
+        var movieId = added.GetProperty("id").GetString()!;
+        var profile = (await PostOkAsync(rig.App, "/api/quality-profiles", new
+        {
+            name = "Small 720p films, upgrading", mediaType = "movies", cutoffQuality = "Bluray 720p", allowedQualities = "DVD,Bluray 720p", customFormatIds = string.Empty,
+            upgradeUntilCutoff = true, upgradeUnknownItems = false,
+            sizeRules = new[] { new { quality = "Bluray 720p", minGb = 0.0, maxGb = 0.0, minMb = 0.0, maxMb = 0.0 } }
+        })).GetProperty("id").GetString()!;
+        (await rig.App.Client.PostAsJsonAsync("/api/movies/bulk/quality-profile", new { movieIds = new[] { movieId }, qualityProfileId = profile })).EnsureSuccessStatusCode();
+        Assert.Equal(0, rig.Adds);
+        var askedBefore = rig.Jackett.Requests.Count;
+
+        await RunTheCycleAsync(rig, films, "Films", "movies", missing: true, upgrades: false);
+
+        Assert.True(rig.Jackett.Requests.Count > askedBefore, "the cycle asked the indexer");
+        Assert.Contains(rig.Jackett.Requests.Skip(askedBefore), request => request.PathAndQuery.Contains("t=movie", StringComparison.Ordinal) || request.PathAndQuery.Contains("t=search", StringComparison.Ordinal));
+        Assert.True(rig.Adds == 1, string.Join(" | ", rig.Jackett.Requests.Skip(askedBefore).Select(r => r.PathAndQuery)) + " // " + await ApiScenes.TextAsync(rig.App, "movies", $"SELECT last_search_result FROM movie_wanted_state WHERE movie_id = '{movieId}';") + " // " + await rig.App.Client.GetStringAsync("/api/activity?take=8"));
+        var sent = Assert.Single(rig.Qbit.Requests, request => request.Method == "POST" && request.PathAndQuery.EndsWith("torrents/add", StringComparison.Ordinal));
+        Assert.Contains("A779FA758F2229586EEBC2E5960EB32FE5659596", sent.Body, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, await ApiScenes.ScalarAsync(rig.App, "jobs", $"SELECT COUNT(*) FROM download_dispatches WHERE entity_id = '{movieId}' AND status = 'sent';"));
+        Assert.Equal(0, await ApiScenes.ScalarAsync(rig.App, "jobs", $"SELECT replacement_authorized FROM download_dispatches WHERE entity_id = '{movieId}';"));
+    }
+
+    [Fact]
+    public async Task A_due_upgrade_cycle_leaves_a_film_that_already_meets_its_cutoff_alone()
+    {
+        await using var rig = await RigAsync();
+        var films = await RoutedLibraryAsync(rig, "movies", "Films", rig.FilmIndexerId);
+        var profile = (await PostOkAsync(rig.App, "/api/quality-profiles", new
+        {
+            name = "Small 720p films, upgrading", mediaType = "movies", cutoffQuality = "Bluray 720p", allowedQualities = "DVD,Bluray 720p", customFormatIds = string.Empty,
+            upgradeUntilCutoff = true, upgradeUnknownItems = false,
+            sizeRules = new[] { new { quality = "Bluray 720p", minGb = 0.0, maxGb = 0.0, minMb = 0.0, maxMb = 0.0 } }
+        })).GetProperty("id").GetString()!;
+        // "Stop searching once the cutoff is met" is the person's own switch in Automation; without it a file at its cutoff is still looked over for a better copy.
+        // The film on disk is four bytes, so the table's minimum size is set to nothing for it to count as a real file at its cutoff.
+        var model = System.Text.Json.Nodes.JsonNode.Parse(await rig.App.Client.GetStringAsync("/api/quality-model"))!.AsObject();
+        foreach (var tier in model["tiers"]!.AsArray()) tier!["movieMinGb"] = 0;
+        (await rig.App.Client.PutAsJsonAsync("/api/quality-model", new { tiers = model["tiers"], upgradeStop = new { stopWhenCutoffMet = true, requireCustomFormatGainForSameQuality = false } })).EnsureSuccessStatusCode();
+        var held = await ApiScenes.FilmOnDiskAsync(rig.App, "Sintel", 2010, films, quality: "Bluray 720p");
+        (await rig.App.Client.PostAsJsonAsync("/api/movies/bulk/quality-profile", new { movieIds = new[] { held.MovieId }, qualityProfileId = profile })).EnsureSuccessStatusCode();
+
+        var askedBefore = rig.Jackett.Requests.Count;
+
+        await RunTheCycleAsync(rig, films, "Films", "movies");
+
+        Assert.Equal(0, rig.Adds);
+        Assert.True(askedBefore == rig.Jackett.Requests.Count, string.Join(" | ", rig.Jackett.Requests.Skip(askedBefore).Select(r => r.PathAndQuery)) + " // " + await ApiScenes.TextAsync(rig.App, "movies", $"SELECT wanted_status || ' / ' || COALESCE(wanted_reason,'') || ' / ' || COALESCE(current_quality,'') || ' / ' || COALESCE(target_quality,'') || ' / ' || quality_cutoff_met || ' / ' || COALESCE(last_search_result,'') FROM movie_wanted_state WHERE movie_id = '{held.MovieId}';"));
+        Assert.Equal(0, await ApiScenes.ScalarAsync(rig.App, "jobs", $"SELECT COUNT(*) FROM download_dispatches WHERE entity_id = '{held.MovieId}';"));
+        Assert.True(File.Exists(held.FilePath));
     }
 }
