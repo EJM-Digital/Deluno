@@ -469,6 +469,45 @@ describe("Backups (System > Backups)", () => {
     expect(await screen.findByText(/The data folder is locked/)).toBeInTheDocument();
     expect(screen.queryByText(/Backup staged/)).toBeNull();
   });
+
+  it("a backup with keys asks for its password, sends it with the file, and a wrong one is shown as an error", async () => {
+    loaderData.backupSettings = settings();
+    answer({
+      "POST /api/backups/restore/preview": { valid: true, message: "A valid Deluno backup.", manifest: null, warnings: [], needsPassword: true },
+      "POST /api/backups/restore": { restored: false, needsPassword: true, message: "That backup password is not the one this backup was made with. Nothing was restored." }
+    });
+    renderAt("/system/backups");
+    fireEvent.change(screen.getByLabelText("Backup archive"), { target: { files: [zip()] } });
+
+    const restoreButton = await screen.findByRole("button", { name: "Restore backup" });
+    expect(restoreButton).toBeDisabled();
+    fireEvent.change(await screen.findByLabelText("Backup password for this file"), { target: { value: "wrong horse" } });
+    expect(restoreButton).toBeEnabled();
+    fireEvent.click(restoreButton);
+    fireEvent.click(await within(await screen.findByRole("dialog")).findByRole("button", { name: "Restore now" }));
+
+    await waitFor(() => {
+      const call = authedFetchMock.mock.calls.find((c) => c[0] === "/api/backups/restore")!;
+      expect(((call[1] as RequestInit).body as FormData).get("password")).toBe("wrong horse");
+    });
+    expect(await screen.findByText(/not the one this backup was made with/)).toBeInTheDocument();
+    expect(screen.queryByText(/Backup staged/)).toBeNull();
+  });
+
+  it("the backup password is set from the schedule section, and with none it says the keys are left out", async () => {
+    loaderData.backupSettings = settings();
+    answer({});
+    renderAt("/system/backups");
+
+    expect(screen.getByText(/backups leave Deluno's keys out/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Backup password"), { target: { value: "correct horse" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save backup schedule" }));
+
+    await waitFor(() => {
+      const call = authedFetchMock.mock.calls.find((c) => c[0] === "/api/backups/settings" && (c[1] as RequestInit | undefined)?.method === "PUT")!;
+      expect(JSON.parse((call[1] as RequestInit).body as string).backupPassword).toBe("correct horse");
+    });
+  });
 });
 
 describe("Recycle bin (System > Recycle bin)", () => {
