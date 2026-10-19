@@ -13,6 +13,7 @@ import { settleFormAfterSave } from "../lib/settle-form-after-save";
 import { toneSortValue } from "../lib/status-tones";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
+import { ConfigAreas } from "../lib/config-areas";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { Eye, LoaderCircle, Plus, RefreshCcw } from "lucide-react";
 import { TagPicker } from "../components/app/tag-picker";
@@ -138,7 +139,7 @@ export async function settingsListsLoader(): Promise<LoaderData> {
 }
 
 /** What makes this page read its data again (#1179). */
-const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["IntakeSourceChanged", "LibraryChanged", "SettingsChanged"] };
+const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["IntakeSourceChanged", "LibraryChanged", "SettingsChanged"], areas: [ConfigAreas.lists] };
 
 export function SettingsListsPage() {
   useLiveRefresh(SETTINGS_REFRESH);

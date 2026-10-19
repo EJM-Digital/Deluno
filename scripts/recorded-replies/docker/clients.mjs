@@ -205,7 +205,69 @@ async function sabnzbd() {
   }
 }
 
-const jobs = { qbittorrent, deluge, transmission, sabnzbd };
+// ------------------------------------------------------------------ SABnzbd and NZBGet: the files inside a job (the dangerous-file rule's input)
+
+const NZBGET = { username: 'nzbget', password: 'tegbzn6789' };
+
+/** A Usenet release (the film and an .nfo as real articles) added paused, listed, then let through and listed again once it has finished. */
+async function sabnzbdFiles() {
+  addSecret(SAB_KEY);
+  const s = new Client(local('sabnzbd'));
+  const api = (mode, extra = {}) => s.get('/api?' + new URLSearchParams({ mode, output: 'json', apikey: SAB_KEY, ...extra }));
+  const ver = replyJson(await api('version')).version;
+  const clear = async () => { await api('queue', { name: 'delete', value: 'all', del_files: '1' }); await api('history', { name: 'delete', value: 'all', del_files: '1' }); };
+  await clear();
+  const f = await makeFilm({ title: 'Recorded SABnzbd Files', usenet: true });
+  const bytes = new Uint8Array(await (await fetch(`${local('fixture')}/dl/${f.url.split('/dl/')[1]}`)).arrayBuffer());
+  const add = await s.send({ method: 'POST', path: '/api?' + new URLSearchParams({ mode: 'addfile', output: 'json', apikey: SAB_KEY, cat: 'movies', nzbname: f.release, priority: '-2' }), multipart: { name: { bytes, filename: f.release + '.nzb', type: 'application/x-nzb' } } });
+  const id = replyJson(add)?.nzo_ids?.[0];
+  if (!id) throw new Error('SABnzbd gave no job id: ' + add.reply.bodyText);
+  try {
+    await until('SABnzbd to list the paused job with its files', 30, async () => replyJson(await api('get_files', { value: id }))?.files?.length);
+    save('sabnzbd', ver, 'files-of-a-paused-job', 'A release of a film and an .nfo added paused (priority -2): the queue, then mode=get_files for that job (the call the dangerous-file check makes).', [add, await api('queue'), await api('get_files', { value: id })]);
+    const resume = await api('queue', { name: 'resume', value: id });
+    await until('SABnzbd to finish the job', 180, async () => replyJson(await api('history', { search: f.release, limit: '10' }))?.history?.slots?.some((slot) => slot.status === 'Completed'));
+    save('sabnzbd', ver, 'files-of-a-finished-job', 'The same job resumed and let finish: the resume, the history row, then mode=get_files for the job id after it has left the queue, and the queue.', [resume, await api('history', { search: f.release, limit: '10' }), await api('get_files', { value: id }), await api('queue')]);
+  } finally { await clear(); }
+}
+
+async function nzbgetFiles() {
+  addSecret(NZBGET.password);
+  const n = new Client(local('nzbget'), { headers: { authorization: 'Basic ' + Buffer.from(`${NZBGET.username}:${NZBGET.password}`).toString('base64') } });
+  let seq = 100;
+  const rpc = (method, params = []) => n.send({ method: 'POST', path: '/jsonrpc', json: { method, params, id: ++seq } });
+  const result = (exchange) => replyJson(exchange)?.result;
+  const ver = String(result(await rpc('version'))).replace(/-.*$/, '');
+  // The e2e stack's NZBGet starts with no news server; point it at the fixture's the way the specs do (tests/e2e/clients.ts, setUp). Not recorded.
+  {
+    const wanted = { DestDir: '/downloads/completed', InterDir: '/downloads/incomplete', 'Server1.Active': 'yes', 'Server1.Name': 'fixture', 'Server1.Host': 'fixture', 'Server1.Port': '1119', 'Server1.Username': 'e2e', 'Server1.Password': 'e2e', 'Server1.Connections': '4', 'Server1.Encryption': 'no' };
+    const byName = new Map((result(await rpc('config')) ?? []).map((c) => [c.Name, c.Value]));
+    if (byName.get('Server1.Host') !== 'fixture') {
+      for (const [k, v] of Object.entries(wanted)) byName.set(k, v);
+      for (const own of ['Version', 'ConfigFile', 'AppBin', 'AppDir']) byName.delete(own);
+      await rpc('saveconfig', [[...byName.entries()].map(([Name, Value]) => ({ Name, Value }))]);
+      await rpc('reload');
+      await sleep(3000);
+      await until('NZBGet to be back after its reload', 120, async () => (result(await rpc('config')) ?? []).find((c) => c.Name === 'Server1.Host')?.Value === 'fixture', 2000);
+    }
+  }
+  const f = await makeFilm({ title: 'Recorded NZBGet Files', usenet: true });
+  const add = await rpc('append', [f.release + '.nzb', f.url, 'movies', 0, false, true, '', 0, 'SCORE', []]);
+  const id = result(add);
+  if (!id) throw new Error('NZBGet gave no id: ' + add.reply.bodyText);
+  try {
+    await until('NZBGet to list the paused job with its files', 30, async () => result(await rpc('listfiles', [0, 0, id]))?.length);
+    save('nzbget', ver, 'files-of-a-paused-job', 'A release of a film and an .nfo appended paused: the queue, then listfiles for that job (the call the dangerous-file check makes).', [add, await rpc('listgroups'), await rpc('listfiles', [0, 0, id])]);
+    const resume = await rpc('editqueue', ['GroupResume', '', [id]]);
+    await until('NZBGet to finish the job', 180, async () => (result(await rpc('history', [false])) ?? []).some((row) => row.NZBID === id && /SUCCESS/.test(row.Status)));
+    save('nzbget', ver, 'files-of-a-finished-job', 'The same job resumed and let finish: the resume, the history row, then listfiles for the job id after it has left the queue, and the queue.', [resume, await rpc('history', [false]), await rpc('listfiles', [0, 0, id]), await rpc('listgroups')]);
+  } finally {
+    await rpc('editqueue', ['HistoryFinalDelete', '', [id]]);
+    await rpc('editqueue', ['GroupFinalDelete', '', [id]]);
+  }
+}
+
+const jobs = { qbittorrent, deluge, transmission, sabnzbd, sabnzbdFiles, nzbgetFiles };
 for (const name of process.argv.slice(2)) {
   if (!jobs[name]) { console.error('unknown: ' + name); process.exit(2); }
   await jobs[name]();

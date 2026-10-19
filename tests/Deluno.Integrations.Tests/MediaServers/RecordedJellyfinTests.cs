@@ -120,7 +120,7 @@ public sealed class RecordedJellyfinTests
     [Fact]
     public void The_real_setup_wizard_the_empty_library_and_the_first_calls_are_recorded_as_the_server_answers_them()
     {
-        // The recordings other tests do not need call by call: they pin the real shapes (the wizard's 500 on RemoteAccess is real).
+        // The recordings other tests do not need call by call: they pin the real shapes (the wizard's steps answer 204 here).
         Assert.Equal(204, RecordedReplies.Jellyfin("wizard").Exchanges[7].Reply.Status);
         Assert.Contains("\"StartupWizardCompleted\"", RecordedReplies.Jellyfin("wizard").Exchanges[0].Reply.Body);
         Assert.Equal(0, RecordedReplies.Jellyfin("library-empty").Exchanges[2].Reply.Json()["TotalRecordCount"]!.GetValue<int>());
@@ -132,8 +132,9 @@ public sealed class RecordedJellyfinTests
         Assert.Equal(204, RecordedReplies.Jellyfin("collection-sync").Exchanges[4].Reply.Status);
         Assert.NotNull(RecordedReplies.Jellyfin("collection-sync").Exchanges[0].Reply.Json()["Id"]);
         Assert.Equal(204, RecordedReplies.Jellyfin("user-created").Exchanges[1].Reply.Status);
-        // Jellyfin answered its delete-by-id with 500 and an unknown id with 400 (recorded, not assumed).
-        Assert.Equal(new[] { 200, 500, 200, 400 }, RecordedReplies.Jellyfin("item-deleted").Exchanges.Select(e => e.Reply.Status));
+        // Jellyfin answered its delete-by-id with 204 and an unknown id with 400, and 500 for a film whose file it could not remove (recorded, not assumed).
+        Assert.Equal(new[] { 200, 204, 200, 400 }, RecordedReplies.Jellyfin("item-deleted").Exchanges.Select(e => e.Reply.Status));
+        Assert.Equal(500, RecordedReplies.Jellyfin("item-delete-refused").Single.Reply.Status);
         Assert.Equal(1, RecordedReplies.Jellyfin("watched").Exchanges[1].Reply.Json()["TotalRecordCount"]!.GetValue<int>());
         Assert.Equal(204, RecordedReplies.Jellyfin("sessions-playing").Exchanges[1].Reply.Status);
     }

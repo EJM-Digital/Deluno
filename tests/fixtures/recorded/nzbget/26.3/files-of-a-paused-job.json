@@ -1,0 +1,204 @@
+{
+  "app": "nzbget",
+  "version": "26.3",
+  "state": "files-of-a-paused-job",
+  "recordedAt": "2026-10-19T01:54:40Z",
+  "note": "A release of a film and an .nfo appended paused: the queue, then listfiles for that job (the call the dangerous-file check makes).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "append",
+          "params": [
+            "Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E.nzb",
+            "http://fixture:8765/dl/Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E.nzb",
+            "movies",
+            0,
+            false,
+            true,
+            "",
+            0,
+            "SCORE",
+            []
+          ],
+          "id": 106
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 106,
+          "result": 4
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "listgroups",
+          "params": [],
+          "id": 108
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 108,
+          "result": [
+            {
+              "FirstID": 4,
+              "LastID": 4,
+              "RemainingSizeLo": 69162604,
+              "RemainingSizeHi": 0,
+              "RemainingSizeMB": 65,
+              "PausedSizeLo": 69162604,
+              "PausedSizeHi": 0,
+              "PausedSizeMB": 65,
+              "RemainingFileCount": 2,
+              "RemainingParCount": 0,
+              "MinPriority": 0,
+              "MaxPriority": 0,
+              "ActiveDownloads": 0,
+              "Status": "PAUSED",
+              "NZBID": 4,
+              "NZBName": "Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E",
+              "NZBNicename": "Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E",
+              "Kind": "NZB",
+              "URL": "http://fixture:8765/dl/Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E.nzb",
+              "NZBFilename": "Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E.nzb",
+              "DestDir": "/downloads/incomplete/Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E.#5",
+              "FinalDir": "",
+              "Category": "Movies",
+              "ParStatus": "NONE",
+              "ExParStatus": "NONE",
+              "UnpackStatus": "NONE",
+              "MoveStatus": "NONE",
+              "ScriptStatus": "NONE",
+              "DeleteStatus": "NONE",
+              "MarkStatus": "NONE",
+              "UrlStatus": "SUCCESS",
+              "FileSizeLo": 69162604,
+              "FileSizeHi": 0,
+              "FileSizeMB": 65,
+              "FileCount": 2,
+              "MinPostTime": 1704067200,
+              "MaxPostTime": 1704067200,
+              "TotalArticles": 95,
+              "SuccessArticles": 0,
+              "FailedArticles": 0,
+              "Health": 1000,
+              "CriticalHealth": 1000,
+              "DupeKey": "",
+              "DupeScore": 0,
+              "DupeMode": "SCORE",
+              "Deleted": false,
+              "DownloadedSizeLo": 0,
+              "DownloadedSizeHi": 0,
+              "DownloadedSizeMB": 0,
+              "DownloadTimeSec": 0,
+              "PostTotalTimeSec": 0,
+              "ParTimeSec": 0,
+              "RepairTimeSec": 0,
+              "UnpackTimeSec": 0,
+              "MessageCount": 2,
+              "ExtraParBlocks": 0,
+              "Parameters": [
+                {
+                  "Name": "*Unpack:",
+                  "Value": "yes"
+                }
+              ],
+              "ScriptStatuses": [],
+              "ServerStats": [],
+              "PostInfoText": "NONE",
+              "PostStageProgress": 504439605,
+              "PostStageTimeSec": 0,
+              "Log": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "listfiles",
+          "params": [
+            0,
+            0,
+            4
+          ],
+          "id": 109
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 109,
+          "result": [
+            {
+              "ID": 5,
+              "FileSizeLo": 69159748,
+              "FileSizeHi": 0,
+              "RemainingSizeLo": 69159748,
+              "RemainingSizeHi": 0,
+              "PostTime": 1704067200,
+              "FilenameConfirmed": false,
+              "Paused": true,
+              "NZBID": 4,
+              "NZBName": "Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E",
+              "NZBNicename": "Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E",
+              "NZBFilename": "Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E.nzb",
+              "Subject": "[1/2] - \"Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E.mkv\" yEnc (1/94) 67037813",
+              "Filename": "Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E.mkv",
+              "DestDir": "/downloads/incomplete/Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E.#5",
+              "Category": "Movies",
+              "Priority": 0,
+              "ActiveDownloads": 0,
+              "Progress": 0
+            },
+            {
+              "ID": 6,
+              "FileSizeLo": 2856,
+              "FileSizeHi": 0,
+              "RemainingSizeLo": 2856,
+              "RemainingSizeHi": 0,
+              "PostTime": 1704067200,
+              "FilenameConfirmed": false,
+              "Paused": true,
+              "NZBID": 4,
+              "NZBName": "Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E",
+              "NZBNicename": "Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E",
+              "NZBFilename": "Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E.nzb",
+              "Subject": "[2/2] - \"Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E.nfo\" yEnc (1/1) 2631",
+              "Filename": "Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E.nfo",
+              "DestDir": "/downloads/incomplete/Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E.#5",
+              "Category": "Movies",
+              "Priority": 0,
+              "ActiveDownloads": 0,
+              "Progress": 0
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

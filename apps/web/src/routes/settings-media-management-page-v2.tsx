@@ -14,6 +14,7 @@ import { SecretUnreadableNotice } from "../components/app/secret-unreadable-noti
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { PageLink } from "../components/app/page-link";
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator } from "react-router-dom";
+import { ConfigAreas } from "../lib/config-areas";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { Loader2, Plus, Trash2, Wifi } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -92,7 +93,7 @@ export async function settingsMediaManagementLoader(): Promise<LoaderData> {
 }
 
 /** What makes this page read its data again (#1179). */
-const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["SettingsChanged", "LibraryChanged"] };
+const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["SettingsChanged", "LibraryChanged"], areas: [ConfigAreas.processors] };
 
 export function SettingsMediaManagementPage() {
   useLiveRefresh(SETTINGS_REFRESH);

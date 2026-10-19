@@ -58,6 +58,7 @@ Docker in WSL and a `wsl` session held open. `docker/apps.compose.yaml` is a com
 | `docker/media.mjs jellyfin\|emby\|plex` | Jellyfin, Emby and an UNCLAIMED Plex: wizard, libraries, catalogue, watched, sessions, refresh, folder browser, collections, item delete; `REC_ONLY=state,state` writes only those states | the service; a fresh volume for Jellyfin and Emby; Plex waits out its start-up |
 | `docker/seerr.mjs` | Seerr linked to a Jellyfin: setup, requests pending, approved, declined, media available and deleted, and the webhooks Seerr sends | services `jellyfin` and `seerr` on fresh volumes, `tracker` |
 | `docker/sabnzbd.mjs` | SABnzbd's refused adds | service `sabnzbd` |
+| `docker/clients.mjs sabnzbdFiles nzbgetFiles` | the files inside a Usenet job (SABnzbd `get_files`, NZBGet `listfiles`): a film and an `.nfo` posted as real articles, listed while the job is paused in the queue and again once it has finished and left the queue (both clients then answer an empty list) | the e2e stack (`tests/e2e/compose.yaml`: `fixture`, `sabnzbd`, `nzbget`) with `REC_*_PORT` for its published ports |
 | `docker/tmdb.mjs` | the deployed metadata gateway's replies to the broker calls (real GETs; no Docker) | internet |
 
 `docker/lib.mjs` is the shared recorder (cookies, the scrub, the leak check); `scrub.mjs` keeps a Plex item address under `key`. Nothing here

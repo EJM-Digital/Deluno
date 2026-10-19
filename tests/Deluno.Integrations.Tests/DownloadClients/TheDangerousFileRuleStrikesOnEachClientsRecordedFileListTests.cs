@@ -13,7 +13,8 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// The dangerous or junk file rule (cleanup sheet C6) reads what the client really lists inside a download. For each torrent client
 /// the file names come from the client's own recorded reply through its real adapter (qBittorrent 5.2.1, Transmission 4.1.3, Deluge
 /// 2.2.0); they are handed to the real health evaluator, and a blocked name is one instant strike while a clean listing is left alone.
-/// SABnzbd and NZBGet are not here: their file listings have not been recorded (tests/fixtures/recorded/MISSING.md).
+/// SABnzbd 5.1.3 and NZBGet 26.3 (a paused job of a film and an .nfo, recorded in Docker) and rTorrent 0.16.25 (a finished folder of three
+/// episodes) are here too. uTorrent is not: its listing needs the Windows runner (tests/fixtures/recorded/MISSING.md).
 /// </summary>
 public sealed class TheDangerousFileRuleStrikesOnEachClientsRecordedFileListTests
 {
@@ -39,6 +40,34 @@ public sealed class TheDangerousFileRuleStrikesOnEachClientsRecordedFileListTest
                 break;
             }
 
+            case "sabnzbd":
+            {
+                // The job's own recorded exchanges: the id the client gave, then its get_files reply.
+                var recording = RecordedReplies.Sabnzbd("files-of-a-paused-job");
+                var handler = RecordedReplies.Handler("sabnzbd", [recording]);
+                files = await new SabnzbdDownloadClient(new Factory(handler))
+                    .GetFilesAsync(Client("sabnzbd", secret: "key"), NzoIdOf(recording), CancellationToken.None);
+                break;
+            }
+
+            case "nzbget":
+            {
+                var recording = RecordedReplies.Nzbget("files-of-a-paused-job");
+                var handler = RecordedReplies.Handler("nzbget", [recording]);
+                files = await new NzbGetDownloadClient(new Factory(handler))
+                    .GetFilesAsync(Client("nzbget", "nzbget"), "4", CancellationToken.None);
+                break;
+            }
+
+            case "rtorrent":
+            {
+                // rTorrent 0.16.25's f.multicall for a finished release folder of three episodes.
+                var handler = RecordedReplies.Handler("rtorrent", [RecordedReplies.Rtorrent("finished-folder")]);
+                files = await new RtorrentDownloadClient(new Factory(handler))
+                    .GetFilesAsync(Client("rtorrent"), "C703E0C4CD781E6772DDF298A5486ABA003F5353", CancellationToken.None);
+                break;
+            }
+
             default:
             {
                 var handler = new Calls("deluge", [RecordedReplies.Deluge("sign-in"), RecordedReplies.Deluge("location-moved")]).Build();
@@ -51,6 +80,9 @@ public sealed class TheDangerousFileRuleStrikesOnEachClientsRecordedFileListTest
         Assert.NotEmpty(files);
         return files;
     }
+
+    private static string NzoIdOf(Recording recording)
+        => System.Text.Json.Nodes.JsonNode.Parse(recording.Exchanges[0].Reply.Body!)!["nzo_ids"]![0]!.GetValue<string>();
 
     private static DownloadHealthRule DangerousFileRule(string appliesTo)
         => new(
@@ -71,6 +103,9 @@ public sealed class TheDangerousFileRuleStrikesOnEachClientsRecordedFileListTest
     [InlineData("qbittorrent", "*.nfo")]
     [InlineData("transmission", "*.nfo")]
     [InlineData("deluge", "*.mkv")]
+    [InlineData("sabnzbd", "*.nfo")]
+    [InlineData("nzbget", "*.nfo")]
+    [InlineData("rtorrent", "*S01E02.mkv")]
     public async Task A_blocked_file_in_the_clients_own_file_list_is_one_instant_strike(string client, string pattern)
     {
         var files = await RecordedFilesAsync(client);
@@ -89,6 +124,9 @@ public sealed class TheDangerousFileRuleStrikesOnEachClientsRecordedFileListTest
     [InlineData("qbittorrent")]
     [InlineData("transmission")]
     [InlineData("deluge")]
+    [InlineData("sabnzbd")]
+    [InlineData("nzbget")]
+    [InlineData("rtorrent")]
     public async Task A_listing_with_no_blocked_name_is_left_alone(string client)
     {
         var files = await RecordedFilesAsync(client);
@@ -103,6 +141,7 @@ public sealed class TheDangerousFileRuleStrikesOnEachClientsRecordedFileListTest
     [InlineData("qbittorrent", "*.nfo", DownloadHealthAppliesTo.Usenet)]
     [InlineData("transmission", "*.nfo", DownloadHealthAppliesTo.Usenet)]
     [InlineData("deluge", "*.mkv", DownloadHealthAppliesTo.Usenet)]
+    [InlineData("rtorrent", "*S01E02.mkv", DownloadHealthAppliesTo.Usenet)]
     public async Task A_usenet_only_rule_does_not_strike_a_torrent_whose_file_list_is_blocked_though_the_warning_stays(string client, string pattern, string scope)
     {
         var files = await RecordedFilesAsync(client);
@@ -117,6 +156,8 @@ public sealed class TheDangerousFileRuleStrikesOnEachClientsRecordedFileListTest
     [InlineData("qbittorrent", "*.nfo")]
     [InlineData("transmission", "*.nfo")]
     [InlineData("deluge", "*.mkv")]
+    [InlineData("sabnzbd", "*.nfo")]
+    [InlineData("nzbget", "*.nfo")]
     public async Task A_torrents_only_rule_does_not_strike_a_usenet_item_with_the_same_blocked_list(string client, string pattern)
     {
         var files = await RecordedFilesAsync(client);
