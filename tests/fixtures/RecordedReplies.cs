@@ -38,6 +38,8 @@ public static class RecordedReplies
     public static Recording Plex(string state) => RecordedReplies.LoadLatest("plex", state);
     public static Recording Seerr(string state) => RecordedReplies.LoadLatest("seerr", state);
     public static Recording Flaresolverr(string state) => RecordedReplies.LoadLatest("flaresolverr", state);
+    /// <summary>ntfy's publish API (<c>POST /{topic}</c>), recorded from the real server in Docker: an open one, and one where nobody may publish without an account.</summary>
+    public static Recording Ntfy(string state) => RecordedReplies.LoadLatest("ntfy", state);
     /// <summary>Sonarr v4's API (<c>/api/v3</c>), recorded from the real app with one real series.</summary>
     public static Recording Sonarr(string state) => RecordedReplies.LoadLatest("sonarr", state);
     /// <summary>Radarr's API (<c>/api/v3</c>), recorded from the real app with one real film.</summary>

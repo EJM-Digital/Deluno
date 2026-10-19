@@ -1,0 +1,28 @@
+{
+  "app": "ntfy",
+  "version": "2.32.0",
+  "state": "publish-refused",
+  "recordedAt": "2026-10-19T10:01:44Z",
+  "note": "The same publish to a server where nobody may publish without an account: 403 forbidden.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/deluno-test",
+        "bodyText": "This is a test notification from Deluno. Your webhook is configured correctly."
+      },
+      "reply": {
+        "status": 403,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "code": 40301,
+          "http": 403,
+          "error": "forbidden",
+          "link": "https://ntfy.sh/docs/publish/#authentication"
+        }
+      }
+    }
+  ]
+}
