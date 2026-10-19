@@ -75,3 +75,14 @@ test("the Windows end-to-end job is due exactly when the installer job is", () =
   // Not due, but it ran: the flags and the job condition disagree.
   assert.match(verdict(needs({ due: { run_windows_installer: false }, results: { "e2e-windows": "success" } })).join(" "), /e2e-windows ended success; it was not due/);
 });
+
+test("with the Windows jobs on a self-hosted runner, the Windows end-to-end job must be skipped, never run", () => {
+  const options = { windowsSelfHosted: true };
+  assert.deepEqual(verdict(needs({ results: { "e2e-windows": "skipped" } }), options), []);
+  assert.match(verdict(needs({ results: { "e2e-windows": "success" } }), options).join(" "), /e2e-windows ended success; it was not due/);
+  assert.match(verdict(needs({ results: { "e2e-windows": "failure" } }), options).join(" "), /e2e-windows ended failure/);
+  // Only that job is waived: a skipped installer is still a failure when it was due.
+  assert.match(verdict(needs({ results: { "windows-installer": "skipped", "e2e-windows": "skipped" } }), options).join(" "), /windows-installer ended skipped; it was due/);
+  // Without the variable nothing changes.
+  assert.match(verdict(needs({ results: { "e2e-windows": "skipped" } })).join(" "), /e2e-windows ended skipped; it was due/);
+});

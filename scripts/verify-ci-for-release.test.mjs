@@ -49,3 +49,18 @@ test("a run that did not run the installer and end-to-end jobs (an ordinary push
   const skipped = passedJobs.map((job) => (job.name === "End-to-end (films)" ? { ...job, conclusion: "skipped" } : job));
   assert.match(evaluateRun(run({ event: "workflow_dispatch" }), skipped).join("\n"), /no "End-to-end" job passed/);
 });
+
+test("Windows end-to-end legs skipped on purpose (self-hosted Windows runner) count as covered by the golden path, but only beside a passed installer", () => {
+  const dispatch = run({ event: "workflow_dispatch" });
+  const skippedLegs = passedJobs.map((job) => (job.name.startsWith("Windows end-to-end") ? { ...job, conclusion: "skipped" } : job));
+  assert.deepEqual(evaluateRun(dispatch, skippedLegs), []);
+  // The installer failed, so its dependents were skipped: still refused.
+  const installerFailed = skippedLegs.map((job) => (job.name === "Windows installer" ? { ...job, conclusion: "failure" } : job));
+  assert.match(evaluateRun(dispatch, installerFailed).join(" "), /no "Windows installer" job passed/);
+  assert.match(evaluateRun(dispatch, installerFailed).join(" "), /no "Windows end-to-end" job passed/);
+  // A leg that failed is not covered, and the Linux end-to-end groups are never waived.
+  const failedLeg = passedJobs.map((job) => (job.name.startsWith("Windows end-to-end") ? { ...job, conclusion: "failure" } : job));
+  assert.match(evaluateRun(dispatch, failedLeg).join(" "), /no "Windows end-to-end" job passed/);
+  const linuxSkipped = skippedLegs.map((job) => (job.name === "End-to-end (films)" ? { ...job, conclusion: "skipped" } : job));
+  assert.match(evaluateRun(dispatch, linuxSkipped).join(" "), /no "End-to-end" job passed/);
+});
