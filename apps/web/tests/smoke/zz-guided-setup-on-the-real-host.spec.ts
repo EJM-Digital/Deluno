@@ -104,7 +104,7 @@ function draftFor(roots: { movies: string; tv: string }, client: RecordedAppServ
     indexerName: "Torznab", indexerProtocol: "torznab", indexerUrl: `${indexer.baseUrl}/api/v2.0/indexers/yts/results/torznab/api`,
     clientName: "qBittorrent", clientProtocol: "qbittorrent", clientHost: client.host, clientPort: String(client.port),
     backupEnabled: true, firstTitleType: "movies", firstTitle: "", firstTitleYear: "", firstTitleMonitored: true,
-    skipSignInLocalNetwork: true, updateAutomatically: false,
+    skipSignInLocalNetwork: true, checkForUpdates: false, updateAutomatically: false,
     automation: { ...AUTOMATION_NO, ...automation, restrictAllowedHosts: false }
   };
 }

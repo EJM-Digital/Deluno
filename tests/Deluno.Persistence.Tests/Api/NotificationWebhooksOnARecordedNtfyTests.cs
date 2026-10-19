@@ -95,7 +95,9 @@ public sealed class NotificationWebhooksOnARecordedNtfyTests
 
         var mended = await app.Client.PutAsJsonAsync($"/api/notification-webhooks/{id}", new { name = "Phone", url = open.BaseUrl + Topic, eventFilters = "all", isEnabled = true });
         Assert.Equal(HttpStatusCode.OK, mended.StatusCode);
-        Assert.Equal(open.BaseUrl + Topic, (await mended.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("url").GetString());
+        var mendedUrl = (await mended.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("url").GetString()!;
+        Assert.StartsWith(open.BaseUrl, mendedUrl); // #1364: the address comes back masked, never with its topic
+        Assert.DoesNotContain(Topic.TrimStart('/'), mendedUrl);
         var replay = await app.Client.PostAsync($"/api/notification-webhooks/deliveries/{deliveryId}/replay", content: null);
 
         Assert.Equal(HttpStatusCode.OK, replay.StatusCode);

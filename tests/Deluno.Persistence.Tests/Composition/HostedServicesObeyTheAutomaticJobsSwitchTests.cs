@@ -37,6 +37,7 @@ public sealed class HostedServicesObeyTheAutomaticJobsSwitchTests
         ["PlatformSchemaInitializer"] = "creates Deluno's own settings tables",
         ["IndexerIdentityBackfillService"] = "links Deluno's own history rows to their indexer by id",
         ["IndexerNamesUpgradeService"] = "renames indexer names inside Deluno's own history",
+        ["NotificationSecretsUpgradeService"] = "protects the saved notification addresses and tokens inside Deluno's own database",
         ["CollectionExclusionMigrationHostedService"] = "one-off upgrade of Deluno's own collection settings",
         ["MovieRungRepairReportService"] = "only writes an Activity line about a repair a migration already made",
         // Deluno's own data and settings.
