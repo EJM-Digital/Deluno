@@ -278,3 +278,11 @@ Still missing, and why:
 ## TRaSH Guides sync (`github`, settings-library rows of #1291)
 
 Recorded on 19 Oct 2026 (`github/2022-11-28/trash-guides-*`): the Git address reply (`trash-guides-master-ref`, shortened to the service, HEAD and `refs/heads/master` lines) and the codeload archive at two real commits (`trash-guides-archive-529bd9c`, master at the time, and `trash-guides-archive-a63c1d0`, the commit Deluno ships its source inventory from). The real archives are about 25 MB each; each recorded zip (about 460 KB) holds only the `.json` files directly under `docs/json/{radarr,sonarr}/{cf,cf-groups,quality-profiles}/`, byte for byte, which is everything `GuideUpstreamTreeClient` reads. "Check now", "Preview a sync", "Sync" and the change report are tested against them. Still not recorded: the API fallback (`api.github.com/repos/TRaSH-Guides/Guides/git/ref/heads/master`, `/git/commits/<sha>`, `/git/trees/<sha>?recursive=1`), used only when the archive cannot be read, and GitHub's rate-limit reply on that route.
+
+## Seerr webhook for an approved series (#1296)
+
+- seerr 3.5.0 `webhook-approved` is a film. No approved series (MEDIA_APPROVED, media_type tv) was recorded: `docker/seerr.mjs` declines the series request it makes. The tests that need one (`SeerrWebhookOnRecordedBodiesTests`, `SeerrApprovalsThroughTheWholeApplicationOnRecordedRepliesTests`) take the recorded declined series webhook and change only `notification_type` and `event`. To record it, approve the series request (`POST /api/v1/request/{id}/approve`) before declining a second one.
+
+## Hosted notification services (#1343)
+
+- discord, slack, telegram, pushover and apprise deliveries: each needs an account (or, for Apprise, a running Apprise API with a service behind it), so Deluno's payload for them is held against the service documentation only (`NotificationProviderPayloadTests`). ntfy 2.32.0 and Gotify 3.1.1 are recorded from containers (`docker/notify.mjs`).
