@@ -219,3 +219,57 @@ describe("the download client and the search source the baseline saves", () => {
     expect(result.message).toContain("These answers could not be saved, so set them in Settings: which addresses Deluno answers on");
   });
 });
+
+describe("what the baseline refuses, and the first title bonus", () => {
+  it("refuses with 'Choose a picture quality' when no picture quality is chosen and no profile exists to reuse, and makes nothing", async () => {
+    wire();
+    await expect(createBaseline(build({ form: { qualityPreset: "" } }), [])).rejects.toThrow("Choose a picture quality before Deluno can create a quality profile.");
+    expect(posts("/api/quality-profiles")).toEqual([]);
+  });
+
+  it("refuses with 'Choose a release preference' when a picture quality is chosen without a release preference", async () => {
+    wire();
+    await expect(createBaseline(build({ form: { formatGoal: "" } }), [])).rejects.toThrow("Choose a release preference before Deluno can create release rules.");
+    expect(posts("/api/quality-profiles")).toEqual([]);
+  });
+
+  it("reuses the profile already there instead of refusing when nothing is chosen", async () => {
+    wire();
+    await createBaseline(build({ form: { qualityPreset: "" }, data: { qualityProfiles: [{ id: "p-movies", name: "Mine", mediaType: "movies" }, { id: "p-tv", name: "Mine TV", mediaType: "tv" }] } }), []);
+    expect(posts("/api/quality-profiles")).toEqual([]);
+  });
+
+  it("adds the first title after the baseline and says so in the result", async () => {
+    wire();
+    authedFetchMock.mockImplementation(async (url: string, init?: { body?: string }) =>
+      url === "/api/movies"
+        ? { ok: true, status: 200, json: async () => ({ id: "movie-1", title: "Heat" }), text: async () => "" }
+        : { ok: true, status: 200, json: async () => ({}), text: async () => "" });
+    const created: Parameters<typeof createBaseline>[1] = [];
+
+    const result = await createBaseline(build({ form: { firstTitle: "Heat", firstTitleType: "movies", firstTitleYear: "1995", firstTitleMonitored: true, firstTitleMetadata: null } }), created);
+
+    const call = authedFetchMock.mock.calls.find(([url]) => url === "/api/movies")!;
+    expect(JSON.parse(call[1].body)).toMatchObject({ title: "Heat", releaseYear: 1995, monitored: true });
+    expect(result.message).toContain('baseline created and "Heat" was added.');
+    expect(created.some((entity) => entity.kind === "movie" && entity.id === "movie-1")).toBe(true);
+    expect(authedFetchMock.mock.invocationCallOrder[authedFetchMock.mock.calls.findIndex(([url]) => url === "/api/movies")]).toBeGreaterThan(fetchJsonMock.mock.invocationCallOrder[0]);
+  });
+
+  it("reports a first title that could not be added without undoing the baseline", async () => {
+    wire();
+    authedFetchMock.mockImplementation(async (url: string) =>
+      url === "/api/movies"
+        ? { ok: false, status: 409, json: async () => ({ message: "That movie is already there." }), text: async () => JSON.stringify({ message: "That movie is already there." }) }
+        : { ok: true, status: 200, json: async () => ({}), text: async () => "" });
+    const created: Parameters<typeof createBaseline>[1] = [];
+
+    const result = await createBaseline(build({ form: { firstTitle: "Heat", firstTitleType: "movies", firstTitleYear: "", firstTitleMonitored: true, firstTitleMetadata: null } }), created);
+
+    expect(result.message).toContain("baseline created.");
+    expect(result.message).toContain("The first title was not added:");
+    expect(result.libraries.length).toBe(2);
+    expect(created.some((entity) => entity.kind === "library")).toBe(true);
+    expect(created.some((entity) => entity.kind === "movie")).toBe(false);
+  });
+});
