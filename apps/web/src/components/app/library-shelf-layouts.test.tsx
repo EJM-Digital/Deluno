@@ -183,7 +183,7 @@ describe("the Overview layout", () => {
 
   // DEFECT (missing control): the register row promises a per-row checkbox in the Overview layout. OverviewRow draws none, so a row
   // can only be selected with Ctrl or Cmd held, which a phone or tablet cannot do.
-  it.skip("DEFECT: every Overview row has its own checkbox", () => {
+  it("every Overview row has its own checkbox", () => {
     renderOverview();
     expect(screen.getAllByRole("checkbox")).toHaveLength(3);
   });

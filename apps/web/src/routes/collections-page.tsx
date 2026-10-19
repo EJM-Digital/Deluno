@@ -16,7 +16,7 @@ import { SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { useCoalescedRevalidate } from "../hooks/use-live-interval";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
-import { fetchJson, type LibraryItem, type MovieCollectionItem, type MovieCollectionMemberItem, type QualityProfileItem } from "../lib/api";
+import { fetchJson, readErrorText, type LibraryItem, type MovieCollectionItem, type MovieCollectionMemberItem, type QualityProfileItem } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 
@@ -77,7 +77,7 @@ export function CollectionsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerId: providerId.trim(), libraryId, monitored, monitorMovies, searchOnAdd, tags: tags.trim() })
       });
-      if (!response.ok) throw new Error(await response.text() || "Collection could not be added.");
+      if (!response.ok) throw new Error(await readErrorText(response, "Collection could not be added."));
       setProviderId("");
       setTags("");
       setAddOpen(false);

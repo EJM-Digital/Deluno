@@ -1,3 +1,4 @@
+import { removalDownloadToastSentence } from "../../lib/removal-download-words";
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate, useNavigation, useSearchParams } from "react-router-dom";
 import type { MediaItem } from "../../lib/media-types";
@@ -1048,7 +1049,7 @@ export function LibraryView({
       setSelectedIds((current) => current.filter((id) => !idsToRemove.includes(id)));
       setIsRemovalConfirmationOpen(false);
       toast.success(
-        `${idsToRemove.length} ${singular}${idsToRemove.length === 1 ? "" : "s"} removed from Deluno. Imported files and download-client items were left alone.`
+        `${idsToRemove.length} ${singular}${idsToRemove.length === 1 ? "" : "s"} removed from Deluno. Imported files were left alone. ${removalDownloadToastSentence}`
       );
       if (failedCount > 0) {
         toast.error(`${failedCount} title${failedCount === 1 ? "" : "s"} could not be removed.`);

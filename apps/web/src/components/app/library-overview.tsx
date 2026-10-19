@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArtworkImage } from "../ui/artwork-image";
 import { Link } from "react-router-dom";
 import { Play, ShieldCheck, ShieldOff, Star } from "lucide-react";
@@ -7,6 +8,7 @@ import type { MediaItem } from "../../lib/media-types";
 import { cn } from "../../lib/utils";
 import { formatRuntime, useDisplayPreferences } from "../../lib/display-preferences";
 import { Badge } from "../ui/badge";
+import { Checkbox } from "../ui/checkbox";
 import { PosterArtwork } from "./library-grid";
 import { TitleMarkChip } from "../ui/title-mark";
 
@@ -54,21 +56,45 @@ export function LibraryOverview({
     return () => observer.disconnect();
   }, [isComplete, onEndReached, items.length]);
 
+  // Virtualised like the other layouts: only the rows near the screen are in
+  // the page, however many titles the library holds.
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => container,
+    estimateSize: () => 208,
+    overscan: 4
+  });
+
   return (
-    <div className="space-y-(--grid-gap)">
-      {items.map((item) => (
-        <OverviewRow
-          key={item.id}
-          item={item}
-          selected={selectedIds.includes(item.id)}
-          onSelect={onSelect}
-          onToggle={onToggle}
-        />
-      ))}
+    <div ref={setContainer} className="max-h-[calc(100dvh-260px)] overflow-auto pt-1.5">
+      <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+        {virtualizer.getVirtualItems().map((row) => {
+          const item = items[row.index];
+          if (!item) return null;
+          return (
+            <div
+              key={item.id}
+              ref={virtualizer.measureElement}
+              data-index={row.index}
+              className="absolute left-0 top-0 w-full pb-(--grid-gap)"
+              style={{ transform: `translateY(${row.start}px)` }}
+            >
+              <OverviewRow
+                item={item}
+                selected={selectedIds.includes(item.id)}
+                onSelect={onSelect}
+                onToggle={onToggle}
+              />
+            </div>
+          );
+        })}
+      </div>
       <div ref={sentinel} aria-hidden="true" />
     </div>
   );
 }
+
 function OverviewRow({
   item,
   selected,
@@ -112,6 +138,14 @@ function OverviewRow({
           <ArtworkImage fallback={null} src={item.backdrop} alt="" className="h-full w-full object-cover opacity-[0.14]" />
         </div>
       ) : null}
+
+      <span className="relative mt-1 shrink-0 self-start">
+        <Checkbox
+          checked={selected}
+          onCheckedChange={() => onToggle(item.id)}
+          aria-label={selected ? `Deselect ${item.title}` : `Select ${item.title}`}
+        />
+      </span>
 
       <button
         type="button"

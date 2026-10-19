@@ -163,7 +163,7 @@ for (const variant of VARIANTS) {
       await expect(page.getByRole("button", { name: `Deselect ${title}`, exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Remove", exact: true }).click();
       const dialog = page.getByRole("dialog");
-      await expect(dialog).toContainText("Imported files and download clients are left alone.");
+      await expect(dialog).toContainText("Imported files are left alone.");
 
       // Cancel keeps the title.
       await dialog.getByRole("button", { name: "Cancel", exact: true }).click();

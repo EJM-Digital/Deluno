@@ -1,3 +1,4 @@
+import { removalDownloadSentence, removalDownloadToastSentence } from "../../lib/removal-download-words";
 import { configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -290,15 +291,17 @@ describe("Remove from the bar", () => {
 
   // DEFECT (wording): a bulk remove does take the title's active download with it (the server cancels it with its data; see
   // ARemovedFilmTakesItsRealDownloadWithItTests), but the dialog and the toast both say the download client is left alone.
-  it.skip("DEFECT: the remove dialog and the toast say download clients are left alone, which is untrue when the title had a download in flight", async () => {
+  it("the remove dialog and the toast say download clients are left alone, which is untrue when the title had a download in flight", async () => {
     writeReply = () => ({ ok: true, body: { results: [{ seriesId: "s1", succeeded: true }], failureCount: 0 } });
     await renderShelf("shows");
     await select("Severance");
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     const box = await screen.findByRole("dialog", { name: /Remove 1 TV show\?/ });
     expect(box.textContent).not.toMatch(/download clients are left alone/);
+    expect(box.textContent).toContain(removalDownloadSentence);
     fireEvent.click(within(box).getByRole("button", { name: "Remove TV show" }));
     await waitFor(() => expect(mocks.toast.success).toHaveBeenCalled());
     expect(String(mocks.toast.success.mock.calls[0][0])).not.toMatch(/download-client items were left alone/);
+    expect(String(mocks.toast.success.mock.calls[0][0])).toContain(removalDownloadToastSentence);
   });
 });

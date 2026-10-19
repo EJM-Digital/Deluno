@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { removalDownloadSentence } from "../../lib/removal-download-words";
 import { RemoveMediaDialog } from "./remove-media-dialog";
 
 /**
@@ -38,6 +39,12 @@ describe("remove dialog", () => {
     expect(screen.getByText(/Deluno's recycle bin/)).toBeTruthy();
     expect(screen.queryByText(/cannot be undone/i)).toBeNull();
     expect(screen.getByRole("link", { name: "Open the recycle bin" }).getAttribute("href")).toBe("/system/recycle-bin");
+  });
+
+  it("says what happens to a download in progress, in the shared words, not that the client is untouched", () => {
+    renderDialog([]);
+    expect(screen.getByText(new RegExp(removalDownloadSentence.slice(0, 40)))).toBeTruthy();
+    expect(screen.queryByText(/never changed here/)).toBeNull();
   });
 
   it("does not talk about files when the title has none", () => {

@@ -1,3 +1,4 @@
+import { removalDownloadSentence } from "../../lib/removal-download-words";
 import * as Dialog from "../ui/dialog-primitives";
 import { AlertTriangle, ListMinus } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -57,7 +58,7 @@ export function BulkRemoveDialog({
                   Remove {count} {noun}?
                 </Dialog.Title>
                 <Dialog.Description id="bulk-remove-description" className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                  This removes the selected catalogue records and stops Deluno managing them. Imported files and download clients are left alone.
+                  This removes the selected catalogue records and stops Deluno managing them. Imported files are left alone. {removalDownloadSentence}
                 </Dialog.Description>
               </div>
             </div>
@@ -82,7 +83,7 @@ export function BulkRemoveDialog({
           </div>
 
           <div className="flex items-center justify-between border-t border-hairline bg-surface-1 px-6 py-4">
-            <p className="text-xs text-muted-foreground">No files will be deleted by this bulk action.</p>
+            <p className="text-xs text-muted-foreground">Imported files are not deleted by this bulk action.</p>
             <div className="flex gap-2">
               <Dialog.Close asChild>
                 <Button variant="secondary" size="sm" disabled={busy}>Cancel</Button>

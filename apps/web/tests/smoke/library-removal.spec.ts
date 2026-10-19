@@ -34,7 +34,7 @@ test.describe("library removal", () => {
     await page.getByRole("button", { name: "Remove", exact: true }).click();
 
     const dialog = page.getByRole("dialog");
-    await expect(dialog).toContainText("Imported files and download clients are left alone.");
+    await expect(dialog).toContainText("Imported files are left alone.");
     await expect(dialog).toContainText("No files will be deleted by this bulk action.");
     await dialog.getByRole("button", { name: "Remove movie", exact: true }).click();
 
@@ -66,7 +66,7 @@ test.describe("library removal", () => {
     const movieDialog = page.getByRole("dialog");
     await expect(movieDialog).toContainText("Prevent automatic re-add");
     await expect(movieDialog).toContainText("Move imported files to the recycle bin");
-    await expect(movieDialog).toContainText("Your download client is never changed here");
+    await expect(movieDialog).toContainText("that download is cancelled in your download client");
     await movieDialog.getByRole("button", { name: "Remove movie", exact: true }).click();
     await expect(page).toHaveURL(/\/movies$/);
     expect((await page.request.get(`/api/movies/${movie.id}`, { headers })).status()).toBe(404);
