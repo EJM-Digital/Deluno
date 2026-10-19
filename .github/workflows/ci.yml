@@ -176,7 +176,13 @@ jobs:
           node --test scripts/ci-passed.test.mjs
 
       - name: The repository gates behave as written
-        run: node --test scripts/platform-gates.test.mjs
+        run: node --test scripts/platform-gates.test.mjs scripts/platform-defects.test.mjs scripts/ship-paths.test.mjs
+
+      # GAT-07: every Node test file ci:check runs is also named in a job of this workflow, and a file no job runs fails here.
+      - name: Every Node test file is run by a CI job
+        run: |
+          node scripts/check-node-tests-run.mjs
+          node --test scripts/check-node-tests-run.test.mjs scripts/check-persistence-parts.test.mjs scripts/check-component-pins.test.mjs scripts/check-recorded-manifest.test.mjs scripts/verify-ci-for-release.test.mjs scripts/verify-golden-path-for-release.test.mjs scripts/tag-release.test.mjs scripts/check-release-workflow-gates.test.mjs scripts/coverage/testindex.test.mjs sdk/typescript/tests/delunoclient.test.mjs
 
       - name: Validate agent-readable repository map
         shell: pwsh
@@ -747,6 +753,10 @@ jobs:
 
       - name: Build frontend
         run: npm run build:web
+
+      # GAT-03: the tray's own tests (Windows-only code) run here, the one Windows leg every manual run has.
+      - name: Test Deluno.Tray
+        run: dotnet test tests/Deluno.Tray.Tests/Deluno.Tray.Tests.csproj -c Release --nologo
 
       - name: Publish Deluno.Tray (win-x64)
         shell: pwsh

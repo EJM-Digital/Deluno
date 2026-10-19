@@ -6,6 +6,7 @@ using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Deluno.Jobs.Data;
 using Deluno.Platform.Migration;
+using Deluno.Security;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -22,7 +23,7 @@ public interface IDelunoBackupService
     Task<(Stream Stream, string ContentType, string FileName)?> OpenBackupAsync(string id, CancellationToken cancellationToken);
     Task<bool> DeleteBackupAsync(string id, CancellationToken cancellationToken);
     Task<RestorePreviewResponse> PreviewRestoreAsync(Stream backupStream, CancellationToken cancellationToken);
-    Task<RestoreResultResponse> RestoreAsync(Stream backupStream, CancellationToken cancellationToken, bool confirmNewerVersion = false);
+    Task<RestoreResultResponse> RestoreAsync(Stream backupStream, CancellationToken cancellationToken, bool confirmNewerVersion = false, string? backupPassword = null);
 }
 
 public sealed class DelunoBackupService(
@@ -31,7 +32,8 @@ public sealed class DelunoBackupService(
     ILogger<DelunoBackupService> logger,
     IJobQueueRepository? jobQueueRepository = null,
     IRealtimeEventPublisher? realtime = null,
-    IStateFileSystem? stateFiles = null)
+    IStateFileSystem? stateFiles = null,
+    ISecretProtector? secretProtector = null)
     : BackgroundService, IDelunoBackupService, IMigrationBackupService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -70,6 +72,15 @@ public sealed class DelunoBackupService(
             state.TimeOfDay = NormalizeTimeOfDay(request.TimeOfDay);
             state.RetentionCount = Math.Clamp(request.RetentionCount ?? state.RetentionCount, 1, 10000);
             state.BackupFolder = NormalizeBackupFolder(request.BackupFolder);
+            if (request.ClearBackupPassword)
+            {
+                state.BackupPassword = null;
+            }
+            else if (!string.IsNullOrEmpty(request.BackupPassword))
+            {
+                state.BackupPassword = secretProtector is null ? "plain:" + request.BackupPassword : secretProtector.Protect(BackupPasswordPurpose, request.BackupPassword);
+            }
+
             state.NextRunUtc = CalculateNextRun(state, timeProvider.GetUtcNow());
             // A damaged file is replaced here on purpose: the person has just chosen new settings, and a copy of the old one was kept.
             state.Kind = StateFileKind.Ok;
@@ -117,7 +128,10 @@ public sealed class DelunoBackupService(
             var safeReason = string.IsNullOrWhiteSpace(reason) ? "manual" : reason.Trim();
             var id = $"deluno-backup-{now:yyyyMMdd-HHmmss}";
             var targetPath = Path.Combine(EffectiveBackupFolder(state), $"{id}.zip");
-            var dataFiles = EnumerateDataFiles().ToArray();
+            var allFiles = EnumerateDataFiles().ToArray();
+            var dataFiles = allFiles.Where(file => !IsKeyFile(file)).ToArray();
+            var keyFiles = allFiles.Where(IsKeyFile).ToArray();
+            var password = ReadBackupPassword(state);
             var archived = new List<string>(dataFiles.Length);
             var snapshotFolder = Path.Combine(DataRoot, SnapshotFolderName, Guid.NewGuid().ToString("N"));
 
@@ -181,12 +195,31 @@ public sealed class DelunoBackupService(
 
                 // Written last, and from what actually went in, so the manifest
                 // is a record rather than an intention.
+                // The master key and the protection keys go in only sealed with the backup password. With none set they are left out,
+                // and the manifest says so, so a restore knows to ask for the secrets again (#1361).
+                var keysIncluded = false;
+                if (password is not null)
+                {
+                    var keys = keyFiles
+                        .Select(file => new BackupKeyVault.KeyFile(Path.GetRelativePath(DataRoot, file).Replace('\\', '/'), ReadKeyBytes(file)))
+                        .ToArray();
+                    var sealedKeys = BackupKeyVault.Seal(keys, password);
+                    var keyEntry = archive.CreateEntry(BackupKeyVault.EntryName, CompressionLevel.NoCompression);
+                    await using (var keyStream = keyEntry.Open())
+                    {
+                        await keyStream.WriteAsync(sealedKeys, cancellationToken);
+                    }
+
+                    keysIncluded = true;
+                }
+
                 var manifest = new BackupManifest(
                     App: "Deluno",
                     Version: GetVersion(),
                     CreatedUtc: now,
                     Reason: safeReason,
-                    Files: archived.Order(StringComparer.OrdinalIgnoreCase).ToArray());
+                    Files: archived.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
+                    KeysIncluded: keysIncluded);
 
                 var manifestEntry = archive.CreateEntry("deluno-backup.json", CompressionLevel.Optimal);
                 await using (var manifestStream = manifestEntry.Open())
@@ -249,7 +282,7 @@ public sealed class DelunoBackupService(
         return await PreviewRestoreCoreAsync(buffered, cancellationToken);
     }
 
-    public async Task<RestoreResultResponse> RestoreAsync(Stream backupStream, CancellationToken cancellationToken, bool confirmNewerVersion = false)
+    public async Task<RestoreResultResponse> RestoreAsync(Stream backupStream, CancellationToken cancellationToken, bool confirmNewerVersion = false, string? backupPassword = null)
     {
         await gate.WaitAsync(cancellationToken);
         try
@@ -268,6 +301,38 @@ public sealed class DelunoBackupService(
             if (preview.NewerThanThisVersion && !confirmNewerVersion)
             {
                 return new RestoreResultResponse(false, NewerBackupMessage(preview.Manifest?.Version), string.Empty, []);
+            }
+
+            // The keys are opened before anything is staged, so a wrong password changes nothing.
+            IReadOnlyList<BackupKeyVault.KeyFile> keyFiles = [];
+            if (preview.Manifest?.KeysIncluded == true)
+            {
+                if (string.IsNullOrEmpty(backupPassword))
+                {
+                    return new RestoreResultResponse(false, "This backup holds Deluno's keys, locked with a backup password. Enter that password to restore it.", string.Empty, [], NeedsPassword: true);
+                }
+
+                buffered.Position = 0;
+                using var keyArchive = new ZipArchive(buffered, ZipArchiveMode.Read, leaveOpen: true);
+                var sealedEntry = keyArchive.GetEntry(BackupKeyVault.EntryName);
+                if (sealedEntry is null)
+                {
+                    return new RestoreResultResponse(false, "This backup says it holds Deluno's keys, but they are missing from the file, so it cannot be restored.", string.Empty, []);
+                }
+
+                using var sealedBytes = new MemoryStream();
+                using (var sealedStream = sealedEntry.Open())
+                {
+                    await sealedStream.CopyToAsync(sealedBytes, cancellationToken);
+                }
+
+                var opened = BackupKeyVault.TryOpen(sealedBytes.ToArray(), backupPassword);
+                if (opened is null)
+                {
+                    return new RestoreResultResponse(false, "That backup password is not the one this backup was made with. Nothing was restored. Check it and try again.", string.Empty, [], NeedsPassword: true);
+                }
+
+                keyFiles = opened;
             }
 
             buffered.Position = 0;
@@ -321,6 +386,19 @@ public sealed class DelunoBackupService(
                 }
             }
 
+            foreach (var key in keyFiles)
+            {
+                if (!Deluno.Contracts.SafePath.TryResolveUnder(DataRoot, key.Path.Replace('/', Path.DirectorySeparatorChar), out var resolvedKey, out _))
+                {
+                    continue;
+                }
+
+                var stagedKey = Path.Combine(restoreRoot, Path.GetRelativePath(DataRoot, resolvedKey));
+                Directory.CreateDirectory(Path.GetDirectoryName(stagedKey)!);
+                File.WriteAllBytes(stagedKey, key.Content);
+                restored.Add(Path.GetRelativePath(DataRoot, resolvedKey));
+            }
+
             if (restored.Count == 0)
             {
                 Directory.Delete(restoreRoot, recursive: true);
@@ -332,11 +410,14 @@ public sealed class DelunoBackupService(
                 "Staged {Count} file(s) from an uploaded backup. They are applied on the next start.",
                 restored.Count);
 
+            var secretsNeedEntering = preview.Manifest?.KeysIncluded != true && !restored.Any(IsKeyRelativePath);
             return new RestoreResultResponse(
                 Restored: true,
-                Message: "Backup staged. Restart Deluno to apply it — the files are written before any database is opened.",
+                Message: "Backup staged. Restart Deluno to apply it — the files are written before any database is opened."
+                    + (secretsNeedEntering ? " This backup was made without a backup password, so Deluno's keys are not in it. After the restart, enter your saved passwords and API keys again (indexers, download clients and the like)." : string.Empty),
                 RestoreFolder: restoreRoot,
-                RestoredFiles: restored);
+                RestoredFiles: restored,
+                SecretsNeedEntering: secretsNeedEntering);
         }
         finally
         {
@@ -424,7 +505,12 @@ public sealed class DelunoBackupService(
                 warnings.Add(NewerBackupMessage(manifest.Version));
             }
 
-            return new RestorePreviewResponse(true, "Backup can be restored.", manifest, warnings, newer);
+            if (!manifest.KeysIncluded)
+            {
+                warnings.Add("This backup was made without a backup password, so Deluno's keys are not in it. After restoring you will be asked for your saved passwords and API keys again.");
+            }
+
+            return new RestorePreviewResponse(true, "Backup can be restored.", manifest, warnings, newer, NeedsPassword: manifest.KeysIncluded);
         }
         catch (Exception ex)
         {
@@ -536,6 +622,45 @@ public sealed class DelunoBackupService(
         }
     }
 
+    private const string BackupPasswordPurpose = "backup:password";
+
+    private string? ReadBackupPassword(BackupSettingsState state)
+    {
+        if (string.IsNullOrEmpty(state.BackupPassword))
+        {
+            return null;
+        }
+
+        if (state.BackupPassword.StartsWith("plain:", StringComparison.Ordinal))
+        {
+            return state.BackupPassword["plain:".Length..];
+        }
+
+        var read = secretProtector?.Unprotect(BackupPasswordPurpose, state.BackupPassword);
+        if (string.IsNullOrEmpty(read))
+        {
+            logger.LogWarning("The saved backup password could not be read, so this backup was made without Deluno's keys.");
+        }
+
+        return string.IsNullOrEmpty(read) ? null : read;
+    }
+
+    private static bool IsKeyRelativePath(string relative)
+    {
+        var first = relative.Replace('\\', '/').Split('/')[0];
+        return first.Equals("secrets", StringComparison.OrdinalIgnoreCase) || first.Equals("protection-keys", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsKeyFile(string file) => IsKeyRelativePath(Path.GetRelativePath(DataRoot, file));
+
+    private static byte[] ReadKeyBytes(string file)
+    {
+        using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var copy = new MemoryStream();
+        stream.CopyTo(copy);
+        return copy.ToArray();
+    }
+
     private IEnumerable<string> EnumerateDataFiles()
     {
         Directory.CreateDirectory(DataRoot);
@@ -566,6 +691,7 @@ public sealed class DelunoBackupService(
         {
             var info = new FileInfo(file);
             var reason = "manual";
+            var keysIncluded = false;
             var createdUtc = new DateTimeOffset(info.CreationTimeUtc, TimeSpan.Zero);
             using var archive = ZipFile.OpenRead(file);
             var manifestEntry = archive.GetEntry("deluno-backup.json");
@@ -577,6 +703,7 @@ public sealed class DelunoBackupService(
                 {
                     reason = manifest.Reason;
                     createdUtc = manifest.CreatedUtc;
+                    keysIncluded = manifest.KeysIncluded;
                 }
             }
 
@@ -586,7 +713,8 @@ public sealed class DelunoBackupService(
                 FullPath: file,
                 SizeBytes: info.Length,
                 CreatedUtc: createdUtc,
-                Reason: reason);
+                Reason: reason,
+                KeysIncluded: keysIncluded);
         }
         catch (Exception exception)
         {
@@ -782,7 +910,8 @@ public sealed class DelunoBackupService(
             EffectiveBackupFolder(state),
             state.LastRunUtc,
             state.NextRunUtc,
-            state.Problem ?? otherFilesNote);
+            state.Problem ?? otherFilesNote,
+            PasswordSet: !string.IsNullOrEmpty(state.BackupPassword));
 
     private DateTimeOffset? CalculateNextRun(BackupSettingsState state, DateTimeOffset now)
     {
@@ -915,6 +1044,9 @@ public sealed class DelunoBackupService(
         public string BackupFolder { get; set; } = string.Empty;
         public DateTimeOffset? LastRunUtc { get; set; }
         public DateTimeOffset? NextRunUtc { get; set; }
+
+        /// <summary>The backup password, protected with the master key ("plain:" only where no protector exists). Null: none set.</summary>
+        public string? BackupPassword { get; set; }
 
         /// <summary>How this was read. Busy and Unreadable mean these are the standard settings standing in for a file that could not be read.</summary>
         [System.Text.Json.Serialization.JsonIgnore]

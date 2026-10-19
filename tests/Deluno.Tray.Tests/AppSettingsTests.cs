@@ -56,6 +56,39 @@ public sealed class AppSettingsTests : IDisposable
         Assert.False(File.Exists(Path.Combine(_root, "local", "DelunoConfig", "deluno.json")));
     }
 
+    // #1361: a fresh install does not look for updates on its own until the setup guide asks and the person says yes.
+    [Fact]
+    public void A_fresh_install_has_the_background_update_check_off()
+    {
+        Assert.False(AppSettings.Load().AutoCheckUpdates);
+    }
+
+    [Fact]
+    public void A_fresh_install_that_adopts_old_data_also_starts_with_the_check_off_and_keeps_it_off_on_the_next_load()
+    {
+        var legacy = Path.Combine(_root, "common", "Deluno", "data");
+        Directory.CreateDirectory(legacy);
+        File.WriteAllText(Path.Combine(legacy, "platform.db"), "seed");
+        Assert.False(AppSettings.Load().AutoCheckUpdates);
+        Assert.False(AppSettings.Load().AutoCheckUpdates);
+    }
+
+    [Fact]
+    public void An_existing_install_whose_file_never_mentioned_the_check_keeps_checking()
+    {
+        var path = Path.Combine(_root, "local", "DelunoConfig", "deluno.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "{ \"port\": 7879, \"dataRoot\": \"" + Path.Combine(_root, "d").Replace("\\", "\\\\") + "\" }");
+        Assert.True(AppSettings.Load().AutoCheckUpdates);
+    }
+
+    [Fact]
+    public void Saying_yes_in_the_setup_guide_turns_the_check_on_and_it_stays_on()
+    {
+        Assert.Null(AppSettings.Update(saved => saved.AutoCheckUpdates = true));
+        Assert.True(AppSettings.Load().AutoCheckUpdates);
+    }
+
     [Fact]
     public void Load_PreservesLegacyConfigCustomDataRoot_AndMigratesConfig()
     {
