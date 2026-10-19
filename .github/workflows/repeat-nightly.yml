@@ -29,7 +29,7 @@ env:
 jobs:
   backend:
     name: ${{ matrix.project }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     # Five runs of the slowest project plus its build; the backend job in ci.yml has 90 minutes for one run of all of them.
     timeout-minutes: 150
     strategy:
@@ -64,7 +64,7 @@ jobs:
 
   web:
     name: Web unit tests
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -89,7 +89,7 @@ jobs:
     name: Open a defect issue for a flaky night
     needs: [backend, web]
     if: ${{ failure() }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 5
     permissions:
       contents: read
