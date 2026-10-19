@@ -7,6 +7,7 @@ using Deluno.Companions;
 using Deluno.Contracts;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Security;
+using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -289,6 +290,7 @@ public sealed class GuidedSetupRoutesTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.False(string.IsNullOrWhiteSpace(await response.Content.ReadAsStringAsync()));
         Assert.Empty((await app.Client.GetFromJsonAsync<JsonElement>("/api/libraries")).EnumerateArray());
+        Assert.False(Directory.Exists(missing), "refusing the root did not create the folder either");
     }
 
     [Fact]
@@ -296,11 +298,14 @@ public sealed class GuidedSetupRoutesTests
     {
         await using var app = await ApplicationTestHost.StartAsync();
 
-        var response = await app.Client.PostAsJsonAsync("/api/libraries", LibraryBody("Media/Movies"));
+        var relative = "deluno-relative-root-" + Guid.NewGuid().ToString("N");
+
+        var response = await app.Client.PostAsJsonAsync("/api/libraries", LibraryBody(relative + "/Movies"));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.False(string.IsNullOrWhiteSpace(await response.Content.ReadAsStringAsync()));
         Assert.Empty((await app.Client.GetFromJsonAsync<JsonElement>("/api/libraries")).EnumerateArray());
+        Assert.False(Directory.Exists(Path.GetFullPath(relative)), "refusing the root did not create a folder next to the program either");
     }
 
     [Fact]
@@ -410,6 +415,67 @@ public sealed class GuidedSetupRoutesTests
         finally
         {
             release.SetResult();
+        }
+    }
+
+    /// <summary>Reads the real database file on disk, so a test proves what was saved, not only what the API says.</summary>
+    private static string OnDiskSetting(SqliteConnection connection, string key)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT setting_value FROM system_settings WHERE setting_key = $key";
+        command.Parameters.AddWithValue("$key", key);
+        return Convert.ToString(command.ExecuteScalar()) ?? string.Empty;
+    }
+
+    [Fact]
+    public async Task The_automation_settings_the_guide_sends_are_saved_in_the_database_and_read_back_exactly_with_the_files_switch_off_until_a_Yes()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var current = await app.Client.GetFromJsonAsync<JsonElement>("/api/settings");
+        Assert.False(current.GetProperty("cleanupPurgePayloadAfterThreshold").GetBoolean(), "deleting files is off on a fresh install");
+
+        var yes = new Dictionary<string, object?>
+        {
+            ["autoStartJobs"] = true, ["renameOnImport"] = true, ["cleanupRemoveClientEntryAfterThreshold"] = true,
+            ["cleanupBlockReleaseAfterThreshold"] = true, ["cleanupQueueReplacementAfterThreshold"] = true,
+            ["downloadHealthNoProgressEnabled"] = true, ["downloadHealthMinSpeedEnabled"] = true,
+            ["downloadHealthMinSpeedKbps"] = 50, ["downloadHealthStrikeThreshold"] = 3, ["downloadHealthDefaultStrikeWindowMinutes"] = 5,
+            ["cleanupPurgePayloadAfterThreshold"] = true, ["subtitleFetchAutomaticEnabled"] = true, ["leftoverDownloadCleanupEnabled"] = true,
+            ["forceImportEnabled"] = true, ["pauseSearchWhenQueueLongEnabled"] = true
+        };
+        var body = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(current.GetRawText())!
+            .ToDictionary(pair => pair.Key, pair => (object?)pair.Value);
+        foreach (var (key, value) in yes) body[key] = value;
+
+        var put = await app.Client.PutAsJsonAsync("/api/settings", body);
+        Assert.True(put.IsSuccessStatusCode, await put.Content.ReadAsStringAsync());
+
+        var saved = await app.Client.GetFromJsonAsync<JsonElement>("/api/settings");
+        foreach (var (key, value) in yes)
+        {
+            var actual = saved.GetProperty(key);
+            if (value is bool expectedBool) Assert.Equal(expectedBool, actual.GetBoolean());
+            else Assert.Equal((int)value!, actual.GetInt32());
+        }
+
+        using (var connection = new SqliteConnection($"Data Source={Path.Combine(app.DataRoot, "platform.db")};Pooling=False"))
+        {
+            connection.Open();
+            Assert.True(File.Exists(Path.Combine(app.DataRoot, "platform.db")));
+            Assert.Equal("true", OnDiskSetting(connection, "cleanup.purgePayloadAfterThreshold"));
+            Assert.Equal("true", OnDiskSetting(connection, "cleanup.blockReleaseAfterThreshold"));
+        }
+
+        yes["cleanupPurgePayloadAfterThreshold"] = false;
+        foreach (var (key, value) in yes) body[key] = value;
+        Assert.True((await app.Client.PutAsJsonAsync("/api/settings", body)).IsSuccessStatusCode);
+        var turnedOff = await app.Client.GetFromJsonAsync<JsonElement>("/api/settings");
+        Assert.False(turnedOff.GetProperty("cleanupPurgePayloadAfterThreshold").GetBoolean());
+        Assert.True(turnedOff.GetProperty("cleanupRemoveClientEntryAfterThreshold").GetBoolean());
+        using (var connection = new SqliteConnection($"Data Source={Path.Combine(app.DataRoot, "platform.db")};Pooling=False"))
+        {
+            connection.Open();
+            Assert.Equal("false", OnDiskSetting(connection, "cleanup.purgePayloadAfterThreshold"));
         }
     }
 }
