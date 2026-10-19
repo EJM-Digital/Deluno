@@ -2,8 +2,8 @@
   "app": "jellyfin",
   "version": "12.2.0",
   "state": "catalogue-movies",
-  "recordedAt": "2026-10-14T08:31:32Z",
-  "note": "The movie catalogue as Deluno asks for it (Fields with provider ids, paths, media sources; unpaged first page) (jellyfin 12.2.0, a library of one film and a two-episode series, the film being the suite's base video). Installed from: jellyfin_12.2_windows-x64.exe from repo.jellyfin.org: the vendor publishes no checksum (the project publishes none beside the installer); the file's SHA-256 is 0e6781d214fe384db7325b70e6a499a830f0e3dbbad9c5a4a8e722dca5ae48fc.",
+  "recordedAt": "2026-10-19T02:26:50Z",
+  "note": "The movie catalogue as Deluno asks for it (Fields with provider ids, paths, media sources; unpaged first page) (jellyfin 12.2.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {
       "request": {
@@ -19,24 +19,23 @@
           "Items": [
             {
               "Name": "Sintel",
-              "ServerId": "f5b1e1c5c9c24dd2a828bc1944e125c0",
-              "Id": "3df4dba3fab3ef172511446b46f3e8a0",
-              "DateCreated": "2026-10-14T08:23:44.0055058Z",
-              "HasSubtitles": true,
+              "ServerId": "6c5f6a6fea8e4011ad35856c884c5306",
+              "Id": "78990f6a0a40212925e5c0f2d9bfb5d2",
+              "DateCreated": "2026-10-19T02:20:29.3548295Z",
               "Container": "mkv",
-              "PremiereDate": "2010-09-30T07:00:00.0000000Z",
+              "PremiereDate": "2010-09-30T00:00:00.0000000Z",
               "MediaSources": [
                 {
                   "Protocol": "File",
-                  "Id": "3df4dba3fab3ef172511446b46f3e8a0",
-                  "Path": "C:\\golden\\recorded-apps\\media\\Movies\\Sintel (2010)\\Sintel (2010) [WEB 1080p].mkv",
+                  "Id": "78990f6a0a40212925e5c0f2d9bfb5d2",
+                  "Path": "/media/Movies/Sintel (2010)/Sintel (2010) [WEB 1080p].mkv",
                   "Type": "Default",
                   "Container": "mkv",
-                  "Size": 1180090590,
+                  "Size": 589148,
                   "Name": "Sintel (2010) [WEB 1080p]",
                   "IsRemote": false,
-                  "ETag": "4a4922b96e49120a18bd4a940688e0fe",
-                  "RunTimeTicks": 8880320000,
+                  "ETag": "1675ccab7f71dd7627159fe743c16ae7",
+                  "RunTimeTicks": 200230000,
                   "ReadAtNativeFramerate": false,
                   "IgnoreDts": false,
                   "IgnoreIndex": false,
@@ -54,327 +53,73 @@
                   "MediaStreams": [
                     {
                       "Codec": "h264",
-                      "Language": "eng",
-                      "ColorSpace": "bt709",
                       "TimeBase": "1/1000",
                       "VideoRange": "SDR",
                       "VideoRangeType": "SDR",
                       "AudioSpatialFormat": "None",
-                      "DisplayTitle": "1080p H264 SDR",
+                      "DisplayTitle": "360p H264 SDR",
                       "NalLengthSize": "4",
                       "IsInterlaced": false,
                       "IsAVC": true,
-                      "BitRate": 9991063,
+                      "BitRate": 43388,
                       "BitDepth": 8,
                       "RefFrames": 1,
                       "IsDefault": false,
                       "IsForced": false,
                       "IsHearingImpaired": false,
                       "IsOriginal": false,
-                      "Height": 818,
-                      "Width": 1920,
+                      "Height": 360,
+                      "Width": 640,
                       "AverageFrameRate": 24,
                       "RealFrameRate": 24,
                       "ReferenceFrameRate": 24,
-                      "Profile": "High",
+                      "Profile": "Constrained Baseline",
                       "Type": "Video",
-                      "AspectRatio": "2.35:1",
+                      "AspectRatio": "16:9",
                       "Index": 0,
                       "IsExternal": false,
                       "IsTextSubtitleStream": false,
                       "SupportsExternalStream": false,
                       "PixelFormat": "yuv420p",
-                      "Level": 40,
+                      "Level": 30,
                       "IsAnamorphic": false
                     },
                     {
-                      "Codec": "ac3",
-                      "Language": "eng",
+                      "Codec": "aac",
                       "TimeBase": "1/1000",
-                      "Title": "AC3 5.1 @ 640 Kbps",
                       "VideoRange": "Unknown",
                       "VideoRangeType": "Unknown",
                       "AudioSpatialFormat": "None",
                       "LocalizedDefault": "Default",
                       "LocalizedExternal": "External",
-                      "LocalizedLanguage": "English",
                       "LocalizedOriginal": "Original",
-                      "DisplayTitle": "AC3 5.1 @ 640 Kbps - English - Dolby Digital",
+                      "DisplayTitle": "AAC - Mono",
                       "IsInterlaced": false,
-                      "ChannelLayout": "5.1",
-                      "BitRate": 640000,
-                      "Channels": 6,
-                      "SampleRate": 48000,
+                      "ChannelLayout": "mono",
+                      "BitRate": 192000,
+                      "Channels": 1,
+                      "SampleRate": 44100,
                       "IsDefault": false,
                       "IsForced": false,
                       "IsHearingImpaired": false,
                       "IsOriginal": false,
+                      "Profile": "LC",
                       "Type": "Audio",
                       "Index": 1,
                       "IsExternal": false,
                       "IsTextSubtitleStream": false,
                       "SupportsExternalStream": false
-                    },
-                    {
-                      "Codec": "subrip",
-                      "Language": "deu",
-                      "TimeBase": "1/1000",
-                      "VideoRange": "Unknown",
-                      "VideoRangeType": "Unknown",
-                      "AudioSpatialFormat": "None",
-                      "LocalizedUndefined": "Undefined",
-                      "LocalizedDefault": "Default",
-                      "LocalizedForced": "Forced",
-                      "LocalizedExternal": "External",
-                      "LocalizedHearingImpaired": "Hearing Impaired",
-                      "LocalizedLanguage": "German",
-                      "DisplayTitle": "German - SUBRIP",
-                      "IsInterlaced": false,
-                      "IsDefault": false,
-                      "IsForced": false,
-                      "IsHearingImpaired": false,
-                      "IsOriginal": false,
-                      "Type": "Subtitle",
-                      "Index": 2,
-                      "IsExternal": false,
-                      "IsTextSubtitleStream": true,
-                      "SupportsExternalStream": true
-                    },
-                    {
-                      "Codec": "subrip",
-                      "Language": "eng",
-                      "TimeBase": "1/1000",
-                      "VideoRange": "Unknown",
-                      "VideoRangeType": "Unknown",
-                      "AudioSpatialFormat": "None",
-                      "LocalizedUndefined": "Undefined",
-                      "LocalizedDefault": "Default",
-                      "LocalizedForced": "Forced",
-                      "LocalizedExternal": "External",
-                      "LocalizedHearingImpaired": "Hearing Impaired",
-                      "LocalizedLanguage": "English",
-                      "DisplayTitle": "English - SUBRIP",
-                      "IsInterlaced": false,
-                      "IsDefault": false,
-                      "IsForced": false,
-                      "IsHearingImpaired": false,
-                      "IsOriginal": false,
-                      "Type": "Subtitle",
-                      "Index": 3,
-                      "IsExternal": false,
-                      "IsTextSubtitleStream": true,
-                      "SupportsExternalStream": true
-                    },
-                    {
-                      "Codec": "subrip",
-                      "Language": "spa",
-                      "TimeBase": "1/1000",
-                      "VideoRange": "Unknown",
-                      "VideoRangeType": "Unknown",
-                      "AudioSpatialFormat": "None",
-                      "LocalizedUndefined": "Undefined",
-                      "LocalizedDefault": "Default",
-                      "LocalizedForced": "Forced",
-                      "LocalizedExternal": "External",
-                      "LocalizedHearingImpaired": "Hearing Impaired",
-                      "LocalizedLanguage": "Spanish",
-                      "DisplayTitle": "Spanish - SUBRIP",
-                      "IsInterlaced": false,
-                      "IsDefault": false,
-                      "IsForced": false,
-                      "IsHearingImpaired": false,
-                      "IsOriginal": false,
-                      "Type": "Subtitle",
-                      "Index": 4,
-                      "IsExternal": false,
-                      "IsTextSubtitleStream": true,
-                      "SupportsExternalStream": true
-                    },
-                    {
-                      "Codec": "subrip",
-                      "Language": "fra",
-                      "TimeBase": "1/1000",
-                      "VideoRange": "Unknown",
-                      "VideoRangeType": "Unknown",
-                      "AudioSpatialFormat": "None",
-                      "LocalizedUndefined": "Undefined",
-                      "LocalizedDefault": "Default",
-                      "LocalizedForced": "Forced",
-                      "LocalizedExternal": "External",
-                      "LocalizedHearingImpaired": "Hearing Impaired",
-                      "LocalizedLanguage": "French",
-                      "DisplayTitle": "French - SUBRIP",
-                      "IsInterlaced": false,
-                      "IsDefault": false,
-                      "IsForced": false,
-                      "IsHearingImpaired": false,
-                      "IsOriginal": false,
-                      "Type": "Subtitle",
-                      "Index": 5,
-                      "IsExternal": false,
-                      "IsTextSubtitleStream": true,
-                      "SupportsExternalStream": true
-                    },
-                    {
-                      "Codec": "subrip",
-                      "Language": "ita",
-                      "TimeBase": "1/1000",
-                      "VideoRange": "Unknown",
-                      "VideoRangeType": "Unknown",
-                      "AudioSpatialFormat": "None",
-                      "LocalizedUndefined": "Undefined",
-                      "LocalizedDefault": "Default",
-                      "LocalizedForced": "Forced",
-                      "LocalizedExternal": "External",
-                      "LocalizedHearingImpaired": "Hearing Impaired",
-                      "LocalizedLanguage": "Italian",
-                      "DisplayTitle": "Italian - SUBRIP",
-                      "IsInterlaced": false,
-                      "IsDefault": false,
-                      "IsForced": false,
-                      "IsHearingImpaired": false,
-                      "IsOriginal": false,
-                      "Type": "Subtitle",
-                      "Index": 6,
-                      "IsExternal": false,
-                      "IsTextSubtitleStream": true,
-                      "SupportsExternalStream": true
-                    },
-                    {
-                      "Codec": "subrip",
-                      "Language": "nld",
-                      "TimeBase": "1/1000",
-                      "VideoRange": "Unknown",
-                      "VideoRangeType": "Unknown",
-                      "AudioSpatialFormat": "None",
-                      "LocalizedUndefined": "Undefined",
-                      "LocalizedDefault": "Default",
-                      "LocalizedForced": "Forced",
-                      "LocalizedExternal": "External",
-                      "LocalizedHearingImpaired": "Hearing Impaired",
-                      "LocalizedLanguage": "Dutch",
-                      "DisplayTitle": "Dutch - SUBRIP",
-                      "IsInterlaced": false,
-                      "IsDefault": false,
-                      "IsForced": false,
-                      "IsHearingImpaired": false,
-                      "IsOriginal": false,
-                      "Type": "Subtitle",
-                      "Index": 7,
-                      "IsExternal": false,
-                      "IsTextSubtitleStream": true,
-                      "SupportsExternalStream": true
-                    },
-                    {
-                      "Codec": "subrip",
-                      "Language": "pol",
-                      "TimeBase": "1/1000",
-                      "VideoRange": "Unknown",
-                      "VideoRangeType": "Unknown",
-                      "AudioSpatialFormat": "None",
-                      "LocalizedUndefined": "Undefined",
-                      "LocalizedDefault": "Default",
-                      "LocalizedForced": "Forced",
-                      "LocalizedExternal": "External",
-                      "LocalizedHearingImpaired": "Hearing Impaired",
-                      "LocalizedLanguage": "Polish",
-                      "DisplayTitle": "Polish - SUBRIP",
-                      "IsInterlaced": false,
-                      "IsDefault": false,
-                      "IsForced": false,
-                      "IsHearingImpaired": false,
-                      "IsOriginal": false,
-                      "Type": "Subtitle",
-                      "Index": 8,
-                      "IsExternal": false,
-                      "IsTextSubtitleStream": true,
-                      "SupportsExternalStream": true
-                    },
-                    {
-                      "Codec": "subrip",
-                      "Language": "por",
-                      "TimeBase": "1/1000",
-                      "VideoRange": "Unknown",
-                      "VideoRangeType": "Unknown",
-                      "AudioSpatialFormat": "None",
-                      "LocalizedUndefined": "Undefined",
-                      "LocalizedDefault": "Default",
-                      "LocalizedForced": "Forced",
-                      "LocalizedExternal": "External",
-                      "LocalizedHearingImpaired": "Hearing Impaired",
-                      "LocalizedLanguage": "Portuguese",
-                      "DisplayTitle": "Portuguese - SUBRIP",
-                      "IsInterlaced": false,
-                      "IsDefault": false,
-                      "IsForced": false,
-                      "IsHearingImpaired": false,
-                      "IsOriginal": false,
-                      "Type": "Subtitle",
-                      "Index": 9,
-                      "IsExternal": false,
-                      "IsTextSubtitleStream": true,
-                      "SupportsExternalStream": true
-                    },
-                    {
-                      "Codec": "subrip",
-                      "Language": "rus",
-                      "TimeBase": "1/1000",
-                      "VideoRange": "Unknown",
-                      "VideoRangeType": "Unknown",
-                      "AudioSpatialFormat": "None",
-                      "LocalizedUndefined": "Undefined",
-                      "LocalizedDefault": "Default",
-                      "LocalizedForced": "Forced",
-                      "LocalizedExternal": "External",
-                      "LocalizedHearingImpaired": "Hearing Impaired",
-                      "LocalizedLanguage": "Russian",
-                      "DisplayTitle": "Russian - SUBRIP",
-                      "IsInterlaced": false,
-                      "IsDefault": false,
-                      "IsForced": false,
-                      "IsHearingImpaired": false,
-                      "IsOriginal": false,
-                      "Type": "Subtitle",
-                      "Index": 10,
-                      "IsExternal": false,
-                      "IsTextSubtitleStream": true,
-                      "SupportsExternalStream": true
-                    },
-                    {
-                      "Codec": "subrip",
-                      "Language": "vie",
-                      "TimeBase": "1/1000",
-                      "VideoRange": "Unknown",
-                      "VideoRangeType": "Unknown",
-                      "AudioSpatialFormat": "None",
-                      "LocalizedUndefined": "Undefined",
-                      "LocalizedDefault": "Default",
-                      "LocalizedForced": "Forced",
-                      "LocalizedExternal": "External",
-                      "LocalizedHearingImpaired": "Hearing Impaired",
-                      "LocalizedLanguage": "Vietnamese",
-                      "DisplayTitle": "Vietnamese - SUBRIP",
-                      "IsInterlaced": false,
-                      "IsDefault": false,
-                      "IsForced": false,
-                      "IsHearingImpaired": false,
-                      "IsOriginal": false,
-                      "Type": "Subtitle",
-                      "Index": 11,
-                      "IsExternal": false,
-                      "IsTextSubtitleStream": true,
-                      "SupportsExternalStream": true
                     }
                   ],
                   "MediaAttachments": [],
                   "Formats": [],
-                  "Bitrate": 10631063,
+                  "Bitrate": 235388,
                   "RequiredHttpHeaders": {},
                   "TranscodingSubProtocol": "http",
                   "HasSegments": false
                 }
               ],
-              "Path": "C:\\golden\\recorded-apps\\media\\Movies\\Sintel (2010)\\Sintel (2010) [WEB 1080p].mkv",
+              "Path": "/media/Movies/Sintel (2010)/Sintel (2010) [WEB 1080p].mkv",
               "OfficialRating": "PG",
               "ChannelId": null,
               "Genres": [
@@ -382,7 +127,7 @@
                 "Fantasy"
               ],
               "CommunityRating": 7.333,
-              "RunTimeTicks": 8880320000,
+              "RunTimeTicks": 200230000,
               "ProductionYear": 2010,
               "ProviderIds": {
                 "Imdb": "tt1727587",
@@ -396,10 +141,10 @@
                   "Id": "6f1570cd0ecf9891a5fdbe78e084d736",
                   "Role": "Sintel (voice)",
                   "Type": "Actor",
-                  "PrimaryImageTag": "931d3f50741c0c91af48d1ba378d111f",
+                  "PrimaryImageTag": "a1f7ed8485fd84870108d0161ccbe695",
                   "ImageBlurHashes": {
                     "Primary": {
-                      "931d3f50741c0c91af48d1ba378d111f": "dFJHO19F5,~WmP%2%#NFu5?b^QNxTKIT^k%ME0bw-;xZ"
+                      "a1f7ed8485fd84870108d0161ccbe695": "dFJHK^9F5,~WmP%2%#NFu5?b^QNxTKIT^k%ME0bw-;xZ"
                     }
                   }
                 },
@@ -408,10 +153,10 @@
                   "Id": "b2390b0e5e0e4f10f39ef73112abbf2c",
                   "Role": "Shaman (voice)",
                   "Type": "Actor",
-                  "PrimaryImageTag": "320053481ca367f51a42af3a5bcd2028",
+                  "PrimaryImageTag": "307c7d37bb8062c200eda7992e743dd0",
                   "ImageBlurHashes": {
                     "Primary": {
-                      "320053481ca367f51a42af3a5bcd2028": "dgKv,Fs90|W.acxtxYRjF1jZxubII.NGxujFbbWXoJWB"
+                      "307c7d37bb8062c200eda7992e743dd0": "dgKv,Fr?0|W.acxtxZRjF1jZxubII.NGxujFbbWXoJWB"
                     }
                   }
                 },
@@ -420,10 +165,10 @@
                   "Id": "e8e29948be2067b3c86dd2079133d4ab",
                   "Role": "Director",
                   "Type": "Director",
-                  "PrimaryImageTag": "d2e928d607a8b9f39fae4759178105a6",
+                  "PrimaryImageTag": "b12f7bf758b23cfe2e8c9079978d1d58",
                   "ImageBlurHashes": {
                     "Primary": {
-                      "d2e928d607a8b9f39fae4759178105a6": "dGF={%~qof4n%MIUxut79FM{Rj%M?bRj%MxuofM{%M%M"
+                      "b12f7bf758b23cfe2e8c9079978d1d58": "dGF={%~qof4n%MIUxut79FM{Rj%M?bRj%MxuofM{%M%M"
                     }
                   }
                 },
@@ -441,10 +186,10 @@
                   "Id": "49f34ba9aaa3cc6004fbee058aea50b7",
                   "Role": "Producer",
                   "Type": "Producer",
-                  "PrimaryImageTag": "3485268aeb6d20239badb9f03e46d862",
+                  "PrimaryImageTag": "91f688fe3c99840ca0efe691d36972f7",
                   "ImageBlurHashes": {
                     "Primary": {
-                      "3485268aeb6d20239badb9f03e46d862": "dJINUFIp~q=|-4In$eWVOtt7XAj?=_jExB%2bcWXt7xa"
+                      "91f688fe3c99840ca0efe691d36972f7": "dJINUFIp~q=|-4In$eWVOtt7XAj?=_jExB%2bcWXt7xa"
                     }
                   }
                 }
@@ -467,21 +212,21 @@
               ],
               "VideoType": "VideoFile",
               "ImageTags": {
-                "Logo": "a4248888908dac86ebfb54038fb3442a",
-                "Primary": "f5eec7fc1c23f6f0364527b90ebdff63"
+                "Logo": "20f044bddb6b81aad50c4f7994b002a4",
+                "Primary": "9b24b115156b0c92c5c15436a440e150"
               },
               "BackdropImageTags": [
-                "ce437f2c989cc1aa35e3a9b68cae36b0"
+                "20c994f6ff2891170ce759d2cd32bb76"
               ],
               "ImageBlurHashes": {
                 "Backdrop": {
-                  "ce437f2c989cc1aa35e3a9b68cae36b0": "WFC$J+%15U-oXR9vi_NybuxaWXS40gIp-na#xu%1xae-WBNet6%1"
+                  "20c994f6ff2891170ce759d2cd32bb76": "WFC$J+%15U-oXR9vi_NybuxaWXS40gIp-na#xu%1xZe-WBNet6%1"
                 },
                 "Logo": {
-                  "a4248888908dac86ebfb54038fb3442a": "PEAd7f~q_3-;RjD%D%D%j[RjRjj[ayoft7t74nt7t7WBfQWBWBRj"
+                  "20f044bddb6b81aad50c4f7994b002a4": "PEAd7f~q_3-;RjD%D%D%j[RjRjj[ayoft7t74nt7t7WBfQWBWBRj"
                 },
                 "Primary": {
-                  "f5eec7fc1c23f6f0364527b90ebdff63": "dUE.63WXI:s,~BNHNGi_t8kXR+jEo3xuWBNGRlxts:Rk"
+                  "9b24b115156b0c92c5c15436a440e150": "dUE.2{S4I:s,~BNHNGi_t8kXR+jEoMxuWBNGRkxts:Rk"
                 }
               },
               "LocationType": "FileSystem",
@@ -497,7 +242,7 @@
     {
       "request": {
         "method": "GET",
-        "path": "/Users/03d927573b5e4cd9942b61f120b5f9a4/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Filters=IsPlayed&Fields=UserData"
+        "path": "/Users/b657baa4969346a889487d68b9a2678f/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&IsPlayed=true&Fields=UserData&StartIndex=0&Limit=500"
       },
       "reply": {
         "status": 200,
@@ -514,7 +259,7 @@
     {
       "request": {
         "method": "GET",
-        "path": "/Users/03d927573b5e4cd9942b61f120b5f9a4/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Filters=IsUnplayed&Fields=UserData"
+        "path": "/Users/b657baa4969346a889487d68b9a2678f/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&IsFavorite=true&Fields=UserData&StartIndex=0&Limit=500"
       },
       "reply": {
         "status": 200,
@@ -522,54 +267,25 @@
           "content-type": "application/json; charset=utf-8"
         },
         "body": {
-          "Items": [
-            {
-              "Name": "Sintel",
-              "ServerId": "f5b1e1c5c9c24dd2a828bc1944e125c0",
-              "Id": "3df4dba3fab3ef172511446b46f3e8a0",
-              "HasSubtitles": true,
-              "Container": "mkv",
-              "PremiereDate": "2010-09-30T07:00:00.0000000Z",
-              "OfficialRating": "PG",
-              "ChannelId": null,
-              "CommunityRating": 7.333,
-              "RunTimeTicks": 8880320000,
-              "ProductionYear": 2010,
-              "IsFolder": false,
-              "Type": "Movie",
-              "UserData": {
-                "PlaybackPositionTicks": 0,
-                "PlayCount": 0,
-                "IsFavorite": false,
-                "Played": false,
-                "Key": "<scrubbed>",
-                "ItemId": "3df4dba3fab3ef172511446b46f3e8a0"
-              },
-              "VideoType": "VideoFile",
-              "ImageTags": {
-                "Logo": "a4248888908dac86ebfb54038fb3442a",
-                "Primary": "f5eec7fc1c23f6f0364527b90ebdff63"
-              },
-              "BackdropImageTags": [
-                "ce437f2c989cc1aa35e3a9b68cae36b0"
-              ],
-              "ImageBlurHashes": {
-                "Backdrop": {
-                  "ce437f2c989cc1aa35e3a9b68cae36b0": "WFC$J+%15U-oXR9vi_NybuxaWXS40gIp-na#xu%1xae-WBNet6%1"
-                },
-                "Logo": {
-                  "a4248888908dac86ebfb54038fb3442a": "PEAd7f~q_3-;RjD%D%D%j[RjRjj[ayoft7t74nt7t7WBfQWBWBRj"
-                },
-                "Primary": {
-                  "f5eec7fc1c23f6f0364527b90ebdff63": "dUE.63WXI:s,~BNHNGi_t8kXR+jEo3xuWBNGRlxts:Rk"
-                }
-              },
-              "LocationType": "FileSystem",
-              "MediaType": "Video",
-              "OriginalLanguage": "en"
-            }
-          ],
-          "TotalRecordCount": 1,
+          "Items": [],
+          "TotalRecordCount": 0,
+          "StartIndex": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Users/b657baa4969346a889487d68b9a2678f/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Filters=IsResumable&Fields=UserData&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [],
+          "TotalRecordCount": 0,
           "StartIndex": 0
         }
       }

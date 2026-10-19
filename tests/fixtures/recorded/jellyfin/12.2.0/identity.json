@@ -2,8 +2,8 @@
   "app": "jellyfin",
   "version": "12.2.0",
   "state": "identity",
-  "recordedAt": "2026-10-14T08:31:09Z",
-  "note": "The public identity and the full system info Deluno reads for the version and server id (ConnectionVersionParserTests) (jellyfin 12.2.0, a library of one film and a two-episode series, the film being the suite's base video). Installed from: jellyfin_12.2_windows-x64.exe from repo.jellyfin.org: the vendor publishes no checksum (the project publishes none beside the installer); the file's SHA-256 is 0e6781d214fe384db7325b70e6a499a830f0e3dbbad9c5a4a8e722dca5ae48fc.",
+  "recordedAt": "2026-10-19T02:20:38Z",
+  "note": "The public identity and the full system info Deluno reads for the version and server id (jellyfin 12.2.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {
       "request": {
@@ -16,12 +16,12 @@
           "content-type": "application/json; charset=utf-8"
         },
         "body": {
-          "LocalAddress": "http://127.0.0.1:8096",
-          "ServerName": "<host>",
+          "LocalAddress": "http://192.168.1.10:8096",
+          "ServerName": "a645f148af30",
           "Version": "12.2.0",
           "ProductName": "Jellyfin Server",
           "OperatingSystem": "",
-          "Id": "f5b1e1c5c9c24dd2a828bc1944e125c0",
+          "Id": "6c5f6a6fea8e4011ad35856c884c5306",
           "StartupWizardCompleted": false
         }
       }
@@ -45,13 +45,13 @@
           "CompletedInstallations": [],
           "CanSelfRestart": true,
           "CanLaunchWebBrowser": false,
-          "ProgramDataPath": "C:\\ProgramData\\Jellyfin\\Server",
-          "WebPath": "C:\\Program Files\\Jellyfin\\Server\\jellyfin-web",
-          "ItemsByNamePath": "C:\\ProgramData\\Jellyfin\\Server\\metadata",
-          "CachePath": "C:\\ProgramData\\Jellyfin\\Server\\cache",
-          "LogPath": "C:\\ProgramData\\Jellyfin\\Server\\log",
-          "InternalMetadataPath": "C:\\ProgramData\\Jellyfin\\Server\\metadata",
-          "TranscodingTempPath": "C:\\ProgramData\\Jellyfin\\Server\\cache\\transcodes",
+          "ProgramDataPath": "/config",
+          "WebPath": "/jellyfin/jellyfin-web",
+          "ItemsByNamePath": "/config/metadata",
+          "CachePath": "/cache",
+          "LogPath": "/config/log",
+          "InternalMetadataPath": "/config/metadata",
+          "TranscodingTempPath": "/cache/transcodes",
           "CastReceiverApplications": [
             {
               "Id": "F007D354",
@@ -65,12 +65,12 @@
           "HasUpdateAvailable": false,
           "EncoderLocation": "System",
           "SystemArchitecture": "X64",
-          "LocalAddress": "http://127.0.0.1:8096",
-          "ServerName": "<host>",
+          "LocalAddress": "http://192.168.1.10:8096",
+          "ServerName": "a645f148af30",
           "Version": "12.2.0",
           "ProductName": "Jellyfin Server",
           "OperatingSystem": "",
-          "Id": "f5b1e1c5c9c24dd2a828bc1944e125c0",
+          "Id": "6c5f6a6fea8e4011ad35856c884c5306",
           "StartupWizardCompleted": true
         }
       }

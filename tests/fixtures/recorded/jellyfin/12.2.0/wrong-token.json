@@ -2,8 +2,8 @@
   "app": "jellyfin",
   "version": "12.2.0",
   "state": "wrong-token",
-  "recordedAt": "2026-10-14T08:31:09Z",
-  "note": "System info, the user list and the library list with a key the server does not know (jellyfin 12.2.0, a library of one film and a two-episode series, the film being the suite's base video). Installed from: jellyfin_12.2_windows-x64.exe from repo.jellyfin.org: the vendor publishes no checksum (the project publishes none beside the installer); the file's SHA-256 is 0e6781d214fe384db7325b70e6a499a830f0e3dbbad9c5a4a8e722dca5ae48fc.",
+  "recordedAt": "2026-10-19T02:20:38Z",
+  "note": "System info, the user list and the library list with a key the server does not know (jellyfin 12.2.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {
       "request": {

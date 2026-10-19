@@ -27,13 +27,8 @@ test.describe("Retention from end to end", () => {
   let movieId = "";
 
   test.beforeAll(async ({ browser }) => {
-    // The recording of taking a collection off the home screen was made for another user id of the same server (see tests/fixtures/recorded/MISSING.md):
-    // it is the recorded reply with only that id in the address changed to this server's user.
-    const unfavourited = loadRecording("jellyfin", "12.2.0", "collection-unfavourited");
-    for (const exchange of unfavourited.exchanges) exchange.request.path = exchange.request.path.replace("a1c0903caf8e4c6893fe8a771ccf74c6", "03d927573b5e4cd9942b61f120b5f9a4");
     jellyfin = await startRecordedAppServer([
-      ...["identity", "libraries", "catalogue-movies", "watched", "sessions-idle", "collection-sync"].map((state) => loadRecording("jellyfin", "12.2.0", state)),
-      unfavourited
+      ...["identity", "libraries", "catalogue-movies", "watched", "sessions-idle", "collection-sync", "collection-unfavourited"].map((state) => loadRecording("jellyfin", "12.2.0", state))
     ]);
     root = fs.mkdtempSync(path.join(os.tmpdir(), "deluno-retention-e2e-"));
     const page = await browser.newPage();

@@ -2,8 +2,8 @@
   "app": "jellyfin",
   "version": "12.2.0",
   "state": "libraries",
-  "recordedAt": "2026-10-14T08:31:32Z",
-  "note": "The libraries and users as the connection test lists them (jellyfin 12.2.0, a library of one film and a two-episode series, the film being the suite's base video). Installed from: jellyfin_12.2_windows-x64.exe from repo.jellyfin.org: the vendor publishes no checksum (the project publishes none beside the installer); the file's SHA-256 is 0e6781d214fe384db7325b70e6a499a830f0e3dbbad9c5a4a8e722dca5ae48fc.",
+  "recordedAt": "2026-10-19T02:26:50Z",
+  "note": "The libraries and users as the connection test lists them (jellyfin 12.2.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {
       "request": {
@@ -17,9 +17,66 @@
         },
         "body": [
           {
+            "Name": "Shows",
+            "Locations": [
+              "/media/Shows"
+            ],
+            "CollectionType": "tvshows",
+            "LibraryOptions": {
+              "Enabled": true,
+              "EnablePhotos": true,
+              "EnableRealtimeMonitor": false,
+              "EnableLUFSScan": false,
+              "EnableChapterImageExtraction": false,
+              "ExtractChapterImagesDuringLibraryScan": false,
+              "EnableTrickplayImageExtraction": false,
+              "ExtractTrickplayImagesDuringLibraryScan": false,
+              "PathInfos": [
+                {
+                  "Path": "/media/Shows"
+                }
+              ],
+              "SaveLocalMetadata": false,
+              "EnableInternetProviders": false,
+              "EnableAutomaticSeriesGrouping": true,
+              "EnableEmbeddedTitles": false,
+              "EnableEmbeddedExtrasTitles": false,
+              "EnableEmbeddedEpisodeInfos": false,
+              "AutomaticRefreshIntervalDays": 0,
+              "SeasonZeroDisplayName": "Specials",
+              "DisabledLocalMetadataReaders": [],
+              "DisabledSubtitleFetchers": [],
+              "SubtitleFetcherOrder": [],
+              "DisabledMediaSegmentProviders": [],
+              "MediaSegmentProviderOrder": [],
+              "SkipSubtitlesIfEmbeddedSubtitlesPresent": false,
+              "SkipSubtitlesIfAudioTrackMatches": true,
+              "RequirePerfectSubtitleMatch": true,
+              "SaveSubtitlesWithMedia": true,
+              "SaveLyricsWithMedia": false,
+              "SaveTrickplayWithMedia": false,
+              "DisabledLyricFetchers": [],
+              "LyricFetcherOrder": [],
+              "PreferNonstandardArtistsTag": false,
+              "UseCustomTagDelimiters": false,
+              "CustomTagDelimiters": [
+                "/",
+                "|",
+                ";",
+                "\\"
+              ],
+              "DelimiterWhitelist": [],
+              "AutomaticallyAddToCollection": false,
+              "AllowEmbeddedSubtitles": "AllowAll",
+              "TypeOptions": []
+            },
+            "ItemId": "a656b907eb3a73532e40e44b968d0225",
+            "RefreshStatus": "Idle"
+          },
+          {
             "Name": "Movies",
             "Locations": [
-              "C:\\golden\\recorded-apps\\media\\Movies"
+              "/media/Movies"
             ],
             "CollectionType": "movies",
             "LibraryOptions": {
@@ -33,7 +90,7 @@
               "ExtractTrickplayImagesDuringLibraryScan": false,
               "PathInfos": [
                 {
-                  "Path": "C:\\golden\\recorded-apps\\media\\Movies"
+                  "Path": "/media/Movies"
                 }
               ],
               "SaveLocalMetadata": false,
@@ -73,63 +130,6 @@
             "ItemId": "f137a2dd21bbc1b99aa5c0f6bf02a805",
             "PrimaryImageItemId": "f137a2dd21bbc1b99aa5c0f6bf02a805",
             "RefreshStatus": "Idle"
-          },
-          {
-            "Name": "Shows",
-            "Locations": [
-              "C:\\golden\\recorded-apps\\media\\Shows"
-            ],
-            "CollectionType": "tvshows",
-            "LibraryOptions": {
-              "Enabled": true,
-              "EnablePhotos": true,
-              "EnableRealtimeMonitor": false,
-              "EnableLUFSScan": false,
-              "EnableChapterImageExtraction": false,
-              "ExtractChapterImagesDuringLibraryScan": false,
-              "EnableTrickplayImageExtraction": false,
-              "ExtractTrickplayImagesDuringLibraryScan": false,
-              "PathInfos": [
-                {
-                  "Path": "C:\\golden\\recorded-apps\\media\\Shows"
-                }
-              ],
-              "SaveLocalMetadata": false,
-              "EnableInternetProviders": false,
-              "EnableAutomaticSeriesGrouping": true,
-              "EnableEmbeddedTitles": false,
-              "EnableEmbeddedExtrasTitles": false,
-              "EnableEmbeddedEpisodeInfos": false,
-              "AutomaticRefreshIntervalDays": 0,
-              "SeasonZeroDisplayName": "Specials",
-              "DisabledLocalMetadataReaders": [],
-              "DisabledSubtitleFetchers": [],
-              "SubtitleFetcherOrder": [],
-              "DisabledMediaSegmentProviders": [],
-              "MediaSegmentProviderOrder": [],
-              "SkipSubtitlesIfEmbeddedSubtitlesPresent": false,
-              "SkipSubtitlesIfAudioTrackMatches": true,
-              "RequirePerfectSubtitleMatch": true,
-              "SaveSubtitlesWithMedia": true,
-              "SaveLyricsWithMedia": false,
-              "SaveTrickplayWithMedia": false,
-              "DisabledLyricFetchers": [],
-              "LyricFetcherOrder": [],
-              "PreferNonstandardArtistsTag": false,
-              "UseCustomTagDelimiters": false,
-              "CustomTagDelimiters": [
-                "/",
-                "|",
-                ";",
-                "\\"
-              ],
-              "DelimiterWhitelist": [],
-              "AutomaticallyAddToCollection": false,
-              "AllowEmbeddedSubtitles": "AllowAll",
-              "TypeOptions": []
-            },
-            "ItemId": "a656b907eb3a73532e40e44b968d0225",
-            "RefreshStatus": "Idle"
           }
         ]
       }
@@ -146,15 +146,15 @@
         },
         "body": [
           {
-            "Name": "rec<scrubbed>",
-            "ServerId": "f5b1e1c5c9c24dd2a828bc1944e125c0",
-            "Id": "03d927573b5e4cd9942b61f120b5f9a4",
+            "Name": "<scrubbed>",
+            "ServerId": "6c5f6a6fea8e4011ad35856c884c5306",
+            "Id": "b657baa4969346a889487d68b9a2678f",
             "HasPassword": true,
             "HasConfiguredPassword": true,
             "HasConfiguredEasyPassword": false,
             "EnableAutoLogin": false,
-            "LastLoginDate": "2026-10-14T08:31:08.5859447Z",
-            "LastActivityDate": "2026-10-14T08:31:08.5859447Z",
+            "LastLoginDate": "2026-10-19T02:20:38.2739617Z",
+            "LastActivityDate": "2026-10-19T02:20:38.2739617Z",
             "Configuration": {
               "PlayDefaultAudioTrack": true,
               "SubtitleLanguagePreference": "",
@@ -173,7 +173,7 @@
               "CastReceiverId": "F007D354"
             },
             "Policy": {
-              "Is<host>": true,
+              "IsAdministrator": true,
               "IsHidden": true,
               "EnableCollectionManagement": false,
               "EnableSubtitleManagement": false,
