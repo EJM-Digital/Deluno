@@ -8,21 +8,25 @@ public sealed record BackupSettingsSnapshot(
     string BackupFolder,
     DateTimeOffset? LastRunUtc,
     DateTimeOffset? NextRunUtc,
-    string? Problem = null);
+    string? Problem = null,
+    bool PasswordSet = false);
 
 public sealed record UpdateBackupSettingsRequest(
     bool Enabled,
     string? Frequency,
     string? TimeOfDay,
     int? RetentionCount,
-    string? BackupFolder);
+    string? BackupFolder,
+    string? BackupPassword = null,
+    bool ClearBackupPassword = false);
 
 public sealed record BackupManifest(
     string App,
     string Version,
     DateTimeOffset CreatedUtc,
     string Reason,
-    IReadOnlyList<string> Files);
+    IReadOnlyList<string> Files,
+    bool KeysIncluded = false);
 
 public sealed record BackupItem(
     string Id,
@@ -30,7 +34,8 @@ public sealed record BackupItem(
     string FullPath,
     long SizeBytes,
     DateTimeOffset CreatedUtc,
-    string Reason);
+    string Reason,
+    bool KeysIncluded = false);
 
 public sealed record BackupCreateRequest(string? Reason);
 
@@ -41,10 +46,13 @@ public sealed record RestorePreviewResponse(
     string Message,
     BackupManifest? Manifest,
     IReadOnlyList<string> Warnings,
-    bool NewerThanThisVersion = false);
+    bool NewerThanThisVersion = false,
+    bool NeedsPassword = false);
 
 public sealed record RestoreResultResponse(
     bool Restored,
     string Message,
     string RestoreFolder,
-    IReadOnlyList<string> RestoredFiles);
+    IReadOnlyList<string> RestoredFiles,
+    bool NeedsPassword = false,
+    bool SecretsNeedEntering = false);
