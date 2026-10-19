@@ -81,7 +81,7 @@ public sealed class TheGuidePackageManualImportRoutesTests
         Assert.Equal(GuidePackageCatalog.Current.Version + 1, (await app.Client.GetFromJsonAsync<JsonObject>("/api/v1/guides/trash/package"))!["version"]!.GetValue<int>());
     }
 
-    [Fact(Skip = "DEFECT: applying (or previewing) a guide package with no source answers 500, not a plain refusal. POST /api/v1/guides/trash/apply with {\"package\":{\"id\":\"\",\"name\":\"\",\"version\":99}} throws NullReferenceException in QualityEndpointRouteBuilderExtensions.WithPinnedSourceInventory (line 34).")]
+    [Fact]
     public async Task A_package_with_no_content_is_refused_and_stores_nothing()
     {
         await using var app = await ApplicationTestHost.StartAsync();
@@ -89,7 +89,7 @@ public sealed class TheGuidePackageManualImportRoutesTests
 
         var response = await app.Client.PostAsJsonAsync("/api/v1/guides/trash/apply", new { package = new { id = "", name = "", version = 99 }, expectedCurrentIntegritySha256 = Integrity });
 
-        Assert.False(response.IsSuccessStatusCode, $"{(int)response.StatusCode}");
+        Assert.True(response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Conflict or HttpStatusCode.UnprocessableEntity, $"{(int)response.StatusCode}");
         Assert.Equal(before, await StoredAsync(app));
     }
 }

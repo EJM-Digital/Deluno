@@ -49,7 +49,7 @@ public sealed class AProfilesReleaseWordsDecideOnRecordedIndexerResultsTests
         Assert.Contains(missing.GetProperty("decisionReasons").EnumerateArray().Select(reason => reason.GetString()), reason => reason!.Contains("NTb", StringComparison.Ordinal));
     }
 
-    [Fact(Skip = "DEFECT: the Quality Profile step 5 box says any one of the words must appear in the release name, but the engine requires every word (ReleaseDecisionEngine refuses at the first missing required term). Recorded YTS release \"Sintel (2010) 720p BRRip x264 -YTS\" with mustContain \"NTb, YTS\" is rejected with \"Release name is missing required term 'NTb'.\"")]
+    [Fact]
     public async Task A_release_naming_any_one_of_the_words_the_profile_insists_on_is_taken()
     {
         var named = await PreviewWithAsync(new { mustContain = "NTb, YTS" });
