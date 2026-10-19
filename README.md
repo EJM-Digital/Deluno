@@ -68,6 +68,8 @@ Your data lives outside the program folder on purpose, so updating the program n
 
 ## Install with Docker
 
+**Linux:** running Deluno directly on Linux (as a systemd service, without Docker) is not supported yet. On Linux, use Docker, as below.
+
 Images are published to GitHub's container registry as `ghcr.io/jampat000/deluno`. Use a version tag such as `1.0.0-rc.28`. Release CI checks each version tag is pullable before it counts as released, but it does not move `latest` for pre-release builds, so `latest` can be older than what you want.
 
 Inside the container, Deluno listens on port `8080` and keeps its own databases, keys and logs under the folder named by `Storage__DataRoot`. The container runs as a normal user, not root. It does not have the `PUID`/`PGID` settings you may know from other images. If you need files owned by your own user, tell Docker who to run as with `user:` (or `--user`), as the examples below do.
@@ -192,6 +194,8 @@ Deluno and Weir are independent. Each works without the other, and neither conta
 ## Updating, backing up and uninstalling
 
 **Windows.** Updates appear in **System → Updates** and install in the background. Before a bigger update, make a backup under **System → Backups** and download it somewhere else. The [backup and restore runbook](docs/backup-restore-runbook.md) covers restoring, including onto a new computer. To uninstall, use **Settings → Apps → Installed apps** in Windows. The download clients and Weir you installed through the extras list are separate programs and are not removed with Deluno. They are uninstalled the same way, one by one. Your data folder is not part of the program folder; delete `%LocalAppData%\DelunoData` yourself if you want it gone.
+
+Backups also hold Deluno's keys (which unlock your saved passwords and API keys), but only if you set a **backup password** in **System → Backups**. The keys are locked with that password, and a restore asks for it. Without a password the keys are left out, and after a restore you enter your saved passwords and API keys again.
 
 **Docker.** There is no updater inside the container. Make a backup under **System → Backups**, change the version tag in your compose file, and run:
 
