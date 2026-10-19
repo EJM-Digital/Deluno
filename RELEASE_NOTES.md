@@ -49,6 +49,45 @@ Fixes:
   file, instead of a server error.
 - Season Pass says when it could not read the seasons, with Try again, instead of
   showing "No seasons yet".
+- Guided setup now remembers how far you got past step 11, keeps Archive when
+  you reload, no longer wipes your Security lists when you run it again, turns
+  Allowed Hosts off when you answer No, and shows your current settings on a
+  re-run. It also asks whether Deluno may check for updates.
+- The Windows app's update check is off on a fresh install. The setup guide
+  asks, and your answer is kept.
+- Backups now keep your keys locked with a backup password you choose.
+  Restoring a backup asks for it.
+- The Docker image is now also published for ARM64 machines.
+- Docker: a data folder Deluno cannot write to now stops with a plain message
+  instead of crashing, stopping the container saves everything into the main
+  data file, a full disk is said plainly instead of "unexpected error" and the
+  container no longer reads as healthy, and an older image refuses to start on
+  data a newer one has already upgraded.
+- Removing several titles at once now tells you exactly what happens to their
+  downloads, the same as removing one title. The Overview list has a checkbox on
+  each row and stays quick with thousands of titles, and Follow collection says
+  what is wrong in words instead of showing raw error text.
+- The Blocklist updates as soon as a release is blocked or lifted, without a
+  reload.
+- Settings screens (Naming, Size rules, Setup overview) no longer go stale. A
+  save while Deluno is offline says so in words, a missing processor folder is
+  asked about, "only take releases naming" now matches what Deluno does, an
+  empty guide package no longer crashes, and the shipped guide stays in history.
+- Moving a download in SABnzbd is no longer reported as failed. rTorrent no
+  longer fails on a page that is not what it expected, a wrong login for
+  rTorrent, uTorrent or a banned qBittorrent says so correctly, and a release
+  profile with no name is refused.
+- When Weir says the original download is gone, Deluno no longer overwrites that
+  a moment later.
+- Webhook addresses and keys for Discord, Slack, Telegram and Pushover are now
+  stored protected, shown masked, and never written in full to the log.
+- Approving a request in Seerr no longer turns a film you already have into a
+  missing one. Season packs now send notices and tell Seerr the show is
+  available, and a notifier that fails can no longer stop a film being added or
+  a grab being recorded. ntfy now delivers titles with accents or dashes,
+  "Send a test event" shows a failure when nothing was sent, your media server is
+  told when a file is deleted, renamed, restored or removed, and adding a second
+  path mapping for the same folder explains itself instead of failing.
 
 ## 1.0.0-rc.30.33
 
