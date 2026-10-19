@@ -34,8 +34,30 @@ public static class ConfigChangedPush
         ("destination-rules", ConfigAreas.DestinationRules),
         ("download-health", ConfigAreas.DownloadHealth),
         ("failure-rules", ConfigAreas.DownloadHealth),
-        ("exclusions", ConfigAreas.DownloadHealth)
+        ("exclusions", ConfigAreas.DownloadHealth),
+        ("blocked-releases", ConfigAreas.DownloadHealth),
+        ("integrations/processors", ConfigAreas.Processors),
+        ("v1/guides/trash", ConfigAreas.CustomFormats),
+        ("v1/release-preferences", ConfigAreas.ReleaseRules),
+        ("trakt", ConfigAreas.Lists)
     ];
+
+    // Routes whose screen follows an event of its own that the route's service does not publish, so the write publishes it here
+    // instead of a Settings-area one. (The backup, update and recycle-bin settings publish theirs in their own services.)
+    private static readonly (string Prefix, Func<IRealtimeEventPublisher?, CancellationToken, Task> Publish)[] OwnEvents =
+    [
+        // The Collections screen follows MovieChanged; a collection write moves the movies it groups.
+        ("movie-collections", (publisher, token) => publisher is null ? Task.CompletedTask : publisher.PublishEntityChangedAsync("Movie", "collections", token))
+    ];
+
+    private static bool Matches(ReadOnlySpan<char> rest, string prefix)
+        => rest.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            && (rest.Length == prefix.Length || rest[prefix.Length] == '/');
+
+    /// <summary>True when a write to this path publishes the event of a screen that follows its own event.</summary>
+    public static bool HasOwnEvent(PathString path)
+        => path.Value is { } value && value.StartsWith("/api/", StringComparison.OrdinalIgnoreCase)
+            && OwnEvents.Any(item => Matches(value.AsSpan(5), item.Prefix));
 
     /// <summary>The Settings area a request path writes to, or null when it is not one.</summary>
     public static string? AreaFor(PathString path)
@@ -47,11 +69,10 @@ public static class ConfigChangedPush
         }
 
         var rest = value.AsSpan(5);
-        var slash = rest.IndexOf('/');
-        var first = slash < 0 ? rest : rest[..slash];
         foreach (var (prefix, area) in Areas)
         {
-            if (first.Equals(prefix, StringComparison.OrdinalIgnoreCase))
+            // A prefix names the first segment or several (v1/guides/trash), and matches whole segments only.
+            if (Matches(rest, prefix))
             {
                 return area;
             }
@@ -73,13 +94,25 @@ public static class ConfigChangedPush
                 return;
             }
 
+            var publisher = context.RequestServices.GetService<IRealtimeEventPublisher>();
+            if (context.Request.Path.Value is { } value && value.StartsWith("/api/", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var (prefix, publish) in OwnEvents)
+                {
+                    if (Matches(value.AsSpan(5), prefix))
+                    {
+                        await publish(publisher, CancellationToken.None);
+                        return;
+                    }
+                }
+            }
+
             var area = AreaFor(context.Request.Path);
             if (area is null)
             {
                 return;
             }
 
-            var publisher = context.RequestServices.GetService<IRealtimeEventPublisher>();
             await publisher.PublishConfigChangedAsync(area, CancellationToken.None);
         });
 }

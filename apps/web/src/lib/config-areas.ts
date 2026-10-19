@@ -14,5 +14,7 @@ export const ConfigAreas = {
   security: "security",
   releaseRules: "release-rules",
   destinationRules: "destination-rules",
-  downloadHealth: "download-health"
+  downloadHealth: "download-health",
+  processors: "processors",
+  lists: "lists"
 } as const;

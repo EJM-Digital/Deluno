@@ -2,7 +2,7 @@
   "app": "jellyfin",
   "version": "12.2.0",
   "state": "not-answering",
-  "recordedAt": "2026-10-14T08:31:49Z",
+  "recordedAt": "2026-10-19T02:26:57Z",
   "note": "A request sent to a port nothing listens on: the connection is refused.",
   "exchanges": [
     {
@@ -13,7 +13,7 @@
       "reply": {
         "status": 0,
         "headers": {},
-        "error": "No connection could be made because the target machine actively refused it 127.0.0.1:1"
+        "error": "bad port"
       }
     }
   ]

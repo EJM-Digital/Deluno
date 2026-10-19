@@ -600,7 +600,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [films, removal, tryagain, outage, resendbefore, resendduringtorrent, resendduringusenet, resendaftertorrent, resendafterusenet, stuckprogress, stuckrate, nzbgetsetup, vanishbefore, vanishwaiting, problems, layout, keepseeding, seasonpack, github, tvepisodes, tvremove, tvredobefore, tvredoduring, tvredoafter, tvstalledprogress, tvstalledrate, tvretry, tvweirout, tvgonebefore, tvgonewaiting, queueremove, queuehold, queuehandover]
+        group: [films, removal, tryagain, outage, resendbefore, resendduringtorrent, resendduringusenet, resendaftertorrent, resendafterusenet, stuckprogress, stuckrate, nzbgetsetup, vanishbefore, vanishwaiting, problems, layout, keepseeding, seasonpack, github, tvepisodes, tvremove, tvredobefore, tvredoduring, tvredoafter, tvstalledprogress, tvstalledrate, tvretry, tvweirout, tvgonebefore, tvgonewaiting, queueremove, queuehold, queuehandover, sharing, problemskinds]
     env:
       DELUNO_IMAGE: deluno-e2e:${{ github.sha }}
       # Group github adds GitHub's API with its allowance used up (a stand-in answering GitHub's own recorded reply, tests/e2e/fixture/github.mjs).

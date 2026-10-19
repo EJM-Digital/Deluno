@@ -1,3 +1,4 @@
+using Deluno.Api;
 using Deluno.Infrastructure;
 using Deluno.Infrastructure.Storage;
 using Deluno.Platform;
@@ -136,6 +137,9 @@ internal sealed class ApplicationTestHost : IAsyncDisposable
                     {
                         app.UseRateLimiter();
                     }
+                    // Both live-push middlewares the hosts share, so a test sees the pushes a real write makes (#1358).
+                    app.UseDelunoConfigChangedPush();
+                    app.UseDelunoAttentionChangedPush();
                     app.UseAuthentication();
                     app.UseAuthorization();
                     // The bad-request answers are the shared pipeline's own, so a test sees what a caller sees (#1280).

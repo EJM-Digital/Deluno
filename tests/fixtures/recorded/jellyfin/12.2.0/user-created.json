@@ -2,15 +2,15 @@
   "app": "jellyfin",
   "version": "12.2.0",
   "state": "user-created",
-  "recordedAt": "2026-10-14T08:31:47Z",
-  "note": "A user made (POST /Users/New), given its policy back, listed, then removed (jellyfin 12.2.0, a library of one film and a two-episode series, the film being the suite's base video). Installed from: jellyfin_12.2_windows-x64.exe from repo.jellyfin.org: the vendor publishes no checksum (the project publishes none beside the installer); the file's SHA-256 is 0e6781d214fe384db7325b70e6a499a830f0e3dbbad9c5a4a8e722dca5ae48fc.",
+  "recordedAt": "2026-10-19T02:26:57Z",
+  "note": "A user made (POST /Users/New), given its policy back, listed, then removed (jellyfin 12.2.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {
       "request": {
         "method": "POST",
         "path": "/Users/New",
         "body": {
-          "Name": "rec<scrubbed>"
+          "Name": "rec94bb67"
         }
       },
       "reply": {
@@ -19,9 +19,9 @@
           "content-type": "application/json; charset=utf-8"
         },
         "body": {
-          "Name": "rec<scrubbed>",
-          "ServerId": "f5b1e1c5c9c24dd2a828bc1944e125c0",
-          "Id": "01a66d6c6fe8481cbad2ef4ad4f049dc",
+          "Name": "rec94bb67",
+          "ServerId": "6c5f6a6fea8e4011ad35856c884c5306",
+          "Id": "f19c343fe75347f89fcce8b2c8642ad5",
           "HasPassword": true,
           "HasConfiguredPassword": true,
           "HasConfiguredEasyPassword": false,
@@ -44,7 +44,7 @@
             "CastReceiverId": "F007D354"
           },
           "Policy": {
-            "Is<host>": false,
+            "IsAdministrator": false,
             "IsHidden": true,
             "EnableCollectionManagement": false,
             "EnableSubtitleManagement": false,
@@ -93,9 +93,9 @@
     {
       "request": {
         "method": "POST",
-        "path": "/Users/01a66d6c6fe8481cbad2ef4ad4f049dc/Policy",
+        "path": "/Users/f19c343fe75347f89fcce8b2c8642ad5/Policy",
         "body": {
-          "Is<host>": false,
+          "IsAdministrator": false,
           "IsHidden": true,
           "EnableCollectionManagement": false,
           "EnableSubtitleManagement": false,
@@ -157,15 +157,15 @@
         },
         "body": [
           {
-            "Name": "rec<scrubbed>",
-            "ServerId": "f5b1e1c5c9c24dd2a828bc1944e125c0",
-            "Id": "03d927573b5e4cd9942b61f120b5f9a4",
+            "Name": "<scrubbed>",
+            "ServerId": "6c5f6a6fea8e4011ad35856c884c5306",
+            "Id": "b657baa4969346a889487d68b9a2678f",
             "HasPassword": true,
             "HasConfiguredPassword": true,
             "HasConfiguredEasyPassword": false,
             "EnableAutoLogin": false,
-            "LastLoginDate": "2026-10-14T08:31:33.331555Z",
-            "LastActivityDate": "2026-10-14T08:31:33.331555Z",
+            "LastLoginDate": "2026-10-19T02:26:50.356899Z",
+            "LastActivityDate": "2026-10-19T02:26:50.356899Z",
             "Configuration": {
               "PlayDefaultAudioTrack": true,
               "SubtitleLanguagePreference": "",
@@ -184,7 +184,7 @@
               "CastReceiverId": "F007D354"
             },
             "Policy": {
-              "Is<host>": true,
+              "IsAdministrator": true,
               "IsHidden": true,
               "EnableCollectionManagement": false,
               "EnableSubtitleManagement": false,
@@ -229,9 +229,9 @@
             }
           },
           {
-            "Name": "rec<scrubbed>",
-            "ServerId": "f5b1e1c5c9c24dd2a828bc1944e125c0",
-            "Id": "01a66d6c6fe8481cbad2ef4ad4f049dc",
+            "Name": "rec94bb67",
+            "ServerId": "6c5f6a6fea8e4011ad35856c884c5306",
+            "Id": "f19c343fe75347f89fcce8b2c8642ad5",
             "HasPassword": true,
             "HasConfiguredPassword": true,
             "HasConfiguredEasyPassword": false,
@@ -254,7 +254,7 @@
               "CastReceiverId": "F007D354"
             },
             "Policy": {
-              "Is<host>": false,
+              "IsAdministrator": false,
               "IsHidden": true,
               "EnableCollectionManagement": false,
               "EnableSubtitleManagement": false,
@@ -304,7 +304,7 @@
     {
       "request": {
         "method": "DELETE",
-        "path": "/Users/01a66d6c6fe8481cbad2ef4ad4f049dc"
+        "path": "/Users/f19c343fe75347f89fcce8b2c8642ad5"
       },
       "reply": {
         "status": 204,

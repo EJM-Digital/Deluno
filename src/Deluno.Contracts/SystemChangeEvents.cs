@@ -35,6 +35,8 @@ public static class ConfigAreas
     public const string ReleaseRules = "release-rules";
     public const string DestinationRules = "destination-rules";
     public const string DownloadHealth = "download-health";
+    public const string Processors = "processors";
+    public const string Lists = "lists";
 }
 
 public static class SystemChangeEventExtensions

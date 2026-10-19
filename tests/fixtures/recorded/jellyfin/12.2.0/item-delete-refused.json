@@ -1,0 +1,22 @@
+{
+  "app": "jellyfin",
+  "version": "12.2.0",
+  "state": "item-delete-refused",
+  "recordedAt": "2026-10-14T08:31:47Z",
+  "note": "DELETE /Items/{id} for a film whose file Jellyfin could not remove: the server answers 500 (the delete-by-id reply of the golden VM's Jellyfin 12.2.0; the Docker server runs as root and removed the file, so item-deleted holds a 204). The one exchange kept from that recording; it carries no id the other states must match.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/Items/15c9af56706b77eda1561e52ed708e20"
+      },
+      "reply": {
+        "status": 500,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "bodyText": "Error processing request."
+      }
+    }
+  ]
+}

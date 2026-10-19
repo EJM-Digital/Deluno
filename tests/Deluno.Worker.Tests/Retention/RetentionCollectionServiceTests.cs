@@ -200,12 +200,12 @@ public sealed class RetentionCollectionServiceTests
     public async Task What_a_rule_marks_goes_into_a_real_jellyfins_collection_by_the_calls_it_recorded_taking()
     {
         _store.Add(Rule("r1", RetentionLevels.Movie, "jf"));
-        await Mark("r1", "m1", ("jf", "3df4dba3fab3ef172511446b46f3e8a0", null));
+        await Mark("r1", "m1", ("jf", "78990f6a0a40212925e5c0f2d9bfb5d2", null));
         var calls = new List<string>();
 
         await RealJellyfinService(RecordedJellyfin(calls, collectionExists: false)).SyncAsync(CancellationToken.None);
 
-        Assert.Contains(calls, call => call == "POST /Collections?Name=Leaving%20soon&Ids=3df4dba3fab3ef172511446b46f3e8a0");
+        Assert.Contains(calls, call => call == "POST /Collections?Name=Leaving%20soon&Ids=78990f6a0a40212925e5c0f2d9bfb5d2");
         var synced = _store.Collections[("jf", "movies")];
         Assert.Null(synced.Problem);
         Assert.Equal(1, synced.Members);
@@ -215,7 +215,7 @@ public sealed class RetentionCollectionServiceTests
     public async Task Turning_the_rule_off_asks_a_real_jellyfin_to_delete_its_emptied_collection_and_nothing_else()
     {
         _store.Add(Rule("r1", RetentionLevels.Movie, "jf"));
-        await Mark("r1", "m1", ("jf", "3df4dba3fab3ef172511446b46f3e8a0", null));
+        await Mark("r1", "m1", ("jf", "78990f6a0a40212925e5c0f2d9bfb5d2", null));
         var calls = new List<string>();
         await RealJellyfinService(RecordedJellyfin(calls, collectionExists: false)).SyncAsync(CancellationToken.None);
         calls.Clear();
@@ -232,7 +232,7 @@ public sealed class RetentionCollectionServiceTests
     public async Task A_jellyfin_that_does_not_answer_is_recorded_against_the_server_and_caught_up_when_it_does()
     {
         _store.Add(Rule("r1", RetentionLevels.Movie, "jf"));
-        await Mark("r1", "m1", ("jf", "3df4dba3fab3ef172511446b46f3e8a0", null));
+        await Mark("r1", "m1", ("jf", "78990f6a0a40212925e5c0f2d9bfb5d2", null));
         var down = Deluno.Tests.Recorded.RecordedReplies.Jellyfin("not-answering").NotAnswering();
 
         await RealJellyfinService(down).SyncAsync(CancellationToken.None);
