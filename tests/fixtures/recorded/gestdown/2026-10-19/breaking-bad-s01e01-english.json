@@ -1,0 +1,170 @@
+{
+  "app": "gestdown",
+  "version": "2026-10-19",
+  "state": "breaking-bad-s01e01-english",
+  "recordedAt": "2026-10-19T10:12:37Z",
+  "note": "GET /shows/search/Breaking Bad, then GET /subtitles/get/{show id}/1/1/en: the show Gestdown holds and the English subtitles of its first episode (6 found).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/shows/search/Breaking%20Bad"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "shows": [
+            {
+              "id": "31ffb6ce-c000-4079-8912-b3f72057baed",
+              "name": "Breaking Bad",
+              "nbSeasons": 5,
+              "seasons": [
+                1,
+                2,
+                3,
+                4,
+                5
+              ],
+              "tvDbId": 81189,
+              "tmdbId": 1396,
+              "slug": "breaking-bad"
+            },
+            {
+              "id": "0dde8fbc-c431-4982-bdc4-5454f7eda635",
+              "name": "Breaking Bad Minisodes",
+              "nbSeasons": 1,
+              "seasons": [
+                1
+              ],
+              "tvDbId": null,
+              "tmdbId": 337563,
+              "slug": "breaking-bad-minisodes"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/subtitles/get/31ffb6ce-c000-4079-8912-b3f72057baed/1/1/en"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "matchingSubtitles": [
+            {
+              "subtitleId": "69cf7d79-052c-4f12-a57d-995d77de43ad",
+              "version": "0tv",
+              "completed": true,
+              "hearingImpaired": false,
+              "corrected": true,
+              "hd": false,
+              "downloadUri": "/subtitles/download/69cf7d79-052c-4f12-a57d-995d77de43ad",
+              "language": "English",
+              "discovered": "2022-05-17T02:28:20.084012Z",
+              "downloadCount": 431,
+              "source": "Addic7ed",
+              "qualities": [],
+              "release": null
+            },
+            {
+              "subtitleId": "bfb59770-e56e-4bd2-afb1-6ef62cff3848",
+              "version": "DVDRip ORPHEUS",
+              "completed": true,
+              "hearingImpaired": false,
+              "corrected": true,
+              "hd": false,
+              "downloadUri": "/subtitles/download/bfb59770-e56e-4bd2-afb1-6ef62cff3848",
+              "language": "English",
+              "discovered": "2022-05-17T02:28:20.084022Z",
+              "downloadCount": 109,
+              "source": "Addic7ed",
+              "qualities": [],
+              "release": null
+            },
+            {
+              "subtitleId": "e72d5988-9c40-435d-bebc-1ce9219af18c",
+              "version": "BluRayREWARD",
+              "completed": true,
+              "hearingImpaired": false,
+              "corrected": true,
+              "hd": true,
+              "downloadUri": "/subtitles/download/e72d5988-9c40-435d-bebc-1ce9219af18c",
+              "language": "English",
+              "discovered": "2022-05-17T02:28:20.084031Z",
+              "downloadCount": 81,
+              "source": "Addic7ed",
+              "qualities": [
+                "720p",
+                "1080p"
+              ],
+              "release": null
+            },
+            {
+              "subtitleId": "bf58c008-464e-4082-9293-8b9fd0894859",
+              "version": "Bluray-CtrlHD",
+              "completed": true,
+              "hearingImpaired": false,
+              "corrected": true,
+              "hd": true,
+              "downloadUri": "/subtitles/download/bf58c008-464e-4082-9293-8b9fd0894859",
+              "language": "English",
+              "discovered": "2022-05-17T02:28:20.084036Z",
+              "downloadCount": 499,
+              "source": "Addic7ed",
+              "qualities": [
+                "720p",
+                "1080p"
+              ],
+              "release": null
+            },
+            {
+              "subtitleId": "8b0c1b5a-8634-405d-83bc-21297c3d85f3",
+              "version": "TSV.BDRip",
+              "completed": true,
+              "hearingImpaired": false,
+              "corrected": true,
+              "hd": false,
+              "downloadUri": "/subtitles/download/8b0c1b5a-8634-405d-83bc-21297c3d85f3",
+              "language": "English",
+              "discovered": "2022-05-17T02:28:20.08405Z",
+              "downloadCount": 60,
+              "source": "Addic7ed",
+              "qualities": [],
+              "release": null
+            },
+            {
+              "subtitleId": "e379d2db-a519-456a-84e4-d9994d8b61fe",
+              "version": "sujaidr",
+              "completed": true,
+              "hearingImpaired": false,
+              "corrected": true,
+              "hd": false,
+              "downloadUri": "/subtitles/download/e379d2db-a519-456a-84e4-d9994d8b61fe",
+              "language": "English",
+              "discovered": "2022-05-17T02:28:20.084052Z",
+              "downloadCount": 86,
+              "source": "Addic7ed",
+              "qualities": [],
+              "release": null
+            }
+          ],
+          "episode": {
+            "season": 1,
+            "number": 1,
+            "title": "Pilot",
+            "show": "Breaking Bad",
+            "discovered": "2022-05-17T02:28:20.083997Z"
+          }
+        }
+      }
+    }
+  ]
+}
