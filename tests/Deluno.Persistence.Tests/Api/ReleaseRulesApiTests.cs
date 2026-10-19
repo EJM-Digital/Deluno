@@ -40,6 +40,25 @@ public sealed class ReleaseRulesApiTests
     }
 
     [Fact]
+    public async Task PUT_refuses_a_blank_name_like_create_and_leaves_the_saved_name()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var created = await app.Client.PostAsJsonAsync("/api/release-profiles", Rule("Family", ["kids"]));
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        using var made = JsonDocument.Parse(await created.Content.ReadAsStringAsync());
+        var id = made.RootElement.GetProperty("id").GetString();
+
+        var blankCreate = await app.Client.PostAsJsonAsync("/api/release-profiles", Rule("  ", ["other"]));
+        var blankPut = await app.Client.PutAsJsonAsync($"/api/release-profiles/{id}", new { name = "   " });
+
+        Assert.Equal(HttpStatusCode.BadRequest, blankCreate.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, blankPut.StatusCode);
+        Assert.Contains("name", await blankPut.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
+        using var after = JsonDocument.Parse(await app.Client.GetStringAsync($"/api/release-profiles/{id}"));
+        Assert.Equal("Family", after.RootElement.GetProperty("name").GetString());
+    }
+
+    [Fact]
     public async Task A_pattern_that_cannot_be_read_is_refused_with_a_plain_sentence()
     {
         await using var app = await ApplicationTestHost.StartAsync();

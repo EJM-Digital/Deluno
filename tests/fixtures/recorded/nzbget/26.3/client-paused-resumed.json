@@ -1,0 +1,307 @@
+{
+  "app": "nzbget",
+  "version": "26.3",
+  "state": "client-paused-resumed",
+  "recordedAt": "2026-10-19T09:46:38Z",
+  "note": "NZBGet paused as a whole (pausedownload, pausepost, pausescan), its status (DownloadPaused, PostPaused and ScanPaused are true), then released with resumedownload, resumepost and resumescan, and its status again.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "pausedownload",
+          "params": [],
+          "id": 206
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 206,
+          "result": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "pausepost",
+          "params": [],
+          "id": 207
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 207,
+          "result": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "pausescan",
+          "params": [],
+          "id": 208
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 208,
+          "result": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "status",
+          "params": [],
+          "id": 209
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 209,
+          "result": {
+            "RemainingSizeLo": 0,
+            "RemainingSizeHi": 0,
+            "RemainingSizeMB": 0,
+            "ForcedSizeLo": 0,
+            "ForcedSizeHi": 0,
+            "ForcedSizeMB": 0,
+            "DownloadedSizeLo": 0,
+            "DownloadedSizeHi": 0,
+            "DownloadedSizeMB": 0,
+            "MonthSizeLo": 0,
+            "MonthSizeHi": 0,
+            "MonthSizeMB": 0,
+            "DaySizeLo": 0,
+            "DaySizeHi": 0,
+            "DaySizeMB": 0,
+            "ArticleCacheLo": 0,
+            "ArticleCacheHi": 0,
+            "ArticleCacheMB": 0,
+            "DownloadRate": 0,
+            "DownloadRateLo": 0,
+            "DownloadRateHi": 0,
+            "AverageDownloadRate": 0,
+            "AverageDownloadRateLo": 0,
+            "AverageDownloadRateHi": 0,
+            "DownloadLimit": 0,
+            "ThreadCount": 9,
+            "ParJobCount": 0,
+            "PostJobCount": 0,
+            "UrlCount": 0,
+            "UpTimeSec": 2,
+            "DownloadTimeSec": 0,
+            "ServerPaused": true,
+            "DownloadPaused": true,
+            "Download2Paused": true,
+            "ServerStandBy": true,
+            "PostPaused": true,
+            "ScanPaused": true,
+            "QuotaReached": false,
+            "FreeDiskSpaceLo": 1574334464,
+            "FreeDiskSpaceHi": 228,
+            "FreeDiskSpaceMB": 935389,
+            "TotalDiskSpaceLo": 3064385536,
+            "TotalDiskSpaceHi": 251,
+            "TotalDiskSpaceMB": 1031018,
+            "FreeInterDiskSpaceLo": 1574334464,
+            "FreeInterDiskSpaceHi": 228,
+            "FreeInterDiskSpaceMB": 935389,
+            "TotalInterDiskSpaceLo": 3064385536,
+            "TotalInterDiskSpaceHi": 251,
+            "TotalInterDiskSpaceMB": 1031018,
+            "ServerTime": 1792403198,
+            "ResumeTime": 0,
+            "FeedActive": false,
+            "QueueScriptCount": 0,
+            "NewsServers": [
+              {
+                "ID": 1,
+                "Active": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "resumedownload",
+          "params": [],
+          "id": 210
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 210,
+          "result": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "resumepost",
+          "params": [],
+          "id": 211
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 211,
+          "result": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "resumescan",
+          "params": [],
+          "id": 212
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 212,
+          "result": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "status",
+          "params": [],
+          "id": 213
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 213,
+          "result": {
+            "RemainingSizeLo": 0,
+            "RemainingSizeHi": 0,
+            "RemainingSizeMB": 0,
+            "ForcedSizeLo": 0,
+            "ForcedSizeHi": 0,
+            "ForcedSizeMB": 0,
+            "DownloadedSizeLo": 0,
+            "DownloadedSizeHi": 0,
+            "DownloadedSizeMB": 0,
+            "MonthSizeLo": 0,
+            "MonthSizeHi": 0,
+            "MonthSizeMB": 0,
+            "DaySizeLo": 0,
+            "DaySizeHi": 0,
+            "DaySizeMB": 0,
+            "ArticleCacheLo": 0,
+            "ArticleCacheHi": 0,
+            "ArticleCacheMB": 0,
+            "DownloadRate": 0,
+            "DownloadRateLo": 0,
+            "DownloadRateHi": 0,
+            "AverageDownloadRate": 0,
+            "AverageDownloadRateLo": 0,
+            "AverageDownloadRateHi": 0,
+            "DownloadLimit": 0,
+            "ThreadCount": 9,
+            "ParJobCount": 0,
+            "PostJobCount": 0,
+            "UrlCount": 0,
+            "UpTimeSec": 2,
+            "DownloadTimeSec": 0,
+            "ServerPaused": false,
+            "DownloadPaused": false,
+            "Download2Paused": false,
+            "ServerStandBy": true,
+            "PostPaused": false,
+            "ScanPaused": false,
+            "QuotaReached": false,
+            "FreeDiskSpaceLo": 1574334464,
+            "FreeDiskSpaceHi": 228,
+            "FreeDiskSpaceMB": 935389,
+            "TotalDiskSpaceLo": 3064385536,
+            "TotalDiskSpaceHi": 251,
+            "TotalDiskSpaceMB": 1031018,
+            "FreeInterDiskSpaceLo": 1574334464,
+            "FreeInterDiskSpaceHi": 228,
+            "FreeInterDiskSpaceMB": 935389,
+            "TotalInterDiskSpaceLo": 3064385536,
+            "TotalInterDiskSpaceHi": 251,
+            "TotalInterDiskSpaceMB": 1031018,
+            "ServerTime": 1792403198,
+            "ResumeTime": 0,
+            "FeedActive": false,
+            "QueueScriptCount": 0,
+            "NewsServers": [
+              {
+                "ID": 1,
+                "Active": true
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

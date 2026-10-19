@@ -35,6 +35,8 @@ public sealed class RtorrentOnRecordingsTests
 
         public List<string> Bodies { get; } = [];
 
+        public List<Uri?> Uris { get; } = [];
+
         public List<System.Net.Http.Headers.AuthenticationHeaderValue?> Authorization { get; } = [];
 
         public Scripted Add(Recording recording)
@@ -695,5 +697,151 @@ public sealed class RtorrentOnRecordingsTests
         var item = Assert.Single(snapshot!.Queue);
         Assert.Equal(DownloadTrackerStatuses.Ok, item.TrackerStatus);
         Assert.Equal(DownloadQueueStatuses.Downloading, item.Status);
+    }
+
+    // ---- #1301: a path that climbs out, a reply that is not rTorrent's, the mount and the version, what rTorrent is never asked ----
+
+    [Fact]
+    public async Task A_download_folder_rTorrent_lists_that_climbs_out_with_dot_dot_is_dropped_and_a_clean_one_is_kept()
+    {
+        var finished = R("finished-single-file");
+        var clean = await Poll(new Scripted().Add(finished, 0));
+        var climbing = await Poll(new Scripted().AddReply("d.multicall2", finished.Exchanges[0].Reply, "<string>/downloads/complete</string>", "/downloads/../etc"));
+
+        Assert.Equal("/downloads/complete", Assert.Single(clean!.Queue).SourcePath);
+        Assert.Null(Assert.Single(climbing!.Queue).SourcePath);
+    }
+
+    [Fact]
+    public async Task Delete_with_data_never_deletes_a_base_path_that_climbs_out_even_when_it_resolves_to_a_real_folder_with_files_in_it()
+    {
+        var scratch = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"deluno-rt-climb-{Guid.NewGuid():N}"));
+        try
+        {
+            var victim = Directory.CreateDirectory(Path.Combine(scratch.FullName, "victim"));
+            await File.WriteAllTextAsync(Path.Combine(victim.FullName, "keep.mkv"), "mine");
+            Directory.CreateDirectory(Path.Combine(scratch.FullName, "downloads"));
+            var climbing = Path.Combine(scratch.FullName, "downloads", "..", "victim");
+            var handler = new Scripted().Add(R("downloading"), 2).Add(R("removed-twice"), 1).Add(R("removed-without-data"), 0)
+                .AddReply("d.base_path", R("finished-single-file").Exchanges[2].Reply, "/downloads/complete/Recorded.Rtorrent.Film.2024.1080p.WEB-DL.mkv", climbing);
+
+            var result = await Over(handler).ExecuteActionAsync(Item(), DownloadClientActions.DeleteWithData, HeldHash, CancellationToken.None);
+
+            Assert.True(File.Exists(Path.Combine(victim.FullName, "keep.mkv")));
+            Assert.Contains("d.erase", handler.Methods);
+            Assert.Contains("could not safely find its files", result.Message + result.FilesNote, StringComparison.Ordinal);
+        }
+        finally
+        {
+            scratch.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task An_address_that_answers_with_another_apps_page_instead_of_xml_rpc_is_not_read_as_an_empty_queue()
+    {
+        // The address points at qBittorrent, whose real reply to the version question is plain text, not XML-RPC.
+        var wrongApp = RecordedReplies.Qbittorrent("version").Exchanges[0].Reply;
+        Assert.Equal(200, wrongApp.Status);
+        var handler = new Scripted().Fallback(wrongApp);
+
+        var poll = await Record.ExceptionAsync(() => Over(handler).GetSnapshotAsync(Item(), DateTimeOffset.UtcNow, CancellationToken.None));
+
+        Assert.NotNull(poll);
+        Assert.IsAssignableFrom<System.Xml.XmlException>(poll);
+    }
+
+    // DEFECT (found by #1301, rtorrent.r5): RtorrentDownloadClient.ExecuteActionAsync catches HttpRequestException, TaskCanceledException, IOException
+    // and InvalidOperationException, not the XmlException ParseResponse throws for a reply that is not XML (an address that answers 200 with
+    // a web page: a ruTorrent or nginx login page, another app). The pause, resume, delete or recheck throws out of the client instead of
+    // answering "not done" in plain words, and DownloadClientTelemetryService.RunActionCoreAsync does not catch it either. Evidence: this test,
+    // with qBittorrent's real reply to its version call standing for "the wrong page", throws System.Xml.XmlException: Data at the root level is invalid.
+    [Fact]
+    public async Task A_pause_against_an_address_that_answers_with_another_apps_page_is_a_plain_failure_not_an_exception()
+    {
+        var wrongApp = RecordedReplies.Qbittorrent("version").Exchanges[0].Reply;
+
+        var result = await Over(new Scripted().Fallback(wrongApp)).ExecuteActionAsync(Item(), DownloadClientActions.Pause, HeldHash, CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+    }
+
+    [Fact]
+    public async Task A_fault_rTorrent_answers_a_list_with_is_a_failed_poll_not_an_empty_queue()
+    {
+        var fault = R("unknown-hash-fault").Exchanges.First(e => e.Reply.Body!.Contains("<fault>", StringComparison.Ordinal)).Reply;
+        var handler = new Scripted().Fallback(fault);
+
+        var poll = await Record.ExceptionAsync(() => Over(handler).GetSnapshotAsync(Item(), DateTimeOffset.UtcNow, CancellationToken.None));
+
+        Assert.NotNull(poll);
+        Assert.Contains("fault", poll.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task A_client_behind_a_ruTorrent_style_mount_is_asked_at_that_address_every_time_and_an_old_version_number_is_shown_as_it_is()
+    {
+        var mount = "http://seedbox.example/rutorrent/plugins/httprpc/action.php";
+        var handler = new Scripted().Add(R("downloading"), 0).AddReply("system.client_version", R("version").Exchanges[0].Reply, "0.16.25", "0.9.8");
+        var item = Item() with { EndpointUrl = mount };
+
+        var snapshot = await Over(handler).GetSnapshotAsync(item, DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Equal("0.9.8", snapshot!.ClientVersion);
+        Assert.Equal(["d.multicall2", "system.client_version"], handler.Methods);
+        Assert.All(handler.Uris, uri => Assert.Equal(mount, uri!.ToString()));
+    }
+
+    [Fact]
+    public async Task rTorrent_is_never_asked_for_what_it_does_not_do_and_each_answer_says_so_plainly()
+    {
+        var handler = new Scripted().Add(R("idle"));
+        var client = Over(handler);
+
+        var usenet = await client.HasUsenetProviderAsync(Item(), CancellationToken.None);
+        var setUsenet = await client.SetUsenetProviderAsync(Item(), new Deluno.Connections.Usenet.UsenetProviderRequest("news.example", 563, true, "user", "secret", 8), CancellationToken.None);
+        var cleared = await client.ClearWarningsAsync(Item(), CancellationToken.None);
+        var resumed = await client.ResumeClientAsync(Item(), CancellationToken.None);
+        var history = await client.GetHistoryAsync(Item(), DateTimeOffset.UtcNow, CancellationToken.None);
+        var category = await client.CheckCategoryAsync(Item(), "movies", CancellationToken.None);
+
+        Assert.Null(usenet);
+        Assert.Null(setUsenet);
+        Assert.False(cleared);
+        Assert.False(resumed.Supported);
+        Assert.Empty(history);
+        Assert.False(category.Supported);
+        Assert.Equal(DownloadClientCategoryStatuses.Unsupported, category.Status);
+        Assert.Empty(handler.Methods);
+    }
+
+    [Fact]
+    public async Task rTorrent_reports_no_free_space_and_no_folders_and_its_version_is_the_plain_number_from_system_client_version()
+    {
+        var handler = new Scripted().Add(R("idle")).Add(R("version"));
+
+        var snapshot = await Poll(handler);
+
+        Assert.Null(snapshot!.FreeSpaceBytes);
+        Assert.Equal("0.16.25", snapshot.ClientVersion);
+        Assert.DoesNotContain(handler.Methods, m => m is "d.free_diskspace" or "directory.default");
+    }
+
+    [Theory]
+    [InlineData(DownloadClientActions.Pause)]
+    [InlineData(DownloadClientActions.Resume)]
+    [InlineData(DownloadClientActions.Delete)]
+    [InlineData(DownloadClientActions.DeleteWithData)]
+    [InlineData(DownloadClientActions.Recheck)]
+    public async Task A_wrong_login_is_said_plainly_with_the_mounts_recorded_401_on_every_action_and_nothing_is_changed(string action)
+    {
+        var refused = R("login-refused");
+        var handler = new Scripted().Fallback(refused.Exchanges[0].Reply);
+
+        var result = await Over(handler).ExecuteActionAsync(Item(secret: "wrong"), action, HeldHash, CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.StartsWith("rTorrent refused Deluno's username and password", result.Message, StringComparison.Ordinal);
+        Assert.Equal(IntegrationFailureKind.Authentication, result.Failure!.Kind);
     }
 }
