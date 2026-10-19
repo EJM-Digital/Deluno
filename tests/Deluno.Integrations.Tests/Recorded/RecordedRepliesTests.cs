@@ -333,9 +333,10 @@ public sealed class RecordedRepliesTests : IDisposable
 
         var parts = relativePath.Split('/');
         Assert.Equal(3, parts.Length);
-        var text = File.ReadAllText(Path.Combine(RecordedReplies.Root, parts[0], parts[1], parts[2]));
+        var file = Path.Combine(RecordedReplies.Root, parts[0], parts[1], parts[2]);
+        var text = File.ReadAllText(file);
 
-        var recording = RecordedReplies.Parse(text, relativePath);
+        var recording = RecordedReplies.Parse(text, file);
 
         Assert.Equal(parts[0], recording.App);
         Assert.Equal(parts[1], recording.Version);

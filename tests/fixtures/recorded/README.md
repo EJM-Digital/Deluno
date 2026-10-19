@@ -33,6 +33,8 @@ own side of its talk with Weir, which Weir's tests replay). `<version>` is what 
 A JSON reply is stored in `body`. A reply that is not JSON, or one whose exact text matters, is stored
 in `bodyText`. Requests carry `body` or `bodyText` the same way, with secrets removed.
 
+A reply that is binary (a zip archive) is a file beside the recording: the reply names it in `bodyFile` (a name in the same folder), with `bodyBytes` its length and `bodySha256` its hash. `RecordedReplies` reads the file as bytes (`RecordedReply.Bytes`) and checks the hash. A large archive is shortened to what Deluno reads, and the recording's `note` says what was left out; the entries kept are copied byte for byte.
+
 ## Using a recording
 
 C# tests link `tests/fixtures/RecordedReplies.cs` (the three test projects already do):
