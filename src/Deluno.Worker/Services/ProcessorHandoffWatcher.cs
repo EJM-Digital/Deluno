@@ -140,8 +140,8 @@ public sealed class ProcessorHandoffWatcher(
                 // send, so this raises nothing. It closes quietly, as the removal itself would have (#1216).
                 if (await DownloadIsGoneAsync(handoff, cancellationToken))
                 {
-                    await processorRepository.UpdateProcessorHandoffAsync(
-                        handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null,
+                    await processorRepository.UpdateProcessorHandoffIfStatusAsync(
+                        handoff.Id, handoff.Status, ProcessorHandoffStatuses.Dismissed, null, null,
                         $"The download of {handoff.ReleaseName} is gone, so Deluno will not import it.", cancellationToken);
                     continue;
                 }
@@ -156,7 +156,7 @@ public sealed class ProcessorHandoffWatcher(
 
                 var waitingProcessor = string.IsNullOrWhiteSpace(handoff.ProcessorName) ? "The processor" : handoff.ProcessorName;
                 var neverSent = $"{waitingProcessor} never picked up {handoff.ReleaseName}: Deluno could not send it. Check the processor's connection, then send it again.";
-                await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Failed, null, null, neverSent, cancellationToken);
+                await processorRepository.UpdateProcessorHandoffIfStatusAsync(handoff.Id, handoff.Status, ProcessorHandoffStatuses.Failed, null, null, neverSent, cancellationToken);
                 await activityFeed.RecordActivityAsync(
                     "processing.waiting-too-long",
                     neverSent,
@@ -308,7 +308,7 @@ public sealed class ProcessorHandoffWatcher(
                 continue;
             }
 
-            await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Submitted, null, null, SentAgainNotice, cancellationToken);
+            await processorRepository.UpdateProcessorHandoffIfStatusAsync(handoff.Id, handoff.Status, ProcessorHandoffStatuses.Submitted, null, null, SentAgainNotice, cancellationToken);
             await activityFeed.RecordActivityAsync(
                 "processing.resubmitted",
                 $"{handoff.ReleaseName} was imported into a title that was since removed and added again, and {connection.Name} no longer has the finished copy, so Deluno handed the download over again.",
@@ -405,7 +405,7 @@ public sealed class ProcessorHandoffWatcher(
             }
 
             var message = $"{handoff.ReleaseName} did not go through the processor, but the title was imported from another download, so Deluno closed this one.";
-            await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null, message, cancellationToken);
+            await processorRepository.UpdateProcessorHandoffIfStatusAsync(handoff.Id, handoff.Status, ProcessorHandoffStatuses.Dismissed, null, null, message, cancellationToken);
             var scope = new Deluno.Contracts.ImportRecoveryCaseScope([], []) { HandoffIds = [handoff.Id] };
             if (DelunoValueNormalizers.NormalizeMediaType(library.MediaType) == "tv")
             {
@@ -461,7 +461,7 @@ public sealed class ProcessorHandoffWatcher(
             var submission = await processorConnections.SubmitAsync(connection, outbound, cancellationToken);
             if (submission.IsAccepted)
             {
-                await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Submitted, null, null, SentAgainNotice, cancellationToken);
+                await processorRepository.UpdateProcessorHandoffIfStatusAsync(handoff.Id, handoff.Status, ProcessorHandoffStatuses.Submitted, null, null, SentAgainNotice, cancellationToken);
                 await activityFeed.RecordActivityAsync(
                     "processing.resubmitted",
                     $"{processorName} had no finished copy of {handoff.ReleaseName} {Describe(now - handoff.UpdatedUtc)} after it was handed over, so Deluno sent it again.",
@@ -553,7 +553,7 @@ public sealed class ProcessorHandoffWatcher(
         async Task<bool> CloseAsAlreadyImportedAsync()
         {
             var deleted = ProcessorOutputPathPolicy.DeleteSecondCopy(output, library.ProcessorOutputPath, handoff.SourcePath, layout);
-            await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Completed, output, null, null, cancellationToken);
+            await processorRepository.UpdateProcessorHandoffIfStatusAsync(handoff.Id, handoff.Status, ProcessorHandoffStatuses.Completed, output, null, null, cancellationToken);
             await activityFeed.RecordActivityAsync(
                 "processing.output.already-imported",
                 deleted
@@ -582,7 +582,7 @@ public sealed class ProcessorHandoffWatcher(
         var notImported = import.NotImportedBecause is { } removed
             ? $"{name} produced a cleaned file, but {removed}, so Deluno did not import it. The file is still at {output}."
             : null;
-        await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.Completed, output, import.JobId, notImported, cancellationToken);
+        await processorRepository.UpdateProcessorHandoffIfStatusAsync(handoff.Id, handoff.Status, ProcessorHandoffStatuses.Completed, output, import.JobId, notImported, cancellationToken);
         if (retriedBecause is not null && import.NotImportedBecause is null)
         {
             return true;
@@ -715,7 +715,11 @@ public sealed class ProcessorHandoffWatcher(
                 // one of the two moments this is allowed to act on a partial
                 // output (the other is GiveUpAsync below). Never on time alone.
                 reason += await DeleteCrashedPartialOutputAsync(handoff, library, cancellationToken);
-                await EndAsync(handoff, ProcessorHandoffStatuses.Failed, reason, cancellationToken);
+                if (!await EndAsync(handoff, ProcessorHandoffStatuses.Failed, reason, cancellationToken))
+                {
+                    return;
+                }
+
                 await RaiseRecoveryCaseAsync(
                     handoff,
                     library,
@@ -775,7 +779,7 @@ public sealed class ProcessorHandoffWatcher(
             if (handoff.FailureMessage is null)
             {
                 var notice = $"{connection.Name} has been working on {handoff.ReleaseName} for {Describe(quiet)} with no change reported.";
-                await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, handoff.Status, null, null, notice, cancellationToken);
+                await processorRepository.UpdateProcessorHandoffIfStatusAsync(handoff.Id, handoff.Status, handoff.Status, null, null, notice, cancellationToken);
                 await activityFeed.RecordActivityAsync(
                     "processing.no-progress",
                     notice,
@@ -990,9 +994,14 @@ public sealed class ProcessorHandoffWatcher(
         return summary;
     }
 
-    private async Task EndAsync(ProcessorHandoffItem handoff, string status, string message, CancellationToken cancellationToken)
+    private async Task<bool> EndAsync(ProcessorHandoffItem handoff, string status, string message, CancellationToken cancellationToken)
     {
-        await processorRepository.UpdateProcessorHandoffAsync(handoff.Id, status, null, null, message, cancellationToken);
+        // Compare-and-set on the status this pass read (#1363): a report that moved the hand-off since wins, and nothing is said.
+        if (!await processorRepository.UpdateProcessorHandoffIfStatusAsync(handoff.Id, handoff.Status, status, null, null, message, cancellationToken))
+        {
+            return false;
+        }
+
         await activityFeed.RecordActivityAsync(
             $"processing.{status}",
             message,
@@ -1001,6 +1010,7 @@ public sealed class ProcessorHandoffWatcher(
             "processor-handoff",
             handoff.Id,
             cancellationToken);
+        return true;
     }
 
     private async Task RaiseRecoveryCaseAsync(
