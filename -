@@ -1,0 +1,387 @@
+[
+ {
+  "id": "entry-points-routes-and.the-return-query-parameter",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "on the first step the left button reads Skip to advanced, saves that the guide was skipped and leaves to the return address"
+   },
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "the I know what I am doing card sets advanced mode, saves skipped and leaves the guide to the return address"
+   }
+  ]
+ },
+ {
+  "id": "guide-shell-step-rail.moving-between-steps-saves-progress",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "Continue and Back save the step reached and keep the existing skipped and completed flags"
+   },
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "pressing a step in the rail opens that step and saves progress"
+   }
+  ]
+ },
+ {
+  "id": "guide-shell-step-rail.back-goes-to-the-previous-step",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "Continue and Back save the step reached and keep the existing skipped and completed flags"
+   },
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "while the baseline is being made the Back button is disabled, and afterwards the Setup complete screen shows the summary and four tiles"
+   }
+  ]
+ },
+ {
+  "id": "guide-shell-step-rail.on-the-first-step-the-left-button",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "on the first step the left button reads Skip to advanced, saves that the guide was skipped and leaves to the return address"
+   }
+  ]
+ },
+ {
+  "id": "guide-shell-step-rail.continue-on-the-connect-apps-step",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "Continue on the Connect-apps step waits for the Weir answer of each library type once Weir is connected, and for the folder on a Yes"
+   }
+  ]
+ },
+ {
+  "id": "guide-shell-step-rail.draft-autosave-500-ms",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "sends the non-secret fields and the answers given, never the search source key or the client password"
+   },
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "an unanswered question stays out of the draft; an answered one is in it"
+   }
+  ]
+ },
+ {
+  "id": "guide-shell-step-rail.yes-no-answers-sign-in",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "answers saved in the draft are restored after a reload"
+   },
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "an unanswered question stays out of the draft; an answered one is in it"
+   }
+  ]
+ },
+ {
+  "id": "your-library-folders-quality.i-know-what-i-am-doing-card-sets",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "the I know what I am doing card sets advanced mode, saves skipped and leaves the guide to the return address"
+   }
+  ]
+ },
+ {
+  "id": "your-library-folders-quality.folders-both-movies-tv-shows-cards-switch",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "the %s card shows the matching root inputs"
+   }
+  ]
+ },
+ {
+  "id": "your-library-folders-quality.tv-root-input-kept",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "keeps a typed TV root and the optional downloads folders"
+   }
+  ]
+ },
+ {
+  "id": "your-library-folders-quality.optional-movies-downloads-folder",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "keeps a typed TV root and the optional downloads folders"
+   }
+  ]
+ },
+ {
+  "id": "your-library-folders-quality.picture-quality-balanced-1080p",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "offers Balanced 1080p and Premium 4K with their target, and highlights the chosen one"
+   }
+  ]
+ },
+ {
+  "id": "your-library-folders-quality.release-preference-six-cards",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "offers six release preferences with their copy and best-for text, and selecting one highlights it"
+   }
+  ]
+ },
+ {
+  "id": "your-library-folders-quality.what-will-be-created-preview",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "the preview prompts for a choice first, then describes it with up to six sample rules and an n rules badge"
+   }
+  ]
+ },
+ {
+  "id": "find-download-step-search.indexer-url-and-api-key-inputs-keep",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "a preset fills the URL, and typed URL, host, port, user and key keep their values with the password masked"
+   }
+  ]
+ },
+ {
+  "id": "find-download-step-search.test-search-source-with-a-url",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "Test search source shows Testing..., then Passed with the server's message"
+   },
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "Test search source shows Failed with the server's message, or says the source needs attention"
+   },
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "Test search source with no URL says to enter one and sends nothing"
+   }
+  ]
+ },
+ {
+  "id": "find-download-step-search.changing-any-indexer-field-resets",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "changing any search source field resets its result to Not tested"
+   }
+  ]
+ },
+ {
+  "id": "find-download-step-search.host-port-username-and-password",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "a preset fills the URL, and typed URL, host, port, user and key keep their values with the password masked"
+   }
+  ]
+ },
+ {
+  "id": "find-download-step-search.changing-any-client-field-resets",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "changing any download client field resets the client test to Not tested"
+   }
+  ]
+ },
+ {
+  "id": "find-download-step-search.when-clients-are-already-connected",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "clients that are already connected are listed as used as they are, and Add a different download client reveals the form with host, user and password cleared"
+   }
+  ]
+ },
+ {
+  "id": "find-download-step-search.add-a-different-download-client",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "clients that are already connected are listed as used as they are, and Add a different download client reveals the form with host, user and password cleared"
+   }
+  ]
+ },
+ {
+  "id": "find-download-step-search.the-client-list-is-re-read",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "the client list is read again when the step changes, so a client connected meanwhile is not missing"
+   }
+  ]
+ },
+ {
+  "id": "stage-1-steps-account.answering-yes-reveals",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "Yes reveals the allow-list editor and No hides it"
+   }
+  ]
+ },
+ {
+  "id": "stage-1-steps-account.add-a-valid-ipv4",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "the entry %s is %s"
+   },
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "an entry is added once whatever its case, with the box cleared, and the Enter key adds it too"
+   }
+  ]
+ },
+ {
+  "id": "stage-1-steps-account.an-invalid-entry",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "the entry %s is %s"
+   }
+  ]
+ },
+ {
+  "id": "stage-1-steps-account.yes-lists-the-detected-addresses",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "Yes to the addresses question lists the detected addresses with a reason each, and No hides them"
+   }
+  ]
+ },
+ {
+  "id": "stage-1-steps-account.ticking-unticking-an-address",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "ticking and unticking an address changes the selection whatever its case, and the warning shows until the address in use is ticked"
+   }
+  ]
+ },
+ {
+  "id": "stage-1-steps-account.if-the-address-you-are-using-is-not",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "ticking and unticking an address changes the selection whatever its case, and the warning shows until the address in use is ticked"
+   }
+  ]
+ },
+ {
+  "id": "start-step-baseline-creation.error-banner-red",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "when Create baseline is refused, the error shows red, what was made is taken back in reverse order and the amber note says none of the answers were applied"
+   }
+  ]
+ },
+ {
+  "id": "start-step-baseline-creation.first-title-movie-tv-toggle",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "the Movie and TV toggle switches the title box, and the year takes digits only, four at most"
+   }
+  ]
+ },
+ {
+  "id": "start-step-baseline-creation.search-metadata-is-disabled",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "Search metadata is disabled with the amber note when title matching is unavailable"
+   }
+  ]
+ },
+ {
+  "id": "start-step-baseline-creation.metadata-search-empty-title",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "an empty title is refused before any search"
+   },
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "a failed search shows the error, and a search with no matches says the title can still be added by hand"
+   }
+  ]
+ },
+ {
+  "id": "start-step-baseline-creation.results-up-to-6",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "shows up to six results with art or No art, year, provider, rating and Already in your library, and picking one fills the title and year"
+   }
+  ]
+ },
+ {
+  "id": "start-step-baseline-creation.setup-complete-screen",
+  "proofs": [
+   {
+    "type": "vitest",
+    "file": "apps/web/src/routes/setup-guide-steps.test.tsx",
+    "name": "while the baseline is being made the Back button is disabled, and afterwards the Setup complete screen shows the summary and four tiles"
+   }
+  ]
+ }
+]
