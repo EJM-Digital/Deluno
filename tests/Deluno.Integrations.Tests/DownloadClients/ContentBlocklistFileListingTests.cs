@@ -102,13 +102,27 @@ public sealed class ContentBlocklistFileListingTests
     [Fact]
     public async Task Sabnzbd_lists_files_from_get_files()
     {
-        var handler = new SabnzbdFilesHandler("""{"files":[{"filename":"Example.Movie.2026.mkv"},{"filename":"Setup.exe"}]}""");
+        // SABnzbd 5.1.3's own mode=get_files reply for a paused job of a film and an .nfo (tests/fixtures/recorded/sabnzbd/5.1.3/files-of-a-paused-job).
+        var handler = new SabnzbdFilesHandler(RecordedReplies.Sabnzbd("files-of-a-paused-job").Exchanges[2].Reply.Body!);
 
         var files = await new SabnzbdDownloadClient(new Factory(handler))
             .GetFilesAsync(SabnzbdClient(), "SABnzbd_nzo_1", CancellationToken.None);
 
         Assert.NotNull(files);
-        Assert.Equal(["Example.Movie.2026.mkv", "Setup.exe"], files);
+        Assert.Equal(["Recorded SABnzbd Files.2008.1080p.WEB-DL.x264-E2E.mkv", "Recorded SABnzbd Files.2008.1080p.WEB-DL.x264-E2E.nfo"], files);
+    }
+
+    [Fact]
+    public async Task Sabnzbd_lists_no_files_for_a_job_that_has_finished()
+    {
+        // The same job after it left the queue: the real client answers an empty list, so a finished job has nothing left to strike.
+        var handler = new SabnzbdFilesHandler(RecordedReplies.Sabnzbd("files-of-a-finished-job").Exchanges[2].Reply.Body!);
+
+        var files = await new SabnzbdDownloadClient(new Factory(handler))
+            .GetFilesAsync(SabnzbdClient(), "SABnzbd_nzo_1", CancellationToken.None);
+
+        Assert.NotNull(files);
+        Assert.Empty(files);
     }
 
     [Fact]
@@ -125,13 +139,26 @@ public sealed class ContentBlocklistFileListingTests
     [Fact]
     public async Task NzbGet_lists_files_from_listfiles()
     {
-        var handler = new NzbGetFilesHandler("""{"result":[{"Filename":"Example.Movie.2026.mkv"},{"Filename":"Setup.exe"}]}""");
+        // NZBGet 26.3's own listfiles reply for a paused job of a film and an .nfo (tests/fixtures/recorded/nzbget/26.3/files-of-a-paused-job).
+        var handler = new NzbGetFilesHandler(RecordedReplies.Nzbget("files-of-a-paused-job").Exchanges[2].Reply.Body!);
 
         var files = await new NzbGetDownloadClient(new Factory(handler))
             .GetFilesAsync(NzbGetClient(), "42", CancellationToken.None);
 
         Assert.NotNull(files);
-        Assert.Equal(["Example.Movie.2026.mkv", "Setup.exe"], files);
+        Assert.Equal(["Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E.mkv", "Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E.nfo"], files);
+    }
+
+    [Fact]
+    public async Task NzbGet_lists_no_files_for_a_job_that_has_finished()
+    {
+        var handler = new NzbGetFilesHandler(RecordedReplies.Nzbget("files-of-a-finished-job").Exchanges[2].Reply.Body!);
+
+        var files = await new NzbGetDownloadClient(new Factory(handler))
+            .GetFilesAsync(NzbGetClient(), "42", CancellationToken.None);
+
+        Assert.NotNull(files);
+        Assert.Empty(files);
     }
 
     [Fact]

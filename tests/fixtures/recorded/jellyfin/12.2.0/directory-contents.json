@@ -2,13 +2,13 @@
   "app": "jellyfin",
   "version": "12.2.0",
   "state": "directory-contents",
-  "recordedAt": "2026-10-14T08:31:35Z",
-  "note": "The folder browser Deluno uses to map paths: a folder that exists, a folder that does not (jellyfin 12.2.0, a library of one film and a two-episode series, the film being the suite's base video). Installed from: jellyfin_12.2_windows-x64.exe from repo.jellyfin.org: the vendor publishes no checksum (the project publishes none beside the installer); the file's SHA-256 is 0e6781d214fe384db7325b70e6a499a830f0e3dbbad9c5a4a8e722dca5ae48fc.",
+  "recordedAt": "2026-10-19T02:26:52Z",
+  "note": "The folder browser Deluno uses to map paths: a folder that exists, a folder that does not (jellyfin 12.2.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {
       "request": {
         "method": "GET",
-        "path": "/Environment/DirectoryContents?path=C%3A%5Cgolden%5Crecorded-apps%5Cmedia%5CMovies&includeFiles=false"
+        "path": "/Environment/DirectoryContents?path=%2Fmedia%2FMovies&includeFiles=false"
       },
       "reply": {
         "status": 200,
@@ -21,7 +21,7 @@
     {
       "request": {
         "method": "GET",
-        "path": "/Environment/DirectoryContents?path=C%3A%5Cnowhere%5Cnone&includeFiles=false"
+        "path": "/Environment/DirectoryContents?path=%2Fnowhere%2Fnone&includeFiles=false"
       },
       "reply": {
         "status": 404,

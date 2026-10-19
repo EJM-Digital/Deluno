@@ -14,9 +14,9 @@ namespace Deluno.Integrations.Tests.MediaServers;
 /// </summary>
 public sealed class JellyfinOperationsOnRecordingsTests
 {
-    private const string UserId = "03d927573b5e4cd9942b61f120b5f9a4";
+    private const string UserId = "b657baa4969346a889487d68b9a2678f";
     private const string CollectionId = "18da5b93435bf32b1375cc6efe0ca347";
-    private const string Sintel = "3df4dba3fab3ef172511446b46f3e8a0";
+    private const string Sintel = "78990f6a0a40212925e5c0f2d9bfb5d2";
 
     private static MediaServerConnection Server(string? token = "key")
         => new("server-1", MediaServerKinds.Jellyfin, "Jellyfin", "http://192.168.1.51:8096", token, true, "untested", null, null, null, null, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
@@ -147,7 +147,7 @@ public sealed class JellyfinOperationsOnRecordingsTests
         // A first page of 500 films that says there are 600: Deluno must ask for the rest, and Jellyfin's recorded 500 on that call
         // (its answer to a call it could not serve) leaves the library unread.
         var full = RecordedReplies.Jellyfin("catalogue-movies").Body("Items", ("+Items", 500), ("TotalRecordCount", 600));
-        var failure = RecordedReplies.Jellyfin("item-deleted").Exchanges[1].Reply;
+        var failure = RecordedReplies.Jellyfin("item-delete-refused").Single.Reply;
         var jellyfin = new Jellyfin();
         var client = jellyfin.Client((request, _) =>
         {

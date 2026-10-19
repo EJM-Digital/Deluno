@@ -1,0 +1,240 @@
+{
+  "app": "nzbget",
+  "version": "26.3",
+  "state": "files-of-a-finished-job",
+  "recordedAt": "2026-10-19T01:54:45Z",
+  "note": "The same job resumed and let finish: the resume, the history row, then listfiles for the job id after it has left the queue, and the queue.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "editqueue",
+          "params": [
+            "GroupResume",
+            "",
+            [
+              4
+            ]
+          ],
+          "id": 110
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 110,
+          "result": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "history",
+          "params": [
+            false
+          ],
+          "id": 115
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 115,
+          "result": [
+            {
+              "ID": 4,
+              "Name": "Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E",
+              "RemainingFileCount": 0,
+              "RetryData": false,
+              "HistoryTime": 1792374884,
+              "Status": "SUCCESS/HEALTH",
+              "Log": [],
+              "NZBID": 4,
+              "NZBName": "Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E",
+              "NZBNicename": "Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E",
+              "Kind": "NZB",
+              "URL": "http://fixture:8765/dl/Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E.nzb",
+              "NZBFilename": "Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E.nzb",
+              "DestDir": "/downloads/completed/Movies/Recorded NZBGet Files 2.2008.1080p.WEB-DL.x264-E2E",
+              "FinalDir": "",
+              "Category": "Movies",
+              "ParStatus": "NONE",
+              "ExParStatus": "NONE",
+              "UnpackStatus": "NONE",
+              "MoveStatus": "SUCCESS",
+              "ScriptStatus": "NONE",
+              "DeleteStatus": "NONE",
+              "MarkStatus": "NONE",
+              "UrlStatus": "SUCCESS",
+              "FileSizeLo": 69162604,
+              "FileSizeHi": 0,
+              "FileSizeMB": 65,
+              "FileCount": 2,
+              "MinPostTime": 1704067200,
+              "MaxPostTime": 1704067200,
+              "TotalArticles": 95,
+              "SuccessArticles": 95,
+              "FailedArticles": 0,
+              "Health": 1000,
+              "CriticalHealth": 1000,
+              "DupeKey": "",
+              "DupeScore": 0,
+              "DupeMode": "SCORE",
+              "Deleted": false,
+              "DownloadedSizeLo": 69166489,
+              "DownloadedSizeHi": 0,
+              "DownloadedSizeMB": 65,
+              "DownloadTimeSec": 0,
+              "PostTotalTimeSec": 4,
+              "ParTimeSec": 0,
+              "RepairTimeSec": 0,
+              "UnpackTimeSec": 0,
+              "MessageCount": 21,
+              "ExtraParBlocks": 0,
+              "Parameters": [
+                {
+                  "Name": "*Unpack:",
+                  "Value": "yes"
+                }
+              ],
+              "ScriptStatuses": [],
+              "ServerStats": [
+                {
+                  "ServerID": 1,
+                  "SuccessArticles": 95,
+                  "FailedArticles": 0
+                }
+              ]
+            },
+            {
+              "ID": 3,
+              "Name": "Recorded NZBGet Dbg.2008.1080p.WEB-DL.x264-E2E",
+              "RemainingFileCount": 0,
+              "RetryData": false,
+              "HistoryTime": 1792374879,
+              "Status": "SUCCESS/HEALTH",
+              "Log": [],
+              "NZBID": 3,
+              "NZBName": "Recorded NZBGet Dbg.2008.1080p.WEB-DL.x264-E2E",
+              "NZBNicename": "Recorded NZBGet Dbg.2008.1080p.WEB-DL.x264-E2E",
+              "Kind": "NZB",
+              "URL": "http://fixture:8765/dl/Recorded NZBGet Dbg.2008.1080p.WEB-DL.x264-E2E.nzb",
+              "NZBFilename": "Recorded NZBGet Dbg.2008.1080p.WEB-DL.x264-E2E.nzb",
+              "DestDir": "/downloads/intermediate/Recorded NZBGet Dbg.2008.1080p.WEB-DL.x264-E2E.#4",
+              "FinalDir": "",
+              "Category": "Movies",
+              "ParStatus": "NONE",
+              "ExParStatus": "NONE",
+              "UnpackStatus": "NONE",
+              "MoveStatus": "NONE",
+              "ScriptStatus": "NONE",
+              "DeleteStatus": "NONE",
+              "MarkStatus": "NONE",
+              "UrlStatus": "SUCCESS",
+              "FileSizeLo": 69162360,
+              "FileSizeHi": 0,
+              "FileSizeMB": 65,
+              "FileCount": 2,
+              "MinPostTime": 1704067200,
+              "MaxPostTime": 1704067200,
+              "TotalArticles": 95,
+              "SuccessArticles": 95,
+              "FailedArticles": 0,
+              "Health": 1000,
+              "CriticalHealth": 1000,
+              "DupeKey": "",
+              "DupeScore": 0,
+              "DupeMode": "SCORE",
+              "Deleted": false,
+              "DownloadedSizeLo": 69166613,
+              "DownloadedSizeHi": 0,
+              "DownloadedSizeMB": 65,
+              "DownloadTimeSec": 74,
+              "PostTotalTimeSec": 2,
+              "ParTimeSec": 0,
+              "RepairTimeSec": 0,
+              "UnpackTimeSec": 0,
+              "MessageCount": 14,
+              "ExtraParBlocks": 0,
+              "Parameters": [
+                {
+                  "Name": "*Unpack:",
+                  "Value": "yes"
+                }
+              ],
+              "ScriptStatuses": [],
+              "ServerStats": [
+                {
+                  "ServerID": 1,
+                  "SuccessArticles": 95,
+                  "FailedArticles": 0
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "listfiles",
+          "params": [
+            0,
+            0,
+            4
+          ],
+          "id": 116
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 116,
+          "result": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/jsonrpc",
+        "body": {
+          "method": "listgroups",
+          "params": [],
+          "id": 117
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "version": "1.1",
+          "id": 117,
+          "result": []
+        }
+      }
+    }
+  ]
+}
