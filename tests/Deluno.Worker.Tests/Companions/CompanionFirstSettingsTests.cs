@@ -15,10 +15,14 @@ namespace Deluno.Worker.Tests.Companions;
 /// </summary>
 public sealed class CompanionFirstSettingsTests
 {
-    private const string QbExe = @"C:\Program Files\qBittorrent\qbittorrent.exe";
-    private const string QbIni = @"C:\Users\test\AppData\Roaming\qBittorrent\qBittorrent.ini";
-    private const string SabExe = @"C:\Program Files\SABnzbd\SABnzbd.exe";
-    private const string SabIni = @"C:\Users\test\AppData\Local\sabnzbd\sabnzbd.ini";
+    private static readonly string QbExe = Path.Combine(ProgramFilesDir, "qBittorrent", "qbittorrent.exe");
+    private static readonly string QbIni = Path.Combine(RoamingDir, "qBittorrent", "qBittorrent.ini");
+    private static readonly string SabExe = Path.Combine(ProgramFilesDir, "SABnzbd", "SABnzbd.exe");
+    private static readonly string SabIni = Path.Combine(LocalDir, "sabnzbd", "sabnzbd.ini");
+    // Built with Path.Combine so the same fake folders hold on Linux, where the code under test joins with "/".
+    private const string ProgramFilesDir = "ProgramFiles";
+    private const string RoamingDir = "Users/test/AppData/Roaming";
+    private const string LocalDir = "Users/test/AppData/Local";
 
     private sealed class ScriptedSystem : ICompanionSystem
     {
@@ -29,9 +33,9 @@ public sealed class CompanionFirstSettingsTests
         public List<(string Path, string Arguments)> Started { get; } = [];
         public List<(string Name, string Command)> AtSignIn { get; } = [];
 
-        public string ProgramFiles => @"C:\Program Files";
-        public string RoamingAppData => @"C:\Users\test\AppData\Roaming";
-        public string LocalAppData => @"C:\Users\test\AppData\Local";
+        public string ProgramFiles => ProgramFilesDir;
+        public string RoamingAppData => RoamingDir;
+        public string LocalAppData => LocalDir;
         public bool FileExists(string path) => Files.ContainsKey(path);
         public string? ReadText(string path) => Files.GetValueOrDefault(path);
         public void WriteText(string path, string contents) { Files[path] = contents; Written.Add(path); }
