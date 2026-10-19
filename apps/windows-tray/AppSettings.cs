@@ -14,6 +14,10 @@ public sealed class AppSettings
     // must never silently subscribe to the stable feed just because it has not
     // written a config file yet.
     public string UpdateChannel { get; set; } = GetDefaultUpdateChannel();
+    /// <summary>
+    /// Whether the tray looks for a new version on its own. On for a file that already exists without the line (an install from
+    /// before the choice was asked keeps what it did), off for an install with no file yet: the setup guide asks and sets it (#1361).
+    /// </summary>
     public bool AutoCheckUpdates { get; set; } = true;
     public string UpdateSource { get; set; } = "https://github.com/jampat000/Deluno";
 
@@ -75,7 +79,8 @@ public sealed class AppSettings
         {
             var settings = new AppSettings
             {
-                DataRoot = ResolveFallbackDataRoot()
+                DataRoot = ResolveFallbackDataRoot(),
+                AutoCheckUpdates = false
             };
 
             if (ShouldPersistPrimaryConfig(settings.DataRoot))
@@ -91,7 +96,7 @@ public sealed class AppSettings
         {
             case StateFileKind.Missing:
                 // Removed between the look and the read: the same as no file.
-                return new AppSettings { DataRoot = ResolveFallbackDataRoot() };
+                return new AppSettings { DataRoot = ResolveFallbackDataRoot(), AutoCheckUpdates = false };
             case StateFileKind.Busy:
                 return Unread($"Deluno could not read its settings file ({pathToRead}) because something else was using it.");
             case StateFileKind.Unreadable:

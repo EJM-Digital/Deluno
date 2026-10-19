@@ -141,6 +141,7 @@ describe("the draft is saved 500 ms after any change", () => {
     expect(Object.keys(last.automation)).toEqual([AUTOMATION_QUESTIONS[0].key]);
     expect(last.skipSignInLocalNetwork).toBeNull();
     expect(last.updateAutomatically).toBeNull();
+    expect(last.checkForUpdates).toBeNull();
   });
 
   it("answers saved in the draft are restored after a reload", async () => {
@@ -423,7 +424,7 @@ describe("the sign-in question and the addresses question", () => {
 
 describe("Start: the first title, the banners and the finish", () => {
   const READY_DRAFT = () => ({
-    skipSignInLocalNetwork: false, updateAutomatically: false,
+    skipSignInLocalNetwork: false, updateAutomatically: false, checkForUpdates: true,
     automation: { restrictAllowedHosts: false, ...Object.fromEntries(AUTOMATION_QUESTIONS.map((item) => [item.key, false])) }
   });
   const result = (over: Partial<{ title: string; year: number; provider: string; providerId: string; rating: number; posterUrl: string | null; libraryEntryId: string | null }> = {}) => ({

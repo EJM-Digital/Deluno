@@ -27,6 +27,8 @@ public sealed class TheTrayChecksForUpdatesInTheBackgroundTests : IDisposable
     [Fact]
     public async Task With_auto_check_on_a_check_is_made_after_the_startup_wait_and_a_failed_check_does_not_stop_the_tray()
     {
+        // Saying Yes in the setup guide is what writes this; a fresh install has no file and does not check (#1361).
+        Assert.Null(AppSettings.Update(saved => { saved.AutoCheckUpdates = true; saved.DataRoot = Path.Combine(_root, "data"); }));
         var orchestrator = Orchestrator.Create(throwOnCheck: true);
         var service = new TrayUpdateBackgroundService(orchestrator.Proxy, NullLogger<TrayUpdateBackgroundService>.Instance);
 
@@ -44,6 +46,25 @@ public sealed class TheTrayChecksForUpdatesInTheBackgroundTests : IDisposable
         }
 
         Assert.Equal(1, orchestrator.Checks);
+    }
+
+    [Fact]
+    public async Task A_fresh_install_with_no_settings_file_makes_no_check()
+    {
+        var orchestrator = Orchestrator.Create(throwOnCheck: false);
+        var service = new TrayUpdateBackgroundService(orchestrator.Proxy, NullLogger<TrayUpdateBackgroundService>.Instance);
+
+        await service.StartAsync(CancellationToken.None);
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(22)); // reason: the service's first look is at 20 s; showing no check means waiting past it
+        }
+        finally
+        {
+            await service.StopAsync(CancellationToken.None);
+        }
+
+        Assert.Equal(0, orchestrator.Checks);
     }
 
     [Fact]
