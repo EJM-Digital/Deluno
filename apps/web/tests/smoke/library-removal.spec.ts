@@ -35,7 +35,7 @@ test.describe("library removal", () => {
 
     const dialog = page.getByRole("dialog");
     await expect(dialog).toContainText("Imported files are left alone.");
-    await expect(dialog).toContainText("No files will be deleted by this bulk action.");
+    await expect(dialog).toContainText("that download is cancelled in your download client and its data is deleted.");
     await dialog.getByRole("button", { name: "Remove movie", exact: true }).click();
 
     await expect(page.getByText(title, { exact: true })).toHaveCount(0);

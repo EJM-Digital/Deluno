@@ -104,7 +104,7 @@ test.describe("TRaSH guide updates", () => {
 
   test("version history lists every retained version, goes back to an older one, and keeps them all", async ({ page }) => {
     await openScreen(page, "/settings/custom-formats");
-    await applyNextVersion(page);
+    // The version Deluno shipped stays in the history (next test), so one applied version leaves two.
     await applyNextVersion(page);
     const retained = (await api<Array<{ package: { version: number }; isActive: boolean }>>(page, "GET", "/api/v1/guides/trash/versions")).body;
     const versions = retained.map((item) => item.package.version).sort((a, b) => a - b);
