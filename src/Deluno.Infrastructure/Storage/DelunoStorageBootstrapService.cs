@@ -57,7 +57,30 @@ public sealed class DelunoStorageBootstrapService(
             DelunoStorageLayout.Databases.Count);
     }
 
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    /// <summary>
+    /// Folds every database's write-ahead log into its file as Deluno stops, so a copy or a backup of the .db file alone holds
+    /// everything and no -wal file is left holding data (#1361). Each database is tried on its own: one that cannot be
+    /// checkpointed is logged and does not stop the others.
+    /// </summary>
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        foreach (var database in DelunoStorageLayout.Databases)
+        {
+            try
+            {
+                await using var connection = await databaseConnectionFactory.OpenConnectionAsync(database.Key, cancellationToken);
+                using var command = connection.CreateCommand();
+                command.CommandText = "PRAGMA wal_checkpoint(TRUNCATE);";
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Could not fold the {Database} database's write-ahead log into its file while stopping.", database.Key);
+            }
+        }
+
+        (databaseConnectionFactory as SqliteDatabaseConnectionFactory)?.ClearPools();
+    }
 
     private static async Task SetPragmaAsync(
         System.Data.Common.DbConnection connection,
