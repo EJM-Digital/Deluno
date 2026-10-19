@@ -270,3 +270,7 @@ Still missing, and why:
 ## IMDb list export (#1292)
 
 - imdb list export CSV (and the list page it comes from): IMDb answers an automated fetch with an empty HTTP 202 (its bot wall), so a real export of a public list could not be recorded from this machine. Needed: a real `ls...` list CSV export saved from a browser, trimmed to a few rows, to test the IMDb list provider (ls id, list URL and CSV export URL) in IntakeSyncServiceTests.
+
+## Jellyfin 12.2.0 collection-unfavourited, user id (coverage area automation, #1293)
+
+`jellyfin/12.2.0/collection-unfavourited` holds the reply to taking a collection off the home screen (`DELETE /Users/<user>/FavoriteItems/<collection>`), but it was recorded for another user id of that server (`a1c0903c...`) than the one every other Jellyfin 12.2.0 recording lists (`03d92757...`), so no call from Deluno talking to the server of the other recordings can match it. `apps/web/tests/real/zz-retention-end-to-end.spec.ts` answers it with that recorded reply, the one id in its address changed to the user the other recordings list. It needs re-recording on the one Jellyfin the other states were made on.
