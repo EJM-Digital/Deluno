@@ -43,8 +43,9 @@ const run = (overrides = {}) => ({ databaseId: 7, event: "push", status: "comple
 const job = (name, conclusion = "success", steps = []) => ({ name, conclusion, steps });
 const fullJobs = [
   job("ci-passed", "success", [{ name: "Every job that was due passed", conclusion: "success" }]),
-  job("Frontend smoke (1/2)"),
-  job("Frontend smoke (2/2)"),
+  job("Frontend smoke (1/3)"),
+  job("Frontend smoke (2/3)"),
+  job("Frontend smoke (3/3)"),
   job("Windows installer"),
   job("Windows end-to-end (install)"),
   job("End-to-end (films)"),
@@ -62,7 +63,7 @@ test("no run, a failed run, an unfinished run and a pull request run are refused
 });
 
 test("a green documents-only run, which skipped the smoke jobs, is refused", () => {
-  const docsOnly = [...fullJobs.slice(0, 1), job("Frontend smoke (1/2)", "skipped"), job("Frontend smoke (2/2)", "skipped"), ...fullJobs.slice(3)];
+  const docsOnly = [...fullJobs.slice(0, 1), job("Frontend smoke (1/3)", "skipped"), job("Frontend smoke (2/3)", "skipped"), job("Frontend smoke (3/3)", "skipped"), ...fullJobs.slice(4)];
   assert.match(checkCi([run()], () => docsOnly)[0], /did not run the jobs/);
 });
 

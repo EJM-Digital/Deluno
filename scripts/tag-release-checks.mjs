@@ -8,7 +8,19 @@ export const VERSION_PATTERN = /^\d+\.\d+\.\d+(-rc\.\d+(\.\d+)?)?$/;
 
 // A run that only skipped jobs (a change to documents alone) is green without having tested anything, so a tag also
 // needs the browser smoke shards, which every code change runs, to have passed.
-export const SMOKE_JOBS = ["Frontend smoke (1/2)", "Frontend smoke (2/2)"];
+// The smoke shards, by the name ci.yml gives them ("Frontend smoke (1/3)" ...). The count is read from the names, so a
+// change to the number of shards needs no edit here: every shard 1..N of the run must have passed.
+export function missingSmokeShards(jobs) {
+  const shards = jobs.map((job) => ({ job, m: /^Frontend smoke \((\d+)\/(\d+)\)$/.exec(job.name) })).filter((s) => s.m);
+  if (shards.length === 0) return ["Frontend smoke"];
+  const total = Math.max(...shards.map((s) => Number(s.m[2])));
+  const missing = [];
+  for (let i = 1; i <= total; i++) {
+    const name = `Frontend smoke (${i}/${total})`;
+    if (!jobs.some((job) => job.name === name && job.conclusion === "success")) missing.push(name);
+  }
+  return missing;
+}
 
 export function checkVersionFormat(version) {
   return VERSION_PATTERN.test(version || "")
@@ -54,7 +66,7 @@ export function checkCi(runs, jobsFor) {
     const jobs = run.status === "completed" && run.conclusion === "success" ? jobsFor(run) : [];
     const problems = evaluateRun(run, jobs, run.conclusion === "success" ? undefined : []);
     if (problems.length === 0) {
-      const missing = SMOKE_JOBS.filter((name) => !jobs.some((job) => job.name === name && job.conclusion === "success"));
+      const missing = missingSmokeShards(jobs);
       if (missing.length === 0) return [];
       reasons.push(`run ${run.databaseId} passed but did not run the jobs (${missing.join(", ")} did not pass): it was probably a documents-only change. Start a full run with gh workflow run ci.yml.`);
     } else {
