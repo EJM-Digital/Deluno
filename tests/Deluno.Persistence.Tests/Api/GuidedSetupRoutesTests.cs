@@ -3,6 +3,8 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Deluno.Api.Network;
+using Deluno.Companions;
+using Deluno.Contracts;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Security;
 using Microsoft.AspNetCore.DataProtection;
@@ -316,6 +318,98 @@ public sealed class GuidedSetupRoutesTests
         finally
         {
             Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static bool CanInstallHere => CompanionToolsService.Availability().Available;
+
+    private sealed class WaitingTool(string id, Task release) : ICompanionTool
+    {
+        public string Id => id;
+        public string Name => id;
+        public string Description => id;
+        public bool IsInstalled() => false;
+        public Task<string?> ConnectionNameAsync(CancellationToken cancellationToken) => Task.FromResult<string?>(null);
+        public async Task RunAsync(CompanionRunContext context, CancellationToken cancellationToken) => await release;
+    }
+
+    [Fact]
+    public async Task The_tools_list_answers_with_whether_installing_is_possible_here_the_three_tools_with_their_state_and_the_uninstall_note()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+
+        var response = await app.Client.GetAsync("/api/companion-tools");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var availability = body.GetProperty("availability");
+        Assert.Equal(CanInstallHere, availability.GetProperty("available").GetBoolean());
+        if (!CanInstallHere) Assert.False(string.IsNullOrWhiteSpace(availability.GetProperty("reason").GetString()));
+        var tools = body.GetProperty("tools").EnumerateArray().ToArray();
+        Assert.Equal(["sabnzbd", "qbittorrent", "weir"], tools.Select(tool => tool.GetProperty("id").GetString()));
+        Assert.All(tools, tool => Assert.Contains(tool.GetProperty("state").GetString(), new[] { "connected", "installed", "not-installed" }));
+        Assert.Contains("Uninstalling Deluno leaves", body.GetProperty("uninstallNote").GetString(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("read")]
+    [InlineData("write")]
+    public async Task The_companion_and_update_routes_need_the_System_policy_which_a_read_or_write_key_does_not_have(string scopes)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        using var key = await KeyClientAsync(app, scopes);
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await key.GetAsync("/api/companion-tools")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await key.PostAsJsonAsync("/api/companion-tools/install", new { toolIds = new[] { "weir" } })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await key.PostAsJsonAsync("/api/companion-tools/tray-install", new { toolIds = new[] { "deluge" } })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await key.GetAsync("/api/connections/updates")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await key.PostAsync("/api/connections/weir/some-id/version/dismiss", content: null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await key.PostAsync("/api/connections/weir/some-id/update", content: null)).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_fresh_install_has_no_update_notices_and_dismissing_one_that_is_not_there_is_not_found()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+
+        var list = await app.Client.GetAsync("/api/connections/updates");
+        Assert.Equal(HttpStatusCode.OK, list.StatusCode);
+        Assert.Empty((await list.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray());
+
+        var dismiss = await app.Client.PostAsync("/api/connections/weir/no-such-connection/version/dismiss", content: null);
+        Assert.Equal(HttpStatusCode.NotFound, dismiss.StatusCode);
+    }
+
+    [Fact]
+    public async Task Asking_to_install_while_a_setup_is_running_is_refused_in_plain_words_and_the_running_one_carries_on()
+    {
+        var release = new TaskCompletionSource();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services =>
+        {
+            services.RemoveAll<ICompanionTool>();
+            foreach (var id in CompanionToolIds.All) services.AddScoped<ICompanionTool>(_ => new WaitingTool(id, release.Task));
+        });
+        try
+        {
+            var first = await app.Client.PostAsJsonAsync("/api/companion-tools/install", new { toolIds = new[] { "sabnzbd" } });
+            var second = await app.Client.PostAsJsonAsync("/api/companion-tools/install", new { toolIds = new[] { "qbittorrent" } });
+
+            Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+            var message = (await second.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("message").GetString();
+            if (CanInstallHere)
+            {
+                Assert.Equal(HttpStatusCode.Accepted, first.StatusCode);
+                Assert.Equal("Tools are already being set up. Wait for that to finish.", message);
+            }
+            else
+            {
+                Assert.Equal(HttpStatusCode.Conflict, first.StatusCode);
+                Assert.False(string.IsNullOrWhiteSpace(message));
+            }
+        }
+        finally
+        {
+            release.SetResult();
         }
     }
 }
