@@ -35,7 +35,7 @@ public sealed class OutboundNotificationService(
                 return;
             }
 
-            webhooks = await repository.ListNotificationWebhooksAsync(cancellationToken);
+            webhooks = await repository.ListNotificationWebhooksWithSecretsAsync(cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -102,7 +102,7 @@ public sealed class OutboundNotificationService(
                 Failure: failure);
         }
 
-        var webhook = (await repository.ListNotificationWebhooksAsync(cancellationToken))
+        var webhook = (await repository.ListNotificationWebhooksWithSecretsAsync(cancellationToken))
             .FirstOrDefault(item => string.Equals(item.Id, webhookId, StringComparison.OrdinalIgnoreCase));
         if (webhook is null)
         {
@@ -275,9 +275,9 @@ public sealed class OutboundNotificationService(
                 externalId: delivery?.Item.Id);
             logger.LogWarning(
                 ex,
-                "Webhook {WebhookId} ({Url}) failed for event {Category}; it is available for replay.",
+                "Webhook {WebhookId} ({Host}) failed for event {Category}; it is available for replay.",
                 webhookId,
-                url,
+                NotificationSecrets.HostOnly(url),
                 eventCategory);
 
             try
@@ -387,10 +387,10 @@ public sealed class OutboundNotificationService(
                 {
                     logger.LogWarning(
                         ex,
-                        "Webhook delivery attempt {Attempt}/{TotalAttempts} failed for {Url}. Retrying.",
+                        "Webhook delivery attempt {Attempt}/{TotalAttempts} failed for {Host}. Retrying.",
                         attempts,
                         delivery.Item.MaxAttempts,
-                        url);
+                        NotificationSecrets.HostOnly(url));
                 }
             }
         }

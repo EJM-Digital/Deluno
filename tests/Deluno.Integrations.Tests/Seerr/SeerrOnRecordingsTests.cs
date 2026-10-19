@@ -335,6 +335,100 @@ public sealed class SeerrOnRecordingsTests
         Assert.IsType<MediaServerAnswer<bool>.Unreachable>(await client.MarkAvailableAsync(Server(), 1, CancellationToken.None));
     }
 
+    // ---- every call, the request statuses, and the edges of clearing ----
+
+    [Fact]
+    public async Task Every_call_Deluno_makes_to_Seerr_carries_the_key_and_asks_for_JSON()
+    {
+        var seerr = new Seerr(request => request.RequestUri!.AbsolutePath switch
+        {
+            "/api/v1/status" => Reply("status", 0),
+            "/api/v1/settings/main" => Reply("settings-main", 0),
+            "/api/v1/request" => Reply("request-pending", 1),
+            "/api/v1/user" => Reply("request-pending", 2),
+            "/api/v1/movie/45745" => Reply("request-pending", 3),
+            "/api/v1/media/1" => request.Method == HttpMethod.Delete ? Reply("media-deleted", 0) : null,
+            "/api/v1/media/1/available" => Reply("media-available", 1),
+            _ => null
+        });
+        var client = seerr.Client();
+
+        await client.TestAsync(Server(), CancellationToken.None);
+        await client.ListRequestsAsync(Server(), CancellationToken.None);
+        await client.ClearAsync(Server(), "movies", "45745", null, CancellationToken.None);
+        await client.MarkAvailableAsync(Server(), 1, CancellationToken.None);
+        await client.FindMediaIdAsync(Server(), "movies", "45745", null, CancellationToken.None);
+
+        Assert.True(seerr.Requests.Count >= 8, string.Join(" | ", seerr.Calls));
+        foreach (var request in seerr.Requests)
+        {
+            Assert.Equal("key-123", Assert.Single(request.Headers.GetValues("X-Api-Key")));
+            Assert.Contains("application/json", request.Headers.GetValues("Accept"));
+        }
+    }
+
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(2, true)]
+    [InlineData(3, false)]
+    [InlineData(4, false)]
+    [InlineData(5, true)]
+    public async Task A_request_counts_as_approved_when_Seerr_says_approved_or_completed_and_not_when_pending_declined_or_failed(int status, bool approved)
+    {
+        var listed = Json(R("request-approved").Exchanges[1].Reply.BodyWith(("results.0.status", status)));
+        var seerr = new Seerr(request => request.RequestUri!.AbsolutePath == "/api/v1/request" ? listed : Reply("request-pending", 2));
+
+        var answer = await seerr.Client().ListRequestsAsync(Server(), CancellationToken.None);
+
+        var request = Assert.Single(Assert.IsType<MediaServerAnswer<SeerrLibrary>.Reported>(answer).Value.Requests);
+        Assert.Equal(approved, request.ApprovedUtc is not null);
+    }
+
+    [Fact]
+    public async Task A_user_list_that_fails_makes_the_whole_answer_unreachable_though_the_requests_were_read()
+    {
+        var seerr = new Seerr(request => request.RequestUri!.AbsolutePath == "/api/v1/request"
+            ? Reply("request-approved", 1)
+            : new HttpResponseMessage(HttpStatusCode.InternalServerError));
+
+        var answer = await seerr.Client().ListRequestsAsync(Server(), CancellationToken.None);
+
+        Assert.IsType<MediaServerAnswer<SeerrLibrary>.Unreachable>(answer);
+        Assert.True(seerr.Sent("GET /api/v1/user"));
+    }
+
+    [Fact]
+    public async Task A_title_with_neither_a_TMDb_nor_a_TVDb_id_cannot_be_cleared_and_Seerr_is_not_asked()
+    {
+        var seerr = new Seerr(_ => throw new InvalidOperationException("Seerr must not be asked with no id."));
+
+        var answer = await seerr.Client().ClearAsync(Server(), "tv", null, null, CancellationToken.None);
+
+        Assert.IsType<MediaServerAnswer<SeerrClearing>.NotSupported>(answer);
+        Assert.Empty(seerr.Calls);
+    }
+
+    [Fact]
+    public async Task A_media_record_Seerr_has_already_gone_from_by_the_time_of_the_delete_still_counts_as_cleared()
+    {
+        var seerr = new Seerr(request => request.Method == HttpMethod.Delete ? new HttpResponseMessage(HttpStatusCode.NotFound) : Reply("request-pending", 3));
+
+        var answer = await seerr.Client().ClearAsync(Server(), "movies", "45745", null, CancellationToken.None);
+
+        Assert.True(Assert.IsType<MediaServerAnswer<SeerrClearing>.Reported>(answer).Value.Cleared);
+        Assert.True(seerr.Sent("DELETE /api/v1/media/1"));
+    }
+
+    [Fact]
+    public async Task A_delete_Seerr_refuses_is_reported_as_could_not_clear_not_as_cleared()
+    {
+        var seerr = new Seerr(request => request.Method == HttpMethod.Delete ? new HttpResponseMessage(HttpStatusCode.InternalServerError) : Reply("request-pending", 3));
+
+        var answer = await seerr.Client().ClearAsync(Server(), "movies", "45745", null, CancellationToken.None);
+
+        Assert.IsType<MediaServerAnswer<SeerrClearing>.Unreachable>(answer);
+    }
+
     // ---- the webhook bodies Seerr itself sends are pinned by the webhook route's own tests (SeerrWebhookOnRecordedBodiesTests) ----
 
     [Fact]

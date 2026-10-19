@@ -231,6 +231,186 @@ public sealed class SeerrWebhookOnRecordedBodiesTests : IAsyncDisposable
         Assert.True(sent.Request.Headers!.ContainsKey("authorization"));
     }
 
+    private static string Edited(string body, Action<System.Text.Json.Nodes.JsonObject> edit)
+    {
+        var json = System.Text.Json.Nodes.JsonNode.Parse(body)!.AsObject();
+        edit(json);
+        return json.ToJsonString();
+    }
+
+    /// <summary>The recorded series request Seerr sent (a declined one, the only series webhook recorded) as it sends an approval: only the type and the event text differ.</summary>
+    private static string ApprovedSeries(string body)
+        => Edited(body, json =>
+        {
+            json["notification_type"] = "MEDIA_APPROVED";
+            json["event"] = "Series Request Approved";
+        });
+
+    [Fact]
+    public async Task A_connection_that_never_had_a_secret_generated_refuses_what_Seerr_sends_whatever_the_Authorization_header_says()
+    {
+        var sent = R("webhook-approved").Exchanges[0];
+        var connection = await CreateConnectionAsync();
+        Assert.False(connection.HasWebhookSecret);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _client.SendAsync(Posted(connection.Id, sent, null))).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _client.SendAsync(Posted(connection.Id, sent, "anything"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _client.SendAsync(Posted(connection.Id, sent, ""))).StatusCode);
+        Assert.Empty(_acquisitions.Calls);
+    }
+
+    [Fact]
+    public async Task Regenerating_the_secret_makes_Seerrs_old_Authorization_value_stop_working_at_once()
+    {
+        var sent = R("webhook-approved").Exchanges[0];
+        var connection = await CreateConnectionAsync();
+        var first = await _repository.RegenerateWebhookSecretAsync(connection.Id, CancellationToken.None);
+        Assert.Equal(HttpStatusCode.OK, (await _client.SendAsync(Posted(connection.Id, sent, first, body => WithMediaId(body, "1")))).StatusCode);
+
+        var second = await _repository.RegenerateWebhookSecretAsync(connection.Id, CancellationToken.None);
+
+        Assert.NotEqual(first, second);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _client.SendAsync(Posted(connection.Id, sent, first, body => WithMediaId(body, "1")))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _client.SendAsync(Posted(connection.Id, sent, second, body => WithMediaId(body, "1")))).StatusCode);
+        Assert.Equal(2, _acquisitions.Calls.Count);
+    }
+
+    [Fact]
+    public async Task A_connection_that_does_not_exist_or_is_switched_off_answers_404_and_adds_nothing()
+    {
+        var sent = R("webhook-approved").Exchanges[0];
+        var connection = await CreateConnectionAsync();
+        var secret = await _repository.RegenerateWebhookSecretAsync(connection.Id, CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.SendAsync(Posted("no-such-connection", sent, secret, body => WithMediaId(body, "1")))).StatusCode);
+
+        await _repository.SaveAsync(connection.Id, new SaveSeerrRequest("Lab Seerr", "http://127.0.0.1:5055", null, IsEnabled: false), CancellationToken.None);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.SendAsync(Posted(connection.Id, sent, secret, body => WithMediaId(body, "1")))).StatusCode);
+        Assert.Empty(_acquisitions.Calls);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("this is not json")]
+    [InlineData("{\"notification_type\": ")]
+    public async Task A_body_that_is_empty_or_not_JSON_is_a_400_with_a_plain_message_after_the_secret_was_accepted(string body)
+    {
+        var sent = R("webhook-approved").Exchanges[0];
+        var connection = await CreateConnectionAsync();
+        var secret = await _repository.RegenerateWebhookSecretAsync(connection.Id, CancellationToken.None);
+
+        var response = await _client.SendAsync(Posted(connection.Id, sent, secret, _ => body));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var said = System.Text.Json.Nodes.JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        Assert.False(string.IsNullOrWhiteSpace((string?)said["message"]));
+        Assert.Empty(_acquisitions.Calls);
+    }
+
+    [Fact]
+    public async Task An_approval_with_no_media_object_is_acknowledged_and_nothing_is_added()
+    {
+        var sent = R("webhook-approved").Exchanges[0];
+        var connection = await CreateConnectionAsync();
+        var secret = await _repository.RegenerateWebhookSecretAsync(connection.Id, CancellationToken.None);
+
+        var response = await _client.SendAsync(Posted(connection.Id, sent, secret, body => Edited(body, json => json.Remove("media"))));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Empty(_acquisitions.Calls);
+    }
+
+    [Fact]
+    public async Task A_series_request_is_taken_as_tv_with_its_TVDb_id_and_a_film_or_anything_else_as_movies()
+    {
+        var series = R("webhook-declined").Exchanges[2];
+        var connection = await CreateConnectionAsync();
+        var secret = await _repository.RegenerateWebhookSecretAsync(connection.Id, CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, (await _client.SendAsync(Posted(connection.Id, series, secret, body => WithMediaId(ApprovedSeries(body), "2")))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _client.SendAsync(Posted(connection.Id, R("webhook-approved").Exchanges[0], secret, body => WithMediaId(body, "1")))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _client.SendAsync(Posted(connection.Id, R("webhook-approved").Exchanges[0], secret, body => WithMediaId(Edited(body, json => json["media"]!["media_type"] = "music"), "1")))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _client.SendAsync(Posted(connection.Id, R("webhook-approved").Exchanges[0], secret, body => WithMediaId(Edited(body, json => json["media"]!.AsObject().Remove("media_type")), "1")))).StatusCode);
+
+        Assert.Equal(["tv", "movies", "movies", "movies"], _acquisitions.Calls.Select(call => call.MediaType));
+        var tv = _acquisitions.Calls[0];
+        Assert.Equal(("1396", "81189", 2), (tv.TmdbId, tv.TvdbId, tv.SeerrMediaId));
+    }
+
+    [Fact]
+    public async Task The_media_id_is_read_from_media_id_first_then_from_id_and_only_asked_of_Seerr_when_neither_is_a_number()
+    {
+        var sent = R("webhook-approved").Exchanges[0];
+        var connection = await CreateConnectionAsync();
+        var secret = await _repository.RegenerateWebhookSecretAsync(connection.Id, CancellationToken.None);
+        _seerr.FoundId = 77;
+
+        await _client.SendAsync(Posted(connection.Id, sent, secret, body => Edited(body, json => { json["media"]!["media_id"] = 4; json["media"]!["id"] = 9; })));
+        await _client.SendAsync(Posted(connection.Id, sent, secret, body => Edited(body, json => json["media"]!["id"] = "9")));
+        Assert.Null(_seerr.Asked);
+        await _client.SendAsync(Posted(connection.Id, sent, secret, body => Edited(body, json => { json["media"]!["media_id"] = "{{media_id}}"; json["media"]!["id"] = "{{id}}"; })));
+
+        Assert.Equal([4, 9, 77], _acquisitions.Calls.Select(call => call.SeerrMediaId));
+        Assert.Equal(("movies", "45745"), (_seerr.Asked!.Value.MediaType, _seerr.Asked.Value.TmdbId));
+    }
+
+    [Theory]
+    [InlineData("Movie Request Approved", null, false)]
+    [InlineData("4K Movie Request Approved", null, true)]
+    [InlineData("4K Movie Request Approved", false, false)]
+    [InlineData("Movie Request Approved", true, true)]
+    [InlineData("Movie Request Approved", "true", true)]
+    [InlineData("4K Movie Request Approved", "false", false)]
+    public async Task A_4K_request_is_told_from_the_event_text_and_an_explicit_is4k_in_a_custom_payload_overrides_it(string eventText, object? explicitIs4k, bool expected)
+    {
+        var sent = R("webhook-approved").Exchanges[0];
+        var connection = await CreateConnectionAsync();
+        var secret = await _repository.RegenerateWebhookSecretAsync(connection.Id, CancellationToken.None);
+
+        await _client.SendAsync(Posted(connection.Id, sent, secret, body => WithMediaId(Edited(body, json =>
+        {
+            json["event"] = eventText;
+            if (explicitIs4k is bool flag) json["is4k"] = flag;
+            if (explicitIs4k is string text) json["is_4k"] = text;
+        }), "1")));
+
+        Assert.Equal(expected, Assert.Single(_acquisitions.Calls).Is4k);
+    }
+
+    [Fact]
+    public async Task The_TMDb_and_TVDb_ids_are_read_whether_Seerr_sends_them_as_text_or_as_numbers()
+    {
+        var series = R("webhook-declined").Exchanges[2];
+        var connection = await CreateConnectionAsync();
+        var secret = await _repository.RegenerateWebhookSecretAsync(connection.Id, CancellationToken.None);
+
+        await _client.SendAsync(Posted(connection.Id, series, secret, body => WithMediaId(ApprovedSeries(Edited(body, json => { json["media"]!["tmdbId"] = 1396; json["media"]!["tvdbId"] = 81189; })), "2")));
+        await _client.SendAsync(Posted(connection.Id, series, secret, body => WithMediaId(ApprovedSeries(Edited(body, json => json["media"]!.AsObject().Remove("tmdbId"))), "2")));
+
+        Assert.Equal([("1396", "81189"), (null, "81189")], _acquisitions.Calls.Select(call => (call.TmdbId, call.TvdbId)));
+    }
+
+    [Fact]
+    public async Task A_webhook_secret_saved_on_another_computer_cannot_be_read_so_it_counts_as_not_generated_and_every_call_is_refused_until_it_is_made_again()
+    {
+        var sent = R("webhook-approved").Exchanges[0];
+        var elsewhere = new SqliteSeerrRepository(_storage.Factory, _timeProvider, new Deluno.Security.DataProtectionSecretProtector(
+            Microsoft.AspNetCore.DataProtection.DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(_storage.DataRoot, "keys-elsewhere")))));
+        var connection = (await elsewhere.SaveAsync(null, new SaveSeerrRequest("Lab Seerr", "http://127.0.0.1:5055", "key-1", IsEnabled: true), CancellationToken.None))!;
+        var oldSecret = await elsewhere.RegenerateWebhookSecretAsync(connection.Id, CancellationToken.None);
+
+        var here = await _repository.GetAsync(connection.Id, CancellationToken.None);
+
+        Assert.False(here!.HasWebhookSecret);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _client.SendAsync(Posted(connection.Id, sent, oldSecret, body => WithMediaId(body, "1")))).StatusCode);
+        Assert.Empty(_acquisitions.Calls);
+
+        var fresh = await _repository.RegenerateWebhookSecretAsync(connection.Id, CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, (await _client.SendAsync(Posted(connection.Id, sent, fresh, body => WithMediaId(body, "1")))).StatusCode);
+        Assert.Single(_acquisitions.Calls);
+    }
+
     public async ValueTask DisposeAsync()
     {
         _client.Dispose();

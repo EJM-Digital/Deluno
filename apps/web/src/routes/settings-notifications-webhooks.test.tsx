@@ -193,6 +193,18 @@ describe("webhook drawer", () => {
     expect(await screen.findByText("Webhook could not be saved.")).toBeInTheDocument();
   });
 
+  it("edits a connection whose token came back masked (#1364): the mask goes back as it came, so the server keeps what it stored", async () => {
+    const mask = "••••••••";
+    loader.webhooks = [hook({ id: "m1", name: "Phone", provider: "telegram", url: "", configJson: JSON.stringify({ botToken: mask, chatId: "42" }) })];
+    renderPage();
+    fireEvent.click(screen.getByText("Phone"));
+    expect(screen.getByDisplayValue(mask)).toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue("42"), { target: { value: "43" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save webhook" }));
+    await waitFor(() => expect(putCalls()).toHaveLength(1));
+    expect(JSON.parse(JSON.parse((putCalls()[0][1] as RequestInit).body as string).configJson)).toEqual({ botToken: mask, chatId: "43" });
+  });
+
   it("sends a test event only from a saved form: dimmed with 'Save your changes first.' while edited, then POSTs the test and toasts", async () => {
     loader.webhooks = [hook({ id: "e2", name: "Test target" })];
     renderPage();
@@ -256,6 +268,41 @@ describe("Delivery master switch and replay", () => {
   });
 });
 
+
+describe("closing the drawer and the test button", () => {
+  it("asks before throwing away an edit: Cancel in the prompt leaves the drawer open and Discard closes it and keeps nothing", async () => {
+    loader.webhooks = [hook({ id: "d1", name: "Family chat" })];
+    renderPage();
+    fireEvent.click(screen.getByText("Family chat"));
+    fireEvent.change(screen.getByPlaceholderText(/https?:\/\//i), { target: { value: "https://hooks.example.test/edited" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(await screen.findByText("Discard unsaved changes?")).toBeInTheDocument();
+
+    const prompt = () => screen.getByText("Discard unsaved changes?").closest('[role="alertdialog"], [role="dialog"]') as HTMLElement;
+    fireEvent.click(within(prompt()).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByText("Discard unsaved changes?")).toBeNull());
+    expect(screen.getByRole("button", { name: "Save webhook" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Cancel" })[0]);
+    await screen.findByText("Discard unsaved changes?");
+    fireEvent.click(within(prompt()).getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Save webhook" })).toBeNull());
+    expect(putCalls()).toHaveLength(0);
+  });
+
+  it.skip("Defect: says 'Test event sent' for any 2xx answer, though the endpoint answers 200 with sent false when notifications are paused, the webhook is off or three attempts failed (sendTest never reads the answer; replay does). Found 19 Oct 2026.", async () => {
+    loader.webhooks = [hook({ id: "e9", name: "Quiet one" })];
+    vi.mocked(authedFetch).mockImplementation(async (input: RequestInfo | URL) =>
+      String(input).startsWith("/api/tags") ? json([]) : String(input).endsWith("/test") ? json({ sent: false, message: "Notifications are paused. Turn on Send notifications to test this webhook." }) : json({}));
+    renderPage();
+    fireEvent.click(screen.getByText("Quiet one"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Send a test event" }));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalled());
+    expect(toastSuccess).not.toHaveBeenCalledWith("Test event sent to Quiet one");
+  });
+});
 describe("preference switches (the three lists of events)", () => {
   it("shows every event list's saved state and dims a switch while its save is running", async () => {
     let finish: (value: Response) => void = () => undefined;

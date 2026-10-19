@@ -288,3 +288,11 @@ Recorded from the real clients in Docker (qBittorrent 5.2.4 and 4.6.7, SABnzbd 5
 - nzbget `client-paused-resumed` (`pausedownload`, `pausepost`, `pausescan`, then `resumedownload`, `resumepost`, `resumescan`, n19) and `queue-moved` (`GroupMoveTop`, `GroupMoveOffset`, `GroupMoveBottom`, n27).
 
 Still not recordable from the apps: a client's own timeout and an HTTP 429 with `Retry-After` (no client sends one; the tests build the status only), and the Torznab/Newznab replies listed above.
+
+## Seerr webhook for an approved series (#1296)
+
+- seerr 3.5.0 `webhook-approved` is a film. No approved series (MEDIA_APPROVED, media_type tv) was recorded: `docker/seerr.mjs` declines the series request it makes. The tests that need one (`SeerrWebhookOnRecordedBodiesTests`, `SeerrApprovalsThroughTheWholeApplicationOnRecordedRepliesTests`) take the recorded declined series webhook and change only `notification_type` and `event`. To record it, approve the series request (`POST /api/v1/request/{id}/approve`) before declining a second one.
+
+## Hosted notification services (#1343)
+
+- discord, slack, telegram, pushover and apprise deliveries: each needs an account (or, for Apprise, a running Apprise API with a service behind it), so Deluno's payload for them is held against the service documentation only (`NotificationProviderPayloadTests`). ntfy 2.32.0 and Gotify 3.1.1 are recorded from containers (`docker/notify.mjs`).
