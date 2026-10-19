@@ -349,7 +349,7 @@ public sealed class ClearingRefusedDownloadsTests
 
     // ------------------------------------------------------------------ helpers
 
-    private static RefusedDownloadCleanupService Cleanup(
+    internal static RefusedDownloadCleanupService Cleanup(
         IBlockedReleaseRepository blocklist,
         IDownloadClientTelemetryService clients,
         IDownloadSharingRepository sharing,
@@ -377,7 +377,7 @@ public sealed class ClearingRefusedDownloadsTests
     }
 
     /// <summary>#882/#883/#885 and #887: both off unless a test says otherwise.</summary>
-    private static IPlatformSettingsRepository PlatformSettings(
+    internal static IPlatformSettingsRepository PlatformSettings(
         bool clientReportedFailureCleanupOn = false,
         bool removeAndDeletePackedArchivesFromClient = false)
     {
@@ -431,7 +431,7 @@ public sealed class ClearingRefusedDownloadsTests
         return clients;
     }
 
-    private static IDownloadSharingRepository Sharing(params string[] heldQueueItemIds)
+    internal static IDownloadSharingRepository Sharing(params string[] heldQueueItemIds)
     {
         var sharing = new Mock<IDownloadSharingRepository>();
         sharing.Setup(repository => repository.GetSnapshotAsync(It.IsAny<CancellationToken>()))
@@ -479,7 +479,7 @@ public sealed class ClearingRefusedDownloadsTests
             "SABnzbd",
             DateTimeOffset.UnixEpoch);
 
-    private static BlockedRelease RefusedPackedArchive(string queueItemId)
+    internal static BlockedRelease RefusedPackedArchive(string queueItemId)
         => new(
             "block-1",
             BlockedReleaseKeys.For("Arrival.2016.2160p", "Nebula"),

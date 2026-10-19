@@ -371,6 +371,8 @@ function TrackerDefinitionsCard() {
 function ConnectionChecksCard({ settings }: { settings: PlatformSettingsSnapshot }) {
   const [checkRegularly, setCheckRegularly] = useState(settings.checkConnectionsRegularly ?? true);
   const [keepAwake, setKeepAwake] = useState(settings.keepComputerAwake ?? false);
+  useEffect(() => setCheckRegularly(settings.checkConnectionsRegularly ?? true), [settings.checkConnectionsRegularly]);
+  useEffect(() => setKeepAwake(settings.keepComputerAwake ?? false), [settings.keepComputerAwake]);
   const [busy, setBusy] = useState(false);
 
   async function save(patch: PlatformSettingsPatch, apply: () => void, undo: () => void, said: string) {

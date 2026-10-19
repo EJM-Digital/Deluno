@@ -32,7 +32,7 @@ public static class QualityEndpointRouteBuilderExtensions
     /// </summary>
     private static GuidePackageUpdateRequest WithPinnedSourceInventory(GuidePackageUpdateRequest request)
         => request.Package is { SourceInventory: null } package
-           && string.Equals(package.Source.UpstreamRevision, GuideSourceInventoryCatalog.Current.UpstreamRevision, StringComparison.OrdinalIgnoreCase)
+           && string.Equals(package.Source?.UpstreamRevision, GuideSourceInventoryCatalog.Current.UpstreamRevision, StringComparison.OrdinalIgnoreCase)
             ? request with { Package = package with { SourceInventory = GuideSourceInventoryCatalog.Current } }
             : request;
 

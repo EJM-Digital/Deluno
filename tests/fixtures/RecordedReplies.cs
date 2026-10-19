@@ -276,7 +276,22 @@ public static class RecordedReplies
             }
         }
 
-        return new RecordedReply(status, headers, BodyText(reply), reply.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.String ? error.GetString() : null);
+        // A reply that is binary (a zip archive) is a file beside the recording, named in "bodyFile", with "bodyBytes" its length and
+        // "bodySha256" its hash; the file is read as it is, never as text.
+        byte[]? bytes = null;
+        if (reply.TryGetProperty("bodyFile", out var file) && file.ValueKind == JsonValueKind.String && file.GetString() is { Length: > 0 } fileName)
+        {
+            var folder = Path.GetDirectoryName(Path.GetFullPath(source)) ?? throw new FormatException($"{source}: a reply names a bodyFile but the recording is not a file.");
+            var path = Path.Combine(folder, fileName);
+            bytes = File.Exists(path) ? File.ReadAllBytes(path) : throw new FileNotFoundException($"{source}: the bodyFile '{fileName}' is missing ({path}).");
+            if (reply.TryGetProperty("bodySha256", out var hash) && hash.GetString() is { } expected
+                && !string.Equals(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)), expected, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new FormatException($"{source}: the bodyFile '{fileName}' does not match its bodySha256.");
+            }
+        }
+
+        return new RecordedReply(status, headers, bytes is null ? BodyText(reply) : null, reply.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.String ? error.GetString() : null, bytes);
     }
 
     /// <summary>A body is stored as JSON in <c>body</c> or as text in <c>bodyText</c> (a reply that is not JSON, or whose exact bytes matter).</summary>
@@ -431,7 +446,7 @@ public sealed record Exchange(RecordedRequest Request, RecordedReply Reply);
 public sealed record RecordedRequest(string Method, string Path, string? Body, IReadOnlyDictionary<string, string>? Headers = null);
 
 /// <summary>A reply. Status 0 is an app that did not answer (connection refused); <c>Error</c> says why.</summary>
-public sealed record RecordedReply(int Status, IReadOnlyDictionary<string, string> Headers, string? Body, string? Error = null)
+public sealed record RecordedReply(int Status, IReadOnlyDictionary<string, string> Headers, string? Body, string? Error = null, byte[]? Bytes = null)
 {
     public HttpStatusCode StatusCode => (HttpStatusCode)Status;
 
@@ -575,7 +590,7 @@ public sealed record RecordedReply(int Status, IReadOnlyDictionary<string, strin
     {
         var response = new HttpResponseMessage(StatusCode);
         var contentType = Headers.TryGetValue("content-type", out var type) ? type : "application/json";
-        response.Content = new StringContent(Body ?? string.Empty, Encoding.UTF8);
+        response.Content = Bytes is not null ? new ByteArrayContent(Bytes) : new StringContent(Body ?? string.Empty, Encoding.UTF8);
         response.Content.Headers.Remove("Content-Type");
         response.Content.Headers.TryAddWithoutValidation("Content-Type", contentType);
         foreach (var (name, value) in Headers)

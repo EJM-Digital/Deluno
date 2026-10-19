@@ -1,0 +1,25 @@
+{
+  "app": "github",
+  "version": "2022-11-28",
+  "state": "trash-guides-archive-529bd9c",
+  "recordedAt": "2026-10-19T04:40:00Z",
+  "note": "A real unauthenticated GET on 19 Oct 2026 of https://codeload.github.com/TRaSH-Guides/Guides/zip/529bd9c29eb41f38e36c14c41a137f4d5d824c99 (master at the time). The real archive is about 25 MB. The zip beside this file holds only the entries Deluno reads (the .json files directly under docs/json/radarr and docs/json/sonarr, in cf, cf-groups and quality-profiles), each copied byte for byte with its upstream name; every other entry is left out. The entries' file times are set to 1980-01-01.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "codeload.github.com/TRaSH-Guides/Guides/zip/529bd9c29eb41f38e36c14c41a137f4d5d824c99",
+        "body": null
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/zip"
+        },
+        "bodyFile": "trash-guides-archive-529bd9c.zip",
+        "bodySha256": "640B7E84666C394F1D50022E675FABC88965803AFB3822BEFA386BAC4EB2CB08",
+        "bodyBytes": 465501
+      }
+    }
+  ]
+}

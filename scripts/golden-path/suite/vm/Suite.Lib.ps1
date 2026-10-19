@@ -91,7 +91,7 @@ function Move-ResultsFile {
             else { Move-Item -Force -LiteralPath $Tmp -Destination $Destination -ErrorAction Stop }
             return $true
         }
-        catch { Start-Sleep -Milliseconds $DelayMs }
+        catch { Start-Sleep -Milliseconds $DelayMs } # reason: delay between retries of a save that failed, bounded by the attempt count
     }
     try { Copy-Item -Force -LiteralPath $Tmp -Destination $Destination -ErrorAction Stop; Remove-Item -Force -LiteralPath $Tmp -ErrorAction SilentlyContinue; return $true }
     catch { return $false }
