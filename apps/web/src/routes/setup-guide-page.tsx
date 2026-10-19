@@ -272,6 +272,11 @@ interface GuideForm {
   /** #1034 Stage 1 "Updates": unanswered by default (#936). Reuses /api/updates/preferences. */
   updateAutomatically: boolean | null;
   /**
+   * #1361: "Check for updates by itself?" Off on a fresh install, so unanswered until the person chooses. No means Deluno never
+   * looks on its own (the Updates page still has "Check now"); Yes shows the "Update automatically?" question after it.
+   */
+  checkForUpdates?: boolean | null;
+  /**
    * #1245: on a re-run, the answers as they stood when the guide opened, so each question can say "Current setting".
    * Never edited; null on a fresh install, where nothing is decided for the person.
    */
@@ -283,6 +288,7 @@ export interface SavedAnswers {
   restrictAllowedHosts: boolean;
   skipSignInLocalNetwork: boolean;
   updateAutomatically: boolean;
+  checkForUpdates?: boolean;
   automation: AutomationChoices;
   refineMovies: boolean | null;
   refineTv: boolean | null;
@@ -311,12 +317,18 @@ type SetupCompletion = {
   firstTitlePath: string | null;
 };
 
+/** Both Updates questions are answered: whether to check at all, and, when it does, whether to install what it finds (#1361). */
+export function updatesAnswered(form: Pick<GuideForm, "updateAutomatically" | "checkForUpdates">): boolean {
+  if (form.checkForUpdates === null) return false;
+  return form.checkForUpdates === false || form.updateAutomatically !== null;
+}
+
 /** Whether the step's Yes/No questions each have an answer. Continue stays disabled until they do (#1245). */
 export function stepIsAnswered(stepId: string, form: GuideForm, weirConnected = false): boolean {
   switch (stepId) {
     case "signIn": return form.skipSignInLocalNetwork !== null;
     case "addresses": return form.restrictAllowedHosts !== null;
-    case "updates": return form.updateAutomatically !== null;
+    case "updates": return updatesAnswered(form);
     case "connectApps": return missingWeirAnswers(form, weirConnected).length === 0;
     case "automation": return hasAnsweredAllAutomationQuestions(form.automation);
     default: return true;
@@ -404,6 +416,7 @@ function toSetupDraft(form: GuideForm) {
     // The Yes/No answers are saved too, so a reload restores them (#1132). Unanswered stays out.
     skipSignInLocalNetwork: form.skipSignInLocalNetwork,
     updateAutomatically: form.updateAutomatically,
+    checkForUpdates: form.checkForUpdates,
     automation: { ...answeredAutomation(form.automation), ...answeredRefine(form) }
   };
 }
@@ -441,7 +454,7 @@ export function describeMissingForFinish(form: GuideForm, weirConnected = false)
   if (!form.formatGoal) missing.push("a release preference");
   if (form.skipSignInLocalNetwork === null) missing.push("an answer to \"Skip sign-in for devices on your home network?\"");
   if (form.restrictAllowedHosts === null) missing.push("an answer to \"Only answer on the addresses you use?\"");
-  if (form.updateAutomatically === null) missing.push("an answer to \"Update automatically, or ask you first?\"");
+  if (!updatesAnswered(form)) missing.push("an answer to \"Check for updates by itself?\"" + (form.checkForUpdates === true ? " and \"Update Deluno automatically?\"" : ""));
   if (!hasAnsweredAllAutomationQuestions(form.automation)) missing.push("an answer to every automation question");
   missing.push(...missingWeirAnswers(form, weirConnected));
   if (missing.length === 0) return "Everything is chosen.";
@@ -762,12 +775,14 @@ export function SetupGuidePage() {
     timezone: data.settings.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
     // #1034 Stage 1 "Updates": unanswered by default (#936) -- Start stays
     // disabled until this has an explicit Yes or No.
+    checkForUpdates: rerun ? data.updatePreferences.autoCheck : typeof data.draft.checkForUpdates === "boolean" ? data.draft.checkForUpdates : null,
     updateAutomatically: rerun ? data.updatePreferences.mode === "download-apply-on-restart" : typeof data.draft.updateAutomatically === "boolean" ? data.draft.updateAutomatically : null,
     savedAnswers: rerun
       ? {
           restrictAllowedHosts: data.allowedHosts.enabled,
           skipSignInLocalNetwork: data.localNetworkAuth.enabled,
           updateAutomatically: data.updatePreferences.mode === "download-apply-on-restart",
+          checkForUpdates: data.updatePreferences.autoCheck,
           automation: liveAutomationAnswers(data),
           ...restoreDraftRefine(data.draft.automation)
         }
@@ -801,7 +816,7 @@ export function SetupGuidePage() {
   const hasSkipSignInAnswer = form.skipSignInLocalNetwork !== null;
   // #1034: same rule -- Start stays disabled until "Update automatically, or
   // ask you first?" has an explicit Yes or No.
-  const hasUpdateAnswer = form.updateAutomatically !== null;
+  const hasUpdateAnswer = updatesAnswered(form);
   const hasAddressesAnswer = form.restrictAllowedHosts !== null;
   const weirConnected = installedApps.some((app) => app.kind === "weir" && app.installed && app.connected);
   const hasWeirAnswers = missingWeirAnswers(form, weirConnected).length === 0;
@@ -907,7 +922,7 @@ export function SetupGuidePage() {
         setError("Answer \"Skip sign-in for devices on your home network?\" before finishing setup.");
         setStepIndex(STEPS.findIndex((step) => step.id === "signIn"));
       } else {
-        setError("Answer \"Update automatically, or ask you first?\" before finishing setup.");
+        setError("Answer the Updates questions before finishing setup.");
         setStepIndex(STEPS.findIndex((step) => step.id === "updates"));
       }
       return;
@@ -1968,37 +1983,72 @@ function NetworkStep({ address }: { address?: string }) {
  */
 function UpdatesStep({ form, patch, channel }: { form: GuideForm; patch: (patchValue: Partial<GuideForm>) => void; channel: string }) {
   return (
-    <FieldShell
-      icon={RefreshCw}
-      label="Update Deluno automatically?"
-      copy={`Yes, Deluno downloads and applies updates on its own and restarts to use them. No, Deluno checks for updates and tells you first. Either way, you stay on the ${channel} channel; change that from System -> Updates.`}
-    >
-      <div className="flex gap-2" role="radiogroup" aria-label="Update Deluno automatically?">
-        <Button
-          type="button"
-          variant={form.updateAutomatically === true ? "default" : "outline"}
-          size="sm"
-          role="radio"
-          aria-checked={form.updateAutomatically === true}
-          aria-label="Update Deluno automatically? Yes"
-          onClick={() => patch({ updateAutomatically: true })}
+    <>
+      <FieldShell
+        icon={RefreshCw}
+        label="Check for updates by itself?"
+        copy="Yes, Deluno looks for a new version every few hours. No, it never looks on its own: you press Check for updates in System -> Updates when you want to."
+      >
+        <div className="flex gap-2" role="radiogroup" aria-label="Check for updates by itself?">
+          <Button
+            type="button"
+            variant={form.checkForUpdates === true ? "default" : "outline"}
+            size="sm"
+            role="radio"
+            aria-checked={form.checkForUpdates === true}
+            aria-label="Check for updates by itself? Yes"
+            onClick={() => patch({ checkForUpdates: true })}
+          >
+            Yes
+          </Button>
+          <Button
+            type="button"
+            variant={form.checkForUpdates === false ? "default" : "outline"}
+            size="sm"
+            role="radio"
+            aria-checked={form.checkForUpdates === false}
+            aria-label="Check for updates by itself? No"
+            onClick={() => patch({ checkForUpdates: false })}
+          >
+            No
+          </Button>
+        </div>
+        <CurrentSettingNote value={form.savedAnswers?.checkForUpdates} />
+      </FieldShell>
+      {form.checkForUpdates === true ? (
+        <FieldShell
+          icon={RefreshCw}
+          label="Update Deluno automatically?"
+          copy={`Yes, Deluno downloads and applies updates on its own and restarts to use them. No, Deluno checks for updates and tells you first. Either way, you stay on the ${channel} channel; change that from System -> Updates.`}
         >
-          Yes
-        </Button>
-        <Button
-          type="button"
-          variant={form.updateAutomatically === false ? "default" : "outline"}
-          size="sm"
-          role="radio"
-          aria-checked={form.updateAutomatically === false}
-          aria-label="Update Deluno automatically? No"
-          onClick={() => patch({ updateAutomatically: false })}
-        >
-          No
-        </Button>
-      </div>
-      <CurrentSettingNote value={form.savedAnswers?.updateAutomatically} />
-    </FieldShell>
+          <div className="flex gap-2" role="radiogroup" aria-label="Update Deluno automatically?">
+            <Button
+              type="button"
+              variant={form.updateAutomatically === true ? "default" : "outline"}
+              size="sm"
+              role="radio"
+              aria-checked={form.updateAutomatically === true}
+              aria-label="Update Deluno automatically? Yes"
+              onClick={() => patch({ updateAutomatically: true })}
+            >
+              Yes
+            </Button>
+            <Button
+              type="button"
+              variant={form.updateAutomatically === false ? "default" : "outline"}
+              size="sm"
+              role="radio"
+              aria-checked={form.updateAutomatically === false}
+              aria-label="Update Deluno automatically? No"
+              onClick={() => patch({ updateAutomatically: false })}
+            >
+              No
+            </Button>
+          </div>
+          <CurrentSettingNote value={form.savedAnswers?.updateAutomatically} />
+        </FieldShell>
+      ) : null}
+    </>
   );
 }
 
@@ -2648,14 +2698,16 @@ export async function saveLocalNetworkAuth(form: GuideForm, loaded: Pick<LocalNe
  * install already has is kept untouched.
  */
 export async function saveUpdatePreferences(form: GuideForm, loaded: UpdatePreferencesResponse) {
-  if (form.updateAutomatically === null) return;
+  if (!updatesAnswered(form)) return;
+  // No to checking means nothing runs on its own, so there is nothing to install automatically either (#1361).
+  const checks = form.checkForUpdates !== false;
   await fetchJson("/api/updates/preferences", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      mode: form.updateAutomatically ? "download-apply-on-restart" : "notify-only",
+      mode: checks && form.updateAutomatically ? "download-apply-on-restart" : "notify-only",
       channel: loaded.channel,
-      autoCheck: true
+      autoCheck: checks
     })
   });
 }
