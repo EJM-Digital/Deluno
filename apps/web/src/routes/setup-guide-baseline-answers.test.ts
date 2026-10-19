@@ -311,11 +311,11 @@ describe("re-running the guide changes only what the person answers (#1357)", ()
     downloadHealthNoProgressEnabled: true, downloadHealthMinSpeedEnabled: true, leftoverDownloadCleanupEnabled: true, forceImportEnabled: true, pauseSearchWhenQueueLongEnabled: true,
     downloadHealthMinSpeedKbps: 120, downloadHealthStrikeThreshold: 7, downloadHealthDefaultStrikeWindowMinutes: 45
   };
-  const library = { id: "lib-m", name: "Movies", mediaType: "movies", rootPath: "D:\Media\Movies", missingSearchEnabled: true, upgradeSearchEnabled: true, removeEmptySourceFolders: true };
+  const library = { id: "lib-m", name: "Movies", mediaType: "movies", rootPath: "D:\\Media\\Movies", missingSearchEnabled: true, upgradeSearchEnabled: true, removeEmptySourceFolders: true };
   const indexer = { id: "ix1", name: "Source", priority: 3, categories: "2000", tags: "mine", rssEnabled: true, isEnabled: true };
   const client = { id: "c1", name: "qB", protocol: "qbittorrent", host: "localhost", port: 8081, username: "old", isEnabled: true, healthStatus: "healthy", moviesCategory: "my-films", tvCategory: "my-tv", categoryTemplate: "t", endpointUrl: "http://x", priority: 4 };
   const live = {
-    settings: { movieRootPath: "D:\Media\Movies", seriesRootPath: "D:\Media\TV", hostBindAddress: "127.0.0.1", hostPort: 5099, uiLanguage: "en-US", timezone: "UTC", ...ALL_ON },
+    settings: { movieRootPath: "D:\\Media\\Movies", seriesRootPath: "D:\\Media\\TV", hostBindAddress: "127.0.0.1", hostPort: 5099, uiLanguage: "en-US", timezone: "UTC", ...ALL_ON },
     libraries: [library], indexers: [indexer], clients: [client],
     contentBlocklist: { enabled: true, mode: "block", patterns: ["*.exe"] },
     updatePreferences: { mode: "download-apply-on-restart", autoCheck: true, channel: "beta" },
