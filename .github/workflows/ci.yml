@@ -47,7 +47,7 @@ env:
 
 jobs:
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -155,7 +155,7 @@ jobs:
   # Checks of the repository itself. Always runs: it takes seconds, and it is what keeps the workflows honest.
   repo-checks:
     name: Repository checks
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -245,7 +245,7 @@ jobs:
     name: Backend ${{ matrix.name }}
     needs: changes
     if: ${{ needs.changes.outputs.run_backend == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     # Observed 23 to 34 minutes for the whole backend in one job (3 Oct), 41 on 15 Oct, and more than 57 for the tests
     # alone once the coverage work added about 1,500 Persistence tests. The expected time of a leg is its build (about
     # 4 minutes) plus its share of the tests, around 15 to 20 minutes with coverage; the limit is 40, about twice that.
@@ -356,7 +356,7 @@ jobs:
     name: Web build
     needs: changes
     if: ${{ needs.changes.outputs.run_web_dist == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     # Observed about 2.5 minutes.
     timeout-minutes: 10
     steps:
@@ -387,7 +387,7 @@ jobs:
     name: Frontend quality
     needs: changes
     if: ${{ needs.changes.outputs.run_web == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     # Observed about 6 minutes, 5 of them the unit tests.
     timeout-minutes: 15
     steps:
@@ -435,7 +435,7 @@ jobs:
     name: Frontend smoke (${{ matrix.shard_id }}/3)
     needs: [changes, web-dist]
     if: ${{ needs.changes.outputs.run_e2e_smoke == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 35
     strategy:
       fail-fast: false
@@ -510,7 +510,7 @@ jobs:
     name: Container image
     needs: changes
     if: ${{ needs.changes.outputs.run_docker == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     # Observed 1 to 7 minutes for the image; the proofs below add a few more.
     timeout-minutes: 25
     env:
@@ -575,13 +575,20 @@ jobs:
           echo "DOCKER_BASELINE_IMAGE=$baseline_image" >> "$GITHUB_ENV"
 
       - name: Verify persistent data and failed-replacement recovery
-        run: bash scripts/test-docker-recovery.sh "$DOCKER_BASELINE_IMAGE" "$IMAGE"
+        # These proofs publish fixed host ports, so on a shared machine they take turns (flock; the lock file is per machine).
+        run: flock --timeout 3600 /tmp/deluno-docker-fixed-ports.lock bash scripts/test-docker-recovery.sh "$DOCKER_BASELINE_IMAGE" "$IMAGE"
 
       # The README's docker run line and docker-compose.yml are taken from the README itself, pointed at this
       # image, started, waited on until /api/health/ready answers, and taken down again.
       - name: Prove the README install examples
         timeout-minutes: 10
-        run: bash scripts/test-readme-docker-examples.sh "$IMAGE"
+        run: flock --timeout 3600 /tmp/deluno-docker-fixed-ports.lock bash scripts/test-readme-docker-examples.sh "$IMAGE"
+
+      - name: Remove this job's images
+        if: ${{ always() }}
+        run: |
+          docker image rm "$IMAGE" "${DOCKER_BASELINE_IMAGE:-deluno-schema-baseline:none}" >/dev/null 2>&1 || true
+          docker image prune --force >/dev/null 2>&1 || true
 
   # The end-to-end suite on Docker Compose (docs/exec-plans/active/PLAN-E2E-IN-CI.md): this commit's own image, the real
   # download clients, Weir and the suite's fixture on one private network, one group per job (they cannot interfere).
@@ -590,7 +597,7 @@ jobs:
     name: End-to-end (${{ matrix.group }})
     needs: changes
     if: ${{ needs.changes.outputs.run_e2e_linux == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     # The films group (five clients) took about 90 seconds on a workstation once the images were pulled; the image build is the rest.
     # The resend and stuck groups wait on real clocks (Weir, a one-minute check and two strikes), so each is sharded to stay under 15 minutes of tests.
     # The tv* groups are the TV episode versions of films, removal, resend, stuck, outage, try again and vanish, one torrent and one Usenet client each (tests/e2e/tv.ts).
@@ -610,10 +617,21 @@ jobs:
       # Weir waits, as it should, when its output drive has less than 5 GB free: ten groups never got a film through. The runner's
       # preinstalled toolchains (.NET, Android, Haskell, CodeQL) are not used by these jobs; removing them leaves tens of GB.
       - name: Make room on the runner
+        if: ${{ runner.environment == 'github-hosted' }}
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
           df -h /
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Several of these jobs can share one self-hosted machine, so each gets its own Compose project and its own free
+      # host ports (stack.ts and compose.yaml read the E2E_*_PORT variables) and cannot collide with another job's stack.
+      - name: Give this job its own stack name and ports
+        run: |
+          echo "COMPOSE_PROJECT_NAME=deluno-e2e-${GITHUB_RUN_ID}-${{ matrix.group }}" >> "$GITHUB_ENV"
+          free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
+          for name in DELUNO QBIT TRANSMISSION DELUGE SABNZBD NZBGET WEIR FIXTURE GITHUB; do
+            echo "E2E_${name}_PORT=$(free_port)" >> "$GITHUB_ENV"
+          done
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -667,7 +685,10 @@ jobs:
 
       - name: Take the stack down
         if: ${{ always() }}
-        run: docker compose -f tests/e2e/compose.yaml down --volumes
+        run: |
+          docker compose -f tests/e2e/compose.yaml down --volumes --remove-orphans
+          docker image rm "$DELUNO_IMAGE" >/dev/null 2>&1 || true
+          docker image prune --force >/dev/null 2>&1 || true
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ always() }}
@@ -686,7 +707,7 @@ jobs:
     name: Windows installer
     needs: changes
     if: ${{ needs.changes.outputs.run_windows_installer == 'true' }}
-    runs-on: windows-latest
+    runs-on: ${{ vars.DELUNO_WINDOWS_RUNS_ON && fromJSON(vars.DELUNO_WINDOWS_RUNS_ON) || 'windows-latest' }}
     # Windows minutes bill at twice the rate. The release's packaging has been seen to take 4.5 to 7 minutes.
     timeout-minutes: 25
     steps:
@@ -796,8 +817,10 @@ jobs:
   e2e-windows:
     name: Windows end-to-end (${{ matrix.leg }})
     needs: [changes, windows-installer]
-    if: ${{ needs.changes.outputs.run_windows_installer == 'true' }}
-    runs-on: windows-latest
+    # It installs Deluno and the download clients on its machine, so it never runs on a self-hosted runner (this PC): while
+    # DELUNO_WINDOWS_RUNS_ON is set it is skipped, and the golden-path status (which a release also requires) covers it.
+    if: ${{ needs.changes.outputs.run_windows_installer == 'true' && vars.DELUNO_WINDOWS_RUNS_ON == '' }}
+    runs-on: ${{ vars.DELUNO_WINDOWS_RUNS_ON && fromJSON(vars.DELUNO_WINDOWS_RUNS_ON) || 'windows-latest' }}
     # Windows minutes bill at twice the rate. The picker installs five download clients and Weir (up to 40 minutes on the VM; most of it download time).
     timeout-minutes: 75
     permissions:
@@ -881,7 +904,7 @@ jobs:
     name: Node coverage
     needs: changes
     if: ${{ needs.changes.outputs.run_coverage == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -922,7 +945,7 @@ jobs:
     name: Coverage report and ratchet
     needs: [changes, backend, web, coverage-node]
     if: ${{ needs.changes.outputs.run_coverage == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -993,7 +1016,7 @@ jobs:
     name: Mutation on the changed files
     needs: changes
     if: ${{ vars.DELUNO_MUTATION_ON_PUSH == 'true' && needs.changes.outputs.run_mutation == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1047,7 +1070,7 @@ jobs:
   ci-passed:
     needs: [changes, repo-checks, backend, web-dist, web, e2e-smoke, docker, windows-installer, e2e-windows, e2e-linux, coverage-node, coverage, mutation]
     if: ${{ always() }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1055,4 +1078,6 @@ jobs:
       - name: Every job that was due passed
         env:
           NEEDS: ${{ toJSON(needs) }}
+          # Set while the Windows jobs run on a self-hosted runner: e2e-windows is then skipped on purpose (see its job).
+          DELUNO_WINDOWS_RUNS_ON: ${{ vars.DELUNO_WINDOWS_RUNS_ON }}
         run: node scripts/ci-passed.mjs
