@@ -20,7 +20,7 @@ public sealed class ProcessorHandoffWatcherTests
 {
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-09-20T12:00:00Z");
 
-    private readonly Mock<IProcessorRepository> _repository = new();
+    private readonly Mock<IProcessorRepository> _repository = new() { CallBase = true };
     private readonly Mock<IProcessorConnectionService> _processor = new();
     private readonly Mock<IActivityFeedRepository> _activity = new();
     private readonly Mock<IMovieCatalogRepository> _movies = new();

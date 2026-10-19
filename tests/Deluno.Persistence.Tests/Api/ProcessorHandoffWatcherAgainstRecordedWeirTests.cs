@@ -191,4 +191,66 @@ public sealed class ProcessorHandoffWatcherAgainstRecordedWeirTests
         Assert.Contains("processing.processor-unreachable", activity, StringComparison.Ordinal);
         Assert.Contains("will not give up on them while it cannot ask", activity, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// #1363, found by Weir's scenario deluno-deleted-before-cleaning: the watcher read the hand-off, asked Weir (which answered failed),
+    /// and in that gap Weir's source-gone report was accepted. The watcher then wrote failed over source-gone. The report arrives while
+    /// the watcher is waiting on Weir's recorded answer, so the order is read, report, write.
+    /// </summary>
+    [Fact]
+    public async Task A_source_gone_report_that_arrives_while_the_watcher_is_asking_Weir_is_not_overwritten_by_the_watchers_failed()
+    {
+        const string release = "Gone.Film.2020.1080p.WEB-DL-DELUNO";
+        ApplicationTestHost? host = null;
+        Scene? scene = null;
+        ProcessorHandoffItem? handoff = null;
+        var reported = false;
+        var failed = Status("status-failed");
+        Func<HttpRequestMessage, string, HttpResponseMessage?> reportFirst = (request, body) =>
+        {
+            var answer = failed(request, body);
+            if (answer is not null && !reported && handoff is not null)
+            {
+                reported = true;
+                var report = RecordedWeirReports.PostAsync(host!.Client, RecordedWeirReports.Body(
+                    RecordedWeirReports.Exchange("events-failed-source-gone"), scene!.LibraryId, handoff.Id, scene.Output, release)).GetAwaiter().GetResult();
+                Assert.True(report.IsSuccessStatusCode);
+            }
+
+            return answer;
+        };
+        await using var weir = await WeirAsync(reportFirst, "capabilities");
+        await using var app = await ApplicationTestHost.StartAsync();
+        host = app;
+        scene = await SceneAsync(app, weir);
+        handoff = await SentAsync(app, scene, release);
+
+        await WatchAsync(app, DateTimeOffset.UtcNow);
+
+        Assert.True(reported, "the report went in while the watcher was asking Weir");
+        var after = (await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))!;
+        Assert.Equal(ProcessorHandoffStatuses.SourceGone, after.Status);
+        Assert.Contains("gone before Weir", after.FailureMessage, StringComparison.Ordinal);
+        Assert.DoesNotContain("processing.failed", await app.Client.GetStringAsync("/api/activity?take=50"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_write_made_over_a_status_that_has_since_moved_writes_nothing_and_one_made_over_the_current_status_is_made()
+    {
+        await using var weir = await WeirAsync(null, "capabilities");
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app, weir);
+        var handoff = await SentAsync(app, scene, "Moved.Film.2020.1080p.WEB-DL-DELUNO");
+        await Repository(app).UpdateProcessorHandoffAsync(handoff.Id, ProcessorHandoffStatuses.SourceGone, null, null, "gone", CancellationToken.None);
+
+        var lost = await Repository(app).UpdateProcessorHandoffIfStatusAsync(
+            handoff.Id, ProcessorHandoffStatuses.Submitted, ProcessorHandoffStatuses.Failed, null, null, "failed", CancellationToken.None);
+        Assert.False(lost);
+        Assert.Equal(ProcessorHandoffStatuses.SourceGone, (await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))!.Status);
+
+        var won = await Repository(app).UpdateProcessorHandoffIfStatusAsync(
+            handoff.Id, ProcessorHandoffStatuses.SourceGone, ProcessorHandoffStatuses.Dismissed, null, null, "closed", CancellationToken.None);
+        Assert.True(won);
+        Assert.Equal(ProcessorHandoffStatuses.Dismissed, (await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))!.Status);
+    }
 }
