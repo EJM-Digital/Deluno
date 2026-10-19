@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useFollowLoaded } from "../hooks/use-follow-loaded";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { ConfigAreas } from "../lib/config-areas";
@@ -88,6 +89,7 @@ function AllowedHostsCard({ overview, onSaved }: { overview: AllowedHostsOvervie
   }, [overview.detectedHosts, overview.allowedHosts, selected]);
 
   const dirty = enabled !== overview.enabled || JSON.stringify([...selected].sort()) !== JSON.stringify([...overview.allowedHosts].sort());
+  useFollowLoaded(overview, dirty, (next) => { setEnabled(next.enabled); setSelected(next.allowedHosts); });
   const currentHostChecked = selected.some((host) => host.toLowerCase() === overview.currentHost.toLowerCase());
   const wouldLockOut = enabled && !currentHostChecked && overview.currentHost.toLowerCase() !== "localhost";
 
@@ -220,6 +222,7 @@ function LocalNetworkAuthCard({ overview, onSaved }: { overview: LocalNetworkAut
   const [message, setMessage] = useState<string | null>(null);
 
   const dirty = enabled !== overview.enabled || JSON.stringify([...allowList].sort()) !== JSON.stringify([...overview.allowList].sort());
+  useFollowLoaded(overview, dirty, (next) => { setEnabled(next.enabled); setAllowList(next.allowList); });
 
   function addEntry() {
     const trimmed = newEntry.trim();
