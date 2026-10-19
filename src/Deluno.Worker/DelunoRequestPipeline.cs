@@ -203,9 +203,12 @@ public static class DelunoRequestPipeline
         {
             errorApp.Run(async context =>
             {
-                context.Response.StatusCode = 500;
+                // A write the full disk refused says so in plain words, not a bare 500 (#1361).
+                var failure = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
+                var diskFull = DiskFull.Caused(failure);
+                context.Response.StatusCode = diskFull ? StatusCodes.Status507InsufficientStorage : 500;
                 context.Response.ContentType = "application/json";
-                await context.Response.WriteAsync("{\"error\":\"An unexpected error occurred.\"}");
+                await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(new { error = diskFull ? DiskFull.PlainMessage : "An unexpected error occurred." }));
             });
         });
 

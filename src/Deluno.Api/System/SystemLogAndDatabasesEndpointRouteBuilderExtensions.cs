@@ -155,19 +155,25 @@ public sealed class DatabaseIntegrityService(
     ILogger<DatabaseIntegrityService> logger)
     : BackgroundService
 {
+    /// <summary>How long after start-up the first look waits, so migrations and the first screens settle first.</summary>
+    public TimeSpan StartDelay { get; init; } = TimeSpan.FromMinutes(2);
+
+    /// <summary>How often the service looks at whether the daily pass is due; the claim, not this tick, keeps it to once a day.</summary>
+    public TimeSpan Tick { get; init; } = TimeSpan.FromHours(1);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // Let start-up (migrations, the first screens) settle before reading every file.
         try
         {
-            await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken);
+            await Task.Delay(StartDelay, stoppingToken);
         }
         catch (OperationCanceledException)
         {
             return;
         }
 
-        using var timer = new PeriodicTimer(TimeSpan.FromHours(1));
+        using var timer = new PeriodicTimer(Tick);
         do
         {
             try

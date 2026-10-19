@@ -2,7 +2,7 @@
 
 # Build the React application separately so the ASP.NET host publishes the
 # exact static assets that the checked-in Windows and source workflows use.
-FROM node:24-bookworm-slim AS web-build
+FROM --platform=$BUILDPLATFORM node:24-bookworm-slim AS web-build
 
 WORKDIR /src
 COPY package.json package-lock.json ./
@@ -16,7 +16,7 @@ RUN npm run build:web
 # Restore and publish only the host. The host project references every runtime
 # module, while the solution also contains Windows-only tray projects that do
 # not belong in a Linux container.
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS publish
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS publish
 
 WORKDIR /src
 COPY NuGet.Config global.json Directory.Build.props ./
@@ -61,6 +61,6 @@ USER app
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
-    CMD curl --fail --silent http://127.0.0.1:8080/health || exit 1
+    CMD curl --fail --silent http://127.0.0.1:8080/api/health/ready || exit 1
 
 ENTRYPOINT ["dotnet", "Deluno.Host.dll"]
