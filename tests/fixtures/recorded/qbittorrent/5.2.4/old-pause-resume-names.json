@@ -1,0 +1,37 @@
+{
+  "app": "qbittorrent",
+  "version": "5.2.4",
+  "state": "old-pause-resume-names",
+  "recordedAt": "2026-10-19T09:45:24Z",
+  "note": "POST torrents/pause and torrents/resume (the 4.x names) sent to this newer qBittorrent, which has stop and start instead: it answers 404 Not Found to each.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/torrents/pause",
+        "bodyText": "hashes=ea15205c78a75d0963315abcab261e412f1995ab"
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": "Endpoint does not exist"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/torrents/resume",
+        "bodyText": "hashes=ea15205c78a75d0963315abcab261e412f1995ab"
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": "Endpoint does not exist"
+      }
+    }
+  ]
+}
