@@ -37,7 +37,14 @@ function Invoke-GroupFilms {
             Add-Check 'Deluno handed it to Weir' $r.HandedOff ("{0} s after the send" -f $r.HandedSec)
             Add-Check 'Weir cleaned it and the hand-off settled' $r.Settled $(if ($r.Handoff) { "status $($r.Handoff.status), processor said: $($r.Handoff.processor.state)" } else { 'no hand-off' })
             Add-Check 'Deluno imported the cleaned file into the library' $r.Imported $(if ($r.File) { "{0} ({1} MB) {2} s after the send" -f $r.File.FullName, [math]::Round($r.File.Length / 1MB, 1), $r.ImportedSec } else { 'no file in the library' })
-            $act = @(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($film.Title) })
+            # Activity is written as the import finishes, a moment after the file lands in the library (film.sabnzbd read it too early
+            # on 20 Oct), so wait for all three entries, for up to 30 s, before judging.
+            $act = @()
+            Wait-Until -TimeoutSec 30 -IntervalSec 2 -Condition {
+                $script:filmActivity = @(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($film.Title) })
+                @("Sent to the download client", "Sent to the processor", "Imported into the library") | ForEach-Object { $p = $_; @($script:filmActivity | Where-Object { $_ -match $p }).Count -ge 1 } | Where-Object { -not $_ } | Measure-Object | ForEach-Object { $_.Count -eq 0 }
+            } | Out-Null
+            $act = @($script:filmActivity)
             foreach ($pair in @(@('Sent to the download client'), @('Sent to the processor'), @('Imported into the library'))) {
                 Add-Check "Activity says: $($pair[0])" (@($act | Where-Object { $_ -match $pair[0] }).Count -ge 1) ''
             }
