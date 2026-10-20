@@ -8,6 +8,10 @@
 name: Mutation (nightly)
 
 on:
+  schedule:
+    # Every night, 15:00 UTC: the quiet hour for the self-hosted runners (free while the repository is private, GitHub-hosted
+    # and free once it is public). The runner variables are the ones ci.yml uses.
+    - cron: "0 15 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -44,8 +48,9 @@ jobs:
   dotnet:
     name: ${{ matrix.project }}
     needs: matrix
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os == 'windows-latest' && (vars.DELUNO_WINDOWS_RUNS_ON && fromJSON(vars.DELUNO_WINDOWS_RUNS_ON) || 'windows-latest') || (vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest') }}
     # A hosted job stops at six hours; a project that does not finish in that time must be split, not skipped.
+    # (A self-hosted runner has no such limit, but the same budget keeps the night bounded.)
     timeout-minutes: 350
     strategy:
       fail-fast: false
@@ -56,6 +61,11 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.x
+
+      - name: Use this job's own temp folder
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
 
       - name: Stryker.NET, pinned in .config/dotnet-tools.json
         shell: bash

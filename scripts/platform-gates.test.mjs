@@ -124,20 +124,24 @@ test("a push that changes only documents runs no backend, web, smoke, image, ins
   });
 });
 
-test("a push that changes only the web app runs the web and smoke jobs and neither the backend nor the image", () => {
+test("a push that changes only the web app runs the web, backend and smoke jobs, so coverage is measured on every code push (1277)", () => {
   const due = dueJobs({ CODE: "true", CODE_COUNT: "3", WEB: "true", WEB_COUNT: "3" });
   assert.equal(due.run_web, "true");
   assert.equal(due.run_e2e_smoke, "true");
   assert.equal(due.run_web_dist, "true");
-  assert.equal(due.run_backend, "false");
+  assert.equal(due.run_backend, "true");
+  assert.equal(due.run_coverage, "true");
+  assert.equal(due.run_mutation, "true");
   assert.equal(due.run_docker, "false");
 });
 
-test("a push that changes backend code also runs the smoke tests, which run against the backend", () => {
+test("a push that changes backend code also runs the web and smoke tests, and measures coverage and mutation", () => {
   const due = dueJobs({ CODE: "true", CODE_COUNT: "2", WEB: "false", WEB_COUNT: "0" });
   assert.equal(due.run_backend, "true");
   assert.equal(due.run_e2e_smoke, "true");
-  assert.equal(due.run_web, "false");
+  assert.equal(due.run_web, "true");
+  assert.equal(due.run_coverage, "true");
+  assert.equal(due.run_mutation, "true");
 });
 
 test("a changed release-notes file reaches the backend, because it is embedded in the build", () => {

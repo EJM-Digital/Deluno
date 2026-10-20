@@ -108,8 +108,6 @@ jobs:
         id: flags
         env:
           EVENT: ${{ github.event_name }}
-          # Off until the first nightly mutation run has passed (docs/testing/STRATEGY.md, Measure 3).
-          MUTATION_ON_PUSH: ${{ vars.DELUNO_MUTATION_ON_PUSH }}
           CODE: ${{ steps.filter.outputs.code }}
           CODE_COUNT: ${{ steps.filter.outputs.code_count }}
           NOTES: ${{ steps.filter.outputs.notes }}
@@ -132,13 +130,16 @@ jobs:
             # The installer and the end-to-end jobs cost the most, so an ordinary push never runs them: they run on
             # a manual run only, the one full run on the commit before a tag (scripts/verify-ci-for-release.mjs).
           fi
-          # Coverage is measured on every push that runs the backend tests, the web tests or both (issue 1268). The ratchet
-          # only holds the files that are in the report, so the side that did not run is simply not compared: a one-sided
-          # report is not read as a drop.
-          if [ "$backend" = "true" ] || [ "$web" = "true" ]; then coverage=true; fi
-          # Mutation runs on the changed files of a push or pull request. A manual run has no base to compare with
-          # (the nightly workflow, mutation-nightly.yml, runs the full mutation).
-          if [ "$MUTATION_ON_PUSH" = "true" ] && [ "$EVENT" != "workflow_dispatch" ] && [ "$CODE" = "true" ]; then mutation=true; fi
+          # Coverage (measure 2) is measured and held to its baseline on every push that changes code (issue 1277). The
+          # ratchet compares whole-repository numbers and a half report would look like a drop, so a code change
+          # always runs both the backend and the web tests, whichever side it touched. Runners are free (self-hosted
+          # while the repository is private, GitHub-hosted and free once it is public), so there is no saving to
+          # protect by skipping one side. A change to documents only still runs neither.
+          if [ "$CODE" = "true" ] && [ "$EVENT" != "workflow_dispatch" ]; then backend=true; web=true; fi
+          if [ "$backend" = "true" ] && [ "$web" = "true" ]; then coverage=true; fi
+          # Mutation runs on the changed files of every push or pull request that changes code. A manual run has no
+          # base to compare with (the nightly workflow, mutation-nightly.yml, runs the full mutation).
+          if [ "$EVENT" != "workflow_dispatch" ] && [ "$CODE" = "true" ]; then mutation=true; fi
           # The smoke shards and the web checks both want the production web build.
           web_dist=false
           if [ "$web" = "true" ] || [ "$smoke" = "true" ]; then web_dist=true; fi
@@ -183,7 +184,7 @@ jobs:
       - name: Every Node test file is run by a CI job
         run: |
           node scripts/check-node-tests-run.mjs
-          node --test scripts/check-node-tests-run.test.mjs scripts/check-persistence-parts.test.mjs scripts/check-component-pins.test.mjs scripts/check-recorded-manifest.test.mjs scripts/verify-ci-for-release.test.mjs scripts/verify-golden-path-for-release.test.mjs scripts/tag-release.test.mjs scripts/check-release-workflow-gates.test.mjs scripts/coverage/testindex.test.mjs scripts/coverage/coverage-docs.test.mjs scripts/check-repository-references.test.mjs sdk/typescript/tests/delunoclient.test.mjs
+          node --test scripts/check-node-tests-run.test.mjs scripts/check-persistence-parts.test.mjs scripts/check-component-pins.test.mjs scripts/check-recorded-manifest.test.mjs scripts/check-recording-freshness.test.mjs scripts/verify-ci-for-release.test.mjs scripts/verify-golden-path-for-release.test.mjs scripts/tag-release.test.mjs scripts/check-release-workflow-gates.test.mjs scripts/coverage/testindex.test.mjs scripts/coverage/coverage-docs.test.mjs scripts/check-repository-references.test.mjs sdk/typescript/tests/delunoclient.test.mjs
 
       - name: Validate agent-readable repository map
         shell: pwsh
@@ -209,11 +210,14 @@ jobs:
       - name: The coverage register has a row for everything Deluno does, every proof it names exists, and the gaps have not gone up
         env:
           BEFORE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          # Set the repository variable DELUNO_REGISTER_STRICT=true once every gap issue is closed: the register then fails CI on any gap (issue 1277).
+          STRICT: ${{ vars.DELUNO_REGISTER_STRICT }}
         run: |
           node --test scripts/check-coverage-register.test.mjs
           node scripts/check-real-specs.mjs
           node --test scripts/check-real-specs.test.mjs
           args=(--report)
+          if [ "$STRICT" = "true" ]; then args+=(--strict); fi
           if [ -z "$BEFORE" ] || [ -z "${BEFORE//0/}" ]; then
             echo "No earlier commit to compare the register with (a first push or a manual run): the gap ratchet is skipped."
           elif git fetch --no-tags --depth=1 origin "$BEFORE"; then
@@ -301,6 +305,12 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.x
+
+      # Several self-hosted runners share one machine: a fixed /tmp folder made by one runner's user is closed to the next
+      # (repeat-nightly.yml, 20 October). Each job uses its own temp folder.
+      - name: Use this job's own temp folder
+        if: ${{ runner.os == 'Linux' }}
+        run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
 
       - name: Restore backend dependencies
         run: dotnet restore Deluno.slnx
@@ -1046,8 +1056,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # Switched on by the repository variable DELUNO_MUTATION_ON_PUSH=true (default off: the job has not run in CI yet);
-  # while it is off the flag is false, the job is skipped and ci-passed counts it as not due.
+  # Runs on every push that changes code (issue 1269): `changes` publishes run_mutation, and a documents-only push skips it.
   # Mutation testing on the changed files (issue 1269, docs/testing/STRATEGY.md measure 3): Stryker.NET's diff mode
   # (--since) for the .NET projects the change reaches, StrykerJS on the changed web, sdk and gateway source files.
   # Every mutant that survived or was never covered fails the job, unless docs/testing/mutation-equivalents.json lists
@@ -1055,7 +1064,7 @@ jobs:
   mutation:
     name: Mutation on the changed files
     needs: changes
-    if: ${{ vars.DELUNO_MUTATION_ON_PUSH == 'true' && needs.changes.outputs.run_mutation == 'true' }}
+    if: ${{ needs.changes.outputs.run_mutation == 'true' }}
     runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 90
     steps:

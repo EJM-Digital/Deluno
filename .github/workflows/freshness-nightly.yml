@@ -1,0 +1,57 @@
+# Nightly recording freshness (issue 1277, docs/testing/STRATEGY.md "Tiers"). Compares the newest version recorded for each
+# app under tests/fixtures/recorded/ with the app's newest release, and opens one defect issue naming the apps whose recording is
+# behind, so they are re-recorded with their one command. Runners come from the same variables as ci.yml.
+name: Recording freshness (nightly)
+
+on:
+  schedule:
+    # Every night, 15:30 UTC: the quiet hour for the self-hosted runners.
+    - cron: "30 15 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: freshness-nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  freshness:
+    name: Recordings against the newest releases
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Compare the recordings with the newest releases
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          node scripts/check-recording-freshness.mjs --json | tee freshness.txt >> "$GITHUB_STEP_SUMMARY"
+          status=${PIPESTATUS[0]}
+          stale=$(tail -n 1 freshness.txt | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).map(r=>r.app).join(", "))}catch{console.log("")}})')
+          echo "stale=$stale" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
+      # The REST API with curl: a self-hosted runner has no gh.
+      - name: Open a defect issue naming the stale apps
+        if: ${{ failure() && steps.check.outputs.stale != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STALE: ${{ steps.check.outputs.stale }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          payload="{\"title\":\"Recordings behind the newest release: ${STALE}\",\"labels\":[\"testing: coverage\"],\"body\":\"The recordings of these apps are a major version, or more than one minor version, behind the app's newest release: ${STALE}. Re-record each with scripts/recorded-replies/Invoke-RecordRealApp.ps1 or Invoke-RecordReplies.ps1 and replay the tests on it. Details in ${RUN_URL}.\"}"
+          curl --fail-with-body -sS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "${{ github.api_url }}/repos/${{ github.repository }}/issues" -d "$payload"

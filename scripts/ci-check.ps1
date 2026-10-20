@@ -276,6 +276,7 @@ $workflowChecks = @(
     @{ Label = "the recorded-reply rule and scrubber work"; Args = @("--test", "scripts/check-recorded-replies.test.mjs", "scripts/recorded-replies/scrub.test.mjs") },
     @{ Label = "Deluno's recordings of its side of the Deluno-Weir talk match their manifest (#1239)"; Args = @("scripts/check-recorded-manifest.mjs") },
     @{ Label = "the recordings manifest check works"; Args = @("--test", "scripts/check-recorded-manifest.test.mjs") },
+    @{ Label = "the recording freshness check works"; Args = @("--test", "scripts/check-recording-freshness.test.mjs") },
     @{ Label = "the coverage register names a row for every route, screen, job, migration, integration, tray action and scenario, every proof it names exists, and the gaps are no more than on origin/main"; Args = @("scripts/check-coverage-register.mjs", "--base", "origin/main") },
     @{ Label = "the per-area coverage table and the list of files below 100% match the baseline"; Args = @("scripts/coverage/coverage-docs.mjs") },
     @{ Label = "the coverage register check and its inventories work"; Args = @("--test", "scripts/check-coverage-register.test.mjs") },

@@ -13,6 +13,7 @@ Deluno and Weir each keep their own identical copy of this standard and of the s
 | `.github/workflows/ci.yml` | CI. Runs on a push to `main`, on a pull request, and by hand. A manual run is also how any commit gets an installable build for the golden path. |
 | `.github/workflows/release.yml` | The one release. Runs on a `v*` tag. The only workflow that publishes anything. |
 | `.github/workflows/audit.yml` | The weekly dependency audit. Runs on a schedule and by hand. |
+| `.github/workflows/mutation-nightly.yml`, `repeat-nightly.yml`, `freshness-nightly.yml` | The nightly tier of the test strategy (`docs/testing/STRATEGY.md`): the full mutation run, every suite repeated, and the recordings against the newest releases. Each runs at 15:00 to 15:30 UTC and by hand, on the same runners as CI (`DELUNO_LINUX_RUNS_ON`, `DELUNO_WINDOWS_RUNS_ON`), so the schedule costs nothing on a self-hosted or a public repository. |
 | `.github/dependabot.yml` | Dependabot, security updates only. |
 
 Any other workflow follows the same rules below.
