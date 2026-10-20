@@ -540,10 +540,16 @@ public sealed class ProcessorHandoffWatcher(
 
         // A completed reply with no path (a resend, or a hand-off settled as cancelled) still has its file where the
         // processor's layout puts it: the source's path below the folder it watches (#1262).
-        output ??= WorkPlanner.FindCorrelatedProcessorOutputs(
-            library.ProcessorOutputPath,
-            handoff.SourcePath,
-            await WatchedFolderAsync(library, connection, cancellationToken)).FirstOrDefault();
+        // Only when exactly one video is there: with two, Deluno cannot tell which is the film (the same rule the
+        // planner's output matching keeps), so it imports neither.
+        if (output is null)
+        {
+            var found = WorkPlanner.FindCorrelatedProcessorOutputs(
+                library.ProcessorOutputPath,
+                handoff.SourcePath,
+                await WatchedFolderAsync(library, connection, cancellationToken));
+            output = found.Count == 1 ? found[0] : null;
+        }
         if (output is null)
         {
             return false;

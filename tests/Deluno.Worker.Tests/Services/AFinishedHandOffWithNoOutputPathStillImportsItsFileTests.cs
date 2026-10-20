@@ -98,6 +98,23 @@ public sealed class AFinishedHandOffWithNoOutputPathStillImportsItsFileTests : I
         Assert.Empty(_queued);
     }
 
+    [Fact]
+    public async Task Nothing_is_queued_when_the_output_folder_holds_two_videos_and_it_cannot_be_told_which_is_the_film()
+    {
+        var flat = GivenFlatFileAndCompletedReply(finishedAgo: TimeSpan.FromMinutes(1), replacedAnEarlierSend: true, filePresent: false);
+        var folder = Directory.CreateDirectory(Path.Combine(_ready, Path.GetFileNameWithoutExtension(flat))).FullName;
+        foreach (var name in new[] { Path.GetFileName(flat), "Sample.mkv" })
+        {
+            var video = Path.Combine(folder, name);
+            File.WriteAllText(video, "content " + name);
+            File.SetLastWriteTimeUtc(video, DateTime.UtcNow.AddMinutes(-5));
+        }
+
+        await Watcher().WatchAsync([Library()], Now, CancellationToken.None);
+
+        Assert.Empty(_queued);
+    }
+
     private string GivenFlatFileAndCompletedReply(TimeSpan finishedAgo, bool replacedAnEarlierSend, bool filePresent = true)
     {
         var recordedSource = (string)JsonNode.Parse(RecordedReplies.Weir("handoff-resend-accepted").Single.Request.Body!)!["sourcePath"]!;
