@@ -41,9 +41,34 @@ export function pinnedComponents(manifest) {
     .map(([kind, value]) => ({ kind, version: value.version, repository: repositoryOf(value.url), url: value.url, sha256: value.sha256 ?? null, fileName: value.fileName }));
 }
 
+/**
+ * A component taken from GitHub whose file names are only a pattern can be found only by listing the release's files through
+ * api.github.com, which gives one network 60 calls an hour: a used-up allowance then stops the install (#1368). Each such
+ * file needs a template ("nzbget-{version}.sig.txt") so the release feed on github.com is enough, and the template must
+ * give a name the pattern accepts.
+ */
+export function apiOnlyProblems(manifest) {
+  const problems = [];
+  for (const [kind, spec] of Object.entries(manifest)) {
+    if (kind.startsWith("$") || !spec || typeof spec !== "object" || !spec.githubRepo) continue;
+    for (const [pattern, template, what] of [
+      ["githubAssetPattern", "githubAssetTemplate", "installer"],
+      ["githubChecksumAssetPattern", "githubChecksumAssetTemplate", "checksum file"]
+    ]) {
+      if (!spec[pattern]) continue;
+      if (!spec[template]) {
+        problems.push(`${kind}: the ${what} is named only by ${pattern}, so it can be found only through GitHub's API (60 calls an hour). Add ${template}.`);
+      } else if (!new RegExp(spec[pattern]).test(spec[template].replaceAll("{version}", "1.2"))) {
+        problems.push(`${kind}: ${template} gives a name that ${pattern} does not accept.`);
+      }
+    }
+  }
+  return problems;
+}
+
 /** Pins that disagree between the files, or that name a version their own download link does not carry. */
 export function consistencyProblems(manifest, companionSource, rigSoftware) {
-  const problems = [];
+  const problems = apiOnlyProblems(manifest);
   for (const pin of pinnedComponents(manifest)) {
     if (pin.url && !pin.url.includes(pin.version)) problems.push(`${pin.kind}: the download link does not carry version ${pin.version}.`);
     if (pin.fileName && !pin.fileName.includes(pin.version)) problems.push(`${pin.kind}: the file name ${pin.fileName} does not carry version ${pin.version}.`);

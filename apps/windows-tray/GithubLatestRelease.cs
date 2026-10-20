@@ -79,7 +79,8 @@ public static class GithubLatestRelease
     public static async Task<GithubLookup> LookupAsync(BundledComponentSpec spec, CancellationToken cancellationToken, HttpMessageHandler? handler = null, Deluno.Infrastructure.Http.GitHubApiState? apiState = null, TimeProvider? time = null, IReadOnlyCollection<string>? excludeTags = null)
     {
         var hasPattern = !string.IsNullOrWhiteSpace(spec.GithubAssetPattern);
-        if (string.IsNullOrWhiteSpace(spec.GithubRepo) || (string.IsNullOrWhiteSpace(spec.GithubAsset) && !hasPattern))
+        var hasTemplate = !string.IsNullOrWhiteSpace(spec.GithubAssetTemplate);
+        if (string.IsNullOrWhiteSpace(spec.GithubRepo) || (string.IsNullOrWhiteSpace(spec.GithubAsset) && !hasPattern && !hasTemplate))
         {
             return new GithubLookup(null);
         }
@@ -92,9 +93,9 @@ public static class GithubLatestRelease
 
             // The free route first (#1181): the newest tags from github.com's own release feed and the files from
             // the release download folder, neither of which counts against GitHub's 60 API calls an hour. It needs
-            // the asset names to be exact, so a component whose file name carries its version (a pattern) uses
-            // the API as before.
-            if (!hasPattern && string.IsNullOrWhiteSpace(spec.GithubChecksumAssetPattern))
+            // the asset names to be exact: a fixed name, or a template filled from the tag (#1368). A component whose
+            // file name carries its version and has only a pattern uses the API, and a used-up allowance stops it.
+            if (CanUseFeed(spec))
             {
                 var fromFeed = await ResolveFromFeedAsync(http, spec, excludeTags, cancellationToken);
                 if (fromFeed is not null)
@@ -127,6 +128,22 @@ public static class GithubLatestRelease
         skipped.Add(InstallerNotThere(tag));
         return null;
     }
+
+    /// <summary>True when the file names are known from the tag alone (a fixed name or a template), so no API call is needed to list them.</summary>
+    public static bool CanUseFeed(BundledComponentSpec spec)
+    {
+        var installerKnown = !string.IsNullOrWhiteSpace(spec.GithubAssetTemplate)
+            || (string.IsNullOrWhiteSpace(spec.GithubAssetPattern) && !string.IsNullOrWhiteSpace(spec.GithubAsset));
+        var checksumKnown = !string.IsNullOrWhiteSpace(spec.GithubChecksumAssetTemplate)
+            || string.IsNullOrWhiteSpace(spec.GithubChecksumAssetPattern);
+        return installerKnown && checksumKnown;
+    }
+
+    private static string InstallerAsset(BundledComponentSpec spec, string tag)
+        => string.IsNullOrWhiteSpace(spec.GithubAssetTemplate) ? spec.GithubAsset! : Deluno.Contracts.ReleaseAtomFeed.ExpandAssetTemplate(spec.GithubAssetTemplate!, tag);
+
+    private static string? ChecksumAsset(BundledComponentSpec spec, string tag)
+        => !string.IsNullOrWhiteSpace(spec.GithubChecksumAssetTemplate) ? Deluno.Contracts.ReleaseAtomFeed.ExpandAssetTemplate(spec.GithubChecksumAssetTemplate!, tag) : spec.GithubChecksumAsset;
 
     private static string InstallerName(BundledComponentSpec spec) => string.IsNullOrWhiteSpace(spec.GithubAsset) ? "its Windows installer" : spec.GithubAsset!;
 
@@ -166,7 +183,7 @@ public static class GithubLatestRelease
 
             // One walk shared with the update tool inside Deluno (Deluno.Contracts.ReleaseFallback, #1264).
             var walk = await Deluno.Contracts.ReleaseFallback.WalkAsync(tags, excludeTags,
-                tag => Deluno.Contracts.ReleaseFallback.TryDownloadFolderAsync(http, spec.GithubRepo!, tag, spec.GithubAsset!, spec.GithubChecksumAsset, ParseChecksum, probeInstaller: false, cancellationToken),
+                tag => Deluno.Contracts.ReleaseFallback.TryDownloadFolderAsync(http, spec.GithubRepo!, tag, InstallerAsset(spec, tag), ChecksumAsset(spec, tag), ParseChecksum, probeInstaller: false, cancellationToken),
                 MaxReleasesLooked);
             if (walk.Unreadable)
             {

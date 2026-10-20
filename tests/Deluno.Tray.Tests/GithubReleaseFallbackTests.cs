@@ -358,7 +358,7 @@ public sealed class GithubReleaseFallbackTests
     [Fact]
     public async Task NZBGets_newest_release_is_used_with_its_own_signature_file_when_it_is_whole()
     {
-        var replay = new Replay(NzbgetRecording());
+        var replay = new Replay(NzbgetRecording(), FeedDown());
 
         var lookup = await GithubLatestRelease.LookupAsync(Nzbget(), CancellationToken.None, replay.Handler);
 
@@ -377,10 +377,10 @@ public sealed class GithubReleaseFallbackTests
         var latest = NzbgetWithoutItsSignatureFile(JsonNode.Parse(recording.Find("releases/latest").Reply.Body!)!);
         var list = (JsonArray)JsonNode.Parse(recording.Find("releases?per_page=100").Reply.Body!)!;
         NzbgetWithoutItsSignatureFile(list.Single(r => r!["tag_name"]!.GetValue<string>() == "v26.3")!);
-        var replay = new Replay(recording, request =>
+        var replay = new Replay(recording, FeedDown(request =>
             Is(request, "/releases/latest") ? Json(latest)
             : Is(request, "/releases?per_page=100") ? Json(list)
-            : null);
+            : null));
 
         var lookup = await GithubLatestRelease.LookupAsync(Nzbget(), CancellationToken.None, replay.Handler);
 
@@ -405,10 +405,10 @@ public sealed class GithubReleaseFallbackTests
             release!["assets"] = new JsonArray();
         }
 
-        var replay = new Replay(recording, request =>
+        var replay = new Replay(recording, FeedDown(request =>
             Is(request, "/releases/latest") ? Json(latest)
             : Is(request, "/releases?per_page=100") ? Json(list)
-            : null);
+            : null));
 
         var lookup = await GithubLatestRelease.LookupAsync(Nzbget(), CancellationToken.None, replay.Handler);
 

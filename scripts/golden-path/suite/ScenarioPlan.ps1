@@ -29,8 +29,11 @@ function Get-ScenarioPlan {
         # The last group that runs in the VM: it uses GitHub's hourly allowance up, which stays used up for up to an hour.
         @{ Name = 'github';   Function = 'Invoke-GroupGithub';   Ids = @('github-limit.messages') }
         # The host's own, each on a clean machine: they restore the clean checkpoint and install, so they run after the groups.
-        @{ Name = 'githubpicker'; Function = $null; Host = $true; Ids = @('github-limit.picker') }
         @{ Name = 'update';   Function = $null; Host = $true; Ids = @('update.over-running-previous') }
+        # The github-limit scenarios use up GitHub's anonymous allowance (60 calls an hour for the whole network), and it stays used up
+        # for up to an hour, so they run after every scenario and install that needs the network. The update scenario installs
+        # and runs Deluno's picker twice and was running before this one; the picker now runs last of all (#1368).
+        @{ Name = 'githubpicker'; Function = $null; Host = $true; Ids = @('github-limit.picker') }
     )
     $groups | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Function = $_.Function; Host = [bool]$_.Host; Ids = @($_.Ids) } }
 }

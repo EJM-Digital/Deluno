@@ -564,7 +564,7 @@ function Invoke-GithubPickerPhase {
     }
 }
 
-# The update phase (#1256) runs last of all, after the groups, the log collection and the after-suite script, and depends on nothing
+# The update phase (#1256) runs after the groups (only the GitHub picker follows it, #1368), after the groups, the log collection and the after-suite script, and depends on nothing
 # before it: it restores the clean checkpoint itself and installs the PREVIOUS release on it. It never installs over the candidate
 # the groups used, which would be a downgrade onto a newer schema.
 $updateId = 'update.over-running-previous'
@@ -668,12 +668,13 @@ function Invoke-UpdatePhase {
     catch { return (New-UpdateFailureRecord "The update phase stopped: $($_.Exception.Message)") }
 }
 
-if ($runGithubPicker) {
-    $reported = @($reported) + @(Invoke-GithubPickerPhase)
-}
-
 if ($runUpdate) {
     $reported = @($reported) + @(Invoke-UpdatePhase)
+}
+
+# Last of all (#1368): it uses GitHub's anonymous allowance up inside its own VM, and the update phase above needs the network.
+if ($runGithubPicker) {
+    $reported = @($reported) + @(Invoke-GithubPickerPhase)
 }
 
 # ------------------------------------------------------------------ results and the status

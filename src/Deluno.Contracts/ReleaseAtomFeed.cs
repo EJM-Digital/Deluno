@@ -27,6 +27,14 @@ public static partial class ReleaseAtomFeed
     public static string DownloadUrl(string repository, string tag, string asset)
         => $"https://github.com/{repository}/releases/download/{Uri.EscapeDataString(tag)}/{Uri.EscapeDataString(asset)}";
 
+    /// <summary>
+    /// A release file's name from a template and the release's tag (#1368): <c>{version}</c> is the tag without a leading
+    /// "v", so "nzbget-{version}-bin-windows-setup.exe" and "v26.3" give "nzbget-26.3-bin-windows-setup.exe". A vendor whose
+    /// file names carry the version can then be found from the feed alone, with no API call to list the release's files.
+    /// </summary>
+    public static string ExpandAssetTemplate(string template, string tag)
+        => template.Replace("{version}", tag.Length > 1 && tag[0] is 'v' or 'V' && char.IsDigit(tag[1]) ? tag[1..] : tag, StringComparison.Ordinal);
+
     /// <summary>The folder a release's files are in, with a closing slash.</summary>
     public static string DownloadFolderUrl(string repository, string tag)
         => $"https://github.com/{repository}/releases/download/{Uri.EscapeDataString(tag)}/";

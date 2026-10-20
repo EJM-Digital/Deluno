@@ -156,7 +156,7 @@ Check 'every group says what it proves' (@($plan | Where-Object { $_.Name -notin
 Write-Host 'The update phase (#1256)'
 $updateGroup = @($plan | Where-Object { $_.Name -eq 'update' })[0]
 Check 'the plan has the update scenario, run by the host' ($allIds -contains 'update.over-running-previous' -and $updateGroup.Host)
-Check 'the update group is the last one in the plan' ($plan[-1].Name -eq 'update')
+Check 'the github picker is the last group in the plan, after the update group (#1368)' ($plan[-1].Name -eq 'githubpicker' -and $plan[-2].Name -eq 'update')
 Check 'the existing scenario ids are unchanged' ((@('install-first-run', 'film.qbittorrent', 'film.extra-left-out', 'remove-copy.deluge.file', 'resend.during.sabnzbd', 'stuck.peers.transmission', 'outage.inflight', 'tryagain.nzbget', 'vanish.waiting.deluge', 'problems.dismiss-everywhere', 'activity.one-story') | Where-Object { $_ -notin $allIds }).Count -eq 0)
 $runSuiteText = Get-Content -Raw (Join-Path $suite 'vm\Run-Suite.ps1')
 Check 'the VM runner leaves host groups to the host' ($runSuiteText -match '\$group\.Host')
@@ -705,7 +705,7 @@ foreach ($fn in 'Initialize-SuiteEnvironment', 'Set-HealthRules', 'Send-Film', '
 
 Write-Host 'The keep-seeding group (#1240)'
 Check 'the plan has a moved and a public-removed scenario for each torrent client, and none for Usenet or the clients that are not in the VM' ((@('qbittorrent', 'transmission', 'deluge') | ForEach-Object { "keepseeding.moved.$_"; "keepseeding.public-removed.$_" } | Where-Object { $_ -notin $allIds }).Count -eq 0 -and @($allIds | Where-Object { $_ -like 'keepseeding.*' }).Count -eq 6)
-Check 'the keep-seeding group runs before the update phase, which stays last' (@($plan | ForEach-Object Name).IndexOf('keepseeding') -gt @($plan | ForEach-Object Name).IndexOf('stuck') -and $plan[-1].Name -eq 'update')
+Check 'the keep-seeding group runs before the update phase, and both host phases follow the groups' (@($plan | ForEach-Object Name).IndexOf('keepseeding') -gt @($plan | ForEach-Object Name).IndexOf('stuck') -and $plan[-2].Name -eq 'update')
 # The two strike lines Deluno 1.0.0-rc.30.32 really wrote on the golden VM (14 Oct 2026), as /api/activity returns them,
 # with the machine name replaced. Both carry the label "Fixed a stuck download": only the details' actions tell a move
 # from a removal (the first live run read the label and took the move for a removal).
@@ -735,7 +735,7 @@ $planNames = @($plan | ForEach-Object Name)
 foreach ($id in 'github-limit.messages', 'github-limit.picker', 'seasonpack.no-library', 'layout.390-folder-chain') { Check "$id is in the plan and can be run alone with -Scenarios" ($id -in $allIds -and (Get-RunScope -Plan $plan -Scenarios @($id)).ChosenIds -contains $id) }
 Check 'the picker scenario is the host''s own (it needs a clean machine and the limit used up before Setup), the message scenario runs in the VM' ((@($plan | Where-Object { $_.Host } | ForEach-Object { $_.Ids }) -contains 'github-limit.picker') -and -not (@($plan | Where-Object { $_.Host } | ForEach-Object { $_.Ids }) -contains 'github-limit.messages'))
 Check 'the picker scenario chosen alone needs no VM stage and runs the picker phase; it never runs the update phase' (-not (Get-RunScope -Plan $plan -Scenarios @('github-limit.picker')).NeedVm -and (Get-RunScope -Plan $plan -Scenarios @('github-limit.picker')).RunGithubPicker -and -not (Get-RunScope -Plan $plan -Scenarios @('github-limit.picker')).RunUpdate)
-Check 'the GitHub group is the last that runs in the VM (it uses the allowance up for an hour) and the host phases follow, the update phase last' (($planNames | Where-Object { $_ -in 'github', 'githubpicker', 'update' }) -join ',' -eq 'github,githubpicker,update' -and @($plan | Where-Object { -not $_.Host })[-1].Name -eq 'github')
+Check 'the GitHub group is the last that runs in the VM (it uses the allowance up for an hour) and the host phases follow, the github picker last of all (#1368)' (($planNames | Where-Object { $_ -in 'github', 'githubpicker', 'update' }) -join ',' -eq 'github,update,githubpicker' -and @($plan | Where-Object { -not $_.Host })[-1].Name -eq 'github')
 Check 'Weir''s key is left after the last group that runs in the VM, whatever it is called' ($runSuiteText -match 'lastVmGroup' -and $runSuiteText -match '\$Groups -contains \$lastVmGroup' -and $runSuiteText -match "GithubLimit\.Lib\.ps1")
 foreach ($n in 'seasonpack', 'layout', 'github', 'githubpicker') { Check "the $n group says what it proves" ($n -in $topics.Group) }
 # #1257: the NZBGet setup-twice scenario is in the plan, runs before the films, can be run alone, and judges NZBGet's own replies
@@ -806,13 +806,13 @@ Check 'a host-judged scenario is a pass, a fail, or an error (no checks, or an e
 $mergedHost = @(Merge-SuiteResults -Plan $plan -Reported @($rec | ForEach-Object { $_.id = 'github-limit.picker'; $_ }) -Scenarios @('github-limit.picker'))
 Check 'a host-judged record merges into the results under the picker''s id' ($mergedHost.Count -eq 1 -and $mergedHost[0].Status -eq 'pass' -and $mergedHost[0].Group -eq 'githubpicker')
 
-# The host script's picker phase: a clean machine, the allowance used up BEFORE Setup, after the groups and before the update phase.
+# The host script's picker phase: a clean machine, the allowance used up BEFORE Setup, after the groups and after the update phase.
 $iPickerFn = $hostScript.IndexOf('function Invoke-GithubPickerPhase')
 $pickerBody = $hostScript.Substring($iPickerFn, $hostScript.IndexOf("`nif (`$runGithubPicker)") - $iPickerFn)
 Check 'the picker phase installs interactively (the picker is a first-run dialog) from the clean checkpoint, with the candidate''s installer' ($pickerBody -match '-Interactive' -and $pickerBody -match '-InstallerPath \$InstallerPath' -and $pickerBody -match '-Checkpoint \$Checkpoint')
 Check 'the limit is used up in the harness hook, which runs before Setup, with at most 70 calls' ($pickerBody -match '-AfterVmReady \$limitHook' -and $pickerBody -match 'Use-GitHubLimitUp -MaxCalls 70' -and $pickerBody.IndexOf('Use-GitHubLimitUp') -lt $pickerBody.IndexOf('Invoke-GoldenPath.ps1'))
 Check 'the phase reads what the VM kept (limit record, install log, picker log, Weir''s version, the release feed) and judges it with Get-GithubPickerChecks, and the build under test' ($pickerBody -match 'install-hook\.log' -and $pickerBody -match 'picker\.log' -and $pickerBody -match 'releases\.atom' -and $pickerBody -match 'Get-GithubPickerChecks' -and $pickerBody -match 'Test-BuildMatchesCommit')
-Check 'the picker phase runs after the log collection and the after-suite hook, before the update phase, and is in the verdict' ($hostScript.IndexOf('Invoke-GithubPickerPhase)') -gt $iAfterSuite -and $hostScript.IndexOf('Invoke-GithubPickerPhase)') -lt $iPhaseCall -and $hostScript.IndexOf('Invoke-GithubPickerPhase)') -lt $iVerdict)
+Check 'the picker phase runs after the log collection and the after-suite hook, after the update phase (last of all, #1368), and is in the verdict' ($hostScript.IndexOf('Invoke-GithubPickerPhase)') -gt $iAfterSuite -and $hostScript.IndexOf('Invoke-GithubPickerPhase)') -gt $iPhaseCall -and $hostScript.IndexOf('Invoke-GithubPickerPhase)') -lt $iVerdict)
 Check 'the host script takes the picker scenario from the scope (RunGithubPicker)' ($hostScript -match '\$runGithubPicker = \$scope\.RunGithubPicker' -and $hostScript -match 'if \(\$runGithubPicker\)')
 
 # The season-pack scenario.

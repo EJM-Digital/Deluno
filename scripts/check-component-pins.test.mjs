@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { consistencyProblems, isStale, pinnedComponents, repositoryOf } from "./check-component-pins.mjs";
+import { apiOnlyProblems, consistencyProblems, isStale, pinnedComponents, repositoryOf } from "./check-component-pins.mjs";
 
 test("a pin is stale when a major version behind or more than one minor version behind", () => {
   assert.equal(isStale("5.0.4", "5.1.3"), false);
@@ -38,4 +38,14 @@ test("NZBGet is taken from the maintained project, never the archived one", () =
   assert.match("nzbget-26.3-bin-windows-setup.exe", new RegExp(manifest.nzbget.githubAssetPattern));
   assert.doesNotMatch("nzbget-26.3-bin-windows-debug-setup.exe", new RegExp(manifest.nzbget.githubAssetPattern));
   assert.match("nzbget-26.3.sig.txt", new RegExp(manifest.nzbget.githubChecksumAssetPattern));
+});
+
+test("a GitHub component named only by a pattern is flagged: it can be found only through the API (#1368)", () => {
+  const manifest = JSON.parse(readFileSync(new URL("../installer/bundled-components.json", import.meta.url), "utf8"));
+  assert.deepEqual(apiOnlyProblems(manifest), []);
+  const patternOnly = { x: { githubRepo: "a/b", githubAssetPattern: "^x-[0-9.]+\.exe$", githubChecksumAssetPattern: "^x-[0-9.]+\.sig$", githubChecksumAssetTemplate: "x-{version}.sig" } };
+  assert.equal(apiOnlyProblems(patternOnly).length, 1);
+  assert.match(apiOnlyProblems(patternOnly)[0], /githubAssetTemplate/);
+  const wrong = { x: { ...patternOnly.x, githubAssetTemplate: "y-{version}.exe" } };
+  assert.match(apiOnlyProblems(wrong)[0], /does not accept/);
 });

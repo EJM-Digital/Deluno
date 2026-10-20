@@ -66,6 +66,10 @@ public sealed record BundledComponentSpec(
     [property: JsonPropertyName("readinessTimeoutSeconds")] int? ReadinessTimeoutSeconds = null,
     /// <summary>A regex matched against each GitHub release asset's own file name, for a vendor (like NZBGet) whose asset name embeds the version so no single fixed name survives an upgrade. Takes precedence over <see cref="GithubAsset"/> when set.</summary>
     [property: JsonPropertyName("githubAssetPattern")] string? GithubAssetPattern = null,
+    /// <summary>The installer's file name with <c>{version}</c> (the release tag without a leading "v") in it, e.g. "nzbget-{version}-bin-windows-setup.exe" (#1368). It lets the release feed on github.com find the file with no API call, which a pattern cannot (the feed cannot list a release's files). Used with <see cref="GithubAssetPattern"/>, the pattern only serves when the feed cannot be read.</summary>
+    [property: JsonPropertyName("githubAssetTemplate")] string? GithubAssetTemplate = null,
+    /// <summary>The checksum file's name from the tag, as <see cref="GithubAssetTemplate"/> does for the installer.</summary>
+    [property: JsonPropertyName("githubChecksumAssetTemplate")] string? GithubChecksumAssetTemplate = null,
     /// <summary>A directory-listing page to resolve "latest" from, for a vendor (like Deluge) that does not publish GitHub Releases at all.</summary>
     [property: JsonPropertyName("directoryListingUrl")] string? DirectoryListingUrl = null,
     /// <summary>A regex matched against each link's file name in <see cref="DirectoryListingUrl"/>; the highest version number among matches wins.</summary>

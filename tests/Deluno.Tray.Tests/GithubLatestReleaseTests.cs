@@ -175,7 +175,7 @@ public sealed class DirectoryListingLatestReleaseTests
         var nzbget = BundledComponents.Load().Single(s => s.Kind == "nzbget");
         Assert.False(nzbget.IncludePreReleases);
         // NZBGet's installer name carries its version, so it is found through the API's latest release; the API's list holds a newer "testing" pre-release that must not be taken.
-        var github = NzbgetReplay();
+        var github = NzbgetReplay(FeedDown());
 
         var resolved = await GithubLatestRelease.ResolveAsync(nzbget, CancellationToken.None, github.Handler);
 
@@ -368,6 +368,12 @@ public sealed class GithubRateLimitTests
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            if (request.RequestUri!.AbsoluteUri.EndsWith("/releases.atom", StringComparison.Ordinal))
+            {
+                // The release feed is unreadable here, so the lookup takes the API route this test is about (#1368).
+                return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable));
+            }
+
             if (request.RequestUri!.Host != "api.github.com")
             {
                 return Task.FromResult(_recording.Find(Path.GetFileName(request.RequestUri.AbsolutePath)).Reply.ToResponse());

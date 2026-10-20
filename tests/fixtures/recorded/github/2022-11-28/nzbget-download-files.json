@@ -1,0 +1,17 @@
+{
+  "app": "github",
+  "version": "2022-11-28",
+  "state": "nzbget-download-files",
+  "recordedAt": "2026-10-20T09:00:00Z",
+  "note": "Real unauthenticated requests on 20 Oct 2026 to github.com (never api.github.com), user agent Deluno-test-recording, following the redirect: a HEAD of NZBGet v26.3's Windows installer (302 to the release store, then 200, 15702624 bytes; the final reply is held) and the status of its nzbget-26.3.sig.txt (200; its body is the recording nzbget-latest-release). The installer's bytes are not recorded.",
+  "exchanges": [
+    {
+      "request": { "method": "HEAD", "path": "github.com/nzbgetcom/nzbget/releases/download/v26.3/nzbget-26.3-bin-windows-setup.exe", "body": null },
+      "reply": { "status": 200, "headers": { "content-type": "application/octet-stream", "content-length": "15702624" }, "bodyText": "" }
+    },
+    {
+      "request": { "method": "HEAD", "path": "github.com/nzbgetcom/nzbget/releases/download/v26.3/nzbget-26.3.sig.txt", "body": null },
+      "reply": { "status": 200, "headers": { "content-type": "application/octet-stream" }, "bodyText": "" }
+    }
+  ]
+}

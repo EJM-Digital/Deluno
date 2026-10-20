@@ -148,6 +148,8 @@
     "url": null,
     "githubRepo": "nzbgetcom/nzbget",
     "githubAssetPattern": "^nzbget-[0-9][0-9.]*-bin-windows-setup\\.exe$",
+    "githubAssetTemplate": "nzbget-{version}-bin-windows-setup.exe",
+    "githubChecksumAssetTemplate": "nzbget-{version}.sig.txt",
     "githubChecksumAsset": null,
     "githubChecksumAssetPattern": "^nzbget-[0-9][0-9.]*\\.sig\\.txt$",
     "sha256": null,

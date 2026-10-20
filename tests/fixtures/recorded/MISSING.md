@@ -28,6 +28,7 @@ Every state is a real unauthenticated GET from the public internet, on 14 Octobe
 - `sabnzbd-latest-release`: `api.github.com/repos/sabnzbd/sabnzbd/releases/latest`.
 - `qbittorrent-tags`, `deluge-tags`: the tags API (`?per_page=100`) and `tags.atom` of two projects that tag and do not publish releases; Deluge's list carries development tags such as `deluge-2.2.1.dev0`.
 - `nzbget-release-feed`: NZBGet's `releases.atom`, whose newest entry is the rolling tag `testing`, not a version.
+- `nzbget-download-files`: recorded 20 Oct 2026 for #1368 from github.com only: the status of NZBGet v26.3's installer and `nzbget-26.3.sig.txt` download addresses (the sig body is in `nzbget-latest-release`).
 - `weir-velopack-feed`: the `releases.win.json` file that Weir (built with Velopack) publishes beside its installer, rc.13.
 - `api-not-found`: the API's own 404 body for a repository that does not exist (a private repository answers the same).
 - not recorded: the anonymous rate-limit reply (a 403 or 429 with `X-RateLimit-Remaining: 0`) and a bare 503. Recording the limit would mean using the whole hourly allowance of a shared address, so tests of those states build the status and its `X-RateLimit-*` / `Retry-After` headers by hand (no body of an app's shape is involved). `jampat000/Deluno` has no public release feed yet, so Deluno's own update feed is tested with Weir's, which is built the same way.

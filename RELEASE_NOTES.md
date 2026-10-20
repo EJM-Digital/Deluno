@@ -36,6 +36,7 @@ Deluno has a new home:
 
 Fixes:
 - With automatic update checks off, checking for updates yourself and finding one now tells you an update is available. Before, it said nothing.
+- Installing NZBGet no longer stops when GitHub's hourly allowance for looking up releases is used up. Deluno now finds NZBGet's installer and its checksum file from the release list that needs no allowance, and still checks the installer against the checksum NZBGet publishes for that release.
 
 ## 1.0.0-rc.30.34
 
