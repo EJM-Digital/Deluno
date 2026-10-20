@@ -307,8 +307,13 @@ public sealed class HandledProblemsSettler(
                 continue;
             }
 
-            await processors.UpdateProcessorHandoffAsync(
-                gone.Id, ProcessorHandoffStatuses.Dismissed, null, null, gone.FailureMessage, cancellationToken);
+            // Over the status this pass read (#1363): a report or a retry that moved it since wins.
+            if (!await processors.UpdateProcessorHandoffIfStatusAsync(
+                    gone.Id, gone.Status, ProcessorHandoffStatuses.Dismissed, null, null, gone.FailureMessage, cancellationToken))
+            {
+                continue;
+            }
+
             settled++;
             await activityFeed.RecordActivityAsync(
                 "processing.source-gone.settled",
@@ -371,14 +376,21 @@ public sealed class HandledProblemsSettler(
 
             if (importJob is { Status: "completed" })
             {
-                await processors.UpdateProcessorHandoffAsync(
-                    handoff.Id, ProcessorHandoffStatuses.Completed, null, null, null, cancellationToken);
-                settled++;
+                if (await processors.UpdateProcessorHandoffIfStatusAsync(
+                        handoff.Id, handoff.Status, ProcessorHandoffStatuses.Completed, null, null, null, cancellationToken))
+                {
+                    settled++;
+                }
+
                 continue;
             }
 
-            await processors.UpdateProcessorHandoffAsync(
-                handoff.Id, ProcessorHandoffStatuses.Dismissed, null, null, handoff.FailureMessage, cancellationToken);
+            if (!await processors.UpdateProcessorHandoffIfStatusAsync(
+                    handoff.Id, handoff.Status, ProcessorHandoffStatuses.Dismissed, null, null, handoff.FailureMessage, cancellationToken))
+            {
+                continue;
+            }
+
             settled++;
             await activityFeed.RecordActivityAsync(
                 "processing.dismissed",

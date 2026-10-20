@@ -101,7 +101,13 @@ public sealed class ProcessorOutcomeReporter(
                 return live;
             }
 
-            var settled = await processorRepository.UpdateProcessorHandoffAsync(live.Id, ProcessorHandoffStatuses.Completed, outputPath, jobId, null, cancellationToken);
+            // Over the status just read (#1363): a report that moved the hand-off since wins.
+            if (!await processorRepository.UpdateProcessorHandoffIfStatusAsync(live.Id, live.Status, ProcessorHandoffStatuses.Completed, outputPath, jobId, null, cancellationToken))
+            {
+                return await processorRepository.GetProcessorHandoffAsync(live.Id, cancellationToken) ?? live;
+            }
+
+            var settled = await processorRepository.GetProcessorHandoffAsync(live.Id, cancellationToken);
             await activityFeed.RecordActivityAsync(
                 "processing.handoff.settled-by-import",
                 $"{live.ReleaseName} was imported from {(string.IsNullOrWhiteSpace(live.ProcessorName) ? "the processor" : live.ProcessorName)}'s cleaned copy, so Deluno closed this hand-off as complete.",

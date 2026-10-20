@@ -59,6 +59,7 @@ public sealed class HandledProblemsSettlerTests
     private static Mock<Deluno.Platform.Data.IProcessorRepository> WithSourceGone()
     {
         var processors = new Mock<Deluno.Platform.Data.IProcessorRepository>();
+        processors.Setup(repo => repo.UpdateProcessorHandoffIfStatusAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         processors.Setup(repo => repo.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([Handoff("source-gone", "The download was gone before Weir could clean it.")]);
         return processors;
@@ -77,7 +78,7 @@ public sealed class HandledProblemsSettlerTests
 
         Assert.Equal(1, await SettlerWithProcessors(processors).SettleAsync(CancellationToken.None));
 
-        processors.Verify(repo => repo.UpdateProcessorHandoffAsync("h-1", "dismissed", null, null, "The download was gone before Weir could clean it.", It.IsAny<CancellationToken>()), Times.Once);
+        processors.Verify(repo => repo.UpdateProcessorHandoffIfStatusAsync("h-1", It.IsAny<string>(), "dismissed", null, null, "The download was gone before Weir could clean it.", It.IsAny<CancellationToken>()), Times.Once);
         Assert.Contains(_said, line => line.Category == "processing.source-gone.settled" && line.Message.Contains("in the library already"));
     }
 
@@ -91,7 +92,7 @@ public sealed class HandledProblemsSettlerTests
 
         Assert.Equal(1, await SettlerWithProcessors(processors).SettleAsync(CancellationToken.None));
 
-        processors.Verify(repo => repo.UpdateProcessorHandoffAsync("h-1", "dismissed", null, null, It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+        processors.Verify(repo => repo.UpdateProcessorHandoffIfStatusAsync("h-1", It.IsAny<string>(), "dismissed", null, null, It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
         Assert.Contains(_said, line => line.Category == "processing.source-gone.settled" && line.Message.Contains("Deluno had already closed that download"));
     }
 
@@ -105,13 +106,14 @@ public sealed class HandledProblemsSettlerTests
 
         Assert.Equal(0, await SettlerWithProcessors(processors).SettleAsync(CancellationToken.None));
 
-        processors.Verify(repo => repo.UpdateProcessorHandoffAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        processors.Verify(repo => repo.UpdateProcessorHandoffIfStatusAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
     public async Task A_failed_hand_off_whose_film_holds_its_file_since_is_dismissed_with_a_line()
     {
         var processors = new Mock<Deluno.Platform.Data.IProcessorRepository>();
+        processors.Setup(repo => repo.UpdateProcessorHandoffIfStatusAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         processors.Setup(repo => repo.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([Handoff("failed", "It could not process 1 file.")]);
         _dispatches.Setup(repo => repo.FindAnyDispatchByHashAsync("client-1", "hash", It.IsAny<CancellationToken>()))
@@ -123,7 +125,7 @@ public sealed class HandledProblemsSettlerTests
         var settler = new HandledProblemsSettler(_movies.Object, _series.Object, _jobs.Object, _dispatches.Object, _activity.Object, processors.Object);
         Assert.Equal(1, await settler.SettleAsync(CancellationToken.None));
 
-        processors.Verify(repo => repo.UpdateProcessorHandoffAsync("h-1", "dismissed", null, null, "It could not process 1 file.", It.IsAny<CancellationToken>()), Times.Once);
+        processors.Verify(repo => repo.UpdateProcessorHandoffIfStatusAsync("h-1", It.IsAny<string>(), "dismissed", null, null, "It could not process 1 file.", It.IsAny<CancellationToken>()), Times.Once);
         Assert.Contains(_said, line => line.Category == "processing.dismissed" && line.Message.Contains("in the library now"));
     }
 
@@ -131,6 +133,7 @@ public sealed class HandledProblemsSettlerTests
     public async Task A_failed_hand_off_stays_when_its_film_has_no_newer_file()
     {
         var processors = new Mock<Deluno.Platform.Data.IProcessorRepository>();
+        processors.Setup(repo => repo.UpdateProcessorHandoffIfStatusAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         processors.Setup(repo => repo.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([Handoff("failed", "It could not process 1 file.")]);
         _dispatches.Setup(repo => repo.FindAnyDispatchByHashAsync("client-1", "hash", It.IsAny<CancellationToken>()))
@@ -140,7 +143,7 @@ public sealed class HandledProblemsSettlerTests
         var settler = new HandledProblemsSettler(_movies.Object, _series.Object, _jobs.Object, _dispatches.Object, _activity.Object, processors.Object);
         Assert.Equal(0, await settler.SettleAsync(CancellationToken.None));
 
-        processors.Verify(repo => repo.UpdateProcessorHandoffAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        processors.Verify(repo => repo.UpdateProcessorHandoffIfStatusAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -215,6 +218,7 @@ public sealed class HandledProblemsSettlerTests
     private Mock<Deluno.Platform.Data.IProcessorRepository> Processors(params Deluno.Platform.Contracts.ProcessorHandoffItem[] handoffs)
     {
         var processors = new Mock<Deluno.Platform.Data.IProcessorRepository>();
+        processors.Setup(repo => repo.UpdateProcessorHandoffIfStatusAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         processors.Setup(repo => repo.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<string> statuses, CancellationToken _) => handoffs.Where(item => statuses.Contains(item.Status)).ToList());
         processors.Setup(repo => repo.FindProcessorConnectionAsync(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
@@ -249,8 +253,8 @@ public sealed class HandledProblemsSettlerTests
 
         await SettlerTelling(processors, Connections()).SettleAsync(CancellationToken.None);
 
-        processors.Verify(repo => repo.UpdateProcessorHandoffAsync("h-1", "completed", null, null, null, It.IsAny<CancellationToken>()), Times.Once);
-        processors.Verify(repo => repo.UpdateProcessorHandoffAsync(It.IsAny<string>(), "dismissed", It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        processors.Verify(repo => repo.UpdateProcessorHandoffIfStatusAsync("h-1", It.IsAny<string>(), "completed", null, null, null, It.IsAny<CancellationToken>()), Times.Once);
+        processors.Verify(repo => repo.UpdateProcessorHandoffIfStatusAsync(It.IsAny<string>(), It.IsAny<string>(), "dismissed", It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -492,15 +496,15 @@ public sealed class HandledProblemsSettlerTests
         var settler = SettlerTelling(processors, Connections());
         await settler.SettleAsync(CancellationToken.None);
 
-        processors.Verify(repo => repo.UpdateProcessorHandoffAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        processors.Verify(repo => repo.UpdateProcessorHandoffIfStatusAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
         Assert.DoesNotContain(_said, line => line.Category == "processing.dismissed");
 
         // A second later the job completes; the next pass keeps the hand-off Completed.
         _jobs.Setup(repo => repo.GetAsync("job-1", It.IsAny<CancellationToken>())).ReturnsAsync(Job("completed"));
         await settler.SettleAsync(CancellationToken.None);
 
-        processors.Verify(repo => repo.UpdateProcessorHandoffAsync("h-1", "completed", null, null, null, It.IsAny<CancellationToken>()), Times.Once);
-        processors.Verify(repo => repo.UpdateProcessorHandoffAsync(It.IsAny<string>(), "dismissed", It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        processors.Verify(repo => repo.UpdateProcessorHandoffIfStatusAsync("h-1", It.IsAny<string>(), "completed", null, null, null, It.IsAny<CancellationToken>()), Times.Once);
+        processors.Verify(repo => repo.UpdateProcessorHandoffIfStatusAsync(It.IsAny<string>(), It.IsAny<string>(), "dismissed", It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -516,7 +520,7 @@ public sealed class HandledProblemsSettlerTests
 
         await SettlerTelling(processors, Connections()).SettleAsync(CancellationToken.None);
 
-        processors.Verify(repo => repo.UpdateProcessorHandoffAsync("h-1", "dismissed", null, null, It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+        processors.Verify(repo => repo.UpdateProcessorHandoffIfStatusAsync("h-1", It.IsAny<string>(), "dismissed", null, null, It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     // #1186: "Search for another copy" sends the same release again, so both sends share a hash. The settler judges the
@@ -525,6 +529,7 @@ public sealed class HandledProblemsSettlerTests
     public async Task A_failed_hand_off_is_judged_by_the_newer_live_send_of_its_release_not_the_older_archived_one()
     {
         var processors = new Mock<Deluno.Platform.Data.IProcessorRepository>();
+        processors.Setup(repo => repo.UpdateProcessorHandoffIfStatusAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         processors.Setup(repo => repo.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([Handoff("failed", "It could not process 1 file.")]);
         var older = FailedImport("d-old", "movie", "movie-old") with { Status = "archived", CreatedUtc = Created.AddMinutes(-30) };
@@ -542,6 +547,6 @@ public sealed class HandledProblemsSettlerTests
 
         Assert.Equal(1, await SettlerWithProcessors(processors).SettleAsync(CancellationToken.None));
 
-        processors.Verify(repo => repo.UpdateProcessorHandoffAsync("h-1", "dismissed", null, null, "It could not process 1 file.", It.IsAny<CancellationToken>()), Times.Once);
+        processors.Verify(repo => repo.UpdateProcessorHandoffIfStatusAsync("h-1", It.IsAny<string>(), "dismissed", null, null, "It could not process 1 file.", It.IsAny<CancellationToken>()), Times.Once);
     }
 }
