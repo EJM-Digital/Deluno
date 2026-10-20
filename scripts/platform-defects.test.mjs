@@ -28,16 +28,15 @@ test("DOK-22: a native Linux host without Docker has a supervised way to run Del
   assert.match(read("docs/background-services.md") + read("README.md"), /\[Service\][\s\S]*ExecStart=.*Deluno\.Host\.dll/);
 });
 
-test("FRS-08: a new Windows install has no automatic update check or download on until the guide's Updates question is answered", {
-  skip: "DECISION (FRS-08): AppSettings defaults AutoCheckUpdates to true and UpdateMode to download-in-the-background (apps/windows-tray/AppSettings.cs lines 12-17) before the guide's Updates question is answered, against the nothing-on-by-default rule (#936). The owner decides; a passing test then pins the choice."
-}, () => {
-  assert.match(read("apps/windows-tray/AppSettings.cs"), /public bool AutoCheckUpdates \{ get; set; \} = false;/);
+test("FRS-08: a new Windows install has no automatic update check on until the guide's Updates question is answered", () => {
+  // An install with no settings file yet starts with the check off (#1361); a file that already exists without the line keeps what it did.
+  const settings = read("apps/windows-tray/AppSettings.cs");
+  assert.match(settings, /new AppSettings\s*\{\s*DataRoot = ResolveFallbackDataRoot\(\),\s*AutoCheckUpdates = false\s*\}/);
+  assert.match(settings, /return new AppSettings \{ DataRoot = ResolveFallbackDataRoot\(\), AutoCheckUpdates = false \};/);
 });
 
-test("GAT-03: the Windows tray tests run in CI, so a push that skipped the local gate cannot ship a tray regression behind a green run", {
-  skip: "DEFECT (GAT-03): ci.yml runs no job that executes tests/Deluno.Tray.Tests (the project compiles to an empty assembly on ubuntu); only the local gate and repeat-nightly.yml run them."
-}, () => {
+test("GAT-03: the Windows tray tests run in CI, so a push that skipped the local gate cannot ship a tray regression behind a green run", () => {
   const ci = read(".github/workflows/ci.yml");
-  assert.match(ci, /runs-on: windows-latest[\s\S]{0,4000}Deluno\.Tray\.Tests/);
+  assert.match(ci, /windows-latest[\s\S]{0,4000}dotnet test tests\/Deluno\.Tray\.Tests\/Deluno\.Tray\.Tests\.csproj/);
 });
 

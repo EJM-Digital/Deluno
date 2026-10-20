@@ -266,7 +266,7 @@ test("only the release workflow's publish jobs hold a write permission or a regi
 
 // ---- GAT-07: gate tests that run locally and in CI
 
-test("every test the local ci:check runs is also run by the repo-checks job, so a push from a clone without the hook is held to the same rules", { skip: "DEFECT (GAT-07): seven of the node test files that ci:check runs are run by no CI job, so a push from a clone without the hook skips them" }, () => {
+test("every test the local ci:check runs is also run by the repo-checks job, so a push from a clone without the hook is held to the same rules", () => {
   const local = read("scripts/ci-check.ps1");
   const ci = read(".github/workflows/ci.yml");
   const localTests = [...local.matchAll(/scripts\/[A-Za-z0-9._-]+\.test\.mjs/g)].map((m) => m[0]);
