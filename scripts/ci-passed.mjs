@@ -26,7 +26,7 @@ export const GATES = {
   "e2e-windows": "run_windows_installer",
   // The end-to-end groups on Docker Compose: a manual run, or a push whose version is not yet tagged.
   "e2e-linux": "run_e2e_linux",
-  // Coverage is measured only when the backend and the web tests both ran (issue 1268).
+  // Coverage is measured on every push that runs the backend tests, the web tests or both (issue 1268).
   "coverage-node": "run_coverage",
   coverage: "run_coverage",
   // Mutation on the changed files of a push or pull request (issue 1269); the full run is the nightly workflow.

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Empty placeholder. CI's first coverage report fills it; the owner reviews and commits it (docs/testing/COVERAGE.md, How the baseline is filled). Per file: line and branch percent rounded down to two places; only ever raised.",
+  "note": "Per file: line and branch percent rounded down to two places; only ever raised. First filled from CI run 38639740644 (docs/testing/COVERAGE.md, How the baseline is filled). After raising it, run node scripts/coverage/coverage-docs.mjs --write.",
   "files": {
     "apps/web/src/components/app/acquisition-blockers-card.tsx": {
       "line": 94.11,
