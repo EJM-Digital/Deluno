@@ -498,6 +498,53 @@ public sealed class NotificationWebhookDeliveryTests
         Assert.Equal(0, handler.Attempts);
     }
 
+    /// <summary>
+    /// A service that never answers: the HTTP client gives up with a timeout (a TaskCanceledException the caller did not ask for). That is a failed
+    /// try like any other: retried, and after the last try dead-lettered as "did not answer in time", never thrown at the code that raised the event.
+    /// </summary>
+    [Fact]
+    public async Task A_service_that_never_answers_is_retried_then_dead_lettered_as_not_answering_in_time_and_never_thrown_at_the_caller()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-20T02:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        await EnableOutboundNotificationsAsync(storage);
+        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+        var webhook = await repository.CreateNotificationWebhookAsync(
+            new CreateNotificationWebhookRequest("Operations", "https://hooks.example.test/ops", "all", true),
+            CancellationToken.None);
+        var handler = new TimingOutHandler();
+        var service = new OutboundNotificationService(repository, new SingleClientFactory(handler), NullLogger<OutboundNotificationService>.Instance);
+
+        await service.DispatchAsync("import.completed", "Import completed", "Message", null, CancellationToken.None);
+
+        Assert.Equal(3, handler.Attempts);
+        var delivery = Assert.Single(await repository.ListNotificationWebhookDeliveriesAsync(null, webhook.Id, 10, CancellationToken.None));
+        Assert.Equal(NotificationWebhookDeliveryStatuses.DeadLetter, delivery.Status);
+        Assert.Equal(3, delivery.AttemptCount);
+        Assert.Equal(IntegrationFailureKind.Timeout, delivery.Failure!.Kind);
+        Assert.Equal("The service did not answer in time.", delivery.Failure.Message);
+        Assert.Equal(IntegrationRetryState.ManualAction, delivery.Failure.RetryState);
+        Assert.Contains("replay", delivery.Failure.NextAction, StringComparison.OrdinalIgnoreCase);
+        var saved = (await repository.ListNotificationWebhooksAsync(CancellationToken.None)).Single(item => item.Id == webhook.Id);
+        Assert.False(string.IsNullOrWhiteSpace(saved.LastError));
+    }
+
+    private sealed class TimingOutHandler : HttpMessageHandler
+    {
+        public int Attempts { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Attempts++;
+            // What HttpClient does when its own timeout elapses: the caller's token is not the one cancelled.
+            throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.", new TimeoutException());
+        }
+    }
+
     private sealed class SingleClientFactory(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);

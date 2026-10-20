@@ -233,7 +233,7 @@ public sealed partial class TmdbMetadataProvider(
     /// reflect whether TMDb answered just now.
     /// </summary>
     private Task ProbeDirectTmdbAsync(string apiKey, CancellationToken cancellationToken)
-        => GetJsonWithResilienceAsync<JsonElement>(
+        => GetJsonWithResilienceAsync<JsonElement?>(
             $"https://api.themoviedb.org/3/configuration?api_key={Uri.EscapeDataString(apiKey)}",
             "metadata:tmdb:reachability",
             "metadata.tmdb.reachability",

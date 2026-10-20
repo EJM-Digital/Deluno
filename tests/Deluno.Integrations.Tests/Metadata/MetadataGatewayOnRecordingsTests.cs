@@ -275,6 +275,85 @@ public sealed class MetadataGatewayOnRecordingsTests : IDisposable
         Assert.Equal("not_found", (string?)R("tvdb-series-missing").Single.Reply.Json()["error"]);
     }
 
+    // ---- when the gateway cannot say: a 404 without its reason, a 5xx, a busy moment, the reachability probe ----
+
+    [Fact]
+    public async Task A_404_that_does_not_carry_the_gateways_own_reason_is_unavailable_and_never_a_missing_record()
+    {
+        // The gateway's recorded "not_found" body (its answer for a collection that does not exist) on a record lookup: a 404, but not its provider_record_missing reason.
+        var notTheReason = R("collection-missing").Single.Reply;
+        Assert.Equal(404, notTheReason.Status);
+        Assert.NotEqual("provider_record_missing", (string?)notTheReason.Json()["error"]);
+        var rig = await RigAsync(_ => notTheReason.ToResponse());
+
+        var lookup = await rig.ResolveProviderRecordAsync(Lookup("Sintel", "movies", 2010, "45745"), CancellationToken.None);
+
+        Assert.Equal(MetadataProviderRecordStatus.Unavailable, lookup.Status);
+        Assert.Null(lookup.Result);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    [InlineData(HttpStatusCode.BadGateway)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    public async Task A_5xx_from_the_gateway_is_unavailable_with_its_status_kept_and_never_a_missing_record(HttpStatusCode status)
+    {
+        var rig = await RigAsync(_ => new HttpResponseMessage(status));
+
+        var lookup = await rig.ResolveProviderRecordAsync(Lookup("Sintel", "movies", 2010, "45745"), CancellationToken.None);
+
+        Assert.Equal(MetadataProviderRecordStatus.Unavailable, lookup.Status);
+        Assert.Equal((int)status, lookup.Failure?.HttpStatus);
+    }
+
+    [Fact]
+    public async Task A_busy_moment_503_is_retried_and_the_record_the_gateway_then_gives_is_found()
+    {
+        var calls = 0;
+        var rig = await RigAsync(request => ++calls == 1
+            ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+            : Gateway(request));
+
+        var lookup = await rig.ResolveProviderRecordAsync(Lookup("Sintel", "movies", 2010, "45745"), CancellationToken.None);
+
+        Assert.Equal(MetadataProviderRecordStatus.Found, lookup.Status);
+        Assert.Equal("Sintel", lookup.Result!.Title);
+        Assert.True(calls > 1, "the 503 was tried again");
+    }
+
+    [Fact]
+    public async Task The_reachability_probe_asks_the_gateway_for_a_fixed_title_and_says_ready_when_it_answers()
+    {
+        var asked = new List<string>();
+        var rig = await RigAsync(request =>
+        {
+            asked.Add(request.RequestUri!.PathAndQuery);
+            return Gateway(request);
+        });
+
+        var status = await rig.CheckReachabilityAsync(CancellationToken.None);
+
+        Assert.Equal("broker", status.Mode);
+        Assert.True(status.IsConfigured);
+        Assert.Null(status.LastFailure);
+        Assert.Equal("Deluno's managed metadata service is ready for title matching.", status.Message);
+        var probe = Assert.Single(asked);
+        Assert.StartsWith("/metadata/search?", probe, StringComparison.Ordinal);
+        Assert.Contains("query=Inception", probe, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_reachability_probe_of_a_gateway_that_is_down_says_so_in_plain_words_instead_of_ready()
+    {
+        var rig = await RigAsync(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+
+        var status = await rig.CheckReachabilityAsync(CancellationToken.None);
+
+        Assert.NotNull(status.LastFailure);
+        Assert.Equal(503, status.LastFailure!.HttpStatus);
+        Assert.NotEqual("Deluno's managed metadata service is ready for title matching.", status.Message);
+    }
+
     // ---- the rig ----
 
     private async Task<TmdbMetadataProvider> RigAsync(Func<HttpRequestMessage, HttpResponseMessage> respond, string language = "en")
