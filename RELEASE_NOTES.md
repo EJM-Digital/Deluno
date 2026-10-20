@@ -34,6 +34,9 @@ Deluno has a new home:
 - Installed Windows copies keep updating by themselves. You do not need to do
   anything.
 
+Fixes:
+- With automatic update checks off, checking for updates yourself and finding one now tells you an update is available. Before, it said nothing.
+
 ## 1.0.0-rc.30.34
 
 Deluno is early. It is still being tested hard and it is not finished. Expect

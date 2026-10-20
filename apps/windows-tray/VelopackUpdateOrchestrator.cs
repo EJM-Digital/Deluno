@@ -204,7 +204,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
             _availableUpdate = update;
             _runtime.MarkUpdateAvailable(checkedUtc, update.TargetFullRelease.Version.ToString());
 
-            if (settings.AutoCheckUpdates && settings.UpdateMode != UpdateModes.NotifyOnly)
+            if (UpdatePolicy.DownloadsByItself(settings))
             {
                 await DownloadPendingUpdateAsync(settings, manager, cancellationToken);
                 return BuildStatus(settings, manager, "Update was found and downloaded in the background.");

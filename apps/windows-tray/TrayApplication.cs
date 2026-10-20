@@ -820,7 +820,7 @@ public sealed class TrayApplication : ApplicationContext
             return;
         }
 
-        if (update.Action == UpdateMenuAction.Download && AppSettings.Load().UpdateMode != UpdateModes.NotifyOnly)
+        if (!UpdatePolicy.ShouldAnnounce(update, AppSettings.Load()))
         {
             // Deluno downloads it by itself; the balloon comes when it is ready.
             return;
