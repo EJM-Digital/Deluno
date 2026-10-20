@@ -633,6 +633,14 @@ public static partial class ReleaseDecisionEngine
                 }
             }
 
+            // A release held by a timing rule (the profile's wait, the indexer's minimum age, the
+            // availability delay) is not taken yet, whatever the plan makes of it: the typed
+            // outcome above would otherwise call it "preferred" and it would be grabbed at once.
+            if (delayed && status is not (ReleaseDecisionStatuses.Rejected or ReleaseDecisionStatuses.Held))
+            {
+                status = "delayed";
+            }
+
             // The legacy total is retained only for compatibility with old
             // persisted history. Typed candidates are ordered by their
             // evaluation/comparison, never by this value.
@@ -717,6 +725,7 @@ public static partial class ReleaseDecisionEngine
         {
             "preferred" => "Would be taken.",
             "held" => "Held for your review.",
+            "delayed" => "Waiting for its timing rule to clear.",
             "equivalent" => "Same as the file you have.",
             ReleaseDecisionStatuses.CurrentBetter => "Your installed file is better than this release.",
             ReleaseDecisionStatuses.Rejected => "Not taken.",
