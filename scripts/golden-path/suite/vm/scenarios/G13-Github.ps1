@@ -26,7 +26,12 @@ function Set-GithubFeedBlocked {
     $path = Get-HostsFilePath
     $lines = @(Get-Content -LiteralPath $path -ErrorAction SilentlyContinue | Where-Object { $_ -notlike "*$($script:GithubHostsTag)*" })
     if ($Blocked) { $lines += "127.0.0.1 github.com www.github.com codeload.github.com $($script:GithubHostsTag)" }
-    Set-Content -LiteralPath $path -Value $lines -Encoding ascii
+    # Windows (Defender, the DNS client) can hold the hosts file open for a moment: "Stream was not readable" on 20 Oct. Try again
+    # for a few seconds before calling it a failure.
+    for ($attempt = 1; ; $attempt++) {
+        try { Set-Content -LiteralPath $path -Value $lines -Encoding ascii -ErrorAction Stop; break }
+        catch { if ($attempt -ge 20) { throw } ; Start-Sleep -Milliseconds 500 }
+    }
     try { & ipconfig.exe /flushdns | Out-Null } catch { }
 }
 
@@ -36,7 +41,12 @@ function Restart-DelunoFromTray {
     # start marker (start-progress.json): written again after the click, in phase "ready", and Deluno answering.
     $clickedAt = (Get-Date).ToUniversalTime().AddSeconds(-2)
     $clicked = $false
-    try { $clicked = [bool](Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Restart Deluno') } catch { $clicked = $false }
+    # The menu read can land on another window's menu bar for a moment (it read "File / Edit / View / Tools / Help" on 20 Oct), so
+    # open it again a few times before calling it a failure.
+    for ($attempt = 1; $attempt -le 4 -and -not $clicked; $attempt++) {
+        try { $clicked = [bool](Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Restart Deluno') } catch { $clicked = $false }
+        if (-not $clicked) { Start-Sleep -Seconds 3 }
+    }
     if (-not $clicked) { throw ("Deluno's tray menu did not offer Restart Deluno ($script:TrayMenuMiss), so Deluno could not be restarted to empty its memory of earlier reads.") }
     $new = Wait-Until -TimeoutSec 240 -IntervalSec 3 -Condition {
         $m = Read-StartMarker
