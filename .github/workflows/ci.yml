@@ -348,6 +348,7 @@ jobs:
           name: backend-test-results-${{ matrix.leg }}
           path: "**/TestResults/*.trx"
           if-no-files-found: ignore
+          retention-days: 7
 
       # One artifact per leg, all named coverage-dotnet-*: the coverage job downloads them together and merges them
       # before the ratchet, so a file covered by tests in different legs counts every line any of them hit.
@@ -490,7 +491,9 @@ jobs:
 
       - name: Install browser dependencies
         working-directory: apps/web
-        run: npx playwright install --with-deps chromium
+        # --with-deps installs operating-system packages with sudo: only on a GitHub-hosted runner. A self-hosted runner has them
+        # installed once on the machine (docs/ci-standard.md, "Self-hosted runners while private").
+        run: npx playwright install ${{ runner.environment == 'github-hosted' && '--with-deps' || '' }} chromium
 
       # The host serves apps/web/dist as its wwwroot, so this lands before `dotnet run` builds it.
       - name: Download web build
@@ -515,6 +518,7 @@ jobs:
             apps/web/playwright-report/
             apps/web/test-results/
           if-no-files-found: ignore
+          retention-days: 7
 
   docker:
     name: Container image
@@ -587,6 +591,18 @@ jobs:
       - name: Verify persistent data and failed-replacement recovery
         # These proofs publish fixed host ports, so on a shared machine they take turns (flock; the lock file is per machine).
         run: flock --timeout 3600 /tmp/deluno-docker-fixed-ports.lock bash scripts/test-docker-recovery.sh "$DOCKER_BASELINE_IMAGE" "$IMAGE"
+
+      # The platform defect tests that start the image (DOK-08, DOK-10, DAT-10, DAT-11, AUT-20, DOK-16). Their container and
+      # volume names are unique per run, so two jobs sharing one Docker daemon do not meet.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Prove the platform defect tests against the image
+        timeout-minutes: 10
+        env:
+          DELUNO_DOCKER_IMAGE: ${{ env.IMAGE }}
+        run: node --test scripts/platform-docker.test.mjs
 
       - name: Prove the image's tools, settings, health, stop, backup and restore
         timeout-minutes: 10
@@ -684,7 +700,7 @@ jobs:
       # The groups that read Deluno's screens (a drawer, System, the Dashboard) drive a real browser.
       - name: Install the browser
         if: ${{ matrix.group == 'tryagain' || matrix.group == 'outage' || matrix.group == 'tvretry' || matrix.group == 'tvweirout' || matrix.group == 'layout' || matrix.group == 'github' || startsWith(matrix.group, 'queue') }}
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install ${{ runner.environment == 'github-hosted' && '--with-deps' || '' }} chromium
 
       - name: Run the ${{ matrix.group }} group
         run: npx playwright test -c tests/e2e/playwright.config.ts ${{ matrix.group }}
@@ -709,7 +725,7 @@ jobs:
         with:
           name: e2e-${{ matrix.group }}
           path: artifacts/e2e/
-          retention-days: 14
+          retention-days: 7
           if-no-files-found: ignore
 
   # The installable build of this exact commit, for the golden path (docs/golden-path.md): only a manual run builds it
@@ -825,7 +841,7 @@ jobs:
             artifacts/windows/velopack/releases.*.json
             artifacts/windows/velopack/RELEASES*
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
 
   # The Windows-only behaviour on a fresh `windows-latest` machine per leg (docs/exec-plans/active/PLAN-E2E-IN-CI.md, step 3): the
   # installer the windows-installer job built in this same run, with the component picker and the tray read through UI Automation;
@@ -915,7 +931,7 @@ jobs:
             C:\e2e-windows\logs\
             C:\e2e-windows\collect.zip
           if-no-files-found: ignore
-          retention-days: 14
+          retention-days: 7
 
   # Coverage of the Node code (the scripts and the metadata gateway), by node --test's own v8 coverage.
   coverage-node:
@@ -931,6 +947,7 @@ jobs:
         with:
           node-version: 24
 
+      # scripts/platform-docker.test.mjs starts the Deluno image and runs in the "Container image" job, which builds it.
       - name: Run the scripts' tests with coverage
         run: |
           mkdir -p coverage-node
@@ -938,7 +955,7 @@ jobs:
             --test-coverage-include="scripts/**/*.mjs" --test-coverage-exclude="**/*.test.mjs" \
             --test-reporter=spec --test-reporter-destination=stdout \
             --test-reporter=lcov --test-reporter-destination=coverage-node/scripts.lcov \
-            "scripts/**/*.test.mjs"
+            $(find scripts -name '*.test.mjs' ! -name platform-docker.test.mjs | sort)
 
       - name: Run the metadata gateway's tests with coverage
         working-directory: services/metadata-gateway
@@ -1022,7 +1039,7 @@ jobs:
           name: coverage-report
           path: coverage-out/
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
 
   # Switched on by the repository variable DELUNO_MUTATION_ON_PUSH=true (default off: the job has not run in CI yet);
   # while it is off the flag is false, the job is skipped and ci-passed counts it as not due.

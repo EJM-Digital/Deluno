@@ -64,7 +64,8 @@ export function docker(...args: string[]): string {
   return execFileSync(parts[0], [...parts.slice(1), ...args], { encoding: "utf8", timeout: 60_000 });
 }
 
-const project = process.env.E2E_PROJECT ?? "deluno-e2e";
+// The workflow gives each job its own Compose project (COMPOSE_PROJECT_NAME), so containers are found by that name, not a fixed one.
+const project = process.env.E2E_PROJECT ?? process.env.COMPOSE_PROJECT_NAME ?? "deluno-e2e";
 export const containerOf = (service: string) => `${project}-${service}-1`;
 
 // ------------------------------------------------------------------ a small api client

@@ -72,7 +72,7 @@ jobs:
           name: mutation-${{ matrix.project }}
           path: mutation-reports/
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
 
   javascript:
     name: ${{ matrix.name }}
@@ -114,7 +114,7 @@ jobs:
           name: mutation-${{ matrix.name }}
           path: mutation-reports/
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
 
   # The score per project, held to its threshold. The proposed raise is published for the owner to review and commit;
   # this workflow never commits it.
@@ -160,4 +160,4 @@ jobs:
             mutation-reports/
             mutation-out/
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7

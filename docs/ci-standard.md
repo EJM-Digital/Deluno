@@ -104,6 +104,20 @@ Security updates only. Every ecosystem in `dependabot.yml` has `open-pull-reques
 | `scripts/check-release-workflow-gates.mjs` | Fails when the release workflow's publish shape is broken. |
 | `scripts/summarize-test-results.mjs` | Writes TRX and Playwright results to the job summary. |
 
+## Self-hosted runners while private
+
+While the repository is private, the jobs run on self-hosted runners on one Windows PC (two Linux runners in WSL and one Windows runner), chosen through the repository variables `DELUNO_LINUX_RUNS_ON` and `DELUNO_WINDOWS_RUNS_ON`. With the variables unset the same workflow runs on GitHub-hosted runners. A step that needs `sudo` or writes outside the workspace is guarded by `runner.environment == 'github-hosted'` (the "Make room" step, `playwright install --with-deps`). Artifacts are kept 7 days, because storage is limited while private.
+
+What each self-hosted runner must provide:
+
+- `DOTNET_INSTALL_DIR`: a folder the runner user can write, for the .NET SDK that `actions/setup-dotnet` installs.
+- `PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64` on an Ubuntu newer than the Playwright in use supports (Ubuntu 26.04 today).
+- Distinct ports per runner when more than one runs on a machine: `DELUNO_SMOKE_API_PORT` and `DELUNO_SMOKE_WEB_PORT` for the browser smoke tests, and for the end-to-end stack `E2E_DELUNO_PORT`, `E2E_QBIT_PORT`, `E2E_TRANSMISSION_PORT`, `E2E_DELUGE_PORT`, `E2E_SABNZBD_PORT`, `E2E_NZBGET_PORT`, `E2E_WEIR_PORT`, `E2E_FIXTURE_PORT` and `E2E_GITHUB_PORT` (`tests/e2e/compose.yaml`). Each end-to-end job already gets its own Compose project name (`COMPOSE_PROJECT_NAME`), which the tests read to find their containers.
+- The operating-system libraries Chromium needs, installed once on the machine (`npx playwright install-deps chromium` run by someone with `sudo`), because the jobs install only the browser.
+- No `sudo`: the runner user has none.
+
+All of this goes away when the repository goes public and the jobs return to GitHub-hosted runners: unset the two variables and delete the runner environment settings.
+
 ## Repository settings that go with this
 
 These are settings, not files, and are made by the repository owner:
