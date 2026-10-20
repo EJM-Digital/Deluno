@@ -9,14 +9,16 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { coverage } from "./dotnet-projects.mjs";
+import { filterFor, testClasses, typeNames } from "./test-filter.mjs";
 
 // Tray.Tests only holds tests on Windows (the tray is a Windows assembly), so it covers nothing on Linux CI.
-export function configFor(prod, tests, projects) {
+export function configFor(prod, tests, projects, filter = null) {
   const testProjects = tests.filter((t) => prod === "Deluno.Tray" || t !== "Deluno.Tray.Tests");
   return {
     "stryker-config": {
       project: `${prod}.csproj`,
       "test-projects": testProjects.map((t) => projects[t]),
+      ...(filter ? { "test-case-filter": filter } : {}),
       reporters: ["json", "progress"],
       mutate: ["!**/Migrations/**"],
       "mutation-level": "Standard",
@@ -30,8 +32,10 @@ export function configFor(prod, tests, projects) {
 export function expected(root = ".") {
   const { projects, coverage: cov } = coverage(root);
   const out = {};
+  const classes = testClasses(root);
   for (const [prod, tests] of Object.entries(cov)) {
-    out[projects[prod].replace(/[^/]+$/, "stryker-config.json")] = configFor(prod, tests, projects);
+    const dir = projects[prod].replace(/[^/]+$/, "");
+    out[`${dir}stryker-config.json`] = configFor(prod, tests, projects, filterFor(typeNames(root, dir), classes));
   }
   return out;
 }

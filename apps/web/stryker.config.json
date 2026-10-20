@@ -5,6 +5,7 @@
   "vitest": { "configFile": "vite.config.ts" },
   "mutate": ["src/**/*.ts", "src/**/*.tsx", "!src/**/*.test.ts", "!src/**/*.test.tsx", "!src/**/*.d.ts", "!src/test/**"],
   "coverageAnalysis": "perTest",
+  "dryRunTimeoutMinutes": 60,
   "reporters": ["json", "progress", "clear-text"],
   "jsonReporter": { "fileName": "reports/mutation/web.json" },
   "tempDirName": ".stryker-tmp",

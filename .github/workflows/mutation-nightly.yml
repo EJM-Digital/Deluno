@@ -87,7 +87,7 @@ jobs:
   javascript:
     name: ${{ matrix.name }}
     runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
-    timeout-minutes: 120
+    timeout-minutes: 340
     strategy:
       fail-fast: false
       matrix:
