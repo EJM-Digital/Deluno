@@ -54,3 +54,24 @@ describe("ConnectionTestResult (#1143)", () => {
     expect(screen.queryByRole("link")).toBeNull();
   });
 });
+
+// C.11.9: the unreadable-saved-key notice shows in the proxy drawer, and only when the saved password cannot be read here.
+describe("ProxyDrawerBody unreadable saved password notice", () => {
+  const render_ = (editing: unknown) => render(
+    <MemoryRouter>
+      <ProxyDrawerBody form={emptyProxyForm()} setForm={() => {}} editing={editing as never} errors={{}} clearError={() => {}} busy={null} onRemove={() => {}} />
+    </MemoryRouter>
+  );
+
+  it("says to enter the key again, with the server's reason, when the saved password cannot be read", () => {
+    render_({ id: "p1", assignedIndexerNames: [], secretUnreadable: true, secretProblem: "The saved proxy password was stored on another computer." });
+    const notice = screen.getByRole("alert");
+    expect(notice).toHaveTextContent("Enter the saved key again");
+    expect(notice).toHaveTextContent("The saved proxy password was stored on another computer.");
+  });
+
+  it("says nothing for a proxy whose password can be read, or a new one", () => {
+    render_({ id: "p1", assignedIndexerNames: [], secretUnreadable: false });
+    expect(screen.queryByText("Enter the saved key again")).toBeNull();
+  });
+});

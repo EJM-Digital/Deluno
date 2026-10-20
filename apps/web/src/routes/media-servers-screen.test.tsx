@@ -202,3 +202,19 @@ describe("a link to a media server", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });
+
+describe("a server whose saved token cannot be read here (C.11.9)", () => {
+  it("shows the Enter the saved key again notice in its drawer, with the server's reason, and nothing for a readable one", () => {
+    loaderData.servers = [server({ secretUnreadable: true, secretProblem: "The token was saved on another computer." })];
+    renderPage();
+    fireEvent.click(screen.getByText("Jellyfin on lounge"));
+    const notice = screen.getByRole("alert");
+    expect(notice).toHaveTextContent("Enter the saved key again");
+    expect(notice).toHaveTextContent("The token was saved on another computer.");
+    cleanup();
+    loaderData.servers = [server()];
+    renderPage();
+    fireEvent.click(screen.getByText("Jellyfin on lounge"));
+    expect(screen.queryByText("Enter the saved key again")).toBeNull();
+  });
+});

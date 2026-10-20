@@ -260,12 +260,12 @@ test("only the release workflow's publish jobs hold a write permission or a regi
 
 // ---- GAT-07: gate tests that run locally and in CI
 
-test("every test the local ci:check runs is also run by the repo-checks job, so a push from a clone without the hook is held to the same rules", { skip: "DEFECT (GAT-07): seven of the node test files that ci:check runs are run by no CI job, so a push from a clone without the hook skips them" }, () => {
+test("every test the local ci:check runs is also run by the repo-checks job, so a push from a clone without the hook is held to the same rules", { skip: "DEFECT (GAT-07): every Node test file ci:check runs is run by a CI job (check-node-tests-run.mjs), but these PowerShell checks are not: check-powershell-portability, check-issue-closing-keywords, check-dockerfile-copies, check-release-notes-version, Test-ScenarioSuite (needs Windows PowerShell 5.1) and Test-ComponentPicker (needs a desktop). They are run only by the local gate." }, () => {
   const local = read("scripts/ci-check.ps1");
   const ci = read(".github/workflows/ci.yml");
-  const localTests = [...local.matchAll(/scripts\/[A-Za-z0-9._-]+\.test\.mjs/g)].map((m) => m[0]);
-  const missing = [...new Set(localTests)].filter((file) => !ci.includes(file));
-  assert.deepEqual(missing, [], `these tests run in ci:check but in no CI job: ${missing.join(", ")}`);
+  const localChecks = [...local.matchAll(/scripts\/[A-Za-z0-9._\/-]+\.(?:test\.mjs|ps1)/g)].map((m) => m[0]);
+  const missing = [...new Set(localChecks)].filter((file) => !ci.includes(file));
+  assert.deepEqual(missing, [], `these checks run in ci:check but in no CI job: ${missing.join(", ")}`);
 });
 
 // ---- GAT-11: the golden-path commit status and the release

@@ -41,6 +41,51 @@ public sealed class ReadinessServiceTests
         Assert.All(result.Checks, check => Assert.Equal("ready", check.Status));
     }
 
+    // DOK-07: what the container's health check asks (/api/health/ready) turns unhealthy for a broken database or a data folder that cannot be written.
+    [Fact]
+    public async Task CheckAsync_reports_not_ready_when_a_database_file_is_damaged()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T06:00:00Z"));
+        var jobs = await InitializeJobsAsync(storage, timeProvider);
+        await jobs.HeartbeatAsync("worker-test", CancellationToken.None);
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        await using (var platform = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Movies))
+        {
+            using var command = platform.CreateCommand();
+            command.CommandText = "SELECT 1;";
+            await command.ExecuteScalarAsync();
+        }
+
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        File.WriteAllBytes(storage.Factory.GetDatabasePath(DelunoDatabaseNames.Movies), System.Text.Encoding.ASCII.GetBytes(new string('x', 4096)));
+
+        var result = await CreateReadiness(storage, timeProvider).CheckAsync(CancellationToken.None);
+
+        Assert.False(result.Ready);
+        Assert.Equal("not_ready", result.Status);
+        Assert.Contains(result.Checks, check => check.Name == $"database:{DelunoDatabaseNames.Movies}" && check.Status == "not_ready");
+        Assert.Contains(result.Checks, check => check.Name == $"database:{DelunoDatabaseNames.Platform}" && check.Status == "ready");
+    }
+
+    [Fact]
+    public async Task CheckAsync_reports_not_ready_when_the_data_folder_cannot_be_written()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T06:00:00Z"));
+        var jobs = await InitializeJobsAsync(storage, timeProvider);
+        await jobs.HeartbeatAsync("worker-test", CancellationToken.None);
+        // A file where the data folder should be: nothing can be written under it, on every operating system.
+        var notAFolder = Path.Combine(storage.DataRoot, "not-a-folder");
+        File.WriteAllText(notAFolder, "x");
+        var readiness = new DelunoReadinessService(storage.Factory, Options.Create(new StoragePathOptions { DataRoot = notAFolder }), timeProvider);
+
+        var result = await readiness.CheckAsync(CancellationToken.None);
+
+        Assert.False(result.Ready);
+        Assert.Contains(result.Checks, check => check.Name == "storage:writable" && check.Status == "not_ready");
+    }
+
     [Fact]
     public async Task CheckAsync_reports_not_ready_when_queue_contains_stalled_running_jobs()
     {

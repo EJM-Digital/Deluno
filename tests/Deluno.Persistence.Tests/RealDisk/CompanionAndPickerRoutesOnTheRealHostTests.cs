@@ -4,6 +4,8 @@ using System.Text.Json;
 using Deluno.Companions;
 using Deluno.Contracts;
 using Deluno.Persistence.Tests.Support;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Deluno.Persistence.Tests.RealDisk;
 
@@ -121,5 +123,58 @@ public sealed class CompanionAndPickerRoutesOnTheRealHostTests
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.True(body.GetProperty("nativePickerUnavailable").GetBoolean());
         Assert.Contains("opens on the computer Deluno runs on", body.GetProperty("message").GetString(), StringComparison.Ordinal);
+    }
+
+    /// <summary>Puts the address in the X-Test-Remote header on the socket's remote address, before anything else sees the request: a request from another device.</summary>
+    private sealed class RemoteAddressFromHeader : Microsoft.AspNetCore.Hosting.IStartupFilter
+    {
+        public Action<Microsoft.AspNetCore.Builder.IApplicationBuilder> Configure(Action<Microsoft.AspNetCore.Builder.IApplicationBuilder> next) => app =>
+        {
+            app.Use(async (context, pipeline) =>
+            {
+                if (context.Request.Headers.TryGetValue("X-Test-Remote", out var address)) context.Connection.RemoteIpAddress = IPAddress.Parse(address.ToString());
+                await pipeline();
+            });
+            next(app);
+        };
+    }
+
+    private static async Task<HttpResponseMessage> FromAnotherDeviceAsync(ApplicationTestHost app, string path, object body)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(body) };
+        request.Headers.Add("X-Test-Remote", "192.168.1.20");
+        return await app.Client.SendAsync(request);
+    }
+
+    // C.14.4 and C.14.9: Windows' permission prompt appears on the computer's own screen, so another device is told to go there.
+    [Theory]
+    [InlineData("/api/companion-tools/install")]
+    [InlineData("/api/companion-tools/tray-install")]
+    public async Task Installing_from_another_device_is_refused_and_nothing_is_asked_of_anyone(string path)
+    {
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => services.AddTransient<Microsoft.AspNetCore.Hosting.IStartupFilter, RemoteAddressFromHeader>());
+
+        var response = await FromAnotherDeviceAsync(app, path, new { toolIds = new[] { "sabnzbd", "deluge" } });
+
+        Assert.True(response.StatusCode == HttpStatusCode.Conflict, await response.Content.ReadAsStringAsync());
+        var message = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("message").GetString()!;
+        Assert.False(string.IsNullOrWhiteSpace(message));
+        if (CanInstallHere) Assert.StartsWith("Open Deluno on the computer it runs on to install", message, StringComparison.Ordinal);
+        Assert.False(File.Exists(PendingFile(app)), "no ask was written for the tray");
+        Assert.False(Directory.Exists(Path.Combine(app.DataRoot, "companions", "downloads")), "no installer was fetched");
+    }
+
+    [Fact]
+    public async Task An_ask_for_the_tray_that_cannot_be_stored_is_a_conflict_with_the_reason_and_never_accepted()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        // The ask's file name is taken by a folder, so it cannot be written.
+        Directory.CreateDirectory(PendingFile(app));
+
+        var response = await app.Client.PostAsJsonAsync("/api/companion-tools/tray-install", new { toolIds = new[] { "deluge" } });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.False(string.IsNullOrWhiteSpace((await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("message").GetString()));
+        Assert.True(Directory.Exists(PendingFile(app)));
     }
 }

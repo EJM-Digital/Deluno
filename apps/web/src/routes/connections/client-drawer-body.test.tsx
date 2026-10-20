@@ -204,3 +204,40 @@ describe("ClientDrawerBody Remove while the connection test runs (#1248)", () =>
     expect(screen.getByText("Waiting for the connection test to finish")).toBeTruthy();
   });
 });
+
+// C.11.9: the unreadable-saved-key notice shows in the download client drawer, and only when the saved password cannot be read here.
+describe("ClientDrawerBody unreadable saved password notice", () => {
+  function renderEditing(editing: unknown) {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ClientDrawerBody
+          form={{ ...emptyClientForm(), protocol: "qbittorrent" }}
+          setForm={() => {}}
+          editing={editing as never}
+          errors={{}}
+          clearError={() => {}}
+          mappings={[]}
+          newMapping={{ remotePath: "", localPath: "" }}
+          setNewMapping={() => {}}
+          busy={null}
+          onAddMapping={() => {}}
+          onRemoveMapping={() => {}}
+          onTestMapping={() => {}}
+          onRemove={() => {}}
+        />
+      </QueryClientProvider>
+    );
+  }
+
+  it("says to enter the key again, with the server's reason", () => {
+    renderEditing({ id: "c1", secretUnreadable: true, secretProblem: "The saved client password was stored on another computer." });
+    const notice = screen.getByRole("alert");
+    expect(notice).toHaveTextContent("Enter the saved key again");
+    expect(notice).toHaveTextContent("The saved client password was stored on another computer.");
+  });
+
+  it("says nothing for a client whose password can be read", () => {
+    renderEditing({ id: "c1", secretUnreadable: false });
+    expect(screen.queryByText("Enter the saved key again")).toBeNull();
+  });
+});

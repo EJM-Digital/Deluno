@@ -607,7 +607,63 @@ public sealed class InstalledComponentWiringTests : IDisposable
         Assert.Null(again.Read().Single().WiredUtc);
     }
 
-    private InstalledComponentWirer NewWirer(ICompanionSystem? system = null, IWeirConnector? weir = null, IConnectionsRepository? connections = null, IBundledComponentDetection? detection = null, Deluno.Libraries.Data.ILibrariesRepository? libraries = null, Deluno.Integrations.DownloadClients.IDownloadClientRegistry? registry = null, IInstalledComponentRecord? record = null, StateFileKind credentialsAvailability = StateFileKind.Ok)
+    private static Mock<Deluno.Contracts.IRealtimeEventPublisher> RecordingPushes(List<(string Entity, string Id)> pushed)
+    {
+        var realtime = new Mock<Deluno.Contracts.IRealtimeEventPublisher>();
+        realtime.Setup(publisher => publisher.PublishEntityChangedAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, CancellationToken>((entity, id, _) => pushed.Add((entity, id)))
+            .Returns(Task.CompletedTask);
+        return realtime;
+    }
+
+    // C.13.22: open screens follow a connection the moment it is made, for a client and for Weir, and a connection that failed pushes nothing.
+    [Theory]
+    [InlineData("qbittorrent", 8081)]
+    [InlineData("sabnzbd", 8080)]
+    [InlineData("nzbget", 6789)]
+    [InlineData("transmission", 9091)]
+    [InlineData("deluge", 8112)]
+    public async Task Connecting_an_installed_client_pushes_BundledComponentChanged_with_its_kind(string kind, int port)
+    {
+        _record.MarkInstalled(kind, "localhost", port);
+        _saved[kind] = new BundledComponentCredentials(string.Empty, "kept-secret-1");
+        var pushed = new List<(string Entity, string Id)>();
+
+        var result = await NewWirer(realtime: RecordingPushes(pushed).Object).ConnectAsync(kind, null, null, Url, CancellationToken.None);
+
+        Assert.True(result!.Healthy);
+        Assert.Equal(("BundledComponent", kind), Assert.Single(pushed, item => item.Entity == "BundledComponent"));
+    }
+
+    [Fact]
+    public async Task Connecting_Weir_pushes_BundledComponentChanged_for_weir()
+    {
+        _record.MarkInstalled("weir", "localhost", 9347);
+        var weir = new Mock<IWeirConnector>();
+        weir.Setup(item => item.ConnectAsync("owner", "pw", Url, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WeirConnectOutcome(true, "Connected.", false));
+        var pushed = new List<(string Entity, string Id)>();
+
+        await NewWirer(weir: weir.Object, realtime: RecordingPushes(pushed).Object).ConnectAsync("weir", "owner", "pw", Url, CancellationToken.None);
+
+        Assert.Equal(("BundledComponent", "weir"), Assert.Single(pushed, item => item.Entity == "BundledComponent"));
+    }
+
+    [Fact]
+    public async Task A_connection_that_did_not_work_pushes_no_BundledComponentChanged()
+    {
+        _record.MarkInstalled("nzbget", "localhost", 6789);
+        _testStatus = "unhealthy";
+        _testMessage = "Wrong login.";
+        var pushed = new List<(string Entity, string Id)>();
+
+        var result = await NewWirer(realtime: RecordingPushes(pushed).Object).ConnectAsync("nzbget", null, null, Url, CancellationToken.None);
+
+        Assert.False(result!.Healthy);
+        Assert.DoesNotContain(pushed, item => item.Entity == "BundledComponent");
+    }
+
+    private InstalledComponentWirer NewWirer(ICompanionSystem? system = null, IWeirConnector? weir = null, IConnectionsRepository? connections = null, IBundledComponentDetection? detection = null, Deluno.Libraries.Data.ILibrariesRepository? libraries = null, Deluno.Integrations.DownloadClients.IDownloadClientRegistry? registry = null, IInstalledComponentRecord? record = null, StateFileKind credentialsAvailability = StateFileKind.Ok, Deluno.Contracts.IRealtimeEventPublisher? realtime = null)
     {
         connections ??= FakeConnections();
         var activity = new Mock<IActivityFeedRepository>();
@@ -630,6 +686,7 @@ public sealed class InstalledComponentWiringTests : IDisposable
             activity.Object,
             registry: registry,
             detection: detection,
+            realtime: realtime,
             libraries: libraries);
     }
 

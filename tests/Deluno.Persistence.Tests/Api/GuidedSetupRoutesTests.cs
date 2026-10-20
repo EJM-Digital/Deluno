@@ -418,6 +418,59 @@ public sealed class GuidedSetupRoutesTests
         }
     }
 
+    // C.4.14: what the draft keeps is bounded and holds no secret.
+    [Fact]
+    public async Task The_answers_map_is_capped_at_sixty_four_keys_and_a_key_over_sixty_four_characters_is_dropped()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var answers = Enumerable.Range(0, 100).ToDictionary(index => $"answer{index:000}", index => index % 2 == 0);
+        answers[new string('k', 65)] = true;
+        answers[""] = true;
+
+        await PutDraftAsync(app, new { automation = answers });
+
+        var read = await (await app.Client.GetAsync("/api/setup/draft")).Content.ReadFromJsonAsync<JsonElement>();
+        var kept = read.GetProperty("automation").EnumerateObject().ToArray();
+        Assert.Equal(64, kept.Length);
+        Assert.All(kept, pair => Assert.InRange(pair.Name.Length, 1, 64));
+        Assert.All(kept, pair => Assert.Equal(int.Parse(pair.Name["answer".Length..]) % 2 == 0, pair.Value.GetBoolean()));
+    }
+
+    [Fact]
+    public async Task The_draft_never_keeps_an_indexer_key_a_client_password_or_a_metadata_key_even_when_sent_one()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+
+        await PutDraftAsync(app, new
+        {
+            indexerName = "My indexer", indexerUrl = "https://indexer.example/api", indexerApiKey = "SECRET-INDEXER-KEY-1",
+            clientName = "qBittorrent", clientHost = "localhost", clientPassword = "SECRET-CLIENT-PASSWORD-2", clientUsername = "admin",
+            metadataApiKey = "SECRET-METADATA-KEY-3"
+        });
+
+        var raw = await (await app.Client.GetAsync("/api/setup/draft")).Content.ReadAsStringAsync();
+        Assert.Contains("My indexer", raw, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET-", raw, StringComparison.Ordinal);
+        using var connection = new SqliteConnection($"Data Source={Path.Combine(app.DataRoot, "platform.db")};Pooling=False");
+        connection.Open();
+        Assert.DoesNotContain("SECRET-", OnDiskSetting(connection, "setup.draft.v1"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Each_of_the_three_Yes_No_answers_the_guide_keeps_survives_a_reload_and_an_answer_never_given_stays_empty()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var blank = await (await app.Client.GetAsync("/api/setup/draft")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, blank.GetProperty("skipSignInLocalNetwork").ValueKind);
+
+        await PutDraftAsync(app, new { skipSignInLocalNetwork = false, updateAutomatically = true, checkForUpdates = false });
+
+        var read = await (await app.Client.GetAsync("/api/setup/draft")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(read.GetProperty("skipSignInLocalNetwork").GetBoolean());
+        Assert.True(read.GetProperty("updateAutomatically").GetBoolean());
+        Assert.False(read.GetProperty("checkForUpdates").GetBoolean());
+    }
+
     /// <summary>Reads the real database file on disk, so a test proves what was saved, not only what the API says.</summary>
     private static string OnDiskSetting(SqliteConnection connection, string key)
     {
