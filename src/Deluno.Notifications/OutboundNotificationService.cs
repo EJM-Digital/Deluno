@@ -254,7 +254,7 @@ public sealed class OutboundNotificationService(
                 Status: NotificationWebhookDeliveryStatuses.Delivered,
                 Attempts: attempts);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
@@ -340,7 +340,7 @@ public sealed class OutboundNotificationService(
                     cancellationToken);
                 return attempts;
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;
             }
