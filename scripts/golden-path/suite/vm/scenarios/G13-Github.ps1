@@ -30,7 +30,7 @@ function Set-GithubFeedBlocked {
     # for a few seconds before calling it a failure.
     for ($attempt = 1; ; $attempt++) {
         try { Set-Content -LiteralPath $path -Value $lines -Encoding ascii -ErrorAction Stop; break }
-        catch { if ($attempt -ge 20) { throw } ; Start-Sleep -Milliseconds 500 }
+        catch { if ($attempt -ge 20) { throw } ; Start-Sleep -Milliseconds 500 } # reason: a retry pause while Windows holds the hosts file; no event says it was let go
     }
     try { & ipconfig.exe /flushdns | Out-Null } catch { }
 }
@@ -45,7 +45,7 @@ function Restart-DelunoFromTray {
     # open it again a few times before calling it a failure.
     for ($attempt = 1; $attempt -le 4 -and -not $clicked; $attempt++) {
         try { $clicked = [bool](Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Restart Deluno') } catch { $clicked = $false }
-        if (-not $clicked) { Start-Sleep -Seconds 3 }
+        if (-not $clicked) { Start-Sleep -Seconds 3 } # reason: a retry pause before reading the tray menu again; no event says the menu is ready
     }
     if (-not $clicked) { throw ("Deluno's tray menu did not offer Restart Deluno ($script:TrayMenuMiss), so Deluno could not be restarted to empty its memory of earlier reads.") }
     $new = Wait-Until -TimeoutSec 240 -IntervalSec 3 -Condition {
