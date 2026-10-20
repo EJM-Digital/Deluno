@@ -79,6 +79,33 @@ public sealed class WorkPlanner(
     /// </summary>
     internal const int MostFilesWithOneProcessor = 20;
 
+    /// <summary>
+    /// How many files are with the processor a library names. A hand-off is stored under the connection's id even when the
+    /// library names its processor only by name (an older install), so both are counted, each once; counting only the
+    /// library's own key found nothing with the processor on the next pass and sent everything again (#575).
+    /// </summary>
+    private static async Task<int> FilesWithProcessorAsync(
+        Dictionary<string, int> inFlightByProcessor,
+        LibraryItem library,
+        IProcessorRepository processorRepository,
+        CancellationToken cancellationToken)
+    {
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            library.ProcessorConnectionId ?? library.ProcessorName ?? string.Empty
+        };
+        if (library.ProcessorConnectionId is null && !string.IsNullOrWhiteSpace(library.ProcessorName))
+        {
+            var connection = await processorRepository.FindProcessorConnectionAsync(null, library.ProcessorName, cancellationToken);
+            if (connection is not null)
+            {
+                keys.Add(connection.Id);
+            }
+        }
+
+        return keys.Sum(key => inFlightByProcessor.GetValueOrDefault(key));
+    }
+
     public Task RunDispatchCleanupAsync(
         IDispatchCleanupService cleanupService,
         CancellationToken cancellationToken)
@@ -1222,7 +1249,7 @@ public sealed class WorkPlanner(
             if (!released &&
                 ImportWorkflows.HandsToProcessor(library.ImportWorkflow) &&
                 existing is null &&
-                inFlightByProcessor.GetValueOrDefault(library.ProcessorConnectionId ?? library.ProcessorName ?? string.Empty) >= MostFilesWithOneProcessor)
+                await FilesWithProcessorAsync(inFlightByProcessor, library, processorRepository, cancellationToken) >= MostFilesWithOneProcessor)
             {
                 continue;
             }
@@ -1257,6 +1284,14 @@ public sealed class WorkPlanner(
                             : item.AddedUtc,
                         library.ProcessorConnectionId),
                     cancellationToken);
+                // A hand-off made in this pass counts against the processor's room at once, so a pass that starts with
+                // nothing with it still sends no more than the most it can hold (#575).
+                if (existing is null)
+                {
+                    var processorKey = library.ProcessorConnectionId ?? library.ProcessorName ?? string.Empty;
+                    inFlightByProcessor[processorKey] = inFlightByProcessor.GetValueOrDefault(processorKey) + 1;
+                }
+
                 // The processor was busy with this file for another connection (#1250): it is sent again after its
                 // back-off, not on every pass.
                 if (handoff.Status == ProcessorHandoffStatuses.Waiting
