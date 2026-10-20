@@ -47,7 +47,7 @@ public sealed class PlanningLanesRunTheirPassesOnRealDatabasesTests
                 return imports.Concat(automation).All(key => states.Any(state => state.ScheduleKey == key && state.LastResult is not null));
             },
             "both planning lanes to run their passes",
-            TimeSpan.FromSeconds(120));
+            TimeSpan.FromSeconds(120)); // reason: a background job on a busy runner takes many times its usual few seconds; 120 s only stops a hang
 
         Assert.Equal(before, File.ReadAllBytes(film.FilePath));
         using var final = app.Services.CreateScope();

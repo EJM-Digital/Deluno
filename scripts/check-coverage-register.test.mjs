@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import {
-  baseGapCount, evaluate, gapIncreaseShape, gapRatchet, jobSummary, statisticsReport, isGap, mapInventory, missingProofs, requiredFor, rowLevel, scenarioViolations, sleepViolations, staleIssueRows, totals, unownedGapRows, validateShape
+  baseGapCount, evaluate, gapIncreaseShape, gapRatchet, jobSummary, statisticsReport, isGap, mapInventory, missingProofs, requiredFor, rowLevel, scenarioViolations, sleepViolations, waitViolations, callArguments, staleIssueRows, totals, unownedGapRows, validateShape
 } from './check-coverage-register.mjs';
 import { TestIndex } from './coverage/testindex.mjs';
 import { migrationItems, routeItems, trayItems, uiItems, webRouteItems } from './coverage/inventory.mjs';
@@ -178,6 +178,47 @@ test('a fixed sleep in a test needs a reason on its line', () => {
     const found = sleepViolations(new TestIndex(root));
     assert.deepEqual(found.map((f) => `${f.file}:${f.line}`).sort(), [
       'apps/web/tests/smoke/a.spec.ts:1', 'scripts/golden-path/suite/vm/scenarios/G01.ps1:1', 'tests/X.Tests/SleepTests.cs:1'
+    ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a call is split into its top-level arguments, whatever is inside the strings and brackets', () => {
+  const text = 'Wait.UntilAsync(() => Foo(1, 2), "a, (b", TimeSpan.FromSeconds(3));';
+  assert.deepEqual(callArguments(text, text.indexOf('(')), ['() => Foo(1, 2)', '"a, (b"', 'TimeSpan.FromSeconds(3)']);
+  assert.equal(callArguments('Open(1, 2', 4), null);
+});
+
+test('every wait in a test is named, bounded, and gives a reason for a limit of its own', () => {
+  const root = makeRepo({
+    'tests/X.Tests/Good.cs': [
+      'await Wait.UntilAsync(() => done, "the job to finish");',
+      'await Wait.UntilAsync(() => done, what);',
+      'await Wait.UntilAsync(async () => await Read() == 1, "the job to finish", TimeSpan.FromSeconds(60)); // reason: a cold start',
+      'while (true) // reason: ends when the queue is empty',
+      '{ }',
+      '// while (true)',
+      'setup.WaitForExit(); // reason: a short child process'
+    ].join('\n'),
+    'tests/X.Tests/Bad.cs': [
+      'await Wait.UntilAsync(() => done);',
+      'await Wait.UntilAsync(() => done, TimeSpan.FromSeconds(60));',
+      'await Wait.UntilAsync(() => done, "the job to finish", TimeSpan.FromSeconds(60));',
+      'while (true)',
+      'process.WaitForExit();',
+      'await Task.Delay(Timeout.Infinite);'
+    ].join('\n'),
+    'tests/X.Tests/OwnHelper.cs': 'static async Task UntilAsync(Func<bool> condition) { while (!condition()) { await Task.Yield(); } }\n',
+    'tests/X.Tests/OwnHelperWithLimit.cs': 'static async Task UntilAsync(Func<bool> condition, TimeSpan limit) { }\nawait UntilAsync(() => true, TimeSpan.FromSeconds(1));\n',
+    'tests/e2e/good.spec.ts': "await until('the stack to answer', 60, async () => true);\n// until <time> (the limit)\n",
+    'tests/e2e/bad.spec.ts': "await until(async () => true);\nawait until('x', async () => true);\nfor (;;) { }\n"
+  });
+  try {
+    const found = waitViolations(new TestIndex(root)).map((f) => `${f.file}:${f.line}`).sort();
+    assert.deepEqual(found, [
+      'tests/X.Tests/Bad.cs:1', 'tests/X.Tests/Bad.cs:2', 'tests/X.Tests/Bad.cs:3', 'tests/X.Tests/Bad.cs:4', 'tests/X.Tests/Bad.cs:5', 'tests/X.Tests/Bad.cs:6',
+      'tests/X.Tests/OwnHelper.cs:1', 'tests/e2e/bad.spec.ts:1', 'tests/e2e/bad.spec.ts:2', 'tests/e2e/bad.spec.ts:3'
     ]);
   } finally {
     rmSync(root, { recursive: true, force: true });

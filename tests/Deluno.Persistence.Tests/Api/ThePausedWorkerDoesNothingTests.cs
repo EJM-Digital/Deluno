@@ -88,7 +88,7 @@ public sealed class ThePausedWorkerDoesNothingTests
             async () => (await app.Client.GetFromJsonAsync<JsonElement>($"/api/jobs/{marker}")).GetProperty("status").GetString() != "queued"
                 && (await app.Client.GetFromJsonAsync<JsonElement>($"/api/jobs/{waker}")).GetProperty("status").GetString() != "queued",
             "the resumed worker to lease the waiting job and the new one",
-            TimeSpan.FromSeconds(60));
+            TimeSpan.FromSeconds(60)); // reason: a background job on a busy runner takes many times its usual few seconds; 60 s only stops a hang
     }
 
     // ---------------------------------------------------------------- helpers

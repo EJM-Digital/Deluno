@@ -62,7 +62,7 @@ public sealed class RetentionScheduleOnDiskTests
         await service.StartAsync(CancellationToken.None);
         try
         {
-            await Wait.UntilAsync(done, what, TimeSpan.FromSeconds(30));
+            await Wait.UntilAsync(done, what, TimeSpan.FromSeconds(30)); // reason: a background job on a busy runner takes many times its usual few seconds; 30 s only stops a hang
         }
         finally
         {

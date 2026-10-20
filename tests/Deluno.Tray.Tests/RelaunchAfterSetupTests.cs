@@ -172,7 +172,7 @@ public sealed class RelaunchAfterSetupTests : IDisposable
     {
         var time = new FakeTimeProvider();
         using var gate = new ManualResetEventSlim(false);
-        var result = Task.Run(() => RelaunchAfterSetup.RunWithinBudget(() => gate.Wait(), RelaunchAfterSetup.HookBudget, time, _log.Add));
+        var result = Task.Run(() => RelaunchAfterSetup.RunWithinBudget(() => gate.Wait(), RelaunchAfterSetup.HookBudget, time, _log.Add)); // reason: the gate is held shut on purpose: the test is that the budget lets go of it, and the helper is released in the finally
 
         Assert.True(RelaunchAfterSetup.HookBudget < TimeSpan.FromSeconds(30), "Velopack kills a hook after 30 seconds");
         await Task.Delay(50); // reason: shows it has not given up before its fake-clock budget is spent; absence needs real time
@@ -288,7 +288,7 @@ public sealed class RelaunchAfterSetupTests : IDisposable
         try
         {
             using var setup = Process.Start(new ProcessStartInfo("cmd.exe", "/c exit 0") { CreateNoWindow = true, UseShellExecute = false })!;
-            setup.WaitForExit();
+            setup.WaitForExit(); // reason: cmd /c exit 0 ends at once
             RunHelper(RelaunchKind.Tray, setup.Id, running, logPath);
 
             Assert.Contains("already running", File.ReadAllText(logPath));

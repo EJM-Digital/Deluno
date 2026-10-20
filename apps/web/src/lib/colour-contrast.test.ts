@@ -15,7 +15,7 @@ const css = readFileSync(resolve(__dirname, "../index.css"), "utf8").replace(/\/
 function declarations(selector: ":root" | ".dark"): Theme {
   const out: Theme = {};
   let from = 0;
-  for (;;) {
+  for (;;) { // reason: ends when the stylesheet has no more selectors, and every step moves on
     const line = new RegExp("^[ \t]*" + selector.replace(".", "[.]") + "[ \t]*[{]", "m").exec(css.slice(from));
     if (!line) break;
     let i = from + line.index + line[0].length;

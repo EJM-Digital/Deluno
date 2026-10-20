@@ -58,7 +58,7 @@ public sealed class CompanionToolsServiceTests : IDisposable
     private static async Task<IReadOnlyList<CompanionToolStatus>> FinishedAsync(CompanionToolsService service)
     {
         var deadline = DateTime.UtcNow.AddSeconds(15);
-        while (true)
+        while (true) // reason: the 15 second deadline above ends it
         {
             var tools = await service.ListAsync(CancellationToken.None);
             if (!tools.Any(tool => tool.Job?.Status is "queued" or "running")) return tools;

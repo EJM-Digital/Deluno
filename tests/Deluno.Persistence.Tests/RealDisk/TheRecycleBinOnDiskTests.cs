@@ -331,7 +331,7 @@ internal static class PosixLock
         {
             var info = new System.Diagnostics.ProcessStartInfo("chattr", [on ? "+i" : "-i", path]) { RedirectStandardError = true, RedirectStandardOutput = true };
             using var process = System.Diagnostics.Process.Start(info);
-            process!.WaitForExit();
+            process!.WaitForExit(); // reason: chattr is a short child process that ends by itself
             return process.ExitCode == 0;
         }
         catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException)

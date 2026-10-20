@@ -90,8 +90,8 @@ public sealed class RetentionChecksAndTheScheduleOnRealFilesTests
 
         var service = new RetentionScheduleHostedService(world.App.Services.GetRequiredService<IServiceScopeFactory>(), new SkewedClock(TimeSpan.FromHours(25)), NullLogger<RetentionScheduleHostedService>.Instance);
         await service.StartAsync(CancellationToken.None);
-        await Wait.UntilAsync(async () => await CountAsync(world, "SELECT COUNT(*) FROM retention_runs WHERE trigger = 'schedule';") >= 2, "both readable due rules to be checked", TimeSpan.FromSeconds(30));
-        await Wait.UntilAsync(async () => await CountAsync(world, "SELECT COUNT(*) FROM retention_collections;") >= 1, "the server's collection to be brought up to date", TimeSpan.FromSeconds(30));
+        await Wait.UntilAsync(async () => await CountAsync(world, "SELECT COUNT(*) FROM retention_runs WHERE trigger = 'schedule';") >= 2, "both readable due rules to be checked", TimeSpan.FromSeconds(30)); // reason: a background job on a busy runner takes many times its usual few seconds; 30 s only stops a hang
+        await Wait.UntilAsync(async () => await CountAsync(world, "SELECT COUNT(*) FROM retention_collections;") >= 1, "the server's collection to be brought up to date", TimeSpan.FromSeconds(30)); // reason: a background job on a busy runner takes many times its usual few seconds; 30 s only stops a hang
         await service.StopAsync(CancellationToken.None);
 
         async Task<string[]> TriggersOf(string rule)
@@ -126,7 +126,7 @@ public sealed class RetentionChecksAndTheScheduleOnRealFilesTests
         var readsBefore = jellyfin.Count("GET /Items");
 
         var firstCheck = world.App.Client.PostAsync($"/api/retention/rules/{rule}/check", null);
-        await Wait.UntilAsync(() => Task.FromResult(jellyfin.Count("GET /Items") > readsBefore), "the first check to be reading the server's films", TimeSpan.FromSeconds(30));
+        await Wait.UntilAsync(() => Task.FromResult(jellyfin.Count("GET /Items") > readsBefore), "the first check to be reading the server's films", TimeSpan.FromSeconds(30)); // reason: a background job on a busy runner takes many times its usual few seconds; 30 s only stops a hang
         // The person changes what the rule does on the day, from removing to only writing it down, while the check is still reading.
         var save = await world.App.Client.PutAsJsonAsync($"/api/retention/rules/{rule}", RuleBody("Old films", [server], "log"));
         Assert.True(save.IsSuccessStatusCode, await save.Content.ReadAsStringAsync());

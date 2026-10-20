@@ -360,7 +360,7 @@ public sealed class LaneRunnerTests
     {
         public static void Max(ref int location, int value)
         {
-            while (true)
+            while (true) // reason: a compare-and-swap loop that ends as soon as one swap wins
             {
                 var current = Volatile.Read(ref location);
                 if (current >= value || Interlocked.CompareExchange(ref location, value, current) == current) return;

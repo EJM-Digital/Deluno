@@ -128,7 +128,7 @@ public sealed class MislabelledEpisodeFilesOnDiskTests
         var service = new MislabelledEpisodeFileRepairService(world.App.Services.GetRequiredService<IServiceScopeFactory>(), NullLogger<MislabelledEpisodeFileRepairService>.Instance);
 
         await service.StartAsync(CancellationToken.None);
-        await Wait.UntilAsync(() => !File.Exists(wrong), "the repair's first pass to run", TimeSpan.FromSeconds(3)).ContinueWith(_ => { });
+        await Wait.UntilAsync(() => !File.Exists(wrong), "the repair's first pass to run", TimeSpan.FromSeconds(3)).ContinueWith(_ => { }); // reason: a background job on a busy runner takes many times its usual few seconds; 3 s only stops a hang
         await service.StopAsync(CancellationToken.None);
 
         Assert.True(File.Exists(wrong), "with automatic jobs off nothing may move a person's file");

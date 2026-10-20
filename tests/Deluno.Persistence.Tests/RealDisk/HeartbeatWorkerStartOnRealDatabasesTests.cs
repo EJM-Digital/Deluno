@@ -43,7 +43,7 @@ public sealed class HeartbeatWorkerStartOnRealDatabasesTests
                 async () => await ApiScenes.ScalarAsync(app, "jobs", $"SELECT COUNT(*) FROM worker_heartbeats WHERE worker_id = '{WorkerId}';") == 1
                     && JobLanes.All.Where(candidate => candidate.Enabled).All(candidate => board.Snapshot().Any(reading => reading.Name == candidate.Name)),
                 "the worker to write its heartbeat and start its lanes",
-                TimeSpan.FromSeconds(30));
+                TimeSpan.FromSeconds(30)); // reason: a background job on a busy runner takes many times its usual few seconds; 30 s only stops a hang
 
             Assert.Equal("queued", await ApiScenes.TextAsync(app, "jobs", $"SELECT status FROM job_queue WHERE id = '{left.Id}';"));
             Assert.True(string.IsNullOrEmpty(await ApiScenes.TextAsync(app, "jobs", $"SELECT worker_id FROM job_queue WHERE id = '{left.Id}';")));

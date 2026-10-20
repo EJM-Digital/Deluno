@@ -123,12 +123,12 @@ public sealed class ASavedViewScopesTheLibrarySearchCycleTests
         await using var app = await HostAsync();
         var scene = await SceneAsync(app, jackett, qbit, automationAction: "search");
 
-        await Wait.UntilAsync(async () => await SearchesOfAsync(app, scene.BigBuckBunny) > 0, "the scheduled cycle to search the film the filter selects", TimeSpan.FromSeconds(90));
+        await Wait.UntilAsync(async () => await SearchesOfAsync(app, scene.BigBuckBunny) > 0, "the scheduled cycle to search the film the filter selects", TimeSpan.FromSeconds(90)); // reason: a background job on a busy runner takes many times its usual few seconds; 90 s only stops a hang
         // The cycle is one job; once it has searched the selected film it has finished with the rest.
         await Wait.UntilAsync(
             async () => await ApiScenes.ScalarAsync(app, "jobs", "SELECT COUNT(*) FROM job_queue WHERE job_type LIKE 'library.search%' AND source = 'movies' AND status IN ('queued', 'running');") == 0,
             "the cycle's search job to finish",
-            TimeSpan.FromSeconds(60));
+            TimeSpan.FromSeconds(60)); // reason: a background job on a busy runner takes many times its usual few seconds; 60 s only stops a hang
 
         Assert.Equal(0, await SearchesOfAsync(app, scene.ElephantsDream));
         Assert.Contains("scopeId", await ApiScenes.TextAsync(app, "jobs", "SELECT payload_json FROM job_queue WHERE job_type LIKE 'library.search%' AND source = 'movies' ORDER BY created_utc DESC LIMIT 1;") ?? string.Empty);
@@ -145,6 +145,6 @@ public sealed class ASavedViewScopesTheLibrarySearchCycleTests
         await Wait.UntilAsync(
             async () => await SearchesOfAsync(app, scene.BigBuckBunny) > 0 && await SearchesOfAsync(app, scene.ElephantsDream) > 0,
             "the scheduled cycle to search both films",
-            TimeSpan.FromSeconds(90));
+            TimeSpan.FromSeconds(90)); // reason: a background job on a busy runner takes many times its usual few seconds; 90 s only stops a hang
     }
 }

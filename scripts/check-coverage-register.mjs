@@ -294,6 +294,98 @@ export function sleepViolations(index) {
   return out;
 }
 
+// Every wait is bounded, and says what it waits for and why the limit is what it is (issue 1273, measure 7). The shared
+// helpers bound a wait by construction: Wait.UntilAsync (tests/Deluno.Persistence.Tests/Support/Wait.cs) takes the name of
+// what it waits for and has a 10 s limit unless the call sets its own; until() in tests/e2e/stack.ts takes the name and the
+// seconds; Wait-Until in the golden-path suite takes -TimeoutSec (Test-ScenarioSuite.ps1 holds every call to it). This rule
+// holds the calls to the helpers' contract and finds the waits written without them.
+const WAIT_HELPER_CS = /\b(?:Wait\.)?UntilAsync\s*\(/g;
+const WAIT_HELPER_TS = /(?<![\w.])until(?:<[^>(\n]*>)?\(/g;
+const UNBOUNDED = [
+  { files: (f) => f.endsWith('.cs') && f.startsWith('tests/'), re: /\bwhile\s*\(\s*true\s*\)|\bfor\s*\(\s*;\s*;\s*\)|\.WaitForExit\s*\(\s*\)|\.Wait\s*\(\s*\)|\bTimeout\.Infinite\b|\bThread\.Sleep\s*\(\s*-1|\bWaitAsync\s*\(\s*Timeout\.Infinite/, what: 'an unbounded wait or loop' },
+  { files: (f) => /\.(ts|tsx)$/.test(f), re: /\bwhile\s*\(\s*true\s*\)|\bfor\s*\(\s*;\s*;\s*\)/, what: 'an unbounded loop' }
+];
+
+/** The arguments of the call that opens at text[open] (an opening parenthesis), split at the top level; null if it never closes. */
+export function callArguments(text, open) {
+  const args = [];
+  let depth = 0, current = '', quote = null;
+  for (let i = open; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      current += c;
+      if (c === '\\' && quote !== '@') { current += text[++i] ?? ''; continue; }
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { quote = c; current += c; continue; }
+    if (c === '(' || c === '[' || c === '{') { if (depth++ > 0) current += c; continue; }
+    if (c === ')' || c === ']' || c === '}') {
+      if (--depth === 0) { args.push(current.trim()); return args; }
+      current += c;
+      continue;
+    }
+    if (c === ',' && depth === 1) { args.push(current.trim()); current = ''; continue; }
+    current += c;
+  }
+  return null;
+}
+
+const NAME_ARG = /^\w+$/;
+const LIMIT_ARG = /limit|timespan|timeout|deadline|seconds/i;
+const STRING_ARG =/^(?:\$@?|@\$?)?"|^['`]/;
+
+/** Waits in tests with no name, no limit or no reason for their limit. */
+export function waitViolations(index) {
+  const out = [];
+  for (const [file, f] of index.files) {
+    const text = f.text;
+    const lineOf = (at) => text.slice(0, at).split('\n').length;
+    const lines = text.split('\n');
+    const isCs = file.endsWith('.cs') && file.startsWith('tests/');
+    const isE2e = /^tests\/e2e(?:-windows)?\/.+\.ts$/.test(file);
+    // A test file with its own wait helper is held to that helper: it must carry a limit of its own.
+    const own = isCs && !/\/Support\/Wait\.cs$/.test(file) ? [...text.matchAll(/\b(?:Task|Task<[^>\n]*>)\s+UntilAsync\s*\(/g)] : [];
+    for (const m of own) {
+      if (!/limit|TimeSpan|deadline|CancellationTokenSource/i.test(text.slice(m.index, m.index + 600))) out.push({ file, line: lineOf(m.index), why: 'a wait helper with no limit' });
+    }
+    if (isCs && !/\/Support\/Wait\.cs$/.test(file) && own.length === 0) {
+      for (const m of text.matchAll(WAIT_HELPER_CS)) {
+        const before = text.slice(Math.max(0, m.index - 30), m.index);
+        if (/\b(?:Task|void)\s+$/.test(before)) continue; // the helper's own definition
+        const args = callArguments(text, m.index + m[0].length - 1);
+        const line = lineOf(m.index);
+        const stringAt = args ? args.findIndex((a, i) => i > 0 && (STRING_ARG.test(a) || (NAME_ARG.test(a) && !LIMIT_ARG.test(a)))) : -1;
+        if (!args || stringAt < 0) { out.push({ file, line, why: 'a wait that does not name what it waits for' }); continue; }
+        const hasLimit = args.length > stringAt + 1;
+        if (hasLimit) {
+          const end = lineOf(m.index + m[0].length - 1 + args.join(',').length);
+          const callLines = lines.slice(line - 1, end + 1);
+          if (!callLines.some((l) => REASON.test(l))) out.push({ file, line, why: 'a wait with its own limit and no "reason:" for the limit' });
+        }
+      }
+    }
+    if (isE2e && !/\/stack\.ts$/.test(file)) {
+      for (const m of text.matchAll(WAIT_HELPER_TS)) {
+        const before = text.slice(Math.max(0, m.index - 20), m.index);
+        if (/\b(?:function|async)\s+$/.test(before)) continue;
+        const args = callArguments(text, m.index + m[0].length - 1);
+        if (!args || args.length < 3 || !STRING_ARG.test(args[0])) out.push({ file, line: lineOf(m.index), why: 'a wait that does not name what it waits for and give its limit in seconds' });
+      }
+    }
+    for (const rule of UNBOUNDED) {
+      if (!rule.files(file)) continue;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (!rule.re.test(line) || /^\s*(\/\/|#)/.test(line)) continue;
+        if (REASON.test(line) || (i > 0 && REASON.test(lines[i - 1]))) continue;
+        out.push({ file, line: i + 1, why: rule.what + ' with no "reason:" on its line' });
+      }
+    }
+  }
+  return out;
+}
+
 /** A scenario is runnable alone when it is registered under its own id in ScenarioPlan.ps1 and its group function exists. */
 export function scenarioViolations(plan, index) {
   const out = [];
@@ -326,11 +418,12 @@ export function evaluate({ register, inventory, index, plan, root, baseGaps = nu
   const typeProblems = proofProblems.filter((m) => m.kind === 'type');
   const t = safe('totals', () => totals(register, index), { all: { rows: 0, proven: 0, gaps: 0 }, byArea: {}, bySeverity: { high: { rows: 0, proven: 0, gaps: 0 }, medium: { rows: 0, proven: 0, gaps: 0 }, low: { rows: 0, proven: 0, gaps: 0 } }, byLevel: { none: 0, inproc: 0, real: 0 }, highByTouches: {}, smoke: { proofs: 0, unstubbed: 0, stubbed: 0, undecided: 0 }, realFs: { claims: 0, counted: 0, refused: 0, noEffect: 0, vmRows: 0, vmRowGaps: 0 }, container: { claims: 0, counted: 0, refused: 0, noEffect: 0 }, gaps: [], highGaps: 0 });
   const sleeps = safe('sleep rule', () => sleepViolations(index), []);
+  const waits = safe('wait rule', () => waitViolations(index), []);
   const scenarios = safe('scenario rule', () => (plan.length ? scenarioViolations(plan, index) : []), []);
   const ratchet = safe('gap ratchet', () => gapRatchet(register, gapCountOf(register, index), baseGaps), { problems: [], notes: [] });
   const staleIssues = safe('stale issue rule', () => staleIssueRows(register, index), []);
   const unownedGaps = safe('unowned gap rule', () => unownedGapRows(register, index), []);
-  return { shape, unmapped, stale, missing, typeProblems, totals: t, sleeps, scenarios, internal, staleIssues, unownedGaps, gapProblems: ratchet.problems, gapNotes: ratchet.notes };
+  return { shape, unmapped, stale, missing, typeProblems, totals: t, sleeps, waits, scenarios, internal, staleIssues, unownedGaps, gapProblems: ratchet.problems, gapNotes: ratchet.notes };
 }
 
 async function externalAppViolations(root) {
@@ -508,10 +601,12 @@ async function main() {
   const failing_rules = new Set();
   const rules = [
     [result.sleeps.length, `${result.sleeps.length} fixed sleep(s) in tests without a "reason:" comment on the line`, result.sleeps.map((s) => `${s.file}:${s.line}`), 'no fixed sleep in a test without a reason'],
+    [result.waits.length, `${result.waits.length} wait(s) in tests that are unbounded, unnamed or have a limit with no reason`, result.waits.map((w) => `${w.file}:${w.line} ${w.why}`), 'every wait in a test is bounded, names what it waits for, and gives a reason for its own limit'],
     [result.scenarios.length, `${result.scenarios.length} golden-path scenario(s) not runnable alone`, result.scenarios.map((s) => `${s.id}: ${s.why}`), `every golden-path scenario is runnable alone (${plan.length} ids)`],
     [external.problems.length, `${external.problems.length} external-app test problem(s): a reply built inline and not in tests/recorded-reply-allow-list.json (${external.listed} files listed there)`, external.problems, `every external-app test is on a recording or listed in the allow-list (${external.listed} listed)`]
   ];
   failing_rules.add(rules[0][2]); // a fixed sleep without a reason fails the default run
+  failing_rules.add(rules[1][2]); // so does a wait that is unbounded, unnamed or has a limit with no reason
   for (const [n, text, items, okText] of rules) {
     lines.push(`  ${n ? '!!' : 'OK'}  determinism: ${n ? text : okText}`);
     if (n) (failing_rules.has(items) ? fail : warn).push(`determinism: ${text}\n    ${shown(items, (x) => x, 5)}`);

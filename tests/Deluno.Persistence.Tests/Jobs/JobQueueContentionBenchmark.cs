@@ -84,7 +84,7 @@ public sealed class JobQueueContentionBenchmark(ITestOutputHelper output)
             var laneIndex = worker % laneTypes.Length;
             var jobType = laneTypes[laneIndex];
 
-            while (true)
+            while (true) // reason: each worker stops when its lane is empty, and the queue holds a fixed number of jobs
             {
                 var batch = await store.LeaseBatchAsync(
                     $"bench-{worker}", TimeSpan.FromMinutes(1), [jobType], 4, CancellationToken.None);

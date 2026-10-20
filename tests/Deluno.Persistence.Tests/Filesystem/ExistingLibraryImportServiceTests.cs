@@ -679,7 +679,7 @@ public sealed class ExistingLibraryImportServiceTests
     private static async Task<int> DrainAsync(IExistingLibraryImportService service, string runId)
     {
         var slices = 0;
-        while (true)
+        while (true) // reason: the loop ends when no work remains, and the assert below fails it after 200 slices
         {
             var outcome = await service.RunSliceAsync(runId, CancellationToken.None);
             slices++;
