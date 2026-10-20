@@ -264,3 +264,17 @@ describe("Remove", () => {
     expect(onChanged).not.toHaveBeenCalled();
   });
 });
+
+describe("a server whose saved key cannot be read here (C.11.9)", () => {
+  it("shows the Enter the saved key again notice in its drawer, with the reason, and nothing for a readable one", () => {
+    renderCard([server({ secretUnreadable: true, secretProblem: "The key was saved on another computer." })]);
+    fireEvent.click(screen.getByText("Seerr on den"));
+    const notice = screen.getByRole("alert");
+    expect(notice).toHaveTextContent("Enter the saved key again");
+    expect(notice).toHaveTextContent("The key was saved on another computer.");
+    cleanup();
+    renderCard([server()]);
+    fireEvent.click(screen.getByText("Seerr on den"));
+    expect(screen.queryByText("Enter the saved key again")).toBeNull();
+  });
+});

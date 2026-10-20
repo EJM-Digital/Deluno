@@ -156,3 +156,19 @@ describe("a provider's drawer", () => {
     expect(String(toastError.mock.calls[1][0])).not.toBe("The test could not be run.");
   });
 });
+
+describe("a provider whose saved password or key cannot be read here (C.11.9)", () => {
+  it("shows the Enter the saved key again notice in its drawer, with the reason, and nothing for a readable one", () => {
+    loaderData.providers = [option({ key: "opensubtitles", displayName: "OpenSubtitles", needsUsername: true, needsPassword: true, needsApiKey: true, configured: configured({ secretUnreadable: true, secretProblem: "The key was saved on another computer." }) })];
+    renderPage();
+    fireEvent.click(screen.getByText("OpenSubtitles"));
+    const notice = screen.getByRole("alert");
+    expect(notice).toHaveTextContent("Enter the saved key again");
+    expect(notice).toHaveTextContent("The key was saved on another computer.");
+    cleanup();
+    loaderData.providers = catalogue();
+    renderPage();
+    fireEvent.click(screen.getByText("OpenSubtitles"));
+    expect(screen.queryByText("Enter the saved key again")).toBeNull();
+  });
+});

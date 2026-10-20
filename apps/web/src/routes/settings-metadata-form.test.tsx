@@ -139,3 +139,17 @@ describe("Saved keys", () => {
     expect(JSON.parse((authedFetchMock.mock.calls[0][1] as RequestInit).body as string)).toEqual({ metadataOmdbApiKey: "omdb-key-1" });
   });
 });
+
+describe("Saved keys notice (C.11.9)", () => {
+  it("says to enter the key again with the server's reason when a stored key cannot be read here, and shows nothing otherwise", () => {
+    loaderData.settings = { ...emptyPlatformSettingsSnapshot, metadataLanguage: "en", metadataCertificationCountry: "AU" };
+    renderPage();
+    expect(screen.queryByText("Enter the saved key again")).toBeNull();
+    cleanup();
+    loaderData.settings = { ...emptyPlatformSettingsSnapshot, metadataLanguage: "en", metadataCertificationCountry: "AU", metadataTmdbApiKeyUnreadable: true, metadataKeyProblem: "The TMDb key was saved on another computer." };
+    renderPage();
+    const notice = screen.getByRole("alert");
+    expect(notice).toHaveTextContent("Enter the saved key again");
+    expect(notice).toHaveTextContent("The TMDb key was saved on another computer.");
+  });
+});

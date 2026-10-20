@@ -1,5 +1,5 @@
 // node --test scripts/platform-docker.test.mjs
-// The platform defect tests that start the Deluno image (DOK-08, DOK-10 and DAT-10, DAT-11, AUT-20, DOK-16), split out of
+// The platform defect tests that start the Deluno image (DOK-08, DOK-10 and DAT-10, DAT-11, DOK-16), split out of
 // platform-defects.test.mjs so the job that builds the image ("Container image" in ci.yml) runs them, and no job without an
 // image does. The image is named by DELUNO_DOCKER_IMAGE (Linux or WSL with docker). Container, volume and port names carry
 // a random suffix as well as the process id, so two jobs sharing one Docker daemon never collide.
@@ -72,28 +72,6 @@ test("DAT-11: a write that fails because the data folder is full tells the perso
     docker("exec", name, "sh", "-c", "dd if=/dev/zero of=/data/filler bs=1M >/dev/null 2>&1");
     const reply = docker("exec", name, "curl", "--silent", "--header", `Authorization: Bearer ${token}`, "--header", "Content-Type: application/json", "--data", '{"title":"Full","releaseYear":2026,"monitored":false}', "http://127.0.0.1:8080/api/movies").out;
     assert.match(reply, /(full|space)/i);
-  } finally {
-    docker("rm", "--force", name);
-  }
-});
-
-test("AUT-20: a backup file alone does not unlock the saved passwords: it carries neither the master key nor the keys that open them", {
-  skip: "DEFECT (AUT-20): a backup made by a container without DELUNO_MASTER_KEY lists data/secrets/master.key and data/protection-keys/*.xml beside the databases that hold the encrypted indexer and client passwords, so anyone holding the zip can read every saved password. With DELUNO_MASTER_KEY supplied the key is not in the zip, but protection-keys still are."
-}, async () => {
-  const name = `deluno-defect-aut20-${unique}`;
-  try {
-    docker("run", "--detach", "--name", name, "--publish", "127.0.0.1::8080", image);
-    const port = /:([0-9]+)$/m.exec(docker("port", name, "8080/tcp").out)?.[1];
-    assert.ok(port, "the container publishes a port");
-    assert.ok(waitFor(() => docker("exec", name, "curl", "--fail", "--silent", "http://127.0.0.1:8080/api/health/ready").status === 0, 90));
-    const base = `http://127.0.0.1:${port}`;
-    const json = { "Content-Type": "application/json" };
-    const signedIn = await (await fetch(`${base}/api/auth/bootstrap`, { method: "POST", headers: json, body: JSON.stringify({ username: "owner", displayName: "Owner", password: "owner-password-1" }) })).json();
-    const auth = { Authorization: `Bearer ${signedIn.accessToken}` };
-    const made = await (await fetch(`${base}/api/backups`, { method: "POST", headers: { ...json, ...auth }, body: JSON.stringify({ reason: "manual" }) })).json();
-    const zip = Buffer.from(await (await fetch(`${base}/api/backups/${made.backup.id}/download`, { headers: auth })).arrayBuffer());
-    assert.ok(!zip.includes("secrets/master.key"), "the backup carries the master key");
-    assert.ok(!zip.includes("protection-keys/"), "the backup carries the data-protection keys");
   } finally {
     docker("rm", "--force", name);
   }

@@ -132,3 +132,41 @@ describe("IndexerDrawerBody Remove while something else is running", () => {
     expect(screen.getByText("Waiting for the save to finish")).toBeTruthy();
   });
 });
+
+// C.11.9: the unreadable-saved-key notice shows in the indexer drawer, and only when the saved key cannot be read here.
+describe("IndexerDrawerBody unreadable saved key notice", () => {
+  function renderEditing(editing: unknown) {
+    render(
+      <IndexerDrawerBody
+        form={{ ...emptyIndexerForm(), protocol: "torznab" }}
+        setForm={() => {}}
+        editing={editing as never}
+        settings={emptyPlatformSettingsSnapshot}
+        proxies={[]}
+        throttle={null}
+        errors={{}}
+        clearError={() => {}}
+        showKey={false}
+        setShowKey={() => {}}
+        fineTuneOpen
+        setFineTuneOpen={() => {}}
+        busy={null}
+        onReset={() => {}}
+        onAcknowledgeVip={() => {}}
+        onRemove={() => {}}
+      />
+    );
+  }
+
+  it("says to enter the key again, with the fixed sentence when the server gave no reason", () => {
+    renderEditing({ id: "i1", secretUnreadable: true });
+    const notice = screen.getByRole("alert");
+    expect(notice).toHaveTextContent("Enter the saved key again");
+    expect(notice).toHaveTextContent("The saved key was stored on another computer and can't be read here. Enter it again.");
+  });
+
+  it("says nothing for an indexer whose key can be read", () => {
+    renderEditing({ id: "i1", secretUnreadable: false });
+    expect(screen.queryByText("Enter the saved key again")).toBeNull();
+  });
+});
