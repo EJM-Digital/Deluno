@@ -325,6 +325,15 @@ public sealed class PathMappingAndNamingProperties
             }).QuickCheckThrowOnFailure();
 
     [Fact]
+    public void A_title_of_only_a_dot_is_not_rendered_as_a_hidden_name_the_failing_nightly_case()
+    {
+        // The nightly of 19 Oct failed on the generated title ". ": the old name ". (2001)" would be a hidden file, so it is not a name that "was already fine".
+        var rendered = NamingTemplateRenderer.RenderSegment("{Title} ({Year})", ". ", 2001);
+        Assert.False(rendered.StartsWith('.'));
+        Assert.Equal("(2001)", rendered);
+    }
+
+    [Fact]
     public void A_dot_inside_a_name_is_kept_and_only_the_end_of_the_whole_name_is_trimmed()
     {
         Assert.Equal("Mr. Smith (2001)", NamingTemplateRenderer.RenderSegment("{Title} ({Year})", "Mr. Smith", 2001));
