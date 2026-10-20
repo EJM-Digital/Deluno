@@ -45,6 +45,21 @@ public sealed class CompanionAndPickerRoutesOnTheRealHostTests
     }
 
     [Fact]
+    public async Task An_ask_that_cannot_be_stored_is_never_answered_as_accepted_and_leaves_the_cut_short_file_alone()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        const string cut = "{\"kinds\":[\"nzb";
+        Directory.CreateDirectory(Path.GetDirectoryName(PendingFile(app))!);
+        File.WriteAllText(PendingFile(app), cut);
+
+        var response = await app.Client.PostAsJsonAsync("/api/companion-tools/tray-install", new { toolIds = new[] { "deluge" } });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.False(string.IsNullOrWhiteSpace((await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("message").GetString()));
+        Assert.Equal(cut, File.ReadAllText(PendingFile(app)));
+    }
+
+    [Fact]
     public async Task Asking_for_no_app_the_tray_installs_is_refused_in_plain_words_and_writes_nothing()
     {
         await using var app = await ApplicationTestHost.StartAsync();

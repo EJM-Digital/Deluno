@@ -1376,18 +1376,20 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
         Scene scene,
         DownloadQueueItem? item,
         List<ProcessorHandoffItem> submitted,
-        TimeProvider? clock = null)
+        TimeProvider? clock = null,
+        IReadOnlyList<DownloadQueueItem>? items = null)
     {
         var services = app.Services;
+        IReadOnlyList<DownloadQueueItem> queue = items ?? (item is null ? [] : [item]);
         var summary = new DownloadTelemetrySummary(0, 0, 0, 0, 0, 0, 0);
         var overview = new DownloadTelemetryOverview(
             summary,
-            item is null
+            queue.Count == 0
                 ? []
                 : [new DownloadClientTelemetrySnapshot(
                     Client, "Deluge", "deluge", "http://127.0.0.1:8112", "healthy", null,
                     new DownloadClientTelemetryCapabilities(true, true, true, true, false, true, "password"),
-                    summary, [item], [], DateTimeOffset.UtcNow)],
+                    summary, queue, [], DateTimeOffset.UtcNow)],
             DateTimeOffset.UtcNow);
         var telemetry = Stub.Create<IDownloadClientTelemetryService>((name, _) => name switch
         {
@@ -1426,6 +1428,68 @@ public sealed class AHandOffFollowsTheDownloadItIsForTests
                 services.GetRequiredService<ISeriesCatalogRepository>(),
                 clock ?? TimeProvider.System,
                 CancellationToken.None);
+    }
+
+    // ---- #575: a processor is given what it can hold, not everything at once ---------------------
+
+    /// <summary>The import pass runs at most every 15 seconds; this lets the next pass run now, as the next scheduled one would.</summary>
+    private static async Task LetTheNextPassRunAsync(ApplicationTestHost app)
+    {
+        await using var connection = await app.Services.GetRequiredService<Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory>()
+            .OpenConnectionAsync(Deluno.Infrastructure.Storage.DelunoDatabaseNames.Jobs, CancellationToken.None);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE worker_schedule_state SET last_run_utc = '2000-01-01T00:00:00.0000000+00:00' WHERE schedule_key = 'import.automation';";
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<List<DownloadQueueItem>> FinishedDownloadsAsync(Scene scene, int count)
+    {
+        var items = new List<DownloadQueueItem>();
+        for (var number = 1; number <= count; number++)
+        {
+            var name = $"Film.{number:00}.1080p.BluRay.x264-HD4U";
+            var folder = Directory.CreateDirectory(Path.Combine(scene.Downloads, name)).FullName;
+            await File.WriteAllBytesAsync(Path.Combine(folder, name + ".mkv"), new byte[64]);
+            items.Add(new DownloadQueueItem(
+                $"hash-{name}", Client, "Deluge", "deluge", "movies", $"Film {number:00}", name,
+                "deluno-movies", DownloadQueueStatuses.Completed, 100, 0, 0, 100, 100, 0, "Fixture Indexer", null,
+                DateTimeOffset.UtcNow.AddHours(-2), folder, scene.LibraryId));
+        }
+
+        return items;
+    }
+
+    [Fact]
+    public async Task At_most_twenty_files_are_with_one_processor_and_the_rest_are_sent_as_room_appears()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var downloads = await FinishedDownloadsAsync(scene, 25);
+        var submitted = new List<ProcessorHandoffItem>();
+
+        await PlanAsync(app, scene, item: null, submitted, items: downloads);
+
+        Assert.Equal(20, submitted.Select(sent => sent.Id).Distinct().Count());
+        Assert.Equal(20, (await Repository(app).ListProcessorHandoffsAsync(scene.LibraryId, 100, CancellationToken.None)).Count);
+
+        // Nothing more goes out while 20 are with the processor: a second pass sends no new file.
+        var sentBefore = submitted.Select(sent => sent.SourcePath).ToHashSet();
+        submitted.Clear();
+        await LetTheNextPassRunAsync(app);
+        await PlanAsync(app, scene, item: null, submitted, items: downloads);
+        Assert.DoesNotContain(submitted, sent => !sentBefore.Contains(sent.SourcePath));
+        Assert.Equal(20, (await Repository(app).ListProcessorHandoffsAsync(scene.LibraryId, 100, CancellationToken.None)).Count);
+
+        // One ends, and room appears for exactly one more.
+        var ended = (await Repository(app).ListProcessorHandoffsAsync(scene.LibraryId, 100, CancellationToken.None)).Last();
+        await Repository(app).UpdateProcessorHandoffAsync(ended.Id, ProcessorHandoffStatuses.Completed, null, null, null, CancellationToken.None);
+        submitted.Clear();
+        await LetTheNextPassRunAsync(app);
+        await PlanAsync(app, scene, item: null, submitted, items: downloads);
+
+        var all = await Repository(app).ListProcessorHandoffsAsync(scene.LibraryId, 100, CancellationToken.None);
+        Assert.Equal(21, all.Count);
+        Assert.DoesNotContain(submitted, sent => sent.Id == ended.Id);
     }
 
     // ---- #1155 with the report Weir really sent (tests/fixtures/recorded/deluno/*/events-completed) --------------------------------
