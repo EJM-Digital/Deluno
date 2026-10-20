@@ -1,6 +1,7 @@
 using Deluno.Api.Backup;
 using Deluno.Infrastructure.Storage;
 using Deluno.Persistence.Tests.Support;
+using Deluno.Security;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -133,6 +134,79 @@ public sealed class BackupKeyPasswordTests
         Assert.False(cleared.PasswordSet);
         var item = await service.CreateBackupAsync("manual", CancellationToken.None);
         Assert.False(item.KeysIncluded);
+    }
+
+    private static DelunoBackupService ProtectedService(string root, ISecretProtector protector)
+        => new(Options.Create(new StoragePathOptions { DataRoot = root }), new FixedTimeProvider(DateTimeOffset.Parse("2026-05-14T01:00:00Z")), NullLogger<DelunoBackupService>.Instance, secretProtector: protector);
+
+    private static bool ZipHoldsKeys(string zip)
+    {
+        using var archive = System.IO.Compression.ZipFile.OpenRead(zip);
+        return archive.Entries.Any(e => e.FullName == BackupKeyVault.EntryName);
+    }
+
+    [Fact]
+    public async Task With_a_protector_the_saved_password_is_stored_sealed_and_still_seals_the_keys()
+    {
+        using var source = new TempFolder();
+        Seed(source);
+        var service = ProtectedService(source, new ReversingProtector());
+        await service.SaveSettingsAsync(new UpdateBackupSettingsRequest(false, "daily", "03:00", 7, null, "correct horse"), CancellationToken.None);
+
+        var settingsFile = Directory.GetFiles(source, "backup-settings.json", SearchOption.AllDirectories).Single();
+        var onDisk = await File.ReadAllTextAsync(settingsFile);
+        Assert.DoesNotContain("correct horse", onDisk);
+        Assert.Contains("sealed:", onDisk);
+
+        var item = await service.CreateBackupAsync("manual", CancellationToken.None);
+        Assert.True(item.KeysIncluded);
+        Assert.True(ZipHoldsKeys(item.FullPath));
+
+        using var target = new TempFolder();
+        var result = await RestoreAsync(target, item.FullPath, "correct horse");
+        Assert.True(result.Restored, result.Message);
+    }
+
+    [Fact]
+    public async Task A_password_saved_before_a_protector_existed_is_still_read_so_keys_keep_going_in()
+    {
+        using var source = new TempFolder();
+        Seed(source);
+        await Service(source, new FixedTimeProvider(DateTimeOffset.Parse("2026-05-14T01:00:00Z")))
+            .SaveSettingsAsync(new UpdateBackupSettingsRequest(false, "daily", "03:00", 7, null, "old pw"), CancellationToken.None);
+
+        var item = await ProtectedService(source, new ReversingProtector()).CreateBackupAsync("manual", CancellationToken.None);
+
+        Assert.True(item.KeysIncluded);
+        Assert.True(ZipHoldsKeys(item.FullPath));
+    }
+
+    [Fact]
+    public async Task A_saved_password_that_cannot_be_read_here_leaves_the_keys_out_instead_of_failing_the_backup()
+    {
+        using var source = new TempFolder();
+        Seed(source);
+        var service = ProtectedService(source, new ReversingProtector { CannotRead = true });
+        await service.SaveSettingsAsync(new UpdateBackupSettingsRequest(false, "daily", "03:00", 7, null, "pw"), CancellationToken.None);
+
+        var item = await service.CreateBackupAsync("manual", CancellationToken.None);
+
+        Assert.False(item.KeysIncluded);
+        Assert.False(ZipHoldsKeys(item.FullPath));
+    }
+
+    private sealed class ReversingProtector : ISecretProtector
+    {
+        public bool CannotRead { get; init; }
+
+        public string Protect(string purpose, string plaintext) => "sealed:" + new string(plaintext.Reverse().ToArray());
+
+        public string? Unprotect(string purpose, string? protectedValue)
+            => CannotRead || protectedValue is null || !protectedValue.StartsWith("sealed:", StringComparison.Ordinal)
+                ? null
+                : new string(protectedValue["sealed:".Length..].Reverse().ToArray());
+
+        public bool IsProtected(string? value) => value?.StartsWith("sealed:", StringComparison.Ordinal) == true;
     }
 
     private sealed class TempFolder : IDisposable
