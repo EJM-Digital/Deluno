@@ -1,7 +1,7 @@
 # Release preference contract
 
 This is the repository copy of the normative release-preference contract in
-[#354](https://github.com/jampat000/Deluno/issues/354). It is the meaning used
+[#354](https://github.com/EJM-Digital/Deluno/issues/354). It is the meaning used
 by the typed API, persistence, migration, import and search code. A score is
 legacy provenance only; it is never Deluno's decision value.
 

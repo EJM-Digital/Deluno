@@ -21,7 +21,7 @@ size, year, runtime and rating. Not a field/operator/value builder.
 That is not timidity. **This codebase already shipped the generic version and
 deleted it** — `filterAndSortLibraryItems`, `matchesCustomRule`,
 `resolveRuleValue` and a 45-value `FilterField` union, in the browser, removed in
-[#302](https://github.com/jampat000/Deluno/issues/302). Two of its conditions
+[#302](https://github.com/EJM-Digital/Deluno/issues/302). Two of its conditions
 tested `MediaItem.status` values nothing ever set, so they matched **zero rows,
 forever, silently**. A generic engine can express questions the data cannot
 answer, and nothing in it can tell you that it has.

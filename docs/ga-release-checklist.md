@@ -47,7 +47,7 @@ without a signature.
 - No open `P0` or `P1` release-blocking issues.
 - `RELEASE_NOTES.md` has a `## <version>` section for the version being
   released, written in plain everyday words (not internal names). The repo
-  stays private ([#870](https://github.com/jampat000/Deluno/issues/870)), so
+  stays private ([#870](https://github.com/EJM-Digital/Deluno/issues/870)), so
   this file, embedded into the build, is the only place an install can read
   what changed; the Updates card shows it for every version applied.
   The early-days notice opens every section; the GitHub release body takes the
@@ -57,7 +57,7 @@ without a signature.
   step for a release build, not one to wave through with the rest.
 - Tags are made only through `scripts/tag-release.ps1 -Version <version>`, which refuses unless the tree is clean, HEAD is `origin/main`, `Directory.Build.props` and `RELEASE_NOTES.md` carry the version, CI passed on HEAD and ran the jobs, and the golden path passed on HEAD; only then does it create and push the annotated tag.
 - CI is green on the exact commit that will be tagged: `ci.yml` has a push (or manual) run for that commit whose `ci-passed` job passed. **Tag only after that.** The release workflow's first job (`ci-passed`, `scripts/verify-ci-for-release.mjs`) checks it and fails at once if not. If the commit's own push run only skipped jobs because the change was documents, run `ci.yml` by hand on the commit first (`gh workflow run ci.yml --ref <commit>`).
-- The single `release.yml` run succeeded end to end: `windows` and `docker` built, `publish` pushed the image, created the GitHub Release with its assets and `SHA256SUMS.txt`, and moved the moving image tags last. Open the run, the GitHub Release and `docker pull ghcr.io/jampat000/deluno:<version>` to see it; do not report a release done on the tag alone.
+- The single `release.yml` run succeeded end to end: `windows` and `docker` built, `publish` pushed the image, created the GitHub Release with its assets and `SHA256SUMS.txt`, and moved the moving image tags last. Open the run, the GitHub Release and `docker pull ghcr.io/ejm-digital/deluno:<version>` to see it; do not report a release done on the tag alone.
 - The golden path (`docs/golden-path.md`) has passed on the exact commit that will be tagged, on a clean VM: run `scripts/golden-path/Invoke-ScenarioSuite.ps1` on that commit's installer, which records the `golden-path` status itself. Tag only after that; there is no waiver, and the release's `golden-path` job checks the record and does not wait. The suite proves these, unattended, with evidence (the lines it does not script yet are listed in `docs/golden-path.md`):
   - The installer runs on the clean VM and offers the download clients and Weir.
   - Setup asks each automatic choice as Yes or No, and Connect Weir works.
@@ -75,7 +75,7 @@ without a signature.
   `MSB3027`/`MSB3021`, which reads like a broken build and is not one.
 
   **A green run has to be a run you watched finish.** The intermittent test-host
-  hang ([#333](https://github.com/jampat000/Deluno/issues/333)) is back and now
+  hang ([#333](https://github.com/EJM-Digital/Deluno/issues/333)) is back and now
   reproduces under the serial runner and on CI: on 6 September the backend job
   sat silent on `Deluno.Persistence.Tests` for nineteen minutes and was
   cancelled, and the same commit passed on a plain re-run. A cancelled gate is
@@ -99,10 +99,10 @@ Signed build-provenance attestations are off until the repository is public (set
 ## RC1 Checklist
 
 - [ ] RC1 tag is cut and published with required artifacts. — **not done deliberately.** The validated candidate (`rc.10`/`rc.11`, commit `b73a8ae`) was built with `scripts/pack-windows-installer.ps1` and walked on the lab VM without cutting a release, which is what that script exists for. Published `1.x` releases exist but are not the candidate that was validated.
-- [x] Clean-machine fresh install test passes. — `1.0.0-rc.10` on a clean profile, readiness 200 with 9/9 checks ([#81](https://github.com/jampat000/Deluno/issues/81)).
-- [x] Upgrade test from latest `0.1.x` to RC1 passes. — **run as `rc.10 → rc.11`** over a populated install, on the owner's instruction; libraries, connections, profiles, plans and the saved client key all survived ([#81](https://github.com/jampat000/Deluno/issues/81)).
-- [x] Rollback simulation result is documented. — 2 → 1 → 2 libraries across a restart, five `.pre-restore` copies kept ([#81](https://github.com/jampat000/Deluno/issues/81), `windows-rc-validation-matrix.md`).
-- [x] RC1 validation summary is posted to issue [#78](https://github.com/jampat000/Deluno/issues/78).
+- [x] Clean-machine fresh install test passes. — `1.0.0-rc.10` on a clean profile, readiness 200 with 9/9 checks ([#81](https://github.com/EJM-Digital/Deluno/issues/81)).
+- [x] Upgrade test from latest `0.1.x` to RC1 passes. — **run as `rc.10 → rc.11`** over a populated install, on the owner's instruction; libraries, connections, profiles, plans and the saved client key all survived ([#81](https://github.com/EJM-Digital/Deluno/issues/81)).
+- [x] Rollback simulation result is documented. — 2 → 1 → 2 libraries across a restart, five `.pre-restore` copies kept ([#81](https://github.com/EJM-Digital/Deluno/issues/81), `windows-rc-validation-matrix.md`).
+- [x] RC1 validation summary is posted to issue [#78](https://github.com/EJM-Digital/Deluno/issues/78).
 
 Exit criteria:
 
@@ -111,10 +111,10 @@ Exit criteria:
 
 ## RC2 Checklist
 
-- [x] RC1 defects are fixed and linked in issue [#78](https://github.com/jampat000/Deluno/issues/78). — four found by running the installer, all fixed and re-verified (#400–#403), plus packaging (#404).
-- [x] Installer/upgrade/rollback matrix is rerun and passes ([#81](https://github.com/jampat000/Deluno/issues/81)). — ten of twelve lines met; the two outstanding both want a signed installer, which is the decision above.
-- [ ] The live test from a fresh install passes, and automatic upgrade-hunting is proven live once per media type ([#639](https://github.com/jampat000/Deluno/issues/639)). Both replaced the 14-day soak ([#82](https://github.com/jampat000/Deluno/issues/82), closed 24 Sep 2026).
-- [x] Backup/restore drill succeeds on a second machine profile ([#83](https://github.com/jampat000/Deluno/issues/83)). — Rollback C on the lab VM; the first attempt failed and the recovery path was repaired (#403).
+- [x] RC1 defects are fixed and linked in issue [#78](https://github.com/EJM-Digital/Deluno/issues/78). — four found by running the installer, all fixed and re-verified (#400–#403), plus packaging (#404).
+- [x] Installer/upgrade/rollback matrix is rerun and passes ([#81](https://github.com/EJM-Digital/Deluno/issues/81)). — ten of twelve lines met; the two outstanding both want a signed installer, which is the decision above.
+- [ ] The live test from a fresh install passes, and automatic upgrade-hunting is proven live once per media type ([#639](https://github.com/EJM-Digital/Deluno/issues/639)). Both replaced the 14-day soak ([#82](https://github.com/EJM-Digital/Deluno/issues/82), closed 24 Sep 2026).
+- [x] Backup/restore drill succeeds on a second machine profile ([#83](https://github.com/EJM-Digital/Deluno/issues/83)). — Rollback C on the lab VM; the first attempt failed and the recovery path was repaired (#403).
 - [ ] RC2 release notes draft exists and matches shipped behavior. — the draft exists (`release-notes-1.0.0-draft.md`, last touched 2026-09-02); **whether it still matches is unverified**, and behaviour has moved since.
 
 Exit criteria:
@@ -125,11 +125,11 @@ Exit criteria:
 ## GA Checklist (`1.0.0`)
 
 - [ ] The live test's summary is posted and approved, with every finding filed and resolved.
-- [x] Backup/restore runbook is published and linked ([#83](https://github.com/jampat000/Deluno/issues/83)). — `backup-restore-runbook.md`, linked from `docs/README.md` and the root README.
-- [x] Regression evidence is posted for GA candidate commit ([#85](https://github.com/jampat000/Deluno/issues/85)). — commit `b73a8ae`: 1,598 backend tests and 304 browser checks, posted on [#81](https://github.com/jampat000/Deluno/issues/81).
-- [x] User-facing upgrade notes are published ([#86](https://github.com/jampat000/Deluno/issues/86)). — `upgrade-guide-0x-to-1x.md`, linked from `docs/README.md` and the root README.
+- [x] Backup/restore runbook is published and linked ([#83](https://github.com/EJM-Digital/Deluno/issues/83)). — `backup-restore-runbook.md`, linked from `docs/README.md` and the root README.
+- [x] Regression evidence is posted for GA candidate commit ([#85](https://github.com/EJM-Digital/Deluno/issues/85)). — commit `b73a8ae`: 1,598 backend tests and 304 browser checks, posted on [#81](https://github.com/EJM-Digital/Deluno/issues/81).
+- [x] User-facing upgrade notes are published ([#86](https://github.com/EJM-Digital/Deluno/issues/86)). — `upgrade-guide-0x-to-1x.md`, linked from `docs/README.md` and the root README.
 - [ ] Final release decision log is filled and attached (template below). — nothing to decide on until the live test reports.
-- [ ] Final sign-off is recorded in issue [#78](https://github.com/jampat000/Deluno/issues/78) and child issues are closed.
+- [ ] Final sign-off is recorded in issue [#78](https://github.com/EJM-Digital/Deluno/issues/78) and child issues are closed.
 
 Exit criteria:
 
@@ -149,12 +149,12 @@ Exit criteria:
 ### rc.22: NO-GO (29 Sep 2026, the owner)
 
 Candidate tag: `v1.0.0-rc.22`. Decision: **NO-GO**, not released. Reason
-(the owner, on [#941](https://github.com/jampat000/Deluno/issues/941)): rc.22 is
+(the owner, on [#941](https://github.com/EJM-Digital/Deluno/issues/941)): rc.22 is
 superseded by about 60 fixes on `main`. The candidate is cut again as
 `1.0.0-rc.23` once the installer's all-six clean-VM run passes
-([#968](https://github.com/jampat000/Deluno/issues/968)) and the rig checks
-pass ([#959](https://github.com/jampat000/Deluno/issues/959),
-[#1027](https://github.com/jampat000/Deluno/issues/1027)); the GA regression
+([#968](https://github.com/EJM-Digital/Deluno/issues/968)) and the rig checks
+pass ([#959](https://github.com/EJM-Digital/Deluno/issues/959),
+[#1027](https://github.com/EJM-Digital/Deluno/issues/1027)); the GA regression
 is then run on rc.23 and its summary and decision log are posted on #941.
 
 ### rc.23: pending
@@ -168,8 +168,8 @@ Release/Docker run links go there before a GO or NO-GO is posted. The
 ### rc.24: pending
 
 Candidate: `1.0.0-rc.24`, cut on 30 Sep 2026 from rc.23 plus
-[#1081](https://github.com/jampat000/Deluno/issues/1081) to
-[#1086](https://github.com/jampat000/Deluno/issues/1086) (instant screens, the
+[#1081](https://github.com/EJM-Digital/Deluno/issues/1081) to
+[#1086](https://github.com/EJM-Digital/Deluno/issues/1086) (instant screens, the
 tabbed Dashboard, database trimming, consistent backups, plain words). No GO or
 NO-GO has been posted for rc.23 or rc.24.
 

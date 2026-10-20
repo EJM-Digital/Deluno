@@ -3,7 +3,7 @@
 ## Supported versions
 
 Deluno is early and moves quickly. Security fixes ship in the latest release candidate
-(the newest `1.0.0-rc.N` on the [releases page](https://github.com/jampat000/Deluno/releases)).
+(the newest `1.0.0-rc.N` on the [releases page](https://github.com/EJM-Digital/Deluno/releases)).
 Older release candidates do not get backported fixes, so update to the latest one to receive them.
 
 ## Reporting a vulnerability
@@ -11,7 +11,7 @@ Older release candidates do not get backported fixes, so update to the latest on
 Please do not open a public GitHub issue for a vulnerability that is not fixed yet. Report it
 privately through GitHub's private vulnerability reporting:
 
-1. Open the [Security tab](https://github.com/jampat000/Deluno/security) of this repository.
+1. Open the [Security tab](https://github.com/EJM-Digital/Deluno/security) of this repository.
 2. Choose **Report a vulnerability**.
 
 Include:

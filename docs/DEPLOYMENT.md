@@ -48,7 +48,7 @@ http://127.0.0.1:5099/api/health/ready
 For end users, install from GitHub Releases:
 
 ```text
-https://github.com/jampat000/Deluno/releases
+https://github.com/EJM-Digital/Deluno/releases
 ```
 
 Then:
@@ -180,7 +180,7 @@ migrations. Wait for HTTP `200`; the `/data` mount must remain unchanged.
 Pinning example:
 
 ```text
-DELUNO_IMAGE=ghcr.io/jampat000/deluno@sha256:76a79756e72d97b90263dd21f609ac39617ddf7f4cebc68dbfe0a0bd375af5bf
+DELUNO_IMAGE=ghcr.io/ejm-digital/deluno@sha256:76a79756e72d97b90263dd21f609ac39617ddf7f4cebc68dbfe0a0bd375af5bf
 ```
 
 That is the digest release CI published and then verified for `1.0.0-rc.3`. Use
@@ -202,7 +202,7 @@ starting the older image.
 Install from the latest release setup executable:
 
 ```text
-https://github.com/jampat000/Deluno/releases
+https://github.com/EJM-Digital/Deluno/releases
 ```
 
 Packaged defaults:

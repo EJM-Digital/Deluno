@@ -44,9 +44,8 @@ test("the match ignores case", () => {
   try { assert.equal(findViolations(root).length, 1); } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("the declared single-value files and the pending-flip files may name it", () => {
+test("the declared single-value files may name it", () => {
   const files = Object.fromEntries(DECLARED.map((f) => [f, written()]));
-  files[".github/ISSUE_TEMPLATE/config.yml"] = written();
   const root = tree(files);
   try { assert.deepEqual(findViolations(root), []); } finally { rmSync(root, { recursive: true, force: true }); }
 });

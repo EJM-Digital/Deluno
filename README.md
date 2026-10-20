@@ -12,7 +12,7 @@ It runs on Windows and in Docker. It is for one person, and your data stays on y
 > rough edges, and please do not point it at the only copy of anything you cannot
 > replace. Nothing runs on its own until you switch it on, and what Deluno does is
 > written to Activity. If something looks wrong, confusing
-> or just ugly, [tell us](https://github.com/jampat000/Deluno/issues). That is the
+> or just ugly, [tell us](https://github.com/EJM-Digital/Deluno/issues). That is the
 > most useful thing you can do right now, and every report gets read.
 
 <img src="screenshots/dashboard-live.png" width="49%"> <img src="screenshots/dashboard-system.png" width="49%">
@@ -50,7 +50,7 @@ Movies and TV run on separate engines inside, so they never fight over the same 
 
 You need 64-bit Windows. You do not need administrator rights to install Deluno.
 
-1. Download the latest `Setup.exe` from [Releases](https://github.com/jampat000/Deluno/releases). Beside it you will find `SHA256SUMS.txt`, if you want to check the download.
+1. Download the latest `Setup.exe` from [Releases](https://github.com/EJM-Digital/Deluno/releases). Beside it you will find `SHA256SUMS.txt`, if you want to check the download.
 2. Run it. Deluno is not code-signed yet, so Windows SmartScreen may say "Windows protected your PC". Choose **More info**, then **Run anyway**. That warning means the publisher is not verified, not that anything is wrong with the file.
 3. Deluno installs for your user account and starts. Its icon appears in the system tray.
 4. **Windows asks for permission once.** A prompt asks whether other devices on your network may reach Deluno, which adds a Windows Firewall rule for Deluno's port. Say yes if you want to open Deluno from your phone or another computer. Say no if you only use it on this PC. You can change your mind later: if the rule is missing, right-click the tray icon and choose **Allow other devices on your network**.
@@ -70,7 +70,7 @@ Your data lives outside the program folder on purpose, so updating the program n
 
 **Linux:** running Deluno directly on Linux (as a systemd service, without Docker) is not supported yet. On Linux, use Docker, as below.
 
-Images are published to GitHub's container registry as `ghcr.io/jampat000/deluno`. Use a version tag such as `1.0.0-rc.28`. Release CI checks each version tag is pullable before it counts as released, but it does not move `latest` for pre-release builds, so `latest` can be older than what you want.
+Images are published to GitHub's container registry as `ghcr.io/ejm-digital/deluno`. Use a version tag such as `1.0.0-rc.28`. Release CI checks each version tag is pullable before it counts as released, but it does not move `latest` for pre-release builds, so `latest` can be older than what you want.
 
 Inside the container, Deluno listens on port `8080` and keeps its own databases, keys and logs under the folder named by `Storage__DataRoot`. The container runs as a normal user, not root. It does not have the `PUID`/`PGID` settings you may know from other images. If you need files owned by your own user, tell Docker who to run as with `user:` (or `--user`), as the examples below do.
 
@@ -110,7 +110,7 @@ docker run -d \
   -v /srv/deluno-config:/config \
   -v /srv/data:/data \
   --restart unless-stopped \
-  ghcr.io/jampat000/deluno:1.0.0-rc.28
+  ghcr.io/ejm-digital/deluno:1.0.0-rc.28
 ```
 
 Set `TZ` to [your own time zone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) instead of `Australia/Sydney`, so schedules, the log and Activity use your local time. Then open `http://<server>:5099`, where `<server>` is the name or address of the machine running Docker.
@@ -122,7 +122,7 @@ This one puts a qBittorrent container beside Deluno, with the shared `/data` fol
 ```yaml
 services:
   deluno:
-    image: ghcr.io/jampat000/deluno:1.0.0-rc.28
+    image: ghcr.io/ejm-digital/deluno:1.0.0-rc.28
     container_name: deluno
     user: "1000:1000"
     ports:
@@ -183,7 +183,7 @@ If you want to reach it away from home, the safest options are a VPN you already
 
 ## Working with Weir
 
-[Weir](https://github.com/jampat000/Weir) is a separate, companion project that does the clean-up step before Deluno imports a download. It is how Deluno's *refine before import* works:
+[Weir](https://github.com/EJM-Digital/Weir) is a separate, companion project that does the clean-up step before Deluno imports a download. It is how Deluno's *refine before import* works:
 
 1. Your download client finishes a download.
 2. Weir cleans up the output.
@@ -210,7 +210,7 @@ Moving from an older 0.x install? There is an [upgrade guide](docs/upgrade-guide
 
 ## Getting help
 
-- **Something broke, looks wrong, or is confusing:** open an [issue](https://github.com/jampat000/Deluno/issues). Say what you did, what you expected and what happened. A line from the log (see the paths above, or `docker logs deluno`) helps a great deal. Leave out API keys and passwords.
+- **Something broke, looks wrong, or is confusing:** open an [issue](https://github.com/EJM-Digital/Deluno/issues). Say what you did, what you expected and what happened. A line from the log (see the paths above, or `docker logs deluno`) helps a great deal. Leave out API keys and passwords.
 - **A security problem:** please do not post details in a public issue. Message the maintainer privately through GitHub instead.
 - **What changed in each version:** [release notes](RELEASE_NOTES.md). They are also shown inside the app, under System → Updates.
 - **Stuck:** [Troubleshooting](docs/TROUBLESHOOTING.md) covers the usual first checks.

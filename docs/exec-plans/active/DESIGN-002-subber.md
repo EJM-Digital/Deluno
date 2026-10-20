@@ -1,6 +1,6 @@
 # DESIGN-002 — Subber in Deluno
 
-The plan for [#301](https://github.com/jampat000/Deluno/issues/301): move Subber
+The plan for [#301](https://github.com/EJM-Digital/Deluno/issues/301): move Subber
 out of Weir and into Deluno, "cleaner and better than it was".
 
 Read after [DESIGN-001](DESIGN-001-title-marks.md) — Subber inherits its
@@ -543,7 +543,7 @@ be what makes it scan.
 Restated because it is the failure this feature is most likely to cause, and
 because Weir's Subber ships all three. Searches are planned from the
 library's existing cycle, exactly as per-episode search now is
-([#303](https://github.com/jampat000/Deluno/issues/303)) — which inherits the
+([#303](https://github.com/EJM-Digital/Deluno/issues/303)) — which inherits the
 time-of-day window, the manual override and `MaxItemsPerRun` for free, and
 cannot drift from them.
 
@@ -633,7 +633,7 @@ untouched.
 
 **Where this got to. All six are done.** Steps 1 to 5 were recorded in
 `b052b66` and the commit after it; step 6 is Weir
-[#327](https://github.com/jampat000/Weir/pull/327), and the end-to-end fetch
+[#327](https://github.com/EJM-Digital/Weir/pull/327), and the end-to-end fetch
 that gated it ran on the rig first.
 
 1. **Languages, and what you already have.** A per-library list of wanted

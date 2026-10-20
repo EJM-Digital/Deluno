@@ -8,8 +8,8 @@ namespace Deluno.Contracts;
 /// </summary>
 public static class ProjectRepositories
 {
-    /// <summary>Deluno's own repository, as owner/name. Flipped after the repository transfer, not before.</summary>
-    public const string Deluno = "jampat000/Deluno";
+    /// <summary>Deluno's own repository, as owner/name. Moved from the personal account to the organisation.</summary>
+    public const string Deluno = "EJM-Digital/Deluno";
 
     /// <summary>Weir's repository, as owner/name. Weir has already moved.</summary>
     public const string Weir = "EJM-Digital/Weir";
@@ -41,56 +41,6 @@ public static class ProjectRepositories
         return FormerDelunoWebUrls.Any(former => string.Equals(former, trimmed, StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>Where the images of releases up to <see cref="LastFormerImageVersion"/> live. ghcr does not forward a moved name.</summary>
-    public const string FormerDelunoImage = "ghcr.io/jampat000/deluno";
-
-    /// <summary>The last release published under <see cref="FormerDelunoImage"/>.</summary>
-    public const string LastFormerImageVersion = "1.0.0-rc.30.34";
-
-    /// <summary>The image name for releases published from now on: the repository, lower-cased, as the release workflow names it.</summary>
+    /// <summary>The one image name, for every version: the repository, lower-cased, as the release workflow names it. Earlier releases were copied here from the former package (copy-former-images.yml).</summary>
     public static string DelunoImage => "ghcr.io/" + Deluno.ToLowerInvariant();
-
-    /// <summary>
-    /// The image name a given release was published under: the former name up to <see cref="LastFormerImageVersion"/>, the
-    /// current one after. Anything that pulls an earlier release's image (an upgrade test, a rollback check) names it here.
-    /// </summary>
-    public static string DelunoImageForVersion(string version)
-        => CompareVersions(version, LastFormerImageVersion) <= 0 ? FormerDelunoImage : DelunoImage;
-
-    /// <summary>Orders versions like 1.0.0-rc.30.34 numerically, part by part; a release without a suffix is newer than its candidates.</summary>
-    public static int CompareVersions(string left, string right)
-    {
-        static (int[] Core, int[]? Pre) Parse(string value)
-        {
-            var text = value.Trim().TrimStart('v', 'V');
-            var plus = text.IndexOf('+');
-            if (plus >= 0) text = text[..plus];
-            var dash = text.IndexOf('-');
-            var core = dash < 0 ? text : text[..dash];
-            var pre = dash < 0 ? null : text[(dash + 1)..];
-            static int[] Numbers(string part) => part.Split('.', '-').Select(piece => int.TryParse(piece, out var n) ? n : -1).ToArray();
-            return (Numbers(core), pre is null ? null : Numbers(pre));
-        }
-
-        static int Parts(int[] a, int[] b)
-        {
-            for (var i = 0; i < Math.Max(a.Length, b.Length); i++)
-            {
-                var x = i < a.Length ? a[i] : 0;
-                var y = i < b.Length ? b[i] : 0;
-                if (x != y) return x.CompareTo(y);
-            }
-
-            return 0;
-        }
-
-        var (leftCore, leftPre) = Parse(left);
-        var (rightCore, rightPre) = Parse(right);
-        var core = Parts(leftCore, rightCore);
-        if (core != 0) return core;
-        if (leftPre is null && rightPre is null) return 0;
-        if (leftPre is null) return 1;
-        if (rightPre is null) return -1;
-        return Parts(leftPre, rightPre);
-    }
 }

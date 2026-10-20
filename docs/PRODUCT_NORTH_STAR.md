@@ -61,7 +61,7 @@ Changes must be previewable, attributable, and reversible. Deluno must never sil
 
 ## The bar, in the owner's words
 
-This is [#194](https://github.com/jampat000/Deluno/issues/194), recorded here so
+This is [#194](https://github.com/EJM-Digital/Deluno/issues/194), recorded here so
 it cannot be lost with the issue. It was opened saying the whole point could be
 forgotten, and asking that it be embedded somewhere permanent and checked
 against constantly. This is that place.
@@ -83,7 +83,7 @@ What each one actually does, and therefore what Deluno owes:
 
 | It replaces | What that tool actually does | So Deluno owes |
 |---|---|---|
-| **Radarr** | Movie PVR: catalogue, quality profiles and custom formats, RSS and interactive search, import and rename, failed-download handling, collections, calendar, lists | All of it, at 5,000+ titles, with filtering and sorting past what Radarr offers ([#306](https://github.com/jampat000/Deluno/issues/306)–[#310](https://github.com/jampat000/Deluno/issues/310)) |
+| **Radarr** | Movie PVR: catalogue, quality profiles and custom formats, RSS and interactive search, import and rename, failed-download handling, collections, calendar, lists | All of it, at 5,000+ titles, with filtering and sorting past what Radarr offers ([#306](https://github.com/EJM-Digital/Deluno/issues/306)–[#310](https://github.com/EJM-Digital/Deluno/issues/310)) |
 | **Sonarr** | The same for TV, at series/season/episode grain: specials, multi-episode releases, air dates, scene numbering | Episode-grain everything, not a movie engine with seasons bolted on |
 | **Prowlarr** | Indexer **manager and proxy**: 24 usenet indexers, 500+ trackers, Generic Newznab/Torznab, Cardigann YML definitions, per-indexer proxy (SOCKS4/5, HTTP, FlareSolverr), health, history, stats. Syncs config *into* the arrs; downloads nothing itself | Indexers configured once, with health, tests, rate limits and per-indexer proxying — and **no sync step**, because there is nothing to sync into |
 | **Huntarr** | Actively hunts library gaps the arrs' RSS never revisits — missing and cutoff-unmet — in small indexer-safe batches with hourly caps, pausing when the queue fills | The library automation cycle: window, interval, `MaxItemsPerRun`, retry delay. **Already built** |
@@ -91,7 +91,7 @@ What each one actually does, and therefore what Deluno owes:
 | **Recyclarr** | Syncs TRaSH Guides **into** Radarr/Sonarr: quality profiles, custom formats and scores, quality definitions (size ranges per tier), naming schemes. Config-sync only — touches no media | Good defaults **built in**, versioned and previewable, with no YAML and no second tool to run |
 | **TRaSH Guides** | Documentation, not software: custom formats, quality/size definitions, naming, and hardlink-safe folder structure | The guidance encoded as defaults you can see and override, not a wiki you have to read first |
 | **Upgradarr** | Walks the whole library looking for better releases, one title per cycle, with a configurable pause (default 5 min) so trackers do not ban you | Upgrade search paced by the same cycle, to a cutoff, and stopping there |
-| **Bazarr** | Subtitles for whatever Sonarr/Radarr already indexed — 184 languages, 50+ providers, forced/foreign variants, upgrades, history, manual search. **Cannot scan disk itself** | Subtitles as part of the library, not a companion to it ([#301](https://github.com/jampat000/Deluno/issues/301)) |
+| **Bazarr** | Subtitles for whatever Sonarr/Radarr already indexed — 184 languages, 50+ providers, forced/foreign variants, upgrades, history, manual search. **Cannot scan disk itself** | Subtitles as part of the library, not a companion to it ([#301](https://github.com/EJM-Digital/Deluno/issues/301)) |
 
 ### Two things that list makes obvious
 

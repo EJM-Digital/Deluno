@@ -53,7 +53,7 @@ Each entry carries:
 
 Weir is resolved differently (`apps/windows-tray/GithubLatestRelease.cs`):
 rather than a version pinned in this repo, it always resolves the *latest*
-GitHub release of `jampat000/Weir`, because Weir is Deluno's own sibling
+GitHub release of `EJM-Digital/Weir`, because Weir is Deluno's own sibling
 product and auto-updates itself once installed — "whatever is currently
 published" is the right answer for it in a way it is not for the five
 third-party clients. Every Weir release publishes `SHA256SUMS.txt` next to

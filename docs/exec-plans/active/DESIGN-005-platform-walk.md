@@ -42,7 +42,7 @@ query in the background, with an A–Z rail. `library-grid.tsx` already imports
 `useVirtualizer`, so only visible rows are ever in the DOM — twenty thousand item
 objects is a few megabytes, where twenty thousand DOM nodes is what costs Radarr
 its five seconds. Faster than Radarr *and* better than paging. See
-[#312](https://github.com/jampat000/Deluno/issues/312).
+[#312](https://github.com/EJM-Digital/Deluno/issues/312).
 
 History is 2,840 pages of 20. Paged, and unremarkable — paging is right there,
 because nobody browses history.

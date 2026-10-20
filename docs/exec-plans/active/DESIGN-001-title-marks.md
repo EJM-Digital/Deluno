@@ -1,9 +1,9 @@
 # DESIGN-001 — The mark on a title
 
 Settled 2026-08-27 with the owner, over a long design pass. This is the decided
-design for [#300](https://github.com/jampat000/Deluno/issues/300) and
-[#302](https://github.com/jampat000/Deluno/issues/302), and the vocabulary
-[#301](https://github.com/jampat000/Deluno/issues/301) (Subber) inherits.
+design for [#300](https://github.com/EJM-Digital/Deluno/issues/300) and
+[#302](https://github.com/EJM-Digital/Deluno/issues/302), and the vocabulary
+[#301](https://github.com/EJM-Digital/Deluno/issues/301) (Subber) inherits.
 
 Rendered reference, every mark drawn at real poster sizes:
 <https://claude.ai/code/artifact/f6e8656a-8e43-4b5b-a4a2-215e983e8232>
@@ -16,10 +16,10 @@ Rendered reference, every mark drawn at real poster sizes:
 > labels. Read this document for what a mark means and DESIGN-006 for what a
 > card looks like.
 
-> **Reversed in part by [#1032](https://github.com/jampat000/Deluno/issues/1032)**
+> **Reversed in part by [#1032](https://github.com/EJM-Digital/Deluno/issues/1032)**
 > (28 Sep 2026). Every bar and legend swatch used to carry a non-colour
 > texture as well as its hue, so a reader who could not separate the colours
-> could read the pattern instead — the rule [#318](https://github.com/jampat000/Deluno/issues/318)
+> could read the pattern instead — the rule [#318](https://github.com/EJM-Digital/Deluno/issues/318)
 > asked for. The owner reversed it directly: *"do we really care about
 > accessibility? no I think not so lets remove them"*. Colour alone now
 > carries a mark's state; `.title-mark-pattern` and its per-rung selectors are

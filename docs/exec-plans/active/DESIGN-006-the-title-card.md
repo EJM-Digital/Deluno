@@ -14,9 +14,9 @@ Settled 2026-08-30 with the owner. Supersedes the card half of
 decision in `4bdfe45`. The subtitle vocabulary from
 [DESIGN-002](DESIGN-002-subber.md) is unchanged and inherited.
 
-> **Reversed in part by [#1032](https://github.com/jampat000/Deluno/issues/1032)**
+> **Reversed in part by [#1032](https://github.com/EJM-Digital/Deluno/issues/1032)**
 > (28 Sep 2026). Every bar drawn by this design used to carry a non-colour
-> texture as well as its fill colour — see [#318](https://github.com/jampat000/Deluno/issues/318),
+> texture as well as its fill colour — see [#318](https://github.com/EJM-Digital/Deluno/issues/318),
 > which this design's bars and legend swatches followed. The owner reversed that
 > rule directly: *"do we really care about accessibility? no I think not so
 > lets remove them"*. A bar's state is now carried by colour alone; the

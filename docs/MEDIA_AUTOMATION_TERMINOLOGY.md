@@ -42,7 +42,7 @@ Open **Library setup** to see what is configured and ready. Each card is a real 
 - [Recyclarr](https://recyclarr.dev/reference/configuration/quality-profiles/) and [Configarr](https://configarr.de/docs/configuration/config-file/) use quality profiles, custom formats, guide settings, and explicit overrides.
 - [CleanUpArr](https://github.com/Cleanuparr/Cleanuparr) covers unhealthy downloads, safe cleanup, replacement searches, seeding, and orphan handling.
 
-## Canonical vocabulary and internal naming (resolves [#149](https://github.com/jampat000/Deluno/issues/149))
+## Canonical vocabulary and internal naming (resolves [#149](https://github.com/EJM-Digital/Deluno/issues/149))
 
 The sections above are the user-facing Rosetta stone. This section is the
 normative name-per-concept table across the UI, the URL, and the code —

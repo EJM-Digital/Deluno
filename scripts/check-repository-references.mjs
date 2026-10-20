@@ -21,7 +21,7 @@ export const DECLARED = ["repository.json", "src/Deluno.Contracts/ProjectReposit
  * Files that still point at Deluno's current repository on purpose until the flip, each listed in PLAN-ORG-MOVE.md.
  * Remove an entry here when the flip changes the file.
  */
-export const PENDING_FLIP = [".github/ISSUE_TEMPLATE/config.yml"];
+export const PENDING_FLIP = [];
 
 const SCANNED_DIRECTORIES = ["src", "apps", "installer", "scripts", ".github"];
 const SKIPPED_DIRECTORY_NAMES = new Set(["node_modules", "bin", "obj", "dist", ".git", ".vs", "coverage"]);

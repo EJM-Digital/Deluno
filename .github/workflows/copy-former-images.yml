@@ -1,0 +1,101 @@
+# One-off, run by hand once after Deluno moved to the EJM-Digital organisation: copies every tag of the old image
+# (the name in repository.json's formerDelunoImage) to this repository's image name, with identical digests, then
+# checks that each tag has the same digest under both names. ghcr does not forward a moved name, so without this the
+# releases published before the move would be lost when the old package is deleted. After a clean run: make the
+# new package public, then delete the old one (docs/exec-plans/active/PLAN-ORG-MOVE.md, "After the transfer").
+#
+# This is a copy, not a release: it pushes no new build. It uses crane (a pinned release, checked against its published
+# checksum) rather than a login action, because release.yml is the only workflow that may log in to the registry through an action.
+# The old package must let this repository read it (package settings, "Manage Actions access"), or be public.
+name: Copy former images
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: copy-former-images
+  cancel-in-progress: false
+
+jobs:
+  copy:
+    # Must run on GitHub-hosted runners: it logs in to ghcr with the workflow token.
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    env:
+      CRANE_VERSION: "0.20.3"
+      CRANE_SHA256: "36c67a932f489b3f2724b64af90b599a8ef2aa7b004872597373c0ad694dc059"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install crane (pinned release, checksum checked)
+        run: |
+          set -euo pipefail
+          file="go-containerregistry_Linux_x86_64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$file" "https://github.com/google/go-containerregistry/releases/download/v${CRANE_VERSION}/$file"
+          echo "${CRANE_SHA256}  $RUNNER_TEMP/$file" | sha256sum --check -
+          mkdir -p "$RUNNER_TEMP/crane"
+          tar -xzf "$RUNNER_TEMP/$file" -C "$RUNNER_TEMP/crane" crane
+          echo "$RUNNER_TEMP/crane" >> "$GITHUB_PATH"
+
+      - name: Sign in to ghcr
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: printf '%s' "$TOKEN" | crane auth login ghcr.io --username "$ACTOR" --password-stdin
+
+      - name: Copy every tag, then check each digest
+        run: |
+          set -euo pipefail
+          source="$(jq -r .formerDelunoImage repository.json)"
+          target="ghcr.io/$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          if [ "$source" = "$target" ]; then echo "The former and the current image name are the same ($source): nothing to copy."; exit 1; fi
+
+          crane ls "$source" > "$RUNNER_TEMP/tags.txt"
+          total="$(wc -l < "$RUNNER_TEMP/tags.txt")"
+          if [ "$total" -eq 0 ]; then echo "No tags found under $source."; exit 1; fi
+          echo "Copying $total tags from $source to $target"
+
+          while read -r tag; do
+            [ -n "$tag" ] || continue
+            crane copy "$source:$tag" "$target:$tag"
+          done < "$RUNNER_TEMP/tags.txt"
+
+          # Verify against a fresh listing of the target, so a missing copy is found as well as a different digest.
+          crane ls "$target" > "$RUNNER_TEMP/target-tags.txt"
+          failed=0
+          copied=0
+          {
+            echo "### Former images copied to $target"
+            echo
+            echo "| Tag | Digest | Result |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          while read -r tag; do
+            [ -n "$tag" ] || continue
+            old="$(crane digest "$source:$tag")"
+            if grep -qxF "$tag" "$RUNNER_TEMP/target-tags.txt"; then
+              new="$(crane digest "$target:$tag")"
+            else
+              new="(missing)"
+            fi
+            if [ "$old" = "$new" ]; then
+              result="same"
+              copied=$((copied + 1))
+            else
+              result="DIFFERENT: $new"
+              failed=$((failed + 1))
+            fi
+            echo "$tag $old $result"
+            echo "| \`$tag\` | \`$old\` | $result |" >> "$GITHUB_STEP_SUMMARY"
+          done < "$RUNNER_TEMP/tags.txt"
+
+          echo
+          echo "Tags found: $total. Copied with an identical digest: $copied. Missing or different: $failed."
+          echo "Tags found: $total. Identical: $copied. Missing or different: $failed." >> "$GITHUB_STEP_SUMMARY"
+          [ "$failed" -eq 0 ]

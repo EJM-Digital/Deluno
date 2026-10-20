@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Report a security problem (private)
-    url: https://github.com/jampat000/Deluno/security/advisories/new
+    url: https://github.com/EJM-Digital/Deluno/security/advisories/new
     about: Please do not open a public issue for a vulnerability. Report it privately here; SECURITY.md explains what to include.
   - name: Security policy
-    url: https://github.com/jampat000/Deluno/blob/main/SECURITY.md
+    url: https://github.com/EJM-Digital/Deluno/blob/main/SECURITY.md
     about: How security reports are handled and which versions are supported.

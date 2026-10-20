@@ -111,7 +111,7 @@ Docker installs do not perform in-app binary replacement.
 Use versioned image or digest updates instead:
 
 ```bash
-export DELUNO_IMAGE=ghcr.io/jampat000/deluno:<tag>
+export DELUNO_IMAGE=ghcr.io/ejm-digital/deluno:<tag>
 docker compose pull deluno
 docker compose up -d --no-build
 curl --fail http://127.0.0.1:5099/api/health/ready
@@ -120,7 +120,7 @@ curl --fail http://127.0.0.1:5099/api/health/ready
 For a repeatable deployment, use an immutable reference:
 
 ```text
-DELUNO_IMAGE=ghcr.io/jampat000/deluno@sha256:<digest>
+DELUNO_IMAGE=ghcr.io/ejm-digital/deluno@sha256:<digest>
 ```
 
 Record the resolved digest with `docker image inspect` before and after the

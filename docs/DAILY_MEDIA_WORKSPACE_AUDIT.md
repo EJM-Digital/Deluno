@@ -18,8 +18,8 @@ internal automation jargon.
 
 | ID | Surface | Confirmed gap | User impact | Status / tracking |
 | --- | --- | --- | --- | --- |
-| DMW-01 | Movies, TV Shows, title details | No visible remove-from-Deluno action exists for one or many titles. The API already has an unreachable bulk record-removal operation, while a misleading legacy `DELETE /bulk` operation only unmonitors. | A normal library correction is impossible; users cannot tell record removal apart from deleting files or download-client work. | Record-only removal is now implemented and verified on desktop/mobile; the optional safe file-delete preview, client-work separation/audit, and legacy route cleanup remain in [#102](https://github.com/jampat000/Deluno/issues/102). |
-| DMW-02 | Movies and TV workspaces | Wanted and Upgrades both render upgrade-eligible records. | The same work appears in two places with potentially conflicting counts and actions. | Open: [#103](https://github.com/jampat000/Deluno/issues/103) |
+| DMW-01 | Movies, TV Shows, title details | No visible remove-from-Deluno action exists for one or many titles. The API already has an unreachable bulk record-removal operation, while a misleading legacy `DELETE /bulk` operation only unmonitors. | A normal library correction is impossible; users cannot tell record removal apart from deleting files or download-client work. | Record-only removal is now implemented and verified on desktop/mobile; the optional safe file-delete preview, client-work separation/audit, and legacy route cleanup remain in [#102](https://github.com/EJM-Digital/Deluno/issues/102). |
+| DMW-02 | Movies and TV workspaces | Wanted and Upgrades both render upgrade-eligible records. | The same work appears in two places with potentially conflicting counts and actions. | Open: [#103](https://github.com/EJM-Digital/Deluno/issues/103) |
 
 ## Audit queue
 

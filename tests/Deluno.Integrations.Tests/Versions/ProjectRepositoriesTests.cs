@@ -32,30 +32,11 @@ public sealed class ProjectRepositoriesTests
     public void Anything_else_is_not(string? saved)
         => Assert.False(ProjectRepositories.IsFormerDelunoDefault(saved));
 
-    [Theory]
-    [InlineData("1.0.0-rc.3")]
-    [InlineData("v1.0.0-rc.30.21")]
-    [InlineData("1.0.0-rc.30.34")]
-    public void Releases_up_to_rc_30_34_are_at_the_former_image_forever(string version)
-        => Assert.Equal("ghcr.io/jampat000/deluno", ProjectRepositories.DelunoImageForVersion(version));
-
-    [Theory]
-    [InlineData("1.0.0-rc.30.35")]
-    [InlineData("1.0.0-rc.31")]
-    [InlineData("1.0.0")]
-    public void Later_releases_are_at_the_current_repositorys_lower_cased_image(string version)
+    [Fact]
+    public void One_image_name_serves_every_version_and_follows_the_repository()
     {
-        Assert.Equal(ProjectRepositories.DelunoImage, ProjectRepositories.DelunoImageForVersion(version));
+        Assert.Equal("EJM-Digital/Deluno", ProjectRepositories.Deluno);
+        Assert.Equal("ghcr.io/ejm-digital/deluno", ProjectRepositories.DelunoImage);
         Assert.Equal("ghcr.io/" + ProjectRepositories.Deluno.ToLowerInvariant(), ProjectRepositories.DelunoImage);
     }
-
-    [Fact]
-    public void Versions_order_numerically_and_a_release_is_newer_than_its_candidates()
-    {
-        Assert.True(ProjectRepositories.CompareVersions("1.0.0-rc.9", "1.0.0-rc.10") < 0);
-        Assert.True(ProjectRepositories.CompareVersions("1.0.0", "1.0.0-rc.30.34") > 0);
-        Assert.Equal(0, ProjectRepositories.CompareVersions("v1.0.0-rc.30.34", "1.0.0-rc.30.34"));
-        Assert.True(ProjectRepositories.CompareVersions("1.0.0-rc.30.35", ProjectRepositories.LastFormerImageVersion) > 0);
-    }
-
 }

@@ -1,6 +1,6 @@
 # Library setup information-architecture audit
 
-This is the implementation baseline for [#97](https://github.com/jampat000/Deluno/issues/97). It records the current configuration surface and the intended owner for each user outcome. It is deliberately separate from the Media Plan model decision in #88.
+This is the implementation baseline for [#97](https://github.com/EJM-Digital/Deluno/issues/97). It records the current configuration surface and the intended owner for each user outcome. It is deliberately separate from the Media Plan model decision in #88.
 
 ## Target navigation
 

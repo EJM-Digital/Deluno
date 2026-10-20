@@ -1,6 +1,6 @@
 # AUDIT-002 — Status vocabularies and colours
 
-Raised 2026-08-27, out of [#300](https://github.com/jampat000/Deluno/issues/300). Two halves: the
+Raised 2026-08-27, out of [#300](https://github.com/EJM-Digital/Deluno/issues/300). Two halves: the
 **colours**, parked for a wider discussion because the fix crosses every screen
 that shows a state, and the **vocabularies** — the words themselves — where the
 sweep found live defects. Those are listed at the bottom and are being fixed as
@@ -8,7 +8,7 @@ they are confirmed.
 
 ## The rule, which already exists
 
-[#290](https://github.com/jampat000/Deluno/issues/290) settled it when it took hue away from navigation:
+[#290](https://github.com/EJM-Digital/Deluno/issues/290) settled it when it took hue away from navigation:
 
 | Hue | Means |
 |---|---|
@@ -121,7 +121,7 @@ the one word, and a migration for any row holding the other.
   (`SqliteSeriesCatalogRepository.cs:2668`) and written by nothing. Its test
   seeds the value by hand, with a comment explaining that the query needs it.
 
-Both fold into [#300](https://github.com/jampat000/Deluno/issues/300).
+Both fold into [#300](https://github.com/EJM-Digital/Deluno/issues/300).
 
 ## Open — automatic per-episode search does not exist
 
@@ -138,7 +138,7 @@ are each individually plausible:
 (`ListEligibleWantedAsync` over `series_wanted_state`), never per episode. Manual
 episode search works, through a synchronous endpoint. So Deluno cannot
 automatically search for one missing episode, which Sonarr does — a gap against
-[#194](https://github.com/jampat000/Deluno/issues/194) rather than a bug, and
+[#194](https://github.com/EJM-Digital/Deluno/issues/194) rather than a bug, and
 worth its own issue.
 
 ## Noted, not defects

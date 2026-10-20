@@ -1,6 +1,6 @@
 # Deluno — handover
 
-You're picking up Deluno (`C:\Projects\Deluno`, github.com/jampat000/Deluno): a Windows .NET 10 + React 19 media-automation app replacing Radarr/Sonarr/Prowlarr/Huntarr/Cleanuparr/Recyclarr/Upgradarr/Trash Guides. Issue [#194](https://github.com/jampat000/Deluno/issues/194) is the product bar: do everything the arr-suite does, better and **simpler**.
+You're picking up Deluno (`C:\Projects\Deluno`, github.com/EJM-Digital/Deluno): a Windows .NET 10 + React 19 media-automation app replacing Radarr/Sonarr/Prowlarr/Huntarr/Cleanuparr/Recyclarr/Upgradarr/Trash Guides. Issue [#194](https://github.com/EJM-Digital/Deluno/issues/194) is the product bar: do everything the arr-suite does, better and **simpler**.
 
 Working tree clean, `main` at `55482a4`. **All gates green and actually run**: 733 .NET tests, 48 web unit tests, `ci:check` 7/7, and the Playwright smoke suite 260 passed / 0 failed across desktop and mobile.
 
@@ -61,31 +61,31 @@ Real end-to-end. Not mocks — real qBittorrent doing real transfers with real h
 
 ## What shipped last session — nine issues closed, plus the indexer privacy cleanup
 
-**[#287](https://github.com/jampat000/Deluno/issues/287) cleanup no longer breaks seeding.** `remove-source-after-import` deleted the completed file directly and told nobody, which errors the torrent and stops seeding. Two settings could delete the same file on different schedules; each now has a domain. The library's cleanup covers files Deluno found on disk; anything it downloaded through a search source belongs to the sharing rule, which removes it *through* the client. `DownloadProtocols.HasSharingPhase` makes that judgement in one place. Transmission, Deluge and uTorrent gained `delete-with-data`.
+**[#287](https://github.com/EJM-Digital/Deluno/issues/287) cleanup no longer breaks seeding.** `remove-source-after-import` deleted the completed file directly and told nobody, which errors the torrent and stops seeding. Two settings could delete the same file on different schedules; each now has a domain. The library's cleanup covers files Deluno found on disk; anything it downloaded through a search source belongs to the sharing rule, which removes it *through* the client. `DownloadProtocols.HasSharingPhase` makes that judgement in one place. Transmission, Deluge and uTorrent gained `delete-with-data`.
 
-**[#289](https://github.com/jampat000/Deluno/issues/289) + [#276](https://github.com/jampat000/Deluno/issues/276) one speed surface.** The hero's throughput wave is gone; `LiveWave` deleted. One card carries the stored shape with the live reading as its headline, in both directions, and always states a reading rather than the word "Idle". Upload runs the whole way down: every torrent client reports it per item, the summary totals it, the sampler stores it (`upload_mbps`, jobs migration v14).
+**[#289](https://github.com/EJM-Digital/Deluno/issues/289) + [#276](https://github.com/EJM-Digital/Deluno/issues/276) one speed surface.** The hero's throughput wave is gone; `LiveWave` deleted. One card carries the stored shape with the live reading as its headline, in both directions, and always states a reading rather than the word "Idle". Upload runs the whole way down: every torrent client reports it per item, the summary totals it, the sampler stores it (`upload_mbps`, jobs migration v14).
 
-**[#272](https://github.com/jampat000/Deluno/issues/272) machine telemetry.** One strip at the foot of System Pulse: CPU, memory, Deluno's own disk I/O, and whole-volume load. `MachineProbe` (Infrastructure/Observability) reads it with plain .NET and one kernel32 call — no performance counters, no WMI. Jobs migration v15, sampled once a minute by `MachineTelemetrySampler`, served by `GET /api/monitoring/machine` and on the monitoring snapshot.
+**[#272](https://github.com/EJM-Digital/Deluno/issues/272) machine telemetry.** One strip at the foot of System Pulse: CPU, memory, Deluno's own disk I/O, and whole-volume load. `MachineProbe` (Infrastructure/Observability) reads it with plain .NET and one kernel32 call — no performance counters, no WMI. Jobs migration v15, sampled once a minute by `MachineTelemetrySampler`, served by `GET /api/monitoring/machine` and on the monitoring snapshot.
 
-**[#273](https://github.com/jampat000/Deluno/issues/273) transfers move on data.** `DownloadProgressPublisher` reports the client's own readings under the client's own queue-item id. The frontend overlays them rather than refetching. The three-second stopgap poll and `pipeline-activity.ts` are gone.
+**[#273](https://github.com/EJM-Digital/Deluno/issues/273) transfers move on data.** `DownloadProgressPublisher` reports the client's own readings under the client's own queue-item id. The frontend overlays them rather than refetching. The three-second stopgap poll and `pipeline-activity.ts` are gone.
 
-**[#274](https://github.com/jampat000/Deluno/issues/274) realtime audit.** Every surface checked against a running instance. Found the mirror image of the pipeline bug: the search planner announced `AutomationState` for every library it *looked at*, so an idle dashboard refetched three queries every thirty seconds. Six fetches in eighty seconds became one in a hundred and eight.
+**[#274](https://github.com/EJM-Digital/Deluno/issues/274) realtime audit.** Every surface checked against a running instance. Found the mirror image of the pipeline bug: the search planner announced `AutomationState` for every library it *looked at*, so an idle dashboard refetched three queries every thirty seconds. Six fetches in eighty seconds became one in a hundred and eight.
 
-**[#281](https://github.com/jampat000/Deluno/issues/281) the `useQueries` cliff** is gone — twenty-two individual `useQuery` hooks.
+**[#281](https://github.com/EJM-Digital/Deluno/issues/281) the `useQueries` cliff** is gone — twenty-two individual `useQuery` hooks.
 
-**[#278](https://github.com/jampat000/Deluno/issues/278) mobile.** Looked at five pages on a real Pixel 7. `Needs you` now sits above `System pulse` below the breakpoint. `tests/smoke/mobile-review.spec.ts` captures each page full-length and asserts no sideways scroll and the stacked order.
+**[#278](https://github.com/EJM-Digital/Deluno/issues/278) mobile.** Looked at five pages on a real Pixel 7. `Needs you` now sits above `System pulse` below the breakpoint. `tests/smoke/mobile-review.spec.ts` captures each page full-length and asserts no sideways scroll and the stacked order.
 
 **The indexer `privacy` field earns its keep** (`d4975e6`). It was stored, displayed, and read by nothing, guessed by the UI from protocol, and normalised in two places with opposite defaults. Now: one normaliser with an honest `unknown` default, gone from the list in favour of "Strict sharing" where a source differs from the normal rule, and doing one real job — a migration from Prowlarr gives an imported private or semi-private tracker the strict sharing rule, so the label arrives with its obligation rather than without it. `SharingPolicy.Strict` is the single definition, mirrored in the web app's `STRICT_SHARING` with both halves pinned.
 
-**[#279](https://github.com/jampat000/Deluno/issues/279) closed on the owner's call** — the lifecycle order is a good default and nobody has asked to change it.
+**[#279](https://github.com/EJM-Digital/Deluno/issues/279) closed on the owner's call** — the lifecycle order is a good default and nobody has asked to change it.
 
 Three bugs turned up that nobody was looking for: a second summariser that would have reported zero upload however fast you were seeding; `DispatchCatalogueLink` never carrying `library_id`, so a hardlinked download was charged full price on the dashboard; and the automation churn above.
 
 ## What's open
 
-**[#269](https://github.com/jampat000/Deluno/issues/269) update the GitHub README.** The owner chose screenshots of his **real instance**. The blocker: capturing them needs either his password (for Playwright) or his browser session token, and moving that token out of the browser is correctly blocked. The offer to make him is a small Playwright capture script that reads `DELUNO_E2E_USERNAME` / `DELUNO_E2E_PASSWORD` from the environment — he sets them, runs one command, and gets seven 1920×1080 PNGs into `screenshots/`; the password never reaches you. The description rewrite is not blocked: the current "What it does" list predates sharing and reclaim, machine telemetry, and the honesty work.
+**[#269](https://github.com/EJM-Digital/Deluno/issues/269) update the GitHub README.** The owner chose screenshots of his **real instance**. The blocker: capturing them needs either his password (for Playwright) or his browser session token, and moving that token out of the browser is correctly blocked. The offer to make him is a small Playwright capture script that reads `DELUNO_E2E_USERNAME` / `DELUNO_E2E_PASSWORD` from the environment — he sets them, runs one command, and gets seven 1920×1080 PNGs into `screenshots/`; the password never reaches you. The description rewrite is not blocked: the current "What it does" list predates sharing and reclaim, machine telemetry, and the honesty work.
 
-**[#280](https://github.com/jampat000/Deluno/issues/280) verify the Processing stage.** The owner does not use FileFlows any more — he is testing **Weir** as its replacement.
+**[#280](https://github.com/EJM-Digital/Deluno/issues/280) verify the Processing stage.** The owner does not use FileFlows any more — he is testing **Weir** as its replacement.
 
 **Weir is his own product and he has full access to it.** Change it, add endpoints to it, reconfigure it — whatever the integration needs. He asked specifically that connectivity be done **properly, the way a normal user would set it up**, not bodged around from the Deluno side.
 
@@ -97,7 +97,7 @@ Note the two machines: Deluno runs on 192.168.1.102 and Weir on 192.168.1.35, so
 
 What #280 actually wants answered, once the two are talking: does `waitingForProcessorCount` populate; can it exceed `processingCount` and drive the `Math.max(0, …)` floor in `acquisition-pipeline.tsx`; does a configured-but-unreachable processor still show the stage; and does `ProcessorTimeoutMinutes` surface anywhere a user will see it.
 
-**Menu colour scheme — decided, and raised as [#290](https://github.com/jampat000/Deluno/issues/290).**
+**Menu colour scheme — decided, and raised as [#290](https://github.com/EJM-Digital/Deluno/issues/290).**
 
 Six navigation accents are defined in `TOOLBAR_ACCENT_COLOURS` (`apps/web/src/components/ui/page-toolbar.tsx`) and assigned per area in `settings-shell.tsx`. Three of them collide with the semantic palette in `index.css`, one of them exactly:
 
@@ -117,9 +117,9 @@ One thing worth carrying: blue keeping both roles is deliberate. `info` in this 
 
 The semantic tokens are reserved. Verify in both themes and on mobile — the tab bar carries the same per-area colours and is the easiest place to miss.
 
-**Blocked externally:** [#78](https://github.com/jampat000/Deluno/issues/78), [#81](https://github.com/jampat000/Deluno/issues/81), [#82](https://github.com/jampat000/Deluno/issues/82), [#129](https://github.com/jampat000/Deluno/issues/129) — installer validation on clean Windows environments, a 14-day soak, and code signing. None can be done from here.
+**Blocked externally:** [#78](https://github.com/EJM-Digital/Deluno/issues/78), [#81](https://github.com/EJM-Digital/Deluno/issues/81), [#82](https://github.com/EJM-Digital/Deluno/issues/82), [#129](https://github.com/EJM-Digital/Deluno/issues/129) — installer validation on clean Windows environments, a 14-day soak, and code signing. None can be done from here.
 
-**[#194](https://github.com/jampat000/Deluno/issues/194)** is the standing product bar and stays open.
+**[#194](https://github.com/EJM-Digital/Deluno/issues/194)** is the standing product bar and stays open.
 
 ## Traps — save yourself the time
 

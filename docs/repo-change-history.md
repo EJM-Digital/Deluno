@@ -17,7 +17,7 @@ It answers: what changed recently, what shipped, and what users now see.
 
 Release URL:
 
-- <https://github.com/jampat000/Deluno/releases/tag/v0.1.5>
+- <https://github.com/EJM-Digital/Deluno/releases/tag/v0.1.5>
 
 ## Change Window Covered
 
