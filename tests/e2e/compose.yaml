@@ -180,7 +180,7 @@ services:
 
   # Weir, the processor Deluno hands a finished download to before it imports, as Weir publishes it (by digest).
   weir:
-    image: ghcr.io/jampat000/weir@sha256:77a2de6920d6ef7fc3fa3bc4a55dc13ae8318ee46a08d01527eb248362e9f674
+    image: ghcr.io/ejm-digital/weir@sha256:77a2de6920d6ef7fc3fa3bc4a55dc13ae8318ee46a08d01527eb248362e9f674
     hostname: weir
     depends_on:
       prepare:
