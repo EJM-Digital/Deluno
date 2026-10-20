@@ -47,6 +47,17 @@ public static class UpdateFeedErrors
     }
 }
 
+/// <summary>Which releases a channel sees.</summary>
+public static class UpdateChannels
+{
+    /// <summary>
+    /// A stable install stays on the published stable feed; any other channel (rc) opts in to pre-releases, so a freshly
+    /// installed release candidate finds its own channel.
+    /// </summary>
+    public static bool IncludesPrereleases(string? channel)
+        => !string.Equals(channel?.Trim(), "stable", StringComparison.OrdinalIgnoreCase);
+}
+
 /// <summary>The update facts the tray menu words its update item from.</summary>
 public sealed record TrayUpdateSnapshot(bool IsInstalled, string State, string? LatestVersion, bool UpdateAvailable, bool RestartRequired);
 
@@ -452,7 +463,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
         // RC channels are represented by prerelease GitHub releases. Stable
         // installs stay on the published stable feed; other channels opt in to
         // prereleases so a freshly-installed RC can find its own channel.
-        var includePrereleases = !string.Equals(settings.UpdateChannel, "stable", StringComparison.OrdinalIgnoreCase);
+        var includePrereleases = UpdateChannels.IncludesPrereleases(settings.UpdateChannel);
         IUpdateSource source = sourceUrl.Contains("github.com", StringComparison.OrdinalIgnoreCase)
             ? new ReleaseFeedUpdateSource(sourceUrl, includePrereleases)
             : new SimpleWebSource(sourceUrl);
