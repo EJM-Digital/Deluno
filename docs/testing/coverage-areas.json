@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "note": "Which open coverage issue closes the files of each measured area (docs/testing/COVERAGE.md, Measured line and branch coverage). scripts/coverage/coverage-docs.mjs reads it to account for every file below 100% line and branch in coverage-gaps.md. Re-point an area here when its issue changes.",
+  "areas": {
+    "apps/web": { "issue": 1329, "closes": "a vitest or Playwright test for each uncovered line and branch" },
+    "scripts": { "issue": 1268, "closes": "a node test for each uncovered line and branch" },
+    "services/metadata-gateway": { "issue": 1268, "closes": "a node test for each uncovered line and branch" },
+    "sdk/typescript": { "issue": 1268, "closes": "a node test for each uncovered line and branch" },
+    "src": { "issue": 1268, "closes": "a test for each uncovered line and branch" },
+    "src/Deluno.Api": { "issue": 1297, "closes": "an in-process test for each uncovered route branch" },
+    "src/Deluno.Companions": { "issue": 1295, "closes": "a test that runs the companion install and update paths" },
+    "src/Deluno.Connections": { "issue": 1301, "closes": "a recorded-reply test for each uncovered client and indexer branch" },
+    "src/Deluno.Contracts": { "issue": 1296, "closes": "a test that builds and reads each contract type" },
+    "src/Deluno.Filesystem": { "issue": 1296, "closes": "a real-file test for each uncovered import, move and delete branch" },
+    "src/Deluno.Host": { "issue": 1302, "closes": "a host start-up test for each uncovered line" },
+    "src/Deluno.Infrastructure": { "issue": 1296, "closes": "a test for each uncovered storage and pipeline branch" },
+    "src/Deluno.Intake": { "issue": 1296, "closes": "a test for each uncovered list and intake branch" },
+    "src/Deluno.Integrations": { "issue": 1301, "closes": "a recorded-reply test for each uncovered integration branch" },
+    "src/Deluno.Jobs": { "issue": 1296, "closes": "a test for each uncovered job and lane branch" },
+    "src/Deluno.Libraries": { "issue": 1296, "closes": "a test for each uncovered library branch" },
+    "src/Deluno.Media": { "issue": 1296, "closes": "a test for each uncovered media-handling branch" },
+    "src/Deluno.Movies": { "issue": 1296, "closes": "a test for each uncovered movie-engine branch" },
+    "src/Deluno.Notifications": { "issue": 1301, "closes": "a recorded-reply test for each uncovered notification branch" },
+    "src/Deluno.Platform": { "issue": 1302, "closes": "a test for each uncovered install, update, auth and backup branch" },
+    "src/Deluno.Quality": { "issue": 1296, "closes": "a test for each uncovered quality and custom-format branch" },
+    "src/Deluno.Realtime": { "issue": 1296, "closes": "a test for each uncovered push branch" },
+    "src/Deluno.Recovery": { "issue": 1296, "closes": "a test for each uncovered recovery branch" },
+    "src/Deluno.Retention": { "issue": 1296, "closes": "a test for each uncovered retention branch" },
+    "src/Deluno.Security": { "issue": 1302, "closes": "a test for each uncovered sign-in and key branch" },
+    "src/Deluno.Series": { "issue": 1296, "closes": "a test for each uncovered TV-engine branch" },
+    "src/Deluno.Worker": { "issue": 1296, "closes": "a test for each uncovered worker branch" }
+  }
+}

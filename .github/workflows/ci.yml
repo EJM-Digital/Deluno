@@ -132,9 +132,10 @@ jobs:
             # The installer and the end-to-end jobs cost the most, so an ordinary push never runs them: they run on
             # a manual run only, the one full run on the commit before a tag (scripts/verify-ci-for-release.mjs).
           fi
-          # Coverage is measured and held to its baseline only when both the backend and the web tests ran: the
-          # ratchet compares whole-repository numbers, and a half report would look like a drop.
-          if [ "$backend" = "true" ] && [ "$web" = "true" ]; then coverage=true; fi
+          # Coverage is measured on every push that runs the backend tests, the web tests or both (issue 1268). The ratchet
+          # only holds the files that are in the report, so the side that did not run is simply not compared: a one-sided
+          # report is not read as a drop.
+          if [ "$backend" = "true" ] || [ "$web" = "true" ]; then coverage=true; fi
           # Mutation runs on the changed files of a push or pull request. A manual run has no base to compare with
           # (the nightly workflow, mutation-nightly.yml, runs the full mutation).
           if [ "$MUTATION_ON_PUSH" = "true" ] && [ "$EVENT" != "workflow_dispatch" ] && [ "$CODE" = "true" ]; then mutation=true; fi
@@ -182,7 +183,7 @@ jobs:
       - name: Every Node test file is run by a CI job
         run: |
           node scripts/check-node-tests-run.mjs
-          node --test scripts/check-node-tests-run.test.mjs scripts/check-persistence-parts.test.mjs scripts/check-component-pins.test.mjs scripts/check-recorded-manifest.test.mjs scripts/verify-ci-for-release.test.mjs scripts/verify-golden-path-for-release.test.mjs scripts/tag-release.test.mjs scripts/check-release-workflow-gates.test.mjs scripts/coverage/testindex.test.mjs scripts/check-repository-references.test.mjs scripts/deluno-image.test.mjs sdk/typescript/tests/delunoclient.test.mjs
+          node --test scripts/check-node-tests-run.test.mjs scripts/check-persistence-parts.test.mjs scripts/check-component-pins.test.mjs scripts/check-recorded-manifest.test.mjs scripts/verify-ci-for-release.test.mjs scripts/verify-golden-path-for-release.test.mjs scripts/tag-release.test.mjs scripts/check-release-workflow-gates.test.mjs scripts/coverage/testindex.test.mjs scripts/coverage/coverage-docs.test.mjs scripts/check-repository-references.test.mjs scripts/deluno-image.test.mjs sdk/typescript/tests/delunoclient.test.mjs
 
       - name: Validate agent-readable repository map
         shell: pwsh
@@ -979,7 +980,8 @@ jobs:
   coverage:
     name: Coverage report and ratchet
     needs: [changes, backend, web, coverage-node]
-    if: ${{ needs.changes.outputs.run_coverage == 'true' }}
+    # backend and web are skipped when only the other side changed; the report then holds the side that ran (and the Node code).
+    if: ${{ !cancelled() && needs.changes.outputs.run_coverage == 'true' && needs.backend.result != 'failure' && needs.web.result != 'failure' && needs.coverage-node.result != 'failure' }}
     runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:
@@ -1002,6 +1004,8 @@ jobs:
       # ReportGenerator, pinned in .config/dotnet-tools.json, merges the seven test projects' coverage of the same file and the seven backend legs' reports (Persistence is split in six parts, #1346).
       - name: Merge the .NET reports
         run: |
+          # A web-only push runs no backend tests, so there is nothing to merge.
+          if ! ls -d coverage-in/coverage-dotnet-* > /dev/null 2>&1; then echo "No backend coverage in this run."; exit 0; fi
           dotnet tool restore
           dotnet tool run reportgenerator \
             "-reports:coverage-in/coverage-dotnet-*/**/coverage.opencover.xml" \
@@ -1011,11 +1015,10 @@ jobs:
 
       - name: One per-file table for .NET, web and Node
         run: |
-          node scripts/coverage/merge-coverage.mjs \
-            --cobertura coverage-out/dotnet/Cobertura.xml \
-            --lcov coverage-in/coverage-web/lcov.info=apps/web \
-            --lcov coverage-in/coverage-node/scripts.lcov \
-            --lcov coverage-in/coverage-node/metadata-gateway.lcov \
+          args=(--lcov coverage-in/coverage-node/scripts.lcov --lcov coverage-in/coverage-node/metadata-gateway.lcov)
+          if [ -f coverage-out/dotnet/Cobertura.xml ]; then args+=(--cobertura coverage-out/dotnet/Cobertura.xml); fi
+          if [ -f coverage-in/coverage-web/lcov.info ]; then args+=(--lcov coverage-in/coverage-web/lcov.info=apps/web); fi
+          node scripts/coverage/merge-coverage.mjs "${args[@]}" \
             --exclusions docs/testing/coverage-exclusions.json \
             --out-json coverage-out/coverage-report.json \
             --out-md coverage-out/coverage-report.md
