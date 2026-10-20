@@ -28,7 +28,7 @@ test("DOK-22: a native Linux host without Docker has a supervised way to run Del
   assert.match(read("docs/background-services.md") + read("README.md"), /\[Service\][\s\S]*ExecStart=.*Deluno\.Host\.dll/);
 });
 
-test("FRS-08: a new Windows install has no automatic update check on until the guide's Updates question is answered", () => {
+test("FRS-08: a new Windows install has no automatic update check or download on until the guide's Updates question is answered", () => {
   // An install with no settings file yet starts with the check off (#1361); a file that already exists without the line keeps what it did.
   const settings = read("apps/windows-tray/AppSettings.cs");
   assert.match(settings, /new AppSettings\s*\{\s*DataRoot = ResolveFallbackDataRoot\(\),\s*AutoCheckUpdates = false\s*\}/);
