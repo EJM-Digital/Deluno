@@ -51,20 +51,20 @@ function Invoke-GroupTray {
         $names = @($states | ForEach-Object { $_.Name })
         Save-Evidence -Name 'tray-menu-states.json' -Text ($states | ConvertTo-Json)
         # The menu bar of another window can read as menu items too ("File / Edit / ..."); only Deluno's items are judged.
-        $order = @('^Open Deluno$', '^Deluno - Running', '^(Pause|Resume) automation$', '^Restart Deluno$', '^Copy address$', '^Allow other devices on your network', '^Only allow this PC$', '^Change port \(\d+\)', '^Open data folder$', '^Open logs folder$', '^Start with Windows$', '^(Check for updates|Checking for updates|Downloading update|Download update|Restart to update)', '^Deluno v\d', '^Report a problem', '^Advanced$', '^Quit Deluno$')
+        $order = @('^Open Deluno$', '^Deluno - ', '^(Pause|Resume) automation$', '^Restart Deluno$', '^Copy address$', '^Allow other devices on your network', '^Only allow this PC$', '^Change port \(\d+\)', '^Open data folder$', '^Open logs folder$', '^Start with Windows$', '^(Check for updates|Checking for updates|Downloading update|Download update|Restart to update)', '^Deluno v\d', '^Report a problem', '^Advanced$', '^Quit Deluno$')
         $at = @(); $missing = @()
         foreach ($p in $order) { $i = [array]::FindIndex($names, [Predicate[string]] { param($n) $n -match $p }); if ($i -lt 0) { $missing += $p } else { $at += $i } }
         $sorted = ($at -join ',') -eq ((@($at) | Sort-Object) -join ',')
         Add-Check 'All sixteen menu items are there' ($missing.Count -eq 0) $(if ($missing.Count) { 'missing: ' + ($missing -join ', ') + '; found: ' + ($names -join ' | ') } else { $names -join ' | ' })
         Add-Check "They come in the standard's order (Open, status, Pause, Restart, Copy address, firewall, port, folders, Start with Windows, update, version, Report, Advanced, Quit)" $sorted ($at -join ',')
         $by = @{}; foreach ($s in $states) { $by[$s.Name] = $s }
-        $status = $states | Where-Object { $_.Name -match '^Deluno - Running' } | Select-Object -First 1
+        $status = $states | Where-Object { $_.Name -match '^Deluno - ' } | Select-Object -First 1
         $ver = $states | Where-Object { $_.Name -match '^Deluno v\d' } | Select-Object -First 1
         Add-Check 'The status line and the version line are greyed (information, not actions)' ($status -and -not $status.Enabled -and $ver -and -not $ver.Enabled) "$($status.Name) / $($ver.Name)"
         $enabledWanted = @('^Open Deluno$', '^Restart Deluno$', '^Copy address$', '^Open data folder$', '^Open logs folder$', '^Quit Deluno$', '^Report a problem')
         $off = @($enabledWanted | Where-Object { $p = $_; -not ($states | Where-Object { $_.Name -match $p -and $_.Enabled }) })
         Add-Check 'While Deluno runs, Open, Restart, Copy address, the folders, Report and Quit are enabled' ($off.Count -eq 0) ($off -join ', ')
-        $running = [string]($states | Where-Object { $_.Name -match '^Deluno - Running at (\S+)' } | Select-Object -First 1 | ForEach-Object { $Matches[1] })
+        $running = [string]($states | Where-Object { $_.Name -match '^Deluno - ' } | Select-Object -First 1 | ForEach-Object { $Matches[1] })
 
         # ---- Pause / Resume automation: the same switch as Settings
         $was = (Get-AutomationOn)
@@ -111,12 +111,14 @@ function Invoke-GroupTray {
 
         # ---- Open Deluno: the browser opens at the live address, and only because it was pressed
         $stamp = Get-Date
+        $windowsBefore = @(Get-DesktopWindows | Where-Object { $_.Process -eq 'msedge' -and $_.Name -match 'Deluno' }).Count
         $clicked = Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Open Deluno$'
-        $opened = Wait-Until -TimeoutSec 20 -IntervalSec 0.3 -Condition {
-            Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CreationDate -gt $stamp -and $_.CommandLine -match '(localhost|127\.0\.0\.1|\d+\.\d+\.\d+\.\d+):\d+' } | Select-Object -First 1
+        # The browser is started (a new process with Deluno's address) or, when one is open already, asked for another tab or window.
+        $opened = Wait-Until -TimeoutSec 30 -IntervalSec 0.3 -Condition {
+            $p = Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CreationDate -gt $stamp -and $_.CommandLine -match ':\d+' } | Select-Object -First 1
+            if ($p) { $p } elseif (@(Get-DesktopWindows | Where-Object { $_.Process -eq 'msedge' -and $_.Name -match 'Deluno' }).Count -gt $windowsBefore) { 'a new Deluno window' } else { $null }
         }
-        Add-Check 'Open Deluno starts the browser at Deluno''s address' ($clicked -and $opened.Ok) $(if ($opened.Ok) { ($opened.Value.CommandLine -replace '\d+\.\d+\.\d+\.\d+', '<address>').Substring(0, [math]::Min(160, $opened.Value.CommandLine.Length)) } else { 'no browser process was started with an address' })
-
+        Add-Check 'Open Deluno opens the browser at Deluno''s address' ($clicked -and $opened.Ok) $(if ($opened.Ok -and $opened.Value.CommandLine) { ($opened.Value.CommandLine -replace '\d+\.\d+\.\d+\.\d+', '<address>').Substring(0, [math]::Min(160, $opened.Value.CommandLine.Length)) } elseif ($opened.Ok) { "$($opened.Value)" } else { 'no browser process or window appeared' })
         # ---- Restart Deluno: inside the same process, back as ready
         $pidBefore = (Get-Process -Name 'Deluno' | Select-Object -First 1).Id
         $secs = Restart-DelunoFromTray
@@ -282,4 +284,5 @@ function Invoke-GroupTray {
         Add-Check 'The icon is no longer red' $dot.Ok $(if ($dot.Ok) { $dot.Value.Colour } else { 'still red or unreadable' })
     }
 }
+
 

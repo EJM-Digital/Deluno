@@ -72,17 +72,22 @@ function Invoke-GroupDesktop {
         }
         finally { Remove-Job $job -Force -ErrorAction SilentlyContinue }
 
-        $job = Start-NativePickerAsk -InitialPath $target
-        try {
-            $dlg = Wait-DesktopWindow -NamePattern 'Browse For Folder' -Process 'Deluno' -TimeoutSec 240 # reason: the first folder window of a session can take minutes to load Windows' shell parts
-            if ($dlg) { Click-WindowButton -Window $dlg -NamePattern '^Cancel$' | Out-Null }
-            $done = Wait-Job $job -Timeout 30
-            $answer = if ($done) { Receive-Job $job } else { 'no answer' }
-            Add-Check 'Cancel returns "cancelled": true and no folder' ($dlg -and "$answer" -match '^200 ' -and "$answer" -match '"cancelled":\s*true') "$answer"
+        # Cancel. The window can be slow to appear, so an ask that Deluno gave up on ("nobody answered") is made once more.
+        $answer = 'no answer'; $dlg = $null
+        for ($attempt = 1; $attempt -le 2 -and -not $dlg; $attempt++) {
+            $job = Start-NativePickerAsk -InitialPath $target
+            try {
+                $dlg = Wait-DesktopWindow -NamePattern 'Browse For Folder' -Process 'Deluno' -TimeoutSec 90
+                if ($dlg) { Click-WindowButton -Window $dlg -NamePattern '^Cancel$' | Out-Null }
+                $done = Wait-Job $job -Timeout 150
+                $answer = if ($done) { Receive-Job $job } else { 'no answer' }
+            }
+            finally { Remove-Job $job -Force -ErrorAction SilentlyContinue }
         }
-        finally { Remove-Job $job -Force -ErrorAction SilentlyContinue }
+        Add-Check 'Cancel returns "cancelled": true and no folder' ($null -ne $dlg -and "$answer" -match '^200 ' -and "$answer" -match '"cancelled":\s*true') "$answer"
     }
 }
+
 
 
 
