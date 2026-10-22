@@ -117,7 +117,7 @@ public sealed class FinishedFilesAndSmallSizesAreReadTests
         File.WriteAllText(film, "film");
 
         using var hold = new FileStream(film, FileMode.Open, FileAccess.Read, FileShare.None);
-        var release = Task.Run(async () => { await Task.Delay(1500); hold.Dispose(); });
+        var release = Task.Run(async () => { await Task.Delay(1500); hold.Dispose(); }); // reason: holds the file locked for a while, the way a processor that has just opened it does
         var problem = DownloadFolderRemoval.Remove(film, "Some.Film.2020.1080p", onThisMachine: true, libraries: [], lockWait: TimeSpan.FromSeconds(20));
         await release;
 
