@@ -69,9 +69,27 @@ export function defineOutage(media: Media) {
     expect(seconds !== null && seconds <= limit, `${name} (${seconds !== null ? `after ${seconds} s` : "never within the watch time"}, limit ${limit} s)`).toBe(true);
   }
 
+  /**
+   * The state the outage starts from: Deluno has just been set up and its pages just opened, and a connection reads green only
+   * after its first health look (every 2 s) has been stored and pushed to each open page. A slow machine takes longer than a fast
+   * one, so the baseline is awaited, not assumed after a fixed pause. A place that never reads green fails the test with what it said.
+   */
+  async function readGreenBaseline(label: string) {
+    const deadline = Date.now() + 90_000;
+    let before = await readSignals();
+    while (!(before.systemGreen && before.dashboardGreen) && Date.now() < deadline) {
+      await sleep(500);
+      before = await readSignals();
+    }
+    const say = async (page: Page) => (await pageText(page).catch(() => "")).replace(/\s+/g, " ").slice(0, 600);
+    expect(
+      before.systemGreen && before.dashboardGreen,
+      `${label}: before the outage every place reads green (system green ${before.systemGreen}; dashboard green ${before.dashboardGreen}). System said: ${await say(system)} Dashboard said: ${await say(dashboard)}`
+    ).toBe(true);
+  }
+
   async function outageOnce(label: string) {
-    const before = await readSignals();
-    expect(before.systemGreen && before.dashboardGreen, `${label}: before the outage every place reads green (system green ${before.systemGreen}; dashboard green ${before.dashboardGreen})`).toBe(true);
+    await readGreenBaseline(label);
     const t0 = stopWeir();
     console.log(`${label}: Weir stopped at T0`);
     const amber = await watch("amber", t0);
