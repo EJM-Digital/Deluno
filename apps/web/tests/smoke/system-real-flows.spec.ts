@@ -33,7 +33,10 @@ test.describe("System screens on the real host (#1294)", () => {
     await page.getByRole("button", { name: "Create backup" }).click();
     await expect(page.getByText("Backup created")).toBeVisible({ timeout: 30_000 });
     const after = await listBackups();
-    expect(after.length).toBe(before.length + 1);
+    // Deluno keeps only the newest backups up to the retention count (7 on a new install), so on a host that already holds that many,
+    // a new backup replaces the oldest instead of adding to the list.
+    const keep = ((await (await page.request.get("/api/backups/settings", { headers })).json()) as { retentionCount: number }).retentionCount;
+    expect(after.length).toBe(Math.min(before.length + 1, keep));
     const made = after.find((row) => !before.some((old) => old.id === row.id))!;
     await expect(page.getByText(made.fileName, { exact: true })).toBeVisible();
 
