@@ -207,9 +207,13 @@ function Invoke-GroupGuide {
             Add-Check "The $($lib.name) library cleans with Weir before it imports, into the output folder that was typed" ($lib.importWorkflow -eq 'refine-before-import' -and $lib.processorOutputPath -eq $wanted[$lib.id] -and $lib.processorConnectionId -eq $conn.id) "$($lib.importWorkflow) -> $($lib.processorOutputPath)"
         }
         if ($conn) {
+            # Weir keeps its own libraries and takes each one's folders from Deluno only once the person has finished Weir's first-run wizard
+            # ("Finish setup", "Continue to Weir"): Deluno never writes into Weir. The guide connects Weir; this is the person's next step in Weir.
+            # (rc.30.35: no step here pressed it, so Weir listed no watched workflow for four minutes.)
+            Complete-WeirWizard
             $weirLibs = $null
             try { $weirLibs = Wait-Until -TimeoutSec 240 -IntervalSec 5 -Condition { $x = Invoke-Weir -Path '/processing/libraries'; $list = if ($x.PSObject.Properties.Name -contains 'value') { @($x.value) } else { @($x) }; $en = @($list | Where-Object { $_.enabled }); if ($en.Count -ge 2 -and @($en | Where-Object { -not $_.watched_folder }).Count -eq 0) { $en } else { $null } } } catch { }
-            Add-Check "Weir's Movies and TV workflows are linked and each watches its folder" ($weirLibs -and $weirLibs.Ok) $(if ($weirLibs -and $weirLibs.Ok) { (@($weirLibs.Value) | ForEach-Object { "$($_.name): $($_.watched_folder)" }) -join '; ' } else { 'Weir listed no two watched workflows within 4 minutes' })
+            Add-Check "Weir's Movies and TV workflows are linked and each watches its folder" ($weirLibs -and $weirLibs.Ok) $(if ($weirLibs -and $weirLibs.Ok) { (@($weirLibs.Value) | ForEach-Object { "$($_.name): $($_.watched_folder)" }) -join '; ' } else { ('Weir listed no two watched workflows within 4 minutes: ' + ((Invoke-Weir -Path '/processing/libraries' | ForEach-Object { $_ } | ForEach-Object { "$($_.name) enabled=$($_.enabled) watched=$($_.watched_folder)" }) -join '; ') + ' | Deluno libraries: ' + (($libs | ForEach-Object { "$($_.name) downloads=$($_.downloadsPath)" }) -join '; ')) })
         }
         $health = Try-Deluno -Path '/api/system/health'
         Save-Evidence -Name 'guide-health.json' -Text $health.Raw
