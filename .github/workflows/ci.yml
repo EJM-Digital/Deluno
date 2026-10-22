@@ -198,6 +198,31 @@ jobs:
         shell: pwsh
         run: ./scripts/check-tracked-files.ps1
 
+      # GAT-07: the checks ci:check runs that can run on Linux run here too, so a push from a clone without the hook is held to them.
+      - name: Every script runs on both PowerShell editions
+        shell: pwsh
+        run: ./scripts/check-powershell-portability.ps1
+
+      - name: The commit message closes no issue by accident
+        shell: pwsh
+        run: ./scripts/check-issue-closing-keywords.ps1
+
+      - name: Every file the Dockerfile copies exists
+        shell: pwsh
+        run: ./scripts/check-dockerfile-copies.ps1
+
+      - name: RELEASE_NOTES.md has a section for the version
+        shell: pwsh
+        run: ./scripts/check-release-notes-version.ps1
+
+      - name: The backlog sweep lists no issue as both closed and open
+        shell: pwsh
+        run: ./scripts/check-backlog-sweep-consistency.ps1
+
+      - name: Every XML file in the repository parses
+        shell: pwsh
+        run: ./scripts/check-xml-files.ps1
+
       - name: No test builds an external app's reply inline, and the recorded-reply scrubber works
         run: |
           node scripts/check-recorded-replies.mjs
@@ -786,6 +811,11 @@ jobs:
       # GAT-03: the tray's own tests (Windows-only code) run here, the one Windows leg every manual run has.
       - name: Test Deluno.Tray
         run: dotnet test tests/Deluno.Tray.Tests/Deluno.Tray.Tests.csproj -c Release --nologo
+
+      # GAT-07: the scenario suite's own checks need Windows PowerShell 5.1, which is the shell here.
+      - name: Check the scenario suite's own code
+        shell: powershell
+        run: ./scripts/golden-path/Test-ScenarioSuite.ps1
 
       - name: Publish Deluno.Tray (win-x64)
         shell: pwsh
