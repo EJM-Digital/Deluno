@@ -16,6 +16,8 @@ namespace Deluno.Persistence.Tests.Api;
 public sealed class AProfilesReleaseWordsDecideOnRecordedIndexerResultsTests
 {
     private const string JackettPath = "/api/v2.0/indexers/yts/results/torznab/api";
+    // The recorded YTS release is about 20,580 hours old, so only a wait longer than that holds it back.
+    private const int RecordedReleaseIsOlderThanThis = 2_000_000;
     private const string RecordedRelease = "Sintel (2010) 720p BRRip x264 -YTS";
 
     private static async Task<JsonElement> PreviewWithAsync(object acquisition)
@@ -67,12 +69,33 @@ public sealed class AProfilesReleaseWordsDecideOnRecordedIndexerResultsTests
     }
 
     [Fact]
-    public async Task A_wait_before_taking_a_torrent_holds_a_torrent_release_that_has_only_just_appeared()
+    public async Task A_wait_before_taking_a_torrent_holds_a_torrent_release_younger_than_the_wait_and_lets_an_older_one_through()
     {
-        var held = await PreviewWithAsync(new { torrentDelayMinutes = 600 });
+        var held = await PreviewWithAsync(new { torrentDelayMinutes = RecordedReleaseIsOlderThanThis });
+        Assert.NotEqual("preferred", held.GetProperty("decisionStatus").GetString(), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(held.GetProperty("riskFlags").EnumerateArray().Select(flag => flag.GetString()), flag => flag!.Contains("Acquisition delay is active", StringComparison.Ordinal));
 
-        Assert.NotEqual("accepted", held.GetProperty("decisionStatus").GetString(), StringComparer.OrdinalIgnoreCase);
-        Assert.Contains(held.GetProperty("decisionReasons").EnumerateArray().Select(reason => reason.GetString()), reason => reason!.Contains("wait", StringComparison.OrdinalIgnoreCase) || reason.Contains("delay", StringComparison.OrdinalIgnoreCase));
+        var cleared = await PreviewWithAsync(new { torrentDelayMinutes = 600 });
+        Assert.Contains(cleared.GetProperty("decisionReasons").EnumerateArray().Select(reason => reason.GetString()), reason => reason!.Contains("cleared the 600-minute acquisition delay", StringComparison.Ordinal));
+        Assert.Empty(cleared.GetProperty("riskFlags").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task A_release_that_is_already_the_best_quality_the_profile_allows_skips_the_wait_when_the_profile_says_to()
+    {
+        var bypassed = await PreviewWithAsync(new { torrentDelayMinutes = RecordedReleaseIsOlderThanThis, bypassIfHighestQuality = true });
+
+        Assert.Contains(bypassed.GetProperty("decisionReasons").EnumerateArray().Select(reason => reason.GetString()), reason => reason!.Contains("Acquisition delay skipped", StringComparison.Ordinal));
+        Assert.DoesNotContain(bypassed.GetProperty("riskFlags").EnumerateArray().Select(flag => flag.GetString()), flag => flag!.Contains("Acquisition delay is active", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_profile_that_prefers_usenet_still_makes_a_torrent_wait_even_when_it_is_the_best_quality_allowed()
+    {
+        var held = await PreviewWithAsync(new { preferredProtocol = "usenet", torrentDelayMinutes = RecordedReleaseIsOlderThanThis, bypassIfHighestQuality = true });
+
+        Assert.DoesNotContain(held.GetProperty("decisionReasons").EnumerateArray().Select(reason => reason.GetString()), reason => reason!.Contains("Acquisition delay skipped", StringComparison.Ordinal));
+        Assert.Contains(held.GetProperty("riskFlags").EnumerateArray().Select(flag => flag.GetString()), flag => flag!.Contains("Acquisition delay is active", StringComparison.Ordinal));
     }
 
     private static async Task<string> SeedAsync(ApplicationTestHost app, string indexerUrl, object acquisition)

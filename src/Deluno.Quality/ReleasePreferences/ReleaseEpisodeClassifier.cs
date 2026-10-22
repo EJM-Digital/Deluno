@@ -108,7 +108,7 @@ public static partial class ReleaseEpisodeClassifier
             : "single episode";
     }
 
-    [GeneratedRegex(@"[Ss](?<s>\d{1,2})[Ee](?<e1>\d{1,3})[Ee-](?<e2>\d{1,3})", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    [GeneratedRegex(@"[Ss](?<s>\d{1,2})[Ee](?<e1>\d{1,3})(?:-?[Ee]|-)(?<e2>\d{1,3})", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
     private static partial Regex MultiEpisodeRegex();
 
     [GeneratedRegex(@"[Ss](?<s>\d{1,2})[Ee](?<e>\d{1,3})(?![Ee\d])", RegexOptions.IgnoreCase | RegexOptions.Compiled)]

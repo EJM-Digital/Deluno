@@ -134,7 +134,10 @@ public static class MediaPlanScenarioCompiler
         var scenario = MediaPlanScenarioCatalog.Find(scenarioId)
             ?? throw new KeyNotFoundException($"Media Plan scenario '{scenarioId}' was not found.");
 
-        var normalizedMediaType = NormalizeMediaType(mediaType);
+        // A scenario with one kind needs none given: it is that kind, not the film default.
+        var normalizedMediaType = string.IsNullOrWhiteSpace(mediaType) && scenario.Variants.Count == 1
+            ? scenario.Variants[0].MediaType
+            : NormalizeMediaType(mediaType);
         if (string.IsNullOrWhiteSpace(mediaType) && scenario.Variants.Count != 1)
         {
             throw new ArgumentException(
