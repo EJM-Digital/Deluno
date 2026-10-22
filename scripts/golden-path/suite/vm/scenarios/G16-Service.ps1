@@ -8,8 +8,8 @@
     service.wrong-password          --install-service with a named user and a wrong password: the service is created but does not run.
 
     Deluno runs elevated in the suite VM, so the service manager's permission prompts (one per sc.exe call when the tray is not elevated)
-    do not appear; the prompt itself is covered by the firewall group. The service starts on its own data folder (LocalSystem's profile),
-    not the tray's: that is recorded as it is (register row SVC-06).
+    do not appear; the prompt itself is covered by the firewall group. The service opens on the data folder the tray used
+    (it has the account, so first-run setup is not asked again; register row SVC-06, #1370).
 #>
 
 function Get-DelunoServiceFacts {
@@ -82,7 +82,8 @@ function Invoke-GroupService {
             Add-Check "The service answers on the configured port ($port)" $up.Ok ''
             if ($up.Ok) {
                 $boot = Try-Deluno -Path '/api/auth/bootstrap-status'
-                Add-Note ("The service reads LocalSystem's own data folder, not the tray's: its first-run state says requiresSetup=$($boot.Data.requiresSetup) (the tray's Deluno has an account)." )
+                # The service keeps the data folder the tray used (#1370): the tray's Deluno has an account, so a service on its data does not ask for first-run setup.
+                Add-Check "The service opens on the same data as the tray did: it has the account (requiresSetup is false), not an empty first-run" ($boot.Status -eq 200 -and $boot.Data.requiresSetup -eq $false) "bootstrap-status: HTTP $($boot.Status) requiresSetup=$($boot.Data.requiresSetup)"
                 $code = try { (Invoke-WebRequest -Uri "http://localhost:$port/api/libraries" -UseBasicParsing -TimeoutSec 20).StatusCode } catch { try { [int]$_.Exception.Response.StatusCode } catch { 0 } }
                 Add-Check 'The service has the same request pipeline: a protected route answers 401 without a sign-in' ($code -eq 401) "HTTP $code"
                 Add-Check 'The service serves the web app' ((Invoke-WebRequest -Uri "http://localhost:$port/" -UseBasicParsing -TimeoutSec 20).Content -match '<div id="root"') ''

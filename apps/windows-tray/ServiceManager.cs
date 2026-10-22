@@ -37,6 +37,12 @@ public static class ServiceManager
 
     public static void Apply(ServiceMode mode, string? username, string? password)
     {
+        if (mode != ServiceMode.Tray && AppSettings.ShareWithService() is { } shareProblem)
+        {
+            // Starting the service on an empty folder would look like lost data (#1370): stop before anything changes.
+            throw new InvalidOperationException(shareProblem);
+        }
+
         RemoveService();
         RemoveTrayStartup();
 

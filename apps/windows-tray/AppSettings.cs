@@ -196,6 +196,39 @@ public sealed class AppSettings
         return result.Problem;
     }
 
+    /// <summary>
+    /// Lets a Windows service find this person's data (#1370). A service runs as LocalSystem (or another account), whose own
+    /// settings file does not exist, so it would open on that account's empty default folder: no libraries, connections or
+    /// settings. A copy of these settings goes to the machine-wide place every account reads when it has no file of its own, so the
+    /// service keeps using the folder and port the person already uses. Null when it landed, else why not, in everyday words.
+    /// </summary>
+    public static string? ShareWithService()
+    {
+        var settings = Load();
+        if (settings.ValuesAreGuessed || settings.LoadProblem is not null)
+        {
+            return $"{settings.LoadProblem} The service would not know where your data is, so nothing was shared with it.";
+        }
+
+        var shared = GetLegacyConfigPath();
+        var text = Serialize(settings);
+        try
+        {
+            if (Io.Exists(shared))
+            {
+                // Never lose a file that was there: keep it beside the new one.
+                File.Copy(shared, shared + ".before-service", overwrite: true);
+            }
+        }
+        catch
+        {
+            // The copy is a courtesy; the settings below are what matters.
+        }
+
+        var problem = StateFile.Write(shared, text, Io);
+        return problem is null ? null : $"Deluno could not tell the service where your data is: {problem}.";
+    }
+
     private static AppSettings Unread(string problem)
     {
         AppSettings settings;
