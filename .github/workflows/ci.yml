@@ -699,9 +699,10 @@ jobs:
           done
           docker compose -f tests/e2e/compose.yaml up --build --wait --detach
 
-      # The groups that read Deluno's screens (a drawer, System, the Dashboard) drive a real browser.
+      # Any group may drive a real browser (a drawer, System, the Dashboard, the problems on a screen), so every group installs it;
+      # a list of groups here went stale and left two groups with no browser. --with-deps adds the operating-system packages on a
+      # GitHub-hosted runner; a self-hosted one has them already.
       - name: Install the browser
-        if: ${{ matrix.group == 'tryagain' || matrix.group == 'outage' || matrix.group == 'tvretry' || matrix.group == 'tvweirout' || matrix.group == 'layout' || matrix.group == 'github' || startsWith(matrix.group, 'queue') }}
         run: npx playwright install ${{ runner.environment == 'github-hosted' && '--with-deps' || '' }} chromium
 
       - name: Run the ${{ matrix.group }} group
