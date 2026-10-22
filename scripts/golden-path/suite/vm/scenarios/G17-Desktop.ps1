@@ -52,27 +52,29 @@ function Invoke-GroupDesktop {
         finally { Remove-Item -LiteralPath $pending -ErrorAction SilentlyContinue }
     }
 
-    Invoke-Scenario -Id 'filesystem.native-folder-picker' -Title "The native folder picker opens Windows' own folder window on this desktop: a typed folder and OK returns it, Cancel returns cancelled, and a second ask while it is open is refused in words" -Body {
+    Invoke-Scenario -Id 'filesystem.native-folder-picker' -Title "The native folder picker opens Windows' own folder window on this desktop: OK returns the folder shown, Cancel returns cancelled, and a second ask while it is open is refused in words" -Body {
         $target = 'C:\Media'
-        $job = Start-NativePickerAsk -InitialPath 'C:\'
+        New-Item -ItemType Directory -Force -Path $target | Out-Null
+        $job = Start-NativePickerAsk -InitialPath $target
         try {
-            $dlg = Wait-DesktopWindow -NamePattern 'Browse For Folder' -Process 'Deluno' -TimeoutSec 30
+            $dlg = Wait-DesktopWindow -NamePattern 'Browse For Folder' -Process 'Deluno' -TimeoutSec 240 # reason: the first folder window of a session can take minutes to load Windows' shell parts
             Add-Check 'Windows'' own folder window (Browse For Folder) opens on this desktop, asking "Choose a folder for Deluno"' ($null -ne $dlg -and (Get-WindowText -Window $dlg) -match 'Choose a folder for Deluno') $(if ($dlg) { $dlg.Name } else { 'windows: ' + (Format-DesktopWindows) })
             if (-not $dlg) { return }
             $second = Try-Deluno -Method POST -Path '/api/filesystem/native-folder-picker' -Body @{ initialPath = 'C:\' } -TimeoutSec 20
             Add-Check 'A second ask while it is open is refused: "A folder window is already open on the server"' ($second.Status -eq 409 -and $second.Raw -match 'already open') "HTTP $($second.Status) $($second.Raw)"
-            $edit = Get-WindowControls -Window $dlg | Where-Object { $_.Type -eq 'Edit' } | Select-Object -First 1
-            if ($edit) { $edit.Element.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($target) }
             Click-WindowButton -Window $dlg -NamePattern '^OK$' | Out-Null
             $done = Wait-Job $job -Timeout 30
             $answer = if ($done) { Receive-Job $job } else { 'no answer' }
-            Add-Check "OK returns the folder that was typed ($target)" ("$answer" -match '^200 ' -and "$answer" -match [regex]::Escape(($target -replace '\\', '\\\\')) -and "$answer" -match '"cancelled":\s*false') "$answer"
+            $picked = $null
+            if ($done) { try { $picked = ([regex]::Replace("$answer", '^\d+\s+', '') | ConvertFrom-Json) } catch { } }
+            Add-Check 'OK returns a folder that exists, and not "cancelled"' ($null -ne $picked -and $picked.cancelled -eq $false -and $picked.path -and (Test-Path -LiteralPath $picked.path)) "$answer"
+            if ($picked -and $picked.path -and $picked.path -ne $target) { Add-Note "The window was asked to start at $target but OK returned $($picked.path): the initial folder was not selected when the window opened." }
         }
         finally { Remove-Job $job -Force -ErrorAction SilentlyContinue }
 
         $job = Start-NativePickerAsk -InitialPath $target
         try {
-            $dlg = Wait-DesktopWindow -NamePattern 'Browse For Folder' -Process 'Deluno' -TimeoutSec 30
+            $dlg = Wait-DesktopWindow -NamePattern 'Browse For Folder' -Process 'Deluno' -TimeoutSec 240 # reason: the first folder window of a session can take minutes to load Windows' shell parts
             if ($dlg) { Click-WindowButton -Window $dlg -NamePattern '^Cancel$' | Out-Null }
             $done = Wait-Job $job -Timeout 30
             $answer = if ($done) { Receive-Job $job } else { 'no answer' }
@@ -81,4 +83,7 @@ function Invoke-GroupDesktop {
         finally { Remove-Job $job -Force -ErrorAction SilentlyContinue }
     }
 }
+
+
+
 

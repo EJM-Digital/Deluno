@@ -53,10 +53,11 @@ function Invoke-GroupService {
             $item = (Wait-Until -TimeoutSec 5 -IntervalSec 0.3 -Condition { Get-OpenMenuItems | Where-Object { $_ -match '^Run as a Windows service' } | Select-Object -First 1 }).Value
             Add-Check 'Advanced shows "Run as a Windows service..."' ($adv -and $null -ne $item) $item
             if (-not $item) { return }
+            # A dialog opens from the next item, so it is pressed with the mouse (Invoke would not return until the dialog closed).
             $uia = [System.Windows.Automation.AutomationElement]
             $cond = New-Object System.Windows.Automation.PropertyCondition($uia::ControlTypeProperty, [System.Windows.Automation.ControlType]::MenuItem)
             foreach ($el in $uia::RootElement.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)) {
-                if ($el.Current.Name -match '^Run as a Windows service') { try { $el.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch { $r = $el.Current.BoundingRectangle; Send-Click -X ([int]($r.X + $r.Width / 2)) -Y ([int]($r.Y + $r.Height / 2)) }; break }
+                if ($el.Current.Name -match '^Run as a Windows service') { $r = $el.Current.BoundingRectangle; Send-Click -X ([int]($r.X + $r.Width / 2)) -Y ([int]($r.Y + $r.Height / 2)); break }
             }
             $dlg = Wait-DesktopWindow -NamePattern '^Startup Mode$' -Process 'Deluno' -TimeoutSec 20
             Add-Check 'The "Startup Mode" dialog opens with the three ways to start' ($null -ne $dlg -and (Get-WindowText -Window $dlg) -match 'Start at login' -and (Get-WindowText -Window $dlg) -match 'Local System' -and (Get-WindowText -Window $dlg) -match 'Run as user') $(if ($dlg) { Get-WindowText -Window $dlg } else { Format-DesktopWindows })

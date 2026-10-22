@@ -133,7 +133,7 @@ function Invoke-GroupTray {
             # A busy port first: the dialog must refuse it and say so.
             $busy = $old + 12
             $listener = New-Object System.Net.Sockets.TcpListener([Net.IPAddress]::Any, $busy); $listener.Start()
-            Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Change port' | Out-Null
+            Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Change port' -Modal | Out-Null
             $dlg = Wait-DesktopWindow -NamePattern '^Deluno$' -Process 'Deluno' -TimeoutSec 20
             Add-Check 'Change port... opens the dialog "Change Deluno''s port"' ($null -ne $dlg -and (Get-WindowText -Window $dlg) -match "Change Deluno's port") $(if ($dlg) { Get-WindowText -Window $dlg } else { Format-DesktopWindows })
             if (-not $dlg) { return }
@@ -164,7 +164,7 @@ function Invoke-GroupTray {
             if ($listener) { $listener.Stop() }
             # Back to the default port through the dialog's own option.
             if ((Test-DelunoAnswering) -and $script:S.DelunoUrl -ne "http://localhost:$old") {
-                Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Change port' | Out-Null
+                Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Change port' -Modal | Out-Null
                 $dlg = Wait-DesktopWindow -NamePattern '^Deluno$' -Process 'Deluno' -TimeoutSec 20
                 if ($dlg) {
                     $edit = Get-WindowControls -Window $dlg | Where-Object { $_.Type -eq 'Edit' } | Select-Object -First 1
@@ -208,12 +208,15 @@ function Invoke-GroupTray {
                 $uia = [System.Windows.Automation.AutomationElement]
                 $cond = New-Object System.Windows.Automation.PropertyCondition($uia::ControlTypeProperty, [System.Windows.Automation.ControlType]::MenuItem)
                 foreach ($el in $uia::RootElement.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)) {
-                    if ($el.Current.Name -match '^Let any address in') { try { $el.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch { $r = $el.Current.BoundingRectangle; Send-Click -X ([int]($r.X + $r.Width / 2)) -Y ([int]($r.Y + $r.Height / 2)) }; break }
+                    if ($el.Current.Name -match '^Let any address in') { $r = $el.Current.BoundingRectangle; Send-Click -X ([int]($r.X + $r.Width / 2)) -Y ([int]($r.Y + $r.Height / 2)); break }
                 }
                 $confirm = Wait-DesktopWindow -NamePattern 'Let any address in\?' -TimeoutSec 20
                 Add-Check 'A warning asks first ("Let any address in?")' ($null -ne $confirm) $(if ($confirm) { Get-WindowText -Window $confirm } else { Format-DesktopWindows })
-                if ($confirm) { Click-WindowButton -Window $confirm -NamePattern '^OK$' | Out-Null }
-                $marker = Wait-Until -TimeoutSec 240 -IntervalSec 3 -Condition { $m = Read-StartMarker; if ($m -and "$($m.phase)" -eq 'ready' -and (Test-DelunoAnswering)) { $m } else { $null } }
+                $clickedAt = (Get-Date).ToUniversalTime().AddSeconds(-2)
+                $pressed = [bool]($confirm -and (Click-WindowButton -Window $confirm -NamePattern '^OK$'))
+                Add-Check 'OK is pressed' $pressed ''
+                $marker = Wait-Until -TimeoutSec 240 -IntervalSec 3 -Condition { $m = Read-StartMarker; $at = $null; if ($m -and $m.atUtc) { try { $at = [DateTimeOffset]::Parse([string]$m.atUtc).UtcDateTime } catch { $at = $null } }; if ($m -and "$($m.phase)" -eq 'ready' -and $at -and $at -gt $clickedAt -and (Test-DelunoAnswering)) { $m } else { $null } }
+                Add-Check 'Deluno restarted its host (a new ready start marker after the click)' $marker.Ok ''
                 $json = if (Test-Path $settingsPath) { Get-Content -Raw $settingsPath } else { '' }
                 Add-Check 'deluno.json now carries the override (AllowedHostsForceDisabled: true)' ($json -match '(?i)"allowedHostsForceDisabled"\s*:\s*true') ''
                 $in = Wait-Until -TimeoutSec 120 -IntervalSec 2 -Condition { (Get-StatusWithHostHeader -HostHeader $foreign -Port $port) -eq 200 }

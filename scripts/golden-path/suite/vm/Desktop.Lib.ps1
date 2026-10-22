@@ -72,6 +72,10 @@ function Test-ProcessElevated {
 # Every top-level window UI Automation can see: name, class and owning process. Used to find a dialog and to say what was on the
 # desktop when one never came.
 function Get-DesktopWindows {
+    Invoke-UiaRetry -Block { Get-DesktopWindowsOnce }
+}
+
+function Get-DesktopWindowsOnce {
     $uia = [System.Windows.Automation.AutomationElement]
     $all = $uia::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
     $found = New-Object System.Collections.ArrayList
@@ -121,7 +125,7 @@ function Click-WindowButton {
     param([Parameter(Mandatory)] $Window, [Parameter(Mandatory)] [string] $NamePattern, [int] $TimeoutSec = 10)
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSec)
     do {
-        $b = Get-WindowControls -Window $Window | Where-Object { $_.Type -eq 'Button' -and $_.Name -match $NamePattern -and -not $_.Offscreen } | Select-Object -First 1
+        $b = Get-WindowControls -Window $Window | Where-Object { $_.Type -in 'Button', 'Pane' -and $_.Name -match $NamePattern -and -not $_.Offscreen } | Select-Object -First 1
         if ($b) {
             Wait-UiaClickable -Element $b.Element -What "the '$($b.Name)' button"
             try { $b.Element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); return $true }
@@ -438,4 +442,5 @@ function Wait-UacAnswer {
     if (-not $r.found) { return $null }
     [pscustomobject]@{ Text = [string]$r.text; Pressed = [bool]$r.pressed; Names = @($r.names) }
 }
+
 

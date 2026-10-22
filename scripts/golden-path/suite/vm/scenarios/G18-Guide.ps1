@@ -1,4 +1,4 @@
-<#
+﻿<#
     The guided setup walked through in the browser on the installed Windows app (coverage issues 1283 and 1302).
 
     guided-setup.walk   Run by the host on a clean machine of its own (the picker has installed the five download clients and Weir; Deluno has
@@ -16,7 +16,9 @@ function Get-UnansweredQuestions {
   var out = [];
   document.querySelectorAll('[role=radiogroup]').forEach(function(g){
     var r = g.getBoundingClientRect(); if (r.width < 2 || r.height < 2) return;
-    var radios = g.querySelectorAll('[role=radio]'); if (radios.length < 2) return;
+    var radios = g.querySelectorAll('[role=radio]'); if (radios.length !== 2) return;
+    var l0 = (radios[0].getAttribute('aria-label') || ''), l1 = (radios[1].getAttribute('aria-label') || '');
+    if (!/ Yes$/.test(l0) || !/ No$/.test(l1)) return;
     var answered = false; radios.forEach(function(x){ if (x.getAttribute('aria-checked') === 'true') answered = true; });
     if (!answered) out.push(g.getAttribute('aria-label') || '');
   });
@@ -72,6 +74,12 @@ function Get-StepSnapshot {
     Invoke-CdpEval -Page $Page -Script $js
 }
 
+# Presses the control with this text when it is there and ready within the wait; $false when it is not (a step that is already done).
+function Test-ClickText {
+    param($Page, [string] $Pattern, [int] $TimeoutSec = 5)
+    try { Click-PageText -Page $Page -Pattern $Pattern -TimeoutSec $TimeoutSec | Out-Null; $true } catch { $false }
+}
+
 # Presses Continue when it is enabled; returns $false (and the snapshot) when it stays disabled.
 function Press-Continue {
     param($Page, [int] $TimeoutSec = 15)
@@ -87,7 +95,9 @@ function Invoke-GroupGuide {
         # ---- The installed state: the picker put the clients and Weir on this computer; Deluno has no account and nothing set up.
         $boot = Wait-DelunoUp
         Add-Check 'Deluno is a fresh install nobody has set up (no account yet)' ([bool]$boot.requiresSetup) ($boot | ConvertTo-Json -Compress)
-        Add-Check 'The tray icon is showing and Deluno runs from the installed copy' ([bool](Find-TrayIcon -Icon 'Deluno') -and (Get-DelunoProcess).Count -gt 0) ''
+        Set-TrayIconsPromoted
+        $icon = Wait-Until -TimeoutSec 60 -IntervalSec 2 -Condition { Set-TrayIconsPromoted; Find-TrayIcon -Icon 'Deluno' }
+        Add-Check 'The tray icon is showing and Deluno runs from the installed copy' ($icon.Ok -and (Get-DelunoProcess).Count -gt 0) $(if ($icon.Ok) { $icon.Value.Name } else { 'no tray icon' })
         $weirExe = Get-WeirExe
         Add-Check 'Weir is installed (the picker put it on this computer)' ($null -ne $weirExe) $(if ($weirExe) { $weirExe.FullName } else { 'no Weir.exe' })
 
@@ -103,6 +113,7 @@ function Invoke-GroupGuide {
         $page = New-CdpPage 'about:blank'
         try {
             Open-DelunoPage -Page $page -Path '/setup-guide' -Login $script:S.Login
+            Wait-Until -TimeoutSec 60 -IntervalSec 1 -Condition { (Get-PageText -Page $page) -match 'Your account' } | Out-Null
             $snap = Get-StepSnapshot -Page $page
             Save-Evidence -Name 'guide-first-screen.txt' -Text ($snap.text + "`n" + ($snap.controls -join "`n"))
             Add-Check 'The guided setup opens at its first step for the new account' ($snap.text -match 'Guided setup' -and $snap.text -match 'Your account') ($snap.text.Substring(0, [math]::Min(160, $snap.text.Length)))
@@ -128,20 +139,35 @@ function Invoke-GroupGuide {
                         Click-PageText -Page $page -Pattern '^Just make it work' -TimeoutSec 10 | Out-Null
                     }
                     'Connect installed apps' {
-                        Click-PageText -Page $page -Pattern '^Connect all$' -TimeoutSec 20 | Out-Null
-                        $connected = Wait-Until -TimeoutSec 240 -IntervalSec 3 -Condition { $t = Get-PageText -Page $page; if ($t -notmatch 'Connecting' -and $t -match 'Connected') { $t } else { $null } }
+                        # Connect all, then Weir's own account. A run that finds the apps already connected skips what is done.
+                        if (Test-ClickText -Page $page -Pattern '^Connect all$' -TimeoutSec 20) {
+                            Wait-Until -TimeoutSec 240 -IntervalSec 3 -Condition { $t = Get-PageText -Page $page; if ($t -notmatch 'Connecting' -and $t -match 'Connected') { $t } else { $null } } | Out-Null
+                        }
                         Save-Evidence -Name 'guide-connect-all.txt' -Text (Get-PageText -Page $page)
-                        Click-PageText -Page $page -Pattern '^Connect Weir$' -TimeoutSec 20 | Out-Null
-                        Start-Sleep -Seconds 1 # reason: the account panel opens; the page has no ready signal
-                        Set-PageInputAt -Page $page -Selector '[aria-label="Your Weir account"] input' -Index 0 -Value (Get-SuiteSecret 'weir-username') | Out-Null
-                        Set-PageInputAt -Page $page -Selector '[aria-label="Your Weir account"] input' -Index 1 -Value (Get-SuiteSecret 'weir-password') | Out-Null
-                        Set-PageInputAt -Page $page -Selector '[aria-label="Your Weir account"] input' -Index 2 -Value (Get-SuiteSecret 'weir-password') | Out-Null
-                        Click-PageText -Page $page -Pattern '^Create Weir account and connect$' -TimeoutSec 20 | Out-Null
-                        $weirUp = Wait-Until -TimeoutSec 300 -IntervalSec 3 -Condition { $t = Get-PageText -Page $page; if ($t -match 'Weir' -and $t -notmatch 'Connecting to Weir' -and $t -notmatch 'Create Weir account and connect') { $t } else { $null } }
+                        if (Test-ClickText -Page $page -Pattern '^Connect Weir$' -TimeoutSec 5) {
+                            Start-Sleep -Seconds 1 # reason: the account panel opens; the page has no ready signal
+                            Set-PageInputAt -Page $page -Selector '[aria-label="Your Weir account"] input' -Index 0 -Value (Get-SuiteSecret 'weir-username') | Out-Null
+                            Set-PageInputAt -Page $page -Selector '[aria-label="Your Weir account"] input' -Index 1 -Value (Get-SuiteSecret 'weir-password') | Out-Null
+                            Set-PageInputAt -Page $page -Selector '[aria-label="Your Weir account"] input' -Index 2 -Value (Get-SuiteSecret 'weir-password') | Out-Null
+                            Click-PageText -Page $page -Pattern '^Create Weir account and connect$' -TimeoutSec 20 | Out-Null
+                            Wait-Until -TimeoutSec 300 -IntervalSec 3 -Condition { $t = Get-PageText -Page $page; if ($t -match 'Weir is connected to Deluno both ways') { $t } else { $null } } | Out-Null
+                        }
                         Save-Evidence -Name 'guide-connect-weir.txt' -Text (Get-PageText -Page $page)
+                        foreach ($line in (Answer-StepQuestions -Page $page -YesStarts @('Movies: Clean files with Weir', 'TV: Clean files with Weir'))) { [void]$asked.Add("$name | $line") }
+                        # Weir's output folder for each library: typed, then checked with the Check button beside it.
+                        New-Item -ItemType Directory -Force -Path 'C:\Weir\Ready\Movies', 'C:\Weir\Ready\TV' | Out-Null
+                        $outs = @('C:\Weir\Ready\Movies', 'C:\Weir\Ready\TV')
+                        for ($k = 0; $k -lt 2; $k++) {
+                            $js = "(function(){var all=[].slice.call(document.querySelectorAll('input'));var m=all.filter(function(e){return (e.placeholder||'').indexOf('Weir')>=0});return m.length;})()"
+                            if ($k -ge [int](Invoke-CdpEval -Page $page -Script $js)) { break }
+                            $setJs = "(function(){var all=[].slice.call(document.querySelectorAll('input'));var m=all.filter(function(e){return (e.placeholder||'').indexOf('Weir')>=0});var e=m[$k];if(!e)return false;e.focus();var d=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e),'value');d.set.call(e," + ($outs[$k] | ConvertTo-Json) + ");e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()"
+                            Invoke-CdpEval -Page $page -Script $setJs | Out-Null
+                        }
+                        for ($k = 0; $k -lt 2; $k++) {
+                            if (Test-ClickText -Page $page -Pattern '^Check$' -TimeoutSec 5) { Start-Sleep -Seconds 3 } # reason: the folder check asks the server; the page has no ready signal
+                        }
                     }
-                }
-                foreach ($line in (Answer-StepQuestions -Page $page -YesStarts @('Movies: Clean files with Weir', 'TV: Clean files with Weir'))) { [void]$asked.Add("$name | $line") }
+                }                foreach ($line in (Answer-StepQuestions -Page $page -YesStarts @('Movies: Clean files with Weir', 'TV: Clean files with Weir'))) { [void]$asked.Add("$name | $line") }
                 if (-not (Press-Continue -Page $page)) {
                     $snap = Get-StepSnapshot -Page $page
                     Save-Evidence -Name "guide-stuck-$($i + 1).txt" -Text ($snap.text + "`n" + ($snap.controls -join "`n"))
@@ -169,13 +195,16 @@ function Invoke-GroupGuide {
         Add-Check 'A Movies and a TV library exist, with the folders that were typed' ($movies -and $tv -and $movies.rootPath -eq $moviesRoot -and $tv.rootPath -eq $tvRoot) (($libs | ForEach-Object { "$($_.name): $($_.rootPath)" }) -join '; ')
         $clients = @(Get-DownloadClients)
         $kinds = @($clients | ForEach-Object { "$($_.protocol)" } | Sort-Object -Unique)
-        Add-Check 'The five download clients the picker installed are connected and healthy' ((@('deluge', 'nzbget', 'qbittorrent', 'sabnzbd', 'transmission') | Where-Object { $_ -notin $kinds }).Count -eq 0 -and @($clients | Where-Object { $_.healthStatus -ne 'healthy' }).Count -eq 0) (($clients | ForEach-Object { "$($_.protocol)=$($_.healthStatus)" }) -join ', ')
+        $missingKinds = @('deluge', 'nzbget', 'qbittorrent', 'sabnzbd', 'transmission' | Where-Object { $_ -notin $kinds })
+        # The two Usenet clients have no news provider on a fresh install, which Deluno says in words (degraded); nothing is unreachable.
+        $down = @($clients | Where-Object { $_.healthStatus -notin 'healthy', 'degraded' })
+        Add-Check 'The five download clients the picker installed are connected, and none is unreachable' ($missingKinds.Count -eq 0 -and $down.Count -eq 0) (($clients | ForEach-Object { "$($_.protocol)=$($_.healthStatus)" }) -join ', ')
         $conn = @(Invoke-Deluno -Path '/api/integrations/processors/connections') | Where-Object { $_.isEnabled -and $_.name -match 'weir' } | Select-Object -First 1
-        Add-Check 'Weir is connected as a processor' ($null -ne $conn) ($conn | ConvertTo-Json -Compress)
+        Add-Check 'Weir is connected as a processor and healthy' ($null -ne $conn -and $conn.healthStatus -eq 'healthy') ($conn.name)
+        $wanted = @{ $movies.id = 'C:\Weir\Ready\Movies'; $tv.id = 'C:\Weir\Ready\TV' }
         foreach ($lib in $movies, $tv) {
             if (-not $lib) { continue }
-            $wf = Try-Deluno -Path "/api/libraries/$($lib.id)/workflow"
-            Add-Check "The $($lib.name) library cleans with Weir before it imports (refine before import), with Weir's output folder set" ($wf.Status -eq 200 -and $wf.Data.importWorkflow -eq 'refine-before-import' -and $wf.Data.processorOutputPath) ($wf.Raw)
+            Add-Check "The $($lib.name) library cleans with Weir before it imports, into the output folder that was typed" ($lib.importWorkflow -eq 'refine-before-import' -and $lib.processorOutputPath -eq $wanted[$lib.id] -and $lib.processorConnectionId -eq $conn.id) "$($lib.importWorkflow) -> $($lib.processorOutputPath)"
         }
         if ($conn) {
             $weirLibs = $null
@@ -184,7 +213,7 @@ function Invoke-GroupGuide {
         }
         $health = Try-Deluno -Path '/api/system/health'
         Save-Evidence -Name 'guide-health.json' -Text $health.Raw
-        $chain = @($health.Data.items) + @($health.Data) | Where-Object { $_ -and ("$($_.title) $($_.message) $($_.name)" -match 'category and save path|Folder chain') }
-        Add-Check 'The folder chain is green: Health names no library whose client category and save path disagree' (@($chain).Count -eq 0) (($chain | ForEach-Object { $_.title }) -join '; ')
+        $chain = @($health.Data.checks | Where-Object { $_.status -ne 'ok' -and "$($_.name) $($_.message)" -match 'category and save path|Folder chain|download folder' })
+        Add-Check 'The folder chain is green: Health names no library whose client category and save path disagree' ($health.Status -eq 200 -and $chain.Count -eq 0) (($chain | ForEach-Object { $_.name }) -join '; ')
     }
 }
