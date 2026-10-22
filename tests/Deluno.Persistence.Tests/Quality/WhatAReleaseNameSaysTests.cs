@@ -111,7 +111,7 @@ public sealed class WhatAReleaseNameSaysTests
     /// "Frenchman", the "Spanish Prisoner" is its own word and so counts, but "Englishman" is not "English". The words
     /// "french", "german", "spanish", "english", "japanese" and "original" are matched anywhere in the name.
     /// </summary>
-    [Theory(Skip = "Found by #1296: the French, German, Japanese, Spanish, English and Original words match inside a longer word, so 'The.Englishman.Who.Went.Up.A.Hill' reads as English")]
+    [Theory]
     [InlineData("The.Englishman.Who.Went.Up.A.Hill.1995.1080p.BluRay.x264-GRP")]
     [InlineData("Frenchman.s.Creek.1944.1080p.BluRay.x264-GRP")]
     [InlineData("Original.Sin.2001.1080p.BluRay.x264-GRP")]
@@ -119,11 +119,29 @@ public sealed class WhatAReleaseNameSaysTests
         => Assert.Null(ReleasePreferenceFactFactory.DetectLanguageFromReleaseName(name));
 
     [Theory]
+    [InlineData("Movie.2020.1080p.BluRay.x264-GRP-sample.mkv")]
+    [InlineData("Movie.2020.1080p.BluRay.x264-GRP/sample/movie-sample.mkv")]
+    [InlineData("Movie.2020.1080p.BluRay.x264-GRP.Sample.mkv")]
+    public void A_sample_marker_after_the_title_is_still_a_sample_clip(string name)
+        => Assert.Contains(Trait("unwanted", "Sample"), Present(name));
+
+    [Theory]
+    [InlineData("Movie.2026.1080p.WEB-DL.GERMAN-GRP", "German")]
+    [InlineData("Movie.2026.1080p.WEB-DL.SPANISH-GRP", "Spanish")]
+    [InlineData("Movie.2026.1080p.WEB-DL.ENGLISH-GRP", "English")]
+    [InlineData("Movie.2026.1080p.WEB-DL.JAPANESE-GRP", "Japanese")]
+    [InlineData("Movie.2026.1080p.BluRay.FRENCH.x264-GRP", "French")]
+    [InlineData("Movie.2026.1080p.BluRay.MULTi.x264-GRP", "Multilingual")]
+    [InlineData("Show.S01E01.1080p.WEB-DL.TRUEFRENCH-GRP", "French")]
+    public void A_language_tag_after_the_title_is_still_read(string name, string language)
+        => Assert.Equal(language, ReleasePreferenceFactFactory.DetectLanguageFromReleaseName(name));
+
+    [Theory]
     [InlineData("Sample.mkv")]
     public void The_sample_marker_belongs_to_a_sample_clip_only(string name)
         => Assert.Contains(Trait("unwanted", "Sample"), Present(name));
 
-    [Fact(Skip = "Found by #1296: any name that contains the word 'sample' is read as a Sample clip, so The.Sample.2020.1080p would be marked unwanted")]
+    [Fact]
     public void A_film_whose_title_is_the_word_sample_is_not_marked_as_a_sample_clip()
         => Assert.DoesNotContain(Trait("unwanted", "Sample"), Present("The.Sample.2020.1080p.BluRay.x264-GRP"));
 

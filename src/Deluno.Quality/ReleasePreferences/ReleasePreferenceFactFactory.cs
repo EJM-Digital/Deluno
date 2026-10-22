@@ -318,25 +318,29 @@ public static class ReleasePreferenceFactFactory
         => DetectLanguage(releaseName.ToLowerInvariant());
 
     private static string? DetectLanguage(string value)
-        => HasReleaseToken(value, "multi") || value.Contains("multilanguage", StringComparison.Ordinal)
+    {
+        // Whole words outside the title: "The.Englishman..." and "Original.Sin.2001" name no language.
+        var tags = ReleaseNameWords.TagWords(value);
+        return HasReleaseToken(value, "multi") || ReleaseNameWords.HasTag(tags, "multilanguage")
             ? "Multilingual"
             : HasReleaseToken(value, "dual", "dubbed")
                 ? "Dubbed"
-                : value.Contains("original", StringComparison.Ordinal)
+                : ReleaseNameWords.HasTag(tags, "original")
                     ? "Original language"
-                    : value.Contains("french", StringComparison.Ordinal) || HasReleaseToken(value, "vostfr", "vff", "vfq", "vf2", "truefrench")
+                    : ReleaseNameWords.HasTag(tags, "french") || HasReleaseToken(value, "vostfr", "vff", "vfq", "vf2", "truefrench")
                         ? "French"
-                        : value.Contains("german", StringComparison.Ordinal) || HasReleaseToken(value, "deutsch")
+                        : ReleaseNameWords.HasTag(tags, "german") || HasReleaseToken(value, "deutsch")
                             ? "German"
-                            : value.Contains("japanese", StringComparison.Ordinal) || HasReleaseToken(value, "jpn", "jap")
+                            : ReleaseNameWords.HasTag(tags, "japanese") || HasReleaseToken(value, "jpn", "jap")
                                 ? "Japanese"
-                                : value.Contains("spanish", StringComparison.Ordinal) || HasReleaseToken(value, "castellano", "latino")
+                                : ReleaseNameWords.HasTag(tags, "spanish") || HasReleaseToken(value, "castellano", "latino")
                                     ? "Spanish"
-                                    : value.Contains("english", StringComparison.Ordinal) ? "English" : null;
+                                    : ReleaseNameWords.HasTag(tags, "english") ? "English" : null;
+    }
 
     /// <summary>Whether the release name carries a MULTI/dual-language tag (#746).</summary>
     private static bool IsMultiTagged(string value)
-        => HasReleaseToken(value, "multi") || value.Contains("multilanguage", StringComparison.Ordinal);
+        => HasReleaseToken(value, "multi") || HasReleaseToken(value, "multilanguage");
 
     /// <summary>
     /// Words a per-indexer MultiLanguages setting can name (#746), mapped to
@@ -447,11 +451,14 @@ public static class ReleasePreferenceFactFactory
     }
 
     private static string? DetectUnwanted(string value)
-        => value.Contains("upscaled", StringComparison.Ordinal)
-            ? "Upscaled"
-            : value.Contains("camrip", StringComparison.Ordinal) || value.Contains("telesync", StringComparison.Ordinal)
-                ? value.Contains("telesync", StringComparison.Ordinal) ? "Telesync" : "CAM"
-                : value.Contains("screener", StringComparison.Ordinal) ? "Screener"
-                : value.Contains("sample", StringComparison.Ordinal) ? "Sample"
-                : null;
+    {
+        // Whole words outside the title: the film "The Sample" or "The Screener" is not a sample or a screener.
+        var tags = ReleaseNameWords.TagWords(value);
+        return ReleaseNameWords.HasTag(tags, "upscaled") ? "Upscaled"
+            : ReleaseNameWords.HasTag(tags, "telesync") ? "Telesync"
+            : ReleaseNameWords.HasTag(tags, "camrip") ? "CAM"
+            : ReleaseNameWords.HasTag(tags, "screener") ? "Screener"
+            : ReleaseNameWords.HasTag(tags, "sample") ? "Sample"
+            : null;
+    }
 }

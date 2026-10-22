@@ -255,47 +255,45 @@ public sealed record MediaPolicyDefinition(
             return null;
         }
 
-        var value = raw;
+        // Whole words only, and never the title's own: "Webster", "Regional.Manager" and "The.Screener.2019" carry no
+        // source (ReleaseNameWords).
+        var words = ReleaseNameWords.TagWords(raw);
+        bool Has(params string[] wanted) => ReleaseNameWords.HasTag(words, wanted);
+        bool HasPrefix(params string[] prefixes) => ReleaseNameWords.HasTagStartingWith(words, prefixes);
+        var bluray = Has("bluray", "bdrip") || ReleaseNameWords.HasPair(words, "blu", "ray");
+        var web = Has("web", "webrip", "webdl");
 
         // Disc and low-grade sources first. Every branch here previously fell
         // through to null, so classification of existing releases is unchanged.
-        if (value.Contains("workprint", StringComparison.OrdinalIgnoreCase)) return "WORKPRINT";
-        if (value.Contains("telesync", StringComparison.OrdinalIgnoreCase) || HasToken(value, "ts")) return "TELESYNC";
-        if (value.Contains("telecine", StringComparison.OrdinalIgnoreCase) || HasToken(value, "tc")) return "TELECINE";
-        if (value.Contains("dvdscr", StringComparison.OrdinalIgnoreCase) || value.Contains("screener", StringComparison.OrdinalIgnoreCase)) return "DVDSCR";
-        if (value.Contains("regional", StringComparison.OrdinalIgnoreCase)) return "REGIONAL";
-        if (value.Contains("camrip", StringComparison.OrdinalIgnoreCase) || HasToken(value, "cam")) return "CAM";
-        if (value.Contains("br-disk", StringComparison.OrdinalIgnoreCase) || value.Contains("brdisk", StringComparison.OrdinalIgnoreCase) || value.Contains("bdmv", StringComparison.OrdinalIgnoreCase) || value.Contains("bdiso", StringComparison.OrdinalIgnoreCase)) return "BR-DISK";
-        if (value.Contains("raw-hd", StringComparison.OrdinalIgnoreCase) || value.Contains("rawhd", StringComparison.OrdinalIgnoreCase)) return "Raw-HD";
-        if (value.Contains("dvd-r", StringComparison.OrdinalIgnoreCase) || HasToken(value, "dvdr")) return "DVD-R";
+        if (Has("workprint")) return "WORKPRINT";
+        if (Has("telesync", "ts")) return "TELESYNC";
+        if (Has("telecine", "tc")) return "TELECINE";
+        if (Has("dvdscr", "screener")) return "DVDSCR";
+        if (Has("regional")) return "REGIONAL";
+        if (Has("camrip", "cam")) return "CAM";
+        if (Has("brdisk", "bdmv", "bdiso") || ReleaseNameWords.HasPair(words, "br", "disk")) return "BR-DISK";
+        if (Has("rawhd") || ReleaseNameWords.HasPair(words, "raw", "hd")) return "Raw-HD";
+        if (Has("dvdr") || ReleaseNameWords.HasPair(words, "dvd", "r")) return "DVD-R";
 
-        if (ContainsAll(value, "remux", "2160")) return "Remux 2160p";
-        if (ContainsAll(value, "hdtv", "2160")) return "HDTV 2160p";
-        if (ContainsAll(value, "bluray", "2160") || ContainsAll(value, "blu-ray", "2160") || ContainsAll(value, "bdrip", "2160")) return "Bluray 2160p";
-        if (ContainsAll(value, "web", "2160") || ContainsAll(value, "webrip", "2160") || ContainsAll(value, "web-dl", "2160")) return "WEB 2160p";
-        if (ContainsAll(value, "remux", "1080")) return "Remux 1080p";
-        if (ContainsAll(value, "bluray", "1080") || ContainsAll(value, "blu-ray", "1080") || ContainsAll(value, "bdrip", "1080")) return "Bluray 1080p";
-        if (ContainsAll(value, "web", "1080") || ContainsAll(value, "webrip", "1080") || ContainsAll(value, "web-dl", "1080")) return "WEB 1080p";
-        if (ContainsAll(value, "hdtv", "1080")) return "HDTV 1080p";
-        if (ContainsAll(value, "bluray", "720") || ContainsAll(value, "blu-ray", "720") || ContainsAll(value, "bdrip", "720")) return "Bluray 720p";
-        if (ContainsAll(value, "web", "720") || ContainsAll(value, "webrip", "720") || ContainsAll(value, "web-dl", "720")) return "WEB 720p";
-        if (ContainsAll(value, "hdtv", "720")) return "HDTV 720p";
-        if (ContainsAll(value, "bluray", "576") || ContainsAll(value, "blu-ray", "576")) return "Bluray 576p";
-        if (ContainsAll(value, "bluray", "480") || ContainsAll(value, "blu-ray", "480")) return "Bluray 480p";
-        if (ContainsAll(value, "web", "480")) return "WEB 480p";
-        if (value.Contains("dvd", StringComparison.OrdinalIgnoreCase)) return "DVD";
-        if (value.Contains("sdtv", StringComparison.OrdinalIgnoreCase)) return "SDTV";
+        var remux = Has("remux");
+        var hdtv = Has("hdtv");
+        foreach (var (resolution, label) in new[] { ("2160", "2160p"), ("1080", "1080p"), ("720", "720p"), ("576", "576p"), ("480", "480p") })
+        {
+            if (!HasPrefix(resolution))
+            {
+                continue;
+            }
+
+            if (remux && label is "2160p" or "1080p") return $"Remux {label}";
+            if (hdtv && label is "2160p" or "1080p" or "720p") return $"HDTV {label}";
+            if (bluray) return $"Bluray {label}";
+            if (web && label is "2160p" or "1080p" or "720p" or "480p") return $"WEB {label}";
+        }
+
+        if (HasPrefix("dvd")) return "DVD";
+        if (Has("sdtv")) return "SDTV";
         return null;
     }
-
-    /// <summary>Whole-token match, so "cam" never fires on "Camera" nor "ts" on "Ghosts".</summary>
-    private static bool HasToken(string value, string token)
-        => value.Split([' ', '.', '-', '_', '(', ')', '[', ']'], StringSplitOptions.RemoveEmptyEntries)
-            .Any(part => part.Equals(token, StringComparison.OrdinalIgnoreCase));
-
-    private static bool ContainsAll(string value, string tokenA, string tokenB)
-        => value.Contains(tokenA, StringComparison.OrdinalIgnoreCase)
-           && value.Contains(tokenB, StringComparison.OrdinalIgnoreCase);
 }
 
 public static class MediaPolicyCatalog

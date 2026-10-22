@@ -750,28 +750,28 @@ public static partial class CustomFormatDefinitionMatcher
     }
 
     private static bool MatchSource(string lower, string value)
-        => value.ToLowerInvariant() switch
+    {
+        // Whole words outside the title, so "Webster" is not WEB and "Regional.Manager" is not a regional release.
+        var tags = ReleaseNameWords.TagWords(lower);
+        bool Has(params string[] wanted) => ReleaseNameWords.HasTag(tags, wanted);
+        var bluray = Has("bluray") || ReleaseNameWords.HasPair(tags, "blu", "ray");
+        return value.ToLowerInvariant() switch
         {
-            "bluray" => lower.Contains("bluray", StringComparison.Ordinal) || lower.Contains("blu-ray", StringComparison.Ordinal),
-            "remux" => lower.Contains("remux", StringComparison.Ordinal),
-            "web" => lower.Contains("web-dl", StringComparison.Ordinal)
-                     || lower.Contains("webdl", StringComparison.Ordinal)
-                     || (lower.Contains("web", StringComparison.Ordinal) && !lower.Contains("webrip", StringComparison.Ordinal)),
-            "webrip" => lower.Contains("webrip", StringComparison.Ordinal),
-            "hdtv" => lower.Contains("hdtv", StringComparison.Ordinal)
-                      || lower.Contains("pdtv", StringComparison.Ordinal)
-                      || lower.Contains("sdtv", StringComparison.Ordinal)
-                      || lower.Contains("tvrip", StringComparison.Ordinal),
-            "rawhd" => lower.Contains("raw-hd", StringComparison.Ordinal) || lower.Contains("rawhd", StringComparison.Ordinal),
-            "regional" => lower.Contains("regional", StringComparison.Ordinal),
-            "screener" => lower.Contains("screener", StringComparison.Ordinal) || lower.Contains(".scr.", StringComparison.Ordinal),
-            "brdisk" => lower.Contains("brdisk", StringComparison.Ordinal) || lower.Contains("br-disk", StringComparison.Ordinal),
+            "bluray" => bluray,
+            "remux" => Has("remux"),
+            "web" => Has("web", "webdl") && !Has("webrip"),
+            "webrip" => Has("webrip"),
+            "hdtv" => Has("hdtv", "pdtv", "sdtv", "tvrip"),
+            "rawhd" => Has("rawhd") || ReleaseNameWords.HasPair(tags, "raw", "hd"),
+            "regional" => Has("regional"),
+            "screener" => Has("screener", "scr"),
+            "brdisk" => Has("brdisk") || ReleaseNameWords.HasPair(tags, "br", "disk"),
             // Sonarr's Blu-ray source excludes the remux, which it numbers apart.
-            "bluray-encode" => (lower.Contains("bluray", StringComparison.Ordinal) || lower.Contains("blu-ray", StringComparison.Ordinal))
-                               && !lower.Contains("remux", StringComparison.Ordinal),
-            "dvd" => lower.Contains("dvdrip", StringComparison.Ordinal) || lower.Contains("dvd", StringComparison.Ordinal),
+            "bluray-encode" => bluray && !Has("remux"),
+            "dvd" => ReleaseNameWords.HasTagStartingWith(tags, "dvd"),
             var other => lower.Contains(other, StringComparison.Ordinal)
         };
+    }
 
     private static bool MatchResolution(string lower, string value)
         => value.ToLowerInvariant() switch
