@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { repoRoot } from "../test/repo-root";
 
 // The guide package Deluno ships, read from the file the build embeds, and the page's own source: nothing is stubbed.
 // vitest runs from apps/web.
-const repo = resolve(process.cwd(), "../..");
+const repo = repoRoot();
 const shipped = JSON.parse(readFileSync(resolve(repo, "src/Deluno.Quality/Guides/trash-guide-package.json"), "utf8")) as {
   bundles: { id: string; mediaType: string; includes: { trashId: string }[] }[];
   customFormats: { trashId: string }[];

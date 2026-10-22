@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { repoRoot } from "../test/repo-root";
 import { describe, expect, it } from "vitest";
 import {
   QUALITY_STEPS,
@@ -206,7 +206,6 @@ function guideFormat(trashId: string, name: string, category: string) {
 
 /** The guide package Deluno ships, read from source rather than mirrored. */
 function shippedGuide(): GuidePackage {
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  const packagePath = path.resolve(here, "../../../../src/Deluno.Quality/Guides/trash-guide-package.json");
+  const packagePath = path.resolve(repoRoot(), "src/Deluno.Quality/Guides/trash-guide-package.json");
   return JSON.parse(readFileSync(packagePath, "utf8")) as GuidePackage;
 }
