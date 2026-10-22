@@ -203,13 +203,13 @@ public sealed class RetentionRuleFieldTests
     public void A_per_person_condition_names_whose_and_a_plain_one_cannot()
     {
         var rule = new SaveRetentionRuleRequest("Rule", RetentionLevels.Movie, true, [RetentionStep.KeepOnly("server.personViews:min:1")], ["server-1"], false);
-        var named = rule with { Steps = [RetentionStep.KeepOnly("server.personViews@the owner%20Smith:min:1")] };
+        var named = rule with { Steps = [RetentionStep.KeepOnly("server.personViews@James%20Smith:min:1")] };
         var plainWithPerson = rule with { Steps = [RetentionStep.KeepOnly("server.timesViewed@owner:min:1")] };
 
         Assert.Contains(RetentionEvaluator.Validate(rule, [Server]), problem => problem.Contains("needs the person", StringComparison.Ordinal));
         Assert.Empty(RetentionEvaluator.Validate(named, [Server]));
         Assert.Contains(RetentionEvaluator.Validate(plainWithPerson, [Server]), problem => problem.Contains("not asked about one person", StringComparison.Ordinal));
-        Assert.Equal("James Smith", RetentionFieldCatalog.PersonOf("server.personViews@the owner%20Smith"));
+        Assert.Equal("James Smith", RetentionFieldCatalog.PersonOf("server.personViews@James%20Smith"));
     }
 
     // ---------------------------------------------------------- #1007 collections
