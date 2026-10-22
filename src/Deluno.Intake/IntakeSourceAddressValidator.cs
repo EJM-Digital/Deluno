@@ -43,9 +43,7 @@ public static partial class IntakeSourceAddressValidator
             "tmdb-company-credits" when TmdbPersonIdRegex().IsMatch(value) || IsHostedBy(value, "themoviedb.org") || IsHostedBy(value, "tmdb.org")
                 => null,
             "tmdb-company-credits" => "Use a TMDb company URL or its numeric company ID.",
-            "imdb" when ImdbListIdRegex().IsMatch(value) || IsHostedBy(value, "imdb.com")
-                => null,
-            "imdb" => "Use an IMDb list URL, an IMDb CSV export URL, or an ls… list ID.",
+            "imdb" => IntakeSourceNotes.ImdbNoLongerSupported,
             "trakt" when TraktUsernameRegex().IsMatch(value) || IsHostedBy(value, "trakt.tv")
                 => null,
             "trakt" => "Use a Trakt list/watchlist URL or a Trakt username.",
@@ -85,9 +83,6 @@ public static partial class IntakeSourceAddressValidator
 
     [GeneratedRegex(@"^https?://(?:[^./]+\.)?(?:themoviedb\.org|tmdb\.org)/person/\d{1,12}(?:[/?#].*)?$", RegexOptions.IgnoreCase)]
     private static partial Regex TmdbPersonUrlRegex();
-
-    [GeneratedRegex(@"^ls\d{4,}$", RegexOptions.IgnoreCase)]
-    private static partial Regex ImdbListIdRegex();
 
     [GeneratedRegex(@"^[a-z0-9][a-z0-9_-]{1,62}$", RegexOptions.IgnoreCase)]
     private static partial Regex TraktUsernameRegex();

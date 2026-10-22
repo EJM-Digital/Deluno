@@ -51,8 +51,6 @@ public sealed class IntakeSyncService(
 {
     private const int PreviewLimit = 100;
     private const string IntakeHttpClientName = "deluno-intake";
-    private const string ImdbRefusedMessage = "IMDb refused the request. It does not let programs read its lists. In IMDb, open the list, choose Export, save the CSV file, put it somewhere Deluno can reach by a web address ending in .csv, and use that address for this list.";
-    private static readonly Regex ImdbListIdRegex = new(@"ls\d{4,}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex TmdbListIdRegex = new(@"(?:^|/)(\d{3,})(?:$|[/?#])", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex YearRegex = new(@"(?:\(|\b)(19\d{2}|20\d{2}|2100)(?:\)|\b)", RegexOptions.Compiled);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -742,7 +740,7 @@ public sealed class IntakeSyncService(
             "tmdb-collection" => await FetchTmdbCollectionAsync(source, cancellationToken),
             "tmdb-company-credits" => await FetchTmdbCompanyCreditsAsync(source, mediaType, cancellationToken),
             "mdblist" => await FetchMdbListAsync(source, mediaType, cancellationToken),
-            "imdb" => await FetchImdbListAsync(source, mediaType, cancellationToken),
+            "imdb" => throw new PlainFailureException(IntakeSourceNotes.ImdbNoLongerSupported),
             "trakt" => await FetchTraktListAsync(source, mediaType, cancellationToken),
             "trakt-trending" => await FetchTraktBuiltInListAsync("trending", mediaType, cancellationToken),
             "trakt-popular" => await FetchTraktBuiltInListAsync("popular", mediaType, cancellationToken),
@@ -1122,70 +1120,6 @@ public sealed class IntakeSyncService(
         return string.IsNullOrWhiteSpace(configured)
             ? await platformSettingsRepository.GetMetadataProviderSecretAsync(legacySecretName, cancellationToken)
             : configured.Trim();
-    }
-
-    private async Task<IReadOnlyList<IntakeEntry>> FetchImdbListAsync(IntakeSourceItem source, string mediaType, CancellationToken cancellationToken)
-    {
-        var url = ResolveImdbCsvUrl(source.FeedUrl);
-        using var client = httpClientFactory.CreateClient(IntakeHttpClientName);
-        using var response = await client.GetAsync(url, cancellationToken);
-        var csv = await response.Content.ReadAsStringAsync(cancellationToken);
-
-        // IMDb's bot check answers an automated client with an empty 202 (x-amzn-waf-action: challenge), and a real export is never
-        // empty (it always carries a header line). That is a refusal, not a list with no titles (recorded in tests/fixtures/recorded/imdb).
-        if (response.StatusCode == HttpStatusCode.Accepted
-            || response.Headers.Contains("x-amzn-waf-action")
-            || (response.IsSuccessStatusCode && string.IsNullOrWhiteSpace(csv)))
-        {
-            throw new PlainFailureException(ImdbRefusedMessage);
-        }
-
-        response.EnsureSuccessStatusCode();
-
-        var lines = csv
-            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
-            .ToArray();
-        if (lines.Length < 2)
-        {
-            return [];
-        }
-
-        var header = ParseCsvLine(lines[0]);
-        var titleIndex = FindIndex(header, "Title");
-        var yearIndex = FindIndex(header, "Year");
-        var idIndex = FindIndex(header, "Const");
-        var genresIndex = FindIndex(header, "Genres");
-        var ratingIndex = FindIndex(header, "IMDb Rating");
-        var certIndex = FindIndex(header, "Certificate");
-
-        var results = new List<IntakeEntry>();
-        foreach (var line in lines.Skip(1))
-        {
-            var cells = ParseCsvLine(line);
-            if (cells.Length == 0)
-            {
-                continue;
-            }
-
-            var title = ValueAt(cells, titleIndex);
-            var year = ParseInt(ValueAt(cells, yearIndex));
-            var imdbId = NormalizeImdbId(ValueAt(cells, idIndex));
-            var genres = ValueAt(cells, genresIndex) ?? string.Empty;
-            var rating = ParseDouble(ValueAt(cells, ratingIndex));
-            var cert = ValueAt(cells, certIndex);
-            results.Add(new IntakeEntry(
-                Title: title,
-                Year: year,
-                MediaType: mediaType,
-                ImdbId: imdbId,
-                GenresCsv: genres,
-                Rating: rating,
-                ReleaseDateUtc: year is null ? null : new DateTimeOffset(year.Value, 12, 31, 0, 0, 0, TimeSpan.Zero),
-                Certification: cert,
-                Audience: GuessAudience(cert, genres)));
-        }
-
-        return results;
     }
 
     /// <summary>
@@ -1647,32 +1581,6 @@ public sealed class IntakeSyncService(
 
         var match = TmdbListIdRegex.Match(trimmed);
         return match.Success ? match.Groups[1].Value : string.Empty;
-    }
-
-    private static string ResolveImdbCsvUrl(string feedUrl)
-    {
-        var trimmed = feedUrl.Trim();
-        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
-        {
-            if (uri.AbsolutePath.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
-            {
-                return uri.ToString();
-            }
-
-            var id = ImdbListIdRegex.Match(uri.ToString());
-            if (id.Success)
-            {
-                return $"https://www.imdb.com/list/{id.Value}/export";
-            }
-        }
-
-        var inlineId = ImdbListIdRegex.Match(trimmed);
-        if (inlineId.Success)
-        {
-            return $"https://www.imdb.com/list/{inlineId.Value}/export";
-        }
-
-        throw new InvalidOperationException("IMDb source requires a list id (ls...) or an IMDb export URL.");
     }
 
     private static string ResolveTraktRssUrl(string feedUrl)

@@ -57,7 +57,6 @@ public static class RecordedReplies
     public static Recording Weir(string state) => RecordedReplies.LoadLatest("weir", state);
     public static Recording Deluno(string state) => RecordedReplies.LoadLatest("deluno", state);
     /// <summary>IMDb's public list pages and exports (a real anonymous GET: its bot check answers an automated client with an empty 202).</summary>
-    public static Recording Imdb(string state) => RecordedReplies.LoadLatest("imdb", state);
     /// <summary>GitHub's own replies (its release feeds, release downloads and REST API). A request path in a recording is host plus path.</summary>
     public static Recording Github(string state) => RecordedReplies.LoadLatest("github", state);
     /// <summary>A JSON reply as an HTTP 200 response, for the parts of a test that are not an external app's reply.</summary>

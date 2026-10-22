@@ -154,7 +154,6 @@ public static class ConnectionNames
             "tmdb-collection" => "TMDb collection",
             "tmdb-company-credits" => "TMDb company",
             "tmdb-popular" => "TMDb popular",
-            "imdb" => "IMDb",
             "trakt" => "Trakt",
             "plex" or "plex-watchlist" => "Plex watchlist",
             _ => char.ToUpperInvariant(value[0]) + value[1..]

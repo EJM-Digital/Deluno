@@ -24,6 +24,12 @@ anyway.
 
 Everything in 1.0.0-rc.30.34, plus:
 
+IMDb lists:
+- Deluno no longer offers IMDb as an import list, because IMDb now blocks programs
+  from reading its lists. To follow an IMDb list, import it through MDBList or
+  Trakt. An IMDb list you had already saved is kept, switched off, with a note
+  on the Lists screen saying so.
+
 Deluno has a new home:
 - Deluno now lives at https://github.com/EJM-Digital/Deluno. The old address
   forwards there, so existing links keep working.

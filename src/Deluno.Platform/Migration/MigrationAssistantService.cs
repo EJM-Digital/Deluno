@@ -1047,6 +1047,12 @@ public sealed class MigrationAssistantService(
             }
 
             var provider = NormalizeProvider(ReadString(item, "implementation") ?? ReadString(item, "provider") ?? name);
+            if (provider == "imdb")
+            {
+                operations.Add(Unsupported(context, "intake-source", name, "IMDb lists are no longer supported because IMDb blocks programs; use MDBList or Trakt to import an IMDb list."));
+                continue;
+            }
+
             var feedUrl = ResolveIntakeFeedUrl(item, provider);
             if (string.IsNullOrWhiteSpace(feedUrl))
             {
@@ -1832,7 +1838,6 @@ public sealed class MigrationAssistantService(
         return provider switch
         {
             "tmdb" when trimmed.All(char.IsDigit) => trimmed,
-            "imdb" when trimmed.Length > 2 && trimmed.StartsWith("ls", StringComparison.OrdinalIgnoreCase) && trimmed[2..].All(char.IsDigit) => trimmed,
             _ => null
         };
     }

@@ -1,4 +1,3 @@
-using Deluno.Tests.Recorded;
 using Deluno.Integrations.Metadata;
 using Deluno.Intake.Contracts;
 using Deluno.Intake.Data;
@@ -18,73 +17,31 @@ using Moq;
 namespace Deluno.Integrations.Tests.Intake;
 
 /// <summary>
-/// The IMDb list provider (#1292). On 22 Oct 2026 an anonymous request for a public IMDb list and its /export both came back
-/// HTTP 202 with an empty page (an AWS WAF bot check), recorded in tests/fixtures/recorded/imdb. Before the fix Deluno read
-/// that as an empty CSV and reported a successful sync of zero titles.
+/// IMDb lists are retired (#1292): IMDb answers programs with a bot check, so no IMDb list can be read. A saved one that
+/// is still enabled (a database restored from before the retirement) records one plain error and never a successful sync.
 /// </summary>
-public sealed class ImdbListProviderTests
+public sealed class ImdbListsAreRetiredTests
 {
-    private const string Refusal = "IMDb refused the request";
-
-    [Theory]
-    [InlineData("ls055592025")]
-    [InlineData("https://www.imdb.com/list/ls055592025/")]
-    [InlineData("https://www.imdb.com/list/ls055592025/export")]
-    public async Task TestSourceAsync_says_plainly_that_imdb_refused_the_request_and_offers_the_alternative(string feed)
-    {
-        var requested = new List<Uri>();
-        var service = CreateService(requested, "bot-check-export", out var source, feed);
-
-        var result = await service.TestSourceAsync(source, CancellationToken.None);
-
-        Assert.False(result.Ok);
-        Assert.Contains(Refusal, result.Message);
-        Assert.Contains("CSV", result.Message);
-        Assert.DoesNotContain("202", result.Message);
-        Assert.Equal("https://www.imdb.com/list/ls055592025/export", Assert.Single(requested).ToString());
-    }
+    private const string Note = "IMDb lists are no longer supported because IMDb blocks programs; use MDBList or Trakt to import an IMDb list.";
 
     [Fact]
-    public async Task TestSourceAsync_reads_the_list_page_bot_check_as_a_refusal_too()
-    {
-        // The list page answers exactly like the export, so a person who pastes a link that is the page gets the same plain words.
-        var service = CreateService([], "bot-check-list-page", out var source, "https://www.imdb.com/list/ls055592025/");
-
-        var result = await service.TestSourceAsync(source, CancellationToken.None);
-
-        Assert.False(result.Ok);
-        Assert.Contains(Refusal, result.Message);
-    }
-
-    [Fact]
-    public async Task RunAsync_records_an_error_and_never_a_successful_sync_of_zero_titles()
+    public async Task RunAsync_records_the_plain_note_as_an_error_and_never_asks_imdb()
     {
         var source = Source("ls055592025");
         var intake = new Mock<IIntakeRepository>();
         intake.Setup(repo => repo.GetIntakeSourceAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync(source);
         var libraries = new Mock<ILibrariesRepository>();
         libraries.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([Library()]);
-        var service = CreateService(intake, libraries, new Capturing([], "bot-check-export"));
+        var asked = new List<Uri>();
+        var service = CreateService(intake, libraries, new Capturing(asked));
 
         var result = await service.RunAsync(source.Id, null, manual: true, CancellationToken.None);
 
         Assert.Equal("error", result.Status);
-        Assert.Contains(Refusal, result.Summary);
+        Assert.Contains(Note, result.Summary);
+        Assert.Empty(asked);
         intake.Verify(repo => repo.RecordIntakeSourceSyncResultAsync(
-            source.Id, It.IsAny<DateTimeOffset>(), "error", It.Is<string?>(s => s != null && s.Contains(Refusal)), It.IsAny<CancellationToken>()), Times.Once);
-        intake.Verify(repo => repo.RecordIntakeSourceSyncResultAsync(
-            source.Id, It.IsAny<DateTimeOffset>(), It.Is<string>(s => s != "error"), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    private static IntakeSyncService CreateService(List<Uri> requested, string state, out IntakeSourceItem source, string feed)
-    {
-        var item = Source(feed);
-        source = item;
-        var intake = new Mock<IIntakeRepository>();
-        intake.Setup(repo => repo.GetIntakeSourceAsync(item.Id, It.IsAny<CancellationToken>())).ReturnsAsync(item);
-        var libraries = new Mock<ILibrariesRepository>();
-        libraries.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([Library()]);
-        return CreateService(intake, libraries, new Capturing(requested, state));
+            source.Id, It.IsAny<DateTimeOffset>(), "error", It.Is<string?>(s => s != null && s.Contains(Note)), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     private static IntakeSyncService CreateService(Mock<IIntakeRepository> intake, Mock<ILibrariesRepository> libraries, HttpMessageHandler handler)
@@ -109,13 +66,13 @@ public sealed class ImdbListProviderTests
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false) { Timeout = TimeSpan.FromSeconds(5) };
     }
 
-    /// <summary>Answers any call with the recorded IMDb reply and notes the address that was asked.</summary>
-    private sealed class Capturing(List<Uri> requested, string state) : HttpMessageHandler
+    /// <summary>Notes any address asked and answers with a server error.</summary>
+    private sealed class Capturing(List<Uri> requested) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             requested.Add(request.RequestUri!);
-            return Task.FromResult(RecordedReplies.Imdb(state).Single.Reply.ToResponse());
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError));
         }
     }
 

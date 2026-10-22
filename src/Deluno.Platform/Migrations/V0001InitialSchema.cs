@@ -143,7 +143,8 @@ public static class PlatformDatabaseMigrations
         new V0135IndexerProxyNamesFollowTheirAddress(),
         new V0136LiveConnectionDayIndexes(),
         new V0137StrikeRulesDefaultOffForNewInstalls(),
-        new V0138ProcessorHandoffSupersededIds()
+        new V0138ProcessorHandoffSupersededIds(),
+        new V0139IntakeImdbListsRetired()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

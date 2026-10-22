@@ -19,7 +19,7 @@ public static class ListProviderFamilies
     public static string KeyFor(string? provider)
     {
         var key = (provider ?? string.Empty).Trim().ToLowerInvariant();
-        foreach (var family in new[] { "tmdb", "trakt", "imdb", "mdblist", "letterboxd", "stevenlu" })
+        foreach (var family in new[] { "tmdb", "trakt", "mdblist", "letterboxd", "stevenlu" })
         {
             if (key == family || key.StartsWith(family + "-", StringComparison.Ordinal))
             {
@@ -34,7 +34,6 @@ public static class ListProviderFamilies
     {
         "tmdb" => "TMDb",
         "trakt" => "Trakt",
-        "imdb" => "IMDb",
         "mdblist" => "MDBList",
         "letterboxd" => "Letterboxd",
         "stevenlu" => "StevenLu",
