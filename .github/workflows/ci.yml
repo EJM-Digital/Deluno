@@ -2,7 +2,8 @@
 # to main, pull_request, workflow_dispatch.
 #
 # This is the shared CI standard (docs/ci-standard.md): `changes` turns the paths a change touches into one run_*
-# flag per job, and each job runs only when its flag is true; a manual run runs everything. `ci-passed` needs every
+# flag per job, and each job runs only when its flag is true; a manual run runs everything, and so does a push that
+# changes code (a push of documents only runs the repository checks). `ci-passed` needs every
 # job and passes only when each job that was due passed and each job that was not due was skipped
 # (scripts/ci-passed.mjs). It is the one check main's branch protection requires, and the one the release asks for
 # on the tagged commit (scripts/verify-ci-for-release.mjs). scripts/check-release-workflow-gates.mjs checks that
@@ -13,10 +14,10 @@
 #   anything else               backend, web-dist, e2e-smoke (the smoke tests drive the real backend), and web-dist
 #                               builds for them; web's own checks run when the web app changed
 #   image paths                 docker (the Dockerfile, compose, the migrations, the README examples, or this file)
-#   manual run only             windows-installer: the Windows installer of this commit, for the golden path. A push never
-#                               builds it: the one full manual run before a tag does, and a tag needs that run green
+#   any code change             windows-installer: the Windows installer of this commit, for the golden path. Every push
+#                               that changes code builds it, so the push run is the one run a tag needs green
 #   same as windows-installer  e2e-windows: the Windows-only end-to-end legs (install and the tray, the picker under the GitHub limit, the update), on windows-latest from that installer
-#   manual run only             e2e-linux: the end-to-end groups on Docker Compose (docs/exec-plans/active/PLAN-E2E-IN-CI.md)
+#   any code change             e2e-linux: the end-to-end groups on Docker Compose (docs/exec-plans/active/PLAN-E2E-IN-CI.md)
 #
 # Work lands on main directly (the owner, 22 Sep 2026: one person works on Deluno, so no feature branches), which makes
 # each push to main the one run. A pull request, if one is ever opened, is still checked; "Run workflow" re-runs by
@@ -34,7 +35,7 @@ on:
 
 concurrency:
   # A newer push supersedes a run still going: its tree contains the older one. Deluno's repository is private, so
-  # a run nobody will read is minutes billed for nothing.
+  # a run nobody will read is wasted runner time.
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
@@ -127,8 +128,10 @@ jobs:
             if [ "$WEB" = "true" ] || [ "$WORKFLOWS" = "true" ]; then web=true; fi
             if [ "$CODE" = "true" ] || [ "$NOTES" = "true" ]; then smoke=true; fi
             if [ "$DOCKER" = "true" ] || [ "$WORKFLOWS" = "true" ]; then docker=true; fi
-            # The installer and the end-to-end jobs cost the most, so an ordinary push never runs them: they run on
-            # a manual run only, the one full run on the commit before a tag (scripts/verify-ci-for-release.mjs).
+            # The installer and the end-to-end jobs run on every push or pull request that changes code, the same set
+            # a manual run runs, so the push run on a commit is the one run a tag needs. Runners are GitHub-hosted and
+            # free for a public repository. A change to documents only runs neither.
+            if [ "$CODE" = "true" ] || [ "$NOTES" = "true" ]; then installer=true; e2e_linux=true; fi
           fi
           # Coverage (measure 2) is measured and held to its baseline on every push that changes code (issue 1277). The
           # ratchet compares whole-repository numbers and a half report would look like a drop, so a code change
@@ -766,7 +769,7 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  # The installable build of this exact commit, for the golden path (docs/golden-path.md): only a manual run builds it
+  # The installable build of this exact commit, for the golden path (docs/golden-path.md): every push that changes code and every manual run builds it
   # ("Run workflow" on any ref or commit), because a release is not tagged until the golden path has passed on a build
   # like this one. The same steps as the release's windows job, minus signing and delta packages, so what the golden
   # path installs is what a release of the commit would install. The artifact is named by the commit, and is kept for

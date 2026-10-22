@@ -38,7 +38,7 @@ test("FRS-08: a new Windows install has no automatic update check or download on
 });
 
 test("GAT-03: the Windows tray tests run in CI, so a push that skipped the local gate cannot ship a tray regression behind a green run", () => {
-  // The tray's tests run in the windows-installer job, which every manual run has, and a tag needs a green manual run on its commit.
+  // The tray's tests run in the windows-installer job, which every manual run and every code push has, and a tag needs a green run of it on its commit.
   const ci = read(".github/workflows/ci.yml");
   assert.match(ci, /windows-installer:[\s\S]*?name: Test Deluno\.Tray\s+run: dotnet test tests\/Deluno\.Tray\.Tests\/Deluno\.Tray\.Tests\.csproj/);
   assert.match(read("scripts/verify-ci-for-release.mjs"), /windows-installer|Windows installer/);
