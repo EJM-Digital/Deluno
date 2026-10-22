@@ -132,8 +132,8 @@ jobs:
           fi
           # Coverage (measure 2) is measured and held to its baseline on every push that changes code (issue 1277). The
           # ratchet compares whole-repository numbers and a half report would look like a drop, so a code change
-          # always runs both the backend and the web tests, whichever side it touched. Runners are free (self-hosted
-          # while the repository is private, GitHub-hosted and free once it is public), so there is no saving to
+          # always runs both the backend and the web tests, whichever side it touched. Runners are GitHub-hosted and free
+          # for a public repository, so there is no saving to
           # protect by skipping one side. A change to documents only still runs neither.
           if [ "$CODE" = "true" ] && [ "$EVENT" != "workflow_dispatch" ]; then backend=true; web=true; fi
           if [ "$backend" = "true" ] && [ "$web" = "true" ]; then coverage=true; fi

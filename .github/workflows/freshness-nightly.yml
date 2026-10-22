@@ -5,7 +5,7 @@ name: Recording freshness (nightly)
 
 on:
   schedule:
-    # Every night, 15:30 UTC: the quiet hour for the self-hosted runners.
+    # Every night, 15:30 UTC: a quiet hour.
     - cron: "30 15 * * *"
   workflow_dispatch:
 

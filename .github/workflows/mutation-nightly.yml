@@ -9,8 +9,7 @@ name: Mutation (nightly)
 
 on:
   schedule:
-    # Every night, 15:00 UTC: the quiet hour for the self-hosted runners (free while the repository is private, GitHub-hosted
-    # and free once it is public). The runner variables are the ones ci.yml uses.
+    # Every night, 15:00 UTC: a quiet hour (GitHub-hosted runners are free for a public repository).
     - cron: "0 15 * * *"
   workflow_dispatch:
 

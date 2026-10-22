@@ -5,13 +5,12 @@
 # and Linux stacks) are not repeated here: each is a many-minute scenario run, and the scenario suite on the golden VM is their
 # repeat before every tag.
 #
-# Runners come from the same variables as ci.yml (DELUNO_LINUX_RUNS_ON, DELUNO_WINDOWS_RUNS_ON): free self-hosted runners while
-# the repository is private, GitHub-hosted (free for a public repository) afterwards.
+# Runners are GitHub-hosted, free for a public repository.
 name: Repeat suites (nightly)
 
 on:
   schedule:
-    # Every night, 15:00 UTC: the quiet hour for the self-hosted runners.
+    # Every night, 15:00 UTC: a quiet hour.
     - cron: "0 15 * * *"
   workflow_dispatch:
     inputs:
