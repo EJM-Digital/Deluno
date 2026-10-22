@@ -71,4 +71,14 @@ public sealed class ReleaseAtomFeedTests
         Assert.Equal("used up until 11:36 am. Deluno will try again then.", text);
         Assert.Equal("nothing here", GitHubRateLimitException.LocalizeResetTimes("nothing here", sydney));
     }
+
+    [Theory]
+    [InlineData("nzbget-{version}-bin-windows-setup.exe", "v26.3", "nzbget-26.3-bin-windows-setup.exe")]
+    [InlineData("nzbget-{version}.sig.txt", "V26.3", "nzbget-26.3.sig.txt")]
+    [InlineData("tool-{version}.zip", "26.3", "tool-26.3.zip")]
+    [InlineData("tool-{version}.zip", "version2", "tool-version2.zip")]
+    [InlineData("tool-{version}.zip", "v", "tool-v.zip")]
+    [InlineData("fixed-name.exe", "v1.0", "fixed-name.exe")]
+    public void A_file_name_template_takes_the_version_from_the_tag_dropping_only_a_leading_v_before_a_digit(string template, string tag, string expected)
+        => Assert.Equal(expected, ReleaseAtomFeed.ExpandAssetTemplate(template, tag));
 }
