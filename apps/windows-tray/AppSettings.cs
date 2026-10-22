@@ -9,6 +9,13 @@ public sealed class AppSettings
 {
     public int Port { get; set; } = 7879;
     public string DataRoot { get; set; } = GetDefaultDataRoot();
+
+    /// <summary>
+    /// The data folder Deluno last started on (or last chose to start fresh on). When <see cref="DataRoot"/> is pointed at a new empty
+    /// folder while this one still holds Deluno's data, Deluno offers to move the data (<see cref="DataFolderMove"/>, DAT-02, #1302).
+    /// Not written until a start succeeds, so a file from before this setting simply has none.
+    /// </summary>
+    public string? LastDataRoot { get; set; }
     public string UpdateMode { get; set; } = Deluno.Api.Updates.UpdateModes.DownloadBackground;
     // The release workflow stamps this into the tray assembly. A fresh RC install
     // must never silently subscribe to the stable feed just because it has not
@@ -157,7 +164,38 @@ public sealed class AppSettings
             throw new StateFileException($"{settings.LoadProblem} Deluno did not start, because starting on the default folders could hide your data. Close anything using that file and choose Restart; if the file is damaged, put the kept copy back after fixing it, or delete it to start with the defaults.");
         }
 
+        // DAT-02 (#1302): pointed at a new empty folder while the old one holds the data, and nobody has said move or start fresh yet.
+        // The tray asks before it starts; a service has no window to ask in, so it does not start on an empty folder behind the person's back.
+        if (DataFolderMove.FindOffer(settings) is { } offer)
+        {
+            throw new StateFileException(DataFolderMove.PendingWords(offer));
+        }
+
+        RememberStartedOn(settings);
+
         return settings;
+    }
+
+    /// <summary>
+    /// Writes the folder a start is using as <see cref="LastDataRoot"/>, so a later change of folder knows where the data was. Only into a
+    /// settings file that exists (a first run's file is not created by a start), and a failure to write it never stops the start.
+    /// </summary>
+    private static void RememberStartedOn(AppSettings settings)
+    {
+        try
+        {
+            if (!InspectPathState().PrimaryConfigExists
+                || string.Equals(settings.LastDataRoot, settings.DataRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _ = Update(s => s.LastDataRoot = s.DataRoot);
+        }
+        catch
+        {
+            // Only the next change of folder loses the offer; the start goes on.
+        }
     }
 
     /// <summary>The data root, or <see cref="StateFileException"/> when the settings could not be read and the root would be a guess.</summary>
@@ -248,6 +286,7 @@ public sealed class AppSettings
     {
         Port = Port,
         DataRoot = DataRoot,
+        LastDataRoot = LastDataRoot,
         UpdateMode = UpdateMode,
         UpdateChannel = UpdateChannel,
         AutoCheckUpdates = AutoCheckUpdates,

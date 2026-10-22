@@ -591,8 +591,78 @@ public sealed class TrayApplication : ApplicationContext
     private async Task StartServerAsync(StartReason reason)
     {
         Change(s => s with { State = TrayState.Starting, RestartNote = null, StartNote = null });
+        if (!await SettleDataFolderAsync())
+        {
+            return;
+        }
+
         var result = await _supervisor.StartAsync(reason);
         await HandleStartResultAsync(result, announce: reason == StartReason.FirstStart);
+    }
+
+    /// <summary>
+    /// DAT-02 (#1302): Deluno has been pointed at a new, empty data folder while the old one still holds its data. Asks once: move the data
+    /// (copy, check, switch) or start fresh. False when the person closed the question or the move failed: nothing was switched and the host
+    /// is not started on the empty folder; Restart asks again.
+    /// </summary>
+    private async Task<bool> SettleDataFolderAsync()
+    {
+        DataFolderMoveOffer? offer;
+        try
+        {
+            offer = DataFolderMove.FindOffer(AppSettings.Load());
+        }
+        catch
+        {
+            return true;
+        }
+
+        if (offer is null)
+        {
+            return true;
+        }
+
+        var page = new TaskDialogPage
+        {
+            Caption = "Deluno",
+            Heading = "Your Deluno data is in another folder",
+            Text = DataFolderMove.QuestionWords(offer),
+            Icon = TaskDialogIcon.Information,
+            AllowCancel = true
+        };
+        var move = new TaskDialogButton(DataFolderMove.MoveButton);
+        var fresh = new TaskDialogButton(DataFolderMove.StartFreshButton);
+        page.Buttons.Add(move);
+        page.Buttons.Add(fresh);
+        var chosen = TaskDialog.ShowDialog(page);
+        if (chosen == fresh)
+        {
+            var problem = DataFolderMove.StartFresh(offer);
+            if (problem is not null)
+            {
+                Balloon("Deluno did not start", problem, ToolTipIcon.Warning, problem: true);
+                return false;
+            }
+
+            return true;
+        }
+
+        if (chosen != move)
+        {
+            Balloon("Deluno did not start", $"Your data is in {offer.OldFolder}. Choose Restart to move it to {offer.NewFolder} or start fresh there, or point Deluno back at {offer.OldFolder}.", ToolTipIcon.Warning, problem: true);
+            return false;
+        }
+
+        var result = await Task.Run(() => DataFolderMove.Move(offer, doing => InvokeOnUiThread(() => Change(s => s with { StartNote = doing }))));
+        if (!result.Moved)
+        {
+            Balloon("Deluno did not move your data", result.Words, ToolTipIcon.Warning, problem: true);
+            MessageBox.Show(result.Words, "Deluno", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return false;
+        }
+
+        MessageBox.Show(result.Words, "Deluno", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        return true;
     }
 
     private async Task HandleUnexpectedStopAsync()

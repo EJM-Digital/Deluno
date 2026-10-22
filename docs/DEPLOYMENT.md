@@ -336,6 +336,11 @@ For dev-mode local runs, the convenience script writes:
 | `ASPNETCORE_URLS` | Set the listen URL and port. |
 | `Storage__DataRoot` | Choose where Deluno stores databases, keys, and backups. |
 
+### Moving the data folder
+
+- **Windows app (tray or service).** Point Deluno at a new, empty folder (`dataRoot` in `deluno.json`) while the old folder still holds your data, and Deluno does not just start empty. The tray says the old folder has your data and offers **Move my data here** (it copies everything, checks every file and that each database opens, then switches) or **Start fresh**. Nothing is ever deleted from the old folder, and a new folder that already has files in it is never written over. A Windows service has no window to ask in, so it does not start until you answer from the tray (or point it back at the old folder). The proof is DAT-02 in `docs/testing/COVERAGE.md`.
+- **Docker.** The data folder is a mount (`/data`), and a container cannot see the mount it replaced, so it cannot offer the move. To use a new volume, stop the container, copy the old volume's contents into the new one (keep the file names and the `secrets` and `protection-keys` folders), then start it on the new volume. Deluno starts empty on an empty volume.
+
 Keep this list intentionally small unless more repo-backed configuration points are documented and verified.
 
 ## Metadata Service Configuration (deployment only)
