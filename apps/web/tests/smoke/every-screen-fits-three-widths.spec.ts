@@ -94,6 +94,8 @@ async function seedLongData(page: Page, seriesId: string, movieId: string) {
   const headers = await authHeaders(page);
   // System > Backups lists the backups there are: make one, so the walk always measures the file-name row, not only after another spec has left one.
   await page.request.post("/api/backups", { headers, data: { reason: "manual" } });
+  // A second one in the same minute (#1373): the two rows must still read differently.
+  await page.request.post("/api/backups", { headers, data: { reason: "manual" } });
   const indexers: { id: string; name: string }[] = [];
   for (let index = 1; index <= 5; index += 1) {
     const created = await (await page.request.post("/api/indexers", {

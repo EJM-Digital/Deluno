@@ -720,3 +720,29 @@ describe("Backup settings problem (#1260)", () => {
     expect(screen.queryByText("Save the backup settings again to repair them.")).toBeNull();
   });
 });
+
+/** #1373: two backups of the same size made in the same minute must not read as the same line twice. */
+describe("Backups made in the same minute (#1373)", () => {
+  afterEach(() => {
+    authedFetchMock.mockReset();
+    loaderData.backups = [];
+    loaderData.backupSettings = null;
+  });
+
+  it("tells them apart by the second, and numbers those made in the same second", () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (loaderData as any).backupSettings = { enabled: false, frequency: "daily", timeOfDay: "03:00", retentionCount: 7, backupFolder: "", lastRunUtc: null, nextRunUtc: null };
+    const make = (id: string, createdUtc: string) => ({ id, fileName: `deluno-${id}.zip`, fullPath: `/b/${id}`, sizeBytes: 34_393_292, createdUtc, reason: "manual" });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (loaderData as any).backups = [make("a", "2026-10-20T18:14:05Z"), make("b", "2026-10-20T18:14:41Z"), make("d", "2026-10-20T20:01:10Z"), make("e", "2026-10-20T20:01:10Z")];
+    authedFetchMock.mockImplementation(() => jsonResponse([]));
+
+    const router = createMemoryRouter([{ path: "*", element: <SystemPage /> }], { initialEntries: ["/system/backups"] });
+    render(<RouterProvider router={router} />);
+
+    const lines = screen.getAllByText(/32\.8 MB/).map((node) => node.textContent);
+    expect(lines).toHaveLength(4);
+    expect(new Set(lines).size).toBe(4);
+    expect(lines.filter((line) => / · [12] of 2$/.test(line ?? ""))).toHaveLength(2);
+  });
+});

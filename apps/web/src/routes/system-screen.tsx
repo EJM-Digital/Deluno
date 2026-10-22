@@ -1450,17 +1450,26 @@ function BackupCard({
         </div>
 
         <div className="space-y-2">
-          {backups.slice(0, 4).map((backup) => (
+          {backups.slice(0, 4).map((backup, _index, shown) => {
+            // #1373: backups that read the same to the minute say the second too; ones made in the very same second are numbered, so no line repeats.
+            const sizeOf = (item: BackupItem) => formatBytes(item.sizeBytes);
+            const minuteOf = (item: BackupItem) => `${sizeOf(item)}|${formatWhen(item.createdUtc, preferences)}`;
+            const secondOf = (item: BackupItem) => `${sizeOf(item)}|${formatDateTime(item.createdUtc, preferences, new Date(), true)}`;
+            const sharesMinute = shown.filter((item) => minuteOf(item) === minuteOf(backup)).length > 1;
+            const sameSecond = shown.filter((item) => secondOf(item) === secondOf(backup));
+            const numbering = sameSecond.length > 1 ? ` · ${sameSecond.indexOf(backup) + 1} of ${sameSecond.length}` : "";
+            return (
             <div key={backup.id} className="flex items-center justify-between gap-3 rounded-xl border border-hairline bg-surface-1 p-3">
               <div className="min-w-0">
                 <p className="break-all text-sm font-medium text-foreground">{backup.fileName}</p>
-                <p className="text-xs text-muted-foreground">{formatBytes(backup.sizeBytes)} · {formatWhen(backup.createdUtc, preferences)}</p>
+                <p className="text-xs text-muted-foreground">{formatBytes(backup.sizeBytes)} · {sharesMinute ? formatDateTime(backup.createdUtc, preferences, new Date(), true) : formatWhen(backup.createdUtc, preferences)}{numbering}</p>
               </div>
               <Button type="button" variant="ghost" size="sm" className="shrink-0" asChild>
                 <SignedApiLink path={`/api/backups/${backup.id}/download`} mode="save" fallbackName={backup.fileName}>Download</SignedApiLink>
               </Button>
             </div>
-          ))}
+            );
+          })}
           {backups.length === 0 ? <p className="text-sm text-muted-foreground">No backups yet.</p> : null}
         </div>
         </CardContent>

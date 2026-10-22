@@ -166,7 +166,7 @@ export function formatLongDate(value: string | Date | null | undefined, preferen
 }
 
 /** The clock time `value` falls on, converted into the user's chosen timezone (browser/OS zone when none is set) (#860). */
-export function formatTime(value: string | Date | null | undefined, preferences: DisplayPreferences = DEFAULT_DISPLAY_PREFERENCES) {
+export function formatTime(value: string | Date | null | undefined, preferences: DisplayPreferences = DEFAULT_DISPLAY_PREFERENCES, withSeconds = false) {
   const date = parseDate(value);
   if (!date) return "—";
   return new Intl.DateTimeFormat(
@@ -175,16 +175,17 @@ export function formatTime(value: string | Date | null | undefined, preferences:
       ...(preferences.timezone ? { timeZone: preferences.timezone } : {}),
       ...(preferences.timeFormat === "24"
         ? { hour: "2-digit", minute: "2-digit", hour12: false }
-        : { hour: "numeric", minute: "2-digit", hour12: true })
+        : { hour: "numeric", minute: "2-digit", hour12: true }),
+      ...(withSeconds ? { second: "2-digit" } : {})
     }
   ).format(date);
 }
 
-export function formatDateTime(value: string | Date | null | undefined, preferences: DisplayPreferences = DEFAULT_DISPLAY_PREFERENCES, now = new Date()) {
+export function formatDateTime(value: string | Date | null | undefined, preferences: DisplayPreferences = DEFAULT_DISPLAY_PREFERENCES, now = new Date(), withSeconds = false) {
   const date = parseDate(value);
   if (!date) return "—";
   const relative = preferences.showRelativeDates ? relativeDayLabel(date, now, preferences.timezone) : null;
-  return `${relative ?? formatShortDate(date, { ...preferences, showRelativeDates: false }, now)} · ${formatTime(date, preferences)}`;
+  return `${relative ?? formatShortDate(date, { ...preferences, showRelativeDates: false }, now)} · ${formatTime(date, preferences, withSeconds)}`;
 }
 
 /**
