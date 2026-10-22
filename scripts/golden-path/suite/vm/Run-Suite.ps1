@@ -44,6 +44,7 @@ $suiteDir = Split-Path $here -Parent
 
 . (Join-Path $here 'Suite.Lib.ps1')
 . (Join-Path $here 'Tray.Lib.ps1')
+. (Join-Path $here 'Desktop.Lib.ps1')
 . (Join-Path $here 'Cdp.Lib.ps1')
 . (Join-Path $here 'Fixtures.Lib.ps1')
 . (Join-Path $here 'DelunoSecrets.Lib.ps1')
