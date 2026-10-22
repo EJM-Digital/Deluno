@@ -96,13 +96,33 @@ public sealed class FinishedFilesAndSmallSizesAreReadTests
         // Holding the file open stops the delete on Windows; elsewhere the delete simply works. Either way the
         // answer must match what is on disk.
         using var hold = OperatingSystem.IsWindows() ? new FileStream(film, FileMode.Open, FileAccess.Read, FileShare.Read) : null;
-        var problem = DownloadFolderRemoval.Remove(film, "Some.Film.2020.1080p", onThisMachine: true, libraries: []);
+        var problem = DownloadFolderRemoval.Remove(film, "Some.Film.2020.1080p", onThisMachine: true, libraries: [], lockWait: TimeSpan.Zero);
 
         Assert.Equal(problem is null, !Directory.Exists(folder) && !File.Exists(film));
         if (hold is not null)
         {
             Assert.NotNull(problem);
         }
+    }
+
+    [Fact]
+    public async Task A_file_a_processor_still_has_open_when_the_download_is_removed_is_deleted_once_it_lets_go()
+    {
+        // Golden suite rc.30.35, resend.after.nzbget: Weir was reading the first send's file as Deluno removed it, the delete failed,
+        // the folder stayed, and NZBGet could not move the resend's files into it.
+        using var scratch = new Scratch();
+        var folder = Path.Combine(scratch.Path, "Completed", "Some.Film.2020.1080p");
+        Directory.CreateDirectory(folder);
+        var film = Path.Combine(folder, "Some.Film.2020.1080p.mkv");
+        File.WriteAllText(film, "film");
+
+        using var hold = new FileStream(film, FileMode.Open, FileAccess.Read, FileShare.None);
+        var release = Task.Run(async () => { await Task.Delay(1500); hold.Dispose(); });
+        var problem = DownloadFolderRemoval.Remove(film, "Some.Film.2020.1080p", onThisMachine: true, libraries: [], lockWait: TimeSpan.FromSeconds(20));
+        await release;
+
+        Assert.Null(problem);
+        Assert.False(Directory.Exists(folder));
     }
 
     [Fact]

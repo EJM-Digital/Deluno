@@ -148,7 +148,11 @@ function Get-OpenFirstSend {
             # cleaned file is in its output, before Deluno has queued the import.
             Set-WeirPause -Paused $false
             if ($Timing -eq 'after') {
-                Wait-Until -TimeoutSec 60 -IntervalSec 0.05 -Condition { @(Get-ChildItem -Path 'C:\Weir\Ready' -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match [regex]::Escape($film.Title) }).Count -gt 0 } | Out-Null
+                # Weir waits 60 s after a file's last change before it cleans it, so a 60 s wait here ended just as Weir began (rc.30.35,
+                # resend.after.nzbget: the removal landed on the file Weir had just opened). Wait past that settle time, and count the moment
+                # as missed, not reached, when no cleaned file appears.
+                $cleaned = Wait-Until -TimeoutSec 150 -IntervalSec 0.05 -Condition { @(Get-ChildItem -Path 'C:\Weir\Ready' -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match [regex]::Escape($film.Title) }).Count -gt 0 }
+                if (-not $cleaned.Ok) { $what = 'Weir put no cleaned file in its output'; Add-Note "Attempt ${try}: $what; trying a new film."; continue }
             }
             $h = Get-FilmHandoff -Film $film
             $open = $h -and -not $h.importJobId -and ($Timing -eq 'after' -or $h.status -ne 'completed')

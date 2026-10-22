@@ -190,7 +190,12 @@ internal static class DownloadFolderRemoval
     /// <param name="onThisMachine">Whether the client runs here, so a folder that is not found really is gone.</param>
     /// <param name="libraries">Every library, read just before (#1328); null when they could not be read, and then nothing is deleted.</param>
     /// <returns>Null when the files are gone (removed now, or never there), else why they are still on disk.</returns>
-    public static string? Remove(string? path, string? jobName, bool onThisMachine, IReadOnlyList<Deluno.Libraries.Contracts.LibraryItem>? libraries)
+    /// <param name="lockWait">
+    /// How long a file that another program still has open is waited for before it is given up on. A processor reading
+    /// the file as the download is removed lets go within seconds, and a file left behind there makes a resend of the
+    /// same release fail at the client. Null waits <see cref="LockedFileWait"/>.
+    /// </param>
+    public static string? Remove(string? path, string? jobName, bool onThisMachine, IReadOnlyList<Deluno.Libraries.Contracts.LibraryItem>? libraries, TimeSpan? lockWait = null)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -235,27 +240,39 @@ internal static class DownloadFolderRemoval
             }
         }
 
-        try
+        var giveUp = DateTime.UtcNow + (lockWait ?? LockedFileWait);
+        while (true)
         {
-            if (Directory.Exists(target))
+            try
             {
-                Directory.Delete(target, recursive: true);
-            }
-            else
-            {
-                File.Delete(target);
-            }
+                if (Directory.Exists(target))
+                {
+                    Directory.Delete(target, recursive: true);
+                }
+                else
+                {
+                    File.Delete(target);
+                }
 
-            // Say "gone" only when nothing of the job is left.
-            return File.Exists(target) || Directory.Exists(target)
-                ? $"{target} is still on disk after Deluno tried to delete it."
-                : null;
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            return $"Deluno could not delete {target}: {exception.Message}";
+                // Say "gone" only when nothing of the job is left.
+                return File.Exists(target) || Directory.Exists(target)
+                    ? $"{target} is still on disk after Deluno tried to delete it."
+                    : null;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                if (DateTime.UtcNow >= giveUp)
+                {
+                    return $"Deluno could not delete {target}: {exception.Message}";
+                }
+
+                Thread.Sleep(250); // reason: a program that still has the file open (a processor reading it) lets go within seconds; there is no event to wait on
+            }
         }
     }
+
+    /// <summary>How long a delete waits for a file another program has open (see <c>Remove</c>).</summary>
+    public static readonly TimeSpan LockedFileWait = TimeSpan.FromSeconds(10);
 
     /// <summary>
     /// The folder directly holding <paramref name="filePath"/> when it is the job's own: named after the job, and not
