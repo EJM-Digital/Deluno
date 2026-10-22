@@ -11,4 +11,9 @@ public sealed record UpdatePolicySetRequest(
     bool UpgradeUntilCutoff,
     bool IsEnabled,
     string? Notes,
-    MediaPlanAutomationIntent? AutomationIntent = null);
+    MediaPlanAutomationIntent? AutomationIntent = null,
+    /// <summary>
+    /// The plan hash the change was reviewed against (<c>basePlanHash</c> of the preview). When given, a save is refused
+    /// with a conflict if the plan has changed since; when left out the save is made as before.
+    /// </summary>
+    string? ExpectedPlanHash = null);

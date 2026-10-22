@@ -963,7 +963,14 @@ public static class QualityEndpointRouteBuilderExtensions
             var requestedQualityProfileId = string.IsNullOrWhiteSpace(request.QualityProfileId)
                 ? null
                 : request.QualityProfileId.Trim();
-            if (!string.Equals(requestedQualityProfileId, current.QualityProfileId, StringComparison.OrdinalIgnoreCase))
+            // A profile for the other kind of media is refused by the save, so the review says so too: checked when the profile
+            // changes and also when only the media type does.
+            var mediaTypeChanges = !string.Equals(
+                MediaPolicyCatalog.NormalizeMediaType(request.MediaType ?? current.MediaType),
+                MediaPolicyCatalog.NormalizeMediaType(current.MediaType),
+                StringComparison.OrdinalIgnoreCase);
+            if (mediaTypeChanges
+                || !string.Equals(requestedQualityProfileId, current.QualityProfileId, StringComparison.OrdinalIgnoreCase))
             {
                 if (requestedQualityProfileId is null)
                 {
@@ -1078,7 +1085,23 @@ public static class QualityEndpointRouteBuilderExtensions
                 return Results.ValidationProblem(errors);
             }
 
-            var item = await repository.UpdatePolicySetAsync(id, request, cancellationToken);
+            PolicySetItem? item;
+            try
+            {
+                item = await repository.UpdatePolicySetAsync(id, request, cancellationToken, expectedPlanHash: request.ExpectedPlanHash);
+            }
+            catch (MediaPlanVersionConflictException conflict)
+            {
+                // The plan changed after the change was reviewed: nothing is saved, and the screen is told to look again.
+                return Results.Conflict(new
+                {
+                    code = "mediaPlanChanged",
+                    message = "This plan changed after you looked at it. Look at it again before saving your change.",
+                    expectedPlanHash = conflict.ExpectedPlanHash,
+                    actualPlanHash = conflict.ActualPlanHash
+                });
+            }
+
             if (item is not null)
             {
                 await libraryApplier.ApplyToAssignedLibrariesAsync(item.Id, cancellationToken);
