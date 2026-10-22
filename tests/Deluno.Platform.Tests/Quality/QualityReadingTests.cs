@@ -161,11 +161,28 @@ public sealed class QualityReadingTests
         Assert.False(ReleaseEpisodeClassifier.CoversEpisode("Some.Film.2020.1080p.WEB-DL-GRP", 1, 1));
     }
 
-    [Fact(Skip = "Found by #1296: DetectQuality matches 'web', 'dvd', 'regional' and 'screener' anywhere in the name, so a title that contains one of them is read wrongly (Webster.S01.720p.HDTV reads as WEB 720p)")]
+    [Fact]
     public void A_source_word_inside_a_longer_word_of_the_title_is_not_a_source()
     {
         Assert.Equal("HDTV 720p", LibraryQualityDecider.DetectQuality("Webster.S01E01.720p.HDTV.x264-GRP"));
         Assert.Equal("WEB 1080p", LibraryQualityDecider.DetectQuality("Regional.Manager.S01E01.1080p.WEB-DL.x264-GRP"));
         Assert.Equal("Bluray 1080p", LibraryQualityDecider.DetectQuality("The.Screener.2019.1080p.BluRay.x264-GRP"));
     }
+
+    [Theory]
+    [InlineData("Movie.2020.1080p.WEB-DL.x264-GRP", "WEB 1080p")]
+    [InlineData("Movie.2020.1080p.WEBRip.x264-GRP", "WEB 1080p")]
+    [InlineData("Movie.2020.720p.WEBDL.x264-GRP", "WEB 720p")]
+    [InlineData("Movie.2020.DVDRip.x264-GRP", "DVD")]
+    [InlineData("Movie.2020.NTSC.DVD9-GRP", "DVD")]
+    [InlineData("Movie.2020.DVDSCR.x264-GRP", "DVDSCR")]
+    [InlineData("Movie.2020.SCREENER.x264-GRP", "DVDSCR")]
+    [InlineData("Movie.2020.REGIONAL.DVDRip-GRP", "REGIONAL")]
+    [InlineData("Movie.2020.1080p.Blu-Ray.x264-GRP", "Bluray 1080p")]
+    [InlineData("Movie.2020.2160p.REMUX.x265-GRP", "Remux 2160p")]
+    [InlineData("Show.S01E01.720p.HDTV.x264-GRP", "HDTV 720p")]
+    [InlineData("WEB 1080p", "WEB 1080p")]
+    [InlineData("Movie.2020.CAM.x264-GRP", "CAM")]
+    public void Real_scene_source_words_are_still_read(string name, string expected)
+        => Assert.Equal(expected, LibraryQualityDecider.DetectQuality(name));
 }
