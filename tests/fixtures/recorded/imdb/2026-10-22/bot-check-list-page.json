@@ -1,0 +1,30 @@
+{
+  "app": "imdb",
+  "version": "2026-10-22",
+  "state": "bot-check-list-page",
+  "recordedAt": "2026-10-22T19:54:12Z",
+  "note": "A real anonymous GET on 22 Oct 2026 (curl, User-Agent Mozilla/5.0, no cookies) of https://www.imdb.com/list/ls055592025/, a public list. IMDb's AWS WAF answers an automated client with a bot check: HTTP 202, an empty page and x-amzn-waf-action: challenge. A signed-out browser asked for the same export got a 404 page, so no real CSV export could be recorded (see MISSING.md).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/list/ls055592025/",
+        "headers": { "user-agent": "Mozilla/5.0" },
+        "body": null
+      },
+      "reply": {
+        "status": 202,
+        "headers": {
+          "content-type": "text/html; charset=UTF-8",
+          "content-length": "0",
+          "server": "Server",
+          "vary": "User-Agent,Accept-Encoding",
+          "x-amzn-waf-action": "challenge",
+          "cache-control": "no-store, max-age=0",
+          "access-control-expose-headers": "x-amzn-waf-action"
+        },
+        "bodyText": ""
+      }
+    }
+  ]
+}
