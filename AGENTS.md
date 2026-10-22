@@ -63,13 +63,12 @@ gate runs the smoke in CI's three shards (`--shard=1/3`, `2/3` and `3/3`), each 
 own fresh smoke host and database on its own ports, so a spec that depends on
 state an earlier spec left behind fails before the push, not in CI.
 
-Changes land on `main` directly, and each push runs CI once (`ci.yml`). Runners
-are GitHub-hosted and free for this public repository, but a push still runs the whole suite, so batch the work: push once, after the local gates
+Changes land on `main` directly, and each push runs CI once (`ci.yml`), so
+batch the work: push once, after the local gates
 and, for anything the rig can show, the rig proof. CI is path-filtered: a push
 that changes only documents runs only the repository checks, a web-only change
 skips the backend build, tests and image, and a backend change also runs the
-browser smoke tests. A manual run (`gh workflow run ci.yml`) runs everything, and so does a push that
-changes code (installer and end-to-end jobs included).
+browser smoke tests. A manual run (`gh workflow run ci.yml`) runs everything, and so does a push that changes code.
 Its last job, `ci-passed`, is the one verdict: it is the single check branch
 protection will require (`docs/ci-standard.md` is the standard, shared with
 Weir). Run `node scripts/check-github-action-pins.mjs`, `node scripts/check-workflow-hygiene.mjs`
@@ -82,9 +81,8 @@ release comment, every workflow has `permissions` and every job a timeout.
 - **A tag is made only after CI is green on that commit** (the owner, 3 Oct 2026).
   The release's first job checks it (`scripts/verify-ci-for-release.mjs`) and
   does not wait: tag while CI is still running and the release fails at once.
-  A push that changes code runs the installer and the end-to-end jobs too, so
-  its push run is the run a tag needs; a docs-only push does not, and then a
-  manual run (`gh workflow run ci.yml`) on that commit does.
+  A push that changes code runs the installer and end-to-end jobs, so its push
+  run counts; after a docs-only push, run `gh workflow run ci.yml` on the commit.
 - **Tags are made only through `scripts/tag-release.ps1 -Version <x.y.z[-rc.N[.M]]>`** (9 Oct 2026). It
   refuses unless the working tree is clean, HEAD is `origin/main`, `Directory.Build.props` and
   `RELEASE_NOTES.md` carry the version, CI passed on HEAD and ran the jobs, and the golden path passed
