@@ -44,6 +44,17 @@ test("the match ignores case", () => {
   try { assert.equal(findViolations(root).length, 1); } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test("the copyright line may name the author, but the same name in the same file elsewhere is reported", () => {
+  const root = tree({ "Directory.Build.props": `<Copyright>Copyright (C) 2026 ${OLD_OWNER} and the Deluno contributors</Copyright>
+${written()}
+` });
+  try {
+    const found = findViolations(root);
+    assert.equal(found.length, 1);
+    assert.equal(found[0].line, 2);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test("the declared single-value files may name it", () => {
   const files = Object.fromEntries(DECLARED.map((f) => [f, written()]));
   const root = tree(files);

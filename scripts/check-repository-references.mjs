@@ -59,6 +59,8 @@ export function findViolations(root, { declared = DECLARED, pending = PENDING_FL
     if (statSync(path.join(root, file)).size > 5_000_000) continue;
     const lines = readFileSync(path.join(root, file), "utf8").split(/\r?\n/);
     lines.forEach((line, index) => {
+      // The copyright line names the author, not the repository's address, and stays whatever the owner of the repository is.
+      if (/<Copyright>/.test(line)) return;
       if (line.toLowerCase().includes(OLD_OWNER)) violations.push({ file, line: index + 1, text: line.trim().slice(0, 140) });
     });
   }
