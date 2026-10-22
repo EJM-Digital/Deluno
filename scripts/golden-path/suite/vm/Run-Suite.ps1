@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Runs the scenario suite inside the golden-path VM, unattended, in the signed-in desktop session (golden path scenario suite).
 
@@ -25,6 +25,9 @@
     Set Deluno up, leave Weir's login (and the Deluno key) for Weir's own suite, and stop before any group. Weir's Update phase runs
     here, between Deluno's setup and its films (Invoke-ScenarioSuite.ps1 -AfterSetupScript); the groups then run with -SkipEnvironment.
 
+.PARAMETER FreshInstall
+    The guided-setup walk's run (guided-setup.walk): Deluno is a fresh install nobody has set up, so nothing is set up here; the scenario creates the account and walks the guide in the browser itself.
+
 .PARAMETER PrepareOnly
     Set Deluno up and stop: nothing is left for Weir's suite. The host takes the "ready" checkpoint after this (Invoke-ScenarioSuite.ps1
     -UseReadyCheckpoint); the scenarios then run with -SkipEnvironment.
@@ -36,7 +39,8 @@ param(
     [string[]] $Scenarios = @(),
     [switch] $SkipEnvironment,
     [switch] $SetupOnly,
-    [switch] $PrepareOnly
+    [switch] $PrepareOnly,
+    [switch] $FreshInstall
 )
 $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot
@@ -44,6 +48,7 @@ $suiteDir = Split-Path $here -Parent
 
 . (Join-Path $here 'Suite.Lib.ps1')
 . (Join-Path $here 'Tray.Lib.ps1')
+. (Join-Path $here 'Desktop.Lib.ps1')
 . (Join-Path $here 'Cdp.Lib.ps1')
 . (Join-Path $here 'Fixtures.Lib.ps1')
 . (Join-Path $here 'DelunoSecrets.Lib.ps1')
@@ -66,7 +71,8 @@ $lastVmGroup = @(Get-ScenarioPlan | Where-Object { -not $_.Host } | ForEach-Obje
 try {
     Write-SuiteLog 'Scenario suite starting.'
     if ($selected.Count -gt 0) { Write-SuiteLog ("Only these scenarios: " + ($selected -join ', ')) }
-    if (-not $SkipEnvironment) { Initialize-SuiteEnvironment }
+    if ($FreshInstall) { Wait-DelunoUp | Out-Null }
+    elseif (-not $SkipEnvironment) { Initialize-SuiteEnvironment }
     else { Wait-DelunoUp | Out-Null; Connect-Deluno; Start-FeedAndStubs; Initialize-Indexers; Initialize-BaseVideos }
     if ($PrepareOnly) {
         Write-SuiteLog 'Set up only: Deluno is ready for the scenarios; nothing is left for Weir''s suite and no group runs in this pass.'
@@ -83,7 +89,7 @@ try {
         # A group none of whose scenarios was chosen sets nothing up.
         if (-not (Test-AnyScenarioSelected -Ids $group.Ids)) { continue }
         # The update phase is run by the host after the groups, on a machine of its own (Invoke-ScenarioSuite.ps1, Run-Update.ps1).
-        if ($group.Host) { continue }
+        if ($group.Host -and -not ($FreshInstall -and $group.Name -eq 'guide')) { continue }
         Write-SuiteLog "=== group $($group.Name)"
         try { & $group.Function }
         catch {
@@ -113,3 +119,4 @@ finally {
     Set-Content -Path $flag -Value $final -Encoding utf8
     Write-SuiteLog "Scenario suite finished: $final"
 }
+

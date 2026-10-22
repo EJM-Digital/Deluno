@@ -391,7 +391,7 @@ if ($script:Trace.Count -ne 0) { $ksBad += "with no keep-seeding scenario chosen
 Set-ScenarioSelection -Ids @()
 Check 'each keep-seeding scenario chosen alone sets up only its own client, film, indexer and choices; none chosen does nothing' ($ksBad.Count -eq 0) ($ksBad -join '; ')
 # Choosing nothing runs the whole group as before, with the same sends.
-$sendsFull = @{ films = 5; removal = 0; resend = 5; stuck = 15; keepseeding = 6; tryagain = 5; vanish = 10; outage = 0; problems = 0; install = 0; nzbgetsetup = 0; seasonpack = 0; layout = 0; github = 0 }
+$sendsFull = @{ films = 5; removal = 0; resend = 5; stuck = 15; keepseeding = 6; tryagain = 5; vanish = 10; outage = 0; problems = 0; install = 0; nzbgetsetup = 0; seasonpack = 0; layout = 0; github = 0; firewall = 0; tray = 0; service = 0; desktop = 0 }
 $fullBad = @()
 foreach ($g in $groupFunctions) {
     $script:Trace.Clear(); $script:Made.Clear()
@@ -735,7 +735,7 @@ $planNames = @($plan | ForEach-Object Name)
 foreach ($id in 'github-limit.messages', 'github-limit.picker', 'seasonpack.no-library', 'layout.390-folder-chain') { Check "$id is in the plan and can be run alone with -Scenarios" ($id -in $allIds -and (Get-RunScope -Plan $plan -Scenarios @($id)).ChosenIds -contains $id) }
 Check 'the picker scenario is the host''s own (it needs a clean machine and the limit used up before Setup), the message scenario runs in the VM' ((@($plan | Where-Object { $_.Host } | ForEach-Object { $_.Ids }) -contains 'github-limit.picker') -and -not (@($plan | Where-Object { $_.Host } | ForEach-Object { $_.Ids }) -contains 'github-limit.messages'))
 Check 'the picker scenario chosen alone needs no VM stage and runs the picker phase; it never runs the update phase' (-not (Get-RunScope -Plan $plan -Scenarios @('github-limit.picker')).NeedVm -and (Get-RunScope -Plan $plan -Scenarios @('github-limit.picker')).RunGithubPicker -and -not (Get-RunScope -Plan $plan -Scenarios @('github-limit.picker')).RunUpdate)
-Check 'the GitHub group is the last that runs in the VM (it uses the allowance up for an hour) and the host phases follow, the github picker last of all (#1368)' (($planNames | Where-Object { $_ -in 'github', 'githubpicker', 'update' }) -join ',' -eq 'github,update,githubpicker' -and @($plan | Where-Object { -not $_.Host })[-1].Name -eq 'github')
+Check 'the GitHub group is the last that runs in the VM (it uses the allowance up for an hour) and the host phases follow, the github picker last of all (#1368)' (($planNames | Where-Object { $_ -in 'github', 'githubpicker', 'guide', 'update' }) -join ',' -eq 'github,guide,update,githubpicker' -and @($plan | Where-Object { -not $_.Host })[-1].Name -eq 'github')
 Check 'Weir''s key is left after the last group that runs in the VM, whatever it is called' ($runSuiteText -match 'lastVmGroup' -and $runSuiteText -match '\$Groups -contains \$lastVmGroup' -and $runSuiteText -match "GithubLimit\.Lib\.ps1")
 foreach ($n in 'seasonpack', 'layout', 'github', 'githubpicker') { Check "the $n group says what it proves" ($n -in $topics.Group) }
 # #1257: the NZBGet setup-twice scenario is in the plan, runs before the films, can be run alone, and judges NZBGet's own replies
@@ -1297,6 +1297,19 @@ try {
     Check 'saving while a reader never lets go still does not throw (the next save carries it)' (-not $threw)
 }
 finally { Remove-Item -LiteralPath $saveDir -Recurse -Force -ErrorAction SilentlyContinue }
+
+Write-Host 'The desktop, firewall, tray, service and guide scenarios (coverage issues 1283, 1278, 1295, 1302)'
+$vmRunnerText = Get-Content -Raw (Join-Path $suite 'vm\Run-Suite.ps1')
+Check 'the VM runner loads the desktop library (permission prompt, balloons, tray menu states)' ($vmRunnerText -match "Desktop\.Lib\.ps1")
+foreach ($n in 'firewall', 'tray', 'service', 'desktop') { Check "the $n group runs in the VM before the GitHub group" ((($planNames | Where-Object { $_ -in $n, 'github' }) -join ',') -eq "$n,github") }
+$guideGroup = @($plan | Where-Object { $_.Name -eq 'guide' })[0]
+Check 'the guided-setup walk is a host group run on a clean machine of its own, with its function in the group file' ($guideGroup.Host -and $guideGroup.Ids -contains 'guided-setup.walk' -and $groupText -match 'function\s+Invoke-GroupGuide\b')
+Check 'the guide scenario chosen alone needs no VM stage and runs the guide phase; it never runs the update or the picker phase' (-not (Get-RunScope -Plan $plan -Scenarios @('guided-setup.walk')).NeedVm -and (Get-RunScope -Plan $plan -Scenarios @('guided-setup.walk')).RunGuide -and -not (Get-RunScope -Plan $plan -Scenarios @('guided-setup.walk')).RunUpdate -and -not (Get-RunScope -Plan $plan -Scenarios @('guided-setup.walk')).RunGithubPicker)
+Check 'the host script takes the guide scenario from the scope (RunGuide)' ($hostScript -match '\$runGuide = \$scope\.RunGuide' -and $hostScript -match 'if \(\$runGuide\)')
+Check 'the VM runner takes -FreshInstall and sets nothing up for it' ($vmRunnerText -match '\[switch\] \$FreshInstall' -and $vmRunnerText -match 'if \(\$FreshInstall\) \{ Wait-DelunoUp')
+$desktopLib = Get-Content -Raw (Join-Path $suite 'vm\Desktop.Lib.ps1')
+Check 'the permission prompt is answered by a helper that runs as SYSTEM in the signed-in session (UI Automation cannot cross that line from the administrator)' ($desktopLib -match 'GoldenSuiteUacHelper' -and $desktopLib -match "-UserId 'SYSTEM'" -and $desktopLib -match 'PromptOnSecureDesktop')
+Check 'the permission prompt setting is put back however a scenario ends' ($desktopLib -match '(?s)function Use-UacOnUserDesktop.*finally \{ Set-ItemProperty[^\r\n]*PromptOnSecureDesktop')
 
 Write-Host ''
 Write-Host ("{0} checks passed, {1} failed." -f $script:passes, $script:failures) -ForegroundColor $(if ($script:failures -eq 0) { 'Green' } else { 'Red' })

@@ -137,6 +137,7 @@ $chosenIds = @($scope.ChosenIds)
 $needVm = $scope.NeedVm
 $runUpdate = $scope.RunUpdate
 $runGithubPicker = $scope.RunGithubPicker
+$runGuide = $scope.RunGuide
 
 
 if ($ListOnly) {
@@ -564,6 +565,81 @@ function Invoke-GithubPickerPhase {
     }
 }
 
+# The guided-setup walk (#1283, #1302): the installed app, set up end to end through the guide in the browser. It needs a Deluno nobody
+# has set up, so like the picker phase it restores the clean checkpoint and installs the candidate the way a person does (the picker
+# installs the clients and Weir), and then the suite's runner walks the guide in the VM, in the signed-in desktop session.
+$guideId = 'guided-setup.walk'
+$guideTitle = 'The installed Windows app is set up end to end through the guided setup in the browser: clients and Weir connected, every question answered, the baseline created, and the libraries, the Weir workflows and the folder chain checked against the real apps'
+function New-GuideFailureRecord([string] $Why) {
+    [pscustomobject]@{ id = $guideId; title = $guideTitle; status = 'fail'; seconds = 0; error = $null; notes = @()
+        checks = @([pscustomobject]@{ name = 'The guided-setup walk could run'; ok = $false; detail = $Why }) }
+}
+
+function Invoke-GuidePhase {
+    $guideDir = Join-Path $OutDirectory 'guide-phase'
+    New-Item -ItemType Directory -Force -Path $guideDir | Out-Null
+    try {
+        Write-Host 'Guide phase: restoring the clean checkpoint and installing the way a person does, then walking the guide in the browser...' -ForegroundColor Cyan
+        $guideHook = {
+            param($rigSession, $name, $cred, $context)
+            Send-BundleToVm -Session $rigSession -Name $name -Credential $cred -Bundle $context.Bundle
+            Invoke-InVmVia -Session $rigSession -Name $name -Credential $cred -Block {
+                New-Item -Path 'HKCU:\Software\ServerManager' -Force | Out-Null
+                New-Item -Path 'HKCU:\Software\Microsoft\ServerManager' -Force | Out-Null
+                Set-ItemProperty -Path 'HKCU:\Software\Microsoft\ServerManager' -Name 'DoNotOpenServerManagerAtLogon' -Value 1 -Type DWord
+                Get-Process ServerManager -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            } | Out-Null
+        }
+        & (Join-Path $PSScriptRoot 'Invoke-GoldenPath.ps1') -RigHost $RigHost -InstallerPath $InstallerPath -Version $Version -VmName $VmName -Checkpoint $Checkpoint `
+            -RigCredentialFile $RigCredentialFile -VmCredentialFile $VmCredentialFile -OutDirectory $guideDir -Interactive -UsenetStub -UsenetStubSmall -AfterVmReady $guideHook -AfterVmReadyContext @{ Bundle = $bundle; StartTask = $startTaskBlock }
+        $guideHarnessFile = Join-Path $guideDir ("golden-path-{0}-{1}.md" -f $Version, (Get-Date -Format 'yyyy-MM-dd'))
+        $rows = @(Read-HarnessRows -File $guideHarnessFile)
+        $bad = @($rows | Where-Object { $_.Status -eq 'failed' } | ForEach-Object { $_.Step })
+        if ($rows.Count -eq 0) { return (New-GuideFailureRecord "The install wrote no results file at $guideHarnessFile.") }
+        if ($bad.Count -gt 0) { return (New-GuideFailureRecord "The install did not finish cleanly: $($bad -join '; ').") }
+
+        $rigG = New-PSSession -ComputerName $RigHost -Credential (Import-Clixml $RigCredentialFile)
+        try {
+            $vmCredG = Import-Clixml $VmCredentialFile
+            Send-BundleToVm -Session $rigG -Name $VmName -Credential $vmCredG -Bundle $bundle
+            $runArgs3 = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\golden\suite\vm\Run-Suite.ps1" -Root "C:\golden\suite" -FreshInstall -Scenarios guided-setup.walk'
+            Invoke-InVmVia -Session $rigG -Name $VmName -Credential $vmCredG -ArgumentList @('GoldenGuideRun', $runArgs3) -Block $startTaskBlock | Out-Null
+            Write-Host 'Guide phase: the walk is running in the VM...' -ForegroundColor Cyan
+            $deadline = (Get-Date).AddMinutes(60)
+            $done = $null
+            while ((Get-Date) -lt $deadline -and $null -eq $done) {
+                Start-Sleep -Seconds 20 # reason: poll interval inside a loop bounded by its deadline
+                $done = Invoke-InVmVia -Session $rigG -Name $VmName -Credential $vmCredG -Block { $f = 'C:\golden\suite\results\done.flag'; if (Test-Path $f) { (Get-Content -Raw $f).Trim() } else { $null } }
+            }
+            $json = Invoke-InVmVia -Session $rigG -Name $VmName -Credential $vmCredG -Block { $f = 'C:\golden\suite\results\results.json'; if (Test-Path $f) { Get-Content -Raw $f } else { $null } }
+            try {
+                $sum = Invoke-InVmVia -Session $rigG -Name $VmName -Credential $vmCredG -Block { & 'C:\golden\suite\vm\Collect-Logs.ps1' -Root 'C:\golden\suite' }
+                Write-Host "Guide phase logs: $sum"
+                $st = Invoke-Command -Session $rigG -ScriptBlock { $d = Join-Path $env:TEMP ('golden-gdlogs-' + [guid]::NewGuid().ToString('N')); New-Item -ItemType Directory -Path $d | Out-Null; $d }
+                try {
+                    Invoke-Command -Session $rigG -ArgumentList $st, $VmName, $vmCredG -ScriptBlock {
+                        param($dir, $n, $cred)
+                        $s = New-PSSession -VMName $n -Credential $cred
+                        try { Copy-Item -FromSession $s -Path 'C:\golden\suite\collect.zip' -Destination $dir } finally { Remove-PSSession $s }
+                    }
+                    Copy-Item -FromSession $rigG -Path (Join-Path $st 'collect.zip') -Destination (Join-Path $guideDir 'vm-logs.zip') -Force
+                    Expand-Archive -Path (Join-Path $guideDir 'vm-logs.zip') -DestinationPath (Join-Path $guideDir 'vm-logs') -Force
+                }
+                finally { Invoke-Command -Session $rigG -ArgumentList $st -ScriptBlock { param($d) Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue } }
+            }
+            catch { [void]$warnings.Add("Collecting the guide phase's logs failed: $($_.Exception.Message)") }
+            if ($null -eq $done) { return (New-GuideFailureRecord 'The guide walk did not finish within 60 minutes.') }
+            $parsed = $null
+            if ($json) { try { $parsed = $json | ConvertFrom-Json } catch { } }
+            $rec = @($parsed.scenarios) | Where-Object { $_.id -eq $guideId } | Select-Object -First 1
+            if (-not $rec) { return (New-GuideFailureRecord "The guide walk reported no result (it ended: $done).") }
+            return $rec
+        }
+        finally { Remove-PSSession $rigG -ErrorAction SilentlyContinue }
+    }
+    catch { return (New-GuideFailureRecord "The guide phase stopped: $($_.Exception.Message)") }
+}
+
 # The update phase (#1256) runs after the groups (only the GitHub picker follows it, #1368), after the groups, the log collection and the after-suite script, and depends on nothing
 # before it: it restores the clean checkpoint itself and installs the PREVIOUS release on it. It never installs over the candidate
 # the groups used, which would be a downgrade onto a newer schema.
@@ -666,6 +742,10 @@ function Invoke-UpdatePhase {
         finally { Remove-PSSession $rigU -ErrorAction SilentlyContinue }
     }
     catch { return (New-UpdateFailureRecord "The update phase stopped: $($_.Exception.Message)") }
+}
+
+if ($runGuide) {
+    $reported = @($reported) + @(Invoke-GuidePhase)
 }
 
 if ($runUpdate) {

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Reads the Windows tray in the VM's signed-in desktop session: an app's icon hover text, the colour of its status dot,
     and its context menu (UI Automation and a screen grab; nothing is installed).
@@ -21,7 +21,24 @@ if (-not ('Golden.Mouse' -as [type])) {
 '@
 }
 
+# UI Automation's first calls after the desktop comes up (a restored machine, a program just started) can time out; they work on the next
+# try. Runs a block, trying again a few times when it throws.
+function Invoke-UiaRetry {
+    param([Parameter(Mandatory)] [scriptblock] $Block, [int] $Attempts = 4)
+    for ($i = 1; ; $i++) {
+        try { return (& $Block) }
+        catch {
+            if ($i -ge $Attempts) { throw }
+            Start-Sleep -Seconds 2 # reason: a retry pause after a UI Automation timeout; no event says the desktop is ready
+        }
+    }
+}
+
 function Get-TrayButtons {
+    Invoke-UiaRetry -Block { Get-TrayButtonsOnce }
+}
+
+function Get-TrayButtonsOnce {
     $uia = [System.Windows.Automation.AutomationElement]
     $root = $uia::RootElement
     $buttonCond = New-Object System.Windows.Automation.PropertyCondition($uia::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)
@@ -171,6 +188,21 @@ function Wait-UiaClickable {
 # The menu is left open; the caller picks an item with Invoke-TrayMenuItem or closes it with Close-TrayMenu.
 function Open-TrayMenu {
     param([Parameter(Mandatory)] [string] $Icon)
+    # Right after the desktop comes up (or when another program holds the focus) the menu key reaches another window and its menu
+    # bar ("File / Edit / View / Tools / Help") is read instead. The app's own menu always has its "Open <app>" item, so a read
+    # without it is closed and made again, a few times.
+    $names = @()
+    for ($attempt = 1; $attempt -le 4; $attempt++) {
+        $names = @(Open-TrayMenuOnce -Icon $Icon)
+        if ($names.Count -eq 0 -or @($names | Where-Object { $_ -match "^Open $Icon" }).Count -gt 0) { return $names }
+        Close-TrayMenu
+        Start-Sleep -Seconds 2 # reason: a retry pause before reading the tray menu again; no event says the menu is ready
+    }
+    $names
+}
+
+function Open-TrayMenuOnce {
+    param([Parameter(Mandatory)] [string] $Icon)
     $btn = Find-TrayIcon -Icon $Icon
     $opened = $false
     if (-not $btn -or $btn.Element.Current.IsOffscreen) { $opened = Open-TrayOverflow; $btn = Find-TrayIcon -Icon $Icon }
@@ -200,7 +232,7 @@ function Close-TrayMenu { Send-EscapeIfSafe menu; Start-Sleep -Milliseconds 300 
 $script:TrayMenuMiss = $null
 
 function Invoke-TrayMenuItem {
-    param([Parameter(Mandatory)] [string] $Icon, [Parameter(Mandatory)] [string] $Item)
+    param([Parameter(Mandatory)] [string] $Icon, [Parameter(Mandatory)] [string] $Item, [switch] $Modal)
     $script:TrayMenuMiss = $null
     $names = @(Open-TrayMenu -Icon $Icon)
     if ($names.Count -eq 0) {
@@ -213,6 +245,8 @@ function Invoke-TrayMenuItem {
     foreach ($el in $uia::RootElement.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)) {
         if (-not $el.Current.IsOffscreen -and $el.Current.Name -match $Item) {
             Wait-UiaClickable -Element $el -What "the menu item '$($el.Current.Name)'"
+            # An item that opens a dialog does not return from Invoke until the dialog is closed: press it with the mouse instead.
+            if ($Modal) { $r = $el.Current.BoundingRectangle; Send-Click -X ([int]($r.X + $r.Width / 2)) -Y ([int]($r.Y + $r.Height / 2)); return $true }
             try { $el.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); return $true }
             catch { $r = $el.Current.BoundingRectangle; Send-Click -X ([int]($r.X + $r.Width / 2)) -Y ([int]($r.Y + $r.Height / 2)); return $true }
         }
@@ -251,3 +285,6 @@ function Get-FirstRunDotSummary {
         OnlyGreyAndLogo = (@($other | Where-Object { $_ -ne 'amber' }).Count -eq 0)
     }
 }
+
+
+
