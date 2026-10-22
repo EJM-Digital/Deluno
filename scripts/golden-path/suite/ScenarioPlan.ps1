@@ -34,6 +34,8 @@ function Get-ScenarioPlan {
         @{ Name = 'github';   Function = 'Invoke-GroupGithub';   Ids = @('github-limit.messages') }
         # The host's own, each on a clean machine: they restore the clean checkpoint and install, so they run after the groups.
         @{ Name = 'githubpicker'; Function = $null; Host = $true; Ids = @('github-limit.picker') }
+        # The host's own, on a clean machine: the guided setup walked through in the browser from a fresh install, with the clients and Weir the picker installed.
+        @{ Name = 'guide'; Function = 'Invoke-GroupGuide'; Host = $true; Ids = @('guided-setup.walk') }
         @{ Name = 'update';   Function = $null; Host = $true; Ids = @('update.over-running-previous') }
     )
     $groups | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Function = $_.Function; Host = [bool]$_.Host; Ids = @($_.Ids) } }
@@ -78,6 +80,7 @@ function Get-RunScope {
         NeedVm = [bool](@($vmIds | Where-Object { $_ -in $chosen }).Count)
         RunUpdate = ('update.over-running-previous' -in $chosen)
         RunGithubPicker = ('github-limit.picker' -in $chosen)
+        RunGuide = ('guided-setup.walk' -in $chosen)
     }
 }
 
@@ -131,6 +134,7 @@ function Get-ScenarioTopics {
         [pscustomobject]@{ Group = 'desktop'; Proves = 'Two things Deluno does on the computer''s own desktop: the Companion Tools page asks the tray to install an app only the tray installs, and the tray''s picker window opens with it ticked (a tool the tray does not install is refused); and the native folder picker opens Windows'' own folder window, returns a typed folder on OK, reports cancelled on Cancel and refuses a second ask while one is open. (#1283, #1278)' }
         [pscustomobject]@{ Group = 'github'; Proves = 'With GitHub''s anonymous hourly allowance used up from the VM, the tracker definitions'' Update now and the connections'' version check each name GitHub''s limit, with the reset in the viewer''s local time (never UTC), on the API and on the screen. Uses the limit up for up to an hour, so it is the last group in the VM. (#1181)' }
         [pscustomobject]@{ Group = 'githubpicker'; Proves = 'Run by the host on a clean machine of its own, after the groups: GitHub''s allowance is used up inside the VM before Setup runs, and the first-run picker still installs Weir through github.com''s release feed (releases.atom); the install log names Weir''s installer and checksum, never says the limit stopped it, and the installed Weir is a release the feed lists. (#1181)' }
+        [pscustomobject]@{ Group = 'guide'; Proves = 'Run by the host on a clean machine of its own: the installed Windows app (the tray, the picker''s download clients and Weir) is set up end to end through the guided setup in the browser, nothing through the API: Connect all, create Weir''s account and connect it, answer every Yes/No question, Create baseline; the libraries, the Weir workflows and the Folder chain are then checked against the real clients and Weir. (#1283, #1302)' }
         [pscustomobject]@{ Group = 'update'; Proves = 'Run by the host after everything else, on a restored clean machine: the previous release is installed silently and given state; the candidate''s Setup runs silently over it while it runs. Deluno comes back on its own (no hand start) as the candidate, with its download clients, libraries and Activity, and its start goes cleanly (the start marker reads ready, no retry, no give-up). Needs the previous release''s Setup.exe (-PreviousInstallerPath).' }
         [pscustomobject]@{ Group = 'problems'; Proves = 'A problem shown in several places clears everywhere when dismissed in one; every hand-off''s closing line in Activity tells one story.' }
     )

@@ -1,4 +1,4 @@
-<#
+﻿<#
     The tray icon's menu and states on a real Windows desktop (coverage issues 1278 and 1295), read and pressed through UI Automation.
 
     tray.menu-actions           the whole menu in the standard's order with each item's enabled state; Pause / Resume automation flips the
@@ -98,8 +98,7 @@ function Invoke-GroupTray {
         }
 
         # ---- Start with Windows
-        $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
-        $hasEntry = { $p = Get-ItemProperty -Path $run -ErrorAction SilentlyContinue; [bool]($p -and ($p.PSObject.Properties | Where-Object { [string]$_.Value -match 'Deluno' })) }
+        $hasEntry = { $p = Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue; [bool]($p -and ($p.PSObject.Properties | Where-Object { [string]$_.Value -match 'Deluno' })) }
         $startBefore = & $hasEntry
         Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Start with Windows$' | Out-Null
         $toggled = Wait-Until -TimeoutSec 15 -IntervalSec 0.5 -Condition { (& $hasEntry) -ne $startBefore }
@@ -139,14 +138,14 @@ function Invoke-GroupTray {
             Add-Check 'Change port... opens the dialog "Change Deluno''s port"' ($null -ne $dlg -and (Get-WindowText -Window $dlg) -match "Change Deluno's port") $(if ($dlg) { Get-WindowText -Window $dlg } else { Format-DesktopWindows })
             if (-not $dlg) { return }
             $edit = Get-WindowControls -Window $dlg | Where-Object { $_.Type -eq 'Edit' } | Select-Object -First 1
-            $setPort = { param($n) $edit.Element.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue([string]$n) }
-            & $setPort $busy
+            $setPort = { param($box, $n) $box.Element.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue([string]$n) }
+            & $setPort $edit $busy
             Click-WindowButton -Window $dlg -NamePattern '^Restart on this port$' | Out-Null
             $refused = Wait-Until -TimeoutSec 10 -IntervalSec 0.5 -Condition { (Get-WindowText -Window $dlg) -match 'already using port' }
             Add-Check 'A port another program holds is refused: "Another program on this computer is already using port ..."' $refused.Ok $(if ($refused.Ok) { 'refused in words' } else { Get-WindowText -Window $dlg })
             Add-Check 'Deluno is still on the old port after the refusal' (Test-DelunoAnswering) ''
             # Now a free port.
-            & $setPort $new
+            & $setPort $edit $new
             Click-WindowButton -Window $dlg -NamePattern '^Restart on this port$' | Out-Null
             $script:S.DelunoUrl = "http://localhost:$new"
             $up = Wait-Until -TimeoutSec 240 -IntervalSec 2 -Condition { Test-DelunoAnswering }
@@ -280,3 +279,4 @@ function Invoke-GroupTray {
         Add-Check 'The icon is no longer red' $dot.Ok $(if ($dot.Ok) { $dot.Value.Colour } else { 'still red or unreadable' })
     }
 }
+
