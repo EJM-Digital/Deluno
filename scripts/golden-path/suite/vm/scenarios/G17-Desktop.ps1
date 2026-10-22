@@ -60,9 +60,22 @@ function Invoke-GroupDesktop {
             $dlg = Wait-DesktopWindow -NamePattern 'Browse For Folder' -Process 'Deluno' -TimeoutSec 240 # reason: the first folder window of a session can take minutes to load Windows' shell parts
             Add-Check 'Windows'' own folder window (Browse For Folder) opens on this desktop, asking "Choose a folder for Deluno"' ($null -ne $dlg -and (Get-WindowText -Window $dlg) -match 'Choose a folder for Deluno') $(if ($dlg) { $dlg.Name } else { 'windows: ' + (Format-DesktopWindows) })
             if (-not $dlg) { return }
-            $folderBox = Get-WindowControls -Window $dlg | Where-Object { $_.Type -eq 'Edit' } | Select-Object -First 1
-            $opensAt = if ($folderBox) { try { "$($folderBox.Element.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value)" } catch { '' } } else { '' }
-            Add-Check "The window opens at the folder it was asked for (its Folder box shows '$(Split-Path -Leaf $target)')" ($opensAt -eq (Split-Path -Leaf $target)) "Folder box: '$opensAt'"
+            # The dialog sets its selection just after it appears (the tree's selection reaches the Folder box a moment later), so wait for it.
+            # Read the Folder box (an Edit) and, as the same evidence, the tree's selected item; either showing the folder's name proves it opened there.
+            $leaf = Split-Path -Leaf $target
+            $opensAt = ''
+            $seen = Wait-Until -TimeoutSec 15 -IntervalSec 0.5 -Condition {
+                $controls = Get-WindowControls -Window $dlg
+                $box = $controls | Where-Object { $_.Type -eq 'Edit' } | ForEach-Object {
+                    try { "$($_.Element.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value)" } catch { '' }
+                } | Where-Object { $_ } | Select-Object -First 1
+                $item = $controls | Where-Object { $_.Type -eq 'TreeItem' } | Where-Object {
+                    try { $_.Element.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Current.IsSelected } catch { $false }
+                } | Select-Object -First 1
+                if ($box -eq $leaf) { "Folder box: '$box'" } elseif ($item -and $item.Name -eq $leaf) { "selected folder in the tree: '$($item.Name)'" } else { $null }
+            }
+            $opensAt = if ($seen.Ok) { $seen.Value } else { 'Folder box and selected tree item never showed the folder: ' + ((Get-WindowControls -Window $dlg | Where-Object { $_.Type -in 'Edit','TreeItem' } | ForEach-Object { "$($_.Type)='$($_.Name)'" }) -join ', ') }
+            Add-Check "The window opens at the folder it was asked for (its Folder box shows '$(Split-Path -Leaf $target)')" $seen.Ok "$opensAt"
             $second = Try-Deluno -Method POST -Path '/api/filesystem/native-folder-picker' -Body @{ initialPath = 'C:\' } -TimeoutSec 20
             Add-Check 'A second ask while it is open is refused: "A folder window is already open on the server"' ($second.Status -eq 409 -and $second.Raw -match 'already open') "HTTP $($second.Status) $($second.Raw)"
             Click-WindowButton -Window $dlg -NamePattern '^OK$' | Out-Null

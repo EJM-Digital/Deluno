@@ -3,6 +3,38 @@ using System.Text;
 
 namespace Deluno.Filesystem;
 
+/// <summary>The folder window of one ask, so the ask can close it when nobody answers (a window left open would block every later ask).</summary>
+internal sealed class NativePickerWindow
+{
+    private const uint WmClose = 0x0010;
+    private long handle;
+
+    /// <summary>Replaces what Close does; a test uses it, because a real window needs a Windows desktop.</summary>
+    internal Action? Closing { get; set; }
+
+    internal void Opened(IntPtr windowHandle) => Interlocked.Exchange(ref handle, windowHandle.ToInt64());
+
+    /// <summary>Closes the window as if the person pressed Cancel. Does nothing when it never opened or is already closed.</summary>
+    public void Close()
+    {
+        if (Closing is not null)
+        {
+            Closing();
+            return;
+        }
+
+        var target = new IntPtr(Interlocked.Read(ref handle));
+        if (target != IntPtr.Zero && OperatingSystem.IsWindows())
+        {
+            PostMessage(target, WmClose, IntPtr.Zero, IntPtr.Zero);
+        }
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PostMessage(IntPtr windowHandle, uint message, IntPtr wParam, IntPtr lParam);
+}
+
 internal static class WindowsFolderPicker
 {
     private const uint BrowseReturnOnlyFileSystemDirs = 0x00000001;
@@ -16,7 +48,7 @@ internal static class WindowsFolderPicker
     private const uint CoInitializeApartmentThreaded = 0x2;
     private const int ShowWindowNormal = 1;
 
-    public static Task<WindowsFolderPickerResult> PickAsync(string? initialPath)
+    public static Task<WindowsFolderPickerResult> PickAsync(string? initialPath, NativePickerWindow? window = null)
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -36,7 +68,7 @@ internal static class WindowsFolderPicker
 
         try
         {
-            var thread = new Thread(() => ShowPicker(initialPath, ownerWindow, completion))
+            var thread = new Thread(() => ShowPicker(initialPath, ownerWindow, window, completion))
             {
                 IsBackground = true,
                 Name = "Deluno Windows folder picker"
@@ -56,6 +88,7 @@ internal static class WindowsFolderPicker
     private static void ShowPicker(
         string? initialPath,
         IntPtr ownerWindow,
+        NativePickerWindow? window,
         TaskCompletionSource<WindowsFolderPickerResult> completion)
     {
         IntPtr displayName = IntPtr.Zero;
@@ -72,7 +105,7 @@ internal static class WindowsFolderPicker
             displayName = Marshal.AllocHGlobal(32768 * sizeof(char));
             title = Marshal.StringToCoTaskMemUni("Choose a folder for Deluno");
 
-            BrowseCallback callback = SetInitialPath;
+            BrowseCallback callback = (handle, message, wParam, data) => SetInitialPath(handle, message, wParam, data, window);
             if (!string.IsNullOrWhiteSpace(initialPath))
             {
                 initialPathPointer = Marshal.StringToCoTaskMemUni(initialPath.Trim());
@@ -141,13 +174,14 @@ internal static class WindowsFolderPicker
         }
     }
 
-    private static int SetInitialPath(IntPtr windowHandle, uint message, IntPtr _, IntPtr data)
+    private static int SetInitialPath(IntPtr windowHandle, uint message, IntPtr _, IntPtr data, NativePickerWindow? window)
     {
         if (message != BrowseCallbackInitialized)
         {
             return 0;
         }
 
+        window?.Opened(windowHandle);
         ShowWindow(windowHandle, ShowWindowNormal);
         BringWindowToTop(windowHandle);
         SetForegroundWindow(windowHandle);

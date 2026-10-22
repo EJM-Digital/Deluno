@@ -22,8 +22,23 @@ public static class FilesystemEndpointRouteBuilderExtensions
 
     // #1170: how long a Windows folder window on the server may sit unanswered
     // before the request gives up, and the one window allowed at a time.
-    internal static readonly TimeSpan NativePickerTimeout = TimeSpan.FromSeconds(90);
+    internal static TimeSpan NativePickerTimeout { get; set; } = TimeSpan.FromSeconds(90);
     private static int nativePickerOpen;
+
+    /// <summary>Opens the folder window. A test swaps it, because a real window needs a person at a Windows desktop.</summary>
+    internal static Func<string?, NativePickerWindow, Task<WindowsFolderPickerResult>> NativePickerStarter { get; set; } =
+        (initialPath, window) => WindowsFolderPicker.PickAsync(initialPath, window);
+
+    private static async Task CloseUnansweredPickerAsync(Task<WindowsFolderPickerResult> pick, NativePickerWindow window)
+    {
+        if (pick.IsCompleted)
+        {
+            return;
+        }
+
+        window.Close();
+        await Task.WhenAny(pick, Task.Delay(TimeSpan.FromSeconds(5)));
+    }
 
     /// <summary>
     /// Whether the browser asking is on the server's own machine (#1170): the
@@ -66,8 +81,11 @@ public static class FilesystemEndpointRouteBuilderExtensions
             });
         }
 
-        var pick = WindowsFolderPicker.PickAsync(request.InitialPath);
-        _ = pick.ContinueWith(_ => Interlocked.Exchange(ref nativePickerOpen, 0), TaskScheduler.Default);
+        // The window belongs to this ask. However the ask ends (answered, nobody answered, the browser went away), a
+        // window still open is closed and the one-at-a-time guard is released before the reply, so a later ask is never
+        // refused as "already open" by a window nobody can see any more.
+        var window = new NativePickerWindow();
+        var pick = NativePickerStarter(request.InitialPath, window);
 
         WindowsFolderPickerResult result;
         try
@@ -76,6 +94,8 @@ public static class FilesystemEndpointRouteBuilderExtensions
         }
         catch (TimeoutException)
         {
+            await CloseUnansweredPickerAsync(pick, window);
+            Interlocked.Exchange(ref nativePickerOpen, 0);
             return Results.Json(
                 new
                 {
@@ -84,6 +104,14 @@ public static class FilesystemEndpointRouteBuilderExtensions
                 },
                 statusCode: StatusCodes.Status408RequestTimeout);
         }
+        catch
+        {
+            await CloseUnansweredPickerAsync(pick, window);
+            Interlocked.Exchange(ref nativePickerOpen, 0);
+            throw;
+        }
+
+        Interlocked.Exchange(ref nativePickerOpen, 0);
 
         if (!result.Available)
         {
