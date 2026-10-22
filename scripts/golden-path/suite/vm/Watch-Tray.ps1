@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Reads the Deluno and Weir tray icons once a second into a log, from before Setup starts until it is stopped (golden path scenario suite).
+    Reads the Deluno and Weir tray icons about every 0.7 s into a log, from before Setup starts until it is stopped (golden path scenario suite).
 
 .DESCRIPTION
     Run in the VM's signed-in desktop session (a scheduled task with an interactive logon), hidden. Each line of the log is
@@ -11,7 +11,9 @@
 [CmdletBinding()]
 param(
     [string] $Log = 'C:\golden\suite\logs\traywatch.jsonl',
-    [double] $IntervalSeconds = 1,
+    # Not a whole second: the first-run dot blinks every 500 ms (a 1 s cycle), so a reading every exact second always lands on the same phase
+    # and sees a steady dot (GitHub's runner read 2 flips in 80 readings). 0.7 s walks across the whole cycle.
+    [double] $IntervalSeconds = 0.7,
     # Open Deluno's tray menu once, the first time its icon is found, and record the item names (the menu a person sees during the picker).
     [switch] $ProbeMenuOnce,
     [string] $MenuLog = 'C:\golden\suite\logs\traymenu-first.json',

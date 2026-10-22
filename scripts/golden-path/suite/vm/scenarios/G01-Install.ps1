@@ -1,7 +1,7 @@
 <#
     Install and first run: the tray icon blinks, with its menu, while Deluno sets itself up and the picker runs; Weir was
     installed through the picker and answers on this PC only. The harness (Invoke-GoldenPath.ps1) ran Setup in the desktop
-    session and the tray watcher (Watch-Tray.ps1) read the icon every second from before Setup started.
+    session and the tray watcher (Watch-Tray.ps1) read the icon every 0.7 s from before Setup started.
 #>
 function Invoke-GroupInstall {
     Invoke-Scenario -Id 'install-first-run' -Title 'The tray blinks during the picker, with its menu; Weir is installed through the picker' -Body {
