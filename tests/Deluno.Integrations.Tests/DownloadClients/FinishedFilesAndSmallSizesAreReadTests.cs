@@ -126,6 +126,98 @@ public sealed class FinishedFilesAndSmallSizesAreReadTests
     }
 
     [Fact]
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    public async Task On_Linux_a_folder_that_cannot_be_deleted_yet_is_tried_again_until_it_can()
+    {
+        // The same wait as the Windows test above, with a parent folder nobody can write to in place of a locked file, so the
+        // retry loop runs where coverage is measured. A user who can write anywhere (root) cannot make this happen: nothing to prove.
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        using var scratch = new Scratch();
+        var completed = Path.Combine(scratch.Path, "Completed");
+        var folder = Path.Combine(completed, "Some.Film.2020.1080p");
+        Directory.CreateDirectory(folder);
+        var film = Path.Combine(folder, "Some.Film.2020.1080p.mkv");
+        File.WriteAllText(film, "film");
+
+        var writable = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+        File.SetUnixFileMode(completed, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        try
+        {
+            if (CanCreateIn(completed))
+            {
+                return;
+            }
+
+            var release = Task.Run(async () => { await Task.Delay(1000); File.SetUnixFileMode(completed, writable); }); // reason: the program holding the folder lets go after a while
+            var problem = DownloadFolderRemoval.Remove(film, "Some.Film.2020.1080p", onThisMachine: true, libraries: [], lockWait: TimeSpan.FromSeconds(20));
+            await release;
+
+            Assert.Null(problem);
+            Assert.False(Directory.Exists(folder));
+        }
+        finally
+        {
+            File.SetUnixFileMode(completed, writable);
+        }
+    }
+
+    [Fact]
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    public void On_Linux_a_folder_that_never_lets_go_is_given_up_on_and_the_answer_says_why()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        using var scratch = new Scratch();
+        var completed = Path.Combine(scratch.Path, "Completed");
+        var folder = Path.Combine(completed, "Some.Film.2020.1080p");
+        Directory.CreateDirectory(folder);
+        var film = Path.Combine(folder, "Some.Film.2020.1080p.mkv");
+        File.WriteAllText(film, "film");
+
+        var writable = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+        File.SetUnixFileMode(completed, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        try
+        {
+            if (CanCreateIn(completed))
+            {
+                return;
+            }
+
+            var problem = DownloadFolderRemoval.Remove(film, "Some.Film.2020.1080p", onThisMachine: true, libraries: [], lockWait: TimeSpan.FromMilliseconds(600));
+
+            Assert.NotNull(problem);
+            Assert.StartsWith("Deluno could not delete ", problem);
+            Assert.True(Directory.Exists(folder));
+        }
+        finally
+        {
+            File.SetUnixFileMode(completed, writable);
+        }
+    }
+
+    private static bool CanCreateIn(string directory)
+    {
+        try
+        {
+            var probe = Path.Combine(directory, ".probe");
+            File.WriteAllText(probe, "x");
+            File.Delete(probe);
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    [Fact]
     public async Task Transmissions_empty_leftover_folders_go_when_a_download_is_removed_with_its_data()
     {
         using var scratch = new Scratch();
