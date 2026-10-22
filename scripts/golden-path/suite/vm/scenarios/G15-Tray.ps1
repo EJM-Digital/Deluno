@@ -242,10 +242,10 @@ function Invoke-GroupTray {
             $deadline = (Get-Date).AddMinutes(12)
             $l = $null
             while ((Get-Date) -lt $deadline -and -not $l) {
-                try { $x = New-Object System.Net.Sockets.TcpListener([Net.IPAddress]::IPv6Any, $p); $x.Server.DualMode = $true; $x.Start(); $l = $x } catch { Start-Sleep -Milliseconds 40 }
+                try { $x = New-Object System.Net.Sockets.TcpListener([Net.IPAddress]::IPv6Any, $p); $x.Server.DualMode = $true; $x.Start(); $l = $x } catch { Start-Sleep -Milliseconds 40 } # reason: poll interval inside a loop bounded by its deadline
             }
             if (-not $l) { return 'never got the port' }
-            while ((Get-Date) -lt $deadline -and -not (Test-Path $stop)) { Start-Sleep -Milliseconds 500 }
+            while ((Get-Date) -lt $deadline -and -not (Test-Path $stop)) { Start-Sleep -Milliseconds 500 } # reason: poll interval inside a loop bounded by its deadline
             $l.Stop(); 'held then released'
         }
         try {

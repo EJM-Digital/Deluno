@@ -162,13 +162,15 @@ function Invoke-GroupFirewall {
         finally { Stop-DelunoAsSecondAdmin | Out-Null }
     }
 
-    Invoke-Scenario -Id 'firewall.tray-allow-and-revoke' -Title "The tray's Allow other devices and Only allow this PC: the elevation request, the rule, the enabled state of each item and the balloon each says, including another rule still letting devices in (and a declined prompt where Windows can show one)" -Body {
-        $second = Start-DelunoAsSecondAdmin
-        Add-Check "Deluno runs as an ordinary administrator (a filtered token), so Windows has to ask" ($second.Elevated -eq $false) "process $($second.ProcessId), elevated: $($second.Elevated)"
-        try {
+    Invoke-Scenario -Id 'firewall.tray-allow-and-revoke' -Title "The tray's Allow other devices and Only allow this PC: each item's enabled state, the rule Windows Firewall holds, the balloon each says, and another rule still letting devices in" -Body {
+        # The tray icon belongs to the suite's own Deluno (the administrator's, which Windows never asks anything of). A copy run by another
+        # account cannot put an icon on this taskbar, so the permission prompt itself is judged by the screen scenarios above.
+        Connect-Deluno
         $port = Get-LanPort
         Remove-InboundRulesFor -Port $port
         Wait-LanState -State 'blocked' | Out-Null
+        # The tray reads the firewall when Deluno starts and after its own changes: restart so it knows the rule is gone.
+        Restart-DelunoFromTray | Out-Null
         $allow = Get-TrayMenuItemState -Pattern '^Allow other devices'
         $only = Get-TrayMenuItemState -Pattern '^Only allow this PC'
         Add-Check 'Blocked: "Allow other devices on your network..." is on the menu and enabled, "Only allow this PC" is disabled' ($allow -and $allow.Enabled -and $only -and -not $only.Enabled) ("allow: $($allow | ConvertTo-Json -Compress); only: $($only | ConvertTo-Json -Compress)")
@@ -176,9 +178,8 @@ function Invoke-GroupFirewall {
         # ---- Allow
         $okTitle = 'Other devices can reach Deluno'
         $before = Get-ToastTextCount -Text $okTitle
-        Invoke-WithElevationAnswer { $script:Clicked = Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Allow other devices' }
-        Add-Check 'The menu item was clicked' $script:Clicked $script:TrayMenuMiss
-        Add-ElevationCheck -What 'adding the rule'
+        $clicked = Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Allow other devices'
+        Add-Check 'The menu item was clicked' $clicked $script:TrayMenuMiss
         $open = Wait-LanState -State 'open' -TimeoutSec 60
         Add-Check "Deluno's rule is in Windows Firewall and Deluno reads the port as open" ($null -ne $open -and @(Get-InboundRulesFor -Port $port | Where-Object { $_.Name -eq "Deluno (port $port)" }).Count -eq 1) ($open | ConvertTo-Json -Compress)
         Add-Check 'The balloon "Other devices can reach Deluno" was shown' (Wait-ToastShown -Text $okTitle -Before $before) 'seen in Windows'' notification record'
@@ -188,15 +189,14 @@ function Invoke-GroupFirewall {
         # ---- Only allow this PC
         $revokedTitle = 'Only this PC can reach Deluno'
         $before = Get-ToastTextCount -Text $revokedTitle
-        Invoke-WithElevationAnswer { $script:Clicked = Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Only allow this PC' }
-        Add-Check 'The menu item was clicked' $script:Clicked $script:TrayMenuMiss
-        Add-ElevationCheck -What 'removing the rule'
+        $clicked = Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Only allow this PC'
+        Add-Check 'The menu item was clicked' $clicked $script:TrayMenuMiss
         $blocked = Wait-LanState -State 'blocked' -TimeoutSec 60
         Add-Check "Deluno's own rule is gone and the port reads as blocked" ($null -ne $blocked -and @(Get-InboundRulesFor -Port $port).Count -eq 0) ($blocked | ConvertTo-Json -Compress)
         Add-Check 'The balloon "Only this PC can reach Deluno" was shown' (Wait-ToastShown -Text $revokedTitle -Before $before) 'seen in Windows'' notification record'
 
-        # ---- another rule still lets them in: Deluno did not add it, so it does not remove it and asks nothing. The tray reads the firewall
-        # when Deluno starts and after its own changes, so Deluno is restarted (from the tray) with only the other rule in place.
+        # ---- another rule still lets them in: Deluno did not add it, so it does not remove it. The tray reads the firewall when Deluno
+        # starts and after its own changes, so Deluno is restarted (from the tray) with only the other rule in place.
         & netsh.exe advfirewall firewall add rule name="Golden suite other rule" dir=in action=allow protocol=TCP localport=$port profile=any | Out-Null
         try {
             Restart-DelunoFromTray | Out-Null
@@ -206,28 +206,15 @@ function Invoke-GroupFirewall {
             $only = Get-TrayMenuItemState -Pattern '^Only allow this PC'
             Add-Check 'With only another rule letting devices in, "Only allow this PC" is enabled' ($only -and $only.Enabled) ($only | ConvertTo-Json -Compress)
             $clicked = Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Only allow this PC'
-            $prompt = Wait-DesktopWindow -NamePattern 'User Account Control' -TimeoutSec 5
-            Add-Check 'The click asks Windows for nothing (Deluno has no rule of its own to remove)' ($clicked -and -not $prompt) $(if ($prompt) { 'a permission prompt appeared' } else { 'no prompt' })
+            Add-Check 'The click was made' $clicked $script:TrayMenuMiss
             Add-Check 'The balloon "Another firewall rule lets devices in" was shown' (Wait-ToastShown -Text $otherTitle -Before $before) 'seen in Windows'' notification record'
             Add-Check 'The other rule is still there' (@(Get-InboundRulesFor -Port $port | Where-Object { $_.Name -eq 'Golden suite other rule' }).Count -eq 1) ''
         }
         finally { & netsh.exe advfirewall firewall delete rule name="Golden suite other rule" | Out-Null }
-        Restart-DelunoFromTray | Out-Null
-        Wait-LanState -State 'blocked' | Out-Null
-
-            $noTitle = 'Other devices still cannot reach Deluno'
-            $before = Get-ToastTextCount -Text $noTitle
-            Invoke-WithElevationAnswer -Allow $false { $script:Clicked = Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Allow other devices' }
-            Add-ElevationCheck -What 'adding the rule' -Allow $false
-            Add-Check 'The balloon "Other devices still cannot reach Deluno" was shown' (Wait-ToastShown -Text $noTitle -Before $before) 'seen in Windows'' notification record'
-            Add-Check 'No rule was added, and Allow is still on the menu, enabled' (@(Get-InboundRulesFor -Port $port).Count -eq 0 -and (Get-TrayMenuItemState -Pattern '^Allow other devices').Enabled) ''
 
         # Put the machine back as the install left it.
-        if (@(Get-InboundRulesFor -Port $port).Count -eq 0) { Add-OwnLanRule -Port $port }
-        Wait-LanState -State 'open' | Out-Null
-        }
-        finally { Stop-DelunoAsSecondAdmin | Out-Null }
+        Add-OwnLanRule -Port $port
+        Restart-DelunoFromTray | Out-Null
+        Add-Check 'Deluno reads the port as open again, as the install left it' ((Wait-LanState -State 'open') -ne $null) ''
     }
 }
-
-

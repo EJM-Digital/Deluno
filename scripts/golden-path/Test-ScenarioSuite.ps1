@@ -1298,6 +1298,19 @@ try {
 }
 finally { Remove-Item -LiteralPath $saveDir -Recurse -Force -ErrorAction SilentlyContinue }
 
+Write-Host 'The desktop, firewall, tray, service and guide scenarios (coverage issues 1283, 1278, 1295, 1302)'
+$vmRunnerText = Get-Content -Raw (Join-Path $suite 'vm\Run-Suite.ps1')
+Check 'the VM runner loads the desktop library (permission prompt, balloons, tray menu states)' ($vmRunnerText -match "Desktop\.Lib\.ps1")
+foreach ($n in 'firewall', 'tray', 'service', 'desktop') { Check "the $n group runs in the VM before the GitHub group" ((($planNames | Where-Object { $_ -in $n, 'github' }) -join ',') -eq "$n,github") }
+$guideGroup = @($plan | Where-Object { $_.Name -eq 'guide' })[0]
+Check 'the guided-setup walk is a host group run on a clean machine of its own, with its function in the group file' ($guideGroup.Host -and $guideGroup.Ids -contains 'guided-setup.walk' -and $groupText -match 'function\s+Invoke-GroupGuide\b')
+Check 'the guide scenario chosen alone needs no VM stage and runs the guide phase; it never runs the update or the picker phase' (-not (Get-RunScope -Plan $plan -Scenarios @('guided-setup.walk')).NeedVm -and (Get-RunScope -Plan $plan -Scenarios @('guided-setup.walk')).RunGuide -and -not (Get-RunScope -Plan $plan -Scenarios @('guided-setup.walk')).RunUpdate -and -not (Get-RunScope -Plan $plan -Scenarios @('guided-setup.walk')).RunGithubPicker)
+Check 'the host script takes the guide scenario from the scope (RunGuide)' ($hostScript -match '\$runGuide = \$scope\.RunGuide' -and $hostScript -match 'if \(\$runGuide\)')
+Check 'the VM runner takes -FreshInstall and sets nothing up for it' ($vmRunnerText -match '\[switch\] \$FreshInstall' -and $vmRunnerText -match 'if \(\$FreshInstall\) \{ Wait-DelunoUp')
+$desktopLib = Get-Content -Raw (Join-Path $suite 'vm\Desktop.Lib.ps1')
+Check 'the permission prompt is answered by a helper that runs as SYSTEM in the signed-in session (UI Automation cannot cross that line from the administrator)' ($desktopLib -match 'GoldenSuiteUacHelper' -and $desktopLib -match "-UserId 'SYSTEM'" -and $desktopLib -match 'PromptOnSecureDesktop')
+Check 'the permission prompt setting is put back however a scenario ends' ($desktopLib -match '(?s)function Use-UacOnUserDesktop.*finally \{ Set-ItemProperty[^\r\n]*PromptOnSecureDesktop')
+
 Write-Host ''
 Write-Host ("{0} checks passed, {1} failed." -f $script:passes, $script:failures) -ForegroundColor $(if ($script:failures -eq 0) { 'Green' } else { 'Red' })
 if ($script:failures -gt 0) { exit 1 }

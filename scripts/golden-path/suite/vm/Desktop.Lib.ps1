@@ -330,6 +330,8 @@ function Start-DelunoAsSecondAdmin {
         if ($r.Status -ne 200) { throw (Hide-Secrets "Creating the second Deluno's first account answered $($r.Status). $($r.Raw)") }
     }
     Connect-Deluno -Username 'golden2' -Password (Get-SuiteSecret 'goldenadmin-deluno-password')
+    # Windows files this copy's icon in the hidden ones; promote it onto the taskbar so it can be read without a pop-up.
+    Wait-Until -TimeoutSec 60 -IntervalSec 1 -Condition { Set-TrayIconsPromoted; Find-TrayIcon -Icon 'Deluno' } | Out-Null
     $proc = Get-Process -Name 'Deluno' -ErrorAction SilentlyContinue | Select-Object -First 1
     [pscustomobject]@{ ProcessId = $proc.Id; Elevated = (Test-ProcessElevated -ProcessId $proc.Id) }
 }
@@ -372,7 +374,7 @@ while ([DateTime]::UtcNow -lt $deadline) {
             return
         }
     }
-    Start-Sleep -Milliseconds 300
+    Start-Sleep -Milliseconds 300 # reason: poll interval inside a loop bounded by its deadline
 }
 $result.names = @($uia::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition) | ForEach-Object { $_.Current.Name })
 ($result | ConvertTo-Json -Compress -Depth 4) | Set-Content -Path $Out -Encoding utf8

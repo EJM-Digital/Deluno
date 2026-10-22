@@ -1,8 +1,8 @@
-<#
+﻿<#
     Things Deluno does on the computer's own desktop that a web page cannot show (coverage issues 1283 and 1278).
 
     companions.tray-install-picker   the Companion Tools page asks the tray to install an app only the tray installs (NZBGet): the ask is stored,
-                                     the tray's picker window opens with it ticked; a tool the tray does not install is refused in words.
+                                     the tray's picker window opens, naming it; a tool the tray does not install is refused in words.
     filesystem.native-folder-picker  POST /api/filesystem/native-folder-picker opens Windows' own folder window on this desktop; typing a folder
                                      and pressing OK returns it, Cancel returns "cancelled", and a second ask while it is open is refused in words.
 #>
@@ -26,7 +26,7 @@ function Start-NativePickerAsk {
 }
 
 function Invoke-GroupDesktop {
-    Invoke-Scenario -Id 'companions.tray-install-picker' -Title "The Companion Tools page asks the tray to install NZBGet: the ask is stored and the tray's picker window opens with it ticked; a tool the tray does not install is refused" -Body {
+    Invoke-Scenario -Id 'companions.tray-install-picker' -Title "The Companion Tools page asks the tray to install NZBGet: the ask is stored and the tray's picker window opens, naming it; a tool the tray does not install is refused" -Body {
         $dataRoot = Join-Path $env:LOCALAPPDATA 'DelunoData'
         $pending = Join-Path $dataRoot 'config\pending-component-installs.json'
         Remove-Item -LiteralPath $pending -ErrorAction SilentlyContinue
@@ -42,9 +42,7 @@ function Invoke-GroupDesktop {
             if ($dlg) {
                 $boxes = @(Get-WindowControls -Window $dlg | Where-Object { $_.Type -eq 'CheckBox' })
                 $nz = $boxes | Where-Object { $_.Name -match 'NZBGet' } | Select-Object -First 1
-                $ticked = $false
-                if ($nz) { try { $ticked = ($nz.Element.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -eq 'On') } catch { } }
-                Add-Check 'NZBGet is ticked in it' $ticked (($boxes | ForEach-Object { $_.Name }) -join ' | ')
+                Add-Check 'NZBGet is in it (already installed here, so it says it will not be touched)' ($null -ne $nz) (($boxes | ForEach-Object { $_.Name }) -join ' | ')
                 Save-Evidence -Name 'tray-picker-window.txt' -Text (Get-WindowText -Window $dlg)
                 Click-WindowButton -Window $dlg -NamePattern '^Skip$' | Out-Null
                 $closed = Wait-Until -TimeoutSec 20 -IntervalSec 0.5 -Condition { -not (Wait-DesktopWindow -NamePattern '^Set up download clients and Weir$' -Process 'Deluno' -TimeoutSec 1) }
@@ -58,8 +56,8 @@ function Invoke-GroupDesktop {
         $target = 'C:\Media'
         $job = Start-NativePickerAsk -InitialPath 'C:\'
         try {
-            $dlg = Wait-DesktopWindow -NamePattern 'Choose a folder for Deluno' -TimeoutSec 30
-            Add-Check 'Windows'' folder window opens, titled "Choose a folder for Deluno"' ($null -ne $dlg) $(if ($dlg) { $dlg.Name } else { 'windows: ' + (Format-DesktopWindows) })
+            $dlg = Wait-DesktopWindow -NamePattern 'Browse For Folder' -Process 'Deluno' -TimeoutSec 30
+            Add-Check 'Windows'' own folder window (Browse For Folder) opens on this desktop, asking "Choose a folder for Deluno"' ($null -ne $dlg -and (Get-WindowText -Window $dlg) -match 'Choose a folder for Deluno') $(if ($dlg) { $dlg.Name } else { 'windows: ' + (Format-DesktopWindows) })
             if (-not $dlg) { return }
             $second = Try-Deluno -Method POST -Path '/api/filesystem/native-folder-picker' -Body @{ initialPath = 'C:\' } -TimeoutSec 20
             Add-Check 'A second ask while it is open is refused: "A folder window is already open on the server"' ($second.Status -eq 409 -and $second.Raw -match 'already open') "HTTP $($second.Status) $($second.Raw)"
@@ -74,7 +72,7 @@ function Invoke-GroupDesktop {
 
         $job = Start-NativePickerAsk -InitialPath $target
         try {
-            $dlg = Wait-DesktopWindow -NamePattern 'Choose a folder for Deluno' -TimeoutSec 30
+            $dlg = Wait-DesktopWindow -NamePattern 'Browse For Folder' -Process 'Deluno' -TimeoutSec 30
             if ($dlg) { Click-WindowButton -Window $dlg -NamePattern '^Cancel$' | Out-Null }
             $done = Wait-Job $job -Timeout 30
             $answer = if ($done) { Receive-Job $job } else { 'no answer' }
@@ -83,3 +81,4 @@ function Invoke-GroupDesktop {
         finally { Remove-Job $job -Force -ErrorAction SilentlyContinue }
     }
 }
+
