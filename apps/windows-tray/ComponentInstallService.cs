@@ -134,6 +134,9 @@ public interface IStartedProcess
 
     /// <summary>Valid only once <see cref="HasExited"/> is true.</summary>
     int ExitCode { get; }
+
+    /// <summary>Ends this process (not others it started), so a program that never answered can be started again. Does nothing by default.</summary>
+    void Stop() { }
 }
 
 public interface IProcessStarter
@@ -799,6 +802,10 @@ public sealed class ComponentInstallService(
 
         var timeout = TimeSpan.FromSeconds(spec.ReadinessTimeoutSeconds ?? 60);
         var deadline = DateTime.UtcNow + timeout;
+        // A web front end started beside its daemon (Deluge's) that is running but never opens its port is started once more:
+        // on GitHub's Windows runner Deluge's Web UI sat for 180 s with its port closed, where the same build answered within
+        // seconds on the runs before and after it.
+        var mayStartAgain = !string.IsNullOrWhiteSpace(spec.PreStartCommand);
         while (true)
         {
             if (started.HasExited)
@@ -810,6 +817,22 @@ public sealed class ComponentInstallService(
             if (await _readiness.CheckAsync(spec.ReadinessUrl, spec.ReadinessField ?? string.Empty, spec.ReadinessValue ?? string.Empty, cancellationToken))
             {
                 return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.Installed, $"{spec.DisplayName} installed and is ready.");
+            }
+
+            if (DateTime.UtcNow >= deadline && mayStartAgain)
+            {
+                mayStartAgain = false;
+                _log.Write($"{spec.DisplayName}: not ready after {timeout.TotalSeconds:0} s at {spec.ReadinessUrl} with its process still running; stopping it and starting it once more.");
+                started.Stop();
+                var again = _processStarter.Start(command, ComponentAutoStarter.ExpandArgs(spec.PostInstallArgs), spec.StartHidden);
+                if (again is null)
+                {
+                    return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.StartFailed,
+                        $"{spec.DisplayName} installed, but Deluno could not start it.");
+                }
+
+                started = again;
+                deadline = DateTime.UtcNow + timeout;
             }
 
             if (DateTime.UtcNow >= deadline)
@@ -1328,6 +1351,21 @@ public sealed class RealProcessStarter : IProcessStarter
     {
         public bool HasExited => process.HasExited;
         public int ExitCode => process.HasExited ? process.ExitCode : -1;
+
+        public void Stop()
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+                // Already gone, or not ours to end: the second start is still tried.
+            }
+        }
     }
 }
 

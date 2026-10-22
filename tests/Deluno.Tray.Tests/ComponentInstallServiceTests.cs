@@ -462,6 +462,42 @@ public sealed class ComponentInstallServiceTests
         Assert.True(readiness.CallCount > 0);
     }
 
+    [Fact]
+    public async Task A_web_front_end_that_is_running_but_never_opens_its_port_is_started_once_more()
+    {
+        // CI run 39816370686, Windows install leg: Deluge's Web UI sat 180 s with its port closed and the picker ended
+        // "Not installed: Deluge"; the runs before and after answered within seconds.
+        var downloadedPath = WriteTempFile(new byte[20]);
+        var first = new FakeStartedProcess(hasExited: false);
+        var starter = new RecordingProcessStarter(first);
+        var readiness = new FakeReadinessChecker(readyOnCall: 9); // answers only after the first one-second wait is over
+        var service = new ComponentInstallService(
+            new FakePrograms(), new FakePorts(), new RecordingDownloader(downloadedPath), new FakeSignatures(signed: true),
+            new RecordingProcesses(exitCode: 0), starter, readiness);
+
+        var spec = WeirLikeSpec with { PreStartCommand = "%TEST_PROCESSOR_HOME%\\daemon.exe" };
+        var result = await service.InstallAsync(spec, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.Installed, result.Outcome);
+        Assert.True(first.Stopped);
+        Assert.Equal(3, starter.StartCount); // the daemon, the web front end, the web front end again
+    }
+
+    [Fact]
+    public async Task A_component_with_no_daemon_beside_it_is_not_started_a_second_time()
+    {
+        var downloadedPath = WriteTempFile(new byte[20]);
+        var starter = new RecordingProcessStarter(new FakeStartedProcess(hasExited: false));
+        var service = new ComponentInstallService(
+            new FakePrograms(), new FakePorts(), new RecordingDownloader(downloadedPath), new FakeSignatures(signed: true),
+            new RecordingProcesses(exitCode: 0), starter, new FakeReadinessChecker(readyOnCall: null));
+
+        var result = await service.InstallAsync(WeirLikeSpec, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.ReadinessTimedOut, result.Outcome);
+        Assert.Equal(1, starter.StartCount);
+    }
+
     private static readonly BundledComponentPrerequisite Prerequisite = new(
         Name: "Test Runtime",
         Url: "https://example.invalid/test-runtime.exe",
@@ -706,10 +742,12 @@ public sealed class ComponentInstallServiceTests
         public bool WasCalled { get; private set; }
         public string? LastPath { get; private set; }
         public string? LastArguments { get; private set; }
+        public int StartCount { get; private set; }
 
         public IStartedProcess? Start(string path, string? arguments)
         {
             WasCalled = true;
+            StartCount++;
             LastPath = path;
             LastArguments = arguments;
             return toReturn;
@@ -720,6 +758,8 @@ public sealed class ComponentInstallServiceTests
     {
         public bool HasExited => hasExited;
         public int ExitCode => exitCode;
+        public bool Stopped { get; private set; }
+        public void Stop() => Stopped = true;
     }
 
     /// <summary>Reports ready on the given 1-based call number, or never (null).</summary>
