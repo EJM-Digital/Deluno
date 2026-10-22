@@ -60,6 +60,9 @@ function Invoke-GroupDesktop {
             $dlg = Wait-DesktopWindow -NamePattern 'Browse For Folder' -Process 'Deluno' -TimeoutSec 240 # reason: the first folder window of a session can take minutes to load Windows' shell parts
             Add-Check 'Windows'' own folder window (Browse For Folder) opens on this desktop, asking "Choose a folder for Deluno"' ($null -ne $dlg -and (Get-WindowText -Window $dlg) -match 'Choose a folder for Deluno') $(if ($dlg) { $dlg.Name } else { 'windows: ' + (Format-DesktopWindows) })
             if (-not $dlg) { return }
+            $folderBox = Get-WindowControls -Window $dlg | Where-Object { $_.Type -eq 'Edit' } | Select-Object -First 1
+            $opensAt = if ($folderBox) { try { "$($folderBox.Element.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value)" } catch { '' } } else { '' }
+            Add-Check "The window opens at the folder it was asked for (its Folder box shows '$(Split-Path -Leaf $target)')" ($opensAt -eq (Split-Path -Leaf $target)) "Folder box: '$opensAt'"
             $second = Try-Deluno -Method POST -Path '/api/filesystem/native-folder-picker' -Body @{ initialPath = 'C:\' } -TimeoutSec 20
             Add-Check 'A second ask while it is open is refused: "A folder window is already open on the server"' ($second.Status -eq 409 -and $second.Raw -match 'already open') "HTTP $($second.Status) $($second.Raw)"
             Click-WindowButton -Window $dlg -NamePattern '^OK$' | Out-Null
@@ -68,7 +71,7 @@ function Invoke-GroupDesktop {
             $picked = $null
             if ($done) { try { $picked = ([regex]::Replace("$answer", '^\d+\s+', '') | ConvertFrom-Json) } catch { } }
             Add-Check 'OK returns a folder that exists, and not "cancelled"' ($null -ne $picked -and $picked.cancelled -eq $false -and $picked.path -and (Test-Path -LiteralPath $picked.path)) "$answer"
-            if ($picked -and $picked.path -and $picked.path -ne $target) { Add-Note "The window was asked to start at $target but OK returned $($picked.path): the initial folder was not selected when the window opened." }
+            Add-Check "OK returns the folder the window was asked to start at ($target)" ($null -ne $picked -and "$($picked.path)".TrimEnd('') -eq $target) "asked $target, OK returned $($picked.path)"
         }
         finally { Remove-Job $job -Force -ErrorAction SilentlyContinue }
 

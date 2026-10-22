@@ -9,7 +9,10 @@ internal static class WindowsFolderPicker
     private const uint BrowseForNewDialogStyle = 0x00000040;
     private const uint BrowseForEditBox = 0x00000010;
     private const int BrowseCallbackInitialized = 1;
-    private const uint BrowseSetSelectionW = 0x0466;
+    // BFFM_SETSELECTIONW is WM_USER + 103 (0x0467). 0x0466 is the ANSI twin, which reads a wide string as garbage and
+    // selects nothing. wParam must be non-zero to say lParam is a path and not a PIDL (#1371).
+    internal const uint BrowseSetSelectionW = 0x0467;
+    internal static readonly IntPtr SelectionIsAPath = new(1);
     private const uint CoInitializeApartmentThreaded = 0x2;
     private const int ShowWindowNormal = 1;
 
@@ -86,6 +89,7 @@ internal static class WindowsFolderPicker
             };
 
             selectedItem = SHBrowseForFolder(ref browseInfo);
+            GC.KeepAlive(callback);
             if (selectedItem == IntPtr.Zero)
             {
                 completion.TrySetResult(WindowsFolderPickerResult.FromCancelled());
@@ -150,7 +154,7 @@ internal static class WindowsFolderPicker
 
         if (data != IntPtr.Zero)
         {
-            SendMessage(windowHandle, BrowseSetSelectionW, IntPtr.Zero, data);
+            SendMessage(windowHandle, BrowseSetSelectionW, SelectionIsAPath, data);
         }
 
         return 0;
