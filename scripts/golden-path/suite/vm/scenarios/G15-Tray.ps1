@@ -126,7 +126,7 @@ function Invoke-GroupTray {
         Add-Check 'Restart Deluno brings Deluno back (start marker ready, answering) in the same tray process' ($pidBefore -eq $pidAfter) "process $pidBefore -> $pidAfter in $secs s"
     }
 
-    Invoke-Scenario -Id 'tray.change-port' -Title "Change port...: a busy port is refused in words, a free one is used (Deluno answers there, the old port is closed, the port is saved), the firewall rule stays on the old port, and the default port comes back" -Body {
+    Invoke-Scenario -Id 'tray.change-port' -Title "Change port...: a busy port is refused in words, a free one is used (Deluno answers there, the old port is closed, the port is saved), the firewall rule moves to the new port, and the default port comes back" -Body {
         $old = Get-LanPort
         $new = $old + 11
         $listener = $null
@@ -157,10 +157,11 @@ function Invoke-GroupTray {
             $saved = if (Test-Path (Get-TrayAppSettingsPath)) { Get-Content -Raw (Get-TrayAppSettingsPath) } else { '' }
             Add-Check 'The new port is saved in deluno.json' ($saved -match "\b$new\b") ''
             Connect-Deluno
+            # The rule follows the port (#1372): Deluno's rule is on the new port, the old port has none of Deluno's, and Deluno itself reads other devices as let in.
+            $state = Wait-LanState -State 'open' -TimeoutSec 60
+            $ruleNew = @(Get-InboundRulesFor -Port $new | Where-Object { $_.Name -like 'Deluno*' }).Count
             $ruleOld = @(Get-InboundRulesFor -Port $old | Where-Object { $_.Name -like 'Deluno*' }).Count
-            $ruleNew = @(Get-InboundRulesFor -Port $new).Count
-            Add-Check "The firewall rule is per port: Deluno's rule stays on the old port ($old) and nothing opens the new one" ($ruleOld -eq 1 -and $ruleNew -eq 0) "rules old=$ruleOld new=$ruleNew; Deluno reads the new port as: $((Get-LanState).state)"
-            Add-Note "After a port change the firewall rule is not moved: other devices are turned away on the new port until 'Allow other devices' is pressed again (the register's TRY-16)."
+            Add-Check "The firewall rule moved with the port: Deluno's rule is on the new port ($new), not the old ($old), so other devices reach the new port with no extra step" ($ruleNew -eq 1 -and $ruleOld -eq 0 -and $null -ne $state -and [int]$state.port -eq $new) "rules old=$ruleOld new=$ruleNew; Deluno reads: $((Get-LanState) | ConvertTo-Json -Compress)"
         }
         finally {
             if ($listener) { $listener.Stop() }

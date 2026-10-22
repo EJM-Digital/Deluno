@@ -1004,6 +1004,22 @@ public sealed class TrayApplication : ApplicationContext
 
         var changer = new PortChanger(PortChoice.IsInUse, RestartOnPortAsync);
         var result = await changer.ChangeAsync(current, port);
+        // Deluno's firewall rule is per port: move it with the port so other devices keep reaching Deluno (#1372).
+        FirewallPortMoveResult? firewallMove = null;
+        if (result.Outcome == PortChangeOutcome.Changed)
+        {
+            try
+            {
+                firewallMove = await FirewallPortMove.MoveAsync(new WindowsFirewall(), current, port, CancellationToken.None);
+                await _server.RefreshLanAccessAsync(CancellationToken.None);
+                InvokeOnUiThread(() => Change(s => s with { Lan = LanStateOf(_server.LanAccess) }));
+            }
+            catch (Exception ex)
+            {
+                firewallMove = new(FirewallPortMoveOutcome.Failed, $"Deluno could not move its firewall rule to port {port}: {ex.Message} Choose Allow other devices on your network to try again.");
+            }
+        }
+
         InvokeOnUiThread(() =>
         {
             switch (result.Outcome)
@@ -1011,6 +1027,10 @@ public sealed class TrayApplication : ApplicationContext
                 case PortChangeOutcome.Changed:
                     // The address is shown; nothing opens by itself. A click on the balloon opens it.
                     Balloon($"Deluno is now at port {result.Port}", $"http://localhost:{result.Port} - click to open. Bookmarks to the old address will stop working.", ToolTipIcon.Info, OpenDeluno);
+                    if (firewallMove is { Outcome: FirewallPortMoveOutcome.Declined or FirewallPortMoveOutcome.Failed })
+                    {
+                        Balloon("Other devices cannot reach the new port yet", firewallMove.Message ?? "", ToolTipIcon.Warning, problem: true);
+                    }
                     break;
                 case PortChangeOutcome.RolledBack:
                     Balloon("Deluno stayed on its old port", result.Message, ToolTipIcon.Warning, () => OpenFolder(LogsFolder()), problem: true);
