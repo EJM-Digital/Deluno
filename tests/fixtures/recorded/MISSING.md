@@ -270,7 +270,7 @@ Still missing, and why:
 
 ## IMDb list export (#1292)
 
-- imdb list export CSV (and the list page it comes from): IMDb answers an automated fetch with an empty HTTP 202 (its bot wall), so a real export of a public list could not be recorded from this machine. Needed: a real `ls...` list CSV export saved from a browser, trimmed to a few rows, to test the IMDb list provider (ls id, list URL and CSV export URL) in IntakeSyncServiceTests.
+- imdb list export CSV: recorded on 22 October 2026 are the bot check that IMDb gives an automated client for a public list page and its /export (HTTP 202, empty page; `imdb/2026-10-22`), and a signed-out browser asked for the same /export got a 404 page, so no real CSV could be recorded. Needed: a real `ls...` list CSV saved from a signed-in browser, trimmed to a few rows, to prove the CSV is parsed to entries (#1292).
 
 ## Jellyfin 12.2.0 recorded again in Docker, one user for every state (coverage area automation, #1293)
 

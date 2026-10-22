@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -50,6 +51,7 @@ public sealed class IntakeSyncService(
 {
     private const int PreviewLimit = 100;
     private const string IntakeHttpClientName = "deluno-intake";
+    private const string ImdbRefusedMessage = "IMDb refused the request. It does not let programs read its lists. In IMDb, open the list, choose Export, save the CSV file, put it somewhere Deluno can reach by a web address ending in .csv, and use that address for this list.";
     private static readonly Regex ImdbListIdRegex = new(@"ls\d{4,}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex TmdbListIdRegex = new(@"(?:^|/)(\d{3,})(?:$|[/?#])", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex YearRegex = new(@"(?:\(|\b)(19\d{2}|20\d{2}|2100)(?:\)|\b)", RegexOptions.Compiled);
@@ -1126,11 +1128,19 @@ public sealed class IntakeSyncService(
     {
         var url = ResolveImdbCsvUrl(source.FeedUrl);
         using var client = httpClientFactory.CreateClient(IntakeHttpClientName);
-        var csv = await client.GetStringAsync(url, cancellationToken);
-        if (string.IsNullOrWhiteSpace(csv))
+        using var response = await client.GetAsync(url, cancellationToken);
+        var csv = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        // IMDb's bot check answers an automated client with an empty 202 (x-amzn-waf-action: challenge), and a real export is never
+        // empty (it always carries a header line). That is a refusal, not a list with no titles (recorded in tests/fixtures/recorded/imdb).
+        if (response.StatusCode == HttpStatusCode.Accepted
+            || response.Headers.Contains("x-amzn-waf-action")
+            || (response.IsSuccessStatusCode && string.IsNullOrWhiteSpace(csv)))
         {
-            return [];
+            throw new PlainFailureException(ImdbRefusedMessage);
         }
+
+        response.EnsureSuccessStatusCode();
 
         var lines = csv
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
