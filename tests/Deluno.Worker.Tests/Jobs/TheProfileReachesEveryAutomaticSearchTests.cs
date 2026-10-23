@@ -32,6 +32,7 @@ public sealed class TheProfileReachesEveryAutomaticSearchTests
 {
     private static readonly IReadOnlyList<ProfileSizeRule> SizeRules = [new ProfileSizeRule("WEB 1080p", 4, 20, 0, 0)];
     private static readonly QualityUpgradeStopPolicy UpgradeStop = new(true, false);
+    private static readonly ProfileScoreLimits ScoreLimits = new(MinFormatScore: 25, CutoffFormatScore: 100, MinUpgradeFormatScore: 10);
 
     private readonly List<AcquisitionDecisionRequest> _requests = [];
     private readonly Mock<IAcquisitionDecisionPipeline> _pipeline = new();
@@ -53,7 +54,7 @@ public sealed class TheProfileReachesEveryAutomaticSearchTests
                 []));
 
     [Fact]
-    public async Task A_scheduled_film_search_carries_the_profiles_size_rules_and_upgrade_stop()
+    public async Task A_scheduled_film_search_carries_the_profiles_size_rules_upgrade_stop_and_score_limits()
     {
         var movies = new Mock<IMovieCatalogRepository>();
         movies
@@ -90,11 +91,12 @@ public sealed class TheProfileReachesEveryAutomaticSearchTests
         var request = Assert.Single(_requests);
         Assert.Equal(SizeRules, request.SizeRules);
         Assert.Equal(UpgradeStop, request.UpgradeStop);
+        Assert.Equal(ScoreLimits, request.ScoreLimits);
         Assert.Equal(["WEB 1080p", "Bluray 1080p"], request.AllowedQualities);
     }
 
     [Fact]
-    public async Task An_episode_search_carries_the_profiles_size_rules_and_upgrade_stop()
+    public async Task An_episode_search_carries_the_profiles_size_rules_upgrade_stop_and_score_limits()
     {
         var handler = new EpisodeSearchJobHandler(
             Libraries("library-tv", "tv").Object,
@@ -120,6 +122,7 @@ public sealed class TheProfileReachesEveryAutomaticSearchTests
         var request = Assert.Single(_requests);
         Assert.Equal(SizeRules, request.SizeRules);
         Assert.Equal(UpgradeStop, request.UpgradeStop);
+        Assert.Equal(ScoreLimits, request.ScoreLimits);
     }
 
     private static Mock<ILibrariesRepository> Libraries(string id, string mediaType)
@@ -147,7 +150,8 @@ public sealed class TheProfileReachesEveryAutomaticSearchTests
                 "profile-standard", "Standard", "movies", "WEB 1080p", "WEB 1080p,Bluray 1080p", string.Empty,
                 true, false, false, null, null, false, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch,
                 SizeRules: SizeRules,
-                UpgradeStop: UpgradeStop)]);
+                UpgradeStop: UpgradeStop,
+                ScoreLimits: ScoreLimits)]);
         return quality;
     }
 }
