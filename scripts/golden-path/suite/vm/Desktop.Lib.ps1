@@ -263,11 +263,8 @@ function Wait-ToastShown {
 function Get-TrayMenuStates {
     param([string] $Icon = 'Deluno')
     $names = @(Open-TrayMenu -Icon $Icon)
-    $uia = [System.Windows.Automation.AutomationElement]
-    $cond = New-Object System.Windows.Automation.PropertyCondition($uia::ControlTypeProperty, [System.Windows.Automation.ControlType]::MenuItem)
     $out = New-Object System.Collections.ArrayList
-    foreach ($el in $uia::RootElement.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)) {
-        if ($el.Current.IsOffscreen -or -not $el.Current.Name) { continue }
+    foreach ($el in @(Get-OpenMenuElements -Icon $Icon)) {
         $checked = $false
         try { $checked = ($el.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -eq 'On') } catch { }
         [void]$out.Add([pscustomobject]@{ Name = [string]$el.Current.Name; Enabled = [bool]$el.Current.IsEnabled; Checked = $checked })
