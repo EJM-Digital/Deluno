@@ -90,7 +90,8 @@ function Get-DesktopWindowsOnce {
 
 function Format-DesktopWindows {
     param([object[]] $Windows = @(Get-DesktopWindows))
-    (@($Windows | ForEach-Object { "[{0}|{1}|{2}] {3}" -f $_.Process, $_.Class, $_.ProcessId, $_.Name }) -join '; ')
+    (@($Windows | ForEach-Object { "[{0}|{1}|{2}] {3}" -f $_.Process, $_.Class, $_.ProcessId, $_.Name }) -join '; ') +
+    ' || Deluno processes: ' + ((@(Get-Process -Name Deluno -ErrorAction SilentlyContinue) | ForEach-Object { "pid $($_.Id) session=$($_.SessionId) responding=$($_.Responding) mainWindow='$($_.MainWindowTitle)'" }) -join '; ')
 }
 
 # Waits for a top-level window whose name matches (and, when given, whose process is the one named). Returns the window or $null.
@@ -263,11 +264,8 @@ function Wait-ToastShown {
 function Get-TrayMenuStates {
     param([string] $Icon = 'Deluno')
     $names = @(Open-TrayMenu -Icon $Icon)
-    $uia = [System.Windows.Automation.AutomationElement]
-    $cond = New-Object System.Windows.Automation.PropertyCondition($uia::ControlTypeProperty, [System.Windows.Automation.ControlType]::MenuItem)
     $out = New-Object System.Collections.ArrayList
-    foreach ($el in $uia::RootElement.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)) {
-        if ($el.Current.IsOffscreen -or -not $el.Current.Name) { continue }
+    foreach ($el in @(Get-OpenMenuElements -Icon $Icon)) {
         $checked = $false
         try { $checked = ($el.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -eq 'On') } catch { }
         [void]$out.Add([pscustomobject]@{ Name = [string]$el.Current.Name; Enabled = [bool]$el.Current.IsEnabled; Checked = $checked })

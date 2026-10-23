@@ -71,6 +71,28 @@ if (-not ("GpFg.Win" -as [type])) {
 [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] public static extern int GetClassName(System.IntPtr h, System.Text.StringBuilder s, int n);
 "@
 }
+if (-not ("GpFg2.Win" -as [type])) {
+    Add-Type -Namespace GpFg2 -Name Win -MemberDefinition @"
+[System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] public static extern System.IntPtr FindWindow(string cls, string title);
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool SetForegroundWindow(System.IntPtr h);
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, System.UIntPtr extra);
+"@
+}
+# The keys of Shift+F10 go to the window in front. Another program (qBittorrent, a browser) can hold the front when the tray icon is
+# focused through UI Automation, and then its own menu bar ("File / Edit / View / Tools / Help") is what gets read (rc.30.35 run, 22 Oct:
+# every tray-menu scenario after qBittorrent opened its window). This puts the taskbar in front first. Returns $true when the
+# window in front belongs to the shell.
+function Set-TaskbarForeground {
+    $isShell = { $fg = Get-ForegroundInfo; $fg.Process -in 'explorer', 'ShellExperienceHost', 'ShellHost', 'SearchHost', 'StartMenuExperienceHost' }
+    if (& $isShell) { return $true }
+    $h = [GpFg2.Win]::FindWindow('Shell_TrayWnd', $null)
+    if ($h -eq [IntPtr]::Zero) { return $false }
+    # Windows lets a program take the front only when a key was just pressed; a bare Alt press and release counts.
+    [GpFg2.Win]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero); [GpFg2.Win]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
+    [void][GpFg2.Win]::SetForegroundWindow($h)
+    Start-Sleep -Milliseconds 300 # reason: UI settle after input; Windows raises no event for it
+    [bool](& $isShell)
+}
 function Get-ForegroundInfo {
     $h = [GpFg.Win]::GetForegroundWindow(); $procId = [uint32]0; [void][GpFg.Win]::GetWindowThreadProcessId($h, [ref]$procId)
     $sb = New-Object System.Text.StringBuilder 256; [void][GpFg.Win]::GetClassName($h, $sb, 256)
@@ -188,13 +210,13 @@ function Wait-UiaClickable {
 # The menu is left open; the caller picks an item with Invoke-TrayMenuItem or closes it with Close-TrayMenu.
 function Open-TrayMenu {
     param([Parameter(Mandatory)] [string] $Icon)
-    # Right after the desktop comes up (or when another program holds the focus) the menu key reaches another window and its menu
-    # bar ("File / Edit / View / Tools / Help") is read instead. The app's own menu always has its "Open <app>" item, so a read
-    # without it is closed and made again, a few times.
+    # Right after the desktop comes up (or when another program holds the focus) the menu key can reach another window. Set-TaskbarForeground
+    # puts the taskbar in front, and the third try right-clicks the icon; a read with no items is made again, a few times.
     $names = @()
     for ($attempt = 1; $attempt -le 4; $attempt++) {
-        $names = @(Open-TrayMenuOnce -Icon $Icon)
-        if ($names.Count -eq 0 -or @($names | Where-Object { $_ -match "^Open $Icon" }).Count -gt 0) { return $names }
+        $names = @(Open-TrayMenuOnce -Icon $Icon -Attempt $attempt)
+        # Only the app's own pop-up menus are read now (Get-OpenMenuElements), so any item at all is its menu; none means it did not open.
+        if ($names.Count -gt 0) { return $names }
         Close-TrayMenu
         Start-Sleep -Seconds 2 # reason: a retry pause before reading the tray menu again; no event says the menu is ready
     }
@@ -202,29 +224,61 @@ function Open-TrayMenu {
 }
 
 function Open-TrayMenuOnce {
-    param([Parameter(Mandatory)] [string] $Icon)
+    param([Parameter(Mandatory)] [string] $Icon, [int] $Attempt = 1)
     $btn = Find-TrayIcon -Icon $Icon
     $opened = $false
     if (-not $btn -or $btn.Element.Current.IsOffscreen) { $opened = Open-TrayOverflow; $btn = Find-TrayIcon -Icon $Icon }
     if (-not $btn) { return @() }
     Wait-UiaClickable -Element $btn.Element -What "the $Icon tray icon"
-    # Through the icon's own automation element: focus it and press the menu key. A click at a screen position can land on the
-    # taskbar (it once opened Server Manager's jump list over the component picker), so none is ever sent for the icon.
-    $btn.Element.SetFocus()
-    Start-Sleep -Milliseconds 200 # reason: UI settle after input; Windows raises no event for it
-    [System.Windows.Forms.SendKeys]::SendWait('+{F10}')
+    if ($Attempt -le 2) {
+        # Through the icon's own automation element: focus it and press the menu key, with the taskbar in front so the key reaches it.
+        # A click at a screen position can land on the taskbar (it once opened Server Manager's jump list over the component picker).
+        [void](Set-TaskbarForeground)
+        $btn.Element.SetFocus()
+        Start-Sleep -Milliseconds 200 # reason: UI settle after input; Windows raises no event for it
+        [System.Windows.Forms.SendKeys]::SendWait('+{F10}')
+    }
+    else {
+        # The key did not open it twice: a right click on the icon's own rectangle (read just now from the taskbar) always reaches it.
+        $r = $btn.Element.Current.BoundingRectangle
+        Send-Click -X ([int]($r.X + $r.Width / 2)) -Y ([int]($r.Y + $r.Height / 2)) -Right
+    }
     Start-Sleep -Milliseconds 700 # reason: UI settle after input; Windows raises no event for it
-    Get-OpenMenuItems
+    Get-OpenMenuItems -Icon $Icon
+}
+
+# The menu items of the app's own pop-up menus only: the visible items inside top-level windows that belong to the app's process
+# (its tray menu and the sub-menus that open from it). A program's menu bar ("File / Edit / View...") in another window is never one
+# of them. Icon is the app's name ("Deluno" or "Weir"); without it, either app's.
+function Get-OpenMenuElements {
+    param([string] $Icon = '')
+    $uia = [System.Windows.Automation.AutomationElement]
+    $want = if ($Icon) { "^$([regex]::Escape($Icon))" } else { '^(Deluno|Weir)' }
+    $menuCond = New-Object System.Windows.Automation.PropertyCondition($uia::ControlTypeProperty, [System.Windows.Automation.ControlType]::MenuItem)
+    $names = @{}
+    $out = New-Object System.Collections.ArrayList
+    foreach ($top in $uia::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)) {
+        $procId = 0
+        try { $procId = [int]$top.Current.ProcessId } catch { continue }
+        if (-not $names.ContainsKey($procId)) { $names[$procId] = try { (Get-Process -Id $procId -ErrorAction Stop).ProcessName } catch { '' } }
+        if ($names[$procId] -notmatch $want) { continue }
+        foreach ($el in $top.FindAll([System.Windows.Automation.TreeScope]::Descendants, $menuCond)) {
+            if (-not $el.Current.IsOffscreen -and $el.Current.Name) { [void]$out.Add($el) }
+        }
+    }
+    @($out)
 }
 
 function Get-OpenMenuItems {
-    $uia = [System.Windows.Automation.AutomationElement]
-    $cond = New-Object System.Windows.Automation.PropertyCondition($uia::ControlTypeProperty, [System.Windows.Automation.ControlType]::MenuItem)
-    $items = $uia::RootElement.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
-    @($items | Where-Object { -not $_.Current.IsOffscreen -and $_.Current.Name } | ForEach-Object { [string]$_.Current.Name })
+    param([string] $Icon = '')
+    @(Get-OpenMenuElements -Icon $Icon | ForEach-Object { [string]$_.Current.Name })
 }
 
-function Close-TrayMenu { Send-EscapeIfSafe menu; Start-Sleep -Milliseconds 300 } # reason: UI settle after input; Windows raises no event for it
+# Closes the app's pop-up menu when one is open. The tray's menu is not a native #32768 window, so the open items themselves say it is up.
+function Close-TrayMenu {
+    if (@(Get-OpenMenuItems).Count -gt 0) { [System.Windows.Forms.SendKeys]::SendWait("{ESC}") } else { Send-EscapeIfSafe menu }
+    Start-Sleep -Milliseconds 300
+} # reason: UI settle after input; Windows raises no event for it
 
 # Opens the app's tray menu and clicks the item whose name matches the pattern. Returns $true when it was clicked.
 # Why the last Invoke-TrayMenuItem returned false, so a caller can say it (rc.30.28: "via its tray menu: False" twice with no
@@ -240,10 +294,8 @@ function Invoke-TrayMenuItem {
         $script:TrayMenuMiss = "the $Icon icon's menu did not open (icon found: $(if ($dot) { $dot.Found } else { 'unknown' }); hover '$(if ($dot) { $dot.Hover })')"
         return $false
     }
-    $uia = [System.Windows.Automation.AutomationElement]
-    $cond = New-Object System.Windows.Automation.PropertyCondition($uia::ControlTypeProperty, [System.Windows.Automation.ControlType]::MenuItem)
-    foreach ($el in $uia::RootElement.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)) {
-        if (-not $el.Current.IsOffscreen -and $el.Current.Name -match $Item) {
+    foreach ($el in @(Get-OpenMenuElements -Icon $Icon)) {
+        if ($el.Current.Name -match $Item) {
             Wait-UiaClickable -Element $el -What "the menu item '$($el.Current.Name)'"
             # An item that opens a dialog does not return from Invoke until the dialog is closed: press it with the mouse instead.
             if ($Modal) { $r = $el.Current.BoundingRectangle; Send-Click -X ([int]($r.X + $r.Width / 2)) -Y ([int]($r.Y + $r.Height / 2)); return $true }
