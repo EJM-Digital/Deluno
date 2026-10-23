@@ -118,7 +118,7 @@ public sealed class DownloadClientGrabService(
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             // Outside the resilience wrapper below, so nothing may escape from here.
-            logger?.LogWarning(exception, "Could not prepare {Release} for {Client}.", request.ReleaseName, client.Name);
+            logger?.LogWarning(exception, "Could not prepare {Release} for {Client}.", request.ReleaseName.ForLog(), client.Name.ForLog());
             prepared = new PreparedRelease(request, Failed(client.Id, request, "unavailable", "Deluno could not prepare this release to send it.", category: "indexer"));
         }
 
@@ -286,14 +286,14 @@ public sealed class DownloadClientGrabService(
             {
                 logger?.LogWarning(
                     "{Client} was sent no save folder for {Release}: Deluno could not confirm the client sees the same folders it does, so the client's own default applies. Add a path mapping for {Folder} to send it there.",
-                    client.Name, request.ReleaseName, folder.HostFolder);
+                    client.Name.ForLog(), request.ReleaseName.ForLog(), folder.HostFolder.ForLog());
             }
 
             return folder?.ClientFolder is { } clientFolder ? request with { SaveFolder = clientFolder } : request;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            logger?.LogWarning(exception, "Could not work out {Client}'s save folder for {Release}; the client's own folder applies.", client.Name, request.ReleaseName);
+            logger?.LogWarning(exception, "Could not work out {Client}'s save folder for {Release}; the client's own folder applies.", client.Name.ForLog(), request.ReleaseName.ForLog());
             return request;
         }
     }
@@ -467,7 +467,7 @@ public sealed class DownloadClientGrabService(
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            logger?.LogDebug(exception, "Could not confirm the save path for grab of {ReleaseName} to {ClientName}.", request.ReleaseName, client.Name);
+            logger?.LogDebug(exception, "Could not confirm the save path for grab of {ReleaseName} to {ClientName}.", request.ReleaseName.ForLog(), client.Name.ForLog());
         }
     }
 
@@ -547,7 +547,7 @@ public sealed class DownloadClientGrabService(
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            logger?.LogWarning(exception, "Could not blocklist the dead release {Release}.", request.ReleaseName);
+            logger?.LogWarning(exception, "Could not blocklist the dead release {Release}.", request.ReleaseName.ForLog());
         }
     }
 
@@ -708,7 +708,7 @@ public sealed class DownloadClientGrabService(
         {
             logger?.LogInformation(
                 "{Release}: the indexer listed hash {Reported} but the release itself is {Known}; Deluno uses the release's own.",
-                request.ReleaseName, reported, known);
+                request.ReleaseName.ForLog(), reported.ForLog(), known.ForLog());
         }
 
         if (known is null && reported is null && request.DownloadUrl.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
@@ -733,7 +733,7 @@ public sealed class DownloadClientGrabService(
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            logger?.LogWarning(exception, "Could not reserve the grab of {Release} on {Client}.", request.ReleaseName, client.Name);
+            logger?.LogWarning(exception, "Could not reserve the grab of {Release} on {Client}.", request.ReleaseName.ForLog(), client.Name.ForLog());
             return null;
         }
     }

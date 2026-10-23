@@ -149,7 +149,8 @@ internal sealed class RecordedAppServer : IAsyncDisposable
                 }
 
                 context.Response.StatusCode = 599;
-                await context.Response.WriteAsync(exception.Message);
+                context.Response.ContentType = "text/plain; charset=utf-8";
+                await context.Response.WriteAsync(System.Net.WebUtility.HtmlEncode(exception.Message));
                 return;
             }
 

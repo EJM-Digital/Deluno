@@ -81,7 +81,7 @@ public sealed class ProcessorFailureReportHandler(
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            logger.LogWarning(exception, "Could not refuse {ReleaseName} after {Processor} rejected it.", dispatch.ReleaseName, report.ProcessorName);
+            logger.LogWarning(exception, "Could not refuse {ReleaseName} after {Processor} rejected it.", dispatch.ReleaseName.ForLog(), report.ProcessorName.ForLog());
             return new ProcessorRejectionOutcome(
                 false,
                 $"Deluno could not record {dispatch.ReleaseName} as refused. Keep the original and hand it back.");
@@ -107,7 +107,7 @@ public sealed class ProcessorFailureReportHandler(
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            logger.LogWarning(exception, "Could not close the download of {ReleaseName} after {Processor} rejected it.", dispatch.ReleaseName, report.ProcessorName);
+            logger.LogWarning(exception, "Could not close the download of {ReleaseName} after {Processor} rejected it.", dispatch.ReleaseName.ForLog(), report.ProcessorName.ForLog());
         }
 
         // A processor that refuses everything walks the whole result list

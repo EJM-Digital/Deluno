@@ -355,19 +355,19 @@ public sealed partial class TmdbMetadataProvider(
 
         if (config.ProviderMode is "broker" or "hybrid" && !string.IsNullOrWhiteSpace(config.BrokerUrl))
         {
-            logger.LogDebug("Attempting metadata search via broker for query: {Query}", query);
+            logger.LogDebug("Attempting metadata search via broker for query: {Query}", query.ForLog());
             var brokerResults = await TryBrokerSearchAsync(config.BrokerUrl, mediaType, request, query, cancellationToken);
             if (brokerResults is { Count: > 0 })
             {
                 var localizedBrokerResults = await LocalizeArtworkAsync(brokerResults, cancellationToken);
-                logger.LogDebug("Broker search returned {ResultCount} results for query: {Query}", brokerResults.Count, query);
+                logger.LogDebug("Broker search returned {ResultCount} results for query: {Query}", brokerResults.Count, query.ForLog());
                 await WriteSearchCacheAsync(cacheKey, mediaType, query, localizedBrokerResults, cancellationToken);
                 return localizedBrokerResults;
             }
 
             if (config.ProviderMode == "broker")
             {
-                logger.LogWarning("Broker search returned no results and broker-only mode is active for query: {Query}", query);
+                logger.LogWarning("Broker search returned no results and broker-only mode is active for query: {Query}", query.ForLog());
 
                 // The gateway did not answer (null, not an empty list): an
                 // older answer to this same search beats "nothing found" (#1090).
@@ -383,7 +383,7 @@ public sealed partial class TmdbMetadataProvider(
                 return [];
             }
 
-            logger.LogInformation("Broker search returned no results, falling back to direct TMDb search for query: {Query}", query);
+            logger.LogInformation("Broker search returned no results, falling back to direct TMDb search for query: {Query}", query.ForLog());
             DelunoObservability.MetadataBrokerFallbacks.Add(1, [new KeyValuePair<string, object?>("query", query)]);
         }
 
@@ -1692,7 +1692,7 @@ public sealed partial class TmdbMetadataProvider(
 
         if (brokerResponse is null)
         {
-            logger.LogWarning("Broker search failed or returned null response from {BrokerHost} for query: {Query}", brokerKey, query);
+            logger.LogWarning("Broker search failed or returned null response from {BrokerHost} for query: {Query}", brokerKey.ForLog(), query.ForLog());
             return null;
         }
 

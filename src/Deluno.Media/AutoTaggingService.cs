@@ -59,7 +59,7 @@ public sealed class AutoTaggingService(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // A title must never fail to be added, edited or refreshed because of a tagging rule.
-            logger.LogWarning(ex, "Auto-tagging {Kind} {MediaId} failed.", kind, mediaId);
+            logger.LogWarning(ex, "Auto-tagging {Kind} {MediaId} failed.", kind.ForLog(), mediaId.ForLog());
             return AutoTagOutcome.None;
         }
     }

@@ -269,8 +269,8 @@ public sealed class IntegrationResiliencePolicy(
             logger.LogWarning(
                 lastException,
                 "Integration operation {Operation} for {Service} failed after {Attempts} attempts.",
-                normalized.Operation,
-                serviceName,
+                normalized.Operation.ForLog(),
+                serviceName.ForLog(),
                 normalized.MaxAttempts);
         }
 
@@ -587,7 +587,7 @@ public sealed class IntegrationResiliencePolicy(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Failed to persist circuit breaker state for {Key}.", key);
+            logger.LogWarning(ex, "Failed to persist circuit breaker state for {Key}.", key.ForLog());
         }
     }
 

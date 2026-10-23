@@ -46,6 +46,21 @@ public sealed class ImportRoutesOnRealFilesTests
     }
 
     [Fact]
+    public async Task The_preview_does_not_look_at_a_source_that_climbs_out_of_its_folder_even_when_the_file_is_really_there()
+    {
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: ReadableProbe);
+        var (_, source) = await SeedAsync(app);
+        Directory.CreateDirectory(Path.Combine(Path.GetDirectoryName(source)!, "elsewhere"));
+        var climbing = Path.GetDirectoryName(source)! + "/elsewhere/../" + Path.GetFileName(source);
+        Assert.True(File.Exists(climbing), "the climbing path really reaches the file");
+
+        var preview = await PreviewAsync(app, climbing);
+
+        Assert.False(preview.GetProperty("sourceExists").GetBoolean());
+        Assert.Contains(preview.GetProperty("warnings").EnumerateArray().Select(item => item.GetString()), warning => warning == Deluno.Contracts.SafePath.OutsideRootReason);
+    }
+
+    [Fact]
     public async Task Queuing_an_import_without_a_preview_is_a_plain_400_and_queues_nothing()
     {
         await using var app = await ApplicationTestHost.StartAsync(replaceServices: ReadableProbe);
