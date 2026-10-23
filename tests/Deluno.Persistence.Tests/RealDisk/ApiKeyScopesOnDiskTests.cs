@@ -155,9 +155,8 @@ public sealed class ApiKeyScopesOnDiskTests
         Assert.Empty(BackupZips(app));
     }
 
-    // DEFECT: the README says the home-assistant template needs no API-key administration, and a key may not create or revoke
-    // keys, but a key with `read` can list every key (names, prefixes and scopes).
-    [Fact(Skip = "Defect: a home-assistant (read) key can list the API keys, although the template is documented as having no API-key administration.")]
+    // The README says the home-assistant template needs no API-key administration: it may not create or revoke keys, and (once a defect) it may not list them either.
+    [Fact]
     public async Task The_home_assistant_key_template_cannot_list_the_api_keys()
     {
         await using var app = await ApplicationTestHost.StartAsync();
