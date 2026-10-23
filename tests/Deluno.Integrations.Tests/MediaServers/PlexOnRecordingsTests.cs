@@ -451,4 +451,188 @@ public sealed class PlexOnRecordingsTests
         Assert.True(plex.Sent("DELETE /library/collections/6"));
     }
 
+    // ---- more of what the client reads: each is the recorded reply with only the value the row is about changed (#1301) ----
+
+    private static HttpResponseMessage Edited(string body) => RecordedReplies.Json(body);
+
+    private static bool IsMovieListing(HttpRequestMessage request)
+        => request.RequestUri!.AbsolutePath == "/library/sections/1/all" && request.RequestUri.Query.Contains("type=1", StringComparison.Ordinal);
+
+    [Fact]
+    public async Task A_server_that_answers_at_its_root_without_a_machine_identifier_is_degraded_and_not_taken_for_Plex()
+    {
+        var notPlex = R("root").Single.Reply.BodyWith(("MediaContainer.machineIdentifier", null));
+        var plex = new Plex(request => request.RequestUri!.AbsolutePath == "/" ? Edited(notPlex) : null);
+
+        var result = await plex.Client().TestAsync(Server(), CancellationToken.None);
+
+        Assert.False(result.Ok);
+        Assert.Equal("degraded", result.Status);
+        Assert.Contains("not as Plex does", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_listing_of_more_than_one_page_is_read_page_by_page_until_the_total_is_reached()
+    {
+        // The recorded movies page holds one film; the first page is that reply made 500 films long with a total of 501, and the second is the
+        // recorded page itself. The client must ask again from 500 and keep the film on the second page.
+        var full = R("catalogue-movies").Exchanges[0].Reply.BodyWith(("+MediaContainer.Metadata", 500), ("MediaContainer.size", 500), ("MediaContainer.totalSize", 501));
+        var plex = new Plex(request => IsMovieListing(request) && request.RequestUri!.Query.Contains("X-Plex-Container-Start=0&", StringComparison.Ordinal) ? Edited(full) : null);
+
+        var answer = await plex.Client().ListItemsAsync(Server(), "movies", CancellationToken.None);
+
+        var library = Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(answer).Value;
+        Assert.Equal(501, library.Items.Count);
+        Assert.True(plex.Sent("X-Plex-Container-Start=0&X-Plex-Container-Size=500"));
+        Assert.True(plex.Sent("X-Plex-Container-Start=500&X-Plex-Container-Size=500"));
+    }
+
+    [Fact]
+    public async Task A_page_that_is_not_full_ends_the_listing_with_no_second_request()
+    {
+        var plex = new Plex();
+
+        await plex.Client().ListItemsAsync(Server(), "movies", CancellationToken.None);
+
+        Assert.DoesNotContain(plex.Calls, call => call.Contains("X-Plex-Container-Start=500", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_maxed_rating_reads_as_a_favourite_a_lower_one_does_not_and_a_title_never_rated_is_unknown()
+    {
+        async Task<MediaServerViewer?> ViewerFor(object? rating)
+        {
+            var body = R("catalogue-movies").Exchanges[0].Reply.BodyWith(("MediaContainer.Metadata.0.userRating", rating));
+            var plex = new Plex(request => IsMovieListing(request) ? Edited(body) : null);
+            var answer = await plex.Client().ListItemsAsync(Server(), "movies", CancellationToken.None);
+            return Assert.Single(Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(answer).Value.Items).Viewers.SingleOrDefault();
+        }
+
+        var loved = await ViewerFor(10.0);
+        var liked = await ViewerFor(7.0);
+        var never = await ViewerFor(null);
+
+        Assert.True(loved!.Favourite);
+        Assert.Equal(10.0, loved.Rating);
+        Assert.False(liked!.Favourite);
+        Assert.Equal(7.0, liked.Rating);
+        Assert.Null(never);
+    }
+
+    [Fact]
+    public async Task A_section_set_to_hide_titles_inside_collections_lists_the_collection_and_that_is_not_an_answer()
+    {
+        var hidden = R("catalogue-movies").Exchanges[0].Reply.BodyWith(("MediaContainer.Metadata.0.type", "collection"), ("MediaContainer.Metadata.0.title", "Open movies"));
+        var plex = new Plex(request => IsMovieListing(request) ? Edited(hidden) : null);
+
+        var answer = await plex.Client().ListItemsAsync(Server(), "movies", CancellationToken.None);
+
+        var unreachable = Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Unreachable>(answer);
+        Assert.Contains("Open movies", unreachable.Reason, StringComparison.Ordinal);
+        Assert.Contains("hiding items in collections", unreachable.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_film_holds_the_languages_of_its_audio_tracks_and_a_track_with_no_tag_makes_them_unknown()
+    {
+        var tagged = await new Plex().Client().ListItemsAsync(Server(), "movies", CancellationToken.None);
+        var withoutTag = R("catalogue-movies").Exchanges[1].Reply.BodyWith(
+            ("MediaContainer.Metadata.0.Media.0.Part.0.Stream.1.languageCode", null),
+            ("MediaContainer.Metadata.0.Media.0.Part.0.Stream.1.language", null));
+        var untagged = await new Plex(request => request.RequestUri!.AbsolutePath == "/library/metadata/1" ? Edited(withoutTag) : null)
+            .Client().ListItemsAsync(Server(), "movies", CancellationToken.None);
+
+        var languages = Assert.Single(Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(tagged).Value.Items).AudioLanguages;
+        Assert.Single(languages!);
+        Assert.Contains("English", languages!.Single(), StringComparison.OrdinalIgnoreCase);
+        Assert.Null(Assert.Single(Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(untagged).Value.Items).AudioLanguages);
+    }
+
+    [Fact]
+    public async Task The_audio_languages_of_the_titles_asked_for_are_read_from_their_own_pages_in_one_call()
+    {
+        var plex = new Plex();
+
+        var found = await plex.Client().ReadAudioLanguagesAsync(Server(), ["1"], CancellationToken.None);
+
+        var languages = Assert.Single(found).Value;
+        Assert.Contains("English", Assert.Single(languages), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(["GET /library/metadata/1"], plex.Calls);
+    }
+
+    [Fact]
+    public async Task A_smart_collection_has_its_members_read_and_a_collection_whose_kind_cannot_be_read_makes_them_unknown()
+    {
+        // The recorded collections listing holds one ordinary collection (ratingKey 6, whose members are the film). Marked smart it is the one read.
+        var smartListing = R("collection-sync").Exchanges[0].Reply.BodyWith(("MediaContainer.Metadata.0.smart", "1"));
+        var unreadableListing = R("collection-sync").Exchanges[0].Reply.BodyWith(("MediaContainer.Metadata.0.smart", "maybe"));
+        HttpResponseMessage? Collections(HttpRequestMessage request, string listing)
+            => request.RequestUri!.AbsolutePath == "/library/sections/1/collections" ? Edited(listing)
+                : request.RequestUri.AbsolutePath == "/library/collections/6/children" ? R("collection-sync").Exchanges[3].Reply.ToResponse()
+                : null;
+
+        var smart = await new Plex(request => Collections(request, smartListing)).Client().ListItemsAsync(Server(), "movies", CancellationToken.None);
+        var ordinary = await new Plex().Client().ListItemsAsync(Server(), "movies", CancellationToken.None);
+        var unreadable = await new Plex(request => Collections(request, unreadableListing)).Client().ListItemsAsync(Server(), "movies", CancellationToken.None);
+
+        Assert.Single(Assert.Single(Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(smart).Value.Items).SmartCollections!);
+        Assert.Empty(Assert.Single(Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(ordinary).Value.Items).SmartCollections!);
+        Assert.Null(Assert.Single(Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(unreadable).Value.Items).SmartCollections);
+    }
+
+    [Fact]
+    public async Task Removing_an_item_with_no_known_folder_or_library_is_not_supported_and_nothing_is_sent()
+    {
+        var plex = new Plex();
+        var noPath = new MediaServerItem("1", "movies", "Sintel", 2010, "45745", null, null, [], null, MediaServerWatchState.Unplayed) { SectionId = "1" };
+        var noSection = new MediaServerItem("1", "movies", "Sintel", 2010, "45745", null, null, [File], null, MediaServerWatchState.Unplayed);
+
+        var withoutPath = await plex.Client().RemoveAsync(Server(), noPath, CancellationToken.None);
+        var withoutLibrary = await plex.Client().RemoveAsync(Server(), noSection, CancellationToken.None);
+
+        Assert.Contains("did not say where", Assert.IsType<MediaServerAnswer<MediaServerRemoval>.NotSupported>(withoutPath).Reason, StringComparison.Ordinal);
+        Assert.IsType<MediaServerAnswer<MediaServerRemoval>.NotSupported>(withoutLibrary);
+        Assert.Empty(plex.Calls);
+    }
+
+    [Fact]
+    public async Task A_server_that_cannot_be_asked_to_browse_is_unreachable_for_the_folder_test_and_not_a_folder_it_lacks()
+    {
+        var client = new PlexMediaServerClient(new Factory(R("not-answering").NotAnswering()));
+
+        var answer = await client.TestPathAsync(Server(), Folder, CancellationToken.None);
+
+        Assert.IsType<MediaServerAnswer<MediaServerPathMappingTest>.Unreachable>(answer);
+    }
+
+    [Fact]
+    public async Task A_library_list_the_server_will_not_give_leaves_the_whole_listing_unreachable_and_never_empty()
+    {
+        var plex = new Plex(request => request.RequestUri!.AbsolutePath == "/library/sections" ? new HttpResponseMessage(HttpStatusCode.Unauthorized) : null);
+
+        var answer = await plex.Client().ListItemsAsync(Server("wrong"), "movies", CancellationToken.None);
+
+        Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Unreachable>(answer);
+    }
+
+    [Fact]
+    public async Task A_server_that_fails_part_way_through_a_collection_sync_is_unreachable_whichever_call_fails()
+    {
+        // Each case is the recorded flow with one call answered by a server error: the listing, the create, the delete of an emptied collection.
+        async Task<MediaServerAnswer<MediaServerCollectionSync>> Run(Func<HttpRequestMessage, bool> fails, bool exists, params string[] members)
+        {
+            var plex = new Plex(request => fails(request)
+                ? new HttpResponseMessage(HttpStatusCode.InternalServerError)
+                : CollectionReply(request, exists) ?? (request.RequestUri!.AbsolutePath == "/" ? Reply("root", 0) : null));
+            return await plex.Client().SyncCollectionAsync(Server(), Request("Leaving soon", home: false, members), CancellationToken.None);
+        }
+
+        var listing = await Run(request => request.RequestUri!.AbsolutePath == "/library/sections/1/collections", exists: false, "1");
+        var create = await Run(request => request.Method == HttpMethod.Post && request.RequestUri!.AbsolutePath == "/library/collections", exists: false, "1");
+        var delete = await Run(request => request.Method == HttpMethod.Delete, exists: true);
+
+        Assert.IsType<MediaServerAnswer<MediaServerCollectionSync>.Unreachable>(listing);
+        Assert.IsType<MediaServerAnswer<MediaServerCollectionSync>.Unreachable>(create);
+        Assert.IsType<MediaServerAnswer<MediaServerCollectionSync>.Unreachable>(delete);
+    }
 }
