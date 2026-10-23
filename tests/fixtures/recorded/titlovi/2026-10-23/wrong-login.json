@@ -1,0 +1,20 @@
+{
+  "app": "titlovi",
+  "version": "2026-10-23",
+  "state": "wrong-login",
+  "recordedAt": "2026-10-23T17:07:59Z",
+  "note": "The sign-in (gettoken) with a username and password Titlovi does not know: its own refusal.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/subtitles/gettoken?username=<scrubbed>&password=<scrubbed>&json=True"
+      },
+      "reply": {
+        "status": 401,
+        "headers": {},
+        "bodyText": ""
+      }
+    }
+  ]
+}

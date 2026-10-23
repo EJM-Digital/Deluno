@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Deluno.Notifications;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Tests.Recorded;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Deluno.Persistence.Tests.Api;
 
@@ -129,5 +131,48 @@ public sealed class MediaServerRoutesAgainstRecordedAppsTests
         var response = await app.Client.PostAsJsonAsync($"/api/media-servers/{serverId}/path-mappings", new { delunoPath, serverPath, isEnabled = true });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+    }
+
+    [Fact]
+    public async Task A_saved_media_server_going_unhealthy_and_coming_back_on_a_test_is_announced_once_each_way()
+    {
+        // Jellyfin 12.2.0's own refusal of a token it does not know answers the first look at the server, its own server info answers the second.
+        var refused = RecordedReplies.Jellyfin("wrong-token").Exchanges[0];
+        var info = RecordedReplies.Jellyfin("identity").Exchanges[1];
+        var outbound = new RecordingOutbound();
+        await using var jellyfin = await RecordedAppServer.StartAsync(
+            "jellyfin",
+            new[] { "identity", "libraries" }.Select(RecordedReplies.Jellyfin),
+            RecordedAppServer.InOrder("/System/Info", refused, info));
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => services.AddSingleton<IOutboundNotificationService>(outbound));
+        var id = (await CreateAsync(app, Form(jellyfin))).GetProperty("id").GetString()!;
+
+        var first = await (await app.Client.PostAsync($"/api/media-servers/{id}/test", content: null)).Content.ReadFromJsonAsync<JsonElement>();
+        var degradedAfterFirst = outbound.Categories.ToArray();
+        var second = await (await app.Client.PostAsync($"/api/media-servers/{id}/test", content: null)).Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.False(first.GetProperty("ok").GetBoolean());
+        Assert.True(second.GetProperty("ok").GetBoolean(), second.ToString());
+        Assert.Contains("health.degraded", degradedAfterFirst);
+        Assert.DoesNotContain("health.restored", degradedAfterFirst);
+        Assert.Equal(1, outbound.Categories.Count(category => category == "health.restored"));
+        Assert.Equal("healthy", (await app.Client.GetFromJsonAsync<JsonElement>("/api/media-servers")).EnumerateArray().Single().GetProperty("healthStatus").GetString());
+    }
+
+    private sealed class RecordingOutbound : IOutboundNotificationService
+    {
+        public List<string> Categories { get; } = [];
+
+        public Task DispatchAsync(string eventCategory, string title, string message, string? detailsJson, CancellationToken cancellationToken, IReadOnlyList<string>? titleTags = null)
+        {
+            lock (Categories) Categories.Add(eventCategory);
+            return Task.CompletedTask;
+        }
+
+        public Task<Notifications.Contracts.NotificationWebhookDeliveryResult?> DispatchToWebhookAsync(string webhookId, string eventCategory, string title, string message, string? detailsJson, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<Notifications.Contracts.NotificationWebhookDeliveryResult?> ReplayAsync(string deliveryId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 }

@@ -1,0 +1,78 @@
+{
+  "app": "opensubtitles",
+  "version": "2026-10-23",
+  "state": "wrong-key",
+  "recordedAt": "2026-10-23T17:07:57Z",
+  "note": "A search (answered with a redirect to its canonical form, then followed), a sign-in and a download request sent with an API key (and a username and password) OpenSubtitles does not know: its own refusal of each.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/subtitles?query=Sintel&languages=en&year=2010"
+      },
+      "reply": {
+        "status": 301,
+        "headers": {
+          "content-type": "text/html",
+          "location": "/api/v1/subtitles?languages=en&query=sintel&year=2010"
+        },
+        "bodyText": "<html>\r\n<head><title>301 Moved Permanently</title></head>\r\n<body>\r\n<center><h1>301 Moved Permanently</h1></center>\r\n</body>\r\n</html>\r\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/subtitles?languages=en&query=sintel&year=2010"
+      },
+      "reply": {
+        "status": 403,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "message": "You cannot consume this service",
+          "request_id": "739ea6012ae6d2787547b33aa203295f"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/login",
+        "body": {
+          "username": "<scrubbed>",
+          "password": "<scrubbed>"
+        }
+      },
+      "reply": {
+        "status": 403,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "retry-after": "1"
+        },
+        "body": {
+          "message": "You cannot consume this service",
+          "request_id": "14ba7a40b477c81482fc1c26fc5b7658"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/download",
+        "body": {
+          "file_id": 1
+        }
+      },
+      "reply": {
+        "status": 503,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "message": "Service unavailable"
+        }
+      }
+    }
+  ]
+}

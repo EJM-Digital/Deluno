@@ -1,0 +1,80 @@
+{
+  "app": "trakt",
+  "version": "2026-10-23",
+  "state": "unknown-client-id",
+  "recordedAt": "2026-10-23T17:08:01Z",
+  "note": "The device-code request, the device-token poll, the token refresh and a public list read, all sent with a Trakt client id the service does not know: its own refusal of each.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/oauth/device/code",
+        "body": {
+          "client_id": "<scrubbed>"
+        }
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "error": "invalid_client",
+          "error_description": "client not found"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/oauth/device/token",
+        "body": {
+          "code": "not-a-device-code",
+          "client_id": "<scrubbed>",
+          "client_secret": "<scrubbed>"
+        }
+      },
+      "reply": {
+        "status": 404,
+        "headers": {},
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/oauth/token",
+        "body": {
+          "refresh_token": "<scrubbed>",
+          "client_id": "<scrubbed>",
+          "client_secret": "<scrubbed>",
+          "redirect_uri": "urn:ietf:wg:oauth:2.0:oob",
+          "grant_type": "refresh_token"
+        }
+      },
+      "reply": {
+        "status": 400,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "error_description": "session not found",
+          "error": "invalid_grant"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/movies/trending?limit=1"
+      },
+      "reply": {
+        "status": 403,
+        "headers": {
+          "content-type": "text/plain;charset=UTF-8"
+        },
+        "bodyText": "Forbidden"
+      }
+    }
+  ]
+}

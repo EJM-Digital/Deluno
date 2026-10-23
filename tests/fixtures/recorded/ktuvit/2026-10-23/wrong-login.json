@@ -1,0 +1,31 @@
+{
+  "app": "ktuvit",
+  "version": "2026-10-23",
+  "state": "wrong-login",
+  "recordedAt": "2026-10-23T17:08:00Z",
+  "note": "The sign-in with an e-mail address and password Ktuvit does not know: its own refusal.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/Services/MembershipService.svc/Login",
+        "body": {
+          "request": {
+            "Email": "nobody-recorded-by-deluno-tests@example.com",
+            "Password": "<scrubbed>"
+          }
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "set-cookie": "<scrubbed>"
+        },
+        "body": {
+          "d": "{\"IsSuccess\":false,\"ErrorMessage\":\"ההתחברות נכשלה\"}"
+        }
+      }
+    }
+  ]
+}
