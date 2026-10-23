@@ -1,3 +1,4 @@
+using Deluno.Api;
 using System.Text.Json;
 using Deluno.Api.Updates;
 using Deluno.Contracts;
@@ -196,13 +197,111 @@ public sealed class UpdateAppliedTriggerTests
             await orchestrator.GetStatusAsync(CancellationToken.None);
 
             var line = Assert.Single(activity.Messages);
-            Assert.Contains("Deluno updated and is now running version", line);
+            Assert.Equal($"Deluno updated from 0.0.1-previous-fixture to {DelunoVersion.Running}.", line);
             Assert.Empty(outbound.DispatchedCategories);
         }
         finally
         {
             Directory.Delete(dataRoot, recursive: true);
         }
+    }
+
+    /// <summary>
+    /// #1376: the Windows tray runs a different orchestrator, and a build older than the history file never wrote
+    /// the version it was running. The installer's note says an update was just applied, so the history and the
+    /// Activity line are written even though there is no earlier history to compare with.
+    /// </summary>
+    private static AppliedUpdateRecorder Recorder(string dataRoot, RecordingActivityFeed activity, IAppliedUpdateHintSource? hint)
+        => new(
+            Options.Create(new StoragePathOptions { DataRoot = dataRoot }),
+            new FakeNotificationService { Preferences = new() { UpdateEnabled = false } },
+            new FakeOutboundNotificationService(),
+            activityFeed: activity,
+            hints: hint);
+
+    [Fact]
+    public async Task An_installer_note_records_the_update_and_the_version_it_came_from_when_there_is_no_history()
+    {
+        var dataRoot = CreateDataRoot();
+        try
+        {
+            var activity = new RecordingActivityFeed();
+            var hint = new FakeHint(new AppliedUpdateHint("0.0.1-previous-fixture", DelunoVersion.Running));
+            var recorder = Recorder(dataRoot, activity, hint);
+
+            var applied = Assert.Single(await recorder.DetectAsync(CancellationToken.None));
+
+            Assert.Equal(DelunoVersion.Running, applied.Version);
+            Assert.Equal($"Deluno updated from 0.0.1-previous-fixture to {DelunoVersion.Running}.", Assert.Single(activity.Messages));
+            Assert.True(hint.Consumed);
+
+            // A second look in the same run, and a fresh run on the same history, add nothing.
+            await recorder.DetectAsync(CancellationToken.None);
+            var again = Recorder(dataRoot, activity, new FakeHint(new AppliedUpdateHint("0.0.1-previous-fixture", DelunoVersion.Running)));
+            Assert.Single(await again.DetectAsync(CancellationToken.None));
+            Assert.Single(activity.Messages);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task An_installer_note_without_the_old_version_still_records_the_update_in_plain_words()
+    {
+        var dataRoot = CreateDataRoot();
+        try
+        {
+            var activity = new RecordingActivityFeed();
+            var recorder = Recorder(dataRoot, activity, new FakeHint(new AppliedUpdateHint(null, "v" + DelunoVersion.Running)));
+
+            Assert.Single(await recorder.DetectAsync(CancellationToken.None));
+            Assert.Equal($"Deluno updated to version {DelunoVersion.Running}.", Assert.Single(activity.Messages));
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task A_note_for_another_version_or_no_note_on_a_new_install_records_nothing()
+    {
+        var dataRoot = CreateDataRoot();
+        try
+        {
+            var activity = new RecordingActivityFeed();
+            var stale = new FakeHint(new AppliedUpdateHint("0.0.1", "9.9.9"));
+            Assert.Empty(await Recorder(dataRoot, activity, stale).DetectAsync(CancellationToken.None));
+            Assert.True(stale.Consumed);
+            Assert.Empty(activity.Messages);
+
+            var otherRoot = CreateDataRoot();
+            try
+            {
+                Assert.Empty(await Recorder(otherRoot, activity, null).DetectAsync(CancellationToken.None));
+            }
+            finally
+            {
+                Directory.Delete(otherRoot, recursive: true);
+            }
+
+            Assert.Empty(activity.Messages);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    private sealed class FakeHint(AppliedUpdateHint? hint) : IAppliedUpdateHintSource
+    {
+        public bool Consumed { get; private set; }
+
+        public AppliedUpdateHint? Peek() => Consumed ? null : hint;
+
+        public void Consume() => Consumed = true;
     }
 
     private sealed class RecordingActivityFeed : IActivityFeedRepository

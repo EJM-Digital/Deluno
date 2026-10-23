@@ -420,6 +420,10 @@ public sealed class AppSettings
         return Path.Combine(GetLocalApplicationDataPath(), "DelunoConfig", "deluno.json");
     }
 
+    /// <summary>Where the update hook leaves the note that an update was just applied (#1376).</summary>
+    internal static string UpdateAppliedNotePath()
+        => Path.Combine(GetLocalApplicationDataPath(), "DelunoConfig", "update-applied.json");
+
     private static string GetInstallFolderConfigPath()
     {
         return Path.Combine(GetLocalApplicationDataPath(), "Deluno", "config", "deluno.json");

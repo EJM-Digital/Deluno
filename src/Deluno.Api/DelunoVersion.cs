@@ -24,6 +24,17 @@ public static class DelunoVersion
     /// the numbers first, then a prerelease before its release ("1.0.0-rc.30.33" is earlier than "1.0.0"). A version that
     /// cannot be read is never called newer.
     /// </summary>
+    public static bool Same(string? a, string? b)
+        => !string.IsNullOrWhiteSpace(a) && !string.IsNullOrWhiteSpace(b)
+           && string.Equals(Clean(a), Clean(b), StringComparison.OrdinalIgnoreCase);
+
+    private static string Clean(string version)
+    {
+        var plus = version.IndexOf('+');
+        var text = (plus >= 0 ? version[..plus] : version).Trim();
+        return text.StartsWith('v') || text.StartsWith('V') ? text[1..] : text;
+    }
+
     public static bool IsNewer(string? candidate, string? running)
     {
         if (!TryParse(candidate, out var a, out var aPre) || !TryParse(running, out var b, out var bPre))

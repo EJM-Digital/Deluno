@@ -39,6 +39,9 @@ public static class DelunoApiExtensions
         services.AddSingleton<DashboardMetricsCache>();
         services.AddSingleton<Deluno.Api.Monitoring.LibraryRootReachability>();
         services.TryAddSingleton<IReleaseNotesProvider, EmbeddedReleaseNotesProvider>();
+        services.TryAddSingleton<IAppliedUpdateHintSource, NoAppliedUpdateHint>();
+        services.TryAddSingleton<AppliedUpdateRecorder>();
+        services.AddHostedService<AppliedUpdateStartupCheck>();
         services.TryAddSingleton<IUpdateOrchestrator, DefaultUpdateOrchestrator>();
         services.TryAddSingleton<ILanAccess, UncheckedLanAccess>();
         services.TryAddSingleton<IBundledComponentDetection, UncheckedBundledComponentDetection>();

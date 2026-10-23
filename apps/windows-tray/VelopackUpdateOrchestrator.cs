@@ -61,8 +61,19 @@ public static class UpdateChannels
 /// <summary>The update facts the tray menu words its update item from.</summary>
 public sealed record TrayUpdateSnapshot(bool IsInstalled, string State, string? LatestVersion, bool UpdateAvailable, bool RestartRequired);
 
-public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrator> logger) : IUpdateOrchestrator
+public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrator> logger, AppliedUpdateRecorder? appliedUpdates = null) : IUpdateOrchestrator
 {
+    private IReadOnlyList<AppliedUpdateEntry> _applied = [];
+
+    /// <summary>Records an update that was just applied (once) and keeps the list the Updates card shows (#1376).</summary>
+    private async Task RefreshAppliedAsync(CancellationToken cancellationToken)
+    {
+        if (appliedUpdates is null) return;
+        try { _applied = await appliedUpdates.DetectAsync(cancellationToken); }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex) { logger.LogWarning(ex, "Could not read the applied updates."); }
+    }
+
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly string _currentVersion = Deluno.Api.DelunoVersion.Running;
     private readonly UpdateStateMachine _runtime = new();
@@ -118,7 +129,11 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
             pending.Version.ToString(),
             BlockedUpdateNote.DefaultFolder(),
             token => PreUpdateBackupGate.TakePreUpdateBackupAsync(hostServices, token),
-            () => manager.WaitExitThenApplyUpdates(pending, silent: true, restart: false));
+            () =>
+            {
+                UpdateAppliedNote.WriteBeforeApply(_currentVersion, pending.Version.ToString());
+                manager.WaitExitThenApplyUpdates(pending, silent: true, restart: false);
+            });
     }
 
     /// <summary>
@@ -160,7 +175,11 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
                     progress?.Enter(Deluno.Infrastructure.Storage.StartupPhase.PreUpdateBackup, step);
                     log($"Backup: {step}");
                 }),
-            () => manager.ApplyUpdatesAndRestart(pending),
+            () =>
+            {
+                UpdateAppliedNote.WriteBeforeApply(_currentVersion, pending.Version.ToString());
+                manager.ApplyUpdatesAndRestart(pending);
+            },
             progress,
             null,
             log)).GetAwaiter().GetResult();
@@ -168,6 +187,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
 
     public async Task<UpdateStatusResponse> GetStatusAsync(CancellationToken cancellationToken)
     {
+        await RefreshAppliedAsync(cancellationToken);
         await _gate.WaitAsync(cancellationToken);
         try
         {
@@ -183,6 +203,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
 
     public async Task<UpdateStatusResponse> CheckForUpdatesAsync(CancellationToken cancellationToken)
     {
+        await RefreshAppliedAsync(cancellationToken);
         await _gate.WaitAsync(cancellationToken);
         try
         {
@@ -245,6 +266,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
 
     public async Task<UpdateStatusResponse> DownloadUpdatesAsync(CancellationToken cancellationToken)
     {
+        await RefreshAppliedAsync(cancellationToken);
         await _gate.WaitAsync(cancellationToken);
         try
         {
@@ -291,6 +313,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
 
     public async Task<UpdateStatusResponse> ApplyAndRestartNowAsync(CancellationToken cancellationToken)
     {
+        await RefreshAppliedAsync(cancellationToken);
         await _gate.WaitAsync(cancellationToken);
         try
         {
@@ -346,6 +369,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
                         try { await stopHost(); } catch { /* the update still applies */ }
                     }
 
+                    UpdateAppliedNote.WriteBeforeApply(_currentVersion, toApply.Version.ToString());
                     manager.ApplyUpdatesAndRestart(toApply);
                 }
                 catch (Exception ex)
@@ -543,6 +567,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
             LastDownloadedUtc: _runtime.LastDownloadedUtc,
             Message: message,
             LastError: _runtime.LastError,
-            Notes: notes);
+            Notes: notes,
+            AppliedUpdates: _applied);
     }
 }

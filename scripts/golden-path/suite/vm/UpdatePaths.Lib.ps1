@@ -242,9 +242,14 @@ function Invoke-UpdateInApp {
             Add-Check 'A "pre-update" backup is in the backups the new build lists' ($after -match 'pre-update') (($after -replace '\s+', ' ').Substring(0, [math]::Min(300, $after.Length)))
             $s2 = Get-UpdateStatus
             Add-Check 'The new build is on the same feed with nothing newer to apply' ($s2 -and $s2.currentVersion -like "*$CandidateVersion*" -and -not $s2.restartRequired) $(if ($s2) { "current $($s2.currentVersion), restartRequired $($s2.restartRequired)" } else { 'no status' })
-            $applied = if ($s2 -and $s2.PSObject.Properties['appliedUpdates'] -and $null -ne $s2.appliedUpdates) { @($s2.appliedUpdates).Count } else { 0 }
-            $line = @(Get-ActivityText | Where-Object { $_ -match 'updated and is now running' }).Count
-            Add-Note "After the update the Updates card lists $applied applied version(s) and Activity holds $line 'Deluno updated and is now running' line(s). (Register row L.10.16: the Windows updater records neither.)"
+            # #1376: the Windows updater records the update like the Docker path does: the version on the Updates card with its
+            # date, and one "Deluno updated" line in Activity.
+            $appliedList = if ($s2 -and $s2.PSObject.Properties['appliedUpdates'] -and $null -ne $s2.appliedUpdates) { @($s2.appliedUpdates) } else { @() }
+            $appliedNow = @($appliedList | Where-Object { $_.version -like "*$CandidateVersion*" })
+            Add-Check 'The Updates card lists the applied version with its date' ($appliedNow.Count -eq 1 -and $appliedNow[0].appliedAtUtc) $(if ($appliedList.Count) { ($appliedList | ForEach-Object { "$($_.version) at $($_.appliedAtUtc)" }) -join '; ' } else { 'no applied versions listed' })
+            $lines = @(Get-ActivityText | Where-Object { $_ -match "Deluno updated (from \S+ )?to (version )?\S*$([regex]::Escape($CandidateVersion))" })
+            Add-Check 'Activity has one "Deluno updated" line for the new version' ($lines.Count -eq 1) $(if ($lines.Count) { $lines -join ' | ' } else { 'no such line' })
+            Add-Note $(if ($lines.Count -and $lines[0] -match 'updated from') { "The line names the version it came from: $($lines[0])" } else { 'The line names only the new version: the previous release leaves no packages the new build can read the old version from.' })
             Save-Evidence -Name 'update-in-app-feed-requests.txt' -Text ((Get-UpdateFeedRequests) -join "`n")
         }
         finally { Stop-UpdateFeed $feed }

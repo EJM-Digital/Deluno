@@ -75,7 +75,11 @@ internal static class Program
             VelopackApp.Build()
                 .SetAutoApplyOnStartup(false)
                 .OnAfterInstallFastCallback(_ => InstallHooks.OnAfterInstall())
-                .OnAfterUpdateFastCallback(_ => InstallHooks.OnAfterInstall())
+                .OnAfterUpdateFastCallback(version =>
+                {
+                    InstallHooks.OnAfterInstall();
+                    UpdateAppliedNote.WriteAfterUpdate(version.ToString());
+                })
                 .OnBeforeUninstallFastCallback(_ => InstallHooks.OnBeforeUninstall())
                 .OnFirstRun(_ => InstallHooks.OnFirstRun())
                 .Run();

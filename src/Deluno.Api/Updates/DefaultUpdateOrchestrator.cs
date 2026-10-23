@@ -16,23 +16,18 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
         WriteIndented = true
     };
 
-    private const int MaxHistoryEntries = 5;
-
     private readonly string _installKind;
     private readonly string _currentVersion;
     private readonly string _preferencesPath;
-    private readonly string _historyPath;
     private readonly string? _currentImageRef;
     private readonly string? _currentImageDigest;
     private readonly SemaphoreSlim _preferencesGate = new(1, 1);
-    private readonly SemaphoreSlim _historyGate = new(1, 1);
     private readonly INotificationService _notificationService;
     private readonly IOutboundNotificationService _outboundNotificationService;
     private readonly IReleaseNotesProvider _releaseNotesProvider;
     private readonly TimeProvider _timeProvider;
-    private readonly IActivityFeedRepository? _activityFeed;
+    private readonly AppliedUpdateRecorder _appliedUpdates;
     private readonly IRealtimeEventPublisher? _realtime;
-    private bool _versionCheckedThisRun;
 
     public DefaultUpdateOrchestrator(
         IOptions<StoragePathOptions> storageOptions,
@@ -41,15 +36,14 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
         IReleaseNotesProvider? releaseNotesProvider = null,
         TimeProvider? timeProvider = null,
         IActivityFeedRepository? activityFeed = null,
-        IRealtimeEventPublisher? realtime = null)
+        IRealtimeEventPublisher? realtime = null,
+        AppliedUpdateRecorder? appliedUpdates = null)
     {
-        _activityFeed = activityFeed;
         _realtime = realtime;
         _currentVersion = DelunoVersion.Running;
         _installKind = IsRunningInDocker() ? UpdateInstallKinds.Docker : UpdateInstallKinds.Manual;
         var dataRoot = Path.GetFullPath(storageOptions.Value.DataRoot);
         _preferencesPath = Path.Combine(dataRoot, "update-preferences.json");
-        _historyPath = Path.Combine(dataRoot, "update-history.json");
         _currentImageRef = Environment.GetEnvironmentVariable("DELUNO_IMAGE_REF");
         _currentImageDigest = Environment.GetEnvironmentVariable("DELUNO_IMAGE_DIGEST")
             ?? ExtractImageDigest(_currentImageRef);
@@ -57,6 +51,8 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
         _outboundNotificationService = outboundNotificationService;
         _releaseNotesProvider = releaseNotesProvider ?? new EmbeddedReleaseNotesProvider();
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _appliedUpdates = appliedUpdates ?? new AppliedUpdateRecorder(
+            storageOptions, notificationService, outboundNotificationService, _releaseNotesProvider, _timeProvider, activityFeed, realtime);
     }
 
     public async Task<UpdateStatusResponse> GetStatusAsync(CancellationToken cancellationToken)
@@ -174,151 +170,11 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
     private static string NormalizeChannel(string? value)
         => string.IsNullOrWhiteSpace(value) ? "stable" : value.Trim().ToLowerInvariant();
 
-    /// <summary>
-    /// Detects a version change since the last recorded run and, on the
-    /// first such detection per process, records it to the applied-update
-    /// history (#870) and fires the "On Application Update" outbound
-    /// notification (#856), gated by NotificationPreferences.UpdateEnabled.
-    /// Cheap no-op on every call after the first per process.
-    /// </summary>
-    private async Task<UpdateHistoryState> DetectAppliedUpdateOnceAsync(CancellationToken cancellationToken)
+    private Task<IReadOnlyList<AppliedUpdateEntry>> DetectAppliedUpdateOnceAsync(CancellationToken cancellationToken)
+        => _appliedUpdates.DetectAsync(cancellationToken);
+
+    private UpdateStatusResponse BuildStatus(IReadOnlyList<AppliedUpdateEntry>? appliedWithNotes = null)
     {
-        if (_versionCheckedThisRun)
-        {
-            return await ReadHistoryAsync(cancellationToken);
-        }
-
-        await _historyGate.WaitAsync(cancellationToken);
-        try
-        {
-            if (_versionCheckedThisRun)
-            {
-                return await ReadHistoryAsync(cancellationToken);
-            }
-
-            var history = await ReadHistoryAsync(cancellationToken);
-            _versionCheckedThisRun = true;
-
-            if (string.Equals(history.LastKnownVersion, _currentVersion, StringComparison.Ordinal))
-            {
-                return history;
-            }
-
-            var isFirstRunEver = string.IsNullOrEmpty(history.LastKnownVersion);
-            var now = _timeProvider.GetUtcNow();
-            history.LastKnownVersion = _currentVersion;
-
-            // A brand-new install has nothing to record as "applied" -- only
-            // a version that actually changed between runs is an update.
-            if (!isFirstRunEver)
-            {
-                history.Applied.Insert(0, new AppliedUpdateEntry(_currentVersion, now));
-                while (history.Applied.Count > MaxHistoryEntries)
-                {
-                    history.Applied.RemoveAt(history.Applied.Count - 1);
-                }
-
-                await DispatchAppUpdateNotificationAsync(now, cancellationToken);
-            }
-
-            await WriteHistoryAsync(history, cancellationToken);
-            await _realtime.PublishUpdateStatusChangedAsync(cancellationToken);
-            return history;
-        }
-        finally
-        {
-            _historyGate.Release();
-        }
-    }
-
-    private async Task DispatchAppUpdateNotificationAsync(DateTimeOffset appliedAtUtc, CancellationToken cancellationToken)
-    {
-        try
-        {
-            // Activity says a new version is running whether or not anyone asked
-            // to be told; only the outbound message is opt-in (#1017).
-            if (_activityFeed is not null)
-            {
-                await _activityFeed.RecordActivityAsync(
-                    "app.update",
-                    $"Deluno updated and is now running version {_currentVersion}.",
-                    JsonSerializer.Serialize(new { version = _currentVersion, appliedAtUtc }),
-                    null,
-                    "system",
-                    "app-update",
-                    cancellationToken);
-            }
-
-            var preferences = await _notificationService.GetPreferencesAsync(cancellationToken);
-            if (!preferences.UpdateEnabled)
-            {
-                return;
-            }
-
-            await _outboundNotificationService.DispatchAsync(
-                "app.update",
-                "Deluno updated",
-                $"Deluno is now running version {_currentVersion}.",
-                detailsJson: JsonSerializer.Serialize(new { version = _currentVersion, appliedAtUtc }),
-                cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception)
-        {
-            // Never let a notification failure block reporting update status.
-        }
-    }
-
-    private async Task<UpdateHistoryState> ReadHistoryAsync(CancellationToken cancellationToken)
-    {
-        if (!File.Exists(_historyPath))
-        {
-            return new UpdateHistoryState();
-        }
-
-        try
-        {
-            await using var stream = File.OpenRead(_historyPath);
-            var state = await JsonSerializer.DeserializeAsync<UpdateHistoryState>(stream, JsonOptions, cancellationToken);
-            return state ?? new UpdateHistoryState();
-        }
-        catch (JsonException)
-        {
-            return new UpdateHistoryState();
-        }
-    }
-
-    private async Task WriteHistoryAsync(UpdateHistoryState state, CancellationToken cancellationToken)
-    {
-        var directory = Path.GetDirectoryName(_historyPath);
-        if (!string.IsNullOrWhiteSpace(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        var temporaryPath = _historyPath + ".tmp";
-        await using (var stream = File.Create(temporaryPath))
-        {
-            await JsonSerializer.SerializeAsync(stream, state, JsonOptions, cancellationToken);
-            await stream.FlushAsync(cancellationToken);
-        }
-
-        File.Move(temporaryPath, _historyPath, overwrite: true);
-    }
-
-    private UpdateStatusResponse BuildStatus(UpdateHistoryState? history = null)
-    {
-        // Notes are looked up fresh here rather than stored on the entries in
-        // update-history.json, so a later edit to RELEASE_NOTES.md (a typo
-        // fix, for example) shows up immediately without rewriting history
-        // already on disk (#870).
-        var appliedWithNotes = history?.Applied
-            .Select(entry => entry with { Notes = _releaseNotesProvider.GetNotes(entry.Version) })
-            .ToList();
-
         var message = _installKind == UpdateInstallKinds.Docker
             ? "Docker installs do not support in-place binary updates. Pull a newer image tag and recreate the container."
             : "This runtime is not a Velopack-managed Windows install. Update by installing a newer build package.";
@@ -404,12 +260,5 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
         public bool AutoCheck { get; set; }
 
         public static UpdatePreferencesState Default() => new();
-    }
-
-    private sealed class UpdateHistoryState
-    {
-        public string? LastKnownVersion { get; set; }
-
-        public List<AppliedUpdateEntry> Applied { get; set; } = [];
     }
 }

@@ -209,6 +209,7 @@ public sealed class DelunoServer(IStartupProgress? progress = null) : IDisposabl
         }
 
         services.AddSingleton<IUpdateOrchestrator, VelopackUpdateOrchestrator>();
+        services.AddSingleton<IAppliedUpdateHintSource, TrayAppliedUpdateHintSource>();
         var firewall = new WindowsFirewallLanAccess(port);
         services.AddSingleton<ILanAccess>(firewall);
         // Without this, DelunoApiExtensions' TryAddSingleton default
