@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { ConfigAreas } from "../lib/config-areas";
@@ -151,8 +151,22 @@ export function SubtitleLanguagesPage() {
     chownGroup: settings.chownGroup ?? ""
   });
   const [permissionsBusy, setPermissionsBusy] = useState(false);
+  // The text fields stay editable while a save is out (#1375): a disabled
+  // field dropped the second quick edit. Saves go one after another and each
+  // sends the newest draft, so a stale copy can never overwrite a later edit.
+  const permissionsDraft = useRef(permissionsForm);
+  const permissionsQueue = useRef<Promise<void>>(Promise.resolve());
+  function editPermissions(next: typeof permissionsForm) {
+    permissionsDraft.current = next;
+    setPermissionsForm(next);
+  }
+  function commitPermissions(next: typeof permissionsForm) {
+    permissionsDraft.current = next;
+    permissionsQueue.current = permissionsQueue.current.then(() => savePermissions(permissionsDraft.current));
+    return permissionsQueue.current;
+  }
 
-  async function commitPermissions(next: typeof permissionsForm) {
+  async function savePermissions(next: typeof permissionsForm) {
     setPermissionsBusy(true);
     try {
       const response = await authedFetch("/api/settings", {
@@ -174,8 +188,8 @@ export function SubtitleLanguagesPage() {
   }
 
   function togglePermissions(checked: boolean) {
-    const next = { ...permissionsForm, setPermissionsOnImport: checked };
-    setPermissionsForm(next);
+    const next = { ...permissionsDraft.current, setPermissionsOnImport: checked };
+    editPermissions(next);
     void commitPermissions(next);
   }
 
@@ -277,20 +291,18 @@ export function SubtitleLanguagesPage() {
               <Field label="Chmod" help="Octal file mode, such as 755 or 0644.">
                 <Input
                   value={permissionsForm.folderChmod}
-                  disabled={permissionsBusy}
                   placeholder="755"
                   className="max-w-28"
-                  onChange={(event) => setPermissionsForm({ ...permissionsForm, folderChmod: event.target.value })}
-                  onBlur={() => void commitPermissions(permissionsForm)}
+                  onChange={(event) => editPermissions({ ...permissionsDraft.current, folderChmod: event.target.value })}
+                  onBlur={() => void commitPermissions(permissionsDraft.current)}
                 />
               </Field>
               <Field label="Chown group" help="Group name or GID. Leave blank to leave group ownership unchanged.">
                 <Input
                   value={permissionsForm.chownGroup}
-                  disabled={permissionsBusy}
                   placeholder="media"
-                  onChange={(event) => setPermissionsForm({ ...permissionsForm, chownGroup: event.target.value })}
-                  onBlur={() => void commitPermissions(permissionsForm)}
+                  onChange={(event) => editPermissions({ ...permissionsDraft.current, chownGroup: event.target.value })}
+                  onBlur={() => void commitPermissions(permissionsDraft.current)}
                 />
               </Field>
             </FieldRow>

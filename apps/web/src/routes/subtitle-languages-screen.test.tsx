@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
@@ -255,6 +256,37 @@ describe("Subtitle languages: permission control lives in this screen too (#838)
     expect(url).toContain("/api/settings");
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(init.body as string)).toEqual({ setPermissionsOnImport: true, folderChmod: "755", chownGroup: "" });
+  });
+
+  it("keeps both fields when chmod and then chown group are edited back to back (#1375)", async () => {
+    Object.assign(loaderData, {
+      libraries: [],
+      languages: [],
+      settings: { ...emptyPlatformSettingsSnapshot, setPermissionsOnImport: true, folderChmod: "", chownGroup: "" }
+    });
+    // The first save is still in flight when the second edit is made.
+    let finishFirst: (value: unknown) => void = () => {};
+    const reply = { ok: true, status: 200, headers: new Headers(), json: async () => ({}) };
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { finishFirst = resolve; }))
+      .mockResolvedValue(reply);
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPage();
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Chmod"), "755");
+    await user.tab();
+    // The chown field must still take typing while the first save is out.
+    await user.type(screen.getByLabelText("Chown group"), "media");
+    await user.tab();
+    finishFirst(reply);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const bodies = fetchMock.mock.calls.map(([, init]) => JSON.parse((init as RequestInit).body as string));
+    expect(bodies[0]).toEqual({ setPermissionsOnImport: true, folderChmod: "755", chownGroup: "" });
+    expect(bodies[1]).toEqual({ setPermissionsOnImport: true, folderChmod: "755", chownGroup: "media" });
+    expect(screen.getByLabelText("Chmod")).toHaveValue("755");
+    expect(screen.getByLabelText("Chown group")).toHaveValue("media");
   });
 });
 
