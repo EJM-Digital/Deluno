@@ -17,6 +17,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator } from "react-router-dom";
 import { Loader2, Pause, Play, SkipForward, Zap } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Chip, type ChipProps } from "../components/ui/chip";
 import { Drawer, DrawerFooter, DrawerSection, type DrawerSaveState } from "../components/ui/drawer";
@@ -851,9 +852,8 @@ export function SearchCyclesPage() {
             />
           </Field>
           <Field label="Custom remote list URL" help="Optional. Refetched periodically and combined with the patterns above.">
-            <input
+            <Input
               type="url"
-              className="h-9 w-full rounded-md border border-hairline bg-transparent px-(--space-sm) text-(length:--type-body-sm)"
               value={contentBlocklist.remoteUrl}
               onChange={(event) => setContentBlocklist((current) => ({ ...current, remoteUrl: event.target.value }))}
               placeholder="https://example.com/blocklist.txt"
