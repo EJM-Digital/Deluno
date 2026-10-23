@@ -215,6 +215,14 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
             _availableUpdate = update;
             _runtime.MarkUpdateAvailable(checkedUtc, update.TargetFullRelease.Version.ToString());
 
+            // The feed still lists a version that is already downloaded: it is waiting for the restart, not to be fetched again
+            // (a second check used to turn "Restart to update" back into "Download update").
+            if (manager.UpdatePendingRestart is { } waiting && waiting.Version.Equals(update.TargetFullRelease.Version))
+            {
+                _runtime.MarkDownloaded(checkedUtc, restartRequired: true);
+                return BuildStatus(settings, manager, "An already-downloaded update is waiting for restart.");
+            }
+
             if (UpdatePolicy.DownloadsByItself(settings))
             {
                 await DownloadPendingUpdateAsync(settings, manager, cancellationToken);

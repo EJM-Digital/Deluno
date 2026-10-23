@@ -133,6 +133,13 @@ public static class PreUpdateBackupGate
         return true;
     }
 
+    /// <summary>
+    /// "Restart to update" from the tray menu: the same "pre-update" backup the Updates page takes before it restarts. True when the
+    /// backup is made and the restart may go on; false when it failed (a note is left for the next start) and nothing is installed.
+    /// </summary>
+    public static Task<bool> BackUpBeforeRestartAsync(string version, string noteFolder, Func<CancellationToken, Task> backup)
+        => BackUpAsync(version, noteFolder, backup);
+
     private static async Task<bool> BackUpAsync(
         string version,
         string noteFolder,

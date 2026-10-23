@@ -9,13 +9,18 @@
 param(
     [string] $Root = 'C:\golden\update',
     [Parameter(Mandatory)] [string] $CandidateSetup,
-    [Parameter(Mandatory)] [string] $CandidateVersion
+    [Parameter(Mandatory)] [string] $CandidateVersion,
+    # Which update scenario this machine is for (update.over-running-previous when empty); the others are in UpdatePaths.Lib.ps1.
+    [string] $Scenario = 'update.over-running-previous'
 )
 $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot
 . (Join-Path $here 'Suite.Lib.ps1')
+. (Join-Path $here 'Tray.Lib.ps1')
+. (Join-Path $here 'Desktop.Lib.ps1')
 . (Join-Path $here 'Initialize-Environment.ps1')
 . (Join-Path $here 'Update.Lib.ps1')
+. (Join-Path $here 'UpdatePaths.Lib.ps1')
 
 Initialize-Suite -Root $Root
 $flag = Join-Path $Root 'results\done.flag'
@@ -23,7 +28,18 @@ Remove-Item -LiteralPath $flag -ErrorAction SilentlyContinue
 $final = 'ok'
 try {
     Write-SuiteLog 'Update phase starting.'
-    Invoke-UpdateScenario -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion
+    switch ($Scenario) {
+        'update.over-running-previous' { Invoke-UpdateScenario -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
+        'update.in-app' { Invoke-UpdateInApp -CandidateVersion $CandidateVersion }
+        'update.apply-on-quit' { Invoke-UpdateApplyOnQuit -CandidateVersion $CandidateVersion }
+        'update.apply-at-start' { Invoke-UpdateApplyAtStart -CandidateVersion $CandidateVersion }
+        'update.corrupt-package' { Invoke-UpdateCorruptPackage -CandidateVersion $CandidateVersion }
+        'update.setup-interactive' { Invoke-UpdateSetupInteractive -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
+        'update.setup-over-stopped' { Invoke-UpdateSetupOverStopped -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
+        'update.service-mode' { Invoke-UpdateServiceMode -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
+        'update.tray-menu' { Invoke-UpdateTrayMenu -CandidateVersion $CandidateVersion }
+        default { throw "Unknown update scenario '$Scenario'." }
+    }
 }
 catch { $final = Hide-Secrets $_.Exception.Message; Write-SuiteLog "UPDATE PHASE ERROR $final" }
 finally {

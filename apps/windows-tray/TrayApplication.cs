@@ -1191,9 +1191,24 @@ public sealed class TrayApplication : ApplicationContext
                     await _updates.DownloadUpdatesAsync(CancellationToken.None);
                     break;
                 case UpdateMenuAction.Restart when _updates is not null:
+                {
+                    // The same "pre-update" backup the Updates page takes first; a backup that fails installs nothing and says so.
+                    var version = _status.Update.Version ?? "the new version";
+                    var services = _server.Services;
+                    var backedUp = await PreUpdateBackupGate.BackUpBeforeRestartAsync(
+                        version,
+                        BlockedUpdateNote.DefaultFolder(),
+                        token => PreUpdateBackupGate.TakePreUpdateBackupAsync(services, token));
+                    if (!backedUp)
+                    {
+                        Balloon("Deluno did not install the update", $"The update to {version} wasn't installed because Deluno couldn't back up its data first.", ToolTipIcon.Warning, problem: true);
+                        break;
+                    }
+
                     // The orchestrator stops the host cleanly (StopHostForUpdateAsync), then applies and restarts.
                     await _updates.ApplyAndRestartNowAsync(CancellationToken.None);
                     break;
+                }
             }
         }
         catch (Exception ex)

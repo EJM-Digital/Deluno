@@ -49,6 +49,29 @@ public sealed class PreUpdateBackupGateTests : IDisposable
     }
 
     [Fact]
+    public async Task Restart_from_the_tray_menu_takes_the_backup_first_and_goes_on_only_when_it_is_made()
+    {
+        var backedUp = false;
+
+        var go = await PreUpdateBackupGate.BackUpBeforeRestartAsync("2.0.0", _folder, _ => { backedUp = true; return Task.CompletedTask; });
+
+        Assert.True(go);
+        Assert.True(backedUp);
+        Assert.Null(BlockedUpdateNote.TryTake(_folder));
+    }
+
+    [Fact]
+    public async Task Restart_from_the_tray_menu_installs_nothing_when_the_backup_fails_and_leaves_a_note()
+    {
+        var go = await PreUpdateBackupGate.BackUpBeforeRestartAsync("2.0.0", _folder, _ => throw new IOException("the backup folder is full"));
+
+        Assert.False(go);
+        Assert.Equal(
+            "The update to 2.0.0 wasn't installed because Deluno couldn't back up its data first: the backup folder is full",
+            BlockedUpdateNote.TryTake(_folder)!.Message);
+    }
+
+    [Fact]
     public async Task Start_takes_the_backup_before_the_install_and_marks_the_attempt()
     {
         var order = new List<string>();

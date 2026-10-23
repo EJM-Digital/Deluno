@@ -397,7 +397,7 @@ export function scenarioViolations(plan, index) {
     seen.add(id);
     if (!/^[a-z][a-z0-9-]*(\.[a-z0-9-]+)*$/.test(id)) out.push({ id, why: 'id is not a plain dotted lower-case id, so -Scenarios cannot pick it' });
     if (fn && !functions.has(fn.toLowerCase())) out.push({ id, why: `group function ${fn} is not defined in the scenario scripts` });
-    if (!fn && !/^(githubpicker|update)$/.test(group)) out.push({ id, why: `group ${group} has no function and is not a host group` });
+    if (!fn && !/^(githubpicker|update|updatepaths)$/.test(group)) out.push({ id, why: `group ${group} has no function and is not a host group` });
   }
   return out;
 }

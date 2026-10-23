@@ -35,6 +35,8 @@ function Get-ScenarioPlan {
         # The host's own, each on a clean machine: they restore the clean checkpoint and install, so they run after the groups.
         # The host's own, on a clean machine: the guided setup walked through in the browser from a fresh install, with the clients and Weir the picker installed.
         @{ Name = 'guide'; Function = 'Invoke-GroupGuide'; Host = $true; Ids = @('guided-setup.walk') }
+        # The other ways an installed Deluno is updated (#1295), each on a clean machine of its own with the previous release installed, against the candidate's real packages served from a local feed in the VM.
+        @{ Name = 'updatepaths'; Function = $null; Host = $true; Ids = @('update.in-app', 'update.apply-on-quit', 'update.apply-at-start', 'update.corrupt-package', 'update.setup-interactive', 'update.setup-over-stopped', 'update.service-mode', 'update.tray-menu') }
         @{ Name = 'update';   Function = $null; Host = $true; Ids = @('update.over-running-previous') }
         # The github-limit scenarios use up GitHub's anonymous allowance (60 calls an hour for the whole network), and it stays used up
         # for up to an hour, so they run after every scenario and install that needs the network. The update scenario installs
@@ -82,6 +84,7 @@ function Get-RunScope {
         ChosenIds = $chosen
         NeedVm = [bool](@($vmIds | Where-Object { $_ -in $chosen }).Count)
         RunUpdate = ('update.over-running-previous' -in $chosen)
+        UpdatePathIds = @($chosen | Where-Object { $_ -in @('update.in-app', 'update.apply-on-quit', 'update.apply-at-start', 'update.corrupt-package', 'update.setup-interactive', 'update.setup-over-stopped', 'update.service-mode', 'update.tray-menu') })
         RunGithubPicker = ('github-limit.picker' -in $chosen)
         RunGuide = ('guided-setup.walk' -in $chosen)
     }
@@ -139,6 +142,7 @@ function Get-ScenarioTopics {
         [pscustomobject]@{ Group = 'githubpicker'; Proves = 'Run by the host on a clean machine of its own, after the groups: GitHub''s allowance is used up inside the VM before Setup runs, and the first-run picker still installs Weir through github.com''s release feed (releases.atom); the install log names Weir''s installer and checksum, never says the limit stopped it, and the installed Weir is a release the feed lists. (#1181)' }
         [pscustomobject]@{ Group = 'guide'; Proves = 'Run by the host on a clean machine of its own: the installed Windows app (the tray, the picker''s download clients and Weir) is set up end to end through the guided setup in the browser, nothing through the API: Connect all, create Weir''s account and connect it, answer every Yes/No question, Create baseline; the libraries, the Weir workflows and the Folder chain are then checked against the real clients and Weir. (#1283, #1302)' }
         [pscustomobject]@{ Group = 'update'; Proves = 'Run by the host after everything else, on a restored clean machine: the previous release is installed silently and given state; the candidate''s Setup runs silently over it while it runs. Deluno comes back on its own (no hand start) as the candidate, with its download clients, libraries and Activity, and its start goes cleanly (the start marker reads ready, no retry, no give-up). Needs the previous release''s Setup.exe (-PreviousInstallerPath).' }
+        [pscustomobject]@{ Group = 'updatepaths'; Proves = 'Run by the host, each on a restored clean machine with the previous release installed: the other ways Deluno is updated, against the candidate''s real packages served from a feed in the VM. In the app, Check, Download (with progress) and Restart to update take the pre-update backup and bring the new build back with its data; a downloaded update installs on Quit (and starts nothing) or at the next start; a damaged package never leaves Deluno unusable; Setup run interactively leaves one Deluno, and Setup over a stopped Deluno starts nothing. Needs the previous release''s Setup.exe (-PreviousInstallerPath) and the candidate''s package and release list beside its Setup.exe. (#1295)' }
         [pscustomobject]@{ Group = 'problems'; Proves = 'A problem shown in several places clears everywhere when dismissed in one; every hand-off''s closing line in Activity tells one story.' }
     )
 }
