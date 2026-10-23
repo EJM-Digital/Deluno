@@ -59,6 +59,8 @@ const EXEMPT_PATTERNS = [
   /\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$/,
   /^sdk\/[^/]+\/tests?\//,
   /^services\/[^/]+\/tests?\//,
+  // Stryker.NET mutation settings beside each project: read by the mutation run only, never by the build.
+  /(^|\/)stryker-config\.json$/,
 ];
 
 export function isShippedPath(path) {

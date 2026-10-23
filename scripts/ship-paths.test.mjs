@@ -34,3 +34,8 @@ test("Windows separators and a leading ./ are read the same", () => {
   assert.equal(isShippedPath("./Dockerfile"), true);
   assert.deepEqual(shippedPaths(["docs/a.md", "src/a.cs"]), ["src/a.cs"]);
 });
+
+test("a project's Stryker mutation settings are not a file that ships", () => {
+  for (const path of ["src/Deluno.Intake/stryker-config.json", "apps/windows-tray/stryker-config.json"]) assert.equal(isShippedPath(path), false, path);
+  assert.equal(isShippedPath("src/Deluno.Intake/IntakeSyncService.cs"), true);
+});
