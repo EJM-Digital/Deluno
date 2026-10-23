@@ -206,9 +206,12 @@ public static class DelunoRequestPipeline
                 // A write the full disk refused says so in plain words, not a bare 500 (#1361).
                 var failure = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
                 var diskFull = DiskFull.Caused(failure);
-                context.Response.StatusCode = diskFull ? StatusCodes.Status507InsufficientStorage : 500;
+                // A state file Deluno could not read or write (busy, damaged) already carries the reason in everyday
+                // words and says nothing was changed, so that is what the screen is told, not a bare 500.
+                var stateFile = failure as StateFileException ?? failure?.InnerException as StateFileException;
+                context.Response.StatusCode = diskFull ? StatusCodes.Status507InsufficientStorage : stateFile is not null ? StatusCodes.Status503ServiceUnavailable : 500;
                 context.Response.ContentType = "application/json";
-                await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(new { error = diskFull ? DiskFull.PlainMessage : "An unexpected error occurred." }));
+                await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(new { error = diskFull ? DiskFull.PlainMessage : stateFile?.Message ?? "An unexpected error occurred." }));
             });
         });
 
