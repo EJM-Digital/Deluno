@@ -131,6 +131,37 @@ public sealed class HeldReleasesOverHttpTests
         Assert.Contains("You approved this release from Needs action.", await app.Client.GetStringAsync("/api/activity"), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Approving_a_held_release_for_a_film_a_hand_send_has_since_put_downloading_is_a_plain_409_and_sends_no_second_copy()
+    {
+        var grabs = new CountingGrabService();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services =>
+        {
+            services.RemoveAll<IDownloadClientGrabService>();
+            services.AddSingleton<IDownloadClientGrabService>(grabs);
+        });
+        var libraryId = await LibraryWithAClientAsync(app);
+        var id = await HeldMovieAsync(app, "Big Buck Bunny", "held", libraryId);
+        var historyId = await HistoryIdAsync(app);
+        using var first = await app.Client.PostAsJsonAsync($"/api/movies/{id}/grab", new
+        {
+            releaseName = "Big.Buck.Bunny.2008.1080p.BluRay.x264-GRP",
+            indexerName = "Fixture",
+            downloadUrl = "https://fixture.invalid/first.torrent",
+            candidateQuality = "Bluray 1080p"
+        });
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+
+        using var approved = await app.Client.PostAsync($"/api/attention/held-releases/{historyId}/approve", content: null);
+
+        Assert.Equal(HttpStatusCode.Conflict, approved.StatusCode);
+        var refusal = await approved.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("held-release-refused", refusal.GetProperty("code").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(refusal.GetProperty("message").GetString()));
+        Assert.Equal(1, grabs.Count);
+        Assert.Empty((await app.Client.GetFromJsonAsync<JsonElement>("/api/attention/held-releases")).EnumerateArray());
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private static async Task<string> HistoryIdAsync(ApplicationTestHost app)
