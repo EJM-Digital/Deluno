@@ -9,8 +9,8 @@ namespace Deluno.Persistence.Tests.Api;
 /// </summary>
 public sealed class EveryCallerOfTheNotifierIsGuardedTests
 {
-    // These two wrap the call in their own try/catch (the grab sender and the update orchestrator).
-    private static readonly string[] OwnTryCatch = ["DownloadClientGrabService.cs", "DefaultUpdateOrchestrator.cs"];
+    // These wrap the call in their own try/catch (the grab sender, the update orchestrator and the applied-update recorder).
+    private static readonly string[] OwnTryCatch = ["DownloadClientGrabService.cs", "DefaultUpdateOrchestrator.cs", "AppliedUpdateRecorder.cs"];
 
     [Fact]
     public void No_call_to_the_notification_service_is_left_bare()

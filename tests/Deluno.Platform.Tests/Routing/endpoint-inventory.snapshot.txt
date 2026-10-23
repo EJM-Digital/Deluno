@@ -529,6 +529,7 @@ PUT /api/backups/settings
 PUT /api/custom-formats/{id}
 PUT /api/destination-rules/{id}
 PUT /api/download-clients/{id}
+PUT /api/download-clients/{id}/path-mappings/{mappingId}
 PUT /api/download-health/content-blocklist
 PUT /api/download-health/keep-seeding
 PUT /api/download-health/rules/{id}

@@ -5,6 +5,7 @@
       "tests/Deluno.Persistence.Tests/Deluno.Persistence.Tests.csproj",
       "tests/Deluno.Platform.Tests/Deluno.Platform.Tests.csproj"
     ],
+    "test-case-filter": "FullyQualifiedName~TheHostListensOnlyWhereItIsToldTests",
     "reporters": [
       "json",
       "progress"

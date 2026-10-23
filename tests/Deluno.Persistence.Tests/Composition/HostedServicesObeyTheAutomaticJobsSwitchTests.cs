@@ -40,6 +40,7 @@ public sealed class HostedServicesObeyTheAutomaticJobsSwitchTests
         ["NotificationSecretsUpgradeService"] = "protects the saved notification addresses and tokens inside Deluno's own database",
         ["CollectionExclusionMigrationHostedService"] = "one-off upgrade of Deluno's own collection settings",
         ["MovieRungRepairReportService"] = "only writes an Activity line about a repair a migration already made",
+        ["AppliedUpdateStartupCheck"] = "records that Deluno updated to a new version in its own history and Activity; touches no title or file",
         // Deluno's own data and settings.
         ["DelunoBackupService"] = "writes a backup of Deluno's own databases, on the person's backup schedule",
         ["DatabaseIntegrityService"] = "checks Deluno's own databases",
