@@ -177,6 +177,16 @@ jobs:
           node scripts/check-release-workflow-gates.mjs
           node --test scripts/ci-passed.test.mjs
 
+      # GAT-10: the rulesets that guard main and the v* tags are read from GitHub and must still be in place. The step's own token
+      # reads them (a public repository's rules need no extra permission); the test judges weakened copies of the recorded replies.
+      - name: The rules guarding main and the release tags are in place
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          node --test scripts/check-branch-protection.test.mjs
+          node scripts/check-branch-protection.mjs
+
       - name: The repository gates behave as written
         run: node --test scripts/platform-gates.test.mjs scripts/platform-defects.test.mjs scripts/ship-paths.test.mjs
 

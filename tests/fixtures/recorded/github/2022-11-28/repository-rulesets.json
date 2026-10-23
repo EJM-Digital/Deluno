@@ -1,0 +1,252 @@
+{
+  "app": "github",
+  "version": "2022-11-28",
+  "state": "repository-rulesets",
+  "recordedAt": "2026-10-23T00:00:00Z",
+  "note": "Real GET on 23 Oct 2026, signed in as the repository owner, of the rulesets of the public repository and of each one. The node ids are left out. Signed in without write access the detail replies carry no bypass_actors (GitHub shows them only to people who can change the rules).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "api.github.com/repos/EJM-Digital/Deluno/rulesets",
+        "body": null
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "id": 25630240,
+            "name": "main is never rewritten or deleted",
+            "target": "branch",
+            "source_type": "Repository",
+            "source": "EJM-Digital/Deluno",
+            "enforcement": "active",
+            "_links": {
+              "self": {
+                "href": "https://api.github.com/repos/EJM-Digital/Deluno/rulesets/25630240"
+              },
+              "html": {
+                "href": "https://github.com/EJM-Digital/Deluno/rules/25630240"
+              }
+            },
+            "created_at": "2026-10-22T21:12:27.671+11:00",
+            "updated_at": "2026-10-22T21:12:27.712+11:00"
+          },
+          {
+            "id": 24610501,
+            "name": "main is protected",
+            "target": "branch",
+            "source_type": "Repository",
+            "source": "EJM-Digital/Deluno",
+            "enforcement": "active",
+            "_links": {
+              "self": {
+                "href": "https://api.github.com/repos/EJM-Digital/Deluno/rulesets/24610501"
+              },
+              "html": {
+                "href": "https://github.com/EJM-Digital/Deluno/rules/24610501"
+              }
+            },
+            "created_at": "2026-10-07T08:01:04.686+11:00",
+            "updated_at": "2026-10-22T21:12:26.160+11:00"
+          },
+          {
+            "id": 24610503,
+            "name": "only the owner makes release tags",
+            "target": "tag",
+            "source_type": "Repository",
+            "source": "EJM-Digital/Deluno",
+            "enforcement": "active",
+            "_links": {
+              "self": {
+                "href": "https://api.github.com/repos/EJM-Digital/Deluno/rulesets/24610503"
+              },
+              "html": {
+                "href": "https://github.com/EJM-Digital/Deluno/rules/24610503"
+              }
+            },
+            "created_at": "2026-10-07T08:01:06.360+11:00",
+            "updated_at": "2026-10-22T21:12:26.936+11:00"
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "api.github.com/repos/EJM-Digital/Deluno/rulesets/24610501",
+        "body": null
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "id": 24610501,
+          "name": "main is protected",
+          "target": "branch",
+          "source_type": "Repository",
+          "source": "EJM-Digital/Deluno",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "exclude": [],
+              "include": [
+                "~DEFAULT_BRANCH"
+              ]
+            }
+          },
+          "rules": [
+            {
+              "type": "deletion"
+            },
+            {
+              "type": "non_fast_forward"
+            },
+            {
+              "type": "required_status_checks",
+              "parameters": {
+                "strict_required_status_checks_policy": false,
+                "do_not_enforce_on_create": false,
+                "required_status_checks": [
+                  {
+                    "context": "ci-passed"
+                  }
+                ]
+              }
+            }
+          ],
+          "created_at": "2026-10-07T08:01:04.686+11:00",
+          "updated_at": "2026-10-22T21:12:26.160+11:00",
+          "bypass_actors": [
+            {
+              "actor_id": 5,
+              "actor_type": "RepositoryRole",
+              "bypass_mode": "always"
+            }
+          ],
+          "current_user_can_bypass": "always",
+          "_links": {
+            "self": {
+              "href": "https://api.github.com/repos/EJM-Digital/Deluno/rulesets/24610501"
+            },
+            "html": {
+              "href": "https://github.com/EJM-Digital/Deluno/rules/24610501"
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "api.github.com/repos/EJM-Digital/Deluno/rulesets/24610503",
+        "body": null
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "id": 24610503,
+          "name": "only the owner makes release tags",
+          "target": "tag",
+          "source_type": "Repository",
+          "source": "EJM-Digital/Deluno",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "exclude": [],
+              "include": [
+                "refs/tags/v*"
+              ]
+            }
+          },
+          "rules": [
+            {
+              "type": "creation"
+            },
+            {
+              "type": "update"
+            },
+            {
+              "type": "deletion"
+            }
+          ],
+          "created_at": "2026-10-07T08:01:06.360+11:00",
+          "updated_at": "2026-10-22T21:12:26.936+11:00",
+          "bypass_actors": [
+            {
+              "actor_id": 5,
+              "actor_type": "RepositoryRole",
+              "bypass_mode": "always"
+            }
+          ],
+          "current_user_can_bypass": "always",
+          "_links": {
+            "self": {
+              "href": "https://api.github.com/repos/EJM-Digital/Deluno/rulesets/24610503"
+            },
+            "html": {
+              "href": "https://github.com/EJM-Digital/Deluno/rules/24610503"
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "api.github.com/repos/EJM-Digital/Deluno/rulesets/25630240",
+        "body": null
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "id": 25630240,
+          "name": "main is never rewritten or deleted",
+          "target": "branch",
+          "source_type": "Repository",
+          "source": "EJM-Digital/Deluno",
+          "enforcement": "active",
+          "conditions": {
+            "ref_name": {
+              "exclude": [],
+              "include": [
+                "refs/heads/main"
+              ]
+            }
+          },
+          "rules": [
+            {
+              "type": "deletion"
+            },
+            {
+              "type": "non_fast_forward"
+            }
+          ],
+          "created_at": "2026-10-22T21:12:27.671+11:00",
+          "updated_at": "2026-10-22T21:12:27.712+11:00",
+          "bypass_actors": [],
+          "current_user_can_bypass": "never",
+          "_links": {
+            "self": {
+              "href": "https://api.github.com/repos/EJM-Digital/Deluno/rulesets/25630240"
+            },
+            "html": {
+              "href": "https://github.com/EJM-Digital/Deluno/rules/25630240"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

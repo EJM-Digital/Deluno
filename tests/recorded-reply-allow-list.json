@@ -152,6 +152,11 @@
       "app": "sabnzbd",
       "state": "add-local-missing",
       "reason": "SABnzbd's mode=addlocalfile for a path it does not hold: {\"status\": false, \"error\": \"file does not exist\"}. Deluno never asks SABnzbd to read a file from its disk, so it has no behaviour for the call."
+    },
+    {
+      "app": "github",
+      "state": "repository-rulesets",
+      "reason": "GitHub's rulesets for this repository, not a reply Deluno acts on. scripts/check-branch-protection.test.mjs replays it to prove the check that main and the release tags stay protected (GAT-10)."
     }
   ]
 }
