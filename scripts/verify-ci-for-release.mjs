@@ -11,10 +11,9 @@
 // - its `ci-passed` job and that job's verdict step concluded `success`. ci-passed (scripts/ci-passed.mjs) passes
 //   only when every job due for the change passed and every other job was skipped by path filtering.
 //
-// Note what a green push run does and does not prove: a push never runs the Windows installer or the end-to-end
-// jobs (they cost the most and run only on a manual run), and a push that changed only documents skips every code
-// job. So a push run alone never qualifies: run ci.yml by hand on the commit to tag (a manual run skips nothing),
-// and the run must show the installer and both end-to-end job sets passed.
+// A push that changes code runs the same jobs a manual run runs, installer and end-to-end sets included, so a green
+// push run counts. A push that changed only documents skips every code job and never qualifies, and neither does
+// a run cut short: the run must show the installer and both end-to-end job sets passed, whichever event ran it.
 //
 // Usage (in release.yml):  node scripts/verify-ci-for-release.mjs
 //   env GH_TOKEN (actions: read), GITHUB_REPOSITORY, GITHUB_SHA (else `git rev-parse HEAD`)
@@ -31,8 +30,8 @@ export const ACCEPTED_EVENTS = ["push", "workflow_dispatch"];
 // declaring them, so a rename cannot silently disarm the gate.
 export const REQUIRED_EVIDENCE = [{ job: "ci-passed", steps: ["Every job that was due passed"] }];
 
-// The jobs that run only on a manual run (the one full run before a tag). A push never runs them, so a push run
-// cannot prove a release candidate: each prefix must match at least one job that concluded `success`.
+// The jobs a release candidate must have passed. A docs-only push skips them and so cannot prove a candidate: each
+// prefix must match at least one job that concluded `success`.
 export const MANUAL_ONLY_JOBS = ["Windows installer", "Windows end-to-end (", "End-to-end ("];
 
 // While the Windows jobs run on a self-hosted runner (the DELUNO_WINDOWS_RUNS_ON repository variable is set) the Windows
@@ -61,7 +60,7 @@ export function evaluateRun(run, jobs, evidence = REQUIRED_EVIDENCE) {
         matching.every((job) => job.conclusion === "skipped") &&
         jobs.some((job) => job.name.startsWith("Windows installer") && job.conclusion === "success");
       if (!coveredByGoldenPath && !matching.some((job) => job.conclusion === "success")) {
-        problems.push(`no "${prefix.replace(/ \($/, "")}" job passed: it runs only on a manual run (gh workflow run ci.yml), the one full run before a tag`);
+        problems.push(`no "${prefix.replace(/ \($/, "")}" job passed: it did not run or did not pass on this commit (a push that changes code runs it; so does gh workflow run ci.yml)`);
       }
     }
   }
@@ -149,7 +148,7 @@ function main() {
     console.error(`${describe(run)} does not qualify:`);
     for (const problem of problems) console.error(`  - ${problem}`);
   }
-  console.error("To prove this commit, run the full CI on the tag (a manual run skips nothing), wait for it to pass,");
+  console.error("To prove this commit, run the full CI on the tag (a manual run skips nothing; a push that changes code does too), wait for it to pass,");
   console.error("then re-run this release:");
   console.error(`  gh workflow run ${CI_WORKFLOW} --repo ${repository} --ref ${tag}`);
   process.exit(1);

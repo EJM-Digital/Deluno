@@ -157,14 +157,17 @@ test("a changed Dockerfile or workflow runs the image job, and a workflow change
   assert.equal(due.run_web, "true");
 });
 
-test("a manual run runs everything, installer and end-to-end jobs included; a push never runs those", () => {
+test("a manual run and a push that changes code both run everything, installer and end-to-end jobs included; a docs-only push runs neither", () => {
   const manual = dueJobs({ EVENT: "workflow_dispatch" });
   for (const flag of ["run_backend", "run_web", "run_e2e_smoke", "run_docker", "run_windows_installer", "run_e2e_linux"]) {
     assert.equal(manual[flag], "true", flag);
   }
   const push = dueJobs({ CODE: "true", CODE_COUNT: "9", WEB: "true", WEB_COUNT: "1", DOCKER: "true", WORKFLOWS: "true", NOTES: "true" });
-  assert.equal(push.run_windows_installer, "false");
-  assert.equal(push.run_e2e_linux, "false");
+  assert.equal(push.run_windows_installer, "true");
+  assert.equal(push.run_e2e_linux, "true");
+  const docs = dueJobs({ CODE: "false", CODE_COUNT: "0" });
+  assert.equal(docs.run_windows_installer, "false");
+  assert.equal(docs.run_e2e_linux, "false");
 });
 
 // ---- GAT-06: workflow rules
@@ -289,14 +292,15 @@ test("the release reads the golden-path commit status and its job runs before an
 
 // ---- GAT-12: the Windows installer
 
-test("the Windows installer is built from the candidate by vpk pack on a manual run, and a release candidate is refused unless that run passed", () => {
+test("the Windows installer is built from the candidate by vpk pack on a manual run or a code push, and a release candidate is refused unless that run passed", () => {
   const ci = read(".github/workflows/ci.yml");
   const installer = ci.slice(ci.indexOf("\n  windows-installer:\n"), ci.indexOf("\n  e2e-windows:\n"));
   assert.match(installer, /if: \$\{\{ needs\.changes\.outputs\.run_windows_installer == 'true' \}\}/);
   assert.match(installer, /vpk pack/);
   assert.match(installer, /upload-artifact/);
   assert.equal(dueJobs({ EVENT: "workflow_dispatch" }).run_windows_installer, "true");
-  assert.equal(dueJobs({ CODE: "true", CODE_COUNT: "1" }).run_windows_installer, "false");
+  assert.equal(dueJobs({ CODE: "true", CODE_COUNT: "1" }).run_windows_installer, "true");
+  assert.equal(dueJobs({ CODE: "false", CODE_COUNT: "0" }).run_windows_installer, "false");
   const pushOnly = [{ name: "ci-passed", conclusion: "success", steps: [{ name: "Every job that was due passed", conclusion: "success" }] }];
   const problems = evaluateRun({ event: "push", status: "completed", conclusion: "success" }, pushOnly);
   assert.ok(problems.some((p) => p.includes('no "Windows installer" job passed')), problems.join("; "));

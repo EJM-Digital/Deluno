@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { repoRoot } from "../test/repo-root";
 import { ACTIVITY_PROBLEM_WORDS, detailFields, fixLinkForActivity } from "./detail-fields";
 
 describe("detailFields", () => {
@@ -44,7 +45,7 @@ describe("fixLinkForActivity", () => {
 
 // #1151: the red entries "Could not tell the processor what happened" and a dead-lettered job had no fix link.
 describe("fixLinkForActivity covers every red Activity kind", () => {
-  const root = resolve(__dirname, "../../../../src/Deluno.Contracts");
+  const root = resolve(repoRoot(), "src/Deluno.Contracts");
   const labels = readFileSync(resolve(root, "ActivityEventLabels.cs"), "utf8");
   const history = readFileSync(resolve(root, "ActivityHistory.cs"), "utf8");
   const categories = [...labels.matchAll(/\["([^"]+)"\]\s*=\s*"/g)].map((match) => match[1]);

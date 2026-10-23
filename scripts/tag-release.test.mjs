@@ -67,12 +67,13 @@ test("a green documents-only run, which skipped the smoke jobs, is refused", () 
   assert.match(checkCi([run()], () => docsOnly)[0], /did not run the jobs/);
 });
 
-test("an ordinary push run, which never builds the installer or runs the end-to-end jobs, is refused: a tag needs a green manual run (#1356)", () => {
+test("a run that did not build the installer or run the end-to-end jobs (a docs-only push) is refused, and a push run that ran them counts like a manual run (#1356)", () => {
   const push = fullJobs.slice(0, 3);
   const reasons = checkCi([run()], () => push)[0];
   assert.match(reasons, /Windows installer/);
   assert.match(reasons, /gh workflow run ci\.yml/);
   assert.deepEqual(checkCi([run({ event: "workflow_dispatch" })], () => fullJobs), []);
+  assert.deepEqual(checkCi([run({ event: "push" })], () => fullJobs), []);
 });
 
 test("an earlier failed run does not hide a later green full run", () => {
