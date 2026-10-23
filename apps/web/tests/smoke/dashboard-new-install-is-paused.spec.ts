@@ -3,7 +3,10 @@ import { authenticateAndNavigate } from "../helpers/auth-helper";
 
 // Nothing is on by default (#936): on the real host, with nothing stubbed, a new install's Dashboard says automation is
 // paused until the person resumes it, and the strip goes away on Resume and comes back when it is paused again.
-test("a new install shows the paused strip until automation is resumed, then not", async ({ page }) => {
+test("a new install shows the paused strip until automation is resumed, then not", async ({ page, isMobile }) => {
+  // It changes the shared install (resume, then pause again), so it runs on one project: the phone project running it at the
+  // same moment saw the desktop run resume automation and found no strip.
+  test.skip(isMobile, "Runs once, on the desktop project; it changes the shared install.");
   await authenticateAndNavigate(page, "/");
   const token = await page.evaluate(() => window.localStorage.getItem("deluno-auth-token"));
   const settings = async () => (await (await page.request.get("/api/settings", { headers: { Authorization: `Bearer ${token}` } })).json()) as { autoStartJobs: boolean };

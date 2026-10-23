@@ -277,7 +277,7 @@ function Get-OpenMenuItems {
 # Closes the app's pop-up menu when one is open. The tray's menu is not a native #32768 window, so the open items themselves say it is up.
 function Close-TrayMenu {
     if (@(Get-OpenMenuItems).Count -gt 0) { [System.Windows.Forms.SendKeys]::SendWait("{ESC}") } else { Send-EscapeIfSafe menu }
-    Start-Sleep -Milliseconds 300
+    Start-Sleep -Milliseconds 300 # reason: lets the taskbar come to the front before the menu key is sent; Windows raises no event for it
 } # reason: UI settle after input; Windows raises no event for it
 
 # Opens the app's tray menu and clicks the item whose name matches the pattern. Returns $true when it was clicked.
