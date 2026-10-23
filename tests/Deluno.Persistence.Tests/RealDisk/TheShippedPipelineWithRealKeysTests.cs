@@ -216,4 +216,22 @@ public sealed class TheShippedPipelineWithRealKeysTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Forbidden, backup.StatusCode);
         Assert.Empty(BackupZips());
     }
+
+    [Theory]
+    [InlineData("/api/monitoring/export/prometheus")]
+    [InlineData("/api/monitoring/export/influx")]
+    public async Task A_metrics_export_needs_a_sign_in_is_open_to_a_key_that_can_read_and_is_refused_to_one_that_cannot(string path)
+    {
+        var read = await KeyAsync("read");
+        var writeOnly = await KeyAsync("write");
+
+        using var anonymous = await _client.GetAsync(path);
+        using var scraper = await WithKeyAsync(read, HttpMethod.Get, path);
+        using var cannotRead = await WithKeyAsync(writeOnly, HttpMethod.Get, path);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, scraper.StatusCode);
+        Assert.Contains("deluno_monitoring_readiness_ready", await scraper.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.Forbidden, cannotRead.StatusCode);
+    }
 }
