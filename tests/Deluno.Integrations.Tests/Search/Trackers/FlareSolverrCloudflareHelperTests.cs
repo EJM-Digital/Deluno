@@ -390,4 +390,115 @@ public sealed class FlareSolverrCloudflareHelperTests
     private sealed record RecordedCommand(string Cmd, string? Session, int? MaxTimeout, string? PostData, RecordedProxy? Proxy);
 
     private sealed record RecordedProxy(string Url, string? Username, string? Password);
+
+    /// <summary>The recorded helper, noting the address each command was sent to as well.</summary>
+    private sealed class AddressNoting(RecordedFlareSolverrHandler inner) : HttpMessageHandler
+    {
+        public List<(string Authority, string Cmd)> Sent { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.Method == HttpMethod.Post && request.Content is not null)
+            {
+                using var document = JsonDocument.Parse(await request.Content.ReadAsStringAsync(cancellationToken));
+                Sent.Add((request.RequestUri!.Authority, document.RootElement.GetProperty("cmd").GetString()!));
+            }
+
+            return await new HttpMessageInvoker(inner, disposeHandler: false).SendAsync(request, cancellationToken);
+        }
+    }
+
+    /// <summary>The recorded helper, except that the first page it is asked for is lost with its session (it restarted).</summary>
+    private sealed class LosesItsSessionOnce(RecordedFlareSolverrHandler inner, RecordedReply lost) : HttpMessageHandler
+    {
+        private bool _lost;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.Method == HttpMethod.Post && request.Content is not null && !_lost)
+            {
+                var body = await request.Content.ReadAsStringAsync(cancellationToken);
+                if (body.Contains("\"request.get\"", StringComparison.Ordinal))
+                {
+                    _lost = true;
+                    return lost.ToResponse();
+                }
+            }
+
+            return await new HttpMessageInvoker(inner, disposeHandler: false).SendAsync(request, cancellationToken);
+        }
+    }
+
+[Fact]
+    public async Task A_helper_that_restarted_and_lost_its_sessions_answers_the_request_on_the_unknown_session_itself_and_that_page_is_used()
+    {
+        // FlareSolverr 3.5.2 does not refuse a request on a session it no longer has: it answers ok (recorded), so there is nothing to make again.
+        var lost = RecordedReplies.Flaresolverr("request-session-missing").Single.Reply;
+        Assert.Equal("ok", lost.Json()["status"]!.GetValue<string>());
+        var recorder = new RecordedFlareSolverrHandler();
+        var (helper, _) = RecordedCreateHelper(new LosesItsSessionOnce(recorder, lost), timeoutSeconds: 60);
+
+        var solution = await helper.FetchAsync(TargetUrl, CancellationToken.None);
+
+        Assert.NotNull(solution);
+        Assert.Equal(lost.Json()["solution"]!["response"]!.GetValue<string>(), solution!.Html);
+        Assert.Single(recorder.Requests, request => request.Cmd == "sessions.create");
+    }
+
+    [Fact]
+    public async Task Deluno_shutting_down_destroys_every_session_it_made_on_the_helper()
+    {
+        var recorder = new RecordedFlareSolverrHandler();
+        var (helper, _) = RecordedCreateHelper(recorder, timeoutSeconds: 60);
+        await helper.FetchAsync(TargetUrl, CancellationToken.None);
+        await helper.FetchAsync(new Uri("https://other.example.test/"), CancellationToken.None);
+        using var cleanup = new CloudflareHelperSessionCleanupService(helper, Mock.Of<Deluno.Connections.Data.IConnectionsRepository>(), Microsoft.Extensions.Logging.Abstractions.NullLogger<CloudflareHelperSessionCleanupService>.Instance);
+
+        await cleanup.StopAsync(CancellationToken.None);
+
+        var destroyed = recorder.Requests.Where(request => request.Cmd == "sessions.destroy").Select(request => request.Session!).Order().ToArray();
+        Assert.Equal(new[] { $"deluno-{TargetUrl.Host}", "deluno-other.example.test" }.Order().ToArray(), destroyed);
+    }
+
+    [Fact]
+    public async Task A_session_made_on_an_indexers_own_helper_is_destroyed_on_that_helper_and_not_on_the_instance_wide_one()
+    {
+        const string own = "http://192.168.1.9:8191";
+        var noting = new AddressNoting(new RecordedFlareSolverrHandler());
+        var (helper, _) = RecordedCreateHelper(noting, timeoutSeconds: 60);
+        await helper.FetchAsync(TargetUrl, CancellationToken.None, helperUrl: own);
+
+        await helper.DestroySessionAsync(TargetUrl.Host, CancellationToken.None);
+
+        Assert.Contains(("192.168.1.9:8191", "sessions.create"), noting.Sent);
+        Assert.Contains(("192.168.1.9:8191", "sessions.destroy"), noting.Sent);
+        Assert.DoesNotContain(noting.Sent, call => call.Authority == "127.0.0.1:8191" && call.Cmd == "sessions.destroy");
+    }
+
+    [Fact]
+    public async Task A_session_made_on_an_indexers_own_helper_is_still_destroyed_when_no_instance_wide_helper_is_set()
+    {
+        const string own = "http://192.168.1.9:8191";
+        var noting = new AddressNoting(new RecordedFlareSolverrHandler());
+        var (helper, _) = RecordedCreateHelper(noting, timeoutSeconds: 60, helperUrl: null);
+        await helper.FetchAsync(TargetUrl, CancellationToken.None, helperUrl: own);
+
+        await helper.DestroyAllSessionsAsync(CancellationToken.None);
+
+        Assert.Contains(("192.168.1.9:8191", "sessions.destroy"), noting.Sent);
+    }
+
+    [Fact]
+    public async Task A_host_asked_through_a_different_helper_gets_its_own_session_there()
+    {
+        const string own = "http://192.168.1.9:8191";
+        var noting = new AddressNoting(new RecordedFlareSolverrHandler());
+        var (helper, _) = RecordedCreateHelper(noting, timeoutSeconds: 60);
+        await helper.FetchAsync(TargetUrl, CancellationToken.None);
+
+        await helper.FetchAsync(TargetUrl, CancellationToken.None, helperUrl: own);
+
+        Assert.Contains(("127.0.0.1:8191", "sessions.create"), noting.Sent);
+        Assert.Contains(("192.168.1.9:8191", "sessions.create"), noting.Sent);
+    }
 }

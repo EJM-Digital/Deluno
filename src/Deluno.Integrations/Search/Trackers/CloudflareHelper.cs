@@ -128,7 +128,9 @@ public sealed class FlareSolverrCloudflareHelper(IHttpClientFactory httpClientFa
     // from scratch each time, which took 49 seconds for 1337x on the rig; a kept
     // one still holds its clearance, and the next page comes back in seconds.
     // Keyed by host, so reconciliation can compare against a plain host list.
-    private readonly ConcurrentDictionary<string, bool> sessions = new(StringComparer.OrdinalIgnoreCase);
+    // The value is the helper address the session lives on: an indexer can have its own helper (#976), and its session must be destroyed there,
+    // not on the instance-wide helper, and a host asked through another helper needs a session of its own on that one.
+    private readonly ConcurrentDictionary<string, string> sessions = new(StringComparer.OrdinalIgnoreCase);
 
     // #1029: which helper answered at a given base address, once probed under
     // "auto". Keyed by the helper's own base URL (there can be more than
@@ -212,11 +214,11 @@ public sealed class FlareSolverrCloudflareHelper(IHttpClientFactory httpClientFa
         // errors, but there is nothing to gain by sending it, so Deluno
         // skips straight to the request the same way it would for a helper
         // with no session concept at all.
-        if (!isByparr && !sessions.ContainsKey(host))
+        if (!isByparr && !(sessions.TryGetValue(host, out var sessionAt) && string.Equals(sessionAt, baseUrl, StringComparison.OrdinalIgnoreCase)))
         {
             // An error here usually means the session is already there, which is fine.
             using var created = await http.PostAsJsonAsync(endpoint, new { cmd = "sessions.create", session = SessionName(host) }, cancellationToken);
-            sessions[host] = true;
+            sessions[host] = baseUrl;
         }
 
         var answer = await SendAsync(http, endpoint, url, host, formData, proxy, solveBudget, cancellationToken);
@@ -226,7 +228,7 @@ public sealed class FlareSolverrCloudflareHelper(IHttpClientFactory httpClientFa
             // The helper restarted and lost its sessions: start this one again.
             sessions.TryRemove(host, out _);
             using var recreated = await http.PostAsJsonAsync(endpoint, new { cmd = "sessions.create", session = SessionName(host) }, cancellationToken);
-            sessions[host] = true;
+            sessions[host] = baseUrl;
             answer = await SendAsync(http, endpoint, url, host, formData, proxy, solveBudget, cancellationToken);
         }
 
@@ -330,13 +332,7 @@ public sealed class FlareSolverrCloudflareHelper(IHttpClientFactory httpClientFa
 
     public async Task DestroySessionAsync(string host, CancellationToken cancellationToken)
     {
-        if (!sessions.TryRemove(host, out _))
-        {
-            return;
-        }
-
-        var baseUrl = (await settings.GetAsync(cancellationToken)).CloudflareHelperUrl;
-        if (string.IsNullOrWhiteSpace(baseUrl))
+        if (!sessions.TryRemove(host, out var baseUrl) || string.IsNullOrWhiteSpace(baseUrl))
         {
             return;
         }
