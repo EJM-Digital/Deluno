@@ -737,7 +737,12 @@ jobs:
           IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
         run: |
           docker rm -f deluno-release-smoke-arm64 >/dev/null 2>&1 || true
-          docker run -d --platform linux/arm64 --name deluno-release-smoke-arm64 -p 18082:8080 "${IMAGE_NAME}@${IMAGE_DIGEST}"
+          # The arm64 image by its own manifest digest: the amd64 check has already pulled the index digest, and pulling the
+          # same index again for another platform fails with "cannot overwrite digest" (v1.0.0-rc.30.35).
+          ARM64_DIGEST=$(docker buildx imagetools inspect --raw "${IMAGE_NAME}@${IMAGE_DIGEST}" | jq -r '.manifests[] | select(.platform.architecture == "arm64") | .digest')
+          if [ -z "$ARM64_DIGEST" ]; then echo "::error::The published image has no arm64 manifest."; exit 1; fi
+          docker run -d --name deluno-release-smoke-arm64 -p 18082:8080 "${IMAGE_NAME}@${ARM64_DIGEST}"
+          if [ "$(docker exec deluno-release-smoke-arm64 uname -m)" != "aarch64" ]; then echo "::error::The arm64 check did not start an arm64 image."; exit 1; fi
           for _ in $(seq 1 120); do
             if curl --fail --silent --show-error http://127.0.0.1:18082/api/health/ready >/dev/null 2>&1; then
               echo "The published arm64 image answered ready."
