@@ -159,3 +159,31 @@ test.describe("More on a phone", () => {
     expect(await page.evaluate(() => localStorage.getItem("deluno-auth-token"))).toBeNull();
   });
 });
+
+test.describe("Confirm dialogs", () => {
+  test("the unsaved-changes question has three ways out: Cancel (Escape) stays, Discard and continue leaves without saving, and nothing was written", async ({ page }) => {
+    await openScreen(page, "/settings/general");
+    await untilQuiet(page);
+    const field = page.getByRole("textbox", { name: "Helper address" });
+    const before = await field.inputValue();
+    await field.fill("http://127.0.0.1:7777");
+    const prompt = page.getByRole("dialog", { name: "Unsaved changes" });
+
+    await page.getByRole("link", { name: "Interface", exact: true }).first().click();
+    await expect(prompt).toBeVisible();
+    await expect(prompt.getByRole("button", { name: "Cancel", exact: true })).toBeVisible();
+    await prompt.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(prompt).toHaveCount(0);
+    await expect(page).toHaveURL(/\/settings\/general/);
+    await expect(field).toHaveValue("http://127.0.0.1:7777");
+
+    const requests = recordRequests(page);
+    await page.getByRole("link", { name: "Interface", exact: true }).first().click();
+    await prompt.getByRole("button", { name: "Discard and continue", exact: true }).click();
+    await expect(page).toHaveURL(/\/settings\/ui/);
+    requests.stop();
+    expect(requests.seen.filter((r) => r.method !== "GET" && /^\/api\/settings/.test(r.path)), "discarding sends no save").toEqual([]);
+    await page.goto("/settings/general");
+    await expect(page.getByRole("textbox", { name: "Helper address" })).toHaveValue(before);
+  });
+});
