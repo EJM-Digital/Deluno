@@ -317,6 +317,53 @@ public sealed class DownloadIntegrityCheckTests : IDisposable
         }
     }
 
+    /// <summary>A sample clip is never judged, whatever its name's shape: it sits beside the film and the film alone is held to its runtime.</summary>
+    [Theory]
+    [InlineData("Sample/sample.mkv")]
+    [InlineData("sample.mkv")]
+    [InlineData("sample-Sintel.mkv")]
+    [InlineData("Sintel-sample.mkv")]
+    [InlineData("Sintel.sample.mkv")]
+    public async Task A_sample_clip_in_the_folder_is_never_judged(string sample)
+    {
+        var result = await RunInFolderAsync("Sintel.2010.1080p.WEB-DL", 90,
+        [
+            ("Sintel.2010.1080p.WEB-DL.mkv", 5000, 90),
+            (sample, 100, 1)
+        ]);
+
+        Assert.Equal(DownloadIntegrityOutcome.Pass, result.Outcome);
+    }
+
+    [Fact]
+    public async Task A_folder_holding_only_a_sample_clip_is_waited_for_not_failed()
+    {
+        var result = await RunInFolderAsync("Sintel.2010.1080p.WEB-DL", 90, [("Sample/sample.mkv", 100, 1)]);
+
+        Assert.Equal(DownloadIntegrityOutcome.StillWriting, result.Outcome);
+    }
+
+    [Fact]
+    public async Task A_file_the_probe_could_not_reach_is_not_a_verdict_on_the_file_and_passes_like_a_missing_ffprobe()
+    {
+        var unreachable = new Probe(new MediaProbeInfo("unreadable", "ffprobe", "The share stopped answering.", null, null, null, [], [], []));
+
+        var result = await Run(unreachable, "Sintel.2010.1080p.WEB-DL", 120);
+
+        Assert.Equal(DownloadIntegrityOutcome.Pass, result.Outcome);
+    }
+
+    /// <summary>A film whose own title has the word Sample in it is a film, not a sample clip: it is judged, so a short copy of it fails.</summary>
+    [Fact]
+    public async Task A_film_whose_title_is_the_word_Sample_is_judged_like_any_other_file()
+    {
+        var short_ = await RunInFolderAsync("The.Sample.2020.1080p.WEB-DL", 90, [("The.Sample.2020.1080p.WEB-DL.mkv", 5000, 5)]);
+        var whole = await RunInFolderAsync("The.Sample.2020.1080p.WEB-DL", 90, [("The.Sample.2020.1080p.WEB-DL.mkv", 5000, 90)]);
+
+        Assert.Equal(DownloadIntegrityOutcome.Failed, short_.Outcome);
+        Assert.Equal(DownloadIntegrityOutcome.Pass, whole.Outcome);
+    }
+
     /// <summary>#1187: a short extra next to the film is not held to the film's runtime.</summary>
     [Fact]
     public async Task A_film_with_a_short_extra_passes()
