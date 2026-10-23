@@ -268,8 +268,9 @@ public sealed class IntegrationResiliencePolicy(
         {
             logger.LogWarning(
                 lastException,
-                "Integration operation {Operation} failed after {Attempts} attempts.",
+                "Integration operation {Operation} for {Service} failed after {Attempts} attempts.",
                 normalized.Operation,
+                serviceName,
                 normalized.MaxAttempts);
         }
 

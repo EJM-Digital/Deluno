@@ -53,7 +53,7 @@ describe("Log", () => {
     expect(screen.getByRole("link", { name: "Open the full log files" })).toHaveAttribute("href", "/system");
   });
 
-  it("says a line repeated back to back once, with how many times, and keeps separate lines apart", () => {
+  it("says a repeated line once, with how many times, even with another line between, and keeps separate lines apart", () => {
     const refused = "Seerr webhook for connection 01a1 refused: the Authorization header did not match its webhook secret.";
     const repeated: SystemLogResponse = {
       ...log,
@@ -66,8 +66,9 @@ describe("Log", () => {
       ]
     };
     render(<MemoryRouter><LogCard log={repeated} /></MemoryRouter>);
-    expect(screen.getAllByText(refused)).toHaveLength(2);
-    expect(screen.getByLabelText("3 times")).toHaveTextContent("×3");
+    expect(screen.getAllByText(refused)).toHaveLength(1);
+    expect(screen.getByLabelText("4 times")).toHaveTextContent("×4");
+    expect(screen.getByText("The indexer answered slowly.")).toBeInTheDocument();
     expect(screen.queryByLabelText("1 times")).toBeNull();
   });
 
