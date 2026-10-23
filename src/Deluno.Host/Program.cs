@@ -47,17 +47,7 @@ var listenPort = builder.Configuration.GetValue<int?>("Server:Port") ?? 5099;
 // local control plane, and ListenAnyIP put the whole API — including the
 // unauthenticated setup endpoints on a fresh install — on every interface.
 var allowLan = builder.Configuration.GetValue<bool>("Server:AllowLan");
-builder.WebHost.ConfigureKestrel(options =>
-{
-    if (allowLan)
-    {
-        options.ListenAnyIP(listenPort);
-    }
-    else
-    {
-        options.ListenLocalhost(listenPort);
-    }
-});
+builder.WebHost.ConfigureKestrel(options => Deluno.Host.HostListening.For(allowLan, listenPort).Apply(options));
 
 // A Deluno open to the network on Windows looks after its firewall rule, and
 // System says when other devices are turned away (#623).

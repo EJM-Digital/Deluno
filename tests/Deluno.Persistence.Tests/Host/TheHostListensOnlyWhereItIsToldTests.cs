@@ -94,13 +94,28 @@ public sealed class TheHostListensOnlyWhereItIsToldTests
         Assert.Contains(listening, line => line.Contains("localhost", StringComparison.OrdinalIgnoreCase) || line.Contains("127.0.0.1", StringComparison.Ordinal) || line.Contains("[::1]", StringComparison.Ordinal));
     }
 
+    // A real bind on every address makes Windows ask about its firewall ("allow testhost.exe"), so the
+    // real-socket check runs where no prompt exists. Everywhere else the endpoints the host chooses are checked.
     [Fact]
     public async Task Turning_the_lan_setting_on_makes_the_host_listen_on_every_address()
     {
+        Assert.Equal(new Deluno.Host.HostListening(true, 5099), Deluno.Host.HostListening.For(allowLan: true, port: 5099));
+
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
         var (lines, port) = await StartHostAsync(allowLan: "true");
 
         var listening = lines.Where(line => line.Contains("Now listening on:", StringComparison.Ordinal)).ToArray();
         Assert.Contains(listening, line => (line.Contains("[::]", StringComparison.Ordinal) || line.Contains("0.0.0.0", StringComparison.Ordinal)) && line.Contains($":{port}", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Without_the_lan_setting_the_choice_is_only_the_machine_itself()
+    {
+        Assert.Equal(new Deluno.Host.HostListening(false, 5099), Deluno.Host.HostListening.For(allowLan: false, port: 5099));
     }
 
     [Fact]
