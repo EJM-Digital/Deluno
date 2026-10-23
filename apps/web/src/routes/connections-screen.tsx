@@ -550,9 +550,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
   // The shared Remote Path Mappings screen (#809). `anchorClientId` is
   // whichever client the mapping is filed under — required by the existing
   // per-client add/remove API — and `editingId` is set while this form
-  // stands in for an existing row: there is no update endpoint, so an edit
-  // creates the replacement first and only deletes the original once that
-  // succeeds, so a failed save never loses the row it was changing.
+  // stands in for an existing row: an edit is one PUT to that row (#1374).
   const [sharedMappingForm, setSharedMappingForm] = useState({
     editingId: null as string | null,
     anchorClientId: "",
@@ -971,14 +969,13 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
     const ok = await run(
       form.editingId ? "shared-mapping:save" : "shared-mapping:add",
       async () => {
-        await send(`/api/download-clients/${anchorClientId}/path-mappings`, "POST", payload, "Remote path mapping could not be saved.");
-        // Only removed once the replacement exists (see the note by
-        // sharedMappingForm's declaration) — an edit that fails to create
-        // leaves the original mapping exactly as it was.
         if (form.editingId) {
+          // One request: the server keeps one mapping per client and client path, so an add-then-remove edit was refused (#1374).
           const owner = pathMappings.find((item) => item.id === form.editingId)?.downloadClientId ?? form.anchorClientId;
-          await send(`/api/download-clients/${owner}/path-mappings/${form.editingId}`, "DELETE", undefined, "The old mapping could not be removed.");
+          await send(`/api/download-clients/${owner}/path-mappings/${form.editingId}`, "PUT", payload, "Remote path mapping could not be saved.");
+          return;
         }
+        await send(`/api/download-clients/${anchorClientId}/path-mappings`, "POST", payload, "Remote path mapping could not be saved.");
       },
       form.editingId ? "Remote path mapping updated" : "Remote path mapping added"
     );
@@ -1286,6 +1283,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
                   <Select
                     aria-label="Download client this mapping is filed under"
+                    disabled={Boolean(sharedMappingForm.editingId)}
                     value={sharedMappingForm.anchorClientId || clients[0]?.id || ""}
                     onChange={(event) => setSharedMappingForm({ ...sharedMappingForm, anchorClientId: event.target.value })}
                     options={clients.map((client) => ({ value: client.id, label: client.name }))}

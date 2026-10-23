@@ -156,4 +156,35 @@ public sealed class DownloadClientRoutesAgainstRecordedAppsTests
         Assert.Equal(requestsBefore, sab.Requests.Count);
         Assert.Equal(HttpStatusCode.BadRequest, (await app.Client.PostAsJsonAsync($"/api/download-clients/{id}/path-mappings", new { remotePath = "", localPath = local })).StatusCode);
     }
+
+    [Fact]
+    public async Task A_path_mapping_edit_changes_either_side_in_one_request_and_a_clash_answers_409_never_500()
+    {
+        await using var sab = await SabnzbdAsync("version");
+        await using var app = await ApplicationTestHost.StartAsync();
+        var id = (await CreateClientAsync(app, SabnzbdForm(sab))).GetProperty("id").GetString()!;
+        var first = await (await app.Client.PostAsJsonAsync($"/api/download-clients/{id}/path-mappings", new { remotePath = "/data/a", localPath = "/mnt/a" })).Content.ReadFromJsonAsync<JsonElement>();
+        var second = await (await app.Client.PostAsJsonAsync($"/api/download-clients/{id}/path-mappings", new { remotePath = "/data/b", localPath = "/mnt/b" })).Content.ReadFromJsonAsync<JsonElement>();
+        var firstId = first.GetProperty("id").GetString()!;
+        var secondId = second.GetProperty("id").GetString()!;
+
+        // Only the Deluno side changes: the same client path, so the unique rule must not refuse it.
+        var local = await app.Client.PutAsJsonAsync($"/api/download-clients/{id}/path-mappings/{firstId}", new { remotePath = "/data/a", localPath = "/mnt/a-other", isEnabled = true, priority = 10 });
+        Assert.Equal(HttpStatusCode.OK, local.StatusCode);
+        Assert.Equal("/mnt/a-other", (await local.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("localPath").GetString());
+
+        // Only the client side changes.
+        var remote = await app.Client.PutAsJsonAsync($"/api/download-clients/{id}/path-mappings/{firstId}", new { remotePath = "/data/c", localPath = "/mnt/a-other", isEnabled = true, priority = 10 });
+        Assert.Equal(HttpStatusCode.OK, remote.StatusCode);
+
+        var rows = (await app.Client.GetFromJsonAsync<JsonElement>($"/api/download-clients/{id}/path-mappings")).EnumerateArray().ToList();
+        Assert.Equal(2, rows.Count);
+        Assert.Equal("/data/c", rows.Single(r => r.GetProperty("id").GetString() == firstId).GetProperty("remotePath").GetString());
+
+        // Pointing a mapping at a client path another mapping already has, or adding that path twice, is a plain conflict.
+        Assert.Equal(HttpStatusCode.Conflict, (await app.Client.PutAsJsonAsync($"/api/download-clients/{id}/path-mappings/{firstId}", new { remotePath = "/data/b", localPath = "/mnt/x", isEnabled = true, priority = 10 })).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await app.Client.PostAsJsonAsync($"/api/download-clients/{id}/path-mappings", new { remotePath = "/data/b", localPath = "/mnt/y" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await app.Client.PutAsJsonAsync($"/api/download-clients/{id}/path-mappings/no-such", new { remotePath = "/data/z", localPath = "/mnt/z" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await app.Client.PutAsJsonAsync($"/api/download-clients/{id}/path-mappings/{secondId}", new { remotePath = "", localPath = "/mnt/z" })).StatusCode);
+    }
 }

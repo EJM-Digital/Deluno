@@ -36,6 +36,8 @@ namespace Deluno.Connections;
 /// </summary>
 public static class ConnectionsEndpointRouteBuilderExtensions
 {
+    private const string PathMappingClashMessage = "This client already has a file location link for that client path. Edit that one instead.";
+
     public static IEndpointRouteBuilder MapDelunoConnectionsEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var connections = endpoints.MapGroup("/api/connections")
@@ -503,7 +505,40 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 });
             }
 
+            if (await repository.DownloadClientPathMappingExistsAsync(id, request.RemotePath, null, cancellationToken))
+            {
+                return Results.Conflict(new { message = PathMappingClashMessage });
+            }
+
             var item = await repository.CreateDownloadClientPathMappingAsync(id, request, cancellationToken);
+            return item is null ? Results.NotFound() : Results.Ok(item);
+        });
+
+        // Editing either side of a mapping is one request (#1374), not an add followed by a remove.
+        downloadClients.MapPut("{id}/path-mappings/{mappingId}", async (
+            string id,
+            string mappingId,
+            HttpContext httpContext,
+            [FromBody] CreateDownloadClientPathMappingRequest request,
+            [FromServices] IConnectionsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+            if (string.IsNullOrWhiteSpace(request.RemotePath) || string.IsNullOrWhiteSpace(request.LocalPath))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["pathMapping"] = ["Both the client path and Deluno path are required."]
+                });
+            }
+
+            if (await repository.DownloadClientPathMappingExistsAsync(id, request.RemotePath, mappingId, cancellationToken))
+            {
+                return Results.Conflict(new { message = PathMappingClashMessage });
+            }
+
+            var item = await repository.UpdateDownloadClientPathMappingAsync(id, mappingId, request, cancellationToken);
             return item is null ? Results.NotFound() : Results.Ok(item);
         });
 

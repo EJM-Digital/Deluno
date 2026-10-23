@@ -1042,6 +1042,84 @@ public sealed class SqliteConnectionsRepository(
     private static string? NormalizeHost(string? host)
         => string.IsNullOrWhiteSpace(host) ? null : host.Trim().ToLowerInvariant();
 
+    public async Task<bool> DownloadClientPathMappingExistsAsync(
+        string downloadClientId,
+        string? remotePath,
+        string? exceptId,
+        CancellationToken cancellationToken)
+    {
+        var remote = NormalizePath(remotePath);
+        if (string.IsNullOrWhiteSpace(remote)) return false;
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT COUNT(*) FROM download_client_path_mappings
+            WHERE download_client_id = @downloadClientId AND remote_path = @remotePath
+              AND (@exceptId IS NULL OR id <> @exceptId);
+            """;
+        AddParameter(command, "@downloadClientId", downloadClientId);
+        AddParameter(command, "@remotePath", remote);
+        AddParameter(command, "@exceptId", exceptId);
+        return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken)) > 0;
+    }
+
+    public async Task<DownloadClientPathMappingItem?> UpdateDownloadClientPathMappingAsync(
+        string downloadClientId,
+        string id,
+        CreateDownloadClientPathMappingRequest request,
+        CancellationToken cancellationToken)
+    {
+        var remotePath = NormalizePath(request.RemotePath);
+        var localPath = NormalizePath(request.LocalPath);
+        if (string.IsNullOrWhiteSpace(remotePath) || string.IsNullOrWhiteSpace(localPath)) return null;
+
+        var existing = (await ListDownloadClientPathMappingsAsync(null, cancellationToken))
+            .FirstOrDefault(item =>
+                string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(item.DownloadClientId, downloadClientId, StringComparison.OrdinalIgnoreCase));
+        if (existing is null) return null;
+
+        // Left blank, the host stays what it was; the edit form sends it back as it read it.
+        var host = NormalizeHost(request.Host) ?? existing.Host;
+        var priority = request.Priority is >= 1 ? request.Priority.Value : existing.Priority;
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE download_client_path_mappings
+            SET remote_path = @remotePath, local_path = @localPath, is_enabled = @isEnabled,
+                priority = @priority, host = @host, updated_utc = @updatedUtc
+            WHERE id = @id AND download_client_id = @downloadClientId;
+            """;
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@downloadClientId", downloadClientId);
+        AddParameter(command, "@remotePath", remotePath);
+        AddParameter(command, "@localPath", localPath);
+        AddParameter(command, "@isEnabled", request.IsEnabled ? 1 : 0);
+        AddParameter(command, "@priority", priority);
+        AddParameter(command, "@host", host);
+        AddParameter(command, "@updatedUtc", now.ToString("O"));
+        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0) return null;
+
+        return existing with
+        {
+            RemotePath = remotePath,
+            LocalPath = localPath,
+            IsEnabled = request.IsEnabled,
+            Priority = priority,
+            Host = host,
+            UpdatedUtc = now
+        };
+    }
+
     public async Task<bool> DeleteDownloadClientPathMappingAsync(
         string downloadClientId,
         string id,

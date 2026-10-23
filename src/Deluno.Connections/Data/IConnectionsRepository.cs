@@ -51,6 +51,23 @@ public interface IConnectionsRepository
         CreateDownloadClientPathMappingRequest request,
         CancellationToken cancellationToken);
 
+    /// <summary>Edits one mapping in place (either side, priority, host, on/off). Null when the client or mapping is unknown.</summary>
+    Task<DownloadClientPathMappingItem?> UpdateDownloadClientPathMappingAsync(
+        string downloadClientId,
+        string id,
+        CreateDownloadClientPathMappingRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// True when this client already has a mapping for that client path other than
+    /// <paramref name="exceptId"/>; the table keeps one mapping per client and client path.
+    /// </summary>
+    Task<bool> DownloadClientPathMappingExistsAsync(
+        string downloadClientId,
+        string? remotePath,
+        string? exceptId,
+        CancellationToken cancellationToken);
+
     Task<bool> DeleteDownloadClientPathMappingAsync(
         string downloadClientId,
         string id,

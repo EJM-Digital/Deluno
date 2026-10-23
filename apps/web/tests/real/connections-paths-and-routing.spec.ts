@@ -96,18 +96,17 @@ test.describe("Remote path mappings and Library routing", () => {
     await page.getByLabel("Deluno path").fill(realFolder);
     const requests = recordRequests(page);
     await page.getByRole("button", { name: "Save changes", exact: true }).click();
-    // An edit puts the replacement in first and only then takes the old one out, so a failed save never loses the original.
-    await expect.poll(() => requests.find("POST", /\/path-mappings$/).length).toBe(1);
-    await expect.poll(() => requests.find("DELETE", /\/path-mappings\/[^/]+$/).length).toBe(1);
+    // An edit is one request to the mapping itself, never an add followed by a remove (#1374).
+    await expect.poll(() => requests.find("PUT", /\/path-mappings\/[^/]+$/).length).toBe(1);
+    expect(requests.find("POST", /\/path-mappings$/).length).toBe(0);
+    expect(requests.find("DELETE", /\/path-mappings\/[^/]+$/).length).toBe(0);
     requests.stop();
     await expect.poll(async () => (await mappings(page)).filter((m) => m.remotePath.startsWith("/downloads/g") || m.remotePath === "/downloads/moved").map((m) => [m.remotePath, m.localPath])).toEqual([["/downloads/moved", realFolder]]);
     await expect(page.getByText("Remote path mapping updated").first()).toBeVisible();
   });
 
-  // FOUND BY THIS ROW: editing only the Deluno path of a mapping fails. The screen adds the edited mapping first and removes the old one
-  // after, but the server keeps one mapping per client and client path, so the add is refused with HTTP 500 and the screen says
-  // "Remote path mapping could not be saved." The only way to change where a client path points is to remove the mapping and add it again.
-  test.fixme("Edit of only the Deluno path saves the new path (the server answers 500 for the same client path)", async ({ page }) => {
+  // Found by this row (#1374): the edit used to add the new mapping and then remove the old one, which the one-mapping-per-client-path rule refused.
+  test("Edit of only the Deluno path saves the new path in one request", async ({ page }) => {
     await openScreen(page, "/indexers/path-mappings");
     await untilQuiet(page);
     await row(page, "/downloads/there").getByRole("button", { name: "Edit", exact: true }).click();
