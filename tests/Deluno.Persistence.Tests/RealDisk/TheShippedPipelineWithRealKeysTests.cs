@@ -109,6 +109,35 @@ public sealed class TheShippedPipelineWithRealKeysTests : IAsyncLifetime
     private string[] BackupZips() => Directory.Exists(_root) ? Directory.GetFiles(Path.Combine(_root, "data"), "*.zip", SearchOption.AllDirectories) : [];
 
     [Fact]
+    public async Task Every_API_answer_of_the_shipped_pipeline_carries_where_the_realtime_stream_stood_and_which_run_it_belongs_to()
+    {
+        using var first = await AsOwnerAsync(HttpMethod.Get, "/api/settings");
+        using var second = await AsOwnerAsync(HttpMethod.Get, "/api/libraries/");
+        using var refused = await _client.GetAsync("/api/settings");
+
+        Assert.True(first.IsSuccessStatusCode, await first.Content.ReadAsStringAsync());
+        foreach (var answer in new[] { first, second, refused })
+        {
+            Assert.True(long.TryParse(answer.Headers.GetValues("X-Deluno-Event-Seq").Single(), out var position) && position >= 0);
+            Assert.False(string.IsNullOrWhiteSpace(answer.Headers.GetValues("X-Deluno-Event-Instance").Single()));
+        }
+
+        Assert.Equal(
+            first.Headers.GetValues("X-Deluno-Event-Instance").Single(),
+            second.Headers.GetValues("X-Deluno-Event-Instance").Single());
+    }
+
+    [Fact]
+    public async Task The_test_only_push_routes_are_absent_from_a_normal_install()
+    {
+        using var asOwner = await AsOwnerAsync(HttpMethod.Post, "/api/testing/realtime/event", new { eventName = "SettingsChanged" });
+        using var watchers = await AsOwnerAsync(HttpMethod.Get, "/api/testing/realtime/watchers");
+
+        Assert.Equal(HttpStatusCode.NotFound, asOwner.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, watchers.StatusCode);
+    }
+
+    [Fact]
     public async Task A_write_key_is_refused_a_backup_naming_the_system_scope_and_a_system_key_makes_a_real_archive_on_disk()
     {
         var write = await KeyAsync("write");
