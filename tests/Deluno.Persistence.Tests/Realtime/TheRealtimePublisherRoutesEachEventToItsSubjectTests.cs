@@ -166,6 +166,23 @@ public sealed class TheRealtimePublisherRoutesEachEventToItsSubjectTests : IAsyn
         Assert.Equal(500, dropped);
     }
 
+    [Fact]
+    public async Task A_push_that_fails_never_undoes_the_change_it_reports_but_a_cancellation_is_passed_on()
+    {
+        await LiveEventPublisherExtensions.PublishSafelyAsync(null, _ => throw new InvalidOperationException("no publisher is nothing to do"));
+        var reached = false;
+
+        await _publisher.PublishSafelyAsync(_ => throw new InvalidOperationException("the push broke"));
+        await _publisher.PublishSafelyAsync(_ =>
+        {
+            reached = true;
+            return Task.CompletedTask;
+        });
+
+        Assert.True(reached);
+        await Assert.ThrowsAsync<OperationCanceledException>(() => _publisher.PublishSafelyAsync(_ => throw new OperationCanceledException()));
+    }
+
     private static string[] Sections(string eventName)
         => [.. (IReadOnlyCollection<string>)typeof(SignalRRealtimeEventPublisher)
             .GetMethod("SectionsFor", BindingFlags.NonPublic | BindingFlags.Static)!
