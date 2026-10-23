@@ -409,4 +409,21 @@ public sealed class EmbyOnRecordingsTests
         Assert.Equal(changes.Select(change => change.Path), sent.Select(update => (string?)update!["Path"]));
         Assert.Equal(["Created", "Deleted", "Modified"], sent.Select(update => (string?)update!["UpdateType"]));
     }
+
+    [Fact]
+    public async Task An_item_with_no_known_path_cannot_be_reported_removed_to_Emby_and_nothing_is_sent_and_a_server_error_is_unreachable()
+    {
+        var emby = new Emby();
+        var noPath = new MediaServerItem("6", "movies", "Sintel", 2010, "45745", null, null, [], null, MediaServerWatchState.Unplayed);
+        var withPath = new MediaServerItem("6", "movies", "Sintel", 2010, "45745", null, null, ["/media/Movies/Sintel (2010)/Sintel (2010) [WEB 1080p].mkv"], null, MediaServerWatchState.Unplayed);
+        var refused = R("media-updated-refused").Exchanges[0].Reply;
+        var failing = new Emby((request, _) => UnderEmby(request) == "/Library/Media/Updated" ? refused.ToResponse() : null);
+
+        var answer = await emby.Client().RemoveAsync(Server(), noPath, CancellationToken.None);
+        var serverError = await failing.Client().RemoveAsync(Server(), withPath, CancellationToken.None);
+
+        Assert.Contains("did not say where Sintel is stored", Assert.IsType<MediaServerAnswer<MediaServerRemoval>.NotSupported>(answer).Reason, StringComparison.Ordinal);
+        Assert.Empty(emby.Calls);
+        Assert.IsType<MediaServerAnswer<MediaServerRemoval>.Unreachable>(serverError);
+    }
 }

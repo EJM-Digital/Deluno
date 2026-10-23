@@ -373,4 +373,129 @@ public sealed class JellyfinOperationsOnRecordingsTests
         Assert.Equal(changes.Select(change => change.Path), sent.Select(update => (string?)update!["Path"]));
         Assert.Equal(["Created", "Deleted", "Modified"], sent.Select(update => (string?)update!["UpdateType"]));
     }
+
+    // ---- more of the shared client, each the recorded reply with only the value the row is about changed (#1301) ----
+
+    [Fact]
+    public async Task A_server_that_answers_but_not_as_Jellyfin_does_with_no_server_id_is_degraded_and_not_taken_for_Jellyfin()
+    {
+        var notJellyfin = RecordedReplies.Jellyfin("identity").Exchanges[1].Reply.BodyWith(("Id", null));
+        var client = new Jellyfin().Client((request, _) => request.RequestUri!.AbsolutePath == "/System/Info" ? RecordedReplies.Json(notJellyfin) : null);
+
+        var result = await client.TestAsync(Server(), CancellationToken.None);
+
+        Assert.False(result.Ok);
+        Assert.Equal("degraded", result.Status);
+        Assert.Contains("not as Jellyfin does", result.Message);
+    }
+
+    [Fact]
+    public async Task A_server_that_does_not_answer_the_test_is_unreachable_and_says_what_failed()
+    {
+        var down = RecordedReplies.Jellyfin("not-answering").NotAnswering();
+
+        var result = await new JellyfinMediaServerClient(new Factory(down)).TestAsync(Server(), CancellationToken.None);
+
+        Assert.False(result.Ok);
+        Assert.Equal("unreachable", result.Status);
+        Assert.False(string.IsNullOrWhiteSpace(result.Message));
+    }
+
+    [Fact]
+    public async Task A_disabled_user_is_skipped_and_no_watched_state_is_asked_for_them()
+    {
+        var disabled = RecordedReplies.Jellyfin("libraries").Exchanges[1].Reply.BodyWith(("0.Policy.IsDisabled", true));
+        var jellyfin = new Jellyfin();
+        var client = jellyfin.Client((request, _) => request.RequestUri!.AbsolutePath == "/Users" ? RecordedReplies.Json(disabled) : null);
+        var enabled = new Jellyfin();
+
+        var skipped = await client.ListItemsAsync(Server(), "movies", CancellationToken.None);
+        var normal = await enabled.Client().ListItemsAsync(Server(), "movies", CancellationToken.None);
+
+        Assert.Empty(Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(skipped).Value.Users);
+        Assert.DoesNotContain(jellyfin.Calls, call => call.Contains($"/Users/{UserId}/Items", StringComparison.Ordinal));
+        Assert.Single(Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(normal).Value.Users);
+        Assert.True(enabled.Sent($"/Users/{UserId}/Items"));
+    }
+
+    [Fact]
+    public async Task Every_listing_asks_the_server_not_to_group_films_into_collections_and_a_grouped_answer_is_not_a_library()
+    {
+        var jellyfin = new Jellyfin();
+        var grouped = RecordedReplies.Jellyfin("catalogue-movies").Body("Items", ("Items.0.Type", "BoxSet"), ("Items.0.Name", "Leaving soon"));
+
+        var normal = await jellyfin.Client().ListItemsAsync(Server(), "movies", CancellationToken.None);
+        var answer = await new Jellyfin().Client((request, _) => request.RequestUri!.AbsolutePath == "/Items" ? RecordedReplies.Json(grouped) : null)
+            .ListItemsAsync(Server(), "movies", CancellationToken.None);
+
+        Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(normal);
+        Assert.All(jellyfin.Calls.Where(call => call.Contains("IncludeItemTypes=", StringComparison.Ordinal)), call => Assert.Contains("CollapseBoxSetItems=false", call));
+        var unreachable = Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Unreachable>(answer);
+        Assert.Contains("Leaving soon", unreachable.Reason);
+        Assert.Contains("in place of the titles in it", unreachable.Reason);
+    }
+
+    [Fact]
+    public async Task Audio_languages_are_the_union_of_every_version_and_any_version_with_an_untagged_track_makes_them_unknown()
+    {
+        // The recorded film has one version whose audio track carries no language: the tag is set on it, and a second version is made by
+        // copying the version, so each case is the recorded reply with only the language changed.
+        var one = RecordedReplies.Jellyfin("catalogue-movies").Body("Items", ("Items.0.MediaSources.0.MediaStreams.1.Language", "eng"));
+        var two = RecordedReplies.Jellyfin("catalogue-movies").Body("Items", ("Items.0.MediaSources.0.MediaStreams.1.Language", "eng"), ("+Items.0.MediaSources", 2), ("Items.0.MediaSources.1.MediaStreams.1.Language", "fre"));
+        var untagged = RecordedReplies.Jellyfin("catalogue-movies").Body("Items", ("Items.0.MediaSources.0.MediaStreams.1.Language", "eng"), ("+Items.0.MediaSources", 2), ("Items.0.MediaSources.1.MediaStreams.1.Language", null));
+        async Task<IReadOnlyList<string>?> Languages(string body)
+        {
+            var client = new Jellyfin().Client((request, _) => request.RequestUri!.AbsolutePath == "/Items" ? RecordedReplies.Json(body) : null);
+            return Assert.Single(Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(await client.ListItemsAsync(Server(), "movies", CancellationToken.None)).Value.Items).AudioLanguages;
+        }
+
+        var single = await Languages(one);
+        var both = await Languages(two);
+        var unknown = await Languages(untagged);
+
+        Assert.Single(single!);
+        Assert.Equal(2, both!.Count);
+        Assert.Null(unknown);
+    }
+
+    [Fact]
+    public async Task A_sessions_answer_that_is_not_a_list_is_unreachable_and_never_nobody_playing()
+    {
+        // The server's own info object, recorded, answering the sessions call: something that is not the list of sessions.
+        var info = RecordedReplies.Jellyfin("identity").Exchanges[1].Reply;
+        var client = new Jellyfin().Client((request, _) => request.RequestUri!.AbsolutePath == "/Sessions" ? info.ToResponse() : null);
+
+        var answer = await client.ListPlayingAsync(Server(), CancellationToken.None);
+
+        Assert.IsType<MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Unreachable>(answer);
+    }
+
+    [Fact]
+    public async Task When_the_full_scan_asked_for_instead_also_fails_the_server_is_not_told_and_the_answer_is_unreachable()
+    {
+        var refusedTargeted = RecordedReplies.Jellyfin("media-updated-refused").Exchanges[0].Reply;
+        var cannotServe = RecordedReplies.Jellyfin("item-delete-refused").Single.Reply;
+        var jellyfin = new Jellyfin();
+        var client = jellyfin.Client((request, _) => request.RequestUri!.AbsolutePath == "/Library/Media/Updated" ? refusedTargeted.ToResponse() : cannotServe.ToResponse());
+
+        var answer = await client.RefreshAsync(Server(), "movies", [new MediaServerPathChange("/media/Movies/X/X.mkv", MediaServerChangeKind.Created)], CancellationToken.None);
+
+        Assert.IsType<MediaServerAnswer<MediaServerRefresh>.Unreachable>(answer);
+        Assert.True(jellyfin.Sent("POST /Library/Media/Updated"));
+        Assert.True(jellyfin.Sent("POST /Library/Refresh"));
+    }
+
+    [Fact]
+    public async Task A_server_that_answers_the_folder_test_with_something_that_is_not_a_folder_listing_has_not_found_the_folder()
+    {
+        // The server's own info object, recorded, answering the folder browser: 200, but not a list of folders.
+        var info = RecordedReplies.Jellyfin("identity").Exchanges[1].Reply;
+        var client = new Jellyfin().Client((_, _) => info.ToResponse());
+
+        var answer = await client.TestPathAsync(Server(), "/media/Movies", CancellationToken.None);
+
+        var test = Assert.IsType<MediaServerAnswer<MediaServerPathMappingTest>.Reported>(answer).Value;
+        Assert.False(test.Found);
+        Assert.Contains("Check the mapped path", test.Message);
+    }
 }
