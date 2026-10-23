@@ -498,4 +498,54 @@ public sealed class JellyfinOperationsOnRecordingsTests
         Assert.False(test.Found);
         Assert.Contains("Check the mapped path", test.Message);
     }
+
+    private sealed class TimesOut : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 30 seconds elapsing.");
+    }
+
+    [Fact]
+    public async Task A_server_that_does_not_answer_within_the_timeout_is_unreachable_on_the_test_the_listing_and_the_sessions()
+    {
+        var client = new JellyfinMediaServerClient(new Factory(new TimesOut()));
+
+        var test = await client.TestAsync(Server(), CancellationToken.None);
+        var listing = await client.ListItemsAsync(Server(), "movies", CancellationToken.None);
+        var playing = await client.ListPlayingAsync(Server(), CancellationToken.None);
+
+        Assert.Equal("unreachable", test.Status);
+        Assert.Contains("could not reach", test.Message);
+        Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Unreachable>(listing);
+        Assert.IsType<MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Unreachable>(playing);
+    }
+
+    [Fact]
+    public async Task A_server_that_is_rate_limiting_is_reported_as_answering_429_with_one_attempt_and_no_retry()
+    {
+        var jellyfin = new Jellyfin();
+        var client = jellyfin.Client((_, _) => new HttpResponseMessage(HttpStatusCode.TooManyRequests));
+
+        var test = await client.TestAsync(Server(), CancellationToken.None);
+        var listing = await client.ListItemsAsync(Server(), "movies", CancellationToken.None);
+
+        Assert.False(test.Ok);
+        Assert.Contains("answered HTTP 429", test.Message);
+        Assert.Contains("answered HTTP 429", Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Unreachable>(listing).Reason);
+        Assert.Equal(["GET /System/Info", "GET /Users"], jellyfin.Calls);
+    }
+
+    [Fact]
+    public async Task A_200_that_is_not_json_or_not_Jellyfin_on_the_user_list_is_unreachable_and_never_an_empty_library()
+    {
+        // Plex's own empty page from its refresh call, and Plex's library list, each answering the user list.
+        var notJson = RecordedReplies.Plex("refresh").Exchanges[0].Reply;
+        var notJellyfin = RecordedReplies.Plex("sections").Single.Reply;
+
+        var asHtml = await new Jellyfin().Client((request, _) => request.RequestUri!.AbsolutePath == "/Users" ? notJson.ToResponse() : null).ListItemsAsync(Server(), "movies", CancellationToken.None);
+        var asPlex = await new Jellyfin().Client((request, _) => request.RequestUri!.AbsolutePath == "/Users" ? notJellyfin.ToResponse() : null).ListItemsAsync(Server(), "movies", CancellationToken.None);
+
+        Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Unreachable>(asHtml);
+        Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Unreachable>(asPlex);
+    }
 }

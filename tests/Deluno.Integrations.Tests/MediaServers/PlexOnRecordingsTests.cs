@@ -635,4 +635,50 @@ public sealed class PlexOnRecordingsTests
         Assert.IsType<MediaServerAnswer<MediaServerCollectionSync>.Unreachable>(create);
         Assert.IsType<MediaServerAnswer<MediaServerCollectionSync>.Unreachable>(delete);
     }
+
+    private sealed class TimesOut : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 30 seconds elapsing.");
+    }
+
+    [Fact]
+    public async Task A_server_that_does_not_answer_within_the_timeout_is_said_to_be_unreachable_on_the_test_and_the_listing()
+    {
+        var client = new PlexMediaServerClient(new Factory(new TimesOut()));
+
+        var test = await client.TestAsync(Server(), CancellationToken.None);
+        var listing = await client.ListItemsAsync(Server(), "movies", CancellationToken.None);
+
+        Assert.False(test.Ok);
+        Assert.Equal("unreachable", test.Status);
+        Assert.Contains("could not reach", test.Message, StringComparison.Ordinal);
+        Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Unreachable>(listing);
+    }
+
+    [Fact]
+    public async Task A_server_that_is_rate_limiting_is_reported_as_answering_429_with_one_attempt_and_no_retry()
+    {
+        var plex = new Plex(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests));
+
+        var test = await plex.Client().TestAsync(Server(), CancellationToken.None);
+
+        Assert.False(test.Ok);
+        Assert.Contains("answered HTTP 429", test.Message, StringComparison.Ordinal);
+        Assert.Equal(["GET /"], plex.Calls);
+    }
+
+    [Fact]
+    public async Task A_200_that_is_not_json_or_not_Plex_on_the_library_list_is_unreachable_and_never_an_empty_library()
+    {
+        // Plex's own empty page from the refresh call, and Jellyfin's server info, each answering the library list.
+        var notJson = R("refresh").Exchanges[0].Reply;
+        var notPlex = RecordedReplies.Jellyfin("identity").Exchanges[1].Reply;
+
+        var asHtml = await new Plex(request => request.RequestUri!.AbsolutePath == "/library/sections" ? notJson.ToResponse() : null).Client().ListItemsAsync(Server(), "movies", CancellationToken.None);
+        var asJellyfin = await new Plex(request => request.RequestUri!.AbsolutePath == "/library/sections" ? notPlex.ToResponse() : null).Client().ListItemsAsync(Server(), "movies", CancellationToken.None);
+
+        Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Unreachable>(asHtml);
+        Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Unreachable>(asJellyfin);
+    }
 }
