@@ -243,7 +243,7 @@ test.describe("Find & Download follows the server and asks only for the lists an
   }
 });
 
-test("a remote path mapping is edited from its row: the form fills from the row, Save changes puts the replacement in and takes the original out, and a failed save loses nothing", async ({ page }) => {
+test("a remote path mapping is edited from its row: the form fills from the row, Save changes replaces the original in one request, and a failed save loses nothing", async ({ page }) => {
   test.setTimeout(120_000);
   await authenticateAndNavigate(page, "/indexers/path-mappings");
   const host = `edit-map-${Date.now()}.example.test`;
@@ -263,13 +263,13 @@ test("a remote path mapping is edited from its row: the form fills from the row,
 
     // A save the server refuses leaves the original exactly as it was. Only that one answer is made to fail.
     await page.getByLabel("Client path").fill("/downloads/changed");
-    await page.route(/\/api\/download-clients\/[^/]+\/path-mappings$/, (route) => route.request().method() === "POST" ? route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ title: "Server error" }) }) : route.continue());
+    await page.route(/\/api\/download-clients\/[^/]+\/path-mappings\/[^/]+$/, (route) => route.request().method() === "PUT" ? route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ title: "Server error" }) }) : route.continue());
     await page.getByRole("button", { name: "Save changes" }).click();
     await expect(page.getByText("Server error").first()).toBeVisible();
     expect((await mappings()).map((item) => item.remotePath)).toEqual(["/downloads/complete"]);
-    await page.unroute(/\/api\/download-clients\/[^/]+\/path-mappings$/);
+    await page.unroute(/\/api\/download-clients\/[^/]+\/path-mappings\/[^/]+$/);
 
-    // Save changes: the replacement first, then the original goes.
+    // Save changes: the one request changes the mapping in place (#1374).
     await page.getByRole("button", { name: "Save changes" }).click();
     await expect.poll(async () => (await mappings()).map((item) => item.remotePath)).toEqual(["/downloads/changed"]);
     await expect(page.getByRole("button", { name: "Add mapping" })).toBeVisible();
