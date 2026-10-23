@@ -262,6 +262,18 @@ public sealed class SqliteDownloadDispatchesRepository(
         return result ?? throw new InvalidOperationException($"Dispatch {dispatchId} not found after detection");
     }
 
+    /// <summary>Every name a kind of title goes by, so a filter for any of them finds the dispatches stored under the one Deluno writes.</summary>
+    internal static string[] MediaTypeNames(string mediaType)
+    {
+        var asked = mediaType.Trim().ToLowerInvariant();
+        return asked switch
+        {
+            "movie" or "movies" => ["movies", "movie"],
+            "tv" or "series" or "show" or "shows" => ["tv", "series", "show", "shows"],
+            _ => [mediaType]
+        };
+    }
+
     /// <summary>
     /// One word per outcome, enforced at the door.
     ///
@@ -424,8 +436,14 @@ public sealed class SqliteDownloadDispatchesRepository(
 
         if (!string.IsNullOrEmpty(filter.MediaType))
         {
-            whereConditions.Add("media_type = @mediaType");
-            parameters["mediaType"] = filter.MediaType;
+            // Stored as "movies" and "tv"; the guides and the SDK say movie and series, so every name for a kind finds the kind.
+            var names = MediaTypeNames(filter.MediaType);
+            for (var index = 0; index < names.Length; index++)
+            {
+                parameters[$"mediaType{index}"] = names[index];
+            }
+
+            whereConditions.Add($"media_type IN ({string.Join(", ", names.Select((_, index) => $"@mediaType{index}"))})");
         }
 
         if (!string.IsNullOrEmpty(filter.EntityType))

@@ -175,6 +175,27 @@ public sealed class DownloadDispatchesApiTests : IAsyncDisposable
         Assert.Equal(seriesDispatchId, item.GetProperty("id").GetString());
     }
 
+    [Theory]
+    [InlineData("movie", "movies-dispatch")]
+    [InlineData("movies", "movies-dispatch")]
+    [InlineData("tv", "tv-dispatch")]
+    [InlineData("series", "tv-dispatch")]
+    [InlineData("show", "tv-dispatch")]
+    [InlineData("shows", "tv-dispatch")]
+    public async Task The_media_type_filter_finds_what_Deluno_stores_under_every_name_the_documents_use(string asked, string expected)
+    {
+        // Deluno stores a film's dispatch under "movies" and a show's under "tv"; the guides and the SDK say movie and series.
+        await InsertDispatchAsync("movies-dispatch", "movies-main", "movie-1", "Test.Movie.2024.1080p", "movies");
+        await InsertDispatchAsync("tv-dispatch", "series-main", "series-1", "Test.Show.S01E01.1080p", "tv");
+
+        var response = await _client.GetAsync($"/api/v1/download-dispatches?mediaType={asked}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStreamAsync());
+        var item = Assert.Single(json.RootElement.GetProperty("items").EnumerateArray());
+        Assert.Equal(expected, item.GetProperty("id").GetString());
+    }
+
     [Fact]
     public async Task GetDispatch_returns_single_dispatch_with_timeline()
     {
