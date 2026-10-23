@@ -55,6 +55,12 @@ test.describe("Review existing files", () => {
     await openScreen(page, "/movies");
     const list = await api<{ items: Array<{ id: string }> }>(page, "GET", `/api/movies/page?search=${stamp}&pageSize=100&facets=false`);
     for (const item of list.body.items ?? []) await api(page, "DELETE", `/api/movies/${item.id}`);
+    // What this spec's films left behind in shared places: recovery cases the folder rescan raised, and files moved to the recycle bin.
+    const cases = await api<{ recentCases?: Array<{ id: string; title: string }> }>(page, "GET", "/api/movies/import-recovery?limit=500");
+    for (const item of cases.body?.recentCases ?? []) if (item.title.includes(stamp)) await api(page, "DELETE", `/api/movies/import-recovery/${item.id}`);
+    const bin = await api<Array<{ id: string; libraryName?: string; originalPath?: string }> | { items?: Array<{ id: string; libraryName?: string; originalPath?: string }> }>(page, "GET", "/api/recycle-bin");
+    const held = Array.isArray(bin.body) ? bin.body : (bin.body?.items ?? []);
+    for (const item of held) if (item.libraryName?.includes(stamp) || item.originalPath?.includes(stamp)) await api(page, "DELETE", `/api/recycle-bin/${item.id}`);
     await api(page, "DELETE", `/api/libraries/${libraryId}`);
     await page.close();
     fs.rmSync(root, { recursive: true, force: true });

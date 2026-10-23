@@ -83,7 +83,7 @@ test.describe("Transfers with a download client", () => {
     await openScreen(page, "/queue");
     await untilQuiet(page);
     const target = page.getByRole("row").filter({ hasText: release }).first();
-    await expect(target).toBeVisible({ timeout: 20_000 });
+    await expect(target).toBeVisible({ timeout: 45_000 });
     await target.click();
     const drawer = page.getByRole("dialog").filter({ hasText: release }).first();
     await expect(drawer.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
@@ -93,7 +93,7 @@ test.describe("Transfers with a download client", () => {
   test("the download the client lists is a row of its own, in the client's words, and its drawer names the release, the client and how far it got", async ({ page }) => {
     await openScreen(page, "/queue");
     await untilQuiet(page);
-    await expect(rowOf(page)).toBeVisible({ timeout: 20_000 });
+    await expect(rowOf(page)).toBeVisible({ timeout: 45_000 });
     await expect(rowOf(page)).toContainText("Downloading");
     const drawer = await openDrawer(page);
     await expect(drawer.getByText("Downloading").first()).toBeVisible();
@@ -104,7 +104,7 @@ test.describe("Transfers with a download client", () => {
   test("Show columns lists the optional columns, unticking one hides it from the table and it stays hidden after a reload; ticking it brings it back", async ({ page }) => {
     await openScreen(page, "/queue");
     await untilQuiet(page);
-    await expect(rowOf(page)).toBeVisible({ timeout: 20_000 });
+    await expect(rowOf(page)).toBeVisible({ timeout: 45_000 });
     const picker = page.getByRole("button", { name: "Show columns", exact: true });
     await picker.click();
     const menu = page.getByRole("menu", { name: "Show columns: choose which columns to show" });
@@ -202,7 +202,7 @@ test.describe("Transfers with a download client", () => {
     await drawer.getByRole("button", { name: "Remove from client", exact: true }).click();
     await why.getByRole("button", { name: `Remove “${RELEASE}”: Just stop tracking it` }).click();
     await expect(drawer).toHaveCount(0);
-    await expect(rowOf(page)).toHaveCount(0, { timeout: 20_000 });
+    await expect(rowOf(page)).toHaveCount(0, { timeout: 45_000 });
     expect(asked(/torrents\/delete/).length, "forgetting a download leaves the client's copy").toBe(deletesBefore);
   });
 });

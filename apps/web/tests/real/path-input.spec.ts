@@ -24,6 +24,12 @@ test.describe("Folder field", () => {
   test.afterAll(() => fs.rmSync(base, { recursive: true, force: true }));
 
   async function openDrawer(page: import("@playwright/test").Page) {
+    // From this machine's own browser the server would open a Windows folder window on the computer's screen, where a test must never
+    // open one. The server refuses that ask from any other device with exactly this answer, which sends the screen to its in-app folder browser.
+    await page.route("**/api/filesystem/native-folder-picker", (route) => route.fulfill({
+      status: 403, contentType: "application/json",
+      body: JSON.stringify({ message: "The Windows folder window opens on the computer Deluno runs on. Use the folder browser instead.", nativePickerUnavailable: true })
+    }));
     await openScreen(page, "/settings/libraries");
     await untilQuiet(page);
     await page.getByRole("button", { name: "New library", exact: true }).first().click();

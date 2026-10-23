@@ -55,8 +55,9 @@ test.describe("Movies controls", () => {
     await untilQuiet(page);
     const requests = recordRequests(page);
     await narrow(page);
+    // The request leaves a short wait after the typing stops, and on an install holding only these titles the rows already read right before it does.
+    await expect.poll(() => requests.find("GET", /^\/api\/movies\/page/).some((r) => r.search.includes(`search=${stamp}`))).toBe(true);
     requests.stop();
-    expect(requests.find("GET", /^\/api\/movies\/page/).some((r) => r.search.includes(`search=${stamp}`))).toBe(true);
 
     await page.getByRole("button", { name: "Clear", exact: true }).click();
     await expect(box(page)).toHaveValue("");
