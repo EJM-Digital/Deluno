@@ -122,6 +122,8 @@ export function BlockReleaseAction({
       if (!response.ok) throw new Error("block-release-failed");
       toast.success(`"${displayTitle}" blocked; every indexer's copy is refused from now on.`);
       setOpen(false);
+      // The button turns into "Lift the block" at once, even where the caller does not read its list again.
+      void checkBlockedMatch(identity).then(setBlockedMatch);
       onBlocked?.();
     } catch (error) {
       const explained = await describeRequestFailure(null, error, { action: "block this release" });
