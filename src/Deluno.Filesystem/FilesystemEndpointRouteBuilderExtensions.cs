@@ -61,7 +61,12 @@ public static class FilesystemEndpointRouteBuilderExtensions
 
     public static async Task<IResult> PickNativeFolderAsync(HttpContext httpContext, NativeFolderPickerRequest request, CancellationToken cancellationToken)
     {
-        if (!IsFromThisMachine(Deluno.Security.Hardening.LocalNetworkAuthConstants.SocketPeer(httpContext), httpContext.Connection.LocalIpAddress, httpContext.Request.Headers))
+        // A test host sets Filesystem:NativeFolderPicker to false so a Windows folder window never opens on the screen
+        // of the computer running the tests; the answer is then the one any other device gets.
+        var nativePickerOff = httpContext.RequestServices?.GetService<Microsoft.Extensions.Configuration.IConfiguration>()
+            ?["Filesystem:NativeFolderPicker"] is { } setting
+            && string.Equals(setting.Trim(), "false", StringComparison.OrdinalIgnoreCase);
+        if (nativePickerOff || !IsFromThisMachine(Deluno.Security.Hardening.LocalNetworkAuthConstants.SocketPeer(httpContext), httpContext.Connection.LocalIpAddress, httpContext.Request.Headers))
         {
             return Results.Json(
                 new

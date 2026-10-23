@@ -91,7 +91,10 @@ export default defineConfig({
         // Lets the real Transfers specs start from a sent download and its hand-off (TransfersSeedTestEndpoints).
         Testing__EnableTransfersSeedEndpoint: "true",
         // Lets the real show-page spec start from a show with episodes and searches (SeriesSeedTestEndpoints).
-        Testing__EnableSeriesSeedEndpoint: "true"
+        Testing__EnableSeriesSeedEndpoint: "true",
+        // This machine's own browser would otherwise make the server open a Windows folder window on the owner's screen; with
+        // this the folder-window route answers as it does for any other device, which sends the screen to its in-app folder browser.
+        Filesystem__NativeFolderPicker: "false"
       }
     },
     {
