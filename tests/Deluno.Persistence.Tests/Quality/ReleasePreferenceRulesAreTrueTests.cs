@@ -137,4 +137,21 @@ public sealed class ReleasePreferenceRulesAreTrueTests
         Assert.Contains(unknownTarget, error => error.Contains("targets unknown level 'nowhere'"));
         Assert.Contains(tieBreakDriving, error => error.Contains("cannot use TieBreak intent to drive upgrades"));
     }
+
+    [Fact]
+    public void When_candidates_are_ordered_in_one_search_a_family_that_is_Unknown_or_Conflicting_ranks_below_one_proven_Absent_which_ranks_below_any_proven_level()
+    {
+        var plan = Plan();
+        PreferenceEvaluation Of(params PreferenceFact[] facts) => ReleasePreferenceEvaluator.Evaluate(plan, facts);
+        var web = Of(Fact("quality.bluray-1080p", PreferenceFactState.Absent), Fact("quality.web-1080p", PreferenceFactState.Present));
+        var absent = Of(Fact("quality.bluray-1080p", PreferenceFactState.Absent), Fact("quality.web-1080p", PreferenceFactState.Absent));
+        var unknown = Of();
+        var conflicting = Of(Fact("quality.bluray-1080p", PreferenceFactState.Present, "name"), Fact("quality.bluray-1080p", PreferenceFactState.Absent, "probe"));
+
+        // The spec says unknown is never "worst-ranked" without a closed-world detector, yet ordering ranks Unknown last (reported: spec and code disagree).
+        Assert.True(ReleasePreferenceEvaluator.CompareForSelection(plan, web, absent) < 0);
+        Assert.True(ReleasePreferenceEvaluator.CompareForSelection(plan, absent, unknown) < 0);
+        Assert.Equal(0, ReleasePreferenceEvaluator.CompareForSelection(plan, unknown, conflicting));
+        Assert.Equal(0, ReleasePreferenceEvaluator.CompareForSelection(plan, web, web));
+    }
 }
