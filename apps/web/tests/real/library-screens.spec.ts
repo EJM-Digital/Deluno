@@ -116,7 +116,7 @@ for (const variant of VARIANTS) {
       expect((await narrowed).ok()).toBe(true);
       await expect(page.getByText(keep, { exact: true })).toBeVisible();
       await expect(page.getByText(other, { exact: true })).toHaveCount(0);
-      expect(requests.find("GET", new RegExp(variant.listApi.replace(/\//g, "\\/"))).some((r) => new URLSearchParams(r.search).get("search") === keep)).toBe(true);
+      expect(requests.find("GET", new RegExp(variant.listApi.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&"))).some((r) => new URLSearchParams(r.search).get("search") === keep)).toBe(true);
 
       const nothing = `zz-no-such-title-${stamp}`;
       await search(page, variant).fill(nothing);

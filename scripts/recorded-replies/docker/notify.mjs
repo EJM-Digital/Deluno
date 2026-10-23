@@ -18,7 +18,7 @@ import { Client, addSecret, replyJson, save, until } from './lib.mjs';
 const NTFY = `http://127.0.0.1:${process.env.REC_NTFY_PORT ?? 38580}`;
 const NTFY_AUTH = `http://127.0.0.1:${process.env.REC_NTFY_AUTH_PORT ?? 38582}`;
 const GOTIFY = `http://127.0.0.1:${process.env.REC_GOTIFY_PORT ?? 38581}`;
-const wsl = (command) => execSync(`wsl -e bash -lc "${command.replace(/"/g, '\\"')}"`, { encoding: 'utf8' }).trim();
+const wsl = (command) => execSync(`wsl -e bash -lc "${command.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`, { encoding: 'utf8' }).trim();
 
 const TITLE = 'Import completed: Sintel (2010)';
 const MESSAGE = 'Sintel (2010) was imported from Sintel.2010.WEB.1080p using copy.';
