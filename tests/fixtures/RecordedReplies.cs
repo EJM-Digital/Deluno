@@ -53,6 +53,15 @@ public static class RecordedReplies
     public static Recording Tmdb(string state) => RecordedReplies.LoadLatest("tmdb", state);
     public static Recording Thexem(string state) => RecordedReplies.LoadLatest("thexem", state);
     /// <summary>Gotify, the self-hosted push service, recorded from the real server: a message pushed with an application token.</summary>
+    /// <summary>OpenSubtitles.com, SubDL, SubSource, Titlovi, Ktuvit, Trakt, the TMDb v3 API and TheTVDB v4: each service's own refusal of a key or login it does not know (scripts/recorded-replies/docker/subtitle-refusals.mjs).</summary>
+    public static Recording Opensubtitles(string state) => RecordedReplies.LoadLatest("opensubtitles", state);
+    public static Recording Subdl(string state) => RecordedReplies.LoadLatest("subdl", state);
+    public static Recording Subsource(string state) => RecordedReplies.LoadLatest("subsource", state);
+    public static Recording Titlovi(string state) => RecordedReplies.LoadLatest("titlovi", state);
+    public static Recording Ktuvit(string state) => RecordedReplies.LoadLatest("ktuvit", state);
+    public static Recording Trakt(string state) => RecordedReplies.LoadLatest("trakt", state);
+    public static Recording Tmdbapi(string state) => RecordedReplies.LoadLatest("tmdbapi", state);
+    public static Recording Tvdbapi(string state) => RecordedReplies.LoadLatest("tvdbapi", state);
     public static Recording Gotify(string state) => RecordedReplies.LoadLatest("gotify", state);
     public static Recording Weir(string state) => RecordedReplies.LoadLatest("weir", state);
     public static Recording Deluno(string state) => RecordedReplies.LoadLatest("deluno", state);

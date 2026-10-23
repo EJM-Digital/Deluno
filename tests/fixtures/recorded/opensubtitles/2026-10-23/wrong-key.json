@@ -2,7 +2,7 @@
   "app": "opensubtitles",
   "version": "2026-10-23",
   "state": "wrong-key",
-  "recordedAt": "2026-10-23T17:07:57Z",
+  "recordedAt": "2026-10-23T17:17:36Z",
   "note": "A search (answered with a redirect to its canonical form, then followed), a sign-in and a download request sent with an API key (and a username and password) OpenSubtitles does not know: its own refusal of each.",
   "exchanges": [
     {
@@ -31,7 +31,7 @@
         },
         "body": {
           "message": "You cannot consume this service",
-          "request_id": "739ea6012ae6d2787547b33aa203295f"
+          "request_id": "ed2115578d64ab507aeb0f42326f3f07"
         }
       }
     },
@@ -52,7 +52,7 @@
         },
         "body": {
           "message": "You cannot consume this service",
-          "request_id": "14ba7a40b477c81482fc1c26fc5b7658"
+          "request_id": "03ff3c6d1dd4e365369f203e9be4790e"
         }
       }
     },

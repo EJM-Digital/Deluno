@@ -1,0 +1,43 @@
+{
+  "app": "tmdbapi",
+  "version": "2026-10-23",
+  "state": "wrong-key",
+  "recordedAt": "2026-10-23T17:17:41Z",
+  "note": "A title search and the configuration read sent to the TMDb v3 API itself (not Deluno's metadata gateway) with an API key it does not know: its own refusal of each.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/3/search/movie?api_key=<scrubbed>&query=The%20Matrix&include_adult=false"
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "status_code": 7,
+          "status_message": "Invalid API key: You must be granted a valid key.",
+          "success": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/3/configuration?api_key=<scrubbed>"
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "status_code": 7,
+          "status_message": "Invalid API key: You must be granted a valid key.",
+          "success": false
+        }
+      }
+    }
+  ]
+}

@@ -748,6 +748,58 @@ public sealed class TmdbMetadataProviderTests : IDisposable
         Assert.Equal(IntegrationRetryState.ManualAction, status.LastFailure.RetryState);
     }
 
+    /// <summary>#1301: the same refusal as above, answered with TMDb's own recorded reply to a key it does not know (tests/fixtures/recorded/tmdbapi).</summary>
+    [Fact]
+    public async Task A_key_TMDb_does_not_know_is_its_own_401_and_becomes_a_typed_authentication_failure_that_needs_a_person()
+    {
+        var refusal = Deluno.Tests.Recorded.RecordedReplies.Tmdbapi("wrong-key").Exchanges[0];
+        Assert.Equal(401, refusal.Reply.Status);
+        Assert.Contains("Invalid API key", refusal.Reply.Body, StringComparison.Ordinal);
+        var asked = new List<string>();
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSettingsSnapshot("direct", string.Empty));
+        settings.Setup(repo => repo.GetMetadataProviderSecretAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, TimeProvider.System),
+            NullLogger<CacheSchemaInitializer>.Instance)
+            .StartAsync(CancellationToken.None);
+
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(request =>
+            {
+                asked.Add(request.RequestUri!.Host + request.RequestUri.AbsolutePath);
+                return refusal.Reply.ToResponse();
+            })),
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Deluno:Metadata:TMDbApiKey"] = "test-key"
+                })
+                .Build(),
+            settings.Object,
+            factory,
+            storageOptions,
+            TimeProvider.System,
+            new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(TimeProvider.System, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var found = await provider.SearchAsync(new MetadataLookupRequest("The Matrix", "movies", 1999, null), CancellationToken.None);
+
+        Assert.Empty(found);
+        Assert.Contains("api.themoviedb.org/3/search/movie", asked);
+        var status = await provider.GetStatusAsync(CancellationToken.None);
+        Assert.Equal(IntegrationFailureKind.Authentication, status.LastFailure!.Kind);
+        Assert.Equal(401, status.LastFailure.HttpStatus);
+        Assert.Equal(IntegrationRetryState.ManualAction, status.LastFailure.RetryState);
+    }
+
     [Fact]
     public async Task ResolveProviderRecordAsync_reports_confirmed_404_without_fuzzy_search()
     {

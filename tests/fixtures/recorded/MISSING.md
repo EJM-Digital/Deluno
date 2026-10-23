@@ -292,3 +292,12 @@ Still not recordable from the apps: a client's own timeout and an HTTP 429 with 
 ## Hosted notification services (#1343)
 
 - discord, slack, telegram, pushover and apprise deliveries: each needs an account (or, for Apprise, a running Apprise API with a service behind it), so Deluno's payload for them is held against the service documentation only (`NotificationProviderPayloadTests`). ntfy 2.32.0 and Gotify 3.1.1 are recorded from containers (`docker/notify.mjs`).
+
+## Refusals recorded for #1301 (23 Oct 2026, `scripts/recorded-replies/docker/subtitle-refusals.mjs`)
+
+Real unauthenticated calls with a made-up key or login, so each recording is the service's own refusal: `opensubtitles/wrong-key` (the search redirected to its canonical form and refused, the login, the download), `subdl/wrong-key`, `subsource/wrong-key`, `titlovi/wrong-login`, `ktuvit/wrong-login`, `trakt/unknown-client-id` (device code, device-token poll, refresh, a list read), `tmdbapi/wrong-key` (the TMDb v3 API itself, not the metadata gateway) and `tvdbapi/wrong-key`. Not recorded, and why:
+
+- every reply to a right key or account (OpenSubtitles, SubDL, SubSource, Titlovi, Ktuvit, Assrt, Trakt, TMDb direct, TheTVDB): each needs an account or a key, and none is made here. Rows that need one stay gaps: a sign-in that works, a search that finds something, a download link, the Trakt device code and its poll states 400/409/410/418/429, OMDb's ratings.
+- Podnapisi (`www.podnapisi.net` did not resolve on 23 Oct 2026) and Assrt (`api.assrt.net` did not accept a connection): nothing could be recorded.
+- Addic7ed, Subf2m and Supersubtitles are public pages that were not recorded in this pass; their tests still build the pages inline.
+- FlareSolverr 3.5.2 answers a `request.get` on a session it no longer has with `ok` (`request-session-missing`), so the "helper lost its sessions" branch of `FlareSolverrCloudflareHelper` (an error naming the session, then create again) is not what a current FlareSolverr does.

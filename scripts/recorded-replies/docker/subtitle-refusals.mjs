@@ -56,7 +56,19 @@ const traktRefresh = await trakt.send({ method: 'POST', path: '/oauth/token', js
 const traktTrending = await trakt.get('/movies/trending?limit=1');
 save('trakt', day, 'unknown-client-id', 'The device-code request, the device-token poll, the token refresh and a public list read, all sent with a Trakt client id the service does not know: its own refusal of each.', [traktCode, traktPoll, traktRefresh, traktTrending]);
 
+// ---- TMDb, TheTVDB and OMDb read directly with a key of the person's own (direct metadata mode) ----
+const tmdb = new Client('https://api.themoviedb.org', { headers: agent, keep });
+const tmdbSearch = await tmdb.get(`/3/search/movie?api_key=${wrongKey}&query=The%20Matrix&include_adult=false`);
+const tmdbConfiguration = await tmdb.get(`/3/configuration?api_key=${wrongKey}`);
+save('tmdbapi', day, 'wrong-key', 'A title search and the configuration read sent to the TMDb v3 API itself (not Deluno\'s metadata gateway) with an API key it does not know: its own refusal of each.', [tmdbSearch, tmdbConfiguration]);
+const tvdb = new Client('https://api4.thetvdb.com', { headers: agent, keep });
+const tvdbLogin = await tvdb.send({ method: 'POST', path: '/v4/login', json: { apikey: wrongKey } });
+save('tvdbapi', day, 'wrong-key', 'The login sent to TheTVDB v4 with an API key it does not know: its own refusal.', [tvdbLogin]);
+const omdb = new Client('https://www.omdbapi.com', { headers: agent, keep });
+const omdbRatings = await omdb.get(`/?apikey=${wrongKey}&i=tt0133093&plot=short&r=json`);
+save('omdb', day, 'wrong-key', 'The ratings read for one title sent to OMDb with an API key it does not know: its own refusal.', [omdbRatings]);
+
 console.log('done');
-for (const [name, e] of Object.entries({ osSearch, osCanonical, osLogin, osDownload, subdlSearch, subsourceSearch, titloviToken, ktuvitLogin, traktCode, traktPoll, traktRefresh, traktTrending })) {
+for (const [name, e] of Object.entries({ osSearch, osCanonical, osLogin, osDownload, subdlSearch, subsourceSearch, titloviToken, ktuvitLogin, traktCode, traktPoll, traktRefresh, traktTrending, tmdbSearch, tmdbConfiguration, tvdbLogin, omdbRatings })) {
   console.log(name, e.reply.status, (e.reply.bodyText ?? e.reply.error ?? '').slice(0, 160).replace(/\s+/g, ' '));
 }

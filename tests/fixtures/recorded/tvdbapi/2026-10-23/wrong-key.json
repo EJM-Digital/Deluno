@@ -1,0 +1,29 @@
+{
+  "app": "tvdbapi",
+  "version": "2026-10-23",
+  "state": "wrong-key",
+  "recordedAt": "2026-10-23T17:17:41Z",
+  "note": "The login sent to TheTVDB v4 with an API key it does not know: its own refusal.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v4/login",
+        "body": {
+          "apikey": "<scrubbed>"
+        }
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "application/json; charset=UTF-8"
+        },
+        "body": {
+          "status": "failure",
+          "message": "InvalidAPIKey: apikey invalid",
+          "data": null
+        }
+      }
+    }
+  ]
+}
