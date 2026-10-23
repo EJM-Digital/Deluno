@@ -51,7 +51,9 @@ export async function importedFile(title: string) {
 /** Waits for the client to finish, Weir to clean and the hand-off to settle, and the film to be in the library. */
 export async function waitImported(stack: Stack, sent: Sent, seconds = 8 * 60) {
   const { film, kind } = sent;
-  await until(`${kind} to finish ${film.release}`, seconds, () => clientFinished(stack, kind, film), 2000);
+  // Deluno hands a release to Weir only after its client finished it, so a hand-off already there means "finished" even if
+  // the client has since let go (tidy-now removes the torrent while this waits on an earlier film in the same batch).
+  await until(`${kind} to finish ${film.release}`, seconds, async () => (await clientFinished(stack, kind, film)) || !!(await handoffOf(stack, film.release)), 2000);
   await until(`Deluno to hand ${film.release} to Weir`, 120, () => handoffOf(stack, film.release), 1000);
   const settled = await until(`the hand-off of ${film.release} to settle`, seconds, async () => {
     const h = await handoffOf(stack, film.release);
