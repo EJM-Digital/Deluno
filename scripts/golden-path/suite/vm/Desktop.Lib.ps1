@@ -90,7 +90,8 @@ function Get-DesktopWindowsOnce {
 
 function Format-DesktopWindows {
     param([object[]] $Windows = @(Get-DesktopWindows))
-    (@($Windows | ForEach-Object { "[{0}|{1}|{2}] {3}" -f $_.Process, $_.Class, $_.ProcessId, $_.Name }) -join '; ')
+    (@($Windows | ForEach-Object { "[{0}|{1}|{2}] {3}" -f $_.Process, $_.Class, $_.ProcessId, $_.Name }) -join '; ') +
+    ' || Deluno processes: ' + ((@(Get-Process -Name Deluno -ErrorAction SilentlyContinue) | ForEach-Object { "pid $($_.Id) session=$($_.SessionId) responding=$($_.Responding) mainWindow='$($_.MainWindowTitle)'" }) -join '; ')
 }
 
 # Waits for a top-level window whose name matches (and, when given, whose process is the one named). Returns the window or $null.
