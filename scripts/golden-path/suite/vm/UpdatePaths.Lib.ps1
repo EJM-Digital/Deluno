@@ -405,6 +405,15 @@ function Invoke-UpdateSetupInteractive {
         $p = Start-Process -FilePath $CandidateSetup -PassThru
         $done = $p.WaitForExit(90000)
         if (-not $done) {
+            $dlg = Wait-DesktopWindow -NamePattern '^Deluno Setup' -Process 'Deluno-Setup' -TimeoutSec 20
+            if ($dlg) {
+                $text = Get-WindowText -Window $dlg
+                Add-Note "Setup's own window says: $text"
+                foreach ($b in 'Install', 'Yes', 'Update', 'Continue', 'OK', 'Retry', 'Close') { if (Click-WindowButton -Window $dlg -NamePattern "^$b") { Add-Note "Pressed '$b' in Setup's window."; break } }
+                $done = $p.WaitForExit(120000)
+            }
+        }
+        if (-not $done) {
             Save-Evidence -Name 'update-interactive-windows.txt' -Text ("{0}`n{1}" -f (Format-DesktopWindows), ((Get-Process | Where-Object { $_.ProcessName -match 'Setup|Update|Deluno' } | ForEach-Object { "$($_.ProcessName) $($_.Id) '$($_.MainWindowTitle)'" }) -join "`n"))
             $done = $p.WaitForExit(510000)
         }
@@ -491,9 +500,13 @@ function Invoke-UpdateTrayMenu {
         Assert-UpdateFeedFiles | Out-Null
         $ctx = Start-PreviousForUpdate -CandidateVersion $CandidateVersion
         if (-not $ctx) { return }
-        $feed = Start-UpdateFeed -Folder (Get-UpdateFeedFolder) -ThrottleMs 150
+        $feed = $null
         try {
             Set-UpdateSourceToFeed | Out-Null
+            # The feed is not up yet: a check that cannot reach it says so plainly and the menu item stays "Check for updates".
+            $down = Try-Deluno -Method POST -Path '/api/updates/check' -TimeoutSec 120
+            Add-Check 'A check against a feed that is down says it could not check (never "up to date")' ($down.Status -eq 200 -and $down.Data.status.state -eq 'error' -and $down.Data.message -match "Couldn't check for updates") $(if ($down.Data) { "$($down.Data.message) | state $($down.Data.status.state)" } else { "answered $($down.Status)" })
+            $feed = Start-UpdateFeed -Folder (Get-UpdateFeedFolder) -ThrottleMs 150
             $backupsBefore = @(Get-BackupFiles)
             $press = {
                 param([string] $Pattern)

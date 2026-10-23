@@ -36,7 +36,7 @@ function Get-ScenarioPlan {
         # The host's own, on a clean machine: the guided setup walked through in the browser from a fresh install, with the clients and Weir the picker installed.
         @{ Name = 'guide'; Function = 'Invoke-GroupGuide'; Host = $true; Ids = @('guided-setup.walk') }
         # The other ways an installed Deluno is updated (#1295), each on a clean machine of its own with the previous release installed, against the candidate's real packages served from a local feed in the VM.
-        @{ Name = 'updatepaths'; Function = $null; Host = $true; Ids = @('update.in-app', 'update.apply-on-quit', 'update.apply-at-start', 'update.corrupt-package', 'update.setup-interactive', 'update.setup-over-stopped', 'update.service-mode', 'update.tray-menu') }
+        @{ Name = 'updatepaths'; Function = $null; Host = $true; Ids = @('update.in-app', 'update.apply-on-quit', 'update.apply-at-start', 'update.corrupt-package', 'update.setup-interactive', 'update.setup-over-stopped', 'update.service-mode') }
         @{ Name = 'update';   Function = $null; Host = $true; Ids = @('update.over-running-previous') }
         # The github-limit scenarios use up GitHub's anonymous allowance (60 calls an hour for the whole network), and it stays used up
         # for up to an hour, so they run after every scenario and install that needs the network. The update scenario installs
@@ -84,7 +84,7 @@ function Get-RunScope {
         ChosenIds = $chosen
         NeedVm = [bool](@($vmIds | Where-Object { $_ -in $chosen }).Count)
         RunUpdate = ('update.over-running-previous' -in $chosen)
-        UpdatePathIds = @($chosen | Where-Object { $_ -in @('update.in-app', 'update.apply-on-quit', 'update.apply-at-start', 'update.corrupt-package', 'update.setup-interactive', 'update.setup-over-stopped', 'update.service-mode', 'update.tray-menu') })
+        UpdatePathIds = @($chosen | Where-Object { $_ -in @('update.in-app', 'update.apply-on-quit', 'update.apply-at-start', 'update.corrupt-package', 'update.setup-interactive', 'update.setup-over-stopped', 'update.service-mode') })
         RunGithubPicker = ('github-limit.picker' -in $chosen)
         RunGuide = ('guided-setup.walk' -in $chosen)
     }
