@@ -56,6 +56,27 @@ public sealed class HeldReleasesOverHttpTests
     }
 
     [Fact]
+    public async Task Dismissing_hides_the_release_and_the_same_release_offered_again_for_that_title_and_a_blank_id_is_404()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var id = await HeldMovieAsync(app, "Big Buck Bunny", "held");
+        var historyId = await HistoryIdAsync(app);
+
+        using var blank = await app.Client.PostAsync("/api/attention/held-releases/%20/dismiss", content: null);
+        Assert.Equal(HttpStatusCode.NotFound, blank.StatusCode);
+        Assert.Single((await app.Client.GetFromJsonAsync<JsonElement>("/api/attention/held-releases")).EnumerateArray());
+
+        using var dismissed = await app.Client.PostAsync($"/api/attention/held-releases/{historyId}/dismiss", content: null);
+        Assert.Equal(HttpStatusCode.NoContent, dismissed.StatusCode);
+
+        // A later search holds the very same release for the same film again: a new row, still dismissed.
+        await app.Services.GetRequiredService<IMovieCatalogRepository>().RecordSearchAttemptAsync(
+            id, "lib", "automatic", "held", DateTimeOffset.UtcNow, null, "Held.",
+            "Big.Buck.Bunny.2008.2160p.WEB-DL-GRP", "Nyaa", HeldPlan, CancellationToken.None);
+        Assert.Empty((await app.Client.GetFromJsonAsync<JsonElement>("/api/attention/held-releases")).EnumerateArray());
+    }
+
+    [Fact]
     public async Task Approving_a_film_that_has_its_file_since_is_a_plain_409_and_sends_nothing()
     {
         await using var app = await ApplicationTestHost.StartAsync();
