@@ -248,8 +248,9 @@ Write-Host "Metadata gateway"
 $gatewaySyntax = Invoke-LoggedCommand -FilePath $nodePath -Arguments @("--check", "services/metadata-gateway/src/index.js")
 $gatewayTvdbSyntax = Invoke-LoggedCommand -FilePath $nodePath -Arguments @("--check", "services/metadata-gateway/src/tvdb.js")
 $gatewayCacheSyntax = Invoke-LoggedCommand -FilePath $nodePath -Arguments @("--check", "services/metadata-gateway/src/cache.js")
-$gatewayTests = Invoke-LoggedCommand -FilePath $nodePath -Arguments @("--test", "services/metadata-gateway/test/index.test.js", "services/metadata-gateway/test/tvdb.test.js", "services/metadata-gateway/test/hardening.test.js")
-if ($gatewaySyntax.ExitCode -eq 0 -and $gatewayTvdbSyntax.ExitCode -eq 0 -and $gatewayCacheSyntax.ExitCode -eq 0 -and $gatewayTests.ExitCode -eq 0) {
+$gatewayLimitsSyntax = Invoke-LoggedCommand -FilePath $nodePath -Arguments @("--check", "services/metadata-gateway/src/limits.js")
+$gatewayTests = Invoke-LoggedCommand -FilePath $nodePath -Arguments @("--test", "services/metadata-gateway/test/index.test.js", "services/metadata-gateway/test/tvdb.test.js", "services/metadata-gateway/test/hardening.test.js", "services/metadata-gateway/test/limits.test.js", "services/metadata-gateway/test/contract.test.js")
+if ($gatewaySyntax.ExitCode -eq 0 -and $gatewayTvdbSyntax.ExitCode -eq 0 -and $gatewayCacheSyntax.ExitCode -eq 0 -and $gatewayLimitsSyntax.ExitCode -eq 0 -and $gatewayTests.ExitCode -eq 0) {
     Write-Ok "metadata gateway contract"
 } else {
     if ($gatewaySyntax.Output) { Write-Host $gatewaySyntax.Output }
@@ -268,7 +269,7 @@ $workflowChecks = @(
     @{ Label = "every GitHub Action is pinned to a commit SHA"; Args = @("scripts/check-github-action-pins.mjs") },
     @{ Label = "every workflow has least-privilege permissions and job timeouts"; Args = @("scripts/check-workflow-hygiene.mjs") },
     @{ Label = "release workflow publishes only from its publish job, and ci-passed judges every CI job"; Args = @("scripts/check-release-workflow-gates.mjs") },
-    @{ Label = "ci-passed and release-gate tests"; Args = @("--test", "scripts/ci-passed.test.mjs", "scripts/verify-ci-for-release.test.mjs", "scripts/verify-golden-path-for-release.test.mjs", "scripts/tag-release.test.mjs", "scripts/check-release-workflow-gates.test.mjs") },
+    @{ Label = "ci-passed and release-gate tests"; Args = @("--test", "scripts/ci-passed.test.mjs", "scripts/verify-ci-for-release.test.mjs", "scripts/verify-golden-path-for-release.test.mjs", "scripts/tag-release.test.mjs", "scripts/check-release-workflow-gates.test.mjs", "scripts/ci-check-runs-every-gateway-file.test.mjs") },
     @{ Label = "Persistence test split"; Args = @("--test", "scripts/check-persistence-parts.test.mjs") },
     @{ Label = "the installer's pinned download clients agree across the pin files, and the stale-pin check works"; Args = @("--test", "scripts/check-component-pins.test.mjs") },
     @{ Label = "the installer's pin files name the same versions and checksums"; Args = @("scripts/check-component-pins.mjs", "--offline") },
