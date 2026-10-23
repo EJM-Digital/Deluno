@@ -668,7 +668,7 @@ public sealed class MigrationAssistantServiceTests
     }
 
     [Fact]
-    public async Task PreviewAsync_maps_arr_tmdb_and_imdb_list_ids_without_guessing_other_list_types()
+    public async Task PreviewAsync_maps_arr_tmdb_list_ids_and_refuses_imdb_lists_without_guessing_other_list_types()
     {
         using var storage = TestStorage.Create();
         var service = await CreateServiceAsync(storage);
@@ -691,9 +691,9 @@ public sealed class MigrationAssistantServiceTests
         Assert.Equal("12345", tmdb.Data["feedUrl"]);
 
         var imdb = Assert.Single(report.Operations, operation => operation.Name == "IMDb watchlist");
-        Assert.Equal("create", imdb.Action);
-        Assert.Equal("imdb", imdb.Data["provider"]);
-        Assert.Equal("ls012345678", imdb.Data["feedUrl"]);
+        Assert.Equal("unsupported", imdb.Action);
+        Assert.False(imdb.CanApply);
+        Assert.Contains("MDBList or Trakt", imdb.Reason);
 
         var unsupported = Assert.Single(report.Operations, operation => operation.Name == "Unknown custom list");
         Assert.Equal("unsupported", unsupported.Action);
@@ -888,10 +888,10 @@ public sealed class MigrationAssistantServiceTests
               ],
               "importLists": [
                 {
-                  "name": "IMDb Watchlist",
-                  "implementation": "IMDb",
+                  "name": "MDBList Watchlist",
+                  "implementation": "MDBList",
                   "fields": [
-                    { "name": "listUrl", "value": "https://www.imdb.com/list/ls123/" }
+                    { "name": "listUrl", "value": "https://mdblist.com/lists/owner/watchlist" }
                   ]
                 }
               ],

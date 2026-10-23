@@ -25,12 +25,12 @@ Mature transfer engines remain integrations until Deluno's own equivalent is pro
 
 Import Lists are a discovery source, not an instruction to delete or reconcile an existing library. Each list must make four choices understandable:
 
-1. **What it follows:** a Trakt, IMDb, TMDb, MDbList, RSS/Atom, Letterboxd-compatible, or plain public title list.
+1. **What it follows:** a Trakt, TMDb, MDbList, RSS/Atom, Letterboxd-compatible, or plain public title list.
 2. **Where matching titles go:** Movies or TV, a target library, and eventually an effective Media Plan.
 3. **What happens on discovery:** review first, add only, or add and let normal automation search.
 4. **How it stays safe:** duplicate detection, exclusions/temporary ignore, provenance, last result, and no destructive reconciliation by default.
 
-Deluno currently supports TMDb list IDs/URLs, IMDb list/export URLs, Trakt public lists and watchlists through RSS, generic RSS/Atom/Letterboxd feeds, public plain text lists, and MDbList public list URLs. The ordinary Deluno flow mirrors Radarr: choose **Custom list URL**, paste the public MDbList URL, then choose the library and automatic-add behaviour. Deluno uses MDbList's documented Radarr/Sonarr-compatible public response without exposing or requiring an MDbList key. The authenticated MDbList API remains a legacy/advanced path for future account-only capabilities.
+Deluno currently supports TMDb list IDs/URLs, Trakt public lists and watchlists through RSS, generic RSS/Atom/Letterboxd feeds, public plain text lists, and MDbList public list URLs. IMDb lists are not read directly (IMDb blocks programs); MDbList and Trakt import them. The ordinary Deluno flow mirrors Radarr: choose **Custom list URL**, paste the public MDbList URL, then choose the library and automatic-add behaviour. Deluno uses MDbList's documented Radarr/Sonarr-compatible public response without exposing or requiring an MDbList key. The authenticated MDbList API remains a legacy/advanced path for future account-only capabilities.
 
 The remaining list work is explicitly tracked in #100: validation and read-only preview, selective approval, stable provider provenance, durable exclusions, authenticated personal-list flows, and Arr migration reporting.
 

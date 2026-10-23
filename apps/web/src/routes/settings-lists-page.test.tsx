@@ -84,6 +84,18 @@ describe("the list rows", () => {
     expect(within(rowOf("Fresh list")).getByText("Not synced")).toBeInTheDocument();
   });
 
+  it("keeps a saved IMDb list visible and off, named as no longer supported with the plain note, and does not offer IMDb for a new list", () => {
+    const note = "IMDb lists are no longer supported because IMDb blocks programs; use MDBList or Trakt to import an IMDb list.";
+    loader.intakeSources = [list({ id: "i", name: "Old IMDb list", provider: "imdb", isEnabled: false, lastSyncStatus: "error", lastSyncSummary: note })];
+    renderPage();
+    const row = rowOf("Old IMDb list");
+    expect(within(row).getByText(/IMDb \(no longer supported\)/)).toBeInTheDocument();
+    expect(within(row).getByText("Off")).toBeInTheDocument();
+    expect(within(row).getByText(note)).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Old IMDb list"));
+    expect(screen.getByText(/IMDb \(no longer supported\)/, { selector: "option" })).toBeInTheDocument();
+  });
+
   it("opens the edit drawer for the clicked list, titled with its name and described by provider, media type and library", () => {
     loader.intakeSources = [list({})];
     renderPage();

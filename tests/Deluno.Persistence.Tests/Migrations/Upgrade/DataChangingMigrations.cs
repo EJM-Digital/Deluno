@@ -60,6 +60,7 @@ internal static class DataChangingMigrations
         new(Platform, 133, ["intake_sources.name", "download_clients.name", "media_servers.name", "notification_webhooks.name", "processor_connections.name", "seerr_servers.name", "indexer_sources.name"], "ConnectionNamesTests"),
         new(Platform, 135, ["indexer_proxies.name"], "IndexerProxyNamesTests"),
         new(Platform, 137, ["~system_settings"], "StrikeRulesDefaultOffMigrationTests"),
+        new(Platform, 139, ["intake_sources.is_enabled", "intake_sources.last_sync_status", "intake_sources.last_sync_summary", "intake_sources.updated_utc"], "ImdbListsRetiredMigrationTests"),
 
         // ---- jobs ----
         new(Jobs, 2, ["job_queue.next_attempt_utc", "job_queue.max_attempts"], $"{JobsTests}.V0002"),

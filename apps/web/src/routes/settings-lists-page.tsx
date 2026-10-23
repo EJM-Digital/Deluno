@@ -55,7 +55,6 @@ import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save
 const PROVIDERS = [
   { label: "Custom list URL", value: "url-list" },
   { label: "Trakt", value: "trakt" },
-  { label: "IMDb", value: "imdb" },
   { label: "TMDb", value: "tmdb" },
   { label: "TMDb person", value: "tmdb-person" },
   { label: "TMDb Popular", value: "tmdb-popular" },
@@ -71,6 +70,8 @@ const PROVIDERS = [
   { label: "Trakt Top Watched (connected)", value: "trakt-watched" },
   { label: "Trakt Recommended (connected)", value: "trakt-recommended" }
 ];
+/** IMDb lists are retired (#1292): a saved one stays visible, switched off, with this note. It is no longer offered as a choice. */
+const IMDB_RETIRED = { label: "IMDb (no longer supported)", value: "imdb" };
 const TMDB_PERSON_CREDIT_TYPES = [
   { value: "cast", label: "Cast", description: "Films and shows where this person acts." },
   { value: "director", label: "Director", description: "Films and shows this person directs." },
@@ -477,7 +478,7 @@ export function SettingsListsPage() {
   }
 
   /* ---------------------------------------------------------- render */
-  const providerLabel = (value: string) => PROVIDERS.find((provider) => provider.value === value)?.label ?? value;
+  const providerLabel = (value: string) => value === "imdb" ? IMDB_RETIRED.label : PROVIDERS.find((provider) => provider.value === value)?.label ?? value;
 
   return (
     <div className="grid gap-(--page-gap)">
@@ -651,7 +652,7 @@ export function SettingsListsPage() {
         <DrawerSection title="Basics">
           <FieldRow>
             <Field label="Provider">
-              <Select value={form.provider} onChange={(event) => setForm((current) => ({ ...current, provider: event.target.value }))} options={PROVIDERS} />
+              <Select value={form.provider} onChange={(event) => setForm((current) => ({ ...current, provider: event.target.value }))} options={form.provider === "imdb" ? [...PROVIDERS, IMDB_RETIRED] : PROVIDERS} />
             </Field>
           </FieldRow>
           <Field label={form.provider === "tmdb-person" ? "Person" : "List URL"} help={listAddressHelp(form.provider)} error={errors.feedUrl}>
@@ -1079,7 +1080,7 @@ function listAddressHelp(provider: string) {
     case "trakt":
       return "Paste a Trakt list or watchlist URL. A Trakt username also follows that person's watchlist.";
     case "imdb":
-      return "Paste an IMDb list URL, its ls… identifier, or an IMDb CSV export URL.";
+      return "IMDb lists are no longer supported because IMDb blocks programs; use MDBList or Trakt to import an IMDb list.";
     case "tmdb":
       return "Paste a TMDb list URL or list ID.";
     case "tmdb-person":

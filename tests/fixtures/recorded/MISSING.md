@@ -215,7 +215,6 @@ Recordings the settings-lists coverage rows still need, found 17 October 2026. E
 - sonarr, prowlarr and recyclarr exports (the files each tool writes for a migration, one of each source kind; Prowlarr's indexers scoped "both"): needed to prove the migration assistant's preview and apply per source kind.
 - a list read from a list service (TMDb list items, a Letterboxd or StevenLu feed) with an entry that is on the Never add list: needed to prove "exclusions are honoured by sync" against a real service's reply. A plain RSS feed is proven (`ImportListsOnTheRealHostTests`), and a feed is a file of titles, not another app's reply.
 - mdblist items reply for a public list and trakt list items and watchlist replies: these services need a signed-in account to read, so those rows wait on #1343.
-- imdb list export CSV and list page (a public list, `ls` id, list URL and CSV export URL): IMDb lists are public and need no account, so this is not waiting on #1343. Nothing is recorded yet; the row stays a gap on #1292 until the coordinator records a public list's real replies.
 ## Docker recording, 17 October 2026 (scripts/recorded-replies/docker/)
 Recorded from the published images in Docker: qBittorrent 5.2.4 (`auto-management-set`, `tracker-not-working`, `add-link`, `add-link-dead`), Deluge 2.2.0 (`add-url`, `add-url-dead`, `status-unknown-hash`, `label-plugin-off`), Transmission 4.1.3 (`finished-seed-fields`, `label-set-refused-comma`, `label-set-refused-empty`), SABnzbd 5.1.3 (`duplicate-discarded`, `duplicate-failed`), Weir 1.0.0-rc.18 (`openapi`, `status-scheduled-file-on-hold`, `status-not-taken`, `status-other-connections-secret`, `status-deluno-source-no-secret`, and the hand-offs around them), Deluno 1.0.0-rc.30.33 into Weir (`handoff-collision-*`, `handoff-season-pack`, `handoff-partial-season-pack`, `handoff-rejected-release`, `handoff-second-connection`, `events-failed-not-taken`, `events-failed-rejected-known-handoff`), Sonarr 4.0.20, Radarr 6.4.4 and Prowlarr 2.6.5 (system status, lists, profiles, tags, root folders, custom formats, download clients, indexers) and TheXEM (`thexem/2026-10-17`).
 Still missing, and why:
@@ -267,10 +266,6 @@ Still missing, and why:
 - **SABnzbd**: an add of a real NZB (it needs a news server with the articles); `get_files` (s21) and the other lines in this file are unchanged.
 - **The gateway**: the 429 with `Retry-After` (it would use the shared hourly allowance of the address), the artwork route, the gateway down; and the replies of `api.themoviedb.org` itself (Deluno's direct mode with an install's own key; no key was used).
 - **Radarr holding a film file**: the migration import payload (`MigrationAssistantServiceTests`) carries a movie file with media info and custom formats, which the recorded Radarr (no file) does not give. To record: put the generated film in Radarr's root folder, rescan, `GET /api/v3/movie`.
-
-## IMDb list export (#1292)
-
-- imdb list export CSV: recorded on 22 October 2026 are the bot check that IMDb gives an automated client for a public list page and its /export (HTTP 202, empty page; `imdb/2026-10-22`), and a signed-out browser asked for the same /export got a 404 page, so no real CSV could be recorded. Needed: a real `ls...` list CSV saved from a signed-in browser, trimmed to a few rows, to prove the CSV is parsed to entries (#1292).
 
 ## Jellyfin 12.2.0 recorded again in Docker, one user for every state (coverage area automation, #1293)
 
