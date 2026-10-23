@@ -210,10 +210,19 @@ function Invoke-GroupTray {
             if ($item) {
                 $uia = [System.Windows.Automation.AutomationElement]
                 $cond = New-Object System.Windows.Automation.PropertyCondition($uia::ControlTypeProperty, [System.Windows.Automation.ControlType]::MenuItem)
-                foreach ($el in $uia::RootElement.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)) {
-                    if ($el.Current.Name -match '^Let any address in') { $r = $el.Current.BoundingRectangle; Send-Click -X ([int]($r.X + $r.Width / 2)) -Y ([int]($r.Y + $r.Height / 2)); break }
+                # The submenu closes if the pointer is not over it yet: press the item, and when no box came up open Advanced again and retry.
+                $confirm = $null
+                for ($try = 1; $try -le 3 -and -not $confirm; $try++) {
+                    foreach ($el in $uia::RootElement.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)) {
+                        if ($el.Current.Name -match '^Let any address in') { $r = $el.Current.BoundingRectangle; Send-Click -X ([int]($r.X + $r.Width / 2)) -Y ([int]($r.Y + $r.Height / 2)); break }
+                    }
+                    $confirm = Wait-DesktopWindow -NamePattern 'Let any address in?' -TimeoutSec 8
+                    if (-not $confirm -and $try -lt 3) {
+                        Close-TrayMenu; Close-TrayMenu
+                        Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Advanced$' | Out-Null
+                        Wait-Until -TimeoutSec 5 -IntervalSec 0.3 -Condition { Get-OpenMenuItems | Where-Object { $_ -match '^Let any address in' } | Select-Object -First 1 } | Out-Null
+                    }
                 }
-                $confirm = Wait-DesktopWindow -NamePattern 'Let any address in\?' -TimeoutSec 20
                 Add-Check 'A warning asks first ("Let any address in?")' ($null -ne $confirm) $(if ($confirm) { Get-WindowText -Window $confirm } else { Format-DesktopWindows })
                 $clickedAt = (Get-Date).ToUniversalTime().AddSeconds(-2)
                 $pressed = [bool]($confirm -and (Click-WindowButton -Window $confirm -NamePattern '^OK$'))
