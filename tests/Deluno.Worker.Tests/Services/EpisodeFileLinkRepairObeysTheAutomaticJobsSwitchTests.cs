@@ -65,6 +65,24 @@ public sealed class EpisodeFileLinkRepairObeysTheAutomaticJobsSwitchTests
         run.Series.Verify(series => series.RepairWrongEpisodeFileLinksAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Fact]
+    public async Task A_pass_that_throws_is_logged_and_leaves_the_links_as_they_are_and_the_service_ends_cleanly()
+    {
+        var run = Build(automaticJobsOn: true);
+        run.Series.Setup(series => series.RepairWrongEpisodeFileLinksAsync(It.IsAny<CancellationToken>())).ThrowsAsync(new IOException("The database is busy."));
+
+        await run.Service.StartAsync(CancellationToken.None);
+        await Wait.UntilAsync(() => run.Series.Invocations.Count > 0, "the service to try its pass");
+        await Wait.UntilAsync(() => run.Service.ExecuteTask is { IsCompleted: true }, "the service to end after its one pass");
+        await run.Service.StopAsync(CancellationToken.None);
+
+        run.Series.Verify(series => series.RepairWrongEpisodeFileLinksAsync(It.IsAny<CancellationToken>()), Times.Once);
+        Assert.True(run.Service.ExecuteTask is { IsCompletedSuccessfully: true });
+        run.Activity.Verify(
+            activity => activity.RecordActivityAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
     private const string AutomaticJobs_PausedCategory = Deluno.Platform.AutomaticJobs.PausedActivityCategory;
     private const string EpisodeFileLinkRepairService_Key = "episode-file-link-repair";
 

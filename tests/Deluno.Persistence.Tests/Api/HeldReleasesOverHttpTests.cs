@@ -56,6 +56,27 @@ public sealed class HeldReleasesOverHttpTests
     }
 
     [Fact]
+    public async Task Dismissing_hides_the_release_and_the_same_release_offered_again_for_that_title_and_a_blank_id_is_404()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var id = await HeldMovieAsync(app, "Big Buck Bunny", "held");
+        var historyId = await HistoryIdAsync(app);
+
+        using var blank = await app.Client.PostAsync("/api/attention/held-releases/%20/dismiss", content: null);
+        Assert.Equal(HttpStatusCode.NotFound, blank.StatusCode);
+        Assert.Single((await app.Client.GetFromJsonAsync<JsonElement>("/api/attention/held-releases")).EnumerateArray());
+
+        using var dismissed = await app.Client.PostAsync($"/api/attention/held-releases/{historyId}/dismiss", content: null);
+        Assert.Equal(HttpStatusCode.NoContent, dismissed.StatusCode);
+
+        // A later search holds the very same release for the same film again: a new row, still dismissed.
+        await app.Services.GetRequiredService<IMovieCatalogRepository>().RecordSearchAttemptAsync(
+            id, "lib", "automatic", "held", DateTimeOffset.UtcNow, null, "Held.",
+            "Big.Buck.Bunny.2008.2160p.WEB-DL-GRP", "Nyaa", HeldPlan, CancellationToken.None);
+        Assert.Empty((await app.Client.GetFromJsonAsync<JsonElement>("/api/attention/held-releases")).EnumerateArray());
+    }
+
+    [Fact]
     public async Task Approving_a_film_that_has_its_file_since_is_a_plain_409_and_sends_nothing()
     {
         await using var app = await ApplicationTestHost.StartAsync();
@@ -129,6 +150,37 @@ public sealed class HeldReleasesOverHttpTests
         Assert.Contains(id, dispatches);
         // And it says why it went out: a person approved it.
         Assert.Contains("You approved this release from Needs action.", await app.Client.GetStringAsync("/api/activity"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Approving_a_held_release_for_a_film_a_hand_send_has_since_put_downloading_is_a_plain_409_and_sends_no_second_copy()
+    {
+        var grabs = new CountingGrabService();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services =>
+        {
+            services.RemoveAll<IDownloadClientGrabService>();
+            services.AddSingleton<IDownloadClientGrabService>(grabs);
+        });
+        var libraryId = await LibraryWithAClientAsync(app);
+        var id = await HeldMovieAsync(app, "Big Buck Bunny", "held", libraryId);
+        var historyId = await HistoryIdAsync(app);
+        using var first = await app.Client.PostAsJsonAsync($"/api/movies/{id}/grab", new
+        {
+            releaseName = "Big.Buck.Bunny.2008.1080p.BluRay.x264-GRP",
+            indexerName = "Fixture",
+            downloadUrl = "https://fixture.invalid/first.torrent",
+            candidateQuality = "Bluray 1080p"
+        });
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+
+        using var approved = await app.Client.PostAsync($"/api/attention/held-releases/{historyId}/approve", content: null);
+
+        Assert.Equal(HttpStatusCode.Conflict, approved.StatusCode);
+        var refusal = await approved.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("held-release-refused", refusal.GetProperty("code").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(refusal.GetProperty("message").GetString()));
+        Assert.Equal(1, grabs.Count);
+        Assert.Empty((await app.Client.GetFromJsonAsync<JsonElement>("/api/attention/held-releases")).EnumerateArray());
     }
 
     // ---------------------------------------------------------------- helpers

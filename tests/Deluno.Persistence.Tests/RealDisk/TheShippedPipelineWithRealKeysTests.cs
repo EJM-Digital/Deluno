@@ -109,6 +109,35 @@ public sealed class TheShippedPipelineWithRealKeysTests : IAsyncLifetime
     private string[] BackupZips() => Directory.Exists(_root) ? Directory.GetFiles(Path.Combine(_root, "data"), "*.zip", SearchOption.AllDirectories) : [];
 
     [Fact]
+    public async Task Every_API_answer_of_the_shipped_pipeline_carries_where_the_realtime_stream_stood_and_which_run_it_belongs_to()
+    {
+        using var first = await AsOwnerAsync(HttpMethod.Get, "/api/settings");
+        using var second = await AsOwnerAsync(HttpMethod.Get, "/api/libraries/");
+        using var refused = await _client.GetAsync("/api/settings");
+
+        Assert.True(first.IsSuccessStatusCode, await first.Content.ReadAsStringAsync());
+        foreach (var answer in new[] { first, second, refused })
+        {
+            Assert.True(long.TryParse(answer.Headers.GetValues("X-Deluno-Event-Seq").Single(), out var position) && position >= 0);
+            Assert.False(string.IsNullOrWhiteSpace(answer.Headers.GetValues("X-Deluno-Event-Instance").Single()));
+        }
+
+        Assert.Equal(
+            first.Headers.GetValues("X-Deluno-Event-Instance").Single(),
+            second.Headers.GetValues("X-Deluno-Event-Instance").Single());
+    }
+
+    [Fact]
+    public async Task The_test_only_push_routes_are_absent_from_a_normal_install()
+    {
+        using var asOwner = await AsOwnerAsync(HttpMethod.Post, "/api/testing/realtime/event", new { eventName = "SettingsChanged" });
+        using var watchers = await AsOwnerAsync(HttpMethod.Get, "/api/testing/realtime/watchers");
+
+        Assert.Equal(HttpStatusCode.NotFound, asOwner.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, watchers.StatusCode);
+    }
+
+    [Fact]
     public async Task A_write_key_is_refused_a_backup_naming_the_system_scope_and_a_system_key_makes_a_real_archive_on_disk()
     {
         var write = await KeyAsync("write");
@@ -215,5 +244,23 @@ public sealed class TheShippedPipelineWithRealKeysTests : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.Forbidden, backup.StatusCode);
         Assert.Empty(BackupZips());
+    }
+
+    [Theory]
+    [InlineData("/api/monitoring/export/prometheus")]
+    [InlineData("/api/monitoring/export/influx")]
+    public async Task A_metrics_export_needs_a_sign_in_is_open_to_a_key_that_can_read_and_is_refused_to_one_that_cannot(string path)
+    {
+        var read = await KeyAsync("read");
+        var writeOnly = await KeyAsync("write");
+
+        using var anonymous = await _client.GetAsync(path);
+        using var scraper = await WithKeyAsync(read, HttpMethod.Get, path);
+        using var cannotRead = await WithKeyAsync(writeOnly, HttpMethod.Get, path);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, scraper.StatusCode);
+        Assert.Contains("deluno_monitoring_readiness_ready", await scraper.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.Forbidden, cannotRead.StatusCode);
     }
 }

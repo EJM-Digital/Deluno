@@ -57,9 +57,18 @@ public sealed class LiveEventsPublisherTests : IAsyncDisposable
 
         public IReadOnlyList<string[]> Calls => _calls.ToArray();
 
+        /// <summary>How many of the next builds fail, as a source that cannot be read does.</summary>
+        public int FailTimes { get; set; }
+
         public Task<DashboardSectionBuild> BuildSectionsAsync(IReadOnlyCollection<string> sections, CancellationToken cancellationToken)
         {
             _calls.Enqueue([.. sections.Order(StringComparer.Ordinal)]);
+            if (FailTimes > 0)
+            {
+                FailTimes--;
+                throw new InvalidOperationException("The database is busy.");
+            }
+
             return Task.FromResult(new DashboardSectionBuild(
                 sections.ToDictionary(name => name, name => (object)new { name, active = 3 }),
                 []));
@@ -123,6 +132,58 @@ public sealed class LiveEventsPublisherTests : IAsyncDisposable
         }
 
         return advanced;
+    }
+
+    [Fact]
+    public async Task A_section_source_that_throws_is_skipped_and_the_next_change_is_pushed_as_usual()
+    {
+        await StartWithAnOpeningEventAsync();
+        _sections.FailTimes = 1;
+
+        await _publisher.PublishHealthChangedAsync("indexer", "problem", "Down", CancellationToken.None);
+        for (var attempt = 0; attempt < 400 && _sections.Calls.Count == 0; attempt++)
+        {
+            _clock.Advance(TimeSpan.FromMilliseconds(10));
+            await Task.Delay(5); // reason: lets the publisher's background loop run between fake-clock steps; bounded by the 400 tries
+        }
+
+        Assert.Single(_sections.Calls);
+        Assert.DoesNotContain(_publisher.Resume(1, [RealtimeGroups.Dashboard]).Envelopes, e => e.Name == LiveEventNames.DashboardSummaryUpdated);
+
+        await _publisher.PublishHealthChangedAsync("indexer", "ok", "Up", CancellationToken.None);
+        await AdvanceUntilPushedAsync(1);
+
+        Assert.Equal(2, _sections.Calls.Count);
+        Assert.Single(_publisher.Resume(1, [RealtimeGroups.Dashboard]).Envelopes, e => e.Name == LiveEventNames.DashboardSummaryUpdated);
+    }
+
+    [Fact]
+    public void Each_event_moves_the_dashboard_sections_the_map_names_and_an_unknown_event_moves_none()
+    {
+        static string[] Sections(string name) => [.. ((IReadOnlyCollection<string>)typeof(SignalRRealtimeEventPublisher)
+            .GetMethod("SectionsFor", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+            .Invoke(null, [name])!).Order(StringComparer.Ordinal)];
+        static string[] Of(params string[] names) => [.. names.Order(StringComparer.Ordinal)];
+
+        Assert.Equal(Of("health", "system", "indexers"), Sections("HealthChanged"));
+        Assert.All(new[] { "DownloadProgress", "QueueItemAdded", "QueueItemRemoved", "QueueItemStatusChanged" }, name => Assert.Equal(["downloads"], Sections(name)));
+        Assert.Equal(["activity"], Sections("ActivityEventAdded"));
+        Assert.Equal(Of("automation", "indexers"), Sections("SearchRunCompleted"));
+        Assert.Equal(Of("imports", "downloads"), Sections("ImportStateChanged"));
+        Assert.All(
+            new[] { "DispatchGrabAttempt", "DispatchGrabCompleted", "DispatchDetected", "DispatchImportStarted", "DispatchImportCompleted", LiveEventNames.JourneyStageChanged },
+            name => Assert.Equal(Of("pipeline", "downloads", "imports"), Sections(name)));
+        Assert.Equal(Of("processors", "imports"), Sections(LiveEventNames.ProcessorHandoffChanged));
+        Assert.Equal(["imports"], Sections(LiveEventNames.RecoveryCaseChanged));
+        Assert.All(new[] { LiveEventNames.JobChanged, LiveEventNames.SearchCycleProgress, "AutomationStateChanged", "IntakeSourceChanged" }, name => Assert.Equal(["automation"], Sections(name)));
+        Assert.Equal(["indexers"], Sections(LiveEventNames.IndexerQueryRecorded));
+        Assert.Equal(Of("downloads", "health"), Sections(LiveEventNames.ClientStateChanged));
+        Assert.Equal(Of("downloads", "health"), Sections("DownloadClientChanged"));
+        Assert.Equal(["storage"], Sections(LiveEventNames.DriveSpaceChanged));
+        Assert.All(new[] { "MovieChanged", "SeriesChanged", "EpisodeChanged", "LibraryChanged" }, name => Assert.Equal(["library"], Sections(name)));
+        Assert.All(new[] { "IndexerChanged", "IndexerProxyChanged" }, name => Assert.Equal(["indexers"], Sections(name)));
+        Assert.Equal(15, Sections("SettingsChanged").Length);
+        Assert.Empty(Sections("SomethingNobodyReads"));
     }
 
     [Fact]

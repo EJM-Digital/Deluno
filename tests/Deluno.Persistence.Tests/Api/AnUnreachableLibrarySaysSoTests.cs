@@ -49,6 +49,27 @@ public sealed class AnUnreachableLibrarySaysSoTests
         Assert.Contains(root.Replace("\\", "\\\\"), alerts, StringComparison.OrdinalIgnoreCase);
     }
 
+
+    [Fact]
+    public async Task A_library_whose_folder_comes_back_is_cleared_again_and_the_alert_goes()
+    {
+        var clock = new FixedTimeProvider(DateTimeOffset.UtcNow);
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => services.AddSingleton<TimeProvider>(clock));
+        var root = Directory.CreateTempSubdirectory("deluno-unreachable-back-").FullName;
+        var created = await app.Client.PostAsJsonAsync("/api/libraries/", NewLibrary("Films", root));
+        Assert.True(created.IsSuccessStatusCode, await created.Content.ReadAsStringAsync());
+        Directory.Delete(root, recursive: true);
+        clock.Advance(TimeSpan.FromSeconds(45));
+        Assert.Contains("library.unreachable", await AlertsAsync(app), StringComparison.Ordinal);
+
+        // The drive is back.
+        Directory.CreateDirectory(root);
+        clock.Advance(TimeSpan.FromSeconds(45));
+
+        Assert.DoesNotContain("library.unreachable", await AlertsAsync(app), StringComparison.Ordinal);
+        Directory.Delete(root, recursive: true);
+    }
+
     private static async Task<string> AlertsAsync(ApplicationTestHost app)
     {
         var response = await app.Client.GetAsync("/api/monitoring/alerts");

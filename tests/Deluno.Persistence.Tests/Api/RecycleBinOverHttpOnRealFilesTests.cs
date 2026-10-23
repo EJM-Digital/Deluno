@@ -171,6 +171,51 @@ public sealed class RecycleBinOverHttpOnRealFilesTests
         Assert.Equal(HttpStatusCode.NotFound, second.StatusCode);
     }
 
+    [Fact]
+    public async Task Deleting_permanently_a_file_that_cannot_be_deleted_says_so_keeps_the_entry_and_answers_404_like_an_unknown_one()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        using var libraryRoot = new Folder();
+        var path = Path.Combine(libraryRoot.Path, "Example.Movie.2026.mkv");
+        await File.WriteAllTextAsync(path, "the film");
+        var item = await BinAsync(app, DateTimeOffset.UtcNow, libraryRoot.Path, path);
+        var holder = Path.GetDirectoryName(item.RecyclePath)!;
+        // A file held open by another program cannot be deleted on Windows; elsewhere the folder it sits in is made read-only.
+        FileStream? held = null;
+        if (OperatingSystem.IsWindows())
+        {
+            held = new FileStream(item.RecyclePath, FileMode.Open, FileAccess.Read, FileShare.None);
+        }
+        else if (Environment.UserName == "root")
+        {
+            return; // reason: the superuser can delete from a read-only folder, so the failure cannot be made here
+        }
+        else
+        {
+            File.SetUnixFileMode(holder, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        }
+
+        try
+        {
+            using var response = await app.Client.DeleteAsync($"/api/recycle-bin/{item.Id}");
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+            Assert.False(body.GetProperty("success").GetBoolean());
+            Assert.StartsWith("Permanent deletion failed", body.GetProperty("message").GetString());
+            Assert.True(File.Exists(item.RecyclePath), "the stored file is still there");
+            Assert.Equal(item.Id, Assert.Single((await app.Client.GetFromJsonAsync<JsonElement>("/api/recycle-bin")).EnumerateArray()).GetProperty("id").GetString());
+        }
+        finally
+        {
+            held?.Dispose();
+            if (!OperatingSystem.IsWindows())
+            {
+                File.SetUnixFileMode(holder, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            }
+        }
+    }
+
     private static async Task<RecycleBinItem> BinAsync(ApplicationTestHost app, DateTimeOffset at, string libraryRoot, string file)
     {
         var service = new RecycleBinService(

@@ -178,4 +178,131 @@ public sealed class TitleChangesAreAnnouncedTests
 
         Assert.Contains(recorder.Entities, entity => entity is { Type: "Movie", Id: "*" });
     }
+
+    private sealed class Watching(params string[] subjects) : IRealtimeWatchers
+    {
+        public int Count(string subject) => subjects.Contains(subject) ? 1 : 0;
+    }
+
+    [Fact]
+    public async Task A_burst_of_more_than_200_titles_is_one_many_changed_note_a_note_to_each_library_and_only_the_title_pages_that_are_open()
+    {
+        using var storage = TestStorage.Create();
+        var movies = await MoviesAsync(storage);
+        var recorder = new Recorder();
+        var ids = new List<string>();
+        for (var index = 0; index < TitleChangeNotifier.MaxTitlesAnnouncedOneByOne + 1; index++)
+        {
+            var movie = await movies.AddAsync(new CreateMovieRequest($"Film {index}", 1990 + index % 30, null), CancellationToken.None);
+            await movies.EnsureWantedStateAsync(movie.Id, "lib-x", "missing", "Wanted", hasFile: false, null, "WEB 1080p", false, CancellationToken.None);
+            ids.Add(movie.Id);
+        }
+
+        var notifier = new TitleChangeNotifier(storage.Factory, recorder, NullLogger<TitleChangeNotifier>.Instance, TimeProvider.System, new Watching($"title:{ids[7]}"));
+
+        await notifier.FlushAsync(DelunoDatabaseNames.Movies, CancellationToken.None);
+
+        Assert.Contains(recorder.Entities, entity => entity is { Type: "Movie", Id: "*" });
+        Assert.Contains(recorder.Entities, entity => entity is { Type: "Library", Id: "lib-x" });
+        var open = Assert.Single(recorder.Titles);
+        Assert.Equal(ids[7], open.Id);
+        Assert.Equal(["lib-x"], open.Libraries);
+    }
+
+    [Fact]
+    public async Task Wanted_state_and_subtitle_state_writes_are_attributed_to_the_right_title_library_and_episode()
+    {
+        using var storage = TestStorage.Create();
+        var movies = await MoviesAsync(storage);
+        var series = await SeriesAsync(storage);
+        var wantedFilm = await movies.AddAsync(new CreateMovieRequest("Heat", 1995, null), CancellationToken.None);
+        var subtitledFilm = await movies.AddAsync(new CreateMovieRequest("Ronin", 1998, null), CancellationToken.None);
+        var show = await series.AddAsync(new CreateSeriesRequest("The Wire", 2002, null), CancellationToken.None);
+        var recorder = new Recorder();
+        var notifier = NotifierFor(storage, recorder);
+        await notifier.FlushAsync(DelunoDatabaseNames.Movies, CancellationToken.None);
+        await notifier.FlushAsync(DelunoDatabaseNames.Series, CancellationToken.None);
+        recorder.Clear();
+
+        await movies.EnsureWantedStateAsync(wantedFilm.Id, "lib-1", "missing", "Wanted", hasFile: false, null, "WEB 1080p", false, CancellationToken.None);
+        await ExecuteAsync(storage, DelunoDatabaseNames.Movies,
+            $"INSERT INTO movie_subtitle_state (movie_id, language, source, created_utc, updated_utc) VALUES ('{subtitledFilm.Id}', 'en', 'sidecar', '2026-10-08T00:00:00Z', '2026-10-08T00:00:00Z')");
+        await notifier.FlushAsync(DelunoDatabaseNames.Movies, CancellationToken.None);
+
+        var wanted = Assert.Single(recorder.Titles, title => title.Id == wantedFilm.Id);
+        Assert.Equal(["lib-1"], wanted.Libraries);
+        Assert.Single(recorder.Titles, title => title.Id == subtitledFilm.Id);
+        Assert.Equal(2, recorder.Titles.Count);
+        recorder.Clear();
+
+        await ExecuteAsync(storage, DelunoDatabaseNames.Series,
+            $"INSERT INTO series_wanted_state (series_id, library_id, wanted_status, wanted_reason, updated_utc) VALUES ('{show.Id}', 'lib-tv', 'missing', 'Wanted', '2026-10-08T00:00:00Z')");
+        await ExecuteAsync(storage, DelunoDatabaseNames.Series,
+            $"INSERT INTO season_entries (id, series_id, season_number, created_utc, updated_utc) VALUES ('season-1', '{show.Id}', 1, '2026-10-08T00:00:00Z', '2026-10-08T00:00:00Z')");
+        await ExecuteAsync(storage, DelunoDatabaseNames.Series,
+            $"INSERT INTO episode_entries (id, series_id, season_number, episode_number, monitored, created_utc, updated_utc) VALUES ('ep-9', '{show.Id}', 1, 9, 1, '2026-10-08T00:00:00Z', '2026-10-08T00:00:00Z')");
+        await ExecuteAsync(storage, DelunoDatabaseNames.Series,
+            "INSERT INTO episode_subtitle_state (episode_id, language, source, created_utc, updated_utc) VALUES ('ep-9', 'en', 'sidecar', '2026-10-08T00:00:00Z', '2026-10-08T00:00:00Z')");
+        await notifier.FlushAsync(DelunoDatabaseNames.Series, CancellationToken.None);
+
+        var announced = Assert.Single(recorder.Titles);
+        Assert.Equal(("Series", show.Id), (announced.Type, announced.Id));
+        Assert.Equal(["lib-tv"], announced.Libraries);
+        Assert.Equal([("Episode", "ep-9")], recorder.Entities.ToArray());
+    }
+
+    private static async Task ExecuteAsync(TestStorage storage, string database, string sql)
+    {
+        await using var connection = await storage.Factory.OpenConnectionAsync(database, CancellationToken.None);
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private sealed class FailsOnce : NullRealtimeEventPublisher, IRealtimeEventPublisher
+    {
+        private int _calls;
+
+        public ConcurrentQueue<string> Titles { get; } = new();
+
+        public Task PublishTitleChangedAsync(string entityType, string entityId, IReadOnlyCollection<string> libraryIds, CancellationToken cancellationToken)
+        {
+            if (Interlocked.Increment(ref _calls) == 1)
+            {
+                throw new InvalidOperationException("The hub is not ready.");
+            }
+
+            Titles.Enqueue(entityId);
+            return Task.CompletedTask;
+        }
+    }
+
+    [Fact]
+    public async Task The_loop_waits_for_a_write_then_a_quiet_window_then_announces_and_a_flush_that_fails_does_not_stop_it()
+    {
+        using var storage = TestStorage.Create();
+        var movies = await MoviesAsync(storage);
+        var publisher = new FailsOnce();
+        var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(Now);
+        var notifier = new TitleChangeNotifier(storage.Factory, publisher, NullLogger<TitleChangeNotifier>.Instance, clock);
+        await notifier.FlushAsync(DelunoDatabaseNames.Movies, CancellationToken.None);
+        await notifier.StartAsync(CancellationToken.None);
+
+        var first = await movies.AddAsync(new CreateMovieRequest("Heat", 1995, null), CancellationToken.None);
+        await Task.Delay(100); // reason: absence has to be watched for; nothing may be announced before the quiet window has passed on the clock
+        Assert.Empty(publisher.Titles);
+
+        // The window runs out; the first flush fails and is skipped.
+        await Wait.UntilAsync(() => { clock.Advance(TimeSpan.FromMilliseconds(50)); return clock.GetUtcNow() >= Now.AddMilliseconds(250) && publisher.Titles.IsEmpty; }, "the quiet window to pass");
+        await Task.Delay(100); // reason: the failed flush happens on the loop's own thread; there is no signal to await
+        Assert.Empty(publisher.Titles);
+
+        // The next write is announced after its own window.
+        var second = await movies.AddAsync(new CreateMovieRequest("Ronin", 1998, null), CancellationToken.None);
+        await Wait.UntilAsync(() => { clock.Advance(TimeSpan.FromMilliseconds(50)); return !publisher.Titles.IsEmpty; }, "the second write to be announced after the failed flush");
+        await notifier.StopAsync(CancellationToken.None);
+
+        Assert.Contains(second.Id, publisher.Titles);
+        Assert.DoesNotContain(first.Id, publisher.Titles);
+    }
 }

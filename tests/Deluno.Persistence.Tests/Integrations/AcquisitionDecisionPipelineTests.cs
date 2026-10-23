@@ -433,9 +433,35 @@ public sealed class AcquisitionDecisionPipelineTests
             DateTimeOffset.UnixEpoch,
             DateTimeOffset.UnixEpoch);
 
+    [Fact]
+    public async Task The_score_limits_a_profile_holds_reach_the_search_planner_and_a_release_picked_by_hand_is_judged_by_them()
+    {
+        var candidate = Candidate(status: "preferred", meetsCutoff: true, qualityDelta: 1);
+        var planner = new StubPlanner(new MediaSearchPlan(candidate, [candidate], "best candidate"));
+        var pipeline = new AcquisitionDecisionPipeline(planner);
+        var limits = new ProfileScoreLimits(MinFormatScore: 50, CutoffFormatScore: 100, MinUpgradeFormatScore: 5);
+
+        await pipeline.PlanAsync(new AcquisitionDecisionRequest(
+            "Dune Part Two", 2024, "movies", "WEB 720p", "WEB 1080p",
+            Sources: [Source()], DownloadClients: [DownloadClient()], ScoreLimits: limits));
+
+        Assert.Equal(limits, planner.ObservedScoreLimits);
+
+        AcquisitionSelectedReleaseRequest Pick(ProfileScoreLimits? scoreLimits) => new(
+            "Dune.Part.Two.2024.1080p.WEB-DL.x264-GRP", null, "Indexer", "https://example.test/file.torrent",
+            null, "WEB 1080p", ScoreLimits: scoreLimits);
+        var free = pipeline.EvaluateSelectedRelease(Pick(null));
+        var refused = pipeline.EvaluateSelectedRelease(Pick(limits));
+
+        Assert.True(free.CanDispatch, free.Reason);
+        Assert.False(refused.CanDispatch);
+        Assert.Contains(refused.Candidate.DecisionReasons!, reason => reason.Contains("never grab those", StringComparison.OrdinalIgnoreCase));
+    }
+
     private sealed class StubPlanner(MediaSearchPlan plan) : IMediaSearchPlanner
     {
         public ReleasePreferencePlan? ObservedPreferencePlan { get; private set; }
+        public ProfileScoreLimits? ObservedScoreLimits { get; private set; }
 
         public Task<MediaSearchPlan> BuildPlanAsync(
             string title,
@@ -478,6 +504,7 @@ public sealed class AcquisitionDecisionPipelineTests
             IReadOnlyCollection<string>? patientIndexerIds = null)
         {
             ObservedPreferencePlan = preferencePlan;
+            ObservedScoreLimits = scoreLimits;
             return Task.FromResult(plan);
         }
     }

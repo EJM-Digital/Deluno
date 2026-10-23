@@ -74,6 +74,39 @@ public sealed class HistoryRetentionWorkerPruneTests
         health.Verify(repository => repository.PruneDownloadHealthHistoryAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Fact]
+    public async Task A_prune_that_throws_is_logged_and_the_next_day_prunes_again_and_shutdown_during_the_wait_ends_the_loop()
+    {
+        var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.Parse("2026-09-28T12:00:00Z"));
+        var calls = 0;
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repository => repository.GetAsync(It.IsAny<CancellationToken>())).Returns(() =>
+            ++calls == 1
+                ? Task.FromException<PlatformSettingsSnapshot>(new IOException("The database is busy."))
+                : Task.FromResult(DefaultSettings(30)));
+        var activity = new Mock<IActivityFeedRepository>();
+        activity.Setup(repository => repository.PruneActivityAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        var health = new Mock<IDownloadHealthRepository>();
+        health.Setup(repository => repository.PruneDownloadHealthHistoryAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        var services = new ServiceCollection();
+        services.AddSingleton(settings.Object);
+        services.AddSingleton(activity.Object);
+        services.AddSingleton(health.Object);
+        await using var provider = services.BuildServiceProvider();
+        var worker = new HistoryRetentionWorker(NullLogger<HistoryRetentionWorker>.Instance, provider.GetRequiredService<IServiceScopeFactory>(), clock);
+
+        await worker.StartAsync(CancellationToken.None);
+        // The clock moves a minute at a time until the worker's own wait has run out, however soon it began waiting.
+        await Deluno.Persistence.Tests.Support.Wait.UntilAsync(() => { clock.Advance(TimeSpan.FromMinutes(1)); return calls == 1; }, "the first prune to be tried and to fail");
+        activity.Verify(repository => repository.PruneActivityAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        await Deluno.Persistence.Tests.Support.Wait.UntilAsync(() => { clock.Advance(TimeSpan.FromHours(1)); return health.Invocations.Count > 0; }, "the next day's prune");
+        await worker.StopAsync(CancellationToken.None);
+
+        activity.Verify(repository => repository.PruneActivityAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.True(worker.ExecuteTask is { IsCompleted: true });
+    }
+
     private static PlatformSettingsSnapshot DefaultSettings(int historyRetentionDays) => new(
         MovieRootPath: null,
         SeriesRootPath: null,

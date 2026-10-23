@@ -60,6 +60,39 @@ public sealed class FileReadinessOnDiskTests : IDisposable
     }
 
     [Fact]
+    public void A_settled_file_a_seeding_client_still_holds_open_for_writing_is_ready()
+    {
+        var path = Path.Combine(_folder, "Seeding.2010.mkv");
+        File.WriteAllBytes(path, new byte[2048]);
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(-10));
+
+        // What qBittorrent and Deluge do with a finished torrent: keep the file open for writing, sharing it with readers and deleters.
+        using var client = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete);
+
+        Assert.True(ImportFileReadiness.IsReady(path), "a seeding torrent is imported without a processor");
+    }
+
+    [Fact]
+    public void A_file_that_is_locked_or_missing_reads_as_not_ready_and_never_as_an_error()
+    {
+        var path = Path.Combine(_folder, "Locked.2010.mkv");
+        File.WriteAllBytes(path, new byte[2048]);
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(-10));
+
+        bool locked;
+        using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            locked = ImportFileReadiness.IsReady(path);
+        }
+
+        Assert.False(locked, "a file another program holds exclusively is not ready");
+        Assert.True(ImportFileReadiness.IsReady(path), "and it is ready again once that program lets go");
+        Assert.False(ImportFileReadiness.IsReady(Path.Combine(_folder, "Gone.mkv")));
+        Assert.False(ImportFileReadiness.IsReady(Path.Combine(_folder, "no-such-folder", "Gone.mkv")));
+        Assert.False(ImportFileReadiness.IsReady(_folder), "a folder is not a file");
+    }
+
+    [Fact]
     public async Task A_file_that_keeps_changing_is_given_back_as_not_ready_when_the_window_runs_out()
     {
         var path = Path.Combine(_folder, "Sintel.2010.mkv");

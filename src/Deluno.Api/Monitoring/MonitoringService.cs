@@ -320,7 +320,7 @@ public sealed class MonitoringService(
         CancellationToken cancellationToken)
     {
         var alerts = new List<MonitoringAlertItem>();
-        var storageThresholdPercent = Math.Clamp(configuration.GetValue("Deluno:Monitoring:LowStorageThresholdPercent", 12d), 1d, 95d);
+        var storageThresholdPercent = LowStorageThresholdPercent();
         var failureRateThresholdPercent = Math.Clamp(configuration.GetValue("Deluno:Monitoring:DispatchFailureRatePercent", 25d), 1d, 100d);
         // Keep a minimum sample floor because a failure-rate alert from a handful of dispatches is noisy.
         var minSampleForErrorRate = Math.Clamp(configuration.GetValue("Deluno:Monitoring:MinDispatchSampleForFailureAlert", 20), 5, 500);
@@ -440,6 +440,10 @@ public sealed class MonitoringService(
         return (total, failed, rate);
     }
 
+    /// <summary>The one threshold for "storage is low": the alert, the dashboard flag and the exported metric all read it, so they cannot disagree.</summary>
+    private double LowStorageThresholdPercent()
+        => Math.Clamp(configuration.GetValue("Deluno:Monitoring:LowStorageThresholdPercent", 12d), 1d, 95d);
+
     private MonitoringStorageSummary ReadStorageSummary(string dataRoot)
     {
         try
@@ -459,7 +463,7 @@ public sealed class MonitoringService(
                 TotalBytes: total,
                 FreeBytes: free,
                 FreePercent: percent,
-                LowStorage: percent is not null && percent <= 12d);
+                LowStorage: percent is not null && percent <= LowStorageThresholdPercent());
         }
         catch (Exception exception)
         {

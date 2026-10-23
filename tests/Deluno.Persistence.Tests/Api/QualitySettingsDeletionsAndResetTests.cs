@@ -120,4 +120,27 @@ public sealed class QualitySettingsDeletionsAndResetTests
         });
         Assert.True(saved.IsSuccessStatusCode, await saved.Content.ReadAsStringAsync());
     }
+
+    [Fact]
+    public async Task A_profile_whose_deleted_rule_is_still_named_compiles_without_it_and_lists_it_as_missing_from_the_inventory()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var created = await app.Client.PostAsJsonAsync("/api/custom-formats", new
+        {
+            name = "Directors cut", mediaType = "movies", score = 0, trashId = (string?)null,
+            conditions = "[{\"type\":\"releaseGroup\",\"value\":\"DELUNO\",\"required\":true}]", upgradeAllowed = true
+        });
+        var formatId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        var profileId = await CreateProfileAsync(app, "Uses the rule", formatId);
+        Assert.Equal(HttpStatusCode.NoContent, (await app.Client.DeleteAsync($"/api/custom-formats/{formatId}")).StatusCode);
+
+        var compiled = await app.Client.GetAsync($"/api/v1/release-preferences/plans/quality-profile/{profileId}");
+
+        Assert.Equal(HttpStatusCode.OK, compiled.StatusCode);
+        var body = await compiled.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(body.GetProperty("requiresReview").GetBoolean());
+        Assert.Contains(body.GetProperty("warnings").EnumerateArray(), warning => warning.GetString()!.Contains($"'{formatId}' is referenced but missing from the inventory", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(formatId, Assert.Single(body.GetProperty("advancedRules").EnumerateArray()).GetProperty("ruleId").GetString());
+        Assert.DoesNotContain(formatId, body.GetProperty("plan").ToString(), StringComparison.OrdinalIgnoreCase);
+    }
 }

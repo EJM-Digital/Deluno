@@ -20,8 +20,11 @@ public sealed class SignalRRealtimeEventPublisher(
     /// <summary>How many envelopes a reconnecting client can resume across.</summary>
     public const int DefaultResumeWindowSize = 5000;
 
+    /// <summary>How many events wait for delivery; past this the oldest is dropped.</summary>
+    private const int OutboundQueueSlots = 1000;
+
     private readonly Channel<RealtimeEnvelope> _events = Channel.CreateBounded<RealtimeEnvelope>(
-        new BoundedChannelOptions(1000)
+        new BoundedChannelOptions(OutboundQueueSlots)
         {
             SingleReader = true,
             SingleWriter = false,
@@ -453,12 +456,14 @@ public sealed class SignalRRealtimeEventPublisher(
             timeProvider.GetUtcNow().ToString("O"),
             payload);
 
-        if (!_events.Writer.TryWrite(envelope))
+        // A full queue that drops its oldest event still accepts this one, so TryWrite says true: the overflow is seen by the count.
+        var overflowing = _events.Reader.CanCount && _events.Reader.Count >= OutboundQueueSlots;
+        if (!_events.Writer.TryWrite(envelope) || overflowing)
         {
             DelunoObservability.RealtimeEventsDropped.Add(
                 1,
                 [new KeyValuePair<string, object?>("event.name", eventName)]);
-            logger.LogDebug("Realtime event {EventName} was dropped because the outbound queue is saturated.", eventName);
+            logger.LogDebug("A realtime event was dropped because the outbound queue is saturated (latest {EventName}).", eventName);
         }
 
         if (!string.Equals(eventName, LiveEventNames.DashboardSummaryUpdated, StringComparison.Ordinal))

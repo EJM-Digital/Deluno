@@ -95,7 +95,16 @@ public sealed class SystemOverviewRecorder(
             await Task.Delay(TimeSpan.FromSeconds(30), timeProvider, stoppingToken);
             while (!stoppingToken.IsCancellationRequested)
             {
-                await RecordDriveSpaceAsync(stoppingToken);
+                try
+                {
+                    await RecordDriveSpaceAsync(stoppingToken);
+                }
+                catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
+                {
+                    // One hour that cannot be read or written is a gap in the history; the next hour tries again.
+                    logger.LogWarning(exception, "Deluno could not record the drive space this hour; it will try again in an hour.");
+                }
+
                 await Task.Delay(Interval, timeProvider, stoppingToken);
             }
         }

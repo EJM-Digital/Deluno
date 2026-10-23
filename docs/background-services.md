@@ -39,6 +39,10 @@ A start that failed or hung used to be final: the supervisor covered only a stop
 | `IndexerIdentityBackfillService` | Caught and logged; history stays filed by name. | |
 | `CollectionExclusionMigrationHostedService`, `MovieRungRepairReportService` | Caught, logged, shown on Health (a `startup:...` problem key), run again next start. | |
 | `BackgroundServiceFailureMonitor` | Nothing to fail. | The safety net itself. |
+| `IndexerNamesUpgradeService` | A busy database is waited out; any other failure is caught and logged, and indexers keep their names. | Gives indexers their automatic name from their address; runs again each start and changes nothing the second time. |
+| `NotificationSecretsUpgradeService` | Caught and logged (not a shutdown); the addresses and tokens stay as they were and the next start tries again. | Protects the notification addresses and tokens an upgraded install kept in clear (#1364); changes nothing the second time. |
+| `AppliedUpdateStartupCheck` | Waits for the databases (rule 3), because it writes an Activity line; a failure is caught and logged. | Looks for a newly applied update at start so its history and Activity line exist whether or not anyone opens the Updates card (#1376). |
+| `EpisodeFileLinkRepairService` | An exception is caught and logged; links stay as they are. | Once per start, not gated by the automatic-jobs switch: clears an episode's wrong file link, keeps the episode the file name gives, relinks the cleared episode's own file from the show folder, writes Activity; safe to repeat. |
 
 ### Loops (`BackgroundService`)
 
@@ -63,6 +67,26 @@ A start that failed or hung used to be final: the supervisor covered only a stop
 | `InstalledComponentWiringService` | no | None. | Same fix (a99593a2). | A failed pass. |
 | `SignalRRealtimeEventPublisher` | no | None. | A failed delivery is logged at debug; the queue read ends only when stopping. | Not applicable. |
 | `TrayUpdateBackgroundService` (tray host) | no | None. | Caught and logged every six hours. | A failed check; no longer ends the loop. |
+| `RegularConnectionCheckService` | no | Waits 45 s. | Every 30 s, claims `SystemTasks.ConnectionsCheck` once a minute and tests the connections nothing has used for 15 minutes; a failed or cancelled pass is recorded failed or cancelled and logged, and the loop goes on. Off with the setting Check connections regularly. | A failed pass. |
+| `ProcessorHealthWatcher` | no | None. | Own loop, 2 s tick: a healthy processor is looked at every 30 s, one that is not every 15 s, on a fixed schedule, in parallel, each probe cut off at 12 s so a hanging processor never holds up another, one probe out per processor. A throwing repository or probe is logged and retried. Not tied to the automatic-jobs switch. | A probe that hangs is cut off at its 12 s limit. |
+| `DashboardVolumeRefresher` | no | Waits 2 s. | Every 60 s measures the library, download and data folders so a request never touches a disk; 4 s per folder, so a share that never answers costs one budget and shows as unavailable; a refresh that throws keeps the last reading. | A folder past its 4 s budget. |
+| `SystemOverviewSampler` | no | None. | Every 2 s while the Dashboard or Live is open (pushes the overview), every 10 s otherwise (a history-only reading). A failed reading is a gap in a chart and is logged at debug. | A failed reading. |
+| `SystemOverviewRecorder` | no | Records the start, waits 30 s. | Hourly records each drive's free space for the day and prunes history older than 14 days. An hour that cannot be read or written is logged and skipped; the next hour tries again, so the drive-full forecast does not stop. | A failed hour. |
+| `SystemChangeWatcher`, `SystemLogPushService`, `OutboundThrottleWatcher` | no | None. | Push to a watching Dashboard only when the picture changed (every 15 s, each new log line, every 2 s). A failing tick is skipped with a debug line and the loop continues. | A failed tick. |
+| `DatabaseIntegrityService` | no | Waits 2 min. | Hourly tick, claims `SystemTasks.DatabaseIntegrity` daily and runs `PRAGMA quick_check` on every database; a corrupt database is named in the note and the pass is recorded failed, and an exception is recorded failed with a plain reason. | A failed pass. |
+| `TitleChangeNotifier` | no | None. | Coalesces writes to the Movies and Series databases for 250 ms, then announces the changed titles one by one (up to 200 titles and 25 episodes, else one bulk event). A flush that throws is logged at debug and the loop continues. | A failed flush. |
+| `DownloadTelemetryRefreshService` | no | None. | Refreshes the shared download-client reading every 20 s, every 2 s while a screen watches and every 1 s while downloads are moving; every client is read fresh each tick and a failing client warns once, then debug. Concurrent requests share one in-flight read. | A failed client read. |
+| `OrphanedDownloadRefreshService` | no | Waits 6 s. | Every 60 s finds download-folder leftovers nothing owns, so the Queue list is current; read-only, not gated; a scan error is logged at debug and the last list stays. | A failed scan. |
+| `MislabelledEpisodeFileRepairService` | no | Runs at once. | Then every 6 h (a real timer); does nothing while automatic jobs are off (#1321). An exception in a pass is caught and logged and the timer keeps going. | A failed pass. |
+| `KeepAwakeService` (Windows only) | no | Returns at once elsewhere. | Every 30 s asks Windows to stay awake when Keep computer awake is on (off by default). A settings read that fails is logged at debug. | Not applicable. |
+
+## What switches a service off
+
+Nothing automatic may change a person's files, downloads or library records unless they switched automatic jobs on (27 Sep, #1321). So every service is one of:
+
+- **Changes media, asks the switch.** `EpisodeFileLinkRepairService` and `MislabelledEpisodeFileRepairService` carry `[ChangesMediaOnlyWhenAutomaticJobsAreOn]` and ask `AutomaticJobs.IsOnAsync`; with the switch off they change nothing and say so once in Activity. `DelunoHeartbeatWorker` runs the job lanes, which stop when the switch is off.
+- **Does not change media.** It prepares or upgrades Deluno's own databases, prunes Deluno's own history, or only reads, samples, checks and pushes to open screens. `HostedServicesObeyTheAutomaticJobsSwitchTests` names each one with the reason, and fails when a new service is in neither group.
+- **Has its own off-by-default switch.** Scheduled backups (`DelunoBackupService`), the content-blocklist push to qBittorrent (`QbittorrentBlocklistSyncService`), the remote content blocklist refresh (`ContentBlocklistRemoteRefreshService`) and Keep computer awake (`KeepAwakeService`) do nothing until the person turns them on. Checking connections regularly (`RegularConnectionCheckService`) only reads and is on for every install.
 
 ## Tests
 
@@ -73,6 +97,8 @@ A start that failed or hung used to be final: the supervisor covered only a stop
 - `HostSupervisorTests`, `StartProgressTests`, `StartGuardTests` (tray, on a fake clock): see "Supervised starts".
 - `StartupProgressHookTests` (persistence): the migrator, the storage bootstrap and the start-up gate report each step.
 - `ServiceFailureActionsTests`: the `sc failure` and `failureflag` commands.
+- `EveryBackgroundServiceIsInTheServiceListTests`: every hosted service the server builds is named in this list.
+- `HostedServicesObeyTheAutomaticJobsSwitchTests`: every hosted service says whether it changes media, and those that do ask the switch.
 
 ## What only the rig can prove
 

@@ -26,6 +26,10 @@ public sealed class AttentionChangedPushTests
     [InlineData("/api/series/import-recovery/c1/stop-wanting", "recovery")]
     [InlineData("/api/jobs/j1/dismiss", "jobs")]
     [InlineData("/api/jobs/retry-failed", "jobs")]
+    [InlineData("/api/jobs/j1/retry", "jobs")]
+    [InlineData("/api/download-health/ignore-list", "client")]
+    [InlineData("/api/download-health/ignore-list/i1", "client")]
+    [InlineData("/api/download-health/keep-seeding/problems/k1/clear", "health")]
     [InlineData("/api/integrations/processors/handoffs/h1/retry", "handoff")]
     [InlineData("/api/integrations/processors/handoffs/h1/dismiss", "handoff")]
     [InlineData("/api/integrations/processors/handoffs/h1/import-original", "handoff")]
@@ -48,6 +52,41 @@ public sealed class AttentionChangedPushTests
 
         var pushed = await WaitForAsync(publisher, 1);
         Assert.Equal(reason, ((AttentionChangedEvent)Assert.Single(pushed).Payload).Reason);
+    }
+
+    [Fact]
+    public async Task Every_pattern_of_the_bell_route_table_matches_a_real_write_route_and_the_real_bell_routes_are_all_in_it()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var writes = app.Services.GetServices<Microsoft.AspNetCore.Routing.EndpointDataSource>()
+            .SelectMany(source => source.Endpoints)
+            .OfType<Microsoft.AspNetCore.Routing.RouteEndpoint>()
+            .Where(endpoint => endpoint.RoutePattern.RawText?.StartsWith("/api/", StringComparison.OrdinalIgnoreCase) == true)
+            .Where(endpoint => endpoint.Metadata.GetMetadata<Microsoft.AspNetCore.Routing.HttpMethodMetadata>()?.HttpMethods.Any(method => method is "POST" or "PUT" or "PATCH" or "DELETE") == true)
+            .Select(endpoint => System.Text.RegularExpressions.Regex.Replace(endpoint.RoutePattern.RawText!, @"\{[^}]+\}", "x1"))
+            .Distinct()
+            .ToArray();
+        var table = (System.Collections.IEnumerable)typeof(AttentionChangedPush)
+            .GetField("Routes", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+            .GetValue(null)!;
+        var patterns = table.Cast<object>()
+            .Select(item => (System.Text.RegularExpressions.Regex)item.GetType().GetField("Item1")!.GetValue(item)!)
+            .ToArray();
+        Assert.True(patterns.Length >= 10);
+
+        var stale = patterns.Where(pattern => !writes.Any(route => pattern.IsMatch(route))).Select(pattern => pattern.ToString()).ToArray();
+        Assert.True(stale.Length == 0, "These bell patterns match no real write route: " + string.Join(", ", stale));
+
+        // The routes the bell's buttons use (apps/web/src/lib/alert-actions.ts) that really exist are each covered.
+        string[] bellButtons =
+        [
+            "/api/jobs/x1/retry", "/api/jobs/x1/dismiss", "/api/jobs/retry-failed",
+            "/api/attention/no-release/x1/x1/dismiss", "/api/attention/held-releases/x1/dismiss", "/api/attention/held-releases/x1/approve",
+            "/api/system/health/x1/snooze", "/api/system/health/background-problems/x1/retry"
+        ];
+        var uncovered = bellButtons.Where(path => writes.Contains(path) && AttentionChangedPush.ReasonFor(path) is null).ToArray();
+        Assert.True(uncovered.Length == 0, "A bell route pushes nothing: " + string.Join(", ", uncovered));
+        Assert.True(bellButtons.Count(writes.Contains) >= 6, "The bell routes were not found in the real endpoint table; the scan is broken.");
     }
 
     [Fact]

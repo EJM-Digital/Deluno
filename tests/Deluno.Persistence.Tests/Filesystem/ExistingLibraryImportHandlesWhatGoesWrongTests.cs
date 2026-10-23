@@ -163,6 +163,41 @@ public sealed class ExistingLibraryImportHandlesWhatGoesWrongTests
     }
 
     [Fact]
+    public async Task Choosing_titles_to_import_retries_a_refused_batch_one_title_at_a_time_and_names_only_the_title_that_failed()
+    {
+        using var world = await WorldAsync("movies", root => { Film(root, "Good Film One (1991)"); Film(root, "Bad Film (2001)"); Film(root, "Good Film Two (2004)"); });
+        var attempts = new List<int>();
+        var movies = Refusing_<IMovieCatalogRepository>(world.Movies, (name, args) =>
+        {
+            if (name != nameof(IMovieCatalogRepository.ImportExistingBatchAsync))
+            {
+                return null;
+            }
+
+            var batch = args.Where(argument => argument is not string).OfType<System.Collections.IEnumerable>().SelectMany(list => list.Cast<object>()).ToArray();
+            attempts.Add(batch.Length);
+            return batch.Any(item => item.ToString()!.Contains("Bad Film", StringComparison.Ordinal)) ? new InvalidOperationException("The catalogue would not take this title.") : null;
+        });
+        var service = ServiceFor(world, movies);
+
+        var result = await service.ImportSelectedAsync(
+            world.LibraryId,
+            [Path.Combine(world.Root, "Good Film One (1991)"), Path.Combine(world.Root, "Bad Film (2001)"), Path.Combine(world.Root, "Good Film Two (2004)")],
+            CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(3, result.RequestedCount);
+        Assert.Equal(2, result.ImportedCount);
+        var issue = Assert.Single(result.Issues);
+        Assert.Equal("writeFailed", issue.Kind);
+        Assert.Contains("Bad Film", issue.SourcePath);
+        Assert.Equal("The catalogue would not take this title.", issue.Detail);
+        Assert.Equal(["Good Film One", "Good Film Two"], (await world.Movies.ListAsync(CancellationToken.None)).Select(movie => movie.Title).Order().ToArray());
+        // One write of all three, which was refused, then one write per title.
+        Assert.Equal([3, 1, 1, 1], attempts);
+    }
+
+    [Fact]
     public async Task A_slice_that_fails_records_why_on_the_run_and_throws_so_the_job_system_retries()
     {
         using var world = await WorldAsync("movies", root => Film(root, "Silent Harbour (1991)"));

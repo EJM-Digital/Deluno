@@ -7,6 +7,7 @@ using Deluno.Persistence.Tests.Support;
 using Deluno.Platform;
 using Deluno.Series.Data;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -182,6 +183,51 @@ public sealed class ARemovedTitleComesBackTests
         Assert.NotNull(movie);
         Assert.False(movie!.Monitored);
         Assert.True(movie.HasFile);
+    }
+
+    [Theory]
+    [InlineData(MediaKind.Movie, "Movie")]
+    [InlineData(MediaKind.Series, "Series")]
+    public async Task Restoring_a_title_tells_every_open_screen_it_changed(MediaKind kind, string entity)
+    {
+        var publisher = new RecordingRealtimeEventPublisher();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services =>
+            services.Replace(ServiceDescriptor.Singleton<IRealtimeEventPublisher>(publisher)));
+        var libraryId = await CreateLibraryAsync(app, kind);
+        WriteFileInLibrary(app, kind);
+        var id = await AddAsync(app, kind, libraryId);
+        await app.Client.DeleteAsync($"{Route(kind)}{id}?deleteFiles=true");
+        var item = Assert.Single(await app.Services.GetRequiredService<IRecycleBinService>().ListAsync(CancellationToken.None));
+        var before = publisher.Published.Count(entry => entry == (entity, id));
+
+        var restore = await app.Client.PostAsync($"/api/recycle-bin/{item.Id}/restore", null);
+
+        Assert.True(restore.IsSuccessStatusCode, await restore.Content.ReadAsStringAsync());
+        Assert.True(publisher.Published.Count(entry => entry == (entity, id)) > before, "an open title page or list is told the restored title is back");
+    }
+
+    [Fact]
+    public async Task A_title_that_was_added_again_meanwhile_is_not_restored_a_second_time_and_its_kept_copy_leaves_the_bin_all_the_same()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var libraryId = await CreateLibraryAsync(app, MediaKind.Movie);
+        WriteFileInLibrary(app, MediaKind.Movie);
+        var id = await AddAsync(app, MediaKind.Movie, libraryId);
+        await app.Client.DeleteAsync($"/api/movies/{id}?deleteFiles=true");
+        var item = Assert.Single(await app.Services.GetRequiredService<IRecycleBinService>().ListAsync(CancellationToken.None));
+        var state = Path.Combine(app.DataRoot, "recycle-bin", "state.json");
+        Assert.Single(JsonDocument.Parse(await File.ReadAllTextAsync(state)).RootElement.GetProperty("titles").EnumerateArray());
+        // The same title is added again while its files are still in the bin, so there is no title left to put back.
+        await AddAsync(app, MediaKind.Movie, libraryId);
+
+        var restore = await app.Client.PostAsync($"/api/recycle-bin/{item.Id}/restore", null);
+
+        var body = await restore.Content.ReadAsStringAsync();
+        Assert.True(restore.IsSuccessStatusCode, body);
+        Assert.Contains("already added to Deluno again", body);
+        Assert.Single(await app.Services.GetRequiredService<IMovieCatalogRepository>().ListAsync(CancellationToken.None));
+        Assert.Empty(await app.Services.GetRequiredService<IRecycleBinService>().ListAsync(CancellationToken.None));
+        Assert.Empty(JsonDocument.Parse(await File.ReadAllTextAsync(state)).RootElement.GetProperty("titles").EnumerateArray());
     }
 
     [Fact]

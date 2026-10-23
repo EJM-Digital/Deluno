@@ -114,3 +114,145 @@ test('searchLibrary posts to /libraries/{id}/search-now with no body', async () 
   assert.equal(calls[0].url, 'http://deluno.example/api/v1/libraries/lib-1/search-now');
   assert.equal(calls[0].body, undefined);
 });
+
+// ---- every other call the SDK makes, by the route it asks for (coverage register, engines; Refs #1296) ----------------------------------
+
+const answer = (body, status = 200) => () => new Response(JSON.stringify(body), { status });
+const urlOf = (call) => new URL(call.url);
+
+test('readiness asks /health/ready, and a server that is not ready makes the SDK throw with the body it sent', async () => {
+  const ready = recorder(answer({ ready: true, status: 'ready' }));
+  assert.deepEqual(await clientOn('http://deluno.example', ready.fetch).readiness(), { ready: true, status: 'ready' });
+  assert.equal(ready.calls[0].url, 'http://deluno.example/api/v1/health/ready');
+
+  const notReady = recorder(answer({ ready: false, status: 'not_ready', checks: [{ name: 'schema:migrations', status: 'not_ready' }] }, 503));
+  await assert.rejects(clientOn('http://deluno.example', notReady.fetch).readiness(), (error) => {
+    return error instanceof DelunoApiError && error.status === 503 && error.body.status === 'not_ready' && error.body.checks.length === 1;
+  });
+});
+
+test('scopeTemplates asks GET /api-keys/scope-templates and returns the list as sent', async () => {
+  const { calls, fetch } = recorder(answer([{ id: 'read-only', name: 'Read only', scopes: ['read'] }]));
+  const templates = await clientOn('http://deluno.example', fetch).scopeTemplates();
+  assert.equal(calls[0].method, 'GET');
+  assert.equal(calls[0].url, 'http://deluno.example/api/v1/api-keys/scope-templates');
+  assert.equal(templates[0].id, 'read-only');
+});
+
+test('listNotificationWebhookDeliveries builds the query from the options it is given and nothing else', async () => {
+  const { calls, fetch } = recorder(answer([]));
+  const client = clientOn('http://deluno.example', fetch);
+  await client.listNotificationWebhookDeliveries();
+  await client.listNotificationWebhookDeliveries({ status: 'dead-letter', webhookId: 'hook 1', take: 0 });
+  assert.equal(calls[0].url, 'http://deluno.example/api/v1/notification-webhooks/deliveries');
+  assert.equal(urlOf(calls[1]).pathname, '/api/v1/notification-webhooks/deliveries');
+  assert.deepEqual(Object.fromEntries(urlOf(calls[1]).searchParams), { status: 'dead-letter', webhookId: 'hook 1', take: '0' });
+});
+
+test('replayNotificationWebhookDelivery posts with the id encoded, and an unknown id is a 404 DelunoApiError', async () => {
+  const { calls, fetch } = recorder(answer({ error: 'not_found' }, 404));
+  await assert.rejects(clientOn('http://deluno.example', fetch).replayNotificationWebhookDelivery('a b/c'), (error) => error instanceof DelunoApiError && error.status === 404);
+  assert.equal(calls[0].method, 'POST');
+  assert.equal(calls[0].url, 'http://deluno.example/api/v1/notification-webhooks/deliveries/a%20b%2Fc/replay');
+  assert.equal(calls[0].body, undefined);
+});
+
+test('listDownloadDispatches sends only the options that are set, and passes the import-time bounds on as they are', async () => {
+  const { calls, fetch } = recorder(answer({ items: [] }));
+  const client = clientOn('http://deluno.example', fetch);
+  await client.listDownloadDispatches();
+  await client.listDownloadDispatches({ clientId: 'qbit', mediaType: 'movie', minImportTime: '2026-10-01T00:00:00Z', maxImportTime: '2026-10-02T00:00:00Z', pageSize: 25, grabStatus: undefined });
+  assert.equal(calls[0].url, 'http://deluno.example/api/v1/download-dispatches');
+  assert.deepEqual(Object.fromEntries(urlOf(calls[1]).searchParams), {
+    clientId: 'qbit', mediaType: 'movie', minImportTime: '2026-10-01T00:00:00Z', maxImportTime: '2026-10-02T00:00:00Z', pageSize: '25'
+  });
+});
+
+test('getDownloadDispatch asks /download-dispatches/{id} with the id encoded, and an unknown id is a 404 with the server\'s error', async () => {
+  const found = recorder(answer({ dispatch: { id: 'd1' }, timeline: [] }));
+  const reply = await clientOn('http://deluno.example', found.fetch).getDownloadDispatch('d 1');
+  assert.equal(found.calls[0].url, 'http://deluno.example/api/v1/download-dispatches/d%201');
+  assert.equal(reply.dispatch.id, 'd1');
+  const missing = recorder(answer({ error: 'not_found' }, 404));
+  await assert.rejects(clientOn('http://deluno.example', missing.fetch).getDownloadDispatch('nope'), (error) => error.status === 404 && error.message === 'not_found');
+});
+
+test('listImportResolutions sends only the options that are set and leaves the status to the server\'s own default', async () => {
+  const { calls, fetch } = recorder(answer({ items: [] }));
+  const client = clientOn('http://deluno.example', fetch);
+  await client.listImportResolutions();
+  await client.listImportResolutions({ status: 'failed', libraryId: 'lib-1', importedAfter: '2026-10-01', pageToken: 'next' });
+  assert.equal(calls[0].url, 'http://deluno.example/api/v1/import-resolutions');
+  assert.deepEqual(Object.fromEntries(urlOf(calls[1]).searchParams), { status: 'failed', libraryId: 'lib-1', importedAfter: '2026-10-01', pageToken: 'next' });
+});
+
+test('saveReleasePreferencePlan and previewReleasePreference post their argument as the body to their own routes', async () => {
+  const { calls, fetch } = recorder(answer({ ok: true }));
+  const client = clientOn('http://deluno.example', fetch);
+  const plan = { id: 'plan-1', mediaType: 'movies' };
+  const request = { planId: 'plan-1', candidate: { releaseName: 'Example.2024.1080p' } };
+  await client.saveReleasePreferencePlan(plan);
+  await client.previewReleasePreference(request);
+  assert.deepEqual([calls[0].method, calls[0].url], ['POST', 'http://deluno.example/api/v1/release-preferences/plans']);
+  assert.deepEqual(JSON.parse(calls[0].body), plan);
+  assert.deepEqual([calls[1].method, calls[1].url], ['POST', 'http://deluno.example/api/v1/release-preferences/preview']);
+  assert.deepEqual(JSON.parse(calls[1].body), request);
+});
+
+test('listJobs, listActivity and listDecisions ask for a page of 50 unless told otherwise, and carry the page token when there is one', async () => {
+  const { calls, fetch } = recorder(answer({ items: [] }));
+  const client = clientOn('http://deluno.example', fetch);
+  await client.listJobs();
+  await client.listActivity(10, 'token-a');
+  await client.listDecisions(200);
+  assert.equal(calls[0].url, 'http://deluno.example/api/v1/jobs?pageSize=50');
+  assert.equal(calls[1].url, 'http://deluno.example/api/v1/activity?pageSize=10&pageToken=token-a');
+  assert.equal(calls[2].url, 'http://deluno.example/api/v1/decisions?pageSize=200');
+});
+
+test('listBackups gets /backups and createBackup posts the reason, "automation" when none is given', async () => {
+  const { calls, fetch } = recorder(answer([]));
+  const client = clientOn('http://deluno.example', fetch);
+  await client.listBackups();
+  await client.createBackup();
+  await client.createBackup('before-update');
+  assert.deepEqual([calls[0].method, calls[0].url], ['GET', 'http://deluno.example/api/v1/backups']);
+  assert.deepEqual(JSON.parse(calls[1].body), { reason: 'automation' });
+  assert.deepEqual(JSON.parse(calls[2].body), { reason: 'before-update' });
+});
+
+test('the existing-media import calls start, read, pause and resume under /libraries/{id}/import-existing with the id encoded', async () => {
+  const { calls, fetch } = recorder(answer({}));
+  const client = clientOn('http://deluno.example', fetch);
+  await client.startExistingLibraryImport('lib 1');
+  await client.importProgress('lib 1');
+  await client.pauseExistingLibraryImport('lib 1');
+  await client.resumeExistingLibraryImport('lib 1');
+  const base = 'http://deluno.example/api/v1/libraries/lib%201/import-existing';
+  assert.deepEqual(calls.map((call) => [call.method, call.url]), [['POST', base], ['GET', base], ['POST', `${base}/pause`], ['POST', `${base}/resume`]]);
+});
+
+test('setGlobalAutomationEnabled puts {isEnabled} to /settings/automation', async () => {
+  const { calls, fetch } = recorder(answer({}));
+  const client = clientOn('http://deluno.example', fetch);
+  await client.setGlobalAutomationEnabled(false);
+  await client.setGlobalAutomationEnabled(true);
+  assert.deepEqual([calls[0].method, calls[0].url], ['PUT', 'http://deluno.example/api/v1/settings/automation']);
+  assert.deepEqual(JSON.parse(calls[0].body), { isEnabled: false });
+  assert.deepEqual(JSON.parse(calls[1].body), { isEnabled: true });
+});
+
+test('approveIntakePreview posts the body to the source\'s approve-preview route with the id encoded', async () => {
+  const { calls, fetch } = recorder(answer({}));
+  await clientOn('http://deluno.example', fetch).approveIntakePreview('src/1', { entries: [], searchAfterAdd: true });
+  assert.deepEqual([calls[0].method, calls[0].url], ['POST', 'http://deluno.example/api/v1/intake-sources/src%2F1/approve-preview']);
+  assert.deepEqual(JSON.parse(calls[0].body), { entries: [], searchAfterAdd: true });
+});
+
+test('a validation problem keeps its title and its errors on the error, whatever message it carries', async () => {
+  const problem = { title: 'One or more validation errors occurred.', status: 400, errors: { name: ['Give this key a name.'] } };
+  const { fetch } = recorder(answer(problem, 400));
+  await assert.rejects(clientOn('http://deluno.example', fetch).createBackup(), (error) => {
+    return error instanceof DelunoApiError && error.status === 400 && error.body.errors.name[0] === 'Give this key a name.' && typeof error.message === 'string' && error.message.length > 0;
+  });
+});
