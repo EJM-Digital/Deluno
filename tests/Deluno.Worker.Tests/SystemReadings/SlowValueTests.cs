@@ -58,9 +58,10 @@ public sealed class SlowValueTests
     public async Task A_fresh_reading_is_served_without_loading_again_and_a_stale_one_is_served_while_it_refreshes()
     {
         var time = new FakeTimeProvider();
-        var next = 1;
         var loads = 0;
-        var value = new SlowValue<int>(Life, _ => { Interlocked.Increment(ref loads); return Task.FromResult(next); }, time, -1);
+        // The second reading waits on this gate, so the stale answer is read before the refresh can finish, however fast the machine is.
+        var secondReading = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var value = new SlowValue<int>(Life, _ => Interlocked.Increment(ref loads) == 1 ? Task.FromResult(1) : secondReading.Task, time, -1);
         Assert.Equal(1, await value.GetAsync(TimeSpan.FromSeconds(30), CancellationToken.None));
         await Wait.UntilAsync(() => Volatile.Read(ref loads) == 1 && value.Current == 1);
 
@@ -68,9 +69,9 @@ public sealed class SlowValueTests
         Assert.Equal(1, value.Current);
         Assert.Equal(1, loads);
 
-        next = 2;
         time.Advance(TimeSpan.FromSeconds(2));
         Assert.Equal(1, value.Current);
+        secondReading.SetResult(2);
         await Wait.UntilAsync(() => value.Current == 2);
         Assert.Equal(2, loads);
     }
