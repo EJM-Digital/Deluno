@@ -371,13 +371,8 @@ public sealed class TrayApplication : ApplicationContext
             return;
         }
 
-        var why = _status.State switch
-        {
-            TrayState.Starting => "Deluno is still starting. Click the icon again in a moment.",
-            TrayState.Updating => "Deluno is updating. Click the icon again in a moment.",
-            _ => "Deluno is not running. Choose Restart Deluno from the icon menu."
-        };
-        Balloon("Deluno can't open yet", why, ToolTipIcon.Info, problem: false);
+        var why = OpenDelunoAnswer.Why(_status.State);
+        Balloon(OpenDelunoAnswer.Title, why, ToolTipIcon.Info, problem: false);
     }
 
     private void ShowAlreadyRunning()
@@ -759,34 +754,22 @@ public sealed class TrayApplication : ApplicationContext
     /// </summary>
     private async Task ReportBlockedUpdateAsync()
     {
-        var note = BlockedUpdateNote.TryTake(BlockedUpdateNote.DefaultFolder());
-        if (note is null)
+        Func<string, string, string, Task>? record = null;
+        if (_server.Services is { } services)
         {
-            return;
-        }
-
-        try
-        {
-            if (_server.Services is { } services)
+            record = async (category, message, details) =>
             {
                 using var scope = services.CreateScope();
                 var feed = scope.ServiceProvider.GetRequiredService<Deluno.Jobs.Data.IActivityFeedRepository>();
-                await feed.RecordActivityAsync(
-                    "app.update",
-                    note.Message,
-                    System.Text.Json.JsonSerializer.Serialize(new { version = note.Version, reason = note.Reason, atUtc = note.AtUtc }),
-                    null,
-                    "system",
-                    "app-update",
-                    CancellationToken.None);
-            }
-        }
-        catch (Exception ex)
-        {
-            HookLog.Write($"could not write the blocked-update line to Activity: {ex.Message}");
+                await feed.RecordActivityAsync(category, message, details, null, "system", "app-update", CancellationToken.None);
+            };
         }
 
-        InvokeOnUiThread(() => Balloon("Deluno did not install the update", note.Message, ToolTipIcon.Warning, problem: true));
+        await BlockedUpdateNote.ReportOnceAsync(
+            BlockedUpdateNote.DefaultFolder(),
+            record,
+            message => InvokeOnUiThread(() => Balloon("Deluno did not install the update", message, ToolTipIcon.Warning, problem: true)),
+            line => HookLog.Write(line));
     }
 
     /// <summary>The host is listening: take its live address, follow its pushes and its update state.</summary>
@@ -964,9 +947,12 @@ public sealed class TrayApplication : ApplicationContext
             // The Automation setting behind the Dashboard's "Automation is paused" notice and its Resume button.
             var resume = _status.AutomationPaused;
             var repository = services.GetRequiredService<IPlatformSettingsRepository>();
-            var snapshot = await repository.SetGlobalAutomationEnabledAsync(resume, CancellationToken.None);
-            await services.GetRequiredService<Deluno.Contracts.IRealtimeEventPublisher>().PublishEntityChangedAsync("Settings", "settings", CancellationToken.None);
-            Change(s => s with { AutomationPaused = !snapshot.AutoStartJobs });
+            var publisher = services.GetRequiredService<Deluno.Contracts.IRealtimeEventPublisher>();
+            var paused = await AutomationSwitchChange.ApplyAsync(
+                resume,
+                async enabled => (await repository.SetGlobalAutomationEnabledAsync(enabled, CancellationToken.None)).AutoStartJobs,
+                () => publisher.PublishEntityChangedAsync("Settings", "settings", CancellationToken.None));
+            Change(s => s with { AutomationPaused = paused });
         }
         catch (Exception ex)
         {

@@ -37,6 +37,16 @@ function Invoke-GroupFilms {
             Add-Check 'Deluno handed it to Weir' $r.HandedOff ("{0} s after the send" -f $r.HandedSec)
             Add-Check 'Weir cleaned it and the hand-off settled' $r.Settled $(if ($r.Handoff) { "status $($r.Handoff.status), processor said: $($r.Handoff.processor.state)" } else { 'no hand-off' })
             Add-Check 'Deluno imported the cleaned file into the library' $r.Imported $(if ($r.File) { "{0} ({1} MB) {2} s after the send" -f $r.File.FullName, [math]::Round($r.File.Length / 1MB, 1), $r.ImportedSec } else { 'no file in the library' })
+            # Deluno never deletes at hand-off or import: every original (the video, the .nfo and any other sidecar) is still in the client's folder, whole.
+            $held = @(Get-ChildItem -Path 'C:\Downloads' -Recurse -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq $film.Release } | ForEach-Object { Split-Path $_.FullName -Parent })
+            if ($film.Protocol -eq 'torrent' -and $film.Layout -eq 'folder') {
+                $whole = @($held | ForEach-Object { Test-FilmDataAt -Film $film -Folder $_ } | Where-Object { $_.Ok })
+                Add-Check "Every original file ($(@($film.DataFiles).Count): video, .nfo and sidecars) is still in the client's folder, and whole" ($whole.Count -gt 0) $(if ($whole.Count) { $whole[0].Text } else { 'the release folder is gone or incomplete: ' + (($held | ForEach-Object { Test-FilmDataAt -Film $film -Folder $_ } | ForEach-Object { $_.Text }) -join ' | ') })
+            }
+            else {
+                $videos = @($held | ForEach-Object { Get-ChildItem -LiteralPath (Join-Path $_ $film.Release) -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -match '^\.(mkv|mp4|avi)$' } })
+                Add-Check 'The original video is still in the client''s folder' ($videos.Count -gt 0) $(if ($videos.Count) { $videos[0].FullName } else { 'no release folder with a video in C:\Downloads' })
+            }
             # Activity is written as the import finishes, a moment after the file lands in the library (film.sabnzbd read it too early
             # on 20 Oct), so wait for all three entries, for up to 30 s, before judging.
             $act = @()

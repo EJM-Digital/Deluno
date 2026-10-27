@@ -43,4 +43,27 @@ function Invoke-GroupInstall {
         Add-Check 'The picker finished with every row installed, Weir included' ($pk -match 'Finished\.' -and $pk -match 'Weir' -and $pk -notmatch 'FAILED') ''
         Save-Evidence -Name 'picker.log' -Text $pk
     }
+
+    # Every client the picker installed is up on its own port, with the Movies and TV folders the guide documents, and Library Routing's
+    # folder check agrees on every link (docs/golden-path.md, step 2; the register's L.8.12 and L.18.5).
+    Invoke-Scenario -Id 'install.clients-ready' -Title 'Each of the five clients the picker installed listens on its port, Deluge has its Label plugin on, and Library Routing''s folder check shows every folder of the Movies and TV libraries as matching' -Body {
+        Connect-Deluno
+        foreach ($kind in 'qbittorrent', 'transmission', 'deluge', 'sabnzbd', 'nzbget') {
+            $port = [int]$script:Ks.Ports[$kind]
+            $listen = @(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue)
+            Add-Check "$kind listens on its port ($port)" ($listen.Count -gt 0) $(if ($listen.Count) { ($listen | ForEach-Object { $_.LocalAddress } | Select-Object -Unique) -join ', ' } else { 'nothing is listening there' })
+        }
+        $d = Open-KsDeluge -Subject 'clients-ready'
+        $plugins = @((Invoke-KsDeluge -Session $d -Method 'core.get_enabled_plugins' -Params @() -Subject 'clients-ready').result)
+        Add-Check 'Deluge''s Label plugin is on' ($plugins -contains 'Label') ($plugins -join ', ')
+        foreach ($type in 'movies', 'tv') {
+            $lib = Get-Library -MediaType $type
+            Add-Check "There is a $type library" ($null -ne $lib) ''
+            if (-not $lib) { continue }
+            $chain = Try-Deluno -Path "/api/libraries/$($lib.id)/folder-chain" -TimeoutSec 120
+            $bad = @($chain.Data.clients | ForEach-Object { $_.links } | Where-Object { $_.status -ne 'match' -and $_.status -ne 'matches' })
+            Save-Evidence -Name "clients-ready-folder-chain-$type.json" -Text $chain.Raw
+            Add-Check "Library Routing's folder check shows every folder of the $type library as matching" ($chain.Status -eq 200 -and $chain.Data.allMatch -eq $true) $(if ($bad.Count) { ($bad | ForEach-Object { "$($_.status): $($_.label)" }) -join '; ' } else { "HTTP $($chain.Status)" })
+        }
+    }
 }

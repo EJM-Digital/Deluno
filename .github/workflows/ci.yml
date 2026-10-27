@@ -838,6 +838,7 @@ jobs:
             -r win-x64 `
             --self-contained true `
             -p:PublishSingleFile=false `
+            -p:PublishReadyToRun=true `
             -p:Version=${{ steps.version.outputs.version }} `
             -p:DelunoUpdateChannel=${{ steps.version.outputs.channel }} `
             -o artifacts/windows/bin

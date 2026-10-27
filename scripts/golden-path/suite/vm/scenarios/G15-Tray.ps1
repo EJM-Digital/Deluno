@@ -293,6 +293,32 @@ function Invoke-GroupTray {
         $dot = Wait-Until -TimeoutSec 120 -IntervalSec 3 -Condition { $d = Get-TrayDot -Icon 'Deluno' -NoOverflow; if ($d.Found -and $d.Colour -in 'green', 'amber') { $d } else { $null } }
         Add-Check 'The icon is no longer red' $dot.Ok $(if ($dot.Ok) { $dot.Value.Colour } else { 'still red or unreadable' })
     }
+
+    # The installed app's own server (DelunoServer, WebRoot beside Deluno.exe) serves its front end as the web host does: the page, its
+    # files with the right content types, the page again for a screen's address (the single-page fallback), and the sign-in gate on the API.
+    Invoke-Scenario -Id 'tray.serves-front-end' -Title "The tray-hosted server serves the front end: the page, its script and style with their content types, the page for a deep address, and a sign-in gate on the API" -Body {
+        Connect-Deluno
+        $base = "http://localhost:$(Get-LanPort)"
+        $get = { param($root, $path) try { $r = Invoke-WebRequest -Uri ($root + $path) -UseBasicParsing -TimeoutSec 30; [pscustomobject]@{ Status = [int]$r.StatusCode; Type = [string]$r.Headers['Content-Type']; Text = [string]$r.Content } } catch { $code = 0; try { $code = [int]$_.Exception.Response.StatusCode } catch { }; [pscustomobject]@{ Status = $code; Type = ''; Text = '' } } }
+        $root = & $get $base '/'
+        Add-Check 'The front page is served as HTML with the app''s root element' ($root.Status -eq 200 -and $root.Type -match 'text/html' -and $root.Text -match '<div id="root"') "HTTP $($root.Status) $($root.Type)"
+        $js = [regex]::Match($root.Text, 'src="(/assets/[^"]+\.js)"').Groups[1].Value
+        $css = [regex]::Match($root.Text, 'href="(/assets/[^"]+\.css)"').Groups[1].Value
+        $script = if ($js) { & $get $base $js } else { $null }
+        Add-Check 'Its script is served as JavaScript' ($script -and $script.Status -eq 200 -and $script.Type -match 'javascript') $(if ($script) { "$js HTTP $($script.Status) $($script.Type)" } else { 'the page names no script' })
+        $style = if ($css) { & $get $base $css } else { $null }
+        Add-Check 'Its style is served as CSS' ($style -and $style.Status -eq 200 -and $style.Type -match 'text/css') $(if ($style) { "$css HTTP $($style.Status) $($style.Type)" } else { 'the page names no style' })
+        $deep = & $get $base '/settings/general'
+        Add-Check 'A screen''s own address gets the front page (single-page fallback)' ($deep.Status -eq 200 -and $deep.Type -match 'text/html' -and $deep.Text -match '<div id="root"') "HTTP $($deep.Status) $($deep.Type)"
+        $api = & $get $base '/api/libraries'
+        Add-Check 'The API answers 401 without a sign-in' ($api.Status -eq 401) "HTTP $($api.Status)"
+        $missing = & $get $base '/api/no-such-route-for-the-suite'
+        Add-Check 'An unknown API address is not answered with the front page' ($missing.Status -in 401, 404 -and $missing.Text -notmatch '<div id="root"') "HTTP $($missing.Status)"
+        $startLog = Join-Path $env:LOCALAPPDATA 'Deluno\logs\tray-startup.log'
+        $startText = if (Test-Path $startLog) { Get-Content -Raw -LiteralPath $startLog } else { '' }
+        $port = Get-LanPort
+        Add-Check 'The start log names the port, every address Deluno answers on and the firewall state' ($startText -match "Deluno started on port $port" -and $startText -match 'Reachable at:' -and $startText -match 'Firewall: ') $(if ($startText) { 'tray-startup.log' } else { "no $startLog" })
+    }
 }
 
 

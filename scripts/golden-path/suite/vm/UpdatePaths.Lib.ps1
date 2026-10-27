@@ -143,6 +143,9 @@ function Test-CameBackAsCandidate {
     if ($connected) {
         $after = Get-DelunoStateSummary
         Add-Check 'The download clients, libraries and Activity history are the same' ((($after.Clients -join ';') -eq ($Context.Before.Clients -join ';')) -and (($after.Libraries -join ';') -eq ($Context.Before.Libraries -join ';')) -and $after.Activity -ge $Context.Before.Activity) ("clients {0}->{1}, libraries {2}->{3}, Activity {4}->{5}" -f $Context.Before.Clients.Count, $after.Clients.Count, $Context.Before.Libraries.Count, $after.Libraries.Count, $Context.Before.Activity, $after.Activity)
+        $b = $Context.Before
+        $missingPorts = @($b.AnsweringPorts | Where-Object { $_ -notin @($after.AnsweringPorts) })
+        Add-Check 'The quality profiles, the titles, the sign-in entry, the firewall rule and every installed client and Weir that was answering are kept' ((($after.Profiles -join ';') -eq ($b.Profiles -join ';')) -and (($after.Titles -join ';') -eq ($b.Titles -join ';')) -and $after.StartsWithWindows -eq $b.StartsWithWindows -and $after.FirewallRules -ge $b.FirewallRules -and $missingPorts.Count -eq 0) ("profiles {0}->{1}, titles {2}->{3}, starts with Windows {4}->{5}, firewall rules {6}->{7}, no longer answering: [{8}]" -f $b.Profiles.Count, $after.Profiles.Count, $b.Titles.Count, $after.Titles.Count, $b.StartsWithWindows, $after.StartsWithWindows, $b.FirewallRules, $after.FirewallRules, ($missingPorts -join ','))
     }
     $true
 }

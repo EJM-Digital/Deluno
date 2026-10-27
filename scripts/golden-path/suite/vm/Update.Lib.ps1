@@ -42,6 +42,8 @@ function Initialize-UpdateState {
         qualityProfileId = $profile.id; autoSearchEnabled = $false; missingSearchEnabled = $false; upgradeSearchEnabled = $false
         removeEmptySourceFolders = $false; searchIntervalMinutes = 720; retryDelayHours = 6; maxItemsPerRun = 10
     } | Out-Null
+    # A title, so the update has a film to keep.
+    try { Invoke-Deluno -Method POST -Path '/api/movies' -Body @{ title = 'Update Scenario Film'; releaseYear = 2026; monitored = $false } | Out-Null } catch { }
     Invoke-Deluno -Method POST -Path '/api/download-clients' -Body @{
         name = 'Update scenario client'; protocol = 'qbittorrent'; host = '127.0.0.1'; port = 18081; username = 'x'; password = 'y'
         moviesCategory = 'deluno-movies'; tvCategory = 'deluno-tv'; priority = 1; isEnabled = $false
@@ -57,7 +59,17 @@ function Get-DelunoStateSummary {
     $libs = @(Get-Library | ForEach-Object { "$($_.id)|$($_.name)" } | Sort-Object)
     $activity = 0
     try { $activity = @(Get-ActivityText).Count } catch { }
-    [pscustomobject]@{ Clients = $clients; Libraries = $libs; Activity = $activity }
+    # What else a person keeps through an update: the quality profiles, the titles, the sign-in entry, the firewall rule, and every
+    # installed client and Weir that was answering (#1295). Each part is read on its own so one that cannot be read does not hide the rest.
+    $profiles = @(); $titles = @()
+    try { $profiles = @(Invoke-Deluno -Path '/api/quality-profiles' | ForEach-Object { "$($_.id)|$($_.name)" } | Sort-Object) } catch { }
+    try { $titles = @(Invoke-Deluno -Path '/api/movies' | ForEach-Object { "$($_.id)|$($_.title)" } | Sort-Object) } catch { }
+    $startsWithWindows = $false
+    try { $run = Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue; $startsWithWindows = [bool]($run -and ($run.PSObject.Properties | Where-Object { [string]$_.Value -match 'Deluno' })) } catch { }
+    $rules = 0
+    try { $rules = @(Get-NetFirewallRule -Direction Inbound -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'Deluno*' }).Count } catch { }
+    $answering = @(8081, 9091, 8112, 8080, 6789, 9347 | Where-Object { Get-NetTCPConnection -State Listen -LocalPort $_ -ErrorAction SilentlyContinue })
+    [pscustomobject]@{ Clients = $clients; Libraries = $libs; Activity = $activity; Profiles = $profiles; Titles = $titles; StartsWithWindows = $startsWithWindows; FirewallRules = $rules; AnsweringPorts = $answering }
 }
 
 # The start log's lines written at or after $Since. Lines are picked by their own timestamp, not by counting the lines that
@@ -157,6 +169,8 @@ function Invoke-UpdateScenario {
             Add-Check 'The download clients are the same' (($after.Clients -join ';') -eq ($before.Clients -join ';')) ("before {0}, after {1}" -f $before.Clients.Count, $after.Clients.Count)
             Add-Check 'The libraries are the same' (($after.Libraries -join ';') -eq ($before.Libraries -join ';')) ("before {0}, after {1}" -f $before.Libraries.Count, $after.Libraries.Count)
             Add-Check 'Activity kept its history' ($after.Activity -ge $before.Activity) ("before {0}, after {1}" -f $before.Activity, $after.Activity)
+            $missingPorts = @($before.AnsweringPorts | Where-Object { $_ -notin @($after.AnsweringPorts) })
+            Add-Check 'The quality profiles, the titles, the sign-in entry, the firewall rule and every installed client and Weir that was answering are kept' ((($after.Profiles -join ';') -eq ($before.Profiles -join ';')) -and (($after.Titles -join ';') -eq ($before.Titles -join ';')) -and $after.StartsWithWindows -eq $before.StartsWithWindows -and $after.FirewallRules -ge $before.FirewallRules -and $missingPorts.Count -eq 0) ("profiles {0}->{1}, titles {2}->{3}, starts with Windows {4}->{5}, firewall rules {6}->{7}, no longer answering: [{8}]" -f $before.Profiles.Count, $after.Profiles.Count, $before.Titles.Count, $after.Titles.Count, $before.StartsWithWindows, $after.StartsWithWindows, $before.FirewallRules, $after.FirewallRules, ($missingPorts -join ','))
         }
     }
 }

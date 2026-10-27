@@ -107,6 +107,16 @@ done
 [[ "$state" == "healthy" ]] || fail "the container never reported healthy (last: ${state})"
 pass "docker inspect reports the container healthy once Deluno answers"
 
+# ---- DOK-07b: /data is writable by the non-root user the image runs as, and what is written there survives a restart
+user_in_container="$(docker exec "$name" id -un)"
+[[ "$user_in_container" == "app" ]] || fail "the image runs as ${user_in_container}, not the non-root user app"
+docker exec "$name" sh -c 'echo kept-across-restart > /data/.platform-write-check' || fail "the non-root user could not write to /data"
+docker restart --time 30 "$name" >/dev/null
+wait_ready "http://127.0.0.1:${port}" || fail "Deluno did not answer again after the container was restarted"
+[[ "$(docker exec "$name" cat /data/.platform-write-check)" == "kept-across-restart" ]] || fail "what the non-root user wrote to /data did not survive a restart"
+docker exec "$name" rm -f /data/.platform-write-check
+pass "the non-root user writes to /data and what it wrote is still there after a container restart"
+
 # ---- DOK-10 / DAT-10: docker stop is clean and fast; the same volume opens again with the data and sign-in intact
 base="http://127.0.0.1:${port}"
 wait_ready "$base" || fail "no readiness on the health container"

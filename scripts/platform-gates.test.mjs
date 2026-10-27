@@ -8,6 +8,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdir
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 
 import { evaluateRun } from "./verify-ci-for-release.mjs";
@@ -260,7 +261,7 @@ test("only the release workflow's publish jobs hold a write permission or a regi
     if (name === "copy-former-images.yml") {
       // The one-off copy of the former package to the current name (PLAN-ORG-MOVE.md): by hand only, and it may write packages.
       assert.match(text, /on:\s+workflow_dispatch:\s+permissions:/, `${name} must run by hand only`);
-      assert.doesNotMatch(text, /push:|pull_request|schedule:/, `${name} must run by hand only`);
+      assert.doesNotMatch(text, /push:|pull_request|schedule:/, `${name} must run by hand only`);
     } else {
       assert.doesNotMatch(text, /packages: write/, `${name} must not publish a package`);
     }
@@ -429,4 +430,112 @@ test("a commit message with a closing keyword beside an issue reference is refus
   for (const text of ["Refs #354. The scope stays open for the rest.", "Nothing here."]) {
     assert.equal(run(text).status, 0, text);
   }
+});
+
+// ---- the installer is built by one recipe (#1295)
+
+/** The text of the first `dotnet publish apps/windows-tray` command in a script or workflow, with its continued lines. */
+function trayPublishCommand(text) {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const start = lines.findIndex((line) => /dotnet publish/.test(line) && /windows-tray/.test(line));
+  assert.ok(start >= 0, `no dotnet publish of the tray found in: ${text.slice(0, 80)}`);
+  const command = [];
+  for (let i = start; i < lines.length; i += 1) {
+    command.push(lines[i].trim());
+    if (!lines[i].trimEnd().endsWith("`")) break;
+  }
+  return command.join(" ").replace(/\s+/g, " ");
+}
+
+/** The publish switches that decide what ships, as written, without the paths and version values that differ by script. */
+function payloadSwitches(command) {
+  return ["-c Release", "-r win-x64", "--self-contained true", "-p:PublishSingleFile=false", "-p:PublishReadyToRun=true"].filter((flag) => command.includes(flag) || (flag === "-r win-x64" && /-r \$RuntimeIdentifier/.test(command)));
+}
+
+test("the installer the suite tests and the release ships is built by one recipe: the same self-contained, ReadyToRun tray payload, and the same channel rule (#968, #1295)", () => {
+  const script = trayPublishCommand(read("scripts/pack-windows-installer.ps1"));
+  const ci = trayPublishCommand(read(".github/workflows/ci.yml"));
+  const release = trayPublishCommand(read(".github/workflows/release.yml"));
+  const want = ["-c Release", "-r win-x64", "--self-contained true", "-p:PublishSingleFile=false", "-p:PublishReadyToRun=true"];
+  assert.deepEqual(payloadSwitches(script), want, "the packaging script is the recipe");
+  assert.deepEqual(payloadSwitches(ci), want, "the manual CI build must publish the payload the script does (ReadyToRun, so the install hook meets its budget)");
+  assert.deepEqual(payloadSwitches(release), want, "the release must publish the payload the script does (ReadyToRun, so the install hook meets its budget)");
+  for (const publish of [script, ci, release]) {
+    assert.match(publish, /-p:DelunoUpdateChannel=/);
+    assert.match(publish, /-p:Version=/);
+  }
+  const channelRule = /\$version\.StartsWith\("0\."\) -or \$version -match "-\(rc\|beta\|preview\)\(\[\.-\]\|\$\)"/;
+  assert.match(read(".github/workflows/ci.yml"), channelRule);
+  assert.match(read(".github/workflows/release.yml"), channelRule);
+  assert.match(read("scripts/pack-windows-installer.ps1"), /\$Version\.StartsWith\("0\."\) -or \$Version -match "-\(rc\|beta\|preview\)\(\[\.-\]\|\$\)"/);
+});
+
+test("the packaging script bundles FFmpeg and ffprobe (asserted present), the checksum-pinned UnRAR, packs with the pinned vpk and stops without a Setup", () => {
+  const script = read("scripts/pack-windows-installer.ps1");
+  assert.match(script, /ffprobe/i);
+  assert.match(script, /fetch-unrar\.ps1/);
+  assert.match(script, /\$VelopackVersion\s*=\s*"0\.0\.1298"/);
+  assert.match(script, /vpk pack/);
+  assert.match(script, /throw "vpk produced no Setup executable\."/);
+  assert.match(script, /web/i);
+});
+
+test("the installer icon check refuses an icon built from an older logo and accepts one built from the current logo (#1129)", () => {
+  const dir = tempDir("icon");
+  try {
+    mkdirSync(path.join(dir, "scripts"), { recursive: true });
+    mkdirSync(path.join(dir, "apps/web/public"), { recursive: true });
+    mkdirSync(path.join(dir, "installer"), { recursive: true });
+    copyFileSync(path.join(root, "scripts/check-windows-icon.mjs"), path.join(dir, "scripts/check-windows-icon.mjs"));
+    writeFileSync(path.join(dir, "apps/web/public/favicon.svg"), "<svg>logo one</svg>\n");
+    const run = () => spawnSync(process.execPath, [path.join(dir, "scripts/check-windows-icon.mjs")], { cwd: dir, encoding: "utf8" });
+    // No stamp yet, or a stamp of another logo: refused, with the way to fix it.
+    const refused = run();
+    assert.equal(refused.status, 1);
+    assert.match(refused.stderr, /npm run build:icon/);
+    const sha = createHash("sha256").update("<svg>logo one</svg>\n").digest("hex");
+    writeFileSync(path.join(dir, "installer/deluno.ico.source-sha256"), `${sha}  favicon.svg\n`);
+    assert.equal(run().status, 0);
+    writeFileSync(path.join(dir, "apps/web/public/favicon.svg"), "<svg>logo two</svg>\n");
+    assert.equal(run().status, 1, "a changed logo with the old icon is refused");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  // And the real repository agrees today.
+  assert.equal(spawnSync(process.execPath, [path.join(root, "scripts/check-windows-icon.mjs")], { cwd: root }).status, 0);
+});
+
+// ---- the image (#1295)
+
+test("the Dockerfile builds the web app, publishes the host, runs as the non-root app user on port 8080 with /data and a health check, and a fixable HIGH or CRITICAL vulnerability fails the change", () => {
+  const dockerfile = read("Dockerfile");
+  assert.match(dockerfile, /npm run build:web|vite build|build:web/);
+  assert.match(dockerfile, /dotnet publish/);
+  assert.match(dockerfile, /apt-get install[^\n]*ffmpeg/);
+  assert.match(dockerfile, /^USER app$/m);
+  assert.match(dockerfile, /^EXPOSE 8080$/m);
+  assert.match(dockerfile, /mkdir --parents \/data[\s\S]*chown --recursive app:app \/app \/data/);
+  assert.match(dockerfile, /^HEALTHCHECK /m);
+  assert.match(dockerfile, /CMD curl --fail --silent http:\/\/127\.0\.0\.1:8080\/api\/health\/ready/);
+  const ci = read(".github/workflows/ci.yml");
+  const scan = ci.slice(ci.indexOf("aquasecurity/trivy-action"));
+  assert.match(scan.slice(0, 600), /severity: HIGH,CRITICAL/);
+  assert.match(scan.slice(0, 600), /ignore-unfixed: true/);
+  assert.match(scan.slice(0, 600), /exit-code: "1"/);
+});
+
+// ---- the update scenario needs the previous release by hand (#1295)
+
+test("without -PreviousInstallerPath the update phase fails, says why and waives nothing, so the verdict fails too", () => {
+  const suite = read("scripts/golden-path/Invoke-ScenarioSuite.ps1");
+  const phase = suite.slice(suite.indexOf("function Invoke-UpdatePhase"));
+  const guard = phase.slice(0, phase.indexOf("$prevVersion = $PreviousVersion"));
+  assert.match(guard, /if \(-not \$PreviousInstallerPath\) \{\s*return \(New-UpdateFailureRecord 'The previous release''s Setup\.exe was not given \(-PreviousInstallerPath\)/);
+  assert.match(guard, /nothing waives it/);
+  // The failure record is a failed scenario with one failed check, not a skip.
+  const record = suite.slice(suite.indexOf("function New-UpdateFailureRecord"), suite.indexOf("function Copy-FileToVm"));
+  assert.match(record, /status = 'fail'/);
+  assert.match(record, /ok = \$false; detail = \$Why/);
+  // And a given path that does not exist stops the run before anything starts.
+  assert.match(suite, /if \(\$PreviousInstallerPath -and -not \(Test-Path \$PreviousInstallerPath\)\) \{ throw "Previous installer not found: \$PreviousInstallerPath" \}/);
 });

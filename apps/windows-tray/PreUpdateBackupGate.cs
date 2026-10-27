@@ -34,6 +34,42 @@ public sealed record BlockedUpdateNote(string Version, string Reason, DateTimeOf
         }
     }
 
+    /// <summary>
+    /// Says a blocked install once: takes the note (so a second call says nothing), hands its words to Activity as one
+    /// "app.update" line, and gives them to the tray notice. A failed Activity write is reported to <paramref name="onActivityFailed"/>
+    /// and never stops the notice. Returns the note, or null when there was none.
+    /// </summary>
+    public static async Task<BlockedUpdateNote?> ReportOnceAsync(
+        string folder,
+        Func<string, string, string, Task>? recordActivity,
+        Action<string> notify,
+        Action<string> onActivityFailed)
+    {
+        var note = TryTake(folder);
+        if (note is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            if (recordActivity is not null)
+            {
+                await recordActivity(
+                    "app.update",
+                    note.Message,
+                    JsonSerializer.Serialize(new { version = note.Version, reason = note.Reason, atUtc = note.AtUtc })).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            onActivityFailed($"could not write the blocked-update line to Activity: {ex.Message}");
+        }
+
+        notify(note.Message);
+        return note;
+    }
+
     /// <summary>Reads the note and removes it, so it is said once. Null when there is none.</summary>
     public static BlockedUpdateNote? TryTake(string folder)
     {

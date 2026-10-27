@@ -13,7 +13,7 @@ $script:AllClientKinds = $script:TorrentKinds + $script:UsenetKinds
 function Get-ScenarioPlan {
     $all = $script:AllClientKinds
     $groups = @(
-        @{ Name = 'install';  Function = 'Invoke-GroupInstall';  Ids = @('install-first-run') }
+        @{ Name = 'install';  Function = 'Invoke-GroupInstall';  Ids = @('install-first-run', 'install.clients-ready') }
         @{ Name = 'nzbgetsetup'; Function = 'Invoke-GroupNzbgetSetup'; Ids = @('nzbget.setup-twice') }
         @{ Name = 'films';    Function = 'Invoke-GroupFilms';    Ids = @($all | ForEach-Object { "film.$_" }) + @('film.extra-left-out') }
         @{ Name = 'removal';  Function = 'Invoke-GroupRemoval';  Ids = @($all | ForEach-Object { "remove-copy.$_.folder" }) + @($script:TorrentKinds | ForEach-Object { "remove-copy.$_.file" }) }
@@ -27,7 +27,7 @@ function Get-ScenarioPlan {
         @{ Name = 'seasonpack'; Function = 'Invoke-GroupSeasonPack'; Ids = @('seasonpack.no-library') }
         @{ Name = 'layout';   Function = 'Invoke-GroupLayout';   Ids = @('layout.390-folder-chain') }
         @{ Name = 'firewall'; Function = 'Invoke-GroupFirewall'; Ids = @('firewall.first-run-rule', 'firewall.screen-allow', 'firewall.screen-declined', 'firewall.tray-allow-and-revoke') }
-        @{ Name = 'tray'; Function = 'Invoke-GroupTray'; Ids = @('tray.menu-actions', 'tray.change-port', 'tray.allowed-hosts-recovery', 'tray.red-when-host-fails') }
+        @{ Name = 'tray'; Function = 'Invoke-GroupTray'; Ids = @('tray.menu-actions', 'tray.change-port', 'tray.allowed-hosts-recovery', 'tray.red-when-host-fails', 'tray.serves-front-end') }
         @{ Name = 'traystates'; Function = 'Invoke-GroupTrayStates'; Ids = @('tray.dot-and-hover', 'tray.starting-dot', 'tray.menu-details', 'tray.quit') }
         @{ Name = 'service'; Function = 'Invoke-GroupService'; Ids = @('service.install-run-uninstall', 'service.wrong-password') }
         @{ Name = 'desktop'; Function = 'Invoke-GroupDesktop'; Ids = @('companions.tray-install-picker', 'filesystem.native-folder-picker') }
