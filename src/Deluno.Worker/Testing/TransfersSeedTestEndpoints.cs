@@ -117,7 +117,7 @@ public static class TransfersSeedTestEndpoints
             {
                 var details = System.Text.Json.JsonSerializer.Serialize(new { DispatchId = dispatchId, HandoffId = handoff?.Id, ClientId = clientId, QueueItemId = queueItemId });
                 recoveryCaseId = (await movies.AddImportRecoveryCaseAsync(
-                    new Deluno.Movies.Contracts.CreateMovieImportRecoveryCaseRequest(request.ReleaseName, "importFailed", request.FailureMessage ?? "The import did not finish.", "Try the import again.", details),
+                    new Deluno.Movies.Contracts.CreateMovieImportRecoveryCaseRequest(request.ReleaseName, request.RecoveryKind ?? "importFailed", request.FailureMessage ?? "The import did not finish.", "Try the import again.", details),
                     cancellationToken)).Id;
             }
 
@@ -196,5 +196,6 @@ public static class TransfersSeedTestEndpoints
         DateTimeOffset? ScheduledForUtc,
         bool? Unreachable,
         string? DispatchImportFailure = null,
-        bool? RecoveryCase = null);
+        bool? RecoveryCase = null,
+        string? RecoveryKind = null);
 }
