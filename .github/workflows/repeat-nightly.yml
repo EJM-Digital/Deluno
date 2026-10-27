@@ -207,13 +207,17 @@ jobs:
       contents: read
       issues: write
     steps:
-      # The REST API with curl: a self-hosted runner has no gh (the 20 October report step failed on "gh: command not found").
-      - name: Open the issue
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      # Node and the REST API: a self-hosted runner has no gh (the 20 October report step failed on "gh: command not found").
+      # A night that finds the same problem again comments on the open issue instead of opening another.
+      - name: Open the issue, or add this run to the open one
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          payload="{\"title\":\"A suite differed between nightly runs\",\"labels\":[\"testing: coverage\"],\"body\":\"The nightly repeat of the suites failed: a test failed on at least one of ${REPEATS} runs in a row on the same build. Find the failing test in ${RUN_URL}, reproduce it, and fix its cause. It is not retried or quarantined.\"}"
-          curl --fail-with-body -sS -X POST \
-            -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-            "${{ github.api_url }}/repos/${{ github.repository }}/issues" -d "$payload"
+          node scripts/report-nightly-issue.mjs --label "testing: coverage" --run-url "$RUN_URL"             --title "A suite differed between nightly runs"             --body "The nightly repeat of the suites failed: a test failed on at least one of ${REPEATS} runs in a row on the same build. Find the failing test in ${RUN_URL}, reproduce it, and fix its cause. It is not retried or quarantined."

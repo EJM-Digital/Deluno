@@ -279,6 +279,7 @@ $workflowChecks = @(
     @{ Label = "the recordings manifest check works"; Args = @("--test", "scripts/check-recorded-manifest.test.mjs") },
     @{ Label = "the check that main and the release tags stay protected works (GAT-10; CI reads the live rules)"; Args = @("--test", "scripts/check-branch-protection.test.mjs") },
     @{ Label = "the recording freshness check works"; Args = @("--test", "scripts/check-recording-freshness.test.mjs") },
+    @{ Label = "a repeated nightly finding comments on the open issue"; Args = @("--test", "scripts/report-nightly-issue.test.mjs") },
     @{ Label = "the mutation test filter works"; Args = @("--test", "scripts/mutation/test-filter.test.mjs") },
     @{ Label = "the coverage register names a row for every route, screen, job, migration, integration, tray action and scenario, every proof it names exists, and the gaps are no more than on origin/main"; Args = @("scripts/check-coverage-register.mjs", "--base", "origin/main") },
     @{ Label = "the per-area coverage table and the list of files below 100% match the baseline"; Args = @("scripts/coverage/coverage-docs.mjs") },
