@@ -439,19 +439,32 @@ public sealed class HostSupervisorTests
     public async Task A_slow_migration_that_keeps_reporting_progress_is_never_cut_off()
     {
         using var h = new Harness();
+        // The clock moves only once the script waits, so a slow thread pool cannot let it run past a step that has not been reported yet.
+        using var waiting = new SemaphoreSlim(0);
         // 30 migrations at 5 minutes each: 150 minutes, ten times the migration window, every step reported.
         h.Host.Script = async call =>
         {
             for (var i = 1; i <= 30; i++)
             {
                 call.Enter(StartupPhase.Migrations, $"platform: V{i:0000}");
-                await call.WorkAsync(TimeSpan.FromMinutes(5));
+                var work = call.WorkAsync(TimeSpan.FromMinutes(5));
+                waiting.Release();
+                await work;
             }
 
             call.Enter(StartupPhase.Ready);
+            waiting.Release();
         };
 
-        var result = await h.DriveAsync(h.Supervisor.StartAsync(StartReason.FirstStart), step: TimeSpan.FromSeconds(10));
+        var starting = h.Supervisor.StartAsync(StartReason.FirstStart);
+        for (var i = 1; i <= 30; i++)
+        {
+            Assert.True(await waiting.WaitAsync(TimeSpan.FromSeconds(30)), $"migration {i} was never reached\n{h.Log}");
+            await h.PassAsync(TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(10));
+        }
+
+        Assert.True(await waiting.WaitAsync(TimeSpan.FromSeconds(30)), "Ready was never reached\n" + h.Log);
+        var result = await h.DriveAsync(starting, step: TimeSpan.FromSeconds(10));
 
         Assert.Equal(StartOutcome.Started, result.Outcome);
         Assert.Equal(1, h.Host.Starts);
