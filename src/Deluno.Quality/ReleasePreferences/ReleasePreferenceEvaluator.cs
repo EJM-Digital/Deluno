@@ -79,8 +79,10 @@ public static class ReleasePreferenceEvaluator
         EnsureEvaluationMatchesPlan(plan, left, nameof(left));
         EnsureEvaluationMatchesPlan(plan, right, nameof(right));
 
-        var leftGate = left.HardGatesPassed ? 0 : 1;
-        var rightGate = right.HardGatesPassed ? 0 : 1;
+        // A release proven to break a gate (a forbidden trait present, a required one absent)
+        // ranks below one whose facts are merely unknown, which might still be fine.
+        var leftGate = GateRank(left);
+        var rightGate = GateRank(right);
         if (leftGate != rightGate) return leftGate.CompareTo(rightGate);
 
         var leftFamilies = left.Families.ToDictionary(item => item.FamilyId, StringComparer.OrdinalIgnoreCase);
@@ -127,6 +129,9 @@ public static class ReleasePreferenceEvaluator
 
         return 0;
     }
+
+    private static int GateRank(PreferenceEvaluation evaluation)
+        => evaluation.HardGatesPassed ? 0 : evaluation.Status == PreferenceEvaluationStatus.Missing ? 2 : 1;
 
     private static int? CompareFamilyRanks(
         IReadOnlyDictionary<string, PreferenceFamilyEvaluation> leftFamilies,
