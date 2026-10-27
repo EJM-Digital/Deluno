@@ -77,6 +77,10 @@ level.
 3. A hard gate dominates preference and ML signals.
 4. Unknown never becomes false, absent, zero or worst-ranked without a
    closed-world detector.
+   When candidates are ordered in one search, a wanted family ranks a proven
+   level first, unknown or conflicting next, and proven absent last. Unknown
+   never outranks a release confirmed to have the trait. A release proven to
+   carry a forbidden trait ranks below one that might be fine.
 5. Every upgrade names a below-target persistent dimension that improves.
 6. Equivalent content is deduplicated independently of ranking.
 7. Every stored evaluation records the plan id/version/hash and canonical facts.

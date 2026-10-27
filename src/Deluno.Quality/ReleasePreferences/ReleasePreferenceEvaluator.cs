@@ -144,14 +144,19 @@ public static class ReleasePreferenceEvaluator
         return leftRank == rightRank ? null : leftRank.CompareTo(rightRank);
     }
 
-        private static int EffectiveRank(PreferenceFamilyEvaluation family)
+    /// <summary>
+    /// For a family the profile wants: a proven level, best first, then unknown
+    /// or conflicting (it might have it), then proven absent. Unknown never
+    /// ranks below a proven absence and never above a proven level (spec
+    /// invariant 4). Families the profile does not want are gates, where a
+    /// proven forbidden trait already fails the gate and an unknown one passes.
+    /// </summary>
+    private static int EffectiveRank(PreferenceFamilyEvaluation family)
         => family.State switch
         {
-            PreferenceFactState.Present => family.SelectedRank < 0 ? int.MaxValue - 1 : family.SelectedRank,
-            PreferenceFactState.Absent => int.MaxValue - 1,
-            PreferenceFactState.Unknown => int.MaxValue,
-            PreferenceFactState.Conflicting => int.MaxValue,
-            _ => int.MaxValue
+            PreferenceFactState.Present => family.SelectedRank < 0 ? int.MaxValue - 2 : family.SelectedRank,
+            PreferenceFactState.Absent => int.MaxValue,
+            _ => int.MaxValue - 1
         };
 
     private static void EnsureEvaluationMatchesPlan(

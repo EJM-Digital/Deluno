@@ -148,10 +148,25 @@ public sealed class ReleasePreferenceRulesAreTrueTests
         var unknown = Of();
         var conflicting = Of(Fact("quality.bluray-1080p", PreferenceFactState.Present, "name"), Fact("quality.bluray-1080p", PreferenceFactState.Absent, "probe"));
 
-        // The spec says unknown is never "worst-ranked" without a closed-world detector, yet ordering ranks Unknown last (reported: spec and code disagree).
+        // Spec invariant 4: unknown is never worse than a proven absence, and never better than a proven level.
         Assert.True(ReleasePreferenceEvaluator.CompareForSelection(plan, web, absent) < 0);
-        Assert.True(ReleasePreferenceEvaluator.CompareForSelection(plan, absent, unknown) < 0);
+        Assert.True(ReleasePreferenceEvaluator.CompareForSelection(plan, unknown, absent) < 0);
+        Assert.True(ReleasePreferenceEvaluator.CompareForSelection(plan, web, unknown) < 0);
+        Assert.True(ReleasePreferenceEvaluator.CompareForSelection(plan, conflicting, absent) < 0);
         Assert.Equal(0, ReleasePreferenceEvaluator.CompareForSelection(plan, unknown, conflicting));
         Assert.Equal(0, ReleasePreferenceEvaluator.CompareForSelection(plan, web, web));
+    }
+
+    [Fact]
+    public void A_release_known_to_carry_a_forbidden_trait_ranks_below_one_that_might_be_fine()
+    {
+        var plan = Plan() with { ForbiddenTraitIds = ["audio.format.dts"] };
+        PreferenceFact good = Fact("quality.bluray-1080p", PreferenceFactState.Present);
+        var knownBad = ReleasePreferenceEvaluator.Evaluate(plan, [good, Fact("audio.format.dts", PreferenceFactState.Present)]);
+        var unknown = ReleasePreferenceEvaluator.Evaluate(plan, [good]);
+        var knownGood = ReleasePreferenceEvaluator.Evaluate(plan, [good, Fact("audio.format.dts", PreferenceFactState.Absent)]);
+
+        Assert.True(ReleasePreferenceEvaluator.CompareForSelection(plan, unknown, knownBad) < 0);
+        Assert.True(ReleasePreferenceEvaluator.CompareForSelection(plan, knownGood, knownBad) < 0);
     }
 }
