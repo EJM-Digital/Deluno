@@ -43,6 +43,18 @@ public static class SeriesSeedTestEndpoints
                 cancellationToken);
 
             var seriesId = (await series.ListAsync(cancellationToken)).Single(item => item.Title == request.Title).Id;
+            if (request.FirstAirDate is { } firstAirDate)
+            {
+                // The air dates the calendar and the aired/upcoming counts read: written as the catalogue sync writes them.
+                await series.SyncEpisodeCatalogueAsync(
+                    seriesId,
+                    Enumerable.Range(1, count)
+                        .Select(number => new CatalogueEpisodeItem(1, number, null, null, new DateTimeOffset(firstAirDate.AddDays(number - 1).ToDateTime(new TimeOnly(12, 0)), TimeSpan.Zero)))
+                        .ToArray(),
+                    "browser-test",
+                    cancellationToken);
+            }
+
             var episodes = (await series.GetInventoryDetailAsync(seriesId, cancellationToken))!.Episodes
                 .OrderBy(item => item.SeasonNumber).ThenBy(item => item.EpisodeNumber).ToList();
 
@@ -62,7 +74,7 @@ public static class SeriesSeedTestEndpoints
         return endpoints;
     }
 
-    public sealed record SeedSeriesRequest(string LibraryId, string Title, int? Year, int EpisodeCount, IReadOnlyList<SeedSearch>? Searches);
+    public sealed record SeedSeriesRequest(string LibraryId, string Title, int? Year, int EpisodeCount, IReadOnlyList<SeedSearch>? Searches, DateOnly? FirstAirDate = null);
 
     public sealed record SeedSearch(int EpisodeNumber, string? Outcome);
 }
