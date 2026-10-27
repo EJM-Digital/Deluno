@@ -1060,7 +1060,7 @@ function AutomationCard({
             {retryWindows.slice(0, 4).map((item) => (
               <div key={`${item.entityType}:${item.entityId}:${item.actionKind}`} className="flex items-center justify-between gap-3 rounded-lg border border-hairline bg-background/40 px-3 py-2">
                 <div className="min-w-0">
-                  <p className="truncate text-xs font-semibold text-foreground">{item.mediaType} / {item.actionKind}</p>
+                  <p className="truncate text-xs font-semibold text-foreground max-md:whitespace-normal max-md:[overflow-wrap:anywhere]">{item.mediaType} / {item.actionKind}</p>
                   <p className="text-(length:--type-caption) text-muted-foreground">{item.lastResult || "Last search recorded"}</p>
                 </div>
                 <span className="text-(length:--type-caption) tabular-nums text-muted-foreground">{formatWhen(item.nextEligibleUtc, preferences)}</span>
@@ -1075,7 +1075,7 @@ function AutomationCard({
             {automation.slice(0, 5).map((item) => (
               <div key={item.libraryId} className="flex items-center justify-between gap-3 rounded-lg border border-hairline bg-background/40 px-3 py-2">
                 <div className="min-w-0">
-                  <p className="truncate text-xs font-semibold text-foreground">{item.libraryName}</p>
+                  <p className="truncate text-xs font-semibold text-foreground max-md:whitespace-normal max-md:[overflow-wrap:anywhere]" title={item.libraryName}>{item.libraryName}</p>
                   <p className="text-(length:--type-caption) text-muted-foreground">
                     {item.status}{item.nextSearchUtc ? ` / next ${formatWhen(item.nextSearchUtc, preferences)}` : ""}
                   </p>
