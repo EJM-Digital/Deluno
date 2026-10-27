@@ -71,6 +71,23 @@ describe("what each push reads again on Transfers", () => {
     expect(refresh.dispatches).not.toHaveBeenCalled();
   });
 
+  it("a download reading for a download the screen does not list reads the telemetry once, and one it lists does not (#1379)", () => {
+    vi.useFakeTimers();
+    const overview = { summary: {}, clients: [{ clientId: "c1", queue: [{ id: "known", progress: 1, speedMbps: 0, etaSeconds: 0, status: "downloading" }] }], capturedUtc: "2026-10-28T08:00:00Z" };
+    queryClient.setQueryData(sharedSources.telemetry.key, overview);
+    const refresh = mount();
+
+    send("DownloadProgress", { id: "known", title: "Known", progress: 5, speedMbps: 1, eta: null, status: "downloading" });
+    act(() => { vi.advanceTimersByTime(300); });
+    expect(refresh.telemetry).not.toHaveBeenCalled();
+
+    send("DownloadProgress", { id: "new-one", title: "New one", progress: 5, speedMbps: 1, eta: null, status: "downloading" });
+    send("DownloadProgress", { id: "new-two", title: "New two", progress: 5, speedMbps: 1, eta: null, status: "downloading" });
+    act(() => { vi.advanceTimersByTime(300); });
+    expect(refresh.telemetry).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
   it("ImportStateChanged reads the jobs, the dispatches and the telemetry", () => {
     const refresh = mount();
 
