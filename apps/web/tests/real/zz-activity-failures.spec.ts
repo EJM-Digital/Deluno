@@ -111,4 +111,19 @@ test.describe("Activity, acting on what failed", () => {
     await expect(page).toHaveURL(/\/queue/);
     await expectNoErrorScreen(page);
   });
+
+  test("a sent download whose import failed opens the download drawer, and Dismiss clears it with one request", async ({ page }) => {
+    await openScreen(page, "/activity");
+    await seed(page, { releaseName: "Activity.Download.Failed.2021.1080p-GRP", dispatchImportFailure: "The destination file already exists." });
+    await openFailed(page);
+    await page.getByRole("row").filter({ hasText: "Activity.Download.Failed.2021.1080p-GRP" }).first().click();
+    const drawer = page.getByRole("dialog").first();
+    const dismiss = drawer.getByRole("button", { name: /^Dismiss the failed download / });
+    await expect(dismiss).toBeVisible();
+    const requests = recordRequests(page);
+    await dismiss.click();
+    await expect.poll(() => requests.seen.filter((r) => r.method !== "GET" && /dismiss/i.test(r.path)).length).toBe(1);
+    requests.stop();
+    await expectNoErrorScreen(page);
+  });
 });

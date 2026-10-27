@@ -185,6 +185,29 @@ test.describe("Transfers with a download client", () => {
     await expect(page.locator("[data-sonner-toast]").first().or(drawer.getByText(/would land|nothing to import|no files|could not/i).first())).toBeVisible();
   });
 
+  test("a sent download that is still in its client offers Remove from client in Activity's drawer too, asking why first, and Just stop tracking it leaves the client alone", async ({ page }) => {
+    await openScreen(page, "/activity");
+    await untilQuiet(page);
+    const row = page.getByRole("row").filter({ hasText: PAUSED_RELEASE }).first();
+    await expect(row).toBeVisible({ timeout: 45_000 });
+    await row.click();
+    const drawer = page.getByRole("dialog").filter({ hasText: PAUSED_RELEASE }).first();
+    const remove = drawer.getByRole("button", { name: /^Remove .* from / });
+    await expect(remove).toBeVisible({ timeout: 45_000 });
+    const deletesBefore = askedOfPaused(/torrents\/delete/).length;
+    await remove.click();
+    const why = page.getByRole("dialog", { name: `Why remove “${PAUSED_RELEASE}”?` });
+    await expect(why).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(why).toHaveCount(0);
+    expect(askedOfPaused(/torrents\/delete/).length, "Escape removes nothing").toBe(deletesBefore);
+
+    await remove.click();
+    await why.getByRole("button", { name: `Remove “${PAUSED_RELEASE}”: Just stop tracking it` }).click();
+    await expect(why).toHaveCount(0);
+    expect(askedOfPaused(/torrents\/delete/).length, "forgetting a download leaves the client's copy").toBe(deletesBefore);
+  });
+
   test("Remove from client asks why: Escape keeps the download; Just stop tracking it makes Deluno forget it and leaves the client alone", async ({ page }) => {
     const drawer = await openDrawer(page);
     const deletesBefore = asked(/torrents\/delete/).length;
