@@ -155,8 +155,10 @@ public sealed class TheRealtimePublisherRoutesEachEventToItsSubjectTests : IAsyn
         }
 
         await _publisher.StartAsync(CancellationToken.None);
+        // Replayed turns true as soon as the first kept event is delivered, so wait for the last one (the 1,500th) before counting.
         await Wait.UntilAsync(() => _publisher.Resume(1, ["queue"]).Status == RealtimeResumeStatus.ResyncRequired
-            && _publisher.Resume(500, ["queue"]).Status == RealtimeResumeStatus.Replayed, "the publisher to deliver what was left in its queue");
+            && _publisher.Resume(500, ["queue"]) is { Status: RealtimeResumeStatus.Replayed } delivered
+            && delivered.Envelopes.Count == 1000, "the publisher to deliver everything that was left in its queue");
 
         Assert.Equal(RealtimeResumeStatus.ResyncRequired, _publisher.Resume(1, ["queue"]).Status);
         var replay = _publisher.Resume(500, ["queue"]);
