@@ -9,6 +9,40 @@ developer: say what changed in everyday words, not internal file or class
 names. `npm run ci:check` warns (does not fail) when the version currently
 being built has no section here yet.
 
+## 1.0.0-rc.30.36
+
+Deluno is early. It is still being tested hard and it is not finished. Expect
+some rough edges, and please do not point it at the only copy of anything you
+cannot replace. Nothing runs on its own until you switch it on, and everything
+Deluno does is written to Activity. If something looks wrong, confusing or
+just ugly, tell us at https://github.com/EJM-Digital/Deluno/issues: every
+report gets read. This notice is at the top of every release.
+
+Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
+your PC" the first time you run the installer. Choose More info, then Run
+anyway.
+
+Everything in 1.0.0-rc.30.35, plus:
+
+Choosing releases:
+- A release known to have something you want now ranks above one whose details
+  are unknown, and one known to lack it, or known to have something you do not
+  want, ranks below the unknown one.
+- When Deluno checks whether a download is the same as a file you already have,
+  it now compares the whole files, not just their size and a sample.
+
+Fixes:
+- An update applied on Windows is now recorded in Activity as "Deluno updated
+  from X to Y", the same as on Docker.
+- Two quick edits to the Subtitles permission fields are both saved.
+- Editing either side of a remote path mapping saves in one step, and a path
+  that is already mapped says so plainly instead of showing a server error.
+- The dashboard's low-storage warning now uses the threshold you set.
+- A recycle bin list that cannot be read now says why.
+- Blocking a release in its drawer turns the button into Lift the block at once.
+- On a phone, the System screen shows a library's whole name.
+- A Cloudflare helper session is now closed on the helper that made it.
+- The System history no longer stops recording after one failed hour.
 ## 1.0.0-rc.30.35
 
 Deluno is early. It is still being tested hard and it is not finished. Expect
