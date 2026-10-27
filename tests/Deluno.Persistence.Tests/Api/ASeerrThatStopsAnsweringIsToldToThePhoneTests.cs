@@ -11,7 +11,7 @@ namespace Deluno.Persistence.Tests.Api;
 /// <summary>
 /// A Seerr connection going bad and coming back, told to a phone (register: notifications, "health degraded / restored for ... Seerr"): the
 /// Seerr is a loopback server answering as the real Seerr 3.5.0 did (tests/fixtures/recorded/seerr: its status and settings, and the 403 it gives a
-/// key it does not know), the phone a push service answering as the real ntfy 2.32.0 did. The Test click records the connection's health; the
+/// key it does not know), the phone a push service answering as the real ntfy 2.34.0 did. The Test click records the connection's health; the
 /// health pass (the real runner) tells the problem once and the recovery once, and a pass that changes nothing says nothing.
 /// </summary>
 public sealed class ASeerrThatStopsAnsweringIsToldToThePhoneTests

@@ -291,7 +291,7 @@ Still not recordable from the apps: a client's own timeout and an HTTP 429 with 
 
 ## Hosted notification services (#1343)
 
-- discord, slack, telegram, pushover and apprise deliveries: each needs an account (or, for Apprise, a running Apprise API with a service behind it), so Deluno's payload for them is held against the service documentation only (`NotificationProviderPayloadTests`). ntfy 2.32.0 and Gotify 3.1.1 are recorded from containers (`docker/notify.mjs`).
+- discord, slack, telegram, pushover and apprise deliveries: each needs an account (or, for Apprise, a running Apprise API with a service behind it), so Deluno's payload for them is held against the service documentation only (`NotificationProviderPayloadTests`). ntfy 2.34.0 and Gotify 3.1.1 are recorded from containers (`docker/notify.mjs`).
 
 ## Refusals recorded for #1301 (23 Oct 2026, `scripts/recorded-replies/docker/subtitle-refusals.mjs`)
 

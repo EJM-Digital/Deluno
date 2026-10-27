@@ -4,7 +4,7 @@
 // with `NTFY_AUTH_DEFAULT_ACCESS=deny-all` (nobody may publish without an account).
 //
 //   wsl: docker run -d --name rec-ntfy        -p 127.0.0.1:39080:80 binwiederhier/ntfy serve
-//   wsl: docker run -d --name rec-ntfy-locked -p 127.0.0.1:39081:80 -e NTFY_AUTH_FILE=/tmp/auth.db -e NTFY_AUTH_DEFAULT_ACCESS=deny-all binwiederhier/ntfy serve
+//   wsl: docker run -d --name rec-ntfy-locked -p 127.0.0.1:39081:80 --tmpfs /var/lib/ntfy -e NTFY_AUTH_FILE=/var/lib/ntfy/auth.db -e NTFY_AUTH_DEFAULT_ACCESS=deny-all binwiederhier/ntfy serve
 //   REC_NTFY_VERSION=<ntfy --version of the image> node scripts/recorded-replies/docker/ntfy.mjs
 import { Client, save } from './lib.mjs';
 

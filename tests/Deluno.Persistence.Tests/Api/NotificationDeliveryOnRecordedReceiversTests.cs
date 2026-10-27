@@ -12,7 +12,7 @@ namespace Deluno.Persistence.Tests.Api;
 
 /// <summary>
 /// Deluno's deliveries to the self-hosted push services (#1296), on the whole application with its own database: the receiving end is a real ntfy
-/// 2.32.0 and a real Gotify 3.1.1 as they answered (tests/fixtures/recorded/ntfy and gotify, recorded in Docker by scripts/recorded-replies/docker/notify.mjs),
+/// 2.34.0 and a real Gotify 3.1.1 as they answered (tests/fixtures/recorded/ntfy and gotify, recorded in Docker by scripts/recorded-replies/docker/notify.mjs),
 /// served over a real loopback port. Deluno's own request is held against the request the real service accepted (same method, address, headers and
 /// body), and a refusal is the refusal the real service gave. Retries, dead letters, the error kept on the connection, the delivery history and
 /// the replay are Deluno's own, on the real SQLite databases.

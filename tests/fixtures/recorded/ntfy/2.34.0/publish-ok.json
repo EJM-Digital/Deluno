@@ -1,0 +1,31 @@
+{
+  "app": "ntfy",
+  "version": "2.34.0",
+  "state": "publish-ok",
+  "recordedAt": "2026-10-27T04:36:08Z",
+  "note": "POST /{topic} with the message as plain text and the title in the Title header, to a server anyone may publish to: 200 with the event it stored.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/deluno-test",
+        "bodyText": "This is a test notification from Deluno. Your webhook is configured correctly."
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "id": "YtGaMfNzLjQp",
+          "time": 1793075768,
+          "expires": 1793118968,
+          "event": "message",
+          "topic": "deluno-test",
+          "title": "Deluno Webhook Test",
+          "message": "This is a test notification from Deluno. Your webhook is configured correctly."
+        }
+      }
+    }
+  ]
+}

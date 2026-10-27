@@ -11,7 +11,7 @@ namespace Deluno.Persistence.Tests.Api;
 /// <summary>
 /// What a person is told when the service a notification goes to says no (coverage register, integrations 6): a wrong login or address is named
 /// as a login problem or a refused request, and a rate limit as a rate limit, each kept on the delivery and on the connection. The 401 and 403
-/// replies are the ones ntfy 2.32.0 and Gotify 3.1.1 really gave (tests/fixtures/recorded/ntfy and gotify, served over a loopback port to the
+/// replies are the ones ntfy 2.34.0 and Gotify 3.1.1 really gave (tests/fixtures/recorded/ntfy and gotify, served over a loopback port to the
 /// whole application with its own databases). A 404 and a 429 are status lines only (no app's body is involved: the answer is the status that
 /// Deluno classifies), served by a plain loopback address.
 /// </summary>

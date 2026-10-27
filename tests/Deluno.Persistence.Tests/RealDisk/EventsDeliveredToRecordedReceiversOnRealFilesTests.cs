@@ -13,7 +13,7 @@ namespace Deluno.Persistence.Tests.RealDisk;
 /// <summary>
 /// The things that happen to a person's library, told to a phone (#856): real files in a real library folder, the real import pipeline, the real title
 /// removal and the real Files tab routes, the real outbound notification service and its database, and a push service on a loopback port that
-/// answers as the real ntfy 2.32.0 did (tests/fixtures/recorded/ntfy: the message it accepted). Each switch is tried on and off, and what reaches
+/// answers as the real ntfy 2.34.0 did (tests/fixtures/recorded/ntfy: the message it accepted). Each switch is tried on and off, and what reaches
 /// the phone is read from the request the push service received.
 /// </summary>
 public sealed class EventsDeliveredToRecordedReceiversOnRealFilesTests

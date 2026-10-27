@@ -1,11 +1,11 @@
 // Records the real replies of the two self-hosted notification receivers Deluno delivers to (tests/fixtures/recorded/<app>/<version>/<state>.json)
 // from their published images in Docker (#1296): ntfy (a topic, with and without an access token) and Gotify (an application's message).
 //
-//   node scripts/recorded-replies/docker/notify.mjs
+//   node scripts/recorded-replies/docker/notify.mjs          (REC_ONLY=ntfy or REC_ONLY=gotify records one of the two)
 //
 // It starts nothing itself. It expects, on this machine's loopback (Docker in WSL, published ports):
 //   ntfy, open:        docker run -d --name cove-ntfy -p 127.0.0.1:38580:80 binwiederhier/ntfy:latest serve
-//   ntfy, with a user: docker run -d --name cove-ntfy-auth -p 127.0.0.1:38582:80 -e NTFY_AUTH_FILE=/var/lib/ntfy/user.db
+//   ntfy, with a user: docker run -d --name cove-ntfy-auth -p 127.0.0.1:38582:80 --tmpfs /var/lib/ntfy -e NTFY_AUTH_FILE=/var/lib/ntfy/user.db
 //                        -e NTFY_AUTH_DEFAULT_ACCESS=deny-all binwiederhier/ntfy:latest serve
 //   Gotify:            docker run -d --name cove-gotify -p 127.0.0.1:38581:80 -e GOTIFY_DEFAULTUSER_NAME=admin -e GOTIFY_DEFAULTUSER_PASS=admin gotify/server:latest
 // The requests are the ones Deluno sends (OutboundNotificationService: BuildNtfyRequest and BuildGotifyRequest): the same method, address, headers and
@@ -89,5 +89,7 @@ async function gotify() {
   save('gotify', version, 'refused', note('The same message with a key Gotify does not know, and with no key at all: both are refused'), [wrong, none]);
 }
 
-await ntfy();
-await gotify();
+// REC_ONLY=ntfy (or gotify) records just that one app, so a stale recording is renewed without touching the other.
+const only = process.env.REC_ONLY;
+if (!only || only === 'ntfy') await ntfy();
+if (!only || only === 'gotify') await gotify();
