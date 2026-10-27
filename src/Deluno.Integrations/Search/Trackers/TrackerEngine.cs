@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Net;
@@ -298,7 +299,7 @@ public sealed partial class TrackerEngine : ITrackerEngine
                 }
 
                 // A selector whose link is not a torrent: the next one may be.
-                logger.LogDebug("Tracker {Tracker}: {Target} was not a torrent; trying the next download link.", definition.Name, target);
+                logger.LogDebug("Tracker {Tracker}: {Target} was not a torrent; trying the next download link.", definition.Name.ForLog(), target.ForLog());
             }
 
             throw new TrackerException($"{definition.Name}'s download page had no working download link.");
@@ -427,7 +428,7 @@ public sealed partial class TrackerEngine : ITrackerEngine
         var solved = await cloudflareHelper.FetchAsync(request.Uri, cancellationToken, session.HelperProxy, session.HelperUrl);
         if (solved is null || IsCloudflareBody(solved.Html))
         {
-            logger.LogInformation("The Cloudflare helper could not get past {Host}.", request.Uri.Host);
+            logger.LogInformation("The Cloudflare helper could not get past {Host}.", request.Uri.Host.ForLog());
             return page;
         }
 

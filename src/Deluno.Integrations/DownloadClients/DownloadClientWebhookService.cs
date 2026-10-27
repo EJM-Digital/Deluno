@@ -20,7 +20,7 @@ public sealed class DownloadClientWebhookService(
         {
             logger.LogDebug(
                 "Webhook from client {ClientId}: no matching dispatch found (event={Event}, hash={Hash}, name={Name}).",
-                clientId, request.Event, request.Hash, request.Name);
+                clientId.ForLog(), request.Event.ForLog(), request.Hash.ForLog(), request.Name.ForLog());
             return new DownloadClientWebhookResult(false, null, "No matching dispatch found.");
         }
 
@@ -38,7 +38,7 @@ public sealed class DownloadClientWebhookService(
 
         logger.LogDebug(
             "Webhook from client {ClientId}: unrecognised event '{Event}' for dispatch {DispatchId} — acknowledged but no action taken.",
-            clientId, request.Event, dispatch.Id);
+            clientId.ForLog(), request.Event.ForLog(), dispatch.Id.ForLog());
 
         return new DownloadClientWebhookResult(true, dispatch.Id, $"Event '{request.Event}' acknowledged, no action taken.");
     }
@@ -122,7 +122,7 @@ public sealed class DownloadClientWebhookService(
 
         logger.LogWarning(
             "Webhook: dispatch {DispatchId} ({ReleaseName}) reported as failed by client: {Reason}.",
-            dispatch.Id, dispatch.ReleaseName, request.FailureReason);
+            dispatch.Id.ForLog(), dispatch.ReleaseName.ForLog(), request.FailureReason.ForLog());
 
         return new DownloadClientWebhookResult(true, dispatch.Id, "Download failure recorded.");
     }

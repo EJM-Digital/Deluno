@@ -9,6 +9,7 @@ import { Select } from "../../components/ui/select";
 import { SwitchRow } from "../../components/ui/switch";
 import type { IndexerForm } from "./forms";
 import { PreferencesLink } from "./preferences-link";
+import { plainText } from "./plain-text";
 
 /** Every tracker Deluno can search, fetched once and kept: the list only changes with a Deluno release or a definitions update. */
 export function useTrackers(enabled: boolean) {
@@ -140,11 +141,6 @@ function TrackerSettingField({ setting, value, saved, onChange }: { setting: Tra
 /** Settings a person answers. Multi-selects are left at the tracker's defaults for now. */
 function isEditable(setting: TrackerSettingSummary) {
   return ["text", "password", "checkbox", "select", "info"].includes(setting.type);
-}
-
-/** The definitions' notes carry a little HTML; the words are what matter. */
-function plainText(html: string) {
-  return html.replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
 }
 
 function withCurrent(links: string[], current: string) {

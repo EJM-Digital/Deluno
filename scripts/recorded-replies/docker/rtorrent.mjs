@@ -32,7 +32,7 @@ const call = (method, params = []) => `<?xml version="1.0"?><methodCall><methodN
 function rowsOf(exchange) {
   const body = exchange.reply.bodyText ?? '';
   const rows = [];
-  const re = /<array><data>((?:<value>.*?<\/value>)+)<\/data><\/array>/gs;
+  const re = /<array><data>((?:<value>(?:(?!<\/value>).)*<\/value>)+)<\/data><\/array>/gs;
   const outer = body.indexOf('<array><data>');
   if (outer < 0) return rows;
   const inner = body.slice(outer + 13);

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { setUpStack, until, type Stack } from "./stack.ts";
 
@@ -24,7 +25,7 @@ function nzbgetConfigProblems(status: { DownloadPaused?: boolean } | undefined, 
   return problems;
 }
 
-const provider = () => ({ host: "fixture", port: 1119, useSsl: false, username: "golden", password: `Gp-${Math.random().toString(16).slice(2, 14)}`, connections: 2 });
+const provider = () => ({ host: "fixture", port: 1119, useSsl: false, username: "golden", password: `Gp-${randomBytes(6).toString("hex")}`, connections: 2 });
 
 test.beforeAll(async () => {
   test.setTimeout(10 * 60_000);

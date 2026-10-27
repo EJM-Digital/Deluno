@@ -25,7 +25,7 @@ test("Api is split by the first letter of the class, and the last Api part is ev
   assert.match(filterFor(2), /Api\.B\|.*Api\.F$/);
   const rest = filterFor(4);
   assert.match(rest, /^FullyQualifiedName~Deluno\.Persistence\.Tests\.Api\.&/);
-  for (const letter of ["A", "B", "F", "G", "Q"]) assert.match(rest, new RegExp(`!~Deluno\.Persistence\.Tests\.Api\.${letter}(&|$)`));
+  for (const letter of ["A", "B", "F", "G", "Q"]) assert.match(rest, new RegExp(String.raw`!~Deluno\.Persistence\.Tests\.Api\.${letter}(&|$)`));
   assert.doesNotMatch(rest, /!~Deluno\.Persistence\.Tests\.Api\.R/);
 });
 test("no letter is named by two Api parts, and each Api part names some", () => {
@@ -35,7 +35,7 @@ test("no letter is named by two Api parts, and each Api part names some", () => 
 });
 test("the last part is every namespace the others do not name", () => {
   const rest = filterFor(PARTS.length);
-  for (const n of ["Api", "Integrations", "Platform", "Quality", "Jobs", "Security"]) assert.match(rest, new RegExp(`!~Deluno\.Persistence\.Tests\.${n}\.`));
+  for (const n of ["Api", "Integrations", "Platform", "Quality", "Jobs", "Security"]) assert.match(rest, new RegExp(String.raw`!~Deluno\.Persistence\.Tests\.${n}\.`));
   assert.equal((rest.match(/Api\./g) ?? []).length, 1);
   assert.throws(() => filterFor(0));
   assert.throws(() => filterFor(PARTS.length + 1));

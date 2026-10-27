@@ -591,7 +591,7 @@ public sealed class RecycleBinService(
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
                 TryDeleteEmptyDirectory(itemRoot);
-                logger.LogWarning(exception, "Could not move {Path} out of the processor output folder into the recycle bin.", full);
+                logger.LogWarning(exception, "Could not move {Path} out of the processor output folder into the recycle bin.", full.ForLog());
                 return null;
             }
         }
@@ -631,7 +631,7 @@ public sealed class RecycleBinService(
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             // Naming the owner is a help for Restore, never a reason to keep a file from the bin.
-            logger.LogDebug(exception, "Could not find which title {Path} belongs to.", path);
+            logger.LogDebug(exception, "Could not find which title {Path} belongs to.", path.ForLog());
         }
 
         return null;
@@ -686,7 +686,7 @@ public sealed class RecycleBinService(
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
                 TryDeleteEmptyDirectory(itemRoot);
-                logger.LogWarning(exception, "Could not retain replaced file {ExistingPath} in the recycle bin.", existingPath);
+                logger.LogWarning(exception, "Could not retain replaced file {ExistingPath} in the recycle bin.", existingPath.ForLog());
                 return null;
             }
         }

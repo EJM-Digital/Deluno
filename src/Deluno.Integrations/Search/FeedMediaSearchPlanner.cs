@@ -148,7 +148,7 @@ public sealed class FeedMediaSearchPlanner(
         {
             logger.LogWarning(
                 "Search for {Title} has no enabled {MediaType} indexers linked to the library policy.",
-                title,
+                title.ForLog(),
                 mediaType);
             return new MediaSearchPlan(
                 BestCandidate: null,
@@ -275,7 +275,7 @@ public sealed class FeedMediaSearchPlanner(
                     : MediaSearchReasons.NoResults;
             logger.LogWarning(
                 "Search for {Title} queried {IndexerCount} indexers; {FailedCount} failed and none returned results.",
-                title,
+                title.ForLog(),
                 sourceIndexers.Length,
                 failedCount);
             return new MediaSearchPlan(

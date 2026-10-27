@@ -186,7 +186,7 @@ public sealed partial class TmdbMetadataProvider
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
-            logger.LogInformation(exception, "TheTVDB could not add to series {ProviderId}; keeping TMDb's record.", lookup.ProviderId);
+            logger.LogInformation(exception, "TheTVDB could not add to series {ProviderId}; keeping TMDb's record.", lookup.ProviderId.ForLog());
             return lookup with { Result = await ApplyLanguageAsync(lookup.Result, cancellationToken) };
         }
     }

@@ -144,7 +144,7 @@ test.describe("Transfers, with hand-offs to a processor", () => {
     await page.goto("/");
     await untilQuiet(page);
     for (const [release, word] of words) {
-      const dashboardRow = page.locator("main").getByText(release.replace(/\./g, " ").replace(/^Words /, "Words ")).first();
+      const dashboardRow = page.locator("main").getByText(release.replace(/\./g, " ")).first();
       await expect(dashboardRow.locator("xpath=ancestor::*[self::li or self::div][1]")).toContainText(word);
     }
   });

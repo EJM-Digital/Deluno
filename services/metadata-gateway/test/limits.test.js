@@ -39,10 +39,12 @@ function stub() {
     fetch: async (url) => {
       const text = String(url);
       calls.push(text);
-      if (text.includes("api4.thetvdb.com/v4/login")) {
+      const parsed = new URL(text);
+      const isTvdb = parsed.hostname === "api4.thetvdb.com";
+      if (isTvdb && parsed.pathname === "/v4/login") {
         return new Response(JSON.stringify({ data: { token: "t" } }), { status: 200 });
       }
-      if (text.includes("api4.thetvdb.com")) {
+      if (isTvdb) {
         return new Response(JSON.stringify({ data: { id: 1, name: "Show" } }), { status: 200 });
       }
       return new Response(JSON.stringify({ results: [] }), { status: 200 });

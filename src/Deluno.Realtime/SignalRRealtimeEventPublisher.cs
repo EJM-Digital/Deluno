@@ -463,7 +463,7 @@ public sealed class SignalRRealtimeEventPublisher(
             DelunoObservability.RealtimeEventsDropped.Add(
                 1,
                 [new KeyValuePair<string, object?>("event.name", eventName)]);
-            logger.LogDebug("A realtime event was dropped because the outbound queue is saturated (latest {EventName}).", eventName);
+            logger.LogDebug("A realtime event was dropped because the outbound queue is saturated (latest {EventName}).", eventName.ForLog());
         }
 
         if (!string.Equals(eventName, LiveEventNames.DashboardSummaryUpdated, StringComparison.Ordinal))
@@ -477,7 +477,7 @@ public sealed class SignalRRealtimeEventPublisher(
         }
         catch (Exception exception)
         {
-            logger.LogDebug(exception, "A listener of realtime event {EventName} failed.", eventName);
+            logger.LogDebug(exception, "A listener of realtime event {EventName} failed.", eventName.ForLog());
         }
     }
 

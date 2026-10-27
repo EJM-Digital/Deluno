@@ -1609,12 +1609,17 @@ public sealed class FeedMediaSearchPlannerReasonTests
             => new(false, false, 0, "disabled", "Test ranking model is disabled.");
     }
 
+    private sealed class NoScope : IDisposable
+    {
+        public void Dispose() { }
+    }
+
     private sealed class RecordingLogger<T> : ILogger<T>
     {
         public List<LogMessage> Messages { get; } = [];
 
         public IDisposable BeginScope<TState>(TState state) where TState : notnull
-            => NullLogger.Instance.BeginScope(state);
+            => new NoScope();
 
         public bool IsEnabled(LogLevel logLevel) => true;
 

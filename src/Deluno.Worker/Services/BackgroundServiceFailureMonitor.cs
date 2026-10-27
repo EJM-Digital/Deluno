@@ -324,7 +324,7 @@ public sealed class BackgroundServiceFailureMonitor(
         }
         catch (Exception requestFailure)
         {
-            logger.LogDebug(requestFailure, "Could not ask for an immediate health check after {Reason} changed.", reason);
+            logger.LogDebug(requestFailure, "Could not ask for an immediate health check after {Reason} changed.", reason.ForLog());
         }
     }
 

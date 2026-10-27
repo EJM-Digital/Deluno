@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -20,9 +21,9 @@ public static class DelunoCorrelationMiddleware
 
             using var scope = logger?.BeginScope(new Dictionary<string, object>
             {
-                ["TraceId"] = traceId,
-                ["Method"] = context.Request.Method,
-                ["Path"] = context.Request.Path.Value ?? string.Empty
+                ["TraceId"] = traceId.ForLog() ?? string.Empty,
+                ["Method"] = context.Request.Method.ForLog() ?? string.Empty,
+                ["Path"] = context.Request.Path.Value.ForLog() ?? string.Empty
             });
 
             await next();

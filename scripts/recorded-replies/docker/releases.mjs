@@ -77,5 +77,5 @@ export function makeRelease(spec) {
   const script = inside.replace('__SPEC__', JSON.stringify({ ...spec, base: PUBLIC_BASE }));
   const out = execFileSync(parts[0], [...parts.slice(1), 'exec', '-i', `${project}-fixture-1`, 'node', '-'], { input: script, encoding: 'utf8', timeout: 600_000, maxBuffer: 64 * 1024 * 1024 });
   const made = JSON.parse(out.trim().split('\n').pop());
-  return { ...made, url: `${PUBLIC_BASE}/dl/${encodeURIComponent(spec.torrent)}`.replace(/%20/g, '%20') };
+  return { ...made, url: `${PUBLIC_BASE}/dl/${encodeURIComponent(spec.torrent)}` };
 }

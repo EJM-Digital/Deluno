@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 
@@ -169,7 +170,7 @@ public sealed class OutboundRequestThrottle(
 
                 logger.LogDebug(
                     "Outbound throttle refused {Host}: next permit in {Delay}, caller could wait {Remaining}.",
-                    host,
+                    host.ForLog(),
                     delay,
                     remaining);
 

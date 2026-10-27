@@ -69,7 +69,7 @@ public sealed class SubtitleFileWriter(
         var settings = await platformSettingsRepository.GetAsync(cancellationToken);
         await FilePermissions.ApplyAsync(target, settings, logger, cancellationToken);
 
-        logger.LogInformation("Wrote a {Language} subtitle to {Path}.", language, target);
+        logger.LogInformation("Wrote a {Language} subtitle to {Path}.", language.ForLog(), target.ForLog());
         return target;
     }
 

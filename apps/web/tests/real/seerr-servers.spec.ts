@@ -75,7 +75,8 @@ test.describe("Request servers (Seerr)", () => {
     const requests = recordRequests(page);
     await drawer.getByRole("button", { name: "Test connection", exact: true }).click();
     await expect.poll(() => requests.find("POST", /^\/api\/seerr-servers\/test$/).length).toBe(1);
-    await expect(drawer.getByRole("status")).toBeVisible();
+    // The footer is a status too, so name the Test result by its words: its reply arrives after the request is seen.
+    await expect(drawer.getByText(/^Connected to Seerr/)).toBeVisible();
     expect(await servers(page), "testing saves nothing").toEqual([]);
 
     await drawer.getByRole("button", { name: "Add server", exact: true }).click();

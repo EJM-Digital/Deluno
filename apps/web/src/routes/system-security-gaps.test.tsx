@@ -147,7 +147,7 @@ describe("Allowed Hosts: adding an address", () => {
 describe("Allowed Hosts: taking an added address off again", () => {
   it("an address added by hand is listed as such, and unticking it removes it from what is saved", async () => {
     renderPage({ allowedHosts: { allowedHosts: ["deluno.example.com", "my-pc"] } });
-    const typed = screen.getByRole("checkbox", { name: /deluno.example.com/ });
+    const typed = screen.getByRole("checkbox", { name: /deluno\.example\.com/ });
     expect(typed).toBeChecked();
     expect(screen.getByText("Added by hand")).toBeInTheDocument();
 
@@ -166,7 +166,7 @@ describe("Allowed Hosts: taking an added address off again", () => {
     renderPage();
     fireEvent.change(screen.getByPlaceholderText("*.example.com"), { target: { value: "deluno.example.com" } });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
-    expect(screen.getByRole("checkbox", { name: /deluno.example.com/ })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /deluno\.example\.com/ })).toBeChecked();
   });
 });
 

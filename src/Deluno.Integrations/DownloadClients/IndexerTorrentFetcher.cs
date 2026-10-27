@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using System.Net;
 using System.Net.Http.Headers;
 using Deluno.Connections;
@@ -86,7 +87,7 @@ public sealed class IndexerTorrentFetcher(
                 throw;
             }
 
-            logger?.LogInformation(exception, "Could not fetch a release from {Indexer}.", name);
+            logger?.LogInformation(exception, "Could not fetch a release from {Indexer}.", name.ForLog());
             return new IndexerTorrentFetch(null, null, $"{name} did not answer when Deluno asked for the release: {exception.Message}");
         }
     }

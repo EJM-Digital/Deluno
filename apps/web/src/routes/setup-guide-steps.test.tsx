@@ -373,7 +373,7 @@ describe("the sign-in question and the addresses question", () => {
       expect(screen.getByRole("button", { name: `Remove ${entry} from the allow list` })).toBeTruthy();
       expect((screen.getByRole("textbox", { name: /Add an address or subnet/ }) as HTMLInputElement).value).toBe("");
     } else {
-      expect(screen.getByText(new RegExp(`"${entry.replace(/[./]/g, "\\$&")}" is not a valid address or subnet`))).toBeTruthy();
+      expect(screen.getByText(new RegExp(`"${entry.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}" is not a valid address or subnet`))).toBeTruthy();
       expect(screen.queryByRole("button", { name: `Remove ${entry} from the allow list` })).toBeNull();
     }
   });

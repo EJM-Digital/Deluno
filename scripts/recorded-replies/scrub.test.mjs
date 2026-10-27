@@ -26,7 +26,7 @@ test('addresses, names, passwords and e-mail addresses are replaced', () => {
   assert.deepEqual(findLeaks(out), []);
   assert.match(out, /192\.168\.1\.10/);
   assert.match(out, /noreply@example\.com/);
-  assert.ok(!out.includes('corp.org'));
+  assert.doesNotMatch(out, /corp\.org/);
 });
 
 test('other private addresses go, loopback and the placeholder stay', () => {

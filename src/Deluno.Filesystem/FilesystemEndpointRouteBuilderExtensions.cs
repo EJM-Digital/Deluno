@@ -590,7 +590,7 @@ public static class FilesystemEndpointRouteBuilderExtensions
                     }
                     catch (Exception ex)
                     {
-                        logger.LogError(ex, "Marking the missing files of library {LibraryId} as gone failed.", libraryId);
+                        logger.LogError(ex, "Marking the missing files of library {LibraryId} as gone failed.", libraryId.ForLog());
                         await scope.ServiceProvider.GetRequiredService<IActivityFeedRepository>().RecordActivityAsync(
                             "library.files-gone-failed",
                             "Marking the missing files as gone stopped because of an error, so some may not have been changed. Choose These files really are gone again to finish.",
@@ -599,7 +599,7 @@ public static class FilesystemEndpointRouteBuilderExtensions
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError(ex, "Marking the missing files of library {LibraryId} as gone failed.", libraryId);
+                    logger.LogError(ex, "Marking the missing files of library {LibraryId} as gone failed.", libraryId.ForLog());
                 }
                 finally
                 {

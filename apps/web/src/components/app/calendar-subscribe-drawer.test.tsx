@@ -46,7 +46,7 @@ describe("CalendarSubscribeDrawer feed options (#786)", () => {
     const url = screen.getByText(/feed\.ics/).textContent ?? "";
     expect(url).toContain("apikey=deluno_test-key");
     expect(url).toContain("unmonitored=true");
-    expect(url).toContain(encodeURIComponent("Anime,Kids").replace(/%2C/g, "%2C"));
+    expect(url).toContain(encodeURIComponent("Anime,Kids"));
   });
 
   it("leaves unmonitored and tag out of the URL when neither is set", async () => {

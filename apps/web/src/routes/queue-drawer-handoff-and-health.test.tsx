@@ -227,7 +227,7 @@ describe("download drawer: Remove from client asks why", () => {
     openDrawerFor(queueItem());
 
     fireEvent.click(screen.getByRole("button", { name: "Remove from client" }));
-    fireEvent.click(await screen.findByRole("button", { name: new RegExp(label.replace("'", "'")) }));
+    fireEvent.click(await screen.findByRole("button", { name: new RegExp(label.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")) }));
 
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith(sentence));
     expect(bodyOf(calls("/api/download-clients/qbit-client/queue/qbit-1/remove")[0])).toEqual({ reason });

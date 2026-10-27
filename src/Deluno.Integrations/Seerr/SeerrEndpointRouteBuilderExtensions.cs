@@ -136,14 +136,14 @@ public static class SeerrEndpointRouteBuilderExtensions
 
             if (!connection.HasWebhookSecret)
             {
-                logger.LogWarning("Seerr webhook for connection {ConnectionId} refused: no webhook secret has been generated for it yet.", id);
+                logger.LogWarning("Seerr webhook for connection {ConnectionId} refused: no webhook secret has been generated for it yet.", id.ForLog());
                 return Results.Unauthorized();
             }
 
             var provided = request.Headers.Authorization.ToString();
             if (!SecretMatches(provided, connection.WebhookSecret!))
             {
-                logger.LogWarning("Seerr webhook for connection {ConnectionId} refused: the Authorization header did not match its webhook secret.", id);
+                logger.LogWarning("Seerr webhook for connection {ConnectionId} refused: the Authorization header did not match its webhook secret.", id.ForLog());
                 return Results.Unauthorized();
             }
 

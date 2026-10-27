@@ -971,15 +971,15 @@ public sealed partial class ImportPipelineService(
             logger.LogInformation(
                 "Import completed for {MediaType} title {Title} using {TransferMode}. Dispatch={DispatchId} ReleaseNameEvidence={ReleaseNameEvidence} Indexer={IndexerName} DownloadClient={DownloadClientName} Source={SourcePath} Destination={DestinationPath} Rename={Rename} MatchedRules={MatchedRules} PreferencePlan={PreferencePlanId} PreferencePlanHash={PreferencePlanHash} Fallback={UsedFallback}",
                 mediaType,
-                TitleForActivity(request.Preview),
+                TitleForActivity(request.Preview).ForLog(),
                 mode,
-                provenance.DispatchId,
-                provenance.ReleaseNameEvidence,
-                provenance.IndexerName,
-                provenance.DownloadClientName,
-                provenance.SourcePath,
-                preview.DestinationPath,
-                provenance.Rename,
+                provenance.DispatchId.ForLog(),
+                provenance.ReleaseNameEvidence.ForLog(),
+                provenance.IndexerName.ForLog(),
+                provenance.DownloadClientName.ForLog(),
+                provenance.SourcePath.ForLog(),
+                preview.DestinationPath.ForLog(),
+                provenance.Rename.ForLog(),
                 provenance.MatchedRuleNames,
                 provenance.PreferencePlanId,
                 provenance.PreferencePlanHash,
@@ -1761,7 +1761,7 @@ public sealed partial class ImportPipelineService(
             DelunoObservability.ImportCompleted.Add(placements.Count, new("media.type", "tv"), new("transfer.mode", modeUsed));
             logger.LogInformation(
                 "Season-pack import completed for {Title}. Files={FileCount} Episodes={EpisodeCount} TransferMode={TransferMode}",
-                TitleForActivity(request.Preview),
+                TitleForActivity(request.Preview).ForLog(),
                 placements.Count,
                 plan.Numbers.Episodes.Count,
                 modeUsed);
@@ -2124,9 +2124,9 @@ public sealed partial class ImportPipelineService(
                 logger.LogError(
                     exception,
                     "Season-pack rollback could not restore {SourcePath} from {DestinationPath} or {StagingPath}.",
-                    placement.File.Preview.SourcePath,
-                    placement.File.Preview.DestinationPath,
-                    placement.StagingPath);
+                    placement.File.Preview.SourcePath.ForLog(),
+                    placement.File.Preview.DestinationPath.ForLog(),
+                    placement.StagingPath.ForLog());
             }
         }
         return failures;
@@ -2397,7 +2397,7 @@ public sealed partial class ImportPipelineService(
                 OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
         if (recycleBinService is null || library is null)
         {
-            logger.LogWarning("The broken processed copy at {Path} was left where it is; there is no recycle bin or library to move it with.", processedFilePath);
+            logger.LogWarning("The broken processed copy at {Path} was left where it is; there is no recycle bin or library to move it with.", processedFilePath.ForLog());
             return;
         }
 
@@ -2405,12 +2405,12 @@ public sealed partial class ImportPipelineService(
         {
             if (await recycleBinService.StoreStrayOutputAsync(library, processedFilePath, cancellationToken) is null && File.Exists(processedFilePath))
             {
-                logger.LogWarning("The broken processed copy at {Path} was left where it is because it could not be moved into the recycle bin.", processedFilePath);
+                logger.LogWarning("The broken processed copy at {Path} was left where it is because it could not be moved into the recycle bin.", processedFilePath.ForLog());
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            logger.LogWarning(ex, "Could not move the broken processed copy at {Path} to the recycle bin.", processedFilePath);
+            logger.LogWarning(ex, "Could not move the broken processed copy at {Path} to the recycle bin.", processedFilePath.ForLog());
         }
     }
 
@@ -2671,8 +2671,13 @@ public sealed partial class ImportPipelineService(
         var fileName = resolvedName.FileName;
         var destinationPath = Path.Combine(destinationFolder, SanitizeFileName(fileName, settings.ReplaceIllegalCharacters, settings.ColonReplacementMode));
         var canHardlink = CanLikelyHardlink(request.SourcePath, destinationPath);
-        var sourceExists = File.Exists(request.SourcePath);
-        var destinationExists = File.Exists(destinationPath);
+        // A source that climbs out ("..") is never read, and a destination that would land outside the root it
+        // belongs under is never looked at: the preview treats both as not there (and says why) before any
+        // file call is made with them.
+        var sourceUsable = Deluno.Contracts.SafePath.ReportedPath(request.SourcePath) is not null;
+        var destinationUsable = string.IsNullOrWhiteSpace(rootPath) || Deluno.Contracts.SafePath.IsInside(rootPath, destinationPath);
+        var sourceExists = sourceUsable && File.Exists(request.SourcePath);
+        var destinationExists = destinationUsable && File.Exists(destinationPath);
         var sourceSize = sourceExists ? new FileInfo(request.SourcePath).Length : 0;
         var destinationSize = destinationExists ? new FileInfo(destinationPath).Length : 0;
         var isSupportedMediaFile = SupportedVideoExtensions.Extensions.Contains(Path.GetExtension(destinationPath));
@@ -2680,6 +2685,14 @@ public sealed partial class ImportPipelineService(
         if (!string.IsNullOrWhiteSpace(resolvedName.Warning))
         {
             warnings.Add(resolvedName.Warning);
+        }
+        if (!sourceUsable)
+        {
+            warnings.Add(Deluno.Contracts.SafePath.OutsideRootReason);
+        }
+        if (!destinationUsable)
+        {
+            warnings.Add("The destination would land outside the library folder, so Deluno will not use it.");
         }
         var preferredMode = settings.UseHardlinks && canHardlink ? "hardlink" : "copy";
         var explanation = rule is null
@@ -2879,7 +2892,7 @@ public sealed partial class ImportPipelineService(
             // A failed import that also fails to record its own refusal is
             // still a failed import, and the import's own reporting matters
             // more than this does.
-            logger.LogWarning(exception, "Could not block the release for dispatch {DispatchId}.", executeRequest.DispatchId);
+            logger.LogWarning(exception, "Could not block the release for dispatch {DispatchId}.", executeRequest.DispatchId.ForLog());
         }
     }
 
@@ -2969,7 +2982,7 @@ public sealed partial class ImportPipelineService(
         // reading it (a sample-looking name, a file too small to be a feature or episode) still stops it (#1072).
         if (LooksLikeASampleWithoutProbing(preview.SourcePath, preview.SourceSizeBytes, settings.ForceImportMinimumMegabytes, request.Preview.Title))
         {
-            logger.LogWarning("Force Import left {Source} stopped: it could not be read and looks like a sample.", preview.SourcePath);
+            logger.LogWarning("Force Import left {Source} stopped: it could not be read and looks like a sample.", preview.SourcePath.ForLog());
             return false;
         }
 
@@ -3016,7 +3029,7 @@ public sealed partial class ImportPipelineService(
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             // Never forces on a guess: a count that cannot be kept is no force.
-            logger.LogWarning(exception, "Force Import could not decide for dispatch {DispatchId}; the import stays stopped.", request.DispatchId);
+            logger.LogWarning(exception, "Force Import could not decide for dispatch {DispatchId}; the import stays stopped.", request.DispatchId.ForLog());
             return false;
         }
     }
@@ -3037,11 +3050,11 @@ public sealed partial class ImportPipelineService(
         logger.LogWarning(
             "Import failed for {MediaType} title {Title}. FailureKind={FailureKind} Source={SourcePath} Message={Summary} Detail={Detail}",
             mediaType,
-            title,
-            failureKind,
-            request.SourcePath,
-            summary,
-            technicalDetail);
+            title.ForLog(),
+            failureKind.ForLog(),
+            request.SourcePath.ForLog(),
+            summary.ForLog(),
+            technicalDetail.ForLog());
 
         if (importResolutionsRepository is not null && !string.IsNullOrEmpty(executeRequest.DispatchId))
         {
@@ -4992,7 +5005,7 @@ public sealed partial class ImportPipelineService(
             }
             catch (Exception exception)
             {
-                logger.LogWarning(exception, "Could not ask the download clients whether they hold {Path}; leaving the source file alone.", sourcePath);
+                logger.LogWarning(exception, "Could not ask the download clients whether they hold {Path}; leaving the source file alone.", sourcePath.ForLog());
                 return true;
             }
         }
@@ -5016,7 +5029,7 @@ public sealed partial class ImportPipelineService(
             logger.LogWarning(
                 exception,
                 "Could not tell whether a download client still owns {DispatchId}; leaving the source file alone.",
-                dispatchId);
+                dispatchId.ForLog());
             return true;
         }
     }
@@ -5396,7 +5409,7 @@ public sealed partial class ImportPipelineService(
                     ? unreachable.Reason
                     : "Seerr could not confirm availability.";
                 await seerrAcquisitions.UpdateStatusAsync(acquisition.Id, "available-failed", reason, cancellationToken);
-                logger.LogWarning("Could not report {Title} available back to {Connection}: {Reason}", acquisition.Title, connection.Name, reason);
+                logger.LogWarning("Could not report {Title} available back to {Connection}: {Reason}", acquisition.Title.ForLog(), connection.Name.ForLog(), reason.ForLog());
             }
         }
         catch (Exception ex)
