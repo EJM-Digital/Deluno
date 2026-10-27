@@ -420,7 +420,7 @@ public sealed partial class ImportPipelineService(
         // file stranded in the processor's output.
         if (File.Exists(preview.DestinationPath)
             && !request.Overwrite
-            && !IsSameContent(preview.SourcePath, preview.DestinationPath)
+            && !await IsSameContentAsync(preview.SourcePath, preview.DestinationPath, cancellationToken)
             && await TitleOwnsDestinationAsync(request, mediaType, preview.DestinationPath, cancellationToken))
         {
             request = request with { Overwrite = true, ExpectedExistingPath = preview.DestinationPath };
@@ -430,7 +430,7 @@ public sealed partial class ImportPipelineService(
         // destination. The identical file is the title's file: link it, never overwrite it.
         var adoptExisting = File.Exists(preview.DestinationPath)
             && !request.Overwrite
-            && IsSameContent(preview.SourcePath, preview.DestinationPath);
+            && await IsSameContentAsync(preview.SourcePath, preview.DestinationPath, cancellationToken);
 
         if (File.Exists(preview.DestinationPath) && !request.Overwrite && !adoptExisting)
         {
@@ -4743,10 +4743,11 @@ public sealed partial class ImportPipelineService(
     }
 
     /// <summary>
-    /// True when two files are the same bytes: same size and the same content in the
-    /// head, middle and tail of the file (a full hash of a film over a share is slow).
+    /// True when two files are the same bytes: same size and every byte equal. Both are
+    /// streamed in chunks, asynchronously (a film over a slow share must not hold a thread),
+    /// and the read stops at the first difference.
     /// </summary>
-    internal static bool IsSameContent(string firstPath, string secondPath)
+    internal static async Task<bool> IsSameContentAsync(string firstPath, string secondPath, CancellationToken cancellationToken)
     {
         try
         {
@@ -4758,23 +4759,23 @@ public sealed partial class ImportPipelineService(
             }
 
             const int chunk = 1024 * 1024;
-            var length = first.Length;
-            long[] offsets = [0, Math.Max(0, length / 2 - chunk / 2), Math.Max(0, length - chunk)];
-            using var a = new FileStream(firstPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            using var b = new FileStream(secondPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            var options = FileOptions.Asynchronous | FileOptions.SequentialScan;
+            await using var a = new FileStream(firstPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, options);
+            await using var b = new FileStream(secondPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, options);
             var bufferA = new byte[chunk];
             var bufferB = new byte[chunk];
-            foreach (var offset in offsets.Distinct())
+            var remaining = first.Length;
+            while (remaining > 0)
             {
-                var count = (int)Math.Min(chunk, length - offset);
-                a.Seek(offset, SeekOrigin.Begin);
-                b.Seek(offset, SeekOrigin.Begin);
-                a.ReadExactly(bufferA, 0, count);
-                b.ReadExactly(bufferB, 0, count);
+                var count = (int)Math.Min(chunk, remaining);
+                await a.ReadExactlyAsync(bufferA.AsMemory(0, count), cancellationToken);
+                await b.ReadExactlyAsync(bufferB.AsMemory(0, count), cancellationToken);
                 if (!bufferA.AsSpan(0, count).SequenceEqual(bufferB.AsSpan(0, count)))
                 {
                     return false;
                 }
+
+                remaining -= count;
             }
 
             return true;
