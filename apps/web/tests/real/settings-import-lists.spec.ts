@@ -234,7 +234,8 @@ test.describe("Settings > Import lists", () => {
 
   test("the Trakt endpoints refuse a blank client id or secret, and connect and poll refuse while no credentials are stored", async ({ page }) => {
     const status = (await api<{ clientConfigured: boolean; connected: boolean }>(page, "GET", "/api/trakt/status")).body;
-    test.skip(status.clientConfigured, "Credentials are already stored on this host, so the no-credentials replies cannot be read.");
+    // No spec stores Trakt app credentials (that needs a real Trakt account, #1343), so a fresh smoke host has none.
+    expect(status.clientConfigured, "no Trakt app credentials are stored on the smoke host").toBe(false);
     for (const body of [{ clientId: "", clientSecret: "abc" }, { clientId: "abc", clientSecret: " " }, { clientId: "", clientSecret: "" }]) {
       const reply = await api<{ errors: Record<string, string[]> }>(page, "POST", "/api/trakt/credentials", body);
       expect(reply.status).toBe(400);
