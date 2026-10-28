@@ -215,3 +215,63 @@ test.describe("Settings > Tags", () => {
     await api(page, "POST", "/api/tags/delete-unused");
   });
 });
+
+test.describe("Settings > Tags list rows and drawer details", () => {
+  test.setTimeout(90_000);
+  const stamp = `tg${Date.now()}`;
+  let tagId = "";
+  let ruleId = "";
+
+  test.beforeEach(async ({ page }) => {
+    await openScreen(page, "/settings/tags");
+    const tag = await api<Tag>(page, "POST", "/api/tags", { name: `Lounge ${stamp}`, color: "violet", description: `For the lounge ${stamp}` });
+    expect(tag.status, JSON.stringify(tag.body)).toBeLessThan(300);
+    tagId = tag.body.id;
+    await page.reload();
+    await untilQuiet(page);
+  });
+
+  test.afterEach(async ({ page }) => {
+    if (ruleId) await api(page, "DELETE", `/api/destination-rules/${ruleId}`);
+    ruleId = "";
+    await api(page, "DELETE", `/api/tags/${tagId}`);
+  });
+
+  test("a tag's row shows its colour name, that it is not used, and its description, and the colour select offers the seven colours", async ({ page }) => {
+    const row = page.getByRole("row").filter({ hasText: `Lounge ${stamp}` });
+    await expect(row).toContainText("Violet");
+    await expect(row).toContainText("Not used");
+    await expect(row).toContainText(`For the lounge ${stamp}`);
+    await row.click();
+    const colour = page.getByRole("dialog").getByLabel("Colour");
+    await expect(colour.locator("option:checked")).toHaveText("Violet");
+    expect(await colour.locator("option").allInnerTexts()).toEqual(["Slate", "Emerald", "Teal", "Blue", "Violet", "Amber", "Rose"]);
+    await expect(page.getByRole("dialog").getByText("This note is for you; it does not change matching or routing.")).toBeVisible();
+  });
+
+  test("a tag a destination rule matches on shows as used by 1 setting", async ({ page }) => {
+    const rule = await api<{ id: string }>(page, "POST", "/api/destination-rules", { name: `Tag rule ${stamp}`, mediaType: "movies", matchKind: "tag", matchValue: `Lounge ${stamp}`, rootPath: process.cwd(), folderTemplate: "", priority: 100, isEnabled: true });
+    expect(rule.status, JSON.stringify(rule.body)).toBeLessThan(300);
+    ruleId = rule.body.id;
+    await page.reload();
+    await untilQuiet(page);
+    await expect(page.getByRole("row").filter({ hasText: `Lounge ${stamp}` })).toContainText("1 setting");
+  });
+
+  test("closing a changed tag asks before throwing the edit away, and Discard leaves the stored tag as it was", async ({ page }) => {
+    await page.getByRole("row").filter({ hasText: `Lounge ${stamp}` }).click();
+    const drawer = page.getByRole("dialog");
+    await drawer.getByLabel("Name").fill(`Changed ${stamp}`);
+    await page.keyboard.press("Escape");
+    const ask = page.getByRole("dialog", { name: "Discard unsaved changes?" });
+    await expect(ask).toBeVisible();
+    await ask.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(drawer.getByLabel("Name")).toHaveValue(`Changed ${stamp}`);
+    await page.keyboard.press("Escape");
+    await ask.getByRole("button", { name: "Discard", exact: true }).click();
+    await expect(drawer).toHaveCount(0);
+    const names = (await tagsOnServer(page)).map((tag) => tag.name);
+    expect(names).toContain(`Lounge ${stamp}`);
+    expect(names).not.toContain(`Changed ${stamp}`);
+  });
+});
