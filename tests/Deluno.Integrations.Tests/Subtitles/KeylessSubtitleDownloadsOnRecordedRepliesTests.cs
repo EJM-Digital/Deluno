@@ -118,4 +118,53 @@ public sealed class KeylessSubtitleDownloadsOnRecordedRepliesTests
 
         Assert.Contains("404", failure.Message, StringComparison.Ordinal);
     }
+
+    // ---- Subf2m's search (#1389): the pages it really answered for Sintel ----
+
+    private static SubtitleSearchRequest Film(params string[] languages)
+        => new("Sintel", 2010, null, null, null, null, null, languages.Length == 0 ? ["en"] : languages, IsEpisode: false);
+
+    [Fact]
+    public async Task Subf2m_finds_the_subtitles_of_a_film_in_the_asked_language_from_the_links_its_pages_really_carry()
+    {
+        var recording = RecordedReplies.Subf2m("sintel-english");
+        var listed = System.Text.RegularExpressions.Regex.Matches(recording.Exchanges[2].Reply.Body!, """href=['"](/subtitles/sintel/english/(\d+))['"]""")
+            .Select(match => "https://subf2m.co" + match.Groups[1].Value + "/download").Distinct().ToArray();
+        var handler = new Recorded(recording);
+
+        var found = await new Subf2mSubtitleProvider(new Factory(handler)).SearchAsync(Film(), SubtitleProviderCredentials.None, CancellationToken.None);
+
+        Assert.Equal(5, listed.Length);
+        Assert.Equal(listed.Take(3), found.Select(candidate => candidate.DownloadToken));
+        Assert.All(found, candidate =>
+        {
+            Assert.Equal("subf2m", candidate.ProviderKey);
+            Assert.Equal("en", candidate.Language);
+        });
+        Assert.Equal(["GET subf2m.co/subtitles/searchbytitle", "GET subf2m.co/subtitles/sintel/english"], handler.Calls);
+    }
+
+    [Fact]
+    public async Task A_subtitle_Subf2m_listed_is_downloaded_through_its_redirect_to_the_archive_it_really_sent()
+    {
+        var recording = RecordedReplies.Subf2m("sintel-english");
+        var provider = new Subf2mSubtitleProvider(new Factory(new Recorded(recording)));
+
+        var found = await provider.SearchAsync(Film(), SubtitleProviderCredentials.None, CancellationToken.None);
+        var bytes = await provider.DownloadAsync(found.First(candidate => candidate.DownloadToken.Contains("/1501625/", StringComparison.Ordinal)), SubtitleProviderCredentials.None, CancellationToken.None);
+
+        Assert.Equal(recording.Exchanges[5].Reply.Bytes, bytes);
+    }
+
+    [Fact]
+    public async Task A_title_Subf2m_does_not_have_finds_nothing_and_does_not_ask_its_own_search_page_again()
+    {
+        var handler = new Recorded(RecordedReplies.Subf2m("search-no-title"));
+
+        var found = await new Subf2mSubtitleProvider(new Factory(handler)).SearchAsync(
+            new SubtitleSearchRequest("Zzzz Not A Title Zzzz", null, null, null, null, null, null, ["en"], IsEpisode: false), SubtitleProviderCredentials.None, CancellationToken.None);
+
+        Assert.Empty(found);
+        Assert.Equal(["GET subf2m.co/subtitles/searchbytitle"], handler.Calls);
+    }
 }

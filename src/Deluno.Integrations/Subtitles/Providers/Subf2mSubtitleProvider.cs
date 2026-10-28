@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using System.Text.RegularExpressions;
 
 namespace Deluno.Integrations.Subtitles.Providers;
@@ -42,32 +43,38 @@ public sealed partial class Subf2mSubtitleProvider(IHttpClientFactory httpClient
         var searchHtml = await SubtitleProviderHttp.GetTextAsync(
             client, $"{BaseUrl}/subtitles/searchbytitle?query={searchTerm}&l=", Key, cancellationToken);
 
-        var titlePath = TitleLink().Match(searchHtml);
-        if (!titlePath.Success)
+        // The search page links to itself first (/subtitles/searchbytitle?query=...), so the title is the first link that is not that page.
+        var titlePath = TitleLink().Matches(searchHtml)
+            .Select(match => match.Groups[1].Value)
+            .FirstOrDefault(path => !path.StartsWith("/subtitles/searchbytitle", StringComparison.OrdinalIgnoreCase));
+        if (titlePath is null)
         {
             return [];
         }
 
-        var titleHtml = await SubtitleProviderHttp.GetTextAsync(
-            client, $"{BaseUrl}{titlePath.Groups[1].Value}", Key, cancellationToken);
+        // Subf2m lists a title's subtitles one language at a time, at /subtitles/<title>/<language>/, each as /subtitles/<title>/<language>/<id>
+        // (quoted either way); the download of one is that address with /download, which answers a redirect to the archive.
+        var found = new List<SubtitleCandidate>();
+        foreach (var code in request.Languages.Count == 0 ? ["en"] : request.Languages)
+        {
+            var name = SubtitleLanguages.DisplayName(code).ToLowerInvariant().Replace(' ', '_');
+            var languagePath = $"{titlePath}/{name}";
+            var languageHtml = await SubtitleProviderHttp.GetTextAsync(client, $"{BaseUrl}{languagePath}", Key, cancellationToken);
 
-        // The language it found is whatever the page was for, and the page does
-        // not say per link. The first wanted language is the honest label —
-        // and the fetch records what actually landed, because a wrong label on a
-        // held subtitle is worse than no subtitle.
-        var language = request.Languages.FirstOrDefault() ?? "en";
+            found.AddRange(SubtitleLink().Matches(languageHtml)
+                .Select(match => match.Groups[1].Value)
+                .Where(path => path.StartsWith(languagePath + "/", StringComparison.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(3)
+                .Select(path => new SubtitleCandidate(
+                    ProviderKey: Key,
+                    DownloadToken: $"{BaseUrl}{path}/download",
+                    Language: code,
+                    HearingImpaired: false,
+                    Forced: false)));
+        }
 
-        return SubtitleLink().Matches(titleHtml)
-            .Select(match => match.Groups[1].Value)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(3)
-            .Select(path => new SubtitleCandidate(
-                ProviderKey: Key,
-                DownloadToken: $"{BaseUrl}{path}",
-                Language: language,
-                HearingImpaired: false,
-                Forced: false))
-            .ToArray();
+        return found;
     }
 
     public async Task<byte[]> DownloadAsync(
@@ -79,9 +86,9 @@ public sealed partial class Subf2mSubtitleProvider(IHttpClientFactory httpClient
         return await SubtitleProviderHttp.GetBytesAsync(client, candidate.DownloadToken, Key, cancellationToken);
     }
 
-    [GeneratedRegex("href=\"(/subtitles/[^\"]+)\"", RegexOptions.IgnoreCase)]
+    [GeneratedRegex("href=[\"'](/subtitles/[^\"'?]+)[\"']", RegexOptions.IgnoreCase)]
     private static partial Regex TitleLink();
 
-    [GeneratedRegex("href=\"(/subtitle/[^\"]+)\"", RegexOptions.IgnoreCase)]
+    [GeneratedRegex("href=[\"'](/subtitles/[^\"'/?]+/[^\"'/?]+/[0-9]+)[\"']", RegexOptions.IgnoreCase)]
     private static partial Regex SubtitleLink();
 }
