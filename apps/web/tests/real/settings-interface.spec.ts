@@ -48,4 +48,34 @@ test.describe("Interface settings", () => {
     await save(page).click();
     await expect.poll(async () => (await settings(page)).timezone).toBe(browserZone);
   });
+
+  test("leaving with an unsaved colour-impaired preview asks; Discard and continue keeps the stored mode, Save and continue stores it", async ({ page }) => {
+    const mode = async () => (await api<{ uiColorMode: string | null }>(page, "GET", "/api/settings")).body.uiColorMode ?? "standard";
+    const original = await mode();
+    const wanted = original === "impaired" ? "Standard" : "Colour-impaired";
+    const wantedValue = original === "impaired" ? "standard" : "impaired";
+    const prompt = page.getByRole("dialog", { name: "Unsaved changes" });
+    const group = page.getByRole("radiogroup", { name: "Colour-impaired mode" }).or(page.getByRole("group", { name: "Colour-impaired mode" })).first();
+    try {
+      await group.getByText(wanted, { exact: true }).click();
+      await page.getByRole("link", { name: "Dashboard" }).first().click();
+      await expect(prompt).toBeVisible();
+      await prompt.getByRole("button", { name: "Cancel", exact: true }).click();
+      await expect(page).toHaveURL(/\/settings\/ui/);
+      await page.getByRole("link", { name: "Dashboard" }).first().click();
+      await prompt.getByRole("button", { name: "Discard and continue", exact: true }).click();
+      await expect(page).not.toHaveURL(/settings\/ui/);
+      expect(await mode()).toBe(original);
+
+      await openScreen(page, "/settings/ui");
+      await untilQuiet(page);
+      await group.getByText(wanted, { exact: true }).click();
+      await page.getByRole("link", { name: "Dashboard" }).first().click();
+      await prompt.getByRole("button", { name: "Save and continue", exact: true }).click();
+      await expect(page).not.toHaveURL(/settings\/ui/);
+      await expect.poll(mode).toBe(wantedValue);
+    } finally {
+      await api(page, "PATCH" as "POST", "/api/settings", { uiColorMode: original });
+    }
+  });
 });
