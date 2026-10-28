@@ -29,6 +29,53 @@ public sealed class PreUpdateBackupGateTests : IDisposable
     }
 
     [Fact]
+    public async Task A_blocked_install_is_said_once_in_Activity_and_as_a_tray_notice()
+    {
+        BlockedUpdateNote.Write(_folder, new BlockedUpdateNote("2.0.0", "the backup folder is full", DateTimeOffset.UtcNow));
+        var activity = new List<(string Category, string Message, string Details)>();
+        var notices = new List<string>();
+        var failures = new List<string>();
+
+        var first = await BlockedUpdateNote.ReportOnceAsync(_folder, (c, m, d) => { activity.Add((c, m, d)); return Task.CompletedTask; }, notices.Add, failures.Add);
+        var second = await BlockedUpdateNote.ReportOnceAsync(_folder, (c, m, d) => { activity.Add((c, m, d)); return Task.CompletedTask; }, notices.Add, failures.Add);
+
+        const string words = "The update to 2.0.0 wasn't installed because Deluno couldn't back up its data first: the backup folder is full";
+        Assert.NotNull(first);
+        Assert.Null(second);
+        var line = Assert.Single(activity);
+        Assert.Equal("app.update", line.Category);
+        Assert.Equal(words, line.Message);
+        Assert.Contains("\"version\":\"2.0.0\"", line.Details);
+        Assert.Equal([words], notices);
+        Assert.Empty(failures);
+    }
+
+    [Fact]
+    public async Task A_blocked_install_is_still_announced_when_Activity_cannot_be_written()
+    {
+        BlockedUpdateNote.Write(_folder, new BlockedUpdateNote("2.0.0", "the data folder is locked", DateTimeOffset.UtcNow));
+        var notices = new List<string>();
+        var failures = new List<string>();
+
+        await BlockedUpdateNote.ReportOnceAsync(_folder, (_, _, _) => throw new InvalidOperationException("database is locked"), notices.Add, failures.Add);
+
+        Assert.Single(notices);
+        Assert.Contains("data folder is locked", notices[0]);
+        Assert.Contains("database is locked", Assert.Single(failures));
+    }
+
+    [Fact]
+    public async Task With_no_blocked_install_nothing_is_said()
+    {
+        var notices = new List<string>();
+
+        var note = await BlockedUpdateNote.ReportOnceAsync(_folder, (_, _, _) => Task.CompletedTask, notices.Add, _ => { });
+
+        Assert.Null(note);
+        Assert.Empty(notices);
+    }
+
+    [Fact]
     public async Task Quit_does_not_install_when_the_backup_fails_and_leaves_a_note()
     {
         var queued = false;
