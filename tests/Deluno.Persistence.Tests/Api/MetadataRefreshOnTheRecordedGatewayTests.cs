@@ -106,4 +106,23 @@ public sealed class MetadataRefreshOnTheRecordedGatewayTests
         Assert.Contains("Breaking Bad Old Name metadata was refreshed from TMDB.", await app.Client.GetStringAsync("/api/activity?take=100"));
         Assert.Equal(HttpStatusCode.NotFound, (await app.Client.PostAsync("/api/series/no-such-show/metadata/refresh", content: null)).StatusCode);
     }
+
+    [Fact]
+    public async Task Refreshing_a_show_also_learns_the_episodes_the_recorded_catalogue_announces_and_says_how_many_in_Activity()
+    {
+        var replay = new GatewayReplay();
+        await using var app = await StartAsync(replay);
+        var show = await ApiScenes.ShowOnDiskAsync(app, "Breaking Bad Old Name", 2008);
+        await ApiScenes.ExecuteAsync(app, "series", $"UPDATE series_entries SET metadata_provider = 'tmdb', metadata_provider_id = '1396' WHERE id = '{show.SeriesId}';");
+        var before = await ApiScenes.TextAsync(app, "series", $"SELECT COUNT(*) FROM episode_entries WHERE series_id = '{show.SeriesId}'");
+
+        var response = await app.Client.PostAsync($"/api/series/{show.SeriesId}/metadata/refresh", content: null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var after = await ApiScenes.TextAsync(app, "series", $"SELECT COUNT(*) FROM episode_entries WHERE series_id = '{show.SeriesId}'");
+        Assert.True(int.Parse(after!) > int.Parse(before!), "the recorded catalogue announces episodes the show did not have");
+        var learned = int.Parse(after!) - int.Parse(before!);
+        Assert.Contains($"Deluno learned {learned} more episode{(learned == 1 ? "" : "s")} of Breaking Bad Old Name", await app.Client.GetStringAsync("/api/activity?take=100"));
+        Assert.True(File.Exists(show.FilePath));
+    }
 }

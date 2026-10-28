@@ -354,9 +354,58 @@ public sealed class MetadataGatewayOnRecordingsTests : IDisposable
         Assert.NotEqual("Deluno's managed metadata service is ready for title matching.", status.Message);
     }
 
+    // ---- a typed TV search: TMDb and TheTVDB asked together ----
+
+    [Fact]
+    public async Task A_TV_search_asks_the_gateways_TMDb_and_TheTVDB_routes_and_lists_each_show_once_with_its_TMDb_id()
+    {
+        var asked = new List<string>();
+        var rig = await RigAsync(request =>
+        {
+            asked.Add(request.RequestUri!.AbsolutePath);
+            return Gateway(request);
+        });
+
+        var results = await rig.SearchAsync(Lookup("Breaking Bad", "tv"), CancellationToken.None);
+
+        Assert.Contains("/metadata/search", asked);
+        Assert.Contains("/metadata/tvdb/search", asked);
+        var show = Assert.Single(results, result => result.ProviderId == "1396");
+        Assert.Equal("Breaking Bad", show.Title);
+        Assert.Equal("tmdb", show.Provider);
+        Assert.Equal("81189", show.TvDbId);
+        Assert.Equal(results.Count, results.Select(result => result.ProviderId).Distinct().Count());
+    }
+
+    [Fact]
+    public async Task A_TV_search_waits_at_most_five_seconds_for_TheTVDB_then_shows_the_recorded_TMDb_answer_alone()
+    {
+        var rig = await RigAsync(
+            (request, cancellation) => request.RequestUri!.AbsolutePath == "/metadata/tvdb/search"
+                ? NeverAnswersAsync(cancellation)
+                : Task.FromResult(Gateway(request)));
+        var started = System.Diagnostics.Stopwatch.StartNew();
+
+        var results = await rig.SearchAsync(Lookup("Breaking Bad", "tv"), CancellationToken.None);
+
+        started.Stop();
+        Assert.Contains(results, result => result.ProviderId == "1396");
+        Assert.All(results, result => Assert.Null(result.TvDbId));
+        Assert.InRange(started.Elapsed.TotalSeconds, 4.5, 9);
+    }
+
+    private static async Task<HttpResponseMessage> NeverAnswersAsync(CancellationToken cancellation)
+    {
+        await Task.Delay(Timeout.Infinite, cancellation); // reason: TheTVDB's route never answers; the provider's own 5 s budget ends the wait
+        return new HttpResponseMessage(HttpStatusCode.OK);
+    }
+
     // ---- the rig ----
 
-    private async Task<TmdbMetadataProvider> RigAsync(Func<HttpRequestMessage, HttpResponseMessage> respond, string language = "en")
+    private Task<TmdbMetadataProvider> RigAsync(Func<HttpRequestMessage, HttpResponseMessage> respond, string language = "en")
+        => RigAsync((request, _) => Task.FromResult(respond(request)), language);
+
+    private async Task<TmdbMetadataProvider> RigAsync(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond, string language = "en")
     {
         var settings = new Mock<IPlatformSettingsRepository>();
         settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
@@ -398,10 +447,10 @@ public sealed class MetadataGatewayOnRecordingsTests : IDisposable
             new MetadataServiceHealth(clock));
     }
 
-    private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    private sealed class StubHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-            => Task.FromResult(respond(request));
+            => respond(request, cancellationToken);
     }
 
     public void Dispose()
