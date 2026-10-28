@@ -32,7 +32,13 @@ test.describe("System > Health, processor output", () => {
     }
   });
 
-  test.afterAll(() => {
+  test.afterAll(async ({ browser }) => {
+    // The library is a record on the shared server; take it away so no later spec finds "Real health output films".
+    const page = await browser.newPage();
+    await openScreen(page, "/system");
+    const libraries = await api<Array<{ id: string; name: string }>>(page, "GET", "/api/libraries");
+    for (const library of libraries.body.filter((item) => item.name === "Real health output films")) await api(page, "DELETE", `/api/libraries/${library.id}`);
+    await page.close();
     fs.rmSync(folder, { recursive: true, force: true });
   });
 

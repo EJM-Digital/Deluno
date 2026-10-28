@@ -10,8 +10,8 @@ import { untilQuiet } from "../helpers/settle";
  * temp folder; nothing reaches another app.
  */
 
-const stamp = `qp${Date.now()}`;
-const name = `HD films ${stamp}`;
+let stamp = "";
+let name = "";
 
 interface Profile { id: string; name: string }
 const profiles = async (page: Page) => (await api<Profile[]>(page, "GET", "/api/quality-profiles")).body;
@@ -24,6 +24,10 @@ test.describe("Quality profiles", () => {
   let profileId = "";
 
   test.beforeEach(async ({ page }) => {
+    // Fresh names per test, so a record left by another test can never be found by this one.
+    stamp = `qp${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
+    name = `HD films ${stamp}`;
+    libraryId = "";
     folder = fs.mkdtempSync(path.join(os.tmpdir(), "deluno-real-qp-"));
     await openScreen(page, "/settings/profiles");
     await untilQuiet(page);
@@ -38,9 +42,9 @@ test.describe("Quality profiles", () => {
   });
 
   test.afterEach(async ({ page }) => {
-    await api(page, "DELETE", `/api/libraries/${libraryId}`);
+    if (libraryId) await api(page, "DELETE", `/api/libraries/${libraryId}`);
     for (const profile of await profiles(page)) if (profile.name.includes(stamp)) await api(page, "DELETE", `/api/quality-profiles/${profile.id}`);
-    fs.rmSync(folder, { recursive: true, force: true });
+    if (folder) fs.rmSync(folder, { recursive: true, force: true });
   });
 
   test("the numbers behind a profile's plain choices stay folded until Show the numbers is opened, and each number field has its own name", async ({ page }) => {

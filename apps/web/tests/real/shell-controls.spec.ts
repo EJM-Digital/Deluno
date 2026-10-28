@@ -37,6 +37,12 @@ test.describe("Command palette", () => {
     await openScreen(page, "/");
     await untilQuiet(page);
     const toggle = page.getByRole("button", { name: /^Switch to (dark|light) mode$/ });
+    // The starting theme is what the server has stored (an earlier spec may have left either); the screen takes it up after the
+    // settings arrive, so wait until the toggle agrees before flipping.
+    const stored = (await api<{ uiTheme: string }>(page, "GET", "/api/settings")).body.uiTheme;
+    if (stored === "dark" || stored === "light") {
+      await expect(toggle).toHaveAttribute("aria-label", stored === "dark" ? "Switch to light mode" : "Switch to dark mode");
+    }
     const startedDark = (await toggle.getAttribute("aria-label")) === "Switch to light mode";
     const flip = async () => {
       const requests = recordRequests(page);

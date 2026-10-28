@@ -59,7 +59,9 @@ test("an indexer's Used for cell says which libraries search it, or links to Lib
 
     await page.goto("/indexers/indexers");
     const routedRow = page.getByRole("row").filter({ hasText: routed.name }).first();
-    await expect(routedRow).toContainText(`Searched by ${libraryName}`);
+    // Other libraries on the shared server may be listed too; this one's name must be among them.
+    await expect(routedRow).toContainText("Searched by");
+    await expect(routedRow).toContainText(libraryName);
     const aloneRow = page.getByRole("row").filter({ hasText: alone.name }).first();
     await expect(aloneRow).toContainText("No library searches it");
     await aloneRow.getByText(/Switch it on in Library Routing/).click();
