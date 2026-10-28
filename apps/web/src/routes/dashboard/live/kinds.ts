@@ -15,21 +15,23 @@ export interface KindStyle {
   fill: string;
   /** Text colour for the icon. */
   text: string;
+  /** Text colour for words (meets 4.5:1 on the card in both themes); the icon keeps `text`. */
+  ink: string;
   /** Tinted tile behind the icon. */
   tile: string;
 }
 
 export const KIND_STYLE: Record<ActivityKind, KindStyle> = {
-  search: { label: "Searches", icon: Search, fill: "bg-[hsl(var(--stage-search))]", text: "text-[hsl(var(--stage-search))]", tile: "bg-[hsl(var(--stage-search)/0.14)]" },
-  grab: { label: "Grabs", icon: Download, fill: "bg-[hsl(var(--stage-grab))]", text: "text-[hsl(var(--stage-grab))]", tile: "bg-[hsl(var(--stage-grab)/0.14)]" },
-  import: { label: "Imports", icon: CheckCircle2, fill: "bg-success", text: "text-success", tile: "bg-success/15" },
-  process: { label: "Processor", icon: ShieldCheck, fill: "bg-[hsl(var(--stage-process))]", text: "text-[hsl(var(--stage-process))]", tile: "bg-[hsl(var(--stage-process)/0.14)]" },
-  failed: { label: "Problems", icon: AlertTriangle, fill: "bg-destructive", text: "text-destructive", tile: "bg-destructive/15" },
-  cleanup: { label: "Clean-ups", icon: Trash2, fill: "bg-[hsl(var(--stage-import))]", text: "text-[hsl(var(--stage-import))]", tile: "bg-[hsl(var(--stage-import)/0.14)]" },
-  retention: { label: "Retention", icon: Timer, fill: "bg-warning", text: "text-warning", tile: "bg-warning/15" },
-  subtitle: { label: "Subtitles", icon: Captions, fill: "bg-info", text: "text-info", tile: "bg-info/15" },
-  lists: { label: "Lists and requests", icon: ListPlus, fill: "bg-primary", text: "text-primary", tile: "bg-primary/15" },
-  other: { label: "Routine background work", icon: Activity, fill: "bg-muted-foreground/60", text: "text-muted-foreground", tile: "bg-surface-3" }
+  search: { label: "Searches", icon: Search, fill: "bg-[hsl(var(--stage-search))]", text: "text-[hsl(var(--stage-search))]", ink: "text-[hsl(var(--stage-search-ink))]", tile: "bg-[hsl(var(--stage-search)/0.14)]" },
+  grab: { label: "Grabs", icon: Download, fill: "bg-[hsl(var(--stage-grab))]", text: "text-[hsl(var(--stage-grab))]", ink: "text-[hsl(var(--stage-grab-ink))]", tile: "bg-[hsl(var(--stage-grab)/0.14)]" },
+  import: { label: "Imports", icon: CheckCircle2, fill: "bg-success", text: "text-success", ink: "text-success", tile: "bg-success/15" },
+  process: { label: "Processor", icon: ShieldCheck, fill: "bg-[hsl(var(--stage-process))]", text: "text-[hsl(var(--stage-process))]", ink: "text-[hsl(var(--stage-process-ink))]", tile: "bg-[hsl(var(--stage-process)/0.14)]" },
+  failed: { label: "Problems", icon: AlertTriangle, fill: "bg-destructive", text: "text-destructive", ink: "text-destructive", tile: "bg-destructive/15" },
+  cleanup: { label: "Clean-ups", icon: Trash2, fill: "bg-[hsl(var(--stage-import))]", text: "text-[hsl(var(--stage-import))]", ink: "text-[hsl(var(--stage-import-ink))]", tile: "bg-[hsl(var(--stage-import)/0.14)]" },
+  retention: { label: "Retention", icon: Timer, fill: "bg-warning", text: "text-warning", ink: "text-warning", tile: "bg-warning/15" },
+  subtitle: { label: "Subtitles", icon: Captions, fill: "bg-info", text: "text-info", ink: "text-info", tile: "bg-info/15" },
+  lists: { label: "Lists and requests", icon: ListPlus, fill: "bg-primary", text: "text-primary", ink: "text-primary", tile: "bg-primary/15" },
+  other: { label: "Routine background work", icon: Activity, fill: "bg-muted-foreground/60", text: "text-muted-foreground", ink: "text-muted-foreground", tile: "bg-surface-3" }
 };
 
 

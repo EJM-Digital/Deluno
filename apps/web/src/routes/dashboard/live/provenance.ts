@@ -32,7 +32,7 @@ export function startedLabel(by: StartedBy, entity?: { kind: string }, release?:
 /** The colour of each tag: the app's own tokens, so dark and light both read. */
 export const STARTED_TONE: Record<StartedBy, string> = {
   you: "bg-primary/15 text-primary",
-  seerr: "bg-[hsl(var(--stage-search)/0.16)] text-[hsl(var(--stage-search))]",
+  seerr: "bg-[hsl(var(--stage-search)/0.16)] text-[hsl(var(--stage-search-ink))]",
   list: "bg-info/15 text-info",
   upgrade: "bg-success/15 text-success",
   missing: "bg-warning/15 text-warning"

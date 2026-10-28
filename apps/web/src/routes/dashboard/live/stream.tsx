@@ -65,8 +65,8 @@ function renderRow(group: ActivityGroup, titles: TitleLookup, dense: boolean, ne
           <span className="min-w-0">
             <span title={group.sentence} className="lact-w line-clamp-2 max-md:line-clamp-none block">{boldTitle(group.sentence, name)}</span>
             <span className="lact-k block">
-              <span className={kind.text}>{eventLabel(item)}</span>
-              {many > 1 ? <span className={cn("ml-1.5 rounded-full px-1.5 py-px text-(length:--type-micro) font-semibold tabular-nums", kind.tile, kind.text)}>{many.toLocaleString("en-AU")} times</span> : null} &middot; <span className="when">{ago(item.createdUtc)}</span>
+              <span className={kind.ink}>{eventLabel(item)}</span>
+              {many > 1 ? <span className={cn("ml-1.5 rounded-full px-1.5 py-px text-(length:--type-micro) font-semibold tabular-nums", kind.tile, kind.ink)}>{many.toLocaleString("en-AU")} times</span> : null} &middot; <span className="when">{ago(item.createdUtc)}</span>
             </span>
           </span>
         )}
