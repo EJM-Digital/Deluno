@@ -23,6 +23,7 @@ import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { LibraryImpactLinks } from "../components/ui/library-impact";
+import { plural } from "./dashboard/format";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { PathInput } from "../components/ui/path-input";
 import { PresetField } from "../components/ui/preset-field";
@@ -417,7 +418,7 @@ export function SettingsDestinationRulesPage() {
               <SwitchRow label="Use this rule" description="When enabled, matching titles use this destination before the library folder." checked={form.isEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))} />
             </DrawerSection>
             {editing ? (
-              <DrawerSection title="Library impact" aside={librariesByRule.get(editing.id)?.length ? `${librariesByRule.get(editing.id)!.length} libraries` : "Not assigned"}>
+              <DrawerSection title="Library impact" aside={librariesByRule.get(editing.id)?.length ? plural(librariesByRule.get(editing.id)!.length, "library", "libraries") : "Not assigned"}>
                 <p className="text-(length:--type-caption) text-muted-foreground">This exception only applies to libraries whose Library Profile uses it.</p>
                 <LibraryImpactLinks libraries={librariesByRule.get(editing.id) ?? []} emptyLabel="No Library Profile uses this rule yet." />
               </DrawerSection>

@@ -248,7 +248,7 @@ export function formatRangeDate(value: string | Date | null | undefined, prefere
 export function formatRuntime(minutes: number | null | undefined, preferences: DisplayPreferences = DEFAULT_DISPLAY_PREFERENCES) {
   if (minutes === null || minutes === undefined || !Number.isFinite(minutes)) return "—";
   const rounded = Math.max(0, Math.round(minutes));
-  if (preferences.runtimeFormat === "minutes") return `${rounded} minutes`;
+  if (preferences.runtimeFormat === "minutes") return rounded === 1 ? "1 minute" : `${rounded} minutes`;
   const hours = Math.floor(rounded / 60);
   const remainder = rounded % 60;
   return hours > 0 ? `${hours}h ${remainder.toString().padStart(2, "0")}m` : `${remainder}m`;

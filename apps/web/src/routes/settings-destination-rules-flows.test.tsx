@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -176,6 +176,17 @@ describe("destination rule drawer", () => {
 
     expect(await within(dialog).findByText("Saved just now")).toBeTruthy();
     expect(sent("PUT", "/api/destination-rules/rule-1")[0].body).toMatchObject({ libraryId: "lib-docs", folderTemplate: "{Title}" });
+  });
+
+  it("reads 1 library for one library and N libraries for more under Library impact", async () => {
+    renderPage();
+    fireEvent.click(screen.getByText("Genre is Documentary"));
+    expect(within(await screen.findByRole("dialog")).getByText("1 library")).toBeTruthy();
+    cleanup();
+    Object.assign(loaderData, { libraries: [...(loaderData.libraries as object[]), { id: "lib-more", name: "More docs", mediaType: "movies", rootPath: "/media/more", defaultPolicySetId: "plan-1" }] });
+    renderPage();
+    fireEvent.click(screen.getByText("Genre is Documentary"));
+    expect(within(await screen.findByRole("dialog")).getByText("2 libraries")).toBeTruthy();
   });
 
   it("deletes through the danger zone and a confirmation, and toasts the rule's name", async () => {

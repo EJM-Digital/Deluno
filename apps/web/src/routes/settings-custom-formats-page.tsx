@@ -30,6 +30,8 @@ import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { LibraryImpactLinks } from "../components/ui/library-impact";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
+import { plural } from "./dashboard/format";
 import { ListGroupHeader, MediaTypeFilter, mediaTypeLabel, useMediaTypeSplit } from "../components/ui/media-type-split";
 import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
@@ -297,6 +299,7 @@ export function SettingsCustomFormatsPage() {
     return map;
   }, [libraries, policySets, qualityProfiles]);
   const [drawer, setDrawer] = useState<DrawerMode>(null);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
 
   /* ------------------------------------------------------------- rules */
   const [form, setForm] = useState<RuleForm>(() => emptyRule());
@@ -312,6 +315,11 @@ export function SettingsCustomFormatsPage() {
   useEffect(() => {
     if (shouldClearSaveState(ruleState, ruleDirty)) setRuleState(undefined);
   }, [ruleDirty, ruleState]);
+
+  function requestRuleClose() {
+    if (ruleDirty) setConfirmDiscard(true);
+    else setDrawer(null);
+  }
 
   function openRule(format: CustomFormatItem | null) {
     const next = format ? ruleFrom(format) : emptyRule();
@@ -1180,7 +1188,7 @@ export function SettingsCustomFormatsPage() {
       <Drawer
         open={drawer?.kind === "rule"}
         onOpenChange={(open) => {
-          if (!open) setDrawer(null);
+          if (!open) requestRuleClose();
         }}
         // The same name the list showed. Opening "Top-tier WEB groups" and
         // landing on a panel headed "WEB Tier 01" reads as the wrong rule.
@@ -1192,7 +1200,7 @@ export function SettingsCustomFormatsPage() {
             state={ruleFooter}
             message={ruleMessage}
             saveLabel={editing ? "Save rule" : "Create rule"}
-            onCancel={() => setDrawer(null)}
+            onCancel={requestRuleClose}
             saveEnabled={editing ? undefined : true}
             disabled={busy !== null}
           />
@@ -1414,7 +1422,7 @@ export function SettingsCustomFormatsPage() {
         )}
 
         {editing ? (
-          <DrawerSection title="Library impact" aside={librariesByFormat.get(editing.id)?.length ? `${librariesByFormat.get(editing.id)!.length} libraries` : "Not assigned"}>
+          <DrawerSection title="Library impact" aside={librariesByFormat.get(editing.id)?.length ? plural(librariesByFormat.get(editing.id)!.length, "library", "libraries") : "Not assigned"}>
             <p className="text-(length:--type-caption) text-muted-foreground">This rule only changes releases for libraries whose Library Profile includes it.</p>
             <LibraryImpactLinks libraries={librariesByFormat.get(editing.id) ?? []} emptyLabel="No Library Profile uses this rule yet." />
           </DrawerSection>
@@ -1775,6 +1783,20 @@ export function SettingsCustomFormatsPage() {
           </DrawerSection>
         ) : null}
       </Drawer>
+
+      <ConfirmDialog
+        open={confirmDiscard}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDiscard(false);
+        }}
+        title="Discard unsaved changes?"
+        description="Your edits to this rule have not been saved."
+        confirmLabel="Discard"
+        onConfirm={() => {
+          setConfirmDiscard(false);
+          setDrawer(null);
+        }}
+      />
     </form>
   );
 }

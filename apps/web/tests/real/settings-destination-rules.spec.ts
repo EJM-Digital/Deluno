@@ -144,4 +144,34 @@ test.describe("Destination rules", () => {
       await api(page, "DELETE", `/api/policy-sets/${plan.body.id}`);
     }
   });
+
+  test("a rule's Library impact reads 1 library for one library and N libraries for more", async ({ page }) => {
+    const rule = (await rules(page)).find((item) => item.name === `With template ${stamp}`)!;
+    const made: string[] = [];
+    const folders: string[] = [];
+    const plan = await api<{ id: string }>(page, "POST", "/api/policy-sets", { name: `Count profile ${stamp}`, mediaType: "movies", qualityProfileId: null, destinationRuleId: rule.id, customFormatIds: "", searchIntervalOverrideHours: null, retryDelayOverrideHours: null, upgradeUntilCutoff: true, isEnabled: true, notes: null, automationIntent: null });
+    expect(plan.status, JSON.stringify(plan.body)).toBeLessThan(300);
+    try {
+      for (const label of ["one", "two"]) {
+        const folder = fs.mkdtempSync(path.join(os.tmpdir(), `deluno-real-dr-${label}-`));
+        folders.push(folder);
+        const library = await api<{ id: string }>(page, "POST", "/api/libraries", { name: `Count ${label} ${stamp}`, mediaType: "movies", purpose: "collection", rootPath: folder });
+        expect(library.status, JSON.stringify(library.body)).toBeLessThan(300);
+        made.push(library.body.id);
+        const assigned = await api(page, "PUT", `/api/libraries/${library.body.id}/media-plan`, { policySetId: plan.body.id });
+        expect(assigned.status, JSON.stringify(assigned.body)).toBeLessThan(300);
+        await page.reload();
+        await untilQuiet(page);
+        await row(page, `With template ${stamp}`).click();
+        const drawer = page.getByRole("dialog");
+        await expect(drawer.getByText(label === "one" ? "1 library" : "2 libraries", { exact: true })).toBeVisible();
+        await page.keyboard.press("Escape");
+        await expect(drawer).toHaveCount(0);
+      }
+    } finally {
+      for (const id of made) await api(page, "DELETE", `/api/libraries/${id}`);
+      for (const folder of folders) fs.rmSync(folder, { recursive: true, force: true });
+      await api(page, "DELETE", `/api/policy-sets/${plan.body.id}`);
+    }
+  });
 });

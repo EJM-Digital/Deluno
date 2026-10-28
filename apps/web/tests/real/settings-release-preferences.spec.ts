@@ -139,4 +139,35 @@ test.describe("Release preferences", () => {
     expect(await rule(page, `Beta rule ${stamp}`)).toBeTruthy();
     expect(await rule(page, `Edited ${stamp}`)).toBeFalsy();
   });
+
+  test("a rule's Library impact reads 1 library for one library", async ({ page }) => {
+    await row(page, `Alpha rule ${stamp}`).click();
+    await expect(page.getByRole("dialog").getByText("1 library", { exact: true })).toBeVisible();
+  });
+
+  test("closing the rule drawer with an unsaved edit asks first, Cancel keeps the edit, Discard leaves the stored rule, and with no edit it closes at once", async ({ page }) => {
+    const name = `Alpha rule ${stamp}`;
+    const edited = `${name} edited`;
+    await row(page, name).click();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    await row(page, name).click();
+    const drawer = page.getByRole("dialog", { name });
+    const field = drawer.getByRole("textbox", { name: "Name" });
+    await field.fill(edited);
+    const ask = page.getByRole("alertdialog").or(page.getByRole("dialog", { name: "Discard unsaved changes?" }));
+    for (const close of [() => page.keyboard.press("Escape"), () => drawer.getByRole("button", { name: "Cancel", exact: true }).click()]) {
+      await close();
+      await expect(ask).toContainText("Discard unsaved changes?");
+      await ask.getByRole("button", { name: "Cancel", exact: true }).click();
+      await expect(ask).toHaveCount(0);
+      await expect(field).toHaveValue(edited);
+    }
+    await page.keyboard.press("Escape");
+    await ask.getByRole("button", { name: "Discard", exact: true }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect(await rule(page, name)).toBeTruthy();
+    expect(await rule(page, edited)).toBeUndefined();
+  });
 });

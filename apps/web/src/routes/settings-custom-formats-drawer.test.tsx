@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { emptyPlatformSettingsSnapshot, type GuidePackage } from "../lib/api";
@@ -224,6 +224,42 @@ describe("an existing custom rule", () => {
     expect(drawer.getByRole("button", { name: "Export this rule" })).toBeVisible();
     expect(drawer.getByText("Remove this rule")).toBeVisible();
     expect(drawer.getByRole("button", { name: "Save rule" })).toBeVisible();
+  });
+
+  it("reads 1 library for one library and N libraries for more under Library impact", async () => {
+    let drawer = await openIt();
+    expect(drawer.getByText("1 library")).toBeVisible();
+    cleanup();
+    load([rule()], { libraries: [
+      { id: "lib-1", name: "Films", mediaType: "movies", defaultPolicySetId: "plan-1" },
+      { id: "lib-2", name: "Kids", mediaType: "movies", defaultPolicySetId: "plan-1" }
+    ] });
+    renderPage();
+    fireEvent.click(screen.getByText("Good groups"));
+    drawer = within(await screen.findByRole("dialog"));
+    expect(drawer.getByText("2 libraries")).toBeVisible();
+  });
+
+  it("closes at once with no edit, and with an edit asks first: Cancel keeps it, Discard drops it", async () => {
+    const drawer = await openIt();
+    fireEvent.click(drawer.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByText("Good groups"));
+    const again = within(await screen.findByRole("dialog"));
+    fireEvent.change(again.getByDisplayValue("Good groups"), { target: { value: "Better groups" } });
+    fireEvent.click(again.getByRole("button", { name: "Cancel" }));
+    const ask = within(await screen.findByRole("dialog", { name: "Discard unsaved changes?" }));
+    expect(ask.getByText("Discard unsaved changes?")).toBeVisible();
+    fireEvent.click(ask.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Discard unsaved changes?" })).not.toBeInTheDocument());
+    expect(again.getByDisplayValue("Better groups")).toBeVisible();
+
+    fireEvent.keyDown(again.getByDisplayValue("Better groups"), { key: "Escape" });
+    const askAgain = within(await screen.findByRole("dialog", { name: "Discard unsaved changes?" }));
+    fireEvent.click(askAgain.getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(calls("PUT", "/api/custom-formats/cf-1")).toHaveLength(0);
   });
 
   it("Save puts the changed rule at its own id with the criteria that remain", async () => {

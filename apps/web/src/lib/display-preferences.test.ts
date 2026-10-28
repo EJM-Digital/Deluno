@@ -96,5 +96,7 @@ describe("display preferences", () => {
     expect(formatCalendarWeekHeader(day, { ...DEFAULT_DISPLAY_PREFERENCES, calendarWeekHeaderFormat: "ddd d mmm" })).toBe("Wed 25 Mar");
     expect(formatRuntime(75, DEFAULT_DISPLAY_PREFERENCES)).toBe("1h 15m");
     expect(formatRuntime(75, { ...DEFAULT_DISPLAY_PREFERENCES, runtimeFormat: "minutes" })).toBe("75 minutes");
+    expect(formatRuntime(1, { ...DEFAULT_DISPLAY_PREFERENCES, runtimeFormat: "minutes" })).toBe("1 minute");
+    expect(formatRuntime(0, { ...DEFAULT_DISPLAY_PREFERENCES, runtimeFormat: "minutes" })).toBe("0 minutes");
   });
 });
