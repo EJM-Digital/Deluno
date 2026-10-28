@@ -28,7 +28,7 @@ test.describe("Retention from end to end", () => {
 
   test.beforeAll(async ({ browser }) => {
     jellyfin = await startRecordedAppServer([
-      ...["identity", "libraries", "catalogue-movies", "watched", "sessions-idle", "collection-sync", "collection-unfavourited"].map((state) => loadRecording("jellyfin", "12.2.0", state))
+      ...["identity", "libraries", "catalogue-movies", "watched", "sessions-idle", "collection-sync", "collection-unfavourited"].map((state) => loadRecording("jellyfin", "12.4.0", state))
     ]);
     root = fs.mkdtempSync(path.join(os.tmpdir(), "deluno-retention-e2e-"));
     const page = await browser.newPage();

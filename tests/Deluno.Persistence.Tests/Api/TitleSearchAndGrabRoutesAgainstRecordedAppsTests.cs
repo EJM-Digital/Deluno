@@ -320,8 +320,9 @@ public sealed class TitleSearchAndGrabRoutesAgainstRecordedAppsTests
         Assert.Equal(1, Adds());
         Assert.Equal(0, Deletes());
 
-        await PostOkAsync(rig.App, $"/api/movies/{film}/grab", Send("Sintel.2010.2160p.BluRay.x265-BBB", otherHash, "send-as-well"));
-        Assert.Equal(2, Adds());
+        var asWell = await PostOkAsync(rig.App, $"/api/movies/{film}/grab", Send("Sintel.2010.2160p.BluRay.x265-BBB", otherHash, "send-as-well"));
+        // Under the full gate's load this once saw one add, not two (28 Oct); what Deluno answered and qBittorrent saw is kept for the next time.
+        Assert.True(Adds() == 2, $"{asWell} | qbit saw: {string.Join(" ; ", rig.Qbit.Requests.Select(r => r.Method + " " + r.PathAndQuery))} | unanswered: {string.Join(" ; ", rig.Qbit.Unanswered)}");
         Assert.Equal(0, Deletes());
 
         // Replace, on a film of its own: the first download leaves qBittorrent with its data, then the new one is added.
