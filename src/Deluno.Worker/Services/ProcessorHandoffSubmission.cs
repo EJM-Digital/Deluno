@@ -31,13 +31,49 @@ internal static class ProcessorHandoffSubmission
         // path; only what goes out over the wire changes.
         var pathMappings = await processorRepository.ListProcessorPathMappingsAsync(connection.Id, cancellationToken);
         var outboundHandoff = await HandoffFileSelection.ForProcessorAsync(handoff, library, connection, pathMappings, processorConnectionService, activityFeedRepository, cancellationToken);
+
+        // A send that got no answer waits and goes again after a back-off (#1385), with the key the first such send
+        // carried, so a send the processor did get is not done twice; only the last try is a failure.
+        var (tries, keyRevision) = ProcessorUnreachable.SoFar(
+            await activityFeedRepository.ListActivityAsync(200, "processor-handoff", handoff.Id, cancellationToken));
+        if (keyRevision is { } revision)
+        {
+            outboundHandoff = outboundHandoff with { UpdatedUtc = revision };
+        }
+
         var submission = await processorConnectionService.SubmitAsync(connection, outboundHandoff, cancellationToken);
+        var status = submission.Status;
+        var failure = submission.IsAccepted ? null : submission.Message;
+        var category = submission.IsAccepted ? "processing.submitted" : "processing.submission-failed";
+        var said = submission.IsAccepted
+            ? $"Deluno submitted {title} to {connection.Name}."
+            : $"Deluno could not submit {title} to {connection.Name}. {submission.Message}";
+        int? attempt = null;
+        long? keyRevisionMs = null;
+        if (ProcessorUnreachable.IsUnreachable(submission))
+        {
+            attempt = tries + 1;
+            keyRevisionMs = outboundHandoff.UpdatedUtc.ToUnixTimeMilliseconds();
+            if (tries < ProcessorUnreachable.RetryAfter.Count)
+            {
+                status = ProcessorHandoffStatuses.Waiting;
+                failure = ProcessorUnreachable.WaitingMessage(connection.Name);
+                category = ProcessorUnreachable.TriedCategory;
+                said = $"{connection.Name} did not answer when Deluno sent {title}; Deluno will send it again in {ProcessorUnreachable.RetryAfter[tries].TotalMinutes:0} min.";
+            }
+            else
+            {
+                failure = ProcessorUnreachable.GaveUpMessage(connection.Name);
+                said = $"Deluno could not submit {title} to {connection.Name}. {failure}";
+            }
+        }
+
         var current = await processorRepository.UpdateProcessorHandoffAsync(
             handoff.Id,
-            submission.Status,
+            status,
             null,
             null,
-            submission.IsAccepted ? null : submission.Message,
+            failure,
             cancellationToken) ?? handoff;
         if (ProcessorHealthRules.HealthAfterSubmission(submission) is { } submittedHealth)
         {
@@ -49,10 +85,8 @@ internal static class ProcessorHandoffSubmission
         }
 
         await activityFeedRepository.RecordActivityAsync(
-            submission.IsAccepted ? "processing.submitted" : "processing.submission-failed",
-            submission.IsAccepted
-                ? $"Deluno submitted {title} to {connection.Name}."
-                : $"Deluno could not submit {title} to {connection.Name}. {submission.Message}",
+            category,
+            said,
             JsonSerializer.Serialize(new
             {
                 DispatchId = dispatchId,
@@ -62,8 +96,10 @@ internal static class ProcessorHandoffSubmission
                 ConnectionId = connection.Id,
                 connection.Name,
                 connection.Provider,
-                submission.Status,
-                submission.StatusCode
+                Status = status,
+                submission.StatusCode,
+                Attempt = attempt,
+                KeyRevisionMs = keyRevisionMs
             }, PayloadJsonOptions),
             null,
             "processor-handoff",

@@ -49,7 +49,8 @@ function Invoke-GroupInstall {
     Invoke-Scenario -Id 'install.clients-ready' -Title 'Each of the five clients the picker installed listens on its port, Deluge has its Label plugin on, and Library Routing''s folder check shows every folder of the Movies and TV libraries as matching' -Body {
         Connect-Deluno
         foreach ($kind in 'qbittorrent', 'transmission', 'deluge', 'sabnzbd', 'nzbget') {
-            $port = [int]$script:Ks.Ports[$kind]
+            # The kit's port list has the three torrent clients only; the two Usenet clients listen where the picker set them (rc.30.36 run read 0 for both).
+            $port = [int]$(if ($script:Ks.Ports.ContainsKey($kind)) { $script:Ks.Ports[$kind] } else { @{ sabnzbd = 8080; nzbget = 6789 }[$kind] })
             $listen = @(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue)
             Add-Check "$kind listens on its port ($port)" ($listen.Count -gt 0) $(if ($listen.Count) { ($listen | ForEach-Object { $_.LocalAddress } | Select-Object -Unique) -join ', ' } else { 'nothing is listening there' })
         }

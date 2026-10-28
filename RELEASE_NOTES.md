@@ -36,6 +36,9 @@ Fixes:
   from X to Y", the same as on Docker.
 - A new download shows on Transfers as soon as its client reports it, instead
   of up to 20 seconds later.
+- When the processor does not answer a hand-off (it is restarting, updating or
+  briefly busy), Deluno sends it again after 1, 2 and 5 minutes, instead of
+  leaving it failed until you press Try again.
 - Two quick edits to the Subtitles permission fields are both saved.
 - Editing either side of a remote path mapping saves in one step, and a path
   that is already mapped says so plainly instead of showing a server error.

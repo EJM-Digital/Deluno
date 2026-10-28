@@ -1304,6 +1304,17 @@ public sealed class WorkPlanner(
                     continue;
                 }
 
+                // A send that got no answer waits its back-off too (#1385).
+                if (handoff.Status == ProcessorHandoffStatuses.Waiting
+                    && ProcessorUnreachable.IsWaitingMessage(handoff.FailureMessage)
+                    && ProcessorUnreachable.RetryNotDue(
+                        handoff,
+                        ProcessorUnreachable.TriesSoFar(await activityFeedRepository.ListActivityAsync(200, "processor-handoff", handoff.Id, cancellationToken)),
+                        now))
+                {
+                    continue;
+                }
+
                 var currentHandoff = handoff;
                 ProcessorSubmissionResult? submission = null;
                 var connection = await processorRepository.FindProcessorConnectionAsync(library.ProcessorConnectionId, library.ProcessorName, cancellationToken);
