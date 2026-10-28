@@ -40,6 +40,18 @@ describe("automation paused notice (#936)", () => {
     expect(container.textContent).toBe("");
   });
 
+  it("draws nothing while the answer is not known yet and when the read fails", async () => {
+    fetchJson.mockReturnValue(new Promise(() => undefined));
+    const waiting = render(<AutomationPausedNotice context="dashboard" />);
+    expect(waiting.container.textContent).toBe("");
+    waiting.unmount();
+
+    fetchJson.mockRejectedValue(new Error("offline"));
+    const failed = render(<AutomationPausedNotice context="dashboard" />);
+    await waitFor(() => expect(fetchJson).toHaveBeenCalledTimes(2));
+    expect(failed.container.textContent).toBe("");
+  });
+
   it("resumes automation and goes away", async () => {
     fetchJson.mockResolvedValue({ autoStartJobs: false });
     authedFetch.mockResolvedValue({ ok: true });

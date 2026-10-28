@@ -113,6 +113,7 @@ describe("the rule list and its drawer", () => {
 
     expect(drawer.getByText("New download health rule")).toBeVisible();
     expect(drawer.getByRole("button", { name: "Create rule" })).toBeVisible();
+    expect(drawer.getByRole("button", { name: "Create rule" })).toBeEnabled();
     expect(drawer.queryByText("Delete this rule")).not.toBeInTheDocument();
     expect(drawer.getByLabelText("When it strikes")).toHaveValue("just-tell-me");
   });
@@ -462,5 +463,27 @@ describe("the cards beside the rules", () => {
 
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Cleared 4 recorded strikes"));
     expect(calls("POST", "/api/download-health/purge-strikes")).toHaveLength(1);
+  });
+
+  it("Purge all strikes says there was nothing to clear when no strike was held", async () => {
+    authedFetchMock.mockImplementation((path: string) => String(path).endsWith("purge-strikes") ? reply({ purgedCount: 0 }) : reply([]));
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Purge all strikes" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "Purge all strikes" })).at(-1)!);
+
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("There was nothing to clear"));
+    expect(calls("POST", "/api/download-health/purge-strikes")).toHaveLength(1);
+  });
+
+  it("Purge all strikes tells the person when the request is refused and shows no success", async () => {
+    authedFetchMock.mockImplementation((path: string) => String(path).endsWith("purge-strikes") ? Promise.resolve(new Response("", { status: 500 })) : reply([]));
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Purge all strikes" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "Purge all strikes" })).at(-1)!);
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Could not clear strikes."));
+    expect(toastSuccess).not.toHaveBeenCalled();
   });
 });
