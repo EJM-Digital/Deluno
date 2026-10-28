@@ -13,6 +13,8 @@ export interface ColumnsPlan {
   /** The sortable column and the texts of its cells, in table order, for rows this test made (filtered by its stamp). */
   sortId: string;
   cellsOf: (scope: Locator) => Promise<string[]>;
+  /** The Columns button of this table, when the page has more than one. */
+  columnsButton?: () => Locator;
   /** A column dragged in front of another. */
   move: { from: string; onto: string };
 }
@@ -56,7 +58,7 @@ export async function exerciseColumns(page: Page, plan: ColumnsPlan) {
   await expect(header(plan.sortId)).toHaveAttribute("aria-sort", "descending");
   expect(await headerOrder(plan.scope())).toEqual(moved);
 
-  await plan.scope().getByRole("button", { name: "Columns", exact: true }).click();
+  await (plan.columnsButton?.() ?? plan.scope().getByRole("button", { name: "Columns", exact: true })).click();
   await page.getByRole("menuitem", { name: "Reset columns" }).click();
   await expect(header(plan.sortId)).not.toHaveAttribute("aria-sort");
   expect((await headerOrder(plan.scope())).slice(0, plan.defaultOrder.length)).toEqual(plan.defaultOrder);
