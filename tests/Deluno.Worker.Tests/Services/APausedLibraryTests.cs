@@ -97,7 +97,13 @@ public sealed class APausedLibraryTests
     {
         var activity = new Mock<IActivityFeedRepository>();
         var service = Availability(activity);
-        var gone = Library("library-1", Path.Combine(Path.GetTempPath(), $"deluno-gone-{Guid.NewGuid():N}"));
+        // A library folder that was really there and has really gone (an unmounted drive): created, filled, then removed from the disk.
+        var goneFolder = Path.Combine(Path.GetTempPath(), $"deluno-gone-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(goneFolder);
+        File.WriteAllText(Path.Combine(goneFolder, "Film (2026).mkv"), "x");
+        Directory.Delete(goneFolder, recursive: true);
+        Assert.False(Directory.Exists(goneFolder));
+        var gone = Library("library-1", goneFolder);
 
         await service.ReadAsync([gone], CancellationToken.None);
 
@@ -282,11 +288,13 @@ public sealed class APausedLibraryTests
     public async Task Import_automation_carries_on_for_a_library_that_is_there()
     {
         var jobs = ClaimingJobs();
+        var thereFolder = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"deluno-there-{Guid.NewGuid():N}")).FullName;
+        File.WriteAllText(Path.Combine(thereFolder, "Film (2026).mkv"), "x");
 
         await Planner(jobs).PlanImportAutomationAsync(
             Mock.Of<IJobScheduler>(),
             Mock.Of<IProcessorRepository>(),
-            LibrariesReturning(Library("library-1", Path.GetTempPath())),
+            LibrariesReturning(Library("library-1", thereFolder)),
             Availability(),
             Mock.Of<IDownloadClientTelemetryService>(),
             Mock.Of<IProcessorConnectionService>(),
@@ -299,6 +307,7 @@ public sealed class APausedLibraryTests
         jobs.Verify(
             repository => repository.ListAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()),
             Times.AtLeastOnce);
+        Directory.Delete(thereFolder, recursive: true);
     }
 
     /// <summary>
