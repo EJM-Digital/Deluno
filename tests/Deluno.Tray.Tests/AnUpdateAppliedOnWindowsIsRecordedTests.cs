@@ -68,6 +68,24 @@ public sealed class AnUpdateAppliedOnWindowsIsRecordedTests : IDisposable
     }
 
     [Fact]
+    public void The_update_hook_leaves_the_note_from_its_own_arguments()
+    {
+        // The golden VM's in-app update from 1.0.0-rc.30.35 (28 Oct): Update.exe ran the new build with
+        // "--veloapp-updated 1.0.0-rc.30.36", the fast hook answered before Velopack was loaded, and no note was left.
+        UpdateAppliedNote.WriteFromHookArguments(["--veloapp-updated", "1.0.0-rc.30.36"]);
+
+        Assert.Equal("1.0.0-rc.30.36", new TrayAppliedUpdateHintSource().Peek()!.ToVersion);
+    }
+
+    [Fact]
+    public void A_first_install_hook_leaves_no_note()
+    {
+        UpdateAppliedNote.WriteFromHookArguments(["--veloapp-install", "1.0.0-rc.30.36"]);
+
+        Assert.False(File.Exists(NotePath));
+    }
+
+    [Fact]
     public void The_previous_version_is_the_newest_other_full_package_Velopack_kept()
     {
         var packages = Path.Combine(_root, "packages");

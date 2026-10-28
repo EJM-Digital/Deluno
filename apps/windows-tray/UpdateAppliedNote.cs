@@ -38,6 +38,20 @@ public static class UpdateAppliedNote
         Write(new Note(from, toVersion), overwriteSameTarget: false);
     }
 
+    /// <summary>
+    /// The fast install/update hook in Program answers before Velopack is loaded, so Velopack's own after-update callback
+    /// never runs; the hook leaves the note from its "--veloapp-updated &lt;version&gt;" arguments instead. A first install
+    /// leaves none.
+    /// </summary>
+    public static void WriteFromHookArguments(string[] args)
+    {
+        var at = Array.FindIndex(args, a => a.Equals("--veloapp-updated", StringComparison.OrdinalIgnoreCase));
+        if (at >= 0 && at + 1 < args.Length && !string.IsNullOrWhiteSpace(args[at + 1]))
+        {
+            WriteAfterUpdate(args[at + 1]);
+        }
+    }
+
     /// <summary>Best guess at the version an update replaced, from the full packages Velopack keeps beside the install.</summary>
     public static string? PreviousVersionFromPackages(string packagesFolder, string toVersion)
     {

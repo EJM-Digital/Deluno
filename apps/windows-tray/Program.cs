@@ -52,6 +52,9 @@ internal static class Program
         if (IsFastExitInstallHook(args))
         {
             HookLog.Write("after install/update: done; a true first install runs its first-run steps on its first start, a reinstall over existing data does not.");
+            // Velopack's after-update callback below never runs on this path, so the note that the new build was just
+            // updated is left here (#1376).
+            UpdateAppliedNote.WriteFromHookArguments(args);
             // A silent Setup over a running Deluno leaves it stopped: bring it back once Setup has exited (#1256).
             RelaunchAfterSetup.OnInstallOrUpdateHook();
             return 0;

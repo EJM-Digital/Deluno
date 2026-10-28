@@ -31,6 +31,17 @@ public sealed class RelaunchWiringTests
     }
 
     [Fact]
+    public void The_update_hook_leaves_the_applied_update_note_before_it_returns()
+    {
+        // The fast hook returns before Velopack's own after-update callback can run, so it must leave the note itself (#1376).
+        var main = Source("Program.cs");
+        var fast = main.IndexOf("if (IsFastExitInstallHook(args))", StringComparison.Ordinal);
+        var note = main.IndexOf("UpdateAppliedNote.WriteFromHookArguments(args)", StringComparison.Ordinal);
+        var next = main.IndexOf("LogColdStart();", StringComparison.Ordinal);
+        Assert.True(fast > 0 && note > fast && note < next, "the fast update hook must leave the applied-update note");
+    }
+
+    [Fact]
     public void The_tray_marks_itself_running_after_it_holds_the_single_instance_lock_and_the_service_marks_itself_too()
     {
         var main = Source("Program.cs");
