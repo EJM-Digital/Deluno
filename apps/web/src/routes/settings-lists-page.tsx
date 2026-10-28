@@ -301,7 +301,8 @@ export function SettingsListsPage() {
     setBusy("save");
     setSaveState("saving");
     try {
-      const payload = toPayload(form);
+      // No screen field sets a name, so a list keeps the name it has until its provider or address changes; then Deluno derives a new one.
+      const payload = { ...toPayload(form), name: editing && (editing.provider !== form.provider || editing.feedUrl !== form.feedUrl) ? "" : form.name.trim() };
       let saved: IntakeSourceItem;
       if (mode.kind === "create") {
         const response = await authedFetch("/api/intake-sources", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });

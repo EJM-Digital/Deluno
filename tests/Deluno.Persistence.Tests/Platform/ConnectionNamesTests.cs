@@ -158,11 +158,11 @@ public sealed class ConnectionNamesTests
         var repository = new SqliteNotificationRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
 
         var discord = await repository.CreateNotificationWebhookAsync(
-            new CreateNotificationWebhookRequest("Home", "https://discord.com/api/webhooks/1/x", "all", true, NotificationProviders.Discord), CancellationToken.None);
+            new CreateNotificationWebhookRequest(null, "https://discord.com/api/webhooks/1/x", "all", true, NotificationProviders.Discord), CancellationToken.None);
         var second = await repository.CreateNotificationWebhookAsync(
-            new CreateNotificationWebhookRequest("Home", "https://discord.com/api/webhooks/2/y", "all", true, NotificationProviders.Discord), CancellationToken.None);
+            new CreateNotificationWebhookRequest(null, "https://discord.com/api/webhooks/2/y", "all", true, NotificationProviders.Discord), CancellationToken.None);
         var local = await repository.CreateNotificationWebhookAsync(
-            new CreateNotificationWebhookRequest("HA", "http://localhost:8123/hook", "all", true), CancellationToken.None);
+            new CreateNotificationWebhookRequest(null, "http://localhost:8123/hook", "all", true), CancellationToken.None);
 
         Assert.Equal("Discord on discord.com", discord.Name);
         Assert.NotEqual(discord.Name, second.Name);
@@ -171,7 +171,10 @@ public sealed class ConnectionNamesTests
 
         var updated = await repository.UpdateNotificationWebhookAsync(
             discord.Id, new UpdateNotificationWebhookRequest("Zzz", "https://discord.com/api/webhooks/1/x", "all", true), CancellationToken.None);
-        Assert.Equal("Discord on discord.com", updated!.Name);
+        Assert.Equal("Zzz", updated!.Name);
+        var unnamed = await repository.UpdateNotificationWebhookAsync(
+            discord.Id, new UpdateNotificationWebhookRequest(null, "https://discord.com/api/webhooks/1/x", "all", true), CancellationToken.None);
+        Assert.Equal("Discord on discord.com", unnamed!.Name);
     }
 
     [Fact]
@@ -301,15 +304,21 @@ public sealed class ConnectionNamesTests
         var repository = new SqliteIntakeRepository(storage.Factory, clock);
 
         var list = await repository.CreateIntakeSourceAsync(
-            new CreateIntakeSourceRequest("Weekend movies", "trakt", "https://trakt.tv/users/me/lists/my-list", "movie", null, null, null, null, null, null, null, null, 6, true, true),
+            new CreateIntakeSourceRequest("", "trakt", "https://trakt.tv/users/me/lists/my-list", "movie", null, null, null, null, null, null, null, null, 6, true, true),
             CancellationToken.None);
         Assert.Equal("Trakt: my-list", list.Name);
 
         var updated = await repository.UpdateIntakeSourceAsync(
             list.Id,
-            new UpdateIntakeSourceRequest("Renamed", "trakt", "https://trakt.tv/users/me/lists/other", "movie", null, null, null, null, null, null, null, null, 6, true, true),
+            new UpdateIntakeSourceRequest("", "trakt", "https://trakt.tv/users/me/lists/other", "movie", null, null, null, null, null, null, null, null, 6, true, true),
             CancellationToken.None);
         Assert.Equal("Trakt: other", updated!.Name);
+
+        var renamed = await repository.UpdateIntakeSourceAsync(
+            list.Id,
+            new UpdateIntakeSourceRequest(" Weekend movies ", "trakt", "https://trakt.tv/users/me/lists/other", "movie", null, null, null, null, null, null, null, null, 6, true, true),
+            CancellationToken.None);
+        Assert.Equal("Weekend movies", renamed!.Name);
     }
 
     [Fact]
