@@ -1,0 +1,22 @@
+{
+  "app": "subf2m",
+  "version": "2026-10-28",
+  "state": "download-not-found",
+  "recordedAt": "2026-10-28T16:36:15Z",
+  "note": "The download of a subtitle number Subf2m does not hold: 404.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/subtitles/sintel/english/99999999999/download"
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "bodyText": "<!DOCTYPE html>\n<html lang=\"en\">\n\n<head>\n\t<meta charset=\"utf-8\" />\n\t<meta name=\"viewport\" content=\"width=device-width\" />\n\t<title>Subf2m - Not Found</title>\n\t<link rel=\"canonical\" href=\"/subtitles/spider-man-homecoming\" />\n\t<link rel=\"search\" type=\"application/opensearchdescription+xml\" href=\"/public/opensearch.xml\" title=\"Subf2m\" />\n\t<link href=\"/favicon.ico\" rel=\"shortcut icon\" type=\"image/x-icon\" />\n\t<link href=\"/public/assets/css/stylez.css\" rel=\"stylesheet\">\n\t<link href=\"/public/assets/css/jquery.scrollbar.css\" rel=\"stylesheet\">\n\t<script src='https://www.google.com/recaptcha/api.js?hl=fa'></script>\n\t<script src=\"/public/assets/js/jquery-3.2.0.min.js\" type=\"text/javascript\"></script>\n\t<script src=\"/public/assets/js/jquery.scrollbar.min.js\" type=\"text/javascript\"></script>\n\t<script src=\"/public/assets/js/tog.js\" type=\"text/javascript\"></script>\n</head>\n\n<body cz-shortcut-listen=\"true\">\n\t<!-- class error-container added -->\n\t<div class=\"container error-container\">\n\t\t<header>\n\t\t\t<div id=\"logo\"> <a href=\"/\"><em>Subf2m 3.0 </em></a> </div>\n\t\t\t<div id=\"search\">\n\t\t\t\t<div class=\"filter\">\n\t\t\t\t\t<ul>\n\t\t\t\t\t\t<li> <a href=\"/filter/edit\" title=\"Change search filter\">Change filter</a> </li>\n\t\t\t\t\t</ul>\n\t\t\t\t</div>\n\t\t\t\t<form action=\"/subtitles/searchbytitle?query=\">\n\t\t\t\t\t<input type=\"text\" name=\"query\" id=\"query\" class=\"text\" />\n\t\t\t\t\t<input type=\"hidden\" name=\"l\" id=\"l\" class=\"text\" value=\"\" />\n\t\t\t\t\t<button type=\"submit\">Subtitle Search</button>\n\t\t\t\t</form>\n\t\t\t</div>\n\t\t\t<nav class=\"main\">\n\t\t\t\t<ul> </ul>\n\t\t\t</nav>\n\t\t</header>\n\t\t<div id=\"content\">\n\t\t\t<div id=\"notfound\" class=\"clearfix\">\n\t\t\t\t<div class=\"subtitles byFilm\">\n\t\t\t\t\t<h1 class=\"notfound\">Not Found !</h1> </div>\n\t\t\t\t<div class=\"content clearfix notfound\"> <i class=\"icon-neutral2 notfound-icon\"></i> </div>\n\t\t\t</div>\n\t\t</div>\n\t\t<div class=\"details\"> </div>\n\t\t<footer>\n\t\t\t<nav>\n\t\t\t\t<ul>\n\t\t\t\t\t<li><a href=\"/\">Home Page</a></li>\n\t\t\t\t\t<li><a href=\"/ads\">ADS</a></li>\n\t\t\t\t\t<li><a href=\"/contact\">Contact US</a></li>\n\t\t\t\t</ul>\n\t\t\t</nav>\n\t\t</footer>\n\t</div>\n<!-- Google tag (gtag.js) -->\n<script async src=\"https://www.googletagmanager.com/gtag/js?id=G-XQB0QGX65V\"></script>\n<script>\n  window.dataLayer = window.dataLayer || [];\n  function gtag(){dataLayer.push(arguments);}\n  gtag('js', new Date());\n\n  gtag('config', 'G-XQB0QGX65V');\n</script>\t\n</body>\n\n</html>"
+      }
+    }
+  ]
+}

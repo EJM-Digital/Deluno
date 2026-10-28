@@ -40,6 +40,10 @@ public static class RecordedReplies
     public static Recording Flaresolverr(string state) => RecordedReplies.LoadLatest("flaresolverr", state);
     /// <summary>Gestdown's public subtitle API (Addic7ed's catalogue), a real unauthenticated GET from the internet.</summary>
     public static Recording Gestdown(string state) => RecordedReplies.LoadLatest("gestdown", state);
+    /// <summary>Subf2m's pages and downloads, real unauthenticated GETs from the internet (#1301).</summary>
+    public static Recording Subf2m(string state) => RecordedReplies.LoadLatest("subf2m", state);
+    /// <summary>SuperSubtitles (feliratok.eu), real unauthenticated GETs from the internet (#1301).</summary>
+    public static Recording Supersubtitles(string state) => RecordedReplies.LoadLatest("supersubtitles", state);
     /// <summary>ntfy's publish API (<c>POST /{topic}</c>), recorded from the real server in Docker: an open one, and one where nobody may publish without an account.</summary>
     public static Recording Ntfy(string state) => RecordedReplies.LoadLatest("ntfy", state);
     /// <summary>Sonarr v4's API (<c>/api/v3</c>), recorded from the real app with one real series.</summary>
