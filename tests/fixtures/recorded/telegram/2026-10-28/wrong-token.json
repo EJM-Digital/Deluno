@@ -1,0 +1,30 @@
+{
+  "app": "telegram",
+  "version": "2026-10-28",
+  "state": "wrong-token",
+  "recordedAt": "2026-10-28T23:22:36Z",
+  "note": "A message sent through a bot token Telegram does not know: its own refusal.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/bot123456:<scrubbed>/sendMessage",
+        "body": {
+          "chat_id": "42",
+          "text": "Import completed: Sintel (2010)"
+        }
+      },
+      "reply": {
+        "status": 401,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "ok": false,
+          "error_code": 401,
+          "description": "Unauthorized"
+        }
+      }
+    }
+  ]
+}

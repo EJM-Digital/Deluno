@@ -66,6 +66,8 @@ public static class RecordedReplies
     public static Recording Trakt(string state) => RecordedReplies.LoadLatest("trakt", state);
     public static Recording Tmdbapi(string state) => RecordedReplies.LoadLatest("tmdbapi", state);
     public static Recording Tvdbapi(string state) => RecordedReplies.LoadLatest("tvdbapi", state);
+    public static Recording Telegram(string state) => RecordedReplies.LoadLatest("telegram", state);
+    public static Recording Pushover(string state) => RecordedReplies.LoadLatest("pushover", state);
     public static Recording Gotify(string state) => RecordedReplies.LoadLatest("gotify", state);
     public static Recording Weir(string state) => RecordedReplies.LoadLatest("weir", state);
     public static Recording Deluno(string state) => RecordedReplies.LoadLatest("deluno", state);
