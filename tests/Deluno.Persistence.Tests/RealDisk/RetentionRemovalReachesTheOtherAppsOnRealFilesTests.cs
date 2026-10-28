@@ -11,7 +11,7 @@ namespace Deluno.Persistence.Tests.RealDisk;
 
 /// <summary>
 /// A retention rule removes a title on its day on the real host, over a real library folder and the real databases, with Weir 1.0.0-rc.13
-/// and Jellyfin 12.2.0 answering from their recordings on loopback ports. The film's folder goes to the recycle bin, an exclusion keeps it
+/// and Jellyfin 12.4.0 answering from their recordings on loopback ports. The film's folder goes to the recycle bin, an exclusion keeps it
 /// out of every list, the open grab and the hand-off waiting at the processor are ended (Weir is told to drop it with the call it was
 /// recorded taking), and the media server is told the film is gone.
 /// </summary>

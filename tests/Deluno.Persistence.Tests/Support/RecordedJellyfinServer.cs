@@ -13,7 +13,7 @@ namespace Deluno.Persistence.Tests.Support;
 internal enum JellyfinSessions { Playing, Idle, Refused }
 
 /// <summary>
-/// A local server on a loopback port that answers as Jellyfin 12.2.0 recorded (tests/fixtures/recorded/jellyfin/12.2.0): its identity,
+/// A local server on a loopback port that answers as Jellyfin 12.4.0 recorded (tests/fixtures/recorded/jellyfin/12.4.0): its identity,
 /// libraries and users, its film catalogue (Sintel), what nobody has watched, its session list while Sintel plays, while nothing plays
 /// and while it refuses the sign-in, and the calls that make, list and delete a collection. The application under test talks to it
 /// over HTTP; nothing in between is replaced. A test can hold the catalogue answer back to stand for a server that is slow to answer.

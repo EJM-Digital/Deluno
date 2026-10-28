@@ -13,7 +13,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Deluno.Persistence.Tests.Api;
 
 /// <summary>
-/// #1301: the media servers API (create, list, update, delete, test) with a real local server that answers as Jellyfin 12.2.0
+/// #1301: the media servers API (create, list, update, delete, test) with a real local server that answers as Jellyfin 12.4.0
 /// recorded: the whole application over HTTP, the app's own client talking to it, nothing in between replaced.
 /// </summary>
 public sealed class MediaServerApiOnRecordedJellyfinTests
@@ -89,7 +89,7 @@ public sealed class MediaServerApiOnRecordedJellyfinTests
         var tested = await SaveAsync(app, HttpMethod.Post, $"/api/media-servers/{id}/test", new { });
 
         Assert.True(tested.GetProperty("ok").GetBoolean(), tested.GetRawText());
-        Assert.Equal("12.2.0", tested.GetProperty("version").GetString());
+        Assert.Equal("12.4.0", tested.GetProperty("version").GetString());
         Assert.Equal(2, tested.GetProperty("libraryCount").GetInt32());
         var listed = await app.Client.GetStringAsync("/api/media-servers");
         var server = Assert.Single(JsonSerializer.Deserialize<JsonElement>(listed).EnumerateArray());

@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Deluno.Persistence.Tests.RealDisk;
 
 /// <summary>
-/// Retention checks on the real host, real library folders and the real databases, with a local server that answers as Jellyfin 12.2.0
+/// Retention checks on the real host, real library folders and the real databases, with a local server that answers as Jellyfin 12.4.0
 /// recorded. The schedule checks every due rule as "schedule", goes on to the next rule when one cannot be checked, and brings the
 /// servers' Leaving soon collections up to date after; a check that is still reading a slow server neither holds up saving the rule nor
 /// runs beside another check of the same rule, and a check that began before the rule changed then changes nothing.

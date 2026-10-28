@@ -1,9 +1,9 @@
 {
   "app": "jellyfin",
-  "version": "12.2.0",
+  "version": "12.4.0",
   "state": "catalogue-series",
-  "recordedAt": "2026-10-19T02:26:50Z",
-  "note": "The series catalogue: the series, its seasons and episodes (jellyfin 12.2.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "recordedAt": "2026-10-27T22:55:06Z",
+  "note": "The series catalogue: the series, its seasons and episodes (jellyfin 12.4.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {
       "request": {
@@ -19,9 +19,9 @@
           "Items": [
             {
               "Name": "Season 1",
-              "ServerId": "6c5f6a6fea8e4011ad35856c884c5306",
+              "ServerId": "0ae55b67e38642b1a0f4d76820694b5f",
               "Id": "86f3f893ca81a8513e289ba220e7d868",
-              "DateCreated": "2026-10-19T02:20:49.0136141Z",
+              "DateCreated": "2026-10-27T22:49:03.9016292Z",
               "Path": "/media/Shows/Recorded Show (2020)/Season 01",
               "ChannelId": null,
               "Genres": [],
@@ -43,9 +43,9 @@
             },
             {
               "Name": "Recorded Show",
-              "ServerId": "6c5f6a6fea8e4011ad35856c884c5306",
+              "ServerId": "0ae55b67e38642b1a0f4d76820694b5f",
               "Id": "dd8279fdad9274497c8f3c0655dab8b8",
-              "DateCreated": "2026-10-19T02:20:29.3639143Z",
+              "DateCreated": "2026-10-27T22:48:40.9061266Z",
               "Container": "mkv",
               "MediaSources": [
                 {
@@ -57,7 +57,7 @@
                   "Size": 589148,
                   "Name": "Recorded Show (2020) - S01E01",
                   "IsRemote": false,
-                  "ETag": "0a18c3696f0ae03152169b63268242f0",
+                  "ETag": "315935882da366afea6c09cbb34c15ea",
                   "RunTimeTicks": 200230000,
                   "ReadAtNativeFramerate": false,
                   "IgnoreDts": false,
@@ -161,12 +161,12 @@
               "SeasonName": "Season 1",
               "VideoType": "VideoFile",
               "ImageTags": {
-                "Primary": "43b81c20d0906b2c8517806ef62f8347"
+                "Primary": "e0345f1aeee776246df5fd4cb0908f75"
               },
               "BackdropImageTags": [],
               "ImageBlurHashes": {
                 "Primary": {
-                  "43b81c20d0906b2c8517806ef62f8347": "W~K_I9D[OqKoXLMRtQadrvSvayVvsonOodjbf6Xls;WFX5n$fikB"
+                  "e0345f1aeee776246df5fd4cb0908f75": "W~K_I9D[OqKoXLMRtQadrvSvayVvsonOodjbf6Xls;WFX5n$fikB"
                 }
               },
               "LocationType": "FileSystem",
@@ -174,9 +174,9 @@
             },
             {
               "Name": "Recorded Show",
-              "ServerId": "6c5f6a6fea8e4011ad35856c884c5306",
+              "ServerId": "0ae55b67e38642b1a0f4d76820694b5f",
               "Id": "feaa65b147bb04fc9fcc69ea91128699",
-              "DateCreated": "2026-10-19T02:20:29.3656819Z",
+              "DateCreated": "2026-10-27T22:48:40.9083324Z",
               "Container": "mkv",
               "MediaSources": [
                 {
@@ -188,7 +188,7 @@
                   "Size": 589148,
                   "Name": "Recorded Show (2020) - S01E02",
                   "IsRemote": false,
-                  "ETag": "77a17296eef7580a703de564e0d0228c",
+                  "ETag": "c69428e60adbcefaaddcdc72bdb6892f",
                   "RunTimeTicks": 200230000,
                   "ReadAtNativeFramerate": false,
                   "IgnoreDts": false,
@@ -292,12 +292,12 @@
               "SeasonName": "Season 1",
               "VideoType": "VideoFile",
               "ImageTags": {
-                "Primary": "c0c161a6548de5516008a4f841b18fcd"
+                "Primary": "a37b65803f8ceecc1e96fd6c4733fb5f"
               },
               "BackdropImageTags": [],
               "ImageBlurHashes": {
                 "Primary": {
-                  "c0c161a6548de5516008a4f841b18fcd": "W~K_I9D[OqKoXLMRtQadrvSvayVvsonOodjbf6Xls;WFX5n$fikB"
+                  "a37b65803f8ceecc1e96fd6c4733fb5f": "W~K_I9D[OqKoXLMRtQadrvSvayVvsonOodjbf6Xls;WFX5n$fikB"
                 }
               },
               "LocationType": "FileSystem",
@@ -305,9 +305,9 @@
             },
             {
               "Name": "Recorded Show",
-              "ServerId": "6c5f6a6fea8e4011ad35856c884c5306",
+              "ServerId": "0ae55b67e38642b1a0f4d76820694b5f",
               "Id": "26dd671357211ea17afc94eb99474205",
-              "DateCreated": "2026-10-19T02:20:49.0014483Z",
+              "DateCreated": "2026-10-27T22:49:03.8901896Z",
               "Path": "/media/Shows/Recorded Show (2020)",
               "ChannelId": null,
               "Genres": [],
@@ -345,7 +345,7 @@
           "Items": [
             {
               "Name": "Recorded Show",
-              "ServerId": "6c5f6a6fea8e4011ad35856c884c5306",
+              "ServerId": "0ae55b67e38642b1a0f4d76820694b5f",
               "Id": "26dd671357211ea17afc94eb99474205",
               "ChannelId": null,
               "ProductionYear": 2020,

@@ -1,8 +1,8 @@
 {
   "app": "jellyfin",
-  "version": "12.2.0",
+  "version": "12.4.0",
   "state": "not-answering",
-  "recordedAt": "2026-10-19T02:26:57Z",
+  "recordedAt": "2026-10-27T22:55:14Z",
   "note": "A request sent to a port nothing listens on: the connection is refused.",
   "exchanges": [
     {

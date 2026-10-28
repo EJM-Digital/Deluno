@@ -150,7 +150,7 @@ public sealed class RetentionCollectionServiceTests
         Assert.Equal("Deluno could not update the Leaving soon collection on Rig jellyfin.", _store.Collections[("jf", "movies")].Problem);
     }
 
-    // ---- #1301: the same service with the real Jellyfin client, answered by Jellyfin 12.2.0's recorded replies ----
+    // ---- #1301: the same service with the real Jellyfin client, answered by Jellyfin 12.4.0's recorded replies ----
 
     private sealed class RecordedFactory(HttpMessageHandler handler) : IHttpClientFactory
     {

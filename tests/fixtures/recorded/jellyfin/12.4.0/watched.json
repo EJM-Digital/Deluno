@@ -1,14 +1,14 @@
 {
   "app": "jellyfin",
-  "version": "12.2.0",
+  "version": "12.4.0",
   "state": "watched",
-  "recordedAt": "2026-10-19T02:26:50Z",
-  "note": "The film marked watched by the administrator, then the played, favourite and resumable listings as Deluno asks for them (jellyfin 12.2.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "recordedAt": "2026-10-27T22:55:06Z",
+  "note": "The film marked watched by the administrator, then the played, favourite and resumable listings as Deluno asks for them (jellyfin 12.4.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {
       "request": {
         "method": "POST",
-        "path": "/Users/b657baa4969346a889487d68b9a2678f/PlayedItems/78990f6a0a40212925e5c0f2d9bfb5d2"
+        "path": "/Users/969361c614714565bc0f626152fd14d1/PlayedItems/78990f6a0a40212925e5c0f2d9bfb5d2"
       },
       "reply": {
         "status": 200,
@@ -19,7 +19,7 @@
           "PlaybackPositionTicks": 0,
           "PlayCount": 1,
           "IsFavorite": false,
-          "LastPlayedDate": "2026-10-19T02:26:50.19637Z",
+          "LastPlayedDate": "2026-10-27T22:55:06.5095782Z",
           "Played": true,
           "Key": "45745",
           "ItemId": "78990f6a0a40212925e5c0f2d9bfb5d2"
@@ -29,7 +29,7 @@
     {
       "request": {
         "method": "GET",
-        "path": "/Users/b657baa4969346a889487d68b9a2678f/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&IsPlayed=true&Fields=UserData&StartIndex=0&Limit=500"
+        "path": "/Users/969361c614714565bc0f626152fd14d1/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&IsPlayed=true&Fields=UserData&StartIndex=0&Limit=500"
       },
       "reply": {
         "status": 200,
@@ -40,13 +40,13 @@
           "Items": [
             {
               "Name": "Sintel",
-              "ServerId": "6c5f6a6fea8e4011ad35856c884c5306",
+              "ServerId": "0ae55b67e38642b1a0f4d76820694b5f",
               "Id": "78990f6a0a40212925e5c0f2d9bfb5d2",
               "Container": "mkv",
               "PremiereDate": "2010-09-30T00:00:00.0000000Z",
               "OfficialRating": "PG",
               "ChannelId": null,
-              "CommunityRating": 7.333,
+              "CommunityRating": 7.3,
               "RunTimeTicks": 200230000,
               "ProductionYear": 2010,
               "IsFolder": false,
@@ -55,28 +55,28 @@
                 "PlaybackPositionTicks": 0,
                 "PlayCount": 1,
                 "IsFavorite": false,
-                "LastPlayedDate": "2026-10-19T02:26:50.19637Z",
+                "LastPlayedDate": "2026-10-27T22:55:06.5095782Z",
                 "Played": true,
                 "Key": "<scrubbed>",
                 "ItemId": "78990f6a0a40212925e5c0f2d9bfb5d2"
               },
               "VideoType": "VideoFile",
               "ImageTags": {
-                "Logo": "20f044bddb6b81aad50c4f7994b002a4",
-                "Primary": "9b24b115156b0c92c5c15436a440e150"
+                "Primary": "4ee90f4ff3475ebfec6ab70cc900b847",
+                "Logo": "611ed071969e3623c04be037432a5765"
               },
               "BackdropImageTags": [
-                "20c994f6ff2891170ce759d2cd32bb76"
+                "021b23ec2d7a491a64b9de2b4cacc4c2"
               ],
               "ImageBlurHashes": {
                 "Backdrop": {
-                  "20c994f6ff2891170ce759d2cd32bb76": "WFC$J+%15U-oXR9vi_NybuxaWXS40gIp-na#xu%1xZe-WBNet6%1"
-                },
-                "Logo": {
-                  "20f044bddb6b81aad50c4f7994b002a4": "PEAd7f~q_3-;RjD%D%D%j[RjRjj[ayoft7t74nt7t7WBfQWBWBRj"
+                  "021b23ec2d7a491a64b9de2b4cacc4c2": "WFC$J+%15U-oXR9vi_NybuxaWXS40gIp-na#xu%1xae-WBNet6%1"
                 },
                 "Primary": {
-                  "9b24b115156b0c92c5c15436a440e150": "dUE.2{S4I:s,~BNHNGi_t8kXR+jEoMxuWBNGRkxts:Rk"
+                  "4ee90f4ff3475ebfec6ab70cc900b847": "dUE.63WXI:s,~BNHNGi_t8kXR+jEo3xuWBNGRlxts:Rk"
+                },
+                "Logo": {
+                  "611ed071969e3623c04be037432a5765": "PEAd7f~q_3-;RjD%D%D%j[RjRjj[ayoft7t74nt7t7WBfQWBWBRj"
                 }
               },
               "LocationType": "FileSystem",
@@ -92,7 +92,7 @@
     {
       "request": {
         "method": "GET",
-        "path": "/Users/b657baa4969346a889487d68b9a2678f/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&IsFavorite=true&Fields=UserData&StartIndex=0&Limit=500"
+        "path": "/Users/969361c614714565bc0f626152fd14d1/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&IsFavorite=true&Fields=UserData&StartIndex=0&Limit=500"
       },
       "reply": {
         "status": 200,
@@ -109,7 +109,7 @@
     {
       "request": {
         "method": "GET",
-        "path": "/Users/b657baa4969346a889487d68b9a2678f/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Filters=IsResumable&Fields=UserData&StartIndex=0&Limit=500"
+        "path": "/Users/969361c614714565bc0f626152fd14d1/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Filters=IsResumable&Fields=UserData&StartIndex=0&Limit=500"
       },
       "reply": {
         "status": 200,

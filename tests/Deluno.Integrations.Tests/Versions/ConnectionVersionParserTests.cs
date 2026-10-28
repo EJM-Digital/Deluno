@@ -48,9 +48,9 @@ public sealed class ConnectionVersionParserTests
     [Fact]
     public void Jellyfin_and_emby_read_the_version_field()
     {
-        // Jellyfin 12.2.0's real replies (#1237): the public identity and the full system info both carry the Version.
-        Assert.Equal("12.2.0", ConnectionVersionParsers.FromEmbyFamily(RecordedReplies.Jellyfin("identity").Exchanges[0].Reply.Body));
-        Assert.Equal("12.2.0", ConnectionVersionParsers.FromEmbyFamily(RecordedReplies.Jellyfin("identity").Exchanges[1].Reply.Body));
+        // Jellyfin 12.4.0's real replies (#1237): the public identity and the full system info both carry the Version.
+        Assert.Equal("12.4.0", ConnectionVersionParsers.FromEmbyFamily(RecordedReplies.Jellyfin("identity").Exchanges[0].Reply.Body));
+        Assert.Equal("12.4.0", ConnectionVersionParsers.FromEmbyFamily(RecordedReplies.Jellyfin("identity").Exchanges[1].Reply.Body));
         // Emby 4.10.1.0's real replies (Docker): the public identity and the full system info carry the Version the same way.
         Assert.Equal("4.10.1.0", ConnectionVersionParsers.FromEmbyFamily(RecordedReplies.Emby("identity").Exchanges[0].Reply.Body));
         Assert.Equal("4.10.1.0", ConnectionVersionParsers.FromEmbyFamily(RecordedReplies.Emby("identity").Exchanges[1].Reply.Body));

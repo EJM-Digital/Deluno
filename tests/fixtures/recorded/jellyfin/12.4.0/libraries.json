@@ -1,9 +1,9 @@
 {
   "app": "jellyfin",
-  "version": "12.2.0",
+  "version": "12.4.0",
   "state": "libraries",
-  "recordedAt": "2026-10-19T02:26:50Z",
-  "note": "The libraries and users as the connection test lists them (jellyfin 12.2.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "recordedAt": "2026-10-27T22:55:06Z",
+  "note": "The libraries and users as the connection test lists them (jellyfin 12.4.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {
       "request": {
@@ -147,14 +147,14 @@
         "body": [
           {
             "Name": "<scrubbed>",
-            "ServerId": "6c5f6a6fea8e4011ad35856c884c5306",
-            "Id": "b657baa4969346a889487d68b9a2678f",
+            "ServerId": "0ae55b67e38642b1a0f4d76820694b5f",
+            "Id": "969361c614714565bc0f626152fd14d1",
             "HasPassword": true,
             "HasConfiguredPassword": true,
             "HasConfiguredEasyPassword": false,
             "EnableAutoLogin": false,
-            "LastLoginDate": "2026-10-19T02:20:38.2739617Z",
-            "LastActivityDate": "2026-10-19T02:20:38.2739617Z",
+            "LastLoginDate": "2026-10-27T22:48:52.9956217Z",
+            "LastActivityDate": "2026-10-27T22:48:52.9956217Z",
             "Configuration": {
               "PlayDefaultAudioTrack": true,
               "SubtitleLanguagePreference": "",

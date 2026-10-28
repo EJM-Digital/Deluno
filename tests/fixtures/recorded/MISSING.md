@@ -230,7 +230,7 @@ Still missing, and why:
 - nzbhydra2 (or any Newznab indexer): a search that returns releases. All four recorded searches (9.1.1) answer an empty feed, because every Usenet indexer needs an account. Without one the automatic search of a film or an episode cannot be shown reaching SABnzbd and NZBGet, only the three torrent clients (Jackett's recorded feeds), so the row "Automatic search ... sends to each real client" stays a gap.
 - qbittorrent 5.2.x: the reply to a sign-in with an API key as a bearer token, on `GET /api/v2/torrents/info` (only the refused key, `api-key-refused`, is recorded).
 - seerr (any version): the request listing, a request's approval webhook, and the reply to telling Seerr a title is available. Seerr is not installed on the golden VM, so the rows "an approval to download goes end to end" and "Seerr replies have recordings" wait for it.
-- plex and emby (any version): the identity, library list, refresh and watch-state replies. Only Jellyfin 12.2.0 is recorded.
+- plex and emby (any version): the identity, library list, refresh and watch-state replies. Only Jellyfin is recorded (12.4.0 now).
 - utorrent and rtorrent (any version): the token handshake, a torrent list and an add. Neither is installed on the golden VM, so their rows (connected, Test connection healthy, a release sent) stay gaps, and the allow-list keeps the uTorrent and rTorrent parts of the download-client tests as hand-built.
 - subtitle providers (OpenSubtitles, Addic7ed, Ktuvit, Titlovi, Assrt, SuperSubtitles): a search and a download reply from each. The provider tests build the shapes from the providers' documentation, not from a recording.
 ## uTorrent and rTorrent scenarios (#1288)
@@ -301,3 +301,7 @@ Real unauthenticated calls with a made-up key or login, so each recording is the
 - Podnapisi (`www.podnapisi.net` did not resolve on 23 Oct 2026) and Assrt (`api.assrt.net` did not accept a connection): nothing could be recorded.
 - Addic7ed, Subf2m and Supersubtitles are public pages that were not recorded in this pass; their tests still build the pages inline.
 - FlareSolverr 3.5.2 answers a `request.get` on a session it no longer has with `ok` (`request-session-missing`), so the "helper lost its sessions" branch of `FlareSolverrCloudflareHelper` (an error naming the session, then create again) is not what a current FlareSolverr does.
+
+## Jellyfin recorded again from 12.4.0 in Docker (#1384, 28 Oct 2026)
+
+Every Jellyfin state of the 12.2.0 set is recorded again from `jellyfin/jellyfin:latest` (12.4.0) with `media.mjs jellyfin`, and the 12.2.0 folder is removed. `item-delete-refused` (a delete the server cannot carry out) came from the golden VM for 12.2.0; `media.mjs` now records it in Docker by making the film's file immutable (`chattr +i`) before `DELETE /Items/{id}`.

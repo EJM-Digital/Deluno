@@ -1,0 +1,124 @@
+{
+  "app": "jellyfin",
+  "version": "12.4.0",
+  "state": "sessions-playing",
+  "recordedAt": "2026-10-27T22:55:08Z",
+  "note": "A client reports the film playing at the six-second mark: the session list before and during (jellyfin 12.4.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Sessions"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "PlayState": {
+              "CanSeek": false,
+              "IsPaused": false,
+              "IsMuted": false,
+              "RepeatMode": "RepeatNone",
+              "PlaybackOrder": "Default"
+            },
+            "AdditionalUsers": [],
+            "Capabilities": {
+              "PlayableMediaTypes": [],
+              "SupportedCommands": [],
+              "SupportsMediaControl": false,
+              "SupportsPersistentIdentifier": true
+            },
+            "RemoteEndPoint": "192.168.1.10",
+            "PlayableMediaTypes": [],
+            "Id": "4cca2b16b84ed80eca08b099ccf40f21",
+            "UserId": "969361c614714565bc0f626152fd14d1",
+            "UserName": "<scrubbed>",
+            "Client": "Deluno",
+            "LastActivityDate": "2026-10-27T22:55:06.6062652Z",
+            "LastPlaybackCheckIn": "0001-01-01T00:00:00.0000000Z",
+            "DeviceName": "Jellyfin Server",
+            "DeviceId": "0ae55b67e38642b1a0f4d76820694b5f",
+            "ApplicationVersion": "12.4.0",
+            "IsActive": true,
+            "SupportsMediaControl": false,
+            "SupportsRemoteControl": false,
+            "NowPlayingQueue": [],
+            "HasCustomDeviceName": false,
+            "ServerId": "0ae55b67e38642b1a0f4d76820694b5f",
+            "SupportedCommands": []
+          },
+          {
+            "PlayState": {
+              "CanSeek": false,
+              "IsPaused": false,
+              "IsMuted": false,
+              "RepeatMode": "RepeatNone",
+              "PlaybackOrder": "Default"
+            },
+            "AdditionalUsers": [],
+            "Capabilities": {
+              "PlayableMediaTypes": [],
+              "SupportedCommands": [],
+              "SupportsMediaControl": false,
+              "SupportsPersistentIdentifier": true
+            },
+            "RemoteEndPoint": "192.168.1.10",
+            "PlayableMediaTypes": [],
+            "Id": "28bec4e2b6ac247960d7aaf22b9d7ffa",
+            "UserId": "969361c614714565bc0f626152fd14d1",
+            "UserName": "<scrubbed>",
+            "Client": "Deluno Recorder",
+            "LastActivityDate": "2026-10-27T22:48:53.1757743Z",
+            "LastPlaybackCheckIn": "0001-01-01T00:00:00.0000000Z",
+            "DeviceName": "Recorder",
+            "DeviceId": "deluno-recorder-1",
+            "ApplicationVersion": "1.0",
+            "IsActive": true,
+            "SupportsMediaControl": false,
+            "SupportsRemoteControl": false,
+            "NowPlayingQueue": [],
+            "HasCustomDeviceName": false,
+            "ServerId": "0ae55b67e38642b1a0f4d76820694b5f",
+            "SupportedCommands": []
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/Sessions/Playing",
+        "body": {
+          "ItemId": "78990f6a0a40212925e5c0f2d9bfb5d2",
+          "MediaSourceId": "78990f6a0a40212925e5c0f2d9bfb5d2",
+          "PlaySessionId": "<scrubbed>",
+          "PlayMethod": "DirectPlay",
+          "CanSeek": true,
+          "PositionTicks": 60000000,
+          "IsPaused": false
+        }
+      },
+      "reply": {
+        "status": 204,
+        "headers": {},
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Sessions"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "bodyText": "[{\"PlayState\":{\"PositionTicks\":80000000,\"CanSeek\":true,\"IsPaused\":false,\"IsMuted\":false,\"MediaSourceId\":\"78990f6a0a40212925e5c0f2d9bfb5d2\",\"PlayMethod\":\"DirectPlay\",\"RepeatMode\":\"RepeatNone\",\"PlaybackOrder\":\"Default\"},\"AdditionalUsers\":[],\"Capabilities\":{\"PlayableMediaTypes\":[],\"SupportedCommands\":[],\"SupportsMediaControl\":false,\"SupportsPersistentIdentifier\":true},\"RemoteEndPoint\":\"192.168.1.10\",\"PlayableMediaTypes\":[],\"Id\":\"28bec4e2b6ac247960d7aaf22b9d7ffa\",\"UserId\":\"969361c614714565bc0f626152fd14d1\",\"UserName\":\"<scrubbed>\",\"Client\":\"Deluno Recorder\",\"LastActivityDate\":\"2026-10-27T22:55:08.8723778Z\",\"LastPlaybackCheckIn\":\"2026-10-27T22:55:06.871824Z\",\"DeviceName\":\"Recorder\",\"NowPlayingItem\":{\"Name\":\"Sintel\",\"OriginalTitle\":\"Sintel\",\"ServerId\":\"0ae55b67e38642b1a0f4d76820694b5f\",\"Id\":\"78990f6a0a40212925e5c0f2d9bfb5d2\",\"DateCreated\":\"2026-10-27T22:48:40.8960715Z\",\"Container\":\"mkv\",\"PremiereDate\":\"2010-09-30T00:00:00.0000000Z\",\"ExternalUrls\":[{\"Name\":\"IMDb\",\"Url\":\"https://www.imdb.com/title/tt1727587\"},{\"Name\":\"TMDB\",\"Url\":\"https://www.themoviedb.org/movie/45745\"}],\"Path\":\"/media/Movies/Sintel (2010)/Sintel (2010) [WEB 1080p].mkv\",\"EnableMediaSourceDisplay\":true,\"OfficialRating\":\"PG\",\"ChannelId\":null,\"Overview\":\"A wandering warrior finds an unlikely friend in the form of a young dragon. The two develop a close bond, until one day the dragon is snatched away. She then sets out on a relentless quest to reclaim her friend, finding in the end that her quest exacts a far greater price than she had ever imagined.\",\"Taglines\":[],\"Genres\":[\"Animation\",\"Fantasy\"],\"CommunityRating\":7.3,\"RunTimeTicks\":200230000,\"ProductionYear\":2010,\"ProviderIds\":{\"Imdb\":\"tt1727587\",\"Tmdb\":\"45745\"},\"IsFolder\":false,\"ParentId\":\"e675012a1892a87530d2c0b0d14a9026\",\"Type\":\"Movie\",\"Studios\":[{\"Name\":\"Blender Foundation\",\"Id\":\"66ac02ba6812c3e031d36b31750e19e3\"}],\"GenreItems\":[{\"Name\":\"Animation\",\"Id\":\"074229225b7254292f131f9f49f8dcd6\"},{\"Name\":\"Fantasy\",\"Id\":\"a30dcc65be22eb3c21c03f7c1c7a57d1\"}],\"LocalTrailerCount\":0,\"SpecialFeatureCount\":0,\"PrimaryImageAspectRatio\":0.6666666666666666,\"MediaStreams\":[{\"Codec\":\"h264\",\"TimeBase\":\"1/1000\",\"VideoRange\":\"SDR\",\"VideoRangeType\":\"SDR\",\"AudioSpatialFormat\":\"None\",\"DisplayTitle\":\"360p H264 SDR\",\"NalLengthSize\":\"4\",\"IsInterlaced\":false,\"IsAVC\":true,\"BitRate\":43388,\"BitDepth\":8,\"RefFrames\":1,\"IsDefault\":false,\"IsForced\":false,\"IsHearingImpaired\":false,\"IsOriginal\":false,\"Height\":360,\"Width\":640,\"AverageFrameRate\":24,\"RealFrameRate\":24,\"ReferenceFrameRate\":24,\"Profile\":\"Constrained Baseline\",\"Type\":\"Video\",\"AspectRatio\":\"16:9\",\"Index\":0,\"IsExternal\":false,\"IsTextSubtitleStream\":false,\"SupportsExternalStream\":false,\"PixelFormat\":\"yuv420p\",\"Level\":30,\"IsAnamorphic\":false},{\"Codec\":\"aac\",\"TimeBase\":\"1/1000\",\"VideoRange\":\"Unknown\",\"VideoRangeType\":\"Unknown\",\"AudioSpatialFormat\":\"None\",\"LocalizedDefault\":\"Default\",\"LocalizedExternal\":\"External\",\"LocalizedOriginal\":\"Original\",\"DisplayTitle\":\"AAC - Mono\",\"IsInterlaced\":false,\"ChannelLayout\":\"mono\",\"BitRate\":192000,\"Channels\":1,\"SampleRate\":44100,\"IsDefault\":false,\"IsForced\":false,\"IsHearingImpaired\":false,\"IsOriginal\":false,\"Profile\":\"LC\",\"Type\":\"Audio\",\"Index\":1,\"IsExternal\":false,\"IsTextSubtitleStream\":false,\"SupportsExternalStream\":false}],\"VideoType\":\"VideoFile\",\"ImageTags\":{\"Primary\":\"4ee90f4ff3475ebfec6ab70cc900b847\",\"Logo\":\"611ed071969e3623c04be037432a5765\"},\"BackdropImageTags\":[\"021b23ec2d7a491a64b9de2b4cacc4c2\"],\"ImageBlurHashes\":{\"Backdrop\":{\"021b23ec2d7a491a64b9de2b4cacc4c2\":\"WFC$J+%15U-oXR9vi_NybuxaWXS40gIp-na#xu%1xae-WBNet6%1\"},\"Primary\":{\"4ee90f4ff3475ebfec6ab70cc900b847\":\"dUE.63WXI:s,~BNHNGi_t8kXR+jEo3xuWBNGRlxts:Rk\"},\"Logo\":{\"611ed071969e3623c04be037432a5765\":\"PEAd7f~q_3-;RjD%D%D%j[RjRjj[ayoft7t74nt7t7WBfQWBWBRj\"}},\"Chapters\":[],\"Trickplay\":{},\"LocationType\":\"FileSystem\",\"MediaType\":\"Video\",\"Width\":640,\"Height\":360,\"OriginalLanguage\":\"en\"},\"DeviceId\":\"deluno-recorder-1\",\"ApplicationVersion\":\"1.0\",\"IsActive\":true,\"SupportsMediaControl\":false,\"SupportsRemoteControl\":false,\"NowPlayingQueue\":[],\"HasCustomDeviceName\":false,\"ServerId\":\"0ae55b67e38642b1a0f4d76820694b5f\",\"SupportedCommands\":[]},{\"PlayState\":{\"CanSeek\":false,\"IsPaused\":false,\"IsMuted\":false,\"RepeatMode\":\"RepeatNone\",\"PlaybackOrder\":\"Default\"},\"AdditionalUsers\":[],\"Capabilities\":{\"PlayableMediaTypes\":[],\"SupportedCommands\":[],\"SupportsMediaControl\":false,\"SupportsPersistentIdentifier\":true},\"RemoteEndPoint\":\"192.168.1.10\",\"PlayableMediaTypes\":[],\"Id\":\"4cca2b16b84ed80eca08b099ccf40f21\",\"UserId\":\"969361c614714565bc0f626152fd14d1\",\"UserName\":\"<scrubbed>\",\"Client\":\"Deluno\",\"LastActivityDate\":\"2026-10-27T22:55:06.6062652Z\",\"LastPlaybackCheckIn\":\"0001-01-01T00:00:00.0000000Z\",\"DeviceName\":\"Jellyfin Server\",\"DeviceId\":\"0ae55b67e38642b1a0f4d76820694b5f\",\"ApplicationVersion\":\"12.4.0\",\"IsActive\":true,\"SupportsMediaControl\":false,\"SupportsRemoteControl\":false,\"NowPlayingQueue\":[],\"HasCustomDeviceName\":false,\"ServerId\":\"0ae55b67e38642b1a0f4d76820694b5f\",\"SupportedCommands\":[]}]"
+      }
+    }
+  ]
+}

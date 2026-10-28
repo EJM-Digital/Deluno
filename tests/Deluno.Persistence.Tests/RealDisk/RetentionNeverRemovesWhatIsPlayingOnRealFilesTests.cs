@@ -8,7 +8,7 @@ namespace Deluno.Persistence.Tests.RealDisk;
 /// <summary>
 /// "Never remove something while it plays": a retention rule that reads a connected media server asks it what is playing before it
 /// removes anything. The real host runs over a real temp folder with a real film file and the real recycle bin; the media server is a
-/// local server that answers as Jellyfin 12.2.0 recorded (its session list while Sintel plays, while nothing plays, and a refused sign-in).
+/// local server that answers as Jellyfin 12.4.0 recorded (its session list while Sintel plays, while nothing plays, and a refused sign-in).
 /// While the film plays, its file stays and nothing else leaves either if the server cannot say; once it stops, the next check removes it.
 /// </summary>
 public sealed class RetentionNeverRemovesWhatIsPlayingOnRealFilesTests

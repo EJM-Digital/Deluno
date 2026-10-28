@@ -8,13 +8,13 @@ using Deluno.Tests.Recorded;
 namespace Deluno.Integrations.Tests.MediaServers;
 
 /// <summary>
-/// #1301: each Jellyfin operation of the shared Jellyfin/Emby client replayed from Jellyfin 12.2.0's own recorded replies, with the
+/// #1301: each Jellyfin operation of the shared Jellyfin/Emby client replayed from Jellyfin 12.4.0's own recorded replies, with the
 /// calls Deluno sent asserted as well as what it made of the answers. A reply that is the answer to a different address than the
 /// one Deluno asked (a collection listing recorded for the user's view, answering the search view) is said so where it is used.
 /// </summary>
 public sealed class JellyfinOperationsOnRecordingsTests
 {
-    private const string UserId = "b657baa4969346a889487d68b9a2678f";
+    private const string UserId = "969361c614714565bc0f626152fd14d1";
     private const string CollectionId = "18da5b93435bf32b1375cc6efe0ca347";
     private const string Sintel = "78990f6a0a40212925e5c0f2d9bfb5d2";
 
@@ -86,7 +86,7 @@ public sealed class JellyfinOperationsOnRecordingsTests
             Assert.False(request.Headers.Contains("X-Emby-Token"));
             Assert.False(request.RequestUri!.AbsolutePath.StartsWith("/emby", StringComparison.OrdinalIgnoreCase));
         });
-        Assert.Equal("12.2.0", result.Version);
+        Assert.Equal("12.4.0", result.Version);
     }
 
     // ---- wrong credentials (401): refused the token, never an empty list ----
@@ -120,7 +120,7 @@ public sealed class JellyfinOperationsOnRecordingsTests
         Assert.False(result.Ok);
         Assert.Equal("degraded", result.Status);
         Assert.Contains("Use an administrator's API key", result.Message);
-        Assert.Equal("12.2.0", result.Version);
+        Assert.Equal("12.4.0", result.Version);
     }
 
     // ---- a saved token that cannot be read here ----
@@ -251,7 +251,7 @@ public sealed class JellyfinOperationsOnRecordingsTests
     public async Task A_collection_a_person_edited_by_hand_is_put_back_its_description_is_set_again_and_a_member_added_by_hand_is_taken_out()
     {
         var jellyfin = new Jellyfin();
-        const string added = "9b53834449c3ce873cb7bb395a04d3ed";
+        const string added = "26dd671357211ea17afc94eb99474205";
         var client = jellyfin.Client((request, _) =>
         {
             var recorded = RecordedReplies.Jellyfin("collection-sync");

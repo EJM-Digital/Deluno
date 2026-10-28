@@ -1,0 +1,22 @@
+{
+  "app": "jellyfin",
+  "version": "12.4.0",
+  "state": "item-delete-refused",
+  "recordedAt": "2026-10-27T23:37:33Z",
+  "note": "DELETE /Items/{id} for a film whose file the server could not remove (made immutable): the server answers with its own failure (jellyfin 12.4.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/Items/f71bd97fe09e80314ef10331220e40ae"
+      },
+      "reply": {
+        "status": 500,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "bodyText": "Error processing request."
+      }
+    }
+  ]
+}

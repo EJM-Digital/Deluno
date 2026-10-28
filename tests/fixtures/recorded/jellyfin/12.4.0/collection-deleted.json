@@ -1,9 +1,9 @@
 {
   "app": "jellyfin",
-  "version": "12.2.0",
+  "version": "12.4.0",
   "state": "collection-deleted",
-  "recordedAt": "2026-10-19T02:26:53Z",
-  "note": "The collection deleted (DELETE /Items/{id}), and again (jellyfin 12.2.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "recordedAt": "2026-10-27T22:55:09Z",
+  "note": "The collection deleted (DELETE /Items/{id}), and again (jellyfin 12.4.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {
       "request": {
@@ -30,7 +30,7 @@
           "type": "https://tools.ietf.org/html/rfc9110#section-15.5.5",
           "title": "Not Found",
           "status": 404,
-          "traceId": "00-100449c43c97dd6c3855d5d7dae4ba37-c18005d102070210-00"
+          "traceId": "00-b19d5d5c52abf64fcd2be102fccb689a-87a5e9abf456d5ce-00"
         }
       }
     }

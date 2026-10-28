@@ -1,9 +1,9 @@
 {
   "app": "jellyfin",
-  "version": "12.2.0",
+  "version": "12.4.0",
   "state": "wrong-token",
-  "recordedAt": "2026-10-19T02:20:38Z",
-  "note": "System info, the user list and the library list with a key the server does not know (jellyfin 12.2.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "recordedAt": "2026-10-27T22:48:53Z",
+  "note": "System info, the user list and the library list with a key the server does not know (jellyfin 12.4.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {
       "request": {

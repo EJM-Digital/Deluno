@@ -15,7 +15,7 @@ using Moq;
 namespace Deluno.Worker.Tests.Connections;
 
 /// <summary>
-/// #1301: the scheduled check and "Test all" test a media server too, through its real client, against Jellyfin 12.2.0's own recorded
+/// #1301: the scheduled check and "Test all" test a media server too, through its real client, against Jellyfin 12.4.0's own recorded
 /// replies (tests/fixtures/recorded/jellyfin), and record the result, the version it reported and the check the Health board shows.
 /// </summary>
 public sealed class ConnectionHealthTesterMediaServerTests
@@ -80,9 +80,9 @@ public sealed class ConnectionHealthTesterMediaServerTests
         Assert.Equal(ConnectionKinds.MediaServer, result.Kind);
         Assert.Equal("j1", result.Id);
         Assert.True(result.Ok, result.Message);
-        rig.Servers.Verify(item => item.RecordHealthAsync("j1", It.Is<MediaServerTestResult>(test => test.Ok && test.Version == "12.2.0"), It.IsAny<CancellationToken>()), Times.Once);
+        rig.Servers.Verify(item => item.RecordHealthAsync("j1", It.Is<MediaServerTestResult>(test => test.Ok && test.Version == "12.4.0"), It.IsAny<CancellationToken>()), Times.Once);
         rig.Servers.Verify(item => item.RecordHealthAsync("off", It.IsAny<MediaServerTestResult>(), It.IsAny<CancellationToken>()), Times.Never);
-        rig.Versions.Verify(item => item.RecordAsync(ConnectionKinds.MediaServer, "j1", It.IsAny<string?>(), "12.2.0", It.IsAny<CancellationToken>()), Times.Once);
+        rig.Versions.Verify(item => item.RecordAsync(ConnectionKinds.MediaServer, "j1", It.IsAny<string?>(), "12.4.0", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
