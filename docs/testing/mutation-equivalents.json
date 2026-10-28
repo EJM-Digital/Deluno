@@ -1,5 +1,46 @@
 {
   "version": 1,
   "$comment": "Mutants no test can kill (issue 1269). Each entry names the project, file as the Stryker report spells it, mutator, line and replacement, and says why. A push whose changed files leave any other mutant surviving fails.",
-  "equivalents": []
+  "equivalents": [
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/use-auth.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 229,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list that is constant either way: an empty list and a list of one fixed string both run the hook once and never again, so no test can tell them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/use-auth.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 244,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list that is constant either way: an empty list and a list of one fixed string both run the hook once and never again, so no test can tell them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/use-auth.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 259,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list that is constant either way: an empty list and a list of one fixed string both run the hook once and never again, so no test can tell them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/use-auth.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 272,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list that is constant either way: an empty list and a list of one fixed string both run the hook once and never again, so no test can tell them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/use-auth.tsx",
+      "mutator": "ArrowFunction",
+      "line": 269,
+      "replacement": "() => undefined",
+      "reason": "A body that cannot be read is caught as an empty string and then replaced by the plain message (text || ...); undefined is replaced the same way, so the thrown error is identical."
+    }
+  ]
 }

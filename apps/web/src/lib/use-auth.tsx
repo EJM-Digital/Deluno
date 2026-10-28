@@ -188,7 +188,7 @@ async function redirectVisitor() {
   window.location.replace(needsSetup ? `/setup?return=${encoded}` : returnTo === "/login" ? "/login" : `/login?return=${encoded}`);
 }
 
-function handleUnauthorizedResponse(response: Response, hadSession = true): Response {
+function handleUnauthorizedResponse(response: Response, hadSession: boolean): Response {
   applyRenewedToken(response);
   if (response.status === 401 && !hadSession) {
     void redirectVisitor();
