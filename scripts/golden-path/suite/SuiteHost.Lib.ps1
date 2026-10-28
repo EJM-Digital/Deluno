@@ -74,6 +74,12 @@ function Get-StatusArguments {
 # The harness writes a markdown table: | Step | Result | Detail |. Returns its rows.
 function Read-HarnessRows {
     param([Parameter(Mandatory)] [string] $File)
+    # The harness names its file by the date it finished on: a run that crosses midnight writes the next day's name (the rc.30.36
+    # suite's update.setup-over-stopped looked for -2026-10-28 and the file was -2026-10-29), so the newest file of that version is read.
+    if (-not (Test-Path $File) -and $File -match '^(?<pre>.*golden-path-.+)-\d{4}-\d{2}-\d{2}\.md$') {
+        $other = Get-ChildItem -Path (Split-Path $File) -Filter ((Split-Path $Matches.pre -Leaf) + '-*.md') -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($other) { $File = $other.FullName }
+    }
     if (-not (Test-Path $File)) { return @() }
     $rows = New-Object System.Collections.ArrayList
     foreach ($line in Get-Content $File) {

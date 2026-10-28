@@ -76,7 +76,10 @@ function Invoke-GroupService {
             Click-WindowButton -Window $dlg -NamePattern '^Apply$' | Out-Null
 
             $left = Wait-Until -TimeoutSec 180 -IntervalSec 2 -Condition { -not (Get-Process -Name 'Deluno' -ErrorAction SilentlyContinue | Where-Object { $_.Id -eq $proc.Id }) }
-            Add-Check 'The tray stops its host and leaves (its icon is gone)' ($left.Ok -and -not (Find-TrayIcon -Icon 'Deluno')) "tray process $($proc.Id) ended: $($left.Ok)"
+            # The notification area drops a removed icon a moment after the process ends; the quit check (G19) waits for it the same way.
+            $iconGone = Wait-Until -TimeoutSec 15 -IntervalSec 1 -Condition { -not (Find-TrayIcon -Icon 'Deluno') }
+            $still = if ($iconGone.Ok) { '' } else { "; still shown: '$((Find-TrayIcon -Icon 'Deluno').Name)'" }
+            Add-Check 'The tray stops its host and leaves (its icon is gone)' ($left.Ok -and $iconGone.Ok) "tray process $($proc.Id) ended: $($left.Ok)$still"
             $facts = (Wait-Until -TimeoutSec 120 -IntervalSec 2 -Condition { $x = Get-DelunoServiceFacts; if ($x -and $x.State -eq 'Running') { $x } else { $null } }).Value
             if (-not $facts) { $facts = Get-DelunoServiceFacts }
             Save-Evidence -Name 'service-facts.txt' -Text ($facts | Format-List * | Out-String)
