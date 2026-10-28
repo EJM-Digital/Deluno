@@ -164,4 +164,24 @@ public sealed class ApiKeyScopesOnDiskTests
 
         Assert.Equal(HttpStatusCode.Forbidden, (await home.GetAsync("/api/api-keys/")).StatusCode);
     }
+
+    [Fact]
+    public async Task A_read_only_key_cannot_browse_the_servers_folders_or_delete_leftovers_and_the_file_stays_while_an_imports_key_can_browse_the_real_folder()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var folder = Directory.CreateDirectory(Path.Combine(app.DataRoot, "browse-me")).FullName;
+        Directory.CreateDirectory(Path.Combine(folder, "Season 01"));
+        var leftover = Path.Combine(folder, "leftover.nfo");
+        await File.WriteAllTextAsync(leftover, "keep me");
+        var (read, _) = await KeyAsync(app, "read");
+        var (imports, _) = await KeyAsync(app, "read,imports");
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await read.GetAsync("/api/filesystem/directories?path=" + Uri.EscapeDataString(folder))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await read.PostAsJsonAsync("/api/filesystem/import/season-pack/leftovers/delete", new { paths = new[] { leftover } })).StatusCode);
+        Assert.True(File.Exists(leftover), "a refused delete leaves the real file in place");
+
+        var browsed = await imports.GetAsync("/api/filesystem/directories?path=" + Uri.EscapeDataString(folder));
+        Assert.Equal(HttpStatusCode.OK, browsed.StatusCode);
+        Assert.Contains("Season 01", await browsed.Content.ReadAsStringAsync());
+    }
 }

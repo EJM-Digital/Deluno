@@ -3,6 +3,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Quality.Contracts;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Deluno.Persistence.Tests.Api;
 
@@ -67,5 +69,36 @@ public sealed class CustomFormatsAreKeptInTheDatabaseFileTests
         Assert.Contains("Kept format", FormatNamesOnDisk(app));
         Assert.Equal(HttpStatusCode.NotFound, (await app.Client.DeleteAsync($"/api/custom-formats/{doomed}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await app.Client.GetAsync($"/api/custom-formats/{doomed}/export")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Creating_importing_and_deleting_a_custom_format_each_announce_the_custom_formats_area_after_the_database_file_changed()
+    {
+        var publisher = new RecordingRealtimeEventPublisher();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services =>
+        {
+            services.RemoveAll<Deluno.Contracts.IRealtimeEventPublisher>();
+            services.AddSingleton<Deluno.Contracts.IRealtimeEventPublisher>(publisher);
+        });
+        int Announced() => publisher.DashboardEvents.Count(item => item.Name == Deluno.Contracts.SystemChangeEventNames.ConfigChanged
+            && (string?)item.Payload.GetType().GetProperty("area")!.GetValue(item.Payload) == Deluno.Contracts.ConfigAreas.CustomFormats);
+
+        var created = await app.Client.PostAsJsonAsync("/api/custom-formats", new CreateCustomFormatRequest("Announced WEB", "movies", 10, null, "[{\"type\":\"source\",\"value\":\"web\",\"required\":true}]", true));
+        created.EnsureSuccessStatusCode();
+        Assert.Contains("Announced WEB", FormatNamesOnDisk(app));
+        Assert.Equal(1, Announced());
+
+        var imported = await app.Client.PostAsJsonAsync("/api/custom-formats/import", JsonSerializer.SerializeToElement(new object[]
+        {
+            new { name = "Announced Remux", mediaType = "movies", score = 80, upgradeAllowed = true, conditions = new[] { new { type = "source", value = "remux", required = true } } }
+        }));
+        imported.EnsureSuccessStatusCode();
+        Assert.Contains("Announced Remux", FormatNamesOnDisk(app));
+        Assert.Equal(2, Announced());
+
+        var id = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString();
+        Assert.Equal(HttpStatusCode.NoContent, (await app.Client.DeleteAsync($"/api/custom-formats/{id}")).StatusCode);
+        Assert.DoesNotContain("Announced WEB", FormatNamesOnDisk(app));
+        Assert.Equal(3, Announced());
     }
 }
