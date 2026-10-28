@@ -82,7 +82,8 @@ function Invoke-GroupProblems {
         try {
             Send-Film -Film $film -Kind 'qbittorrent' | Out-Null
             Wait-FilmFinished -Film $film -TimeoutSec 240 | Out-Null
-            $failed = Wait-Until -TimeoutSec 120 -IntervalSec 1 -Condition { $h = Get-FilmHandoff -Film $film; if ($h -and $h.status -in 'failed', 'rejected') { $h } else { $null } }
+            # Deluno sends an unanswered hand-off again after 1, 2 and 5 minutes (#1385); only the fourth try makes the problem.
+            $failed = Wait-Until -TimeoutSec 720 -IntervalSec 2 -Condition { $h = Get-FilmHandoff -Film $film; if ($h -and $h.status -in 'failed', 'rejected') { $h } else { $null } }
         }
         finally { Start-WeirApp }
         Add-Check 'The hand-off failed while Weir was down (the problem exists)' $failed.Ok ''

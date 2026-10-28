@@ -132,6 +132,9 @@ function Invoke-LegInstall {
     finally { Stop-TrayWatch }
     Save-RunnerScreen 'after-picker'
 
+    # install.clients-ready signs in to Deluno, and this leg makes no account (it stops at the picker); the VM suite, which runs the
+    # guided setup first, runs it. CI run 40648943708 failed here: "No secret named deluno-password has been made."
+    function script:Test-ScenarioSelected { param([Parameter(Mandatory)] [string] $Id) $Id -ne 'install.clients-ready' }
     Invoke-GroupInstall
     Add-LateChecks -Id 'install-first-run' -Body {
         Add-Check 'Setup.exe (not silent) ran to its end' ($install -and $null -ne $install.SetupExit -and $install.SetupExit -eq 0) $(if ($install) { "exit $($install.SetupExit) after $($install.Seconds) s in all" } else { 'the install did not run' })

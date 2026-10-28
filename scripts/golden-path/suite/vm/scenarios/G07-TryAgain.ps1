@@ -5,11 +5,12 @@
     hand-offs fail in one outage.
 #>
 
-$script:OldFailure = 'Needs your action|hand-?off failed|Could not send to|Rejected Action|could not submit'
+$script:OldFailure = 'Needs your action|hand-?off failed|Could not send to|Rejected Action|could not submit|could not reach'
 
 function Invoke-GroupTryAgain {
     $films = @{}
     $failed = @{}
+    $waited = @{}
     # Only the clients whose scenario was chosen are sent a film (the failures share one outage).
     $kinds = @(Get-SelectedKinds -IdFormat 'tryagain.{0}')
     Stop-WeirApp | Out-Null
@@ -21,11 +22,15 @@ function Invoke-GroupTryAgain {
         foreach ($kind in $kinds) {
             $f = $films[$kind]
             Wait-FilmFinished -Film $f -TimeoutSec 240 | Out-Null
-            $w = Wait-Until -TimeoutSec 120 -IntervalSec 1 -Condition {
+            # A send Weir does not answer waits and goes again after 1, 2 and 5 minutes (#1385); only the fourth try fails it.
+            $seen = @{ Waiting = $false }
+            $w = Wait-Until -TimeoutSec 720 -IntervalSec 2 -Condition {
                 $h = Get-FilmHandoff -Film $f
+                if ($h -and $h.status -eq 'waiting' -and "$($h.failureMessage)" -match 'did not answer') { $seen.Waiting = $true }
                 if ($h -and $h.status -in 'failed', 'rejected') { $h } else { $null }
             }
             $failed[$kind] = $w.Value
+            $waited[$kind] = $seen.Waiting
         }
     }
     finally { Start-WeirApp }
@@ -41,6 +46,7 @@ function Invoke-GroupTryAgain {
                 $f = $films[$kind]
                 Add-Check 'Weir is answering again' $up.Ok ''
                 $h = $failed[$kind]
+                Add-Check 'Before it failed, Deluno held the hand-off waiting and sent it again ("did not answer", #1385)' ($waited[$kind] -eq $true) ''
                 Add-Check 'The hand-off failed while Weir was down' ($null -ne $h) $(if ($h) { "status $($h.status): $($h.failureMessage)" } else { 'it never failed' })
                 if (-not $h) { return }
                 Open-DelunoPage -Page $page -Path '/queue' -Login $script:S.Login

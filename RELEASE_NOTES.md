@@ -41,6 +41,8 @@ Fixes:
   leaving it failed until you press Try again.
 - Switching Deluno to run as a Windows service no longer leaves a dead Deluno
   icon in the notification area.
+- The indexer scoreboard and the routing check write a percentage as "50%" in
+  Docker too, not "50 %".
 - Two quick edits to the Subtitles permission fields are both saved.
 - Editing either side of a remote path mapping saves in one step, and a path
   that is already mapped says so plainly instead of showing a server error.

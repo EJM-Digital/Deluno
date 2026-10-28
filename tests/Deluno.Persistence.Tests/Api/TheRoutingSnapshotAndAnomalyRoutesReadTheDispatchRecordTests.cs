@@ -58,8 +58,8 @@ public sealed class TheRoutingSnapshotAndAnomalyRoutesReadTheDispatchRecordTests
         Assert.Equal(["grab-failure-spike"], Codes(spike));
         var alert = Assert.Single(spike.GetProperty("anomalies").EnumerateArray());
         Assert.Equal("warning", alert.GetProperty("severity").GetString());
-        Assert.Contains("50.0 %", alert.GetProperty("details").GetString());
-        Assert.Contains("10.0 %", alert.GetProperty("details").GetString());
+        Assert.Contains("50.0%", alert.GetProperty("details").GetString());
+        Assert.Contains("10.0%", alert.GetProperty("details").GetString());
     }
 
     [Fact]

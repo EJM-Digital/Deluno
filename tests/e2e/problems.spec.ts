@@ -61,14 +61,15 @@ test.beforeAll(async () => {
 test.afterAll(async () => { await restoreWeir(); });
 
 test("problems.dismiss-everywhere: A problem shown in several places clears everywhere when it is dismissed in any one", async () => {
-  test.setTimeout(10 * 60_000);
+  test.setTimeout(25 * 60_000);
   stopWeir();
   let sent: Sent;
   let failed: any;
   try {
     sent = await sendFilm(stack, "qbittorrent", "Problem", "file");
     await until("qbittorrent to finish the film", 240, () => clientFinished(stack, "qbittorrent", sent.film), 2000);
-    failed = (await until("the hand-off to fail", 120, async () => {
+    // Deluno sends an unanswered hand-off again after 1, 2 and 5 minutes (#1385); only the fourth try makes the problem.
+    failed = (await until("the hand-off to fail", 720, async () => {
       const h = await handoffOf(stack, sent.film.release);
       return h && ["failed", "rejected"].includes(h.status) ? h : undefined;
     }, 1000).catch(() => undefined))?.value;

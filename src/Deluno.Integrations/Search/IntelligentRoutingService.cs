@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using System.Data.Common;
 using System.Globalization;
 using Deluno.Infrastructure.Storage;
@@ -50,7 +51,7 @@ public sealed class IntelligentRoutingService(
                     Code: "grab-failure-spike",
                     Severity: "warning",
                     Summary: "Grab failure rate spike detected.",
-                    Details: $"Last 24h failure rate {last24h.FailureRate.ToString("P1", CultureInfo.InvariantCulture)} vs prior baseline {prior7d.FailureRate.ToString("P1", CultureInfo.InvariantCulture)}.",
+                    Details: $"Last 24h failure rate {PlainPercent.Of(last24h.FailureRate, 1)} vs prior baseline {PlainPercent.Of(prior7d.FailureRate, 1)}.",
                     DetectedUtc: now));
             }
         }

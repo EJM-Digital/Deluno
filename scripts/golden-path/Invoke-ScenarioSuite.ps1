@@ -103,7 +103,7 @@ param(
     [string] $ReadyCheckpoint,
     [string] $Repository = $env:GITHUB_REPOSITORY,
     [string] $ResultsUrl,
-    [int] $TimeoutMinutes = 240,
+    [int] $TimeoutMinutes = 300,
     [switch] $DryRun,
     [switch] $ListOnly,
     [switch] $SkipInstall,

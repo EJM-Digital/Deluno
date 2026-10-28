@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
@@ -617,7 +618,7 @@ public static class SearchEndpointRouteBuilderExtensions
         var failureRate = (double)failedQueries / totalQueries;
         if (failureRate >= 0.25)
         {
-            return $"Needs attention: {failureRate:P0} of {totalQueries:N0} queries failed in the last {windowDays} days.";
+            return $"Needs attention: {PlainPercent.Of(failureRate)} of {totalQueries:N0} queries failed in the last {windowDays} days.";
         }
 
         if (successfulGrabs == 0)

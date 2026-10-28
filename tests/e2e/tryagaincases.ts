@@ -23,15 +23,16 @@ export function defineTryAgain(media: Media) {
   const kinds = tryAgainKinds(media);
   const tv = media === "tv" ? "tv." : "";
 
-  const OLD_FAILURE = /Needs your action|hand-?off failed|Could not send to|Rejected Action|could not submit/i;
+  const OLD_FAILURE = /Needs your action|hand-?off failed|Could not send to|Rejected Action|could not submit|could not reach/i;
 
   let stack: Stack;
   const films = new Map<ClientKind, Sent>();
   const failed = new Map<ClientKind, any>();
+  const waited = new Map<ClientKind, boolean>();
   let weirBack = false;
 
   test.beforeAll(async () => {
-    test.setTimeout(15 * 60_000);
+    test.setTimeout(25 * 60_000);
     stack = media === "tv" ? await setUpTvStack() : await setUpStack();
     stopWeir();
     try {
@@ -40,10 +41,13 @@ export function defineTryAgain(media: Media) {
         const { film } = films.get(kind)!;
         await until(`${kind} to finish ${film.release}`, 240, () => clientFinished(stack, kind, film), 2000);
         try {
-          const h = await until(`the hand-off of ${film.release} to fail`, 120, async () => {
+          // A send Weir does not answer waits and goes again after 1, 2 and 5 minutes (#1385); only the fourth try fails it.
+          waited.set(kind, false);
+          const h = await until(`the hand-off of ${film.release} to fail`, 720, async () => {
             const found = await handoffOf(stack, film.release);
+            if (found?.status === "waiting" && /did not answer/.test(found.failureMessage ?? "")) waited.set(kind, true);
             return found && ["failed", "rejected"].includes(found.status) ? found : undefined;
-          }, 1000);
+          }, 2000);
           failed.set(kind, h.value);
         } catch (error) { console.log(`${kind}: ${error}`); }
       }
@@ -60,6 +64,7 @@ export function defineTryAgain(media: Media) {
       test.setTimeout(10 * 60_000);
       const { film } = films.get(kind)!;
       expect(weirBack, "Weir is answering again").toBe(true);
+      expect(waited.get(kind), "Before it failed, Deluno held the hand-off waiting and sent it again (did not answer, #1385)").toBe(true);
       const h = failed.get(kind);
       expect(h, `The hand-off failed while Weir was down${h ? ` (status ${h.status}: ${h.failureMessage})` : " (it never failed)"}`).toBeTruthy();
 
