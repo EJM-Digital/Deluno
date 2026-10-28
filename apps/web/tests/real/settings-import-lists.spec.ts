@@ -209,6 +209,25 @@ test.describe("Settings > Import lists", () => {
     }
   });
 
+  test("a list named through the API keeps its name when the drawer saves it, and a new address gives it a derived name again", async ({ page }) => {
+    await clearLists(page);
+    const name = `Friday picks ${stamp}`;
+    const made = await makeSource(page, name, { provider: "rss", feedUrl: `https://lists.example.test/${stamp}/named.xml`, isEnabled: false });
+    expect(made.name).toBe(name);
+    await page.reload();
+    await untilQuiet(page);
+    await page.getByText(name, { exact: true }).first().click();
+    const drawer = page.getByRole("dialog");
+    await drawer.getByLabel("Check the list").selectOption("72");
+    await drawer.getByRole("button", { name: "Save list", exact: true }).click();
+    await expect.poll(async () => (await sources(page)).find((s) => s.id === made.id)?.syncIntervalHours).toBe(72);
+    expect((await sources(page)).find((s) => s.id === made.id)?.name).toBe(name);
+    await drawer.getByLabel("List URL").fill(`https://lists.example.test/${stamp}/moved.xml`);
+    await drawer.getByRole("button", { name: "Save list", exact: true }).click();
+    await expect.poll(async () => (await sources(page)).find((s) => s.id === made.id)?.feedUrl).toContain("moved.xml");
+    expect((await sources(page)).find((s) => s.id === made.id)?.name).not.toBe(name);
+  });
+
   test("a TV list saves its Monitor, Series type, Season folder and tags, and reopens showing them", async ({ page }) => {
     await clearLists(page);
     await page.reload();

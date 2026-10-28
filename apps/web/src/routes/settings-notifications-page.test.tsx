@@ -216,6 +216,44 @@ describe("per-connection triggers (#1016, #1017)", () => {
     const body = JSON.parse((init as RequestInit).body as string);
     expect(body.eventFilters).toBe("grab,import,upgrade,app.update");
     expect(body.includeHealthWarnings).toBe(true);
+    expect(body.name).toBe("");
+  });
+
+  it("an edited connection keeps its own name unless its address or app changes, and then sends none", async () => {
+    webhooks.push({ id: "w9", name: " Movie night ", url: "https://hooks.example.test/a ", eventFilters: "all", isEnabled: true, provider: "generic", configJson: null, tags: "", includeHealthWarnings: false } as unknown as NotificationWebhookItem);
+    try {
+      vi.mocked(authedFetch).mockImplementation(async (input: RequestInfo | URL) => new Response(String(input).startsWith("/api/tags") ? "[]" : JSON.stringify({ id: "w9", name: "Movie night", eventFilters: "all" }), { status: 200 }));
+      renderPage();
+      fireEvent.click(screen.getByText("Movie night"));
+      fireEvent.click(screen.getByRole("switch", { name: /^Enabled/ }));
+      fireEvent.click(screen.getByRole("button", { name: "Save webhook" }));
+      const puts = () => vi.mocked(authedFetch).mock.calls.filter(([url, options]) => url === "/api/notification-webhooks/w9" && (options as RequestInit).method === "PUT");
+      await waitFor(() => expect(puts()).toHaveLength(1));
+      expect(JSON.parse((puts()[0][1] as RequestInit).body as string).name).toBe("Movie night");
+
+      fireEvent.change(screen.getByPlaceholderText(/https?:\/\//i), { target: { value: "https://hooks.example.test/moved" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save webhook" }));
+      await waitFor(() => expect(puts()).toHaveLength(2));
+      expect(JSON.parse((puts()[1][1] as RequestInit).body as string).name).toBe("");
+    } finally {
+      webhooks.length = 0;
+    }
+  });
+
+  it("an edited connection sends no name when only its app changes", async () => {
+    webhooks.push({ id: "w8", name: "Movie night", url: "https://hooks.example.test/a", eventFilters: "all", isEnabled: true, provider: "generic", configJson: null, tags: "", includeHealthWarnings: false } as unknown as NotificationWebhookItem);
+    try {
+      vi.mocked(authedFetch).mockImplementation(async (input: RequestInfo | URL) => new Response(String(input).startsWith("/api/tags") ? "[]" : JSON.stringify({ id: "w8", name: "Movie night", eventFilters: "all" }), { status: 200 }));
+      renderPage();
+      fireEvent.click(screen.getByText("Movie night"));
+      fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "discord" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save webhook" }));
+      await waitFor(() => expect(vi.mocked(authedFetch).mock.calls.some(([url]) => url === "/api/notification-webhooks/w8")).toBe(true));
+      const put = vi.mocked(authedFetch).mock.calls.find(([url]) => url === "/api/notification-webhooks/w8")!;
+      expect(JSON.parse((put[1] as RequestInit).body as string).name).toBe("");
+    } finally {
+      webhooks.length = 0;
+    }
   });
 });
 
