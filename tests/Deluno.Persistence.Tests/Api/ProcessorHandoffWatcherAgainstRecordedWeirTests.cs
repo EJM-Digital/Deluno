@@ -105,6 +105,52 @@ public sealed class ProcessorHandoffWatcherAgainstRecordedWeirTests
     }
 
     [Fact]
+    public async Task A_new_hand_off_a_status_change_and_the_processor_state_Weir_reports_are_each_pushed_live_once()
+    {
+        var pushes = new RecordingRealtimeEventPublisher();
+        await using var weir = await WeirAsync(Status("status-working"), "capabilities");
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services =>
+            Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.Replace(services, ServiceDescriptor.Singleton<Deluno.Contracts.IRealtimeEventPublisher>(pushes)));
+        var scene = await SceneAsync(app, weir);
+        var handoff = await SentAsync(app, scene, "Pushed.Film.2020.1080p.WEB-DL-DELUNO");
+
+        // Weir's real "working" reply is the processor state; asking again while it is unchanged is not a change.
+        await WatchAsync(app, DateTimeOffset.UtcNow);
+        await WatchAsync(app, DateTimeOffset.UtcNow.AddSeconds(30));
+
+        var changes = pushes.LiveEventsOf<Deluno.Contracts.ProcessorHandoffChangedEvent>(Deluno.Contracts.LiveEventNames.ProcessorHandoffChanged)
+            .Where(change => change.HandoffId == handoff.Id)
+            .Select(change => change.State)
+            .ToArray();
+        Assert.Equal([ProcessorHandoffStatuses.Waiting, ProcessorHandoffStatuses.Submitted, "working"], changes);
+        Assert.True(File.Exists(Path.Combine(scene.Downloads, "Pushed.Film.2020.1080p.WEB-DL-DELUNO", "Pushed.Film.2020.1080p.WEB-DL-DELUNO.mkv")));
+    }
+
+    [Fact]
+    public async Task A_processor_renamed_after_the_hand_off_was_sent_is_still_asked_about_it_because_the_link_is_the_id()
+    {
+        await using var weir = await WeirAsync(Status("status-working"), "capabilities");
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app, weir);
+        var handoff = await SentAsync(app, scene, "Renamed.Film.2020.1080p.WEB-DL-DELUNO");
+        var connection = (await Repository(app).FindProcessorConnectionAsync(handoff.ProcessorConnectionId, scene.ConnectionName, CancellationToken.None))!;
+
+        // A name typed by an older install, changed straight in the table.
+        await Support.ApiScenes.ExecuteAsync(app, "platform", $"UPDATE processor_connections SET name = 'Media cleaner' WHERE id = '{connection.Id}';");
+        Assert.Null(await Repository(app).FindProcessorConnectionByNameAsync(scene.ConnectionName, CancellationToken.None));
+
+        await WatchAsync(app, DateTimeOffset.UtcNow);
+
+        Assert.True(StatusPolls(weir) >= 1, "the watcher still asks Weir, found by the connection's id: " + Seen(weir));
+        var after = (await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))!;
+        Assert.Equal(connection.Id, after.ProcessorConnectionId);
+        Assert.Equal("Media cleaner", after.ProcessorName);
+        Assert.Equal("working", after.Processor?.State);
+        Assert.Equal(ProcessorHandoffStatuses.Submitted, after.Status);
+        Assert.Equal("Media cleaner", (await Repository(app).FindProcessorConnectionAsync(after.ProcessorConnectionId, scene.ConnectionName, CancellationToken.None))!.Name);
+    }
+
+    [Fact]
     public async Task A_hand_off_queued_behind_others_is_waited_for_however_long_it_has_been_there_and_its_place_in_line_is_kept()
     {
         await using var weir = await WeirAsync(Status("status-queued"), "capabilities");
