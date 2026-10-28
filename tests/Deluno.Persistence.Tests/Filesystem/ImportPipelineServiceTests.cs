@@ -6771,6 +6771,64 @@ public sealed class ImportPipelineServiceTests
     }
 
     /// <summary>
+    /// A season-pack preview is ready only when EVERY member is settled, the files that will be skipped as well as the
+    /// ones that will be imported: a skipped file still has to be a finished file before Deluno can say it is not an episode.
+    /// </summary>
+    [Theory]
+    [InlineData("Pack.Ready.S01E01.mkv")]
+    [InlineData("Pack.Ready.S01E99.mkv")]
+    public async Task A_season_pack_preview_is_not_ready_while_any_member_is_still_being_written_and_reads_ready_once_it_has_settled(string fresh)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Pack Ready", 2026, null), CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(1, 1, "One", null, timeProvider.GetUtcNow().AddDays(-2)),
+                new CatalogueEpisodeItem(1, 2, "Two", null, timeProvider.GetUtcNow().AddDays(-1))
+            ],
+            "provider",
+            CancellationToken.None);
+        var packDirectory = Path.Combine(downloadsPath, "Pack.Ready.S01");
+        Directory.CreateDirectory(packDirectory);
+        var members = new[] { "Pack.Ready.S01E01.mkv", "Pack.Ready.S01E02.mkv", "Pack.Ready.S01E99.mkv" };
+        foreach (var name in members)
+        {
+            var path = Path.Combine(packDirectory, name);
+            await File.WriteAllBytesAsync(path, Enumerable.Repeat((byte)0x51, 4096).ToArray());
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(-1));
+        }
+
+        var freshPath = Path.Combine(packDirectory, fresh);
+        File.SetLastWriteTimeUtc(freshPath, DateTime.UtcNow);
+        var service = CreateService(storage, timeProvider, platform, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider));
+        var request = new ImportPreviewRequest(
+            packDirectory, null, "tv", series.Title, series.StartYear, [], [], null, null,
+            SeriesId: series.Id, SeriesType: SeriesTypes.Standard, NumberingScheme: SeriesNumberingSchemes.Standard);
+
+        var unsettled = await service.PreviewAsync(request, CancellationToken.None);
+        Assert.NotNull(unsettled.Pack);
+        Assert.False(ImportFileReadiness.IsPreviewReady(unsettled));
+
+        File.SetLastWriteTimeUtc(freshPath, DateTime.UtcNow.AddMinutes(-1));
+        var settled = await service.PreviewAsync(request, CancellationToken.None);
+        Assert.True(ImportFileReadiness.IsPreviewReady(settled));
+    }
+
+    /// <summary>
     /// #652: skipping non-resolving files must not turn "nothing matched" into
     /// a quiet success. A pack with no resolvable episode still fails whole,
     /// exactly as before.
