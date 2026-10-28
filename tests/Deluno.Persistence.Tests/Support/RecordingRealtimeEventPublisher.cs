@@ -40,6 +40,17 @@ internal sealed class RecordingRealtimeEventPublisher : NullRealtimeEventPublish
         return Task.CompletedTask;
     }
 
+    private readonly ConcurrentQueue<(string LibraryId, string LibraryName, string MediaType, int Planned, int Queued, int Skipped)> searchRunsCompleted = new();
+
+    /// <summary>Every finished search run announced to the Dashboard and Library groups, in order.</summary>
+    public IReadOnlyList<(string LibraryId, string LibraryName, string MediaType, int Planned, int Queued, int Skipped)> SearchRunsCompleted => searchRunsCompleted.ToArray();
+
+    public new Task PublishSearchRunCompletedAsync(string libraryId, string libraryName, string mediaType, int plannedCount, int queuedCount, int skippedCount, string completedUtc, CancellationToken cancellationToken)
+    {
+        searchRunsCompleted.Enqueue((libraryId, libraryName, mediaType, plannedCount, queuedCount, skippedCount));
+        return Task.CompletedTask;
+    }
+
     public Task PublishLiveEventAsync(string eventName, object payload, CancellationToken cancellationToken)
     {
         liveEvents.Enqueue((eventName, payload));

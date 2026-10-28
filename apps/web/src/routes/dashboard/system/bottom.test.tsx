@@ -30,6 +30,33 @@ describe("Scheduled tasks", () => {
     expect(screen.queryByText("stale")).toBeNull();
   });
 
+  it("links to Automation and lists each task with its state, its last result and when it runs next", () => {
+    const now = Date.now();
+    const iso = (offsetMs: number) => new Date(now + offsetMs).toISOString();
+    const tasks = [
+      { key: "a", name: "Check for updates", lastResult: "completed", lastCompletedUtc: iso(-3 * 3600_000), nextRunUtc: iso(2 * 3600_000), lastError: null },
+      { key: "b", name: "Reclaim seeding files", lastResult: "failed", lastCompletedUtc: iso(-10 * 60_000), nextRunUtc: iso(30 * 60_000), lastError: "Deluge did not answer." },
+      { key: "c", name: "Search libraries", lastResult: "running", lastCompletedUtc: null, nextRunUtc: null, lastError: null },
+      { key: "d", name: "Back up Deluno", lastResult: "not-run", lastCompletedUtc: null, nextRunUtc: iso(26 * 3600_000), lastError: null }
+    ];
+    render(<MemoryRouter><TasksCard tasks={tasks} /></MemoryRouter>);
+
+    expect(screen.getByRole("link", { name: "Open automation" })).toHaveAttribute("href", "/search-cycles");
+    expect(screen.getByRole("link", { name: "Open automation" }).textContent).toBe("Automation →");
+    expect(screen.getByText("1 running · 1 failed")).toBeInTheDocument();
+    const rowOf = (name: string) => screen.getByText(name, { selector: ".sy-nm" }).closest(".sy-tk-row") as HTMLElement;
+    // Running first, then the one due soonest, then the ones with no next time.
+    expect(Array.from(document.querySelectorAll(".sy-tk-row .sy-nm")).map((cell) => cell.firstChild?.textContent)).toEqual(["Search libraries", "Reclaim seeding files", "Check for updates", "Back up Deluno"]);
+    expect(rowOf("Search libraries").textContent).toContain("running");
+    expect(rowOf("Reclaim seeding files").textContent).toContain("✗");
+    expect(rowOf("Reclaim seeding files").textContent).toContain("10 min ago");
+    expect(rowOf("Reclaim seeding files").textContent).toContain("Deluge did not answer.");
+    expect(rowOf("Check for updates").textContent).toContain("✓");
+    expect(rowOf("Check for updates").textContent).toContain("3 h ago");
+    expect(rowOf("Check for updates").textContent).toContain("2 h");
+    expect(rowOf("Back up Deluno").textContent).toContain("—");
+  });
+
   it("still gives a plain reason for a failed task the server could not explain", () => {
     expect(sortedTasks([{ key: "a", name: "A task", lastResult: "failed", lastCompletedUtc: "2026-10-01T11:00:00Z", nextRunUtc: null }])[0].why).toBe("It did not finish. The Log has the details.");
   });

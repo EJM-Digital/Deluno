@@ -142,6 +142,21 @@ public sealed class LiveEventsAtTheirChangePointsTests : IDisposable
     }
 
     [Fact]
+    public async Task Recording_a_search_cycle_announces_a_finished_search_run_for_its_library()
+    {
+        await _jobs.RecordSearchCycleRunAsync(
+            new RecordSearchCycleRunRequest(
+                "lib-films", "Films", "movies", "scheduled", "completed", 12, 3, 9, null,
+                _time.GetUtcNow().AddMinutes(-1), _time.GetUtcNow()),
+            CancellationToken.None);
+
+        // The publisher sends this to the library's group and to the Dashboard group
+        // (TheRealtimePublisherRoutesEachEventToItsSubjectTests); the store's part is to announce it once, with the counts.
+        var completed = Assert.Single(_realtime.SearchRunsCompleted);
+        Assert.Equal(("lib-films", "Films", "movies", 12, 3, 9), completed);
+    }
+
+    [Fact]
     public async Task A_finished_search_cycle_pushes_its_library_and_count()
     {
         await _jobs.RecordSearchCycleRunAsync(
