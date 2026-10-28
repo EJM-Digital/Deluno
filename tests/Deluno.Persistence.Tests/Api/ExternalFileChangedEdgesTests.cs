@@ -6,6 +6,8 @@ using Deluno.Infrastructure.Storage;
 using Deluno.Jobs.Data;
 using Deluno.Media;
 using Deluno.Persistence.Tests.Support;
+using Deluno.Series.Contracts;
+using Deluno.Series.Data;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Deluno.Persistence.Tests.Api;
@@ -41,6 +43,44 @@ public sealed class ExternalFileChangedEdgesTests
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(before, (await jobs.ListAsync(500, CancellationToken.None)).Count);
+    }
+
+    [Fact]
+    public async Task An_episode_file_of_a_tracked_show_is_accepted_and_reported_with_kind_series()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var created = await app.Client.PostAsJsonAsync("/api/series/", new { title = "Andor", startYear = 2022, monitored = true });
+        Assert.True(created.IsSuccessStatusCode, await created.Content.ReadAsStringAsync());
+        var seriesId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        var catalogue = app.Services.GetRequiredService<ISeriesCatalogRepository>();
+        await catalogue.SyncEpisodeCatalogueAsync(seriesId, [new CatalogueEpisodeItem(1, 1, "Kassa", null, DateTimeOffset.UtcNow.AddDays(-30))], "provider", CancellationToken.None);
+        var path = Path.Combine(app.DataRoot, "tv", "Andor (2022)", "Season 01", "Andor - S01E01.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await File.WriteAllBytesAsync(path, new byte[777]);
+        await using (var connection = await app.Services.GetRequiredService<IDelunoDatabaseConnectionFactory>().OpenConnectionAsync(DelunoDatabaseNames.Series, CancellationToken.None))
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE episode_entries SET has_file = 1, file_path = @path, file_size_bytes = 5 WHERE series_id = @id AND season_number = 1 AND episode_number = 1;";
+            foreach (var (name, value) in new[] { ("@path", path), ("@id", seriesId) })
+            {
+                var parameter = command.CreateParameter();
+                parameter.ParameterName = name;
+                parameter.Value = value;
+                command.Parameters.Add(parameter);
+            }
+
+            Assert.Equal(1, await command.ExecuteNonQueryAsync(CancellationToken.None));
+        }
+
+        var response = await app.Client.PostAsJsonAsync("/api/integrations/external/file-changed", new { path, reason = "Weir removed a track.", tool = "Weir" });
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var title = body.GetProperty("titles")[0];
+        Assert.Equal("series", title.GetProperty("kind").GetString());
+        Assert.Equal(seriesId, title.GetProperty("mediaId").GetString());
+        var jobs = await app.Services.GetRequiredService<IJobQueueRepository>().ListAsync(500, CancellationToken.None);
+        Assert.Contains(jobs, job => job.JobType == "library.media.probe" && job.RelatedEntityType == "series");
     }
 
     [Fact]
