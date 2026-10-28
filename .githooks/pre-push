@@ -1,4 +1,8 @@
 #!/usr/bin/env sh
 set -eu
 
+# Git hands a hook its own GIT_DIR (and, from a linked worktree, more). The checks' tests make throwaway repositories, and with
+# those set their commits landed on this clone's main and one set core.bare (pushing the rc.30.36 tag, 29 Oct 2026).
+unset $(git rev-parse --local-env-vars)
+
 npm run ci:check

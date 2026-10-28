@@ -35,6 +35,9 @@ test("the pre-push hook runs the repository checks and stops the push when they 
   const hook = read(".githooks/pre-push");
   assert.match(hook, /^set -eu$/m, "a failed check must end the hook, and so the push");
   assert.match(hook, /^npm run ci:check$/m);
+  // The checks' tests make throwaway repositories; with git's GIT_DIR still set they wrote into this clone (rc.30.36's tag push).
+  assert.ok(hook.indexOf("unset $(git rev-parse --local-env-vars)") >= 0 && hook.indexOf("unset $(git rev-parse --local-env-vars)") < hook.indexOf("npm run ci:check"),
+    "the hook clears git's own repository variables before the checks run");
   const scripts = JSON.parse(read("package.json")).scripts;
   assert.equal(scripts["ci:check"], "node scripts/run-powershell.mjs scripts/ci-check.ps1");
 });
