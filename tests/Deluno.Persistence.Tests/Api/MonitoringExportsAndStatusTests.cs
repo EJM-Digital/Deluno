@@ -2,7 +2,9 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Deluno.Jobs.Data;
 using Deluno.Persistence.Tests.Support;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Deluno.Persistence.Tests.Api;
 
@@ -41,6 +43,23 @@ public sealed class MonitoringExportsAndStatusTests
         Assert.Equal("attention", health.GetProperty("status").GetString());
         Assert.Equal(dashboard.GetProperty("readiness").GetProperty("failedChecks").GetInt32(), health.GetProperty("failedChecks").GetInt32());
         Assert.Equal(dashboard.GetProperty("alerts").GetArrayLength(), health.GetProperty("openAlerts").GetInt32());
+    }
+
+    [Fact]
+    public async Task The_status_health_line_reads_healthy_once_every_check_passes_and_no_alert_is_open()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        await app.Services.GetRequiredService<IJobQueueRepository>().HeartbeatAsync("worker-test", CancellationToken.None);
+
+        var status = await app.Client.GetFromJsonAsync<JsonElement>("/api/system/status");
+        var dashboard = await app.Client.GetFromJsonAsync<JsonElement>("/api/monitoring/dashboard");
+
+        var health = status.GetProperty("health");
+        Assert.Equal("healthy", health.GetProperty("status").GetString());
+        Assert.Equal(0, health.GetProperty("failedChecks").GetInt32());
+        Assert.Equal(0, health.GetProperty("openAlerts").GetInt32());
+        Assert.True(dashboard.GetProperty("readiness").GetProperty("ready").GetBoolean());
+        Assert.Empty(dashboard.GetProperty("alerts").EnumerateArray());
     }
 
     [Fact]
