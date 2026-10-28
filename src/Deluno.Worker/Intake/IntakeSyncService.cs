@@ -63,7 +63,7 @@ public sealed class IntakeSyncService(
 
         foreach (var source in sources.Where(item => item.IsEnabled))
         {
-            var interval = TimeSpan.FromHours(Math.Clamp(source.SyncIntervalHours, 1, 168));
+            var interval = TimeSpan.FromHours(Math.Clamp(source.SyncIntervalHours, IntakeSyncLimits.MinHours, IntakeSyncLimits.MaxHours));
             var last = source.LastSyncUtc ?? source.CreatedUtc;
             if (now - last < interval)
             {

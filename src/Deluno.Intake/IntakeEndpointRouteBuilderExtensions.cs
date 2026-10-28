@@ -399,7 +399,7 @@ public static class IntakeEndpointRouteBuilderExtensions
             errors["maximumAgeDays"] = ["Maximum age in days must be greater than zero when provided."];
         }
 
-        if (syncIntervalHours is <= 0 or > 168)
+        if (syncIntervalHours is < IntakeSyncLimits.MinHours or > IntakeSyncLimits.MaxHours)
         {
             errors["syncIntervalHours"] = ["Sync interval must be between 1 and 168 hours."];
         }

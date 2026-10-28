@@ -44,4 +44,24 @@ test.describe("Metadata settings", () => {
     await expect(page).not.toHaveURL(/settings\/metadata/);
     await expect.poll(async () => (await settings(page)).metadataLanguage).toBe(next);
   });
+
+  test("a language or region that is not a known code is refused with a sentence on its own field, and a known one saves", async ({ page }) => {
+    await page.getByLabel("Details language").selectOption({ label: "Other language code" });
+    await page.getByRole("textbox", { name: "Other language code" }).fill("english");
+    await page.getByRole("button", { name: "Save metadata settings", exact: true }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Details language must be a language code such as en, de or pt-BR." })).toBeVisible();
+    expect((await settings(page)).metadataLanguage).toBe(before.metadataLanguage);
+
+    await page.getByRole("textbox", { name: "Other language code" }).fill("pt-BR");
+    await page.getByLabel("Ratings region").selectOption({ label: "Other country code" });
+    await page.getByRole("textbox", { name: "Other country code" }).fill("Netherlands");
+    await page.getByRole("button", { name: "Save metadata settings", exact: true }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Ratings region must be a two-letter country code such as US, GB or NL." })).toBeVisible();
+    expect((await settings(page)).metadataCertificationCountry).toBe(before.metadataCertificationCountry);
+
+    await page.getByRole("textbox", { name: "Other country code" }).fill("NL");
+    await page.getByRole("button", { name: "Save metadata settings", exact: true }).click();
+    await expect.poll(async () => (await settings(page)).metadataLanguage).toBe("pt-BR");
+    expect((await settings(page)).metadataCertificationCountry).toBe("NL");
+  });
 });

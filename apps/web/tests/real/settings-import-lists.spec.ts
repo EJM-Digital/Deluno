@@ -172,7 +172,7 @@ test.describe("Settings > Import lists", () => {
     await untilQuiet(page);
     await page.getByRole("button", { name: "New list", exact: true }).first().click();
     const drawer = page.getByRole("dialog");
-    expect(await drawer.getByLabel("Check the list").locator("option").allInnerTexts()).toEqual(["Every 6 hours", "Every 12 hours", "Daily", "Every 3 days", "Weekly", "Fortnightly", "Monthly", "Custom interval"]);
+    expect(await drawer.getByLabel("Check the list").locator("option").allInnerTexts()).toEqual(["Every 6 hours", "Every 12 hours", "Daily", "Every 3 days", "Weekly", "Custom interval"]);
 
     await drawer.getByLabel("Provider").selectOption("rss");
     await drawer.getByLabel("List URL").fill(`https://lists.example.test/${stamp}/feed.xml`);
@@ -188,6 +188,44 @@ test.describe("Settings > Import lists", () => {
     expect(posts[0].body).toMatchObject({ provider: "rss", feedUrl: `https://lists.example.test/${stamp}/feed.xml`, syncIntervalHours: 168, searchOnAdd: false, isEnabled: false });
     const stored = (await sources(page)).find((s) => s.feedUrl.endsWith(`${stamp}/feed.xml`))!;
     expect(stored).toMatchObject({ provider: "rss", syncIntervalHours: 168, searchOnAdd: false, isEnabled: false });
+  });
+
+  test("every Check the list preset saves from the screen and reads back the same", async ({ page }) => {
+    await clearLists(page);
+    await page.reload();
+    await untilQuiet(page);
+    for (const hours of [6, 12, 24, 72, 168]) {
+      await page.getByRole("button", { name: "New list", exact: true }).first().click();
+      const drawer = page.getByRole("dialog");
+      await drawer.getByLabel("Provider").selectOption("rss");
+      await drawer.getByLabel("List URL").fill(`https://lists.example.test/${stamp}/every-${hours}/feed.xml`);
+      await drawer.getByLabel("Check the list").selectOption(String(hours));
+      await drawer.getByRole("button", { name: "Add list", exact: true }).click();
+      await expect(drawer.getByText("List added", { exact: true })).toBeVisible();
+      const stored = (await sources(page)).find((s) => s.feedUrl.endsWith(`every-${hours}/feed.xml`));
+      expect(stored?.syncIntervalHours, `${hours} hours`).toBe(hours);
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+    }
+  });
+
+  test("a list named through the API keeps its name when the drawer saves it, and a new address gives it a derived name again", async ({ page }) => {
+    await clearLists(page);
+    const name = `Friday picks ${stamp}`;
+    const made = await makeSource(page, name, { provider: "rss", feedUrl: `https://lists.example.test/${stamp}/named.xml`, isEnabled: false });
+    expect(made.name).toBe(name);
+    await page.reload();
+    await untilQuiet(page);
+    await page.getByText(name, { exact: true }).first().click();
+    const drawer = page.getByRole("dialog");
+    await drawer.getByLabel("Check the list").selectOption("72");
+    await drawer.getByRole("button", { name: "Save list", exact: true }).click();
+    await expect.poll(async () => (await sources(page)).find((s) => s.id === made.id)?.syncIntervalHours).toBe(72);
+    expect((await sources(page)).find((s) => s.id === made.id)?.name).toBe(name);
+    await drawer.getByLabel("List URL").fill(`https://lists.example.test/${stamp}/moved.xml`);
+    await drawer.getByRole("button", { name: "Save list", exact: true }).click();
+    await expect.poll(async () => (await sources(page)).find((s) => s.id === made.id)?.feedUrl).toContain("moved.xml");
+    expect((await sources(page)).find((s) => s.id === made.id)?.name).not.toBe(name);
   });
 
   test("a TV list saves its Monitor, Series type, Season folder and tags, and reopens showing them", async ({ page }) => {

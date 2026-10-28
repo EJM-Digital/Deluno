@@ -220,6 +220,36 @@ describe("the list drawer", () => {
     expect(await screen.findByText(/Use a public HTTP or HTTPS RSS\/Atom feed URL\./)).toBeInTheDocument();
   });
 
+
+  it("sends the list's own name when only something else changes, and no name once its provider or address changes", async () => {
+    loader.intakeSources = [list({ name: "  Friday picks  " })];
+    renderPage();
+    fireEvent.click(screen.getByText("Friday picks"));
+    fireEvent.change(screen.getByLabelText("Check the list"), { target: { value: "72" } });
+    expect(screen.getByLabelText("Check the list")).toHaveValue("72");
+    vi.mocked(authedFetch).mockResolvedValueOnce(json(list({ syncIntervalHours: 72 })));
+    fireEvent.click(screen.getByRole("button", { name: "Save list" }));
+    await waitFor(() => expect(calls("PUT")).toHaveLength(1));
+    expect(bodyOf(calls("PUT")[0]).name).toBe("Friday picks");
+    expect(bodyOf(calls("PUT")[0]).syncIntervalHours).toBe(72);
+
+    fireEvent.change(screen.getByPlaceholderText("https://…"), { target: { value: "https://lists.example.test/moved.xml" } });
+    vi.mocked(authedFetch).mockResolvedValueOnce(json(list({ feedUrl: "https://lists.example.test/moved.xml" })));
+    fireEvent.click(screen.getByRole("button", { name: "Save list" }));
+    await waitFor(() => expect(calls("PUT")).toHaveLength(2));
+    expect(bodyOf(calls("PUT")[1]).name).toBe("");
+  });
+
+  it("sends no name for a new list and none when only the provider changes", async () => {
+    loader.intakeSources = [list({ name: "Friday picks", provider: "rss" })];
+    renderPage();
+    fireEvent.click(screen.getByText("Friday picks"));
+    fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "url-list" } });
+    vi.mocked(authedFetch).mockResolvedValueOnce(json(list({ provider: "url-list" })));
+    fireEvent.click(screen.getByRole("button", { name: "Save list" }));
+    await waitFor(() => expect(calls("PUT")).toHaveLength(1));
+    expect(bodyOf(calls("PUT")[0]).name).toBe("");
+  });
   it("disables Preview and Sync now and says 'Save your changes first.' while the form has unsaved edits", () => {
     loader.intakeSources = [list({})];
     renderPage();
