@@ -37,6 +37,8 @@ public sealed class AHandOffWhoseSendGetsNoAnswerIsSentAgainTests
     {
         public ApplicationTestHost App { get; set; } = null!;
         public List<string?> Keys { get; } = [];
+        // Weir joins a send to its job by the hand-off id in the body (its intake dedupe key), so a try again must carry the same one.
+        public List<string?> HandoffIds { get; } = [];
         public ValueTask DisposeAsync() => App.DisposeAsync();
     }
 
@@ -50,6 +52,8 @@ public sealed class AHandOffWhoseSendGetsNoAnswerIsSentAgainTests
             {
                 if (request.Method != HttpMethod.Post) return null;
                 rig.Keys.Add(request.Headers.TryGetValues("Idempotency-Key", out var key) ? key.Single() : null);
+                var body = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? "";
+                rig.HandoffIds.Add(System.Text.RegularExpressions.Regex.Match(body, "\"handoffId\"\\s*:\\s*\"([^\"]+)\"").Groups[1].Value is { Length: > 0 } id ? id : null);
                 switch (sends[Math.Min(rig.Keys.Count, sends.Length) - 1])
                 {
                     // What HttpClient throws when its own timeout ends the request, as it did on the VM.
@@ -140,6 +144,7 @@ public sealed class AHandOffWhoseSendGetsNoAnswerIsSentAgainTests
         Assert.Null(submitted.FailureMessage);
         Assert.Equal(2, rig.Keys.Count);
         Assert.Equal(rig.Keys[0], rig.Keys[1]);
+        Assert.All(rig.HandoffIds, id => Assert.Equal(scene.Handoff.Id, id));
         Assert.Single(await LinesAsync(app, scene.Handoff.Id), line => line.Category == "processing.submitted");
     }
 
@@ -165,6 +170,7 @@ public sealed class AHandOffWhoseSendGetsNoAnswerIsSentAgainTests
         Assert.Single(lines, line => line.Category == "processing.submission-failed");
         Assert.Equal(4, rig.Keys.Count);
         Assert.Single(rig.Keys.Distinct());
+        Assert.All(rig.HandoffIds, id => Assert.Equal(scene.Handoff.Id, id));
 
         // A person sends it again: the count starts afresh, so it backs off again rather than failing at once.
         await Repository(app).UpdateProcessorHandoffAsync(scene.Handoff.Id, ProcessorHandoffStatuses.Waiting, null, null, null, CancellationToken.None);
