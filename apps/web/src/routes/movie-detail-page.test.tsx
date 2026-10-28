@@ -1,4 +1,4 @@
-import { act, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -1198,4 +1198,30 @@ describe("the film's Indexers and download clients card", () => {
     const tab = screen.queryByRole("radio", { name: "Destination" });
     if (tab) fireEvent.click(tab);
   }
+});
+
+describe("the film's poster and quality tile", () => {
+  it("draws the poster with its title as alt text, or a No artwork yet placeholder when the film has none", async () => {
+    setup((url) => (url === "/api/movies/m1" ? { body: { ...MOVIE, posterUrl: "https://fixture.invalid/poster.jpg" } } : undefined));
+    const { view } = await renderPage();
+    expect(screen.getByRole("img", { name: "Big Buck Bunny poster" })).toHaveAttribute("src", "https://fixture.invalid/poster.jpg");
+    view.unmount();
+
+    setup();
+    await renderPage();
+    expect(screen.queryByRole("img", { name: "Big Buck Bunny poster" })).toBeNull();
+    expect(screen.getByText("No artwork yet")).toBeInTheDocument();
+  });
+
+  it("the Quality tile says Nothing yet and waiting for the target while there is no file, and Unknown once a file is there with no quality read", async () => {
+    await renderPage();
+    const tile = () => screen.getByText("Quality").closest("div")!;
+    expect(within(tile()).getByText("Nothing yet")).toBeInTheDocument();
+    expect(within(tile()).getByText("waiting for WEB 1080p")).toBeInTheDocument();
+    cleanup();
+
+    setup((url) => (url === "/api/movies/m1" ? { body: { ...MOVIE, hasFile: true, wantedStatus: "upgrade" } } : undefined));
+    await renderPage();
+    expect(within(screen.getByText("Quality").closest("div")!).getByText("Unknown")).toBeInTheDocument();
+  });
 });
