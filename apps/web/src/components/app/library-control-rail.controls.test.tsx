@@ -215,3 +215,17 @@ describe("the Filter button", () => {
     expect(setConditions).toHaveBeenLastCalledWith([{ field: "year", operator: "min", values: [] }]);
   });
 });
+
+describe("the search box", () => {
+  it("the x button clears the search, and the / key hint is drawn only while the box is empty", () => {
+    const setQuery = vi.fn();
+    const { container, rerender } = render(<ControlRail label="Movies" variant="movies" facets={facets()} controls={controls({ setQuery })} />);
+    expect(container.querySelector("kbd")?.textContent).toBe("/");
+    expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
+
+    rerender(<ControlRail label="Movies" variant="movies" facets={facets()} controls={controls({ query: "heat", setQuery })} />);
+    expect(container.querySelector("kbd")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(setQuery).toHaveBeenLastCalledWith("");
+  });
+});

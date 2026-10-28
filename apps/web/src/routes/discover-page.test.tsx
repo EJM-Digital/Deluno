@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import type { DiscoverResponse, LibraryItem, QualityProfileItem } from "../lib/api";
@@ -170,6 +170,31 @@ describe("Discover page (#785)", () => {
   });
 });
 
+describe("Discover list entries carry their own status", () => {
+  it("every entry says Would add, Already in library, Excluded or Not eligible, and only its own status", async () => {
+    const entry = (title: string, status: string, inLibrary: boolean, excluded: boolean) => ({ title, year: 2020, imdbId: null, status, reason: "Why.", inLibrary, excluded });
+    await renderDiscoverPage(discoverResponse({
+      lists: [{ sourceId: "source-1", sourceName: "Trakt Popular", items: [
+        entry("Fresh Pick", "would add", false, false),
+        entry("Held Pick", "already in library", true, false),
+        entry("Dropped Pick", "excluded", false, true),
+        entry("Ineligible Pick", "not eligible", false, false)
+      ] }]
+    }));
+
+    await waitFor(() => expect(screen.getByText("Trakt Popular")).toBeInTheDocument());
+    const row = (title: string) => screen.getByText(title).closest("li") ?? screen.getByText(title).parentElement!.parentElement!;
+    expect(within(row("Fresh Pick")).getByText("Would add")).toBeInTheDocument();
+    expect(within(row("Held Pick")).getByText("Already in library")).toBeInTheDocument();
+    expect(within(row("Dropped Pick")).getAllByText("Excluded")[0]).toBeInTheDocument();
+    expect(within(row("Dropped Pick")).queryByText("Would add")).toBeNull();
+    expect(within(row("Ineligible Pick")).getByText("Not eligible")).toBeInTheDocument();
+    expect(within(row("Held Pick")).getByText("Held")).toBeInTheDocument();
+    expect(within(row("Dropped Pick")).queryByRole("button", { name: "Add Dropped Pick" })).toBeNull();
+    expect(within(row("Fresh Pick")).getByRole("button", { name: "Add Fresh Pick" })).toBeInTheDocument();
+  });
+});
+
 describe("Discover empty state (#1092)", () => {
   it("says the list could not be loaded, never that a provider needs configuring", async () => {
     await renderDiscoverPage(discoverResponse({ popular: [], lists: [] }));
@@ -177,5 +202,23 @@ describe("Discover empty state (#1092)", () => {
     await waitFor(() => expect(screen.getByText("Nothing to show right now")).toBeInTheDocument());
     expect(screen.getByText(/could not be loaded just now/)).toBeInTheDocument();
     expect(screen.queryByText(/provider configured/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("Discover Movies and TV chips", () => {
+  it("the Movies and TV chips ask for that list, and the choice is remembered in this browser for the next visit", async () => {
+    window.localStorage.clear();
+    await renderDiscoverPage();
+    await waitFor(() => expect(screen.getByText("The Matrix")).toBeInTheDocument());
+    expect(authedFetch).toHaveBeenLastCalledWith("/api/discover?mediaType=movies", expect.anything());
+
+    fireEvent.click(screen.getByRole("radio", { name: "TV" }));
+    await waitFor(() => expect(authedFetch).toHaveBeenLastCalledWith("/api/discover?mediaType=series", expect.anything()));
+    expect(window.localStorage.getItem("deluno-discover-type")).toBe("series");
+
+    cleanup();
+    await renderDiscoverPage();
+    await waitFor(() => expect(authedFetch).toHaveBeenLastCalledWith("/api/discover?mediaType=series", expect.anything()));
+    expect(screen.getByRole("radio", { name: "TV" })).toHaveAttribute("aria-checked", "true");
   });
 });

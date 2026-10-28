@@ -222,3 +222,69 @@ describe("Calendar episode marks (#1179)", () => {
     }
   });
 });
+
+describe("Schedule falls back to its defaults for a stale remembered value", () => {
+  it("a remembered range or view that no longer exists opens on Month and Calendar, and a stepped period for another range opens on this one", () => {
+    window.localStorage.setItem("deluno-schedule-choices", JSON.stringify({ scope: "sideways", view: "tilted", options: null }));
+    window.sessionStorage.setItem("deluno-schedule-offset", JSON.stringify({ scope: "week", offset: 3 }));
+    const stale = renderPage();
+    expect(screen.getByRole("radio", { name: "Month" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "Calendar" })).toHaveAttribute("aria-checked", "true");
+    const staleHeading = screen.getAllByRole("heading", { level: 2 })[0].textContent;
+    stale.unmount();
+
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    renderPage();
+    expect(screen.getAllByRole("heading", { level: 2 })[0].textContent).toBe(staleHeading);
+  });
+});
+
+describe("Calendar summary strip", () => {
+  it("counts the entries in the range, how many are still to come or already out, and the episodes and movies apart", () => {
+    renderPage();
+    const value = (label: string) => screen.getByText(label).nextElementSibling?.textContent;
+    expect(value("In this range")).toBe("3");
+    expect(value("Still to come")).toBe("0");
+    expect(value("Already out")).toBe("3");
+    expect(value("Episodes")).toBe("1");
+    expect(value("Movies")).toBe("2");
+  });
+});
+
+describe("Schedule steps the period", () => {
+  it("Previous and Next move the heading one period each way, and Today returns to the current period", () => {
+    renderPage();
+    const heading = () => screen.getAllByRole("heading", { level: 2 })[0].textContent;
+    const today = heading();
+    fireEvent.click(screen.getByRole("button", { name: "Next month" }));
+    const next = heading();
+    expect(next).not.toBe(today);
+    fireEvent.click(screen.getByRole("button", { name: "Previous month" }));
+    expect(heading()).toBe(today);
+    fireEvent.click(screen.getByRole("button", { name: "Next month" }));
+    fireEvent.click(screen.getByRole("button", { name: "Today" }));
+    expect(heading()).toBe(today);
+  });
+});
+
+describe("Calendar empty states", () => {
+  it("says Nothing is scheduled in the stepped range when it has no entry, and Nothing has a date yet, with the provider hint, when nothing has a date at all", () => {
+    const { unmount } = renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Next month" }));
+    expect(screen.getByText(/^Nothing is scheduled in November 2026. Step to another month/)).toBeInTheDocument();
+    unmount();
+
+    const saved = { episodes: loaderData.episodes, movies: loaderData.movies };
+    loaderData.episodes = [];
+    loaderData.movies = [];
+    try {
+      renderPage();
+      expect(screen.getByText(/^Nothing has a date yet. Air dates and release dates come from the metadata provider/)).toBeInTheDocument();
+      expect(screen.getByText(/link a show or movie to its provider record and its schedule appears here/)).toBeInTheDocument();
+    } finally {
+      loaderData.episodes = saved.episodes;
+      loaderData.movies = saved.movies;
+    }
+  });
+});

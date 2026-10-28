@@ -235,3 +235,46 @@ describe("selecting collections", () => {
     expect(screen.queryByText("1 selected")).toBeNull();
   });
 });
+
+describe("the Collections summary strip and its empty state", () => {
+  it("counts the collections, the monitored ones, the missing members and the held members", async () => {
+    renderPage();
+    await screen.findAllByText("The Matrix Collection");
+    const value = (label: string) => screen.getByText(label).nextElementSibling?.textContent;
+    expect(value("Monitored")).toBe("1");
+    expect(value("Missing members")).toBe("6");
+    expect(value("Held members")).toBe("2");
+    expect(value("Collections")).toBe("2");
+  });
+
+  it("with no collections says No collections yet, and its Follow collection button opens the form", async () => {
+    items = [];
+    renderPage();
+    expect(await screen.findByRole("heading", { name: "No collections yet" })).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "Follow collection" }).at(-1)!);
+    expect(await screen.findByRole("heading", { name: "Follow a TMDb collection" })).toBeInTheDocument();
+  });
+});
+
+describe("the members of a collection", () => {
+  it("lists every member with its title and year, says In your library or Not in your library, and links a held film to its page and an unheld one to TMDb", async () => {
+    const before = members.c1;
+    members.c1 = [
+      { providerId: "603", title: "The Matrix", releaseYear: 1999, localMovieId: "m1", externalUrl: "https://www.themoviedb.org/movie/603", posterUrl: null, isExcluded: false },
+      { providerId: "604", title: "The Matrix Reloaded", releaseYear: 2003, localMovieId: null, externalUrl: "https://www.themoviedb.org/movie/604", posterUrl: null, isExcluded: false }
+    ] as never;
+    try {
+      renderPage();
+      const held = await screen.findByRole("link", { name: "The Matrix (1999)" });
+      expect(held).toHaveAttribute("href", "/movies/m1");
+      const row = held.closest("li")!;
+      expect(within(row).getByText("In your library")).toBeInTheDocument();
+
+      const missing = screen.getByRole("link", { name: "The Matrix Reloaded (2003)" });
+      expect(missing).toHaveAttribute("href", "https://www.themoviedb.org/movie/604");
+      expect(missing.closest("li")!).toHaveTextContent("Not in your library");
+    } finally {
+      members.c1 = before;
+    }
+  });
+});
