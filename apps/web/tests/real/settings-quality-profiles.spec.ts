@@ -88,4 +88,21 @@ test.describe("Quality profiles", () => {
     await drawer.getByLabel("Profile name").fill(`Edited ${stamp}`);
     await expect(duplicate).toBeDisabled();
   });
+
+  test("closing a changed profile drawer asks first, Cancel keeps the edit, and Discard leaves the stored profile as it was", async ({ page }) => {
+    await row(page, name).click();
+    const drawer = page.getByRole("dialog");
+    await drawer.getByPlaceholder("Name this quality profile").fill(`Changed ${stamp}`);
+    await page.keyboard.press("Escape");
+    const ask = page.getByRole("dialog", { name: "Discard unsaved changes?" });
+    await expect(ask).toBeVisible();
+    await ask.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(drawer.getByPlaceholder("Name this quality profile")).toHaveValue(`Changed ${stamp}`);
+    await page.keyboard.press("Escape");
+    await ask.getByRole("button", { name: "Discard", exact: true }).click();
+    await expect(drawer).toHaveCount(0);
+    const names = (await profiles(page)).map((profile) => profile.name);
+    expect(names).toContain(name);
+    expect(names).not.toContain(`Changed ${stamp}`);
+  });
 });
