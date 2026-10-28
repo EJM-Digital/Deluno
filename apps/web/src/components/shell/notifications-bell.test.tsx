@@ -127,6 +127,16 @@ describe("notifications bell (#907)", () => {
     expect(snapshot.summary.leftovers).toBe(2);
   });
 
+  it("caps the count at 99+ above 99, and says 1 thing needs in the singular", () => {
+    fetchPageItems.mockResolvedValue([]);
+    const { unmount } = render(<MemoryRouter><NotificationsBell attention={{ ...attention, total: 150 }} /></MemoryRouter>);
+    expect(screen.getByRole("button", { name: "Notifications — 150 things need a look" }).textContent).toBe("99+");
+    unmount();
+
+    render(<MemoryRouter><NotificationsBell attention={{ ...attention, total: 1 }} /></MemoryRouter>);
+    expect(screen.getByRole("button", { name: "Notifications — 1 thing needs a look" }).textContent).toBe("1");
+  });
+
   it("lists Needs you first, with the server's rows and their buttons, then the recent events", async () => {
     fetchPageItems.mockResolvedValue(events);
     const user = userEvent.setup();
