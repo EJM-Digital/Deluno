@@ -114,6 +114,27 @@ public sealed class ImportingAFilmOnDiskTests
     }
 
     [Fact]
+    public async Task An_imported_file_is_renamed_to_the_library_pattern_while_the_dispatch_keeps_the_release_name_it_was_grabbed_as()
+    {
+        await using var world = await StartWorldAsync(new ScriptedProbe(_ => ScriptedProbe.Good()));
+        Assert.True((await world.App.Client.PatchAsJsonAsync("/api/settings", new { renameOnImport = true })).IsSuccessStatusCode);
+        var movie = await world.AddMovieAsync("Sintel", 2010);
+        var source = world.WriteDownload(Release + ".mkv", fill: 0x78);
+        var dispatch = await world.RecordDispatchAsync(movie.Id, Release);
+
+        var result = await world.ImportAsync(RealDiskLibrary.Request(source, "Sintel", 2010, mode: "copy", dispatchId: dispatch));
+
+        Assert.True(result.Succeeded, result.Message);
+        var library = result.Response!.Preview.DestinationPath;
+        Assert.True(File.Exists(library));
+        Assert.NotEqual(Release + ".mkv", Path.GetFileName(library));
+        var read = await world.App.Client.GetFromJsonAsync<JsonElement>($"/api/v1/download-dispatches/{dispatch}");
+        var journey = read.GetProperty("timeline").EnumerateArray().Single(item => item.GetProperty("eventType").GetString() == "file_provenance_recorded");
+        using var details = JsonDocument.Parse(journey.GetProperty("detailsJson").GetString()!);
+        Assert.Equal(Release, details.RootElement.GetProperty("ReleaseNameEvidence").GetString());
+    }
+
+    [Fact]
     public async Task A_copy_import_leaves_two_separate_files_so_the_inspector_says_they_are_not_linked()
     {
         await using var world = await StartWorldAsync(new ScriptedProbe(_ => ScriptedProbe.Good()));

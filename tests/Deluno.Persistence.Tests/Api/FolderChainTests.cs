@@ -267,6 +267,57 @@ public sealed class FolderChainTests
         Assert.Contains("could not be checked", category.GetProperty("message").GetString());
     }
 
+    /// <summary>Runs the real scheduled System > Health check (#909) over the real library and its real folders on disk.</summary>
+    private static async Task<Deluno.Contracts.HealthCheckOutcome> ChainHealthRowAsync(ApplicationTestHost app, string libraryId)
+    {
+        using var scope = app.Services.CreateScope();
+        var check = scope.ServiceProvider.GetServices<Deluno.Worker.HealthChecks.IHealthCheck>().Single(candidate => candidate.GetType().Name == "LibraryFolderChainHealthCheck");
+        var outcomes = await check.RunAsync(CancellationToken.None);
+        return Assert.Single(outcomes, outcome => outcome.Id == $"library:{libraryId}:folder-chain");
+    }
+
+    [Fact]
+    public async Task The_health_row_of_a_library_whose_client_saves_where_it_expects_reads_ok_over_real_folders()
+    {
+        var client = new FakeClient();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => Use(services, client));
+        var scene = await SceneAsync(app, processor: false);
+        client.Result = Ready(scene.Downloads);
+        Assert.True(Directory.Exists(scene.Downloads));
+
+        var row = await ChainHealthRowAsync(app, scene.LibraryId);
+
+        Assert.Equal(Deluno.Contracts.HealthCheckStatuses.Ok, row.Status);
+    }
+
+    [Fact]
+    public async Task The_health_row_of_a_library_whose_client_saves_somewhere_else_reads_problem_and_names_both_real_folders()
+    {
+        var client = new FakeClient();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => Use(services, client));
+        var scene = await SceneAsync(app, processor: false);
+        var elsewhere = Directory.CreateDirectory(Path.Combine(app.DataRoot, "Transmission")).FullName;
+        client.Result = Ready(elsewhere);
+
+        var row = await ChainHealthRowAsync(app, scene.LibraryId);
+
+        Assert.Equal(Deluno.Contracts.HealthCheckStatuses.Problem, row.Status);
+        Assert.Contains(elsewhere, row.Message);
+        Assert.Contains(scene.Downloads, row.Message);
+    }
+
+    [Fact]
+    public async Task The_health_row_of_a_library_whose_client_cannot_be_asked_reads_unknown_not_problem()
+    {
+        var client = new FakeClient { Throw = true };
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => Use(services, client));
+        var scene = await SceneAsync(app, processor: false);
+
+        var row = await ChainHealthRowAsync(app, scene.LibraryId);
+
+        Assert.Equal(Deluno.Contracts.HealthCheckStatuses.Unknown, row.Status);
+    }
+
     private sealed record Scene(string LibraryId, string Downloads);
 
     private static IEnumerable<string?> Steps(JsonElement report)
