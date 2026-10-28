@@ -200,9 +200,9 @@ export function LibraryCreateDialog({
                   />
                 </div>
               ) : null}
-              {createForm.searchNow ? <AutomationPausedNotice context="add" noun={variant === "movies" ? "film" : "show"} /> : null}
+              {createForm.monitored && createForm.searchNow ? <AutomationPausedNotice context="add" noun={variant === "movies" ? "film" : "show"} /> : null}
               <div className="inline-flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-                <label className="inline-flex select-none items-center gap-2"><Checkbox checked={createForm.searchNow} onCheckedChange={(searchNow) => setCreateForm((current) => ({ ...current, searchNow }))} />Search for it as soon as it is added</label>
+                <label className="inline-flex select-none items-center gap-2"><Checkbox checked={createForm.monitored && createForm.searchNow} disabled={!createForm.monitored} onCheckedChange={(searchNow) => setCreateForm((current) => ({ ...current, searchNow }))} />Search for it as soon as it is added</label>
               </div>
             </div>
             <div className="flex gap-2">

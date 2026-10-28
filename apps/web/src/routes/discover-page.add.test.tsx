@@ -124,6 +124,23 @@ describe("Add a TV show from Discover", () => {
     await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith("Reacher added."));
   });
 
+  it("with Monitor it off the search switch is off and unavailable, and the add asks for no search (#1399)", async () => {
+    await renderTv();
+    fireEvent.click(screen.getByRole("button", { name: "Add Reacher" }));
+    await waitFor(() => expect(screen.getByRole("dialog", { name: /Add Reacher/ })).toBeInTheDocument());
+
+    const search = screen.getByRole("switch", { name: /Search for it as soon as it is added/ });
+    expect(search).toBeEnabled();
+    fireEvent.click(screen.getByRole("switch", { name: /Monitor it/ }));
+    expect(search).toBeDisabled();
+    expect(search).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    await waitFor(() => expect(addCall()).toBeDefined());
+    expect(addCall()).toMatchObject({ monitored: false, searchForMissingNow: false, searchForCutoffUnmetNow: false });
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith("Reacher added."));
+  });
+
   it("a refused add toasts the server's own sentence, keeps the drawer open and leaves the card unmarked", async () => {
     addReply = () => reply(false, "Choose a quality profile made for this kind of title.", 400);
     await renderTv();

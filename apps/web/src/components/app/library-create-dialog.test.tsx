@@ -98,6 +98,23 @@ function renderDialog(
   return { onSelectResult, onOpenHeldResult, setCreateForm };
 }
 
+/** #1399: a title kept unmonitored is never searched for, so the box is off and unavailable. */
+describe("the add dialog's search box", () => {
+  it.each(["movies", "shows"] as const)("is ticked and usable while Monitored is on (%s)", (variant) => {
+    renderDialog([], variant);
+    const box = screen.getByRole("checkbox", { name: "Search for it as soon as it is added" });
+    expect(box).toBeEnabled();
+    expect(box).toBeChecked();
+  });
+
+  it.each(["movies", "shows"] as const)("is off and unavailable while Monitored is off, whatever the form holds (%s)", (variant) => {
+    renderDialog([], variant, { monitored: false, searchNow: true });
+    const box = screen.getByRole("checkbox", { name: "Search for it as soon as it is added" });
+    expect(box).toBeDisabled();
+    expect(box).not.toBeChecked();
+  });
+});
+
 /**
  * Monitor presets (#991): only shows have episodes to pick among, and the
  * choice only matters while the show is actually going to be monitored.

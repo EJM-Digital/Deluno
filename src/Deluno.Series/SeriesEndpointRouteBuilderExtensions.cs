@@ -3775,9 +3775,9 @@ public static class SeriesEndpointRouteBuilderExtensions
                 // with the choice off, the next scheduled search finds the show.
                 // Targeted at this one show, the same shape as a recovery retry or an
                 // external redownload: real work for one id, not a fresh sweep.
-                var searchOnAddRequested =
-                    (request.SearchForMissingNow && decision.WantedStatus == WantedStatuses.Missing) ||
-                    (request.SearchForCutoffUnmetNow && decision.WantedStatus == WantedStatuses.Upgrade);
+                var searchOnAddRequested = request.Monitored &&
+                    ((request.SearchForMissingNow && decision.WantedStatus == WantedStatuses.Missing) ||
+                    (request.SearchForCutoffUnmetNow && decision.WantedStatus == WantedStatuses.Upgrade));
                 if (searchOnAddRequested)
                 {
                     pendingSearches.Add(new

@@ -1,4 +1,4 @@
-import { configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -172,5 +172,30 @@ describe("tags on add", () => {
     await waitFor(() => expect(calls.filter((c) => c.url === "/api/movies")).toHaveLength(1));
     expect(calls.find((c) => c.url === "/api/movies")!.body.tags).toEqual([]);
     expect(window.localStorage.getItem("deluno:add-tags:lib-a")).toBeNull();
+  });
+});
+
+describe("search on add (#1399)", () => {
+  async function addManually(untickMonitor: boolean) {
+    const dialog = await openDialog();
+    fireEvent.change(titleBox(dialog), { target: { value: "Home Movie" } });
+    if (untickMonitor) fireEvent.click(within(dialog).getByRole("checkbox", { name: "Monitor it" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add movie manually" }));
+    await waitFor(() => expect(calls.filter((c) => c.url === "/api/movies")).toHaveLength(1));
+    return calls.find((c) => c.url === "/api/movies")!.body;
+  }
+
+  it("a monitored add asks for the search", async () => {
+    expect(await addManually(false)).toMatchObject({ monitored: true, searchForMissingNow: true, searchForCutoffUnmetNow: true });
+  });
+
+  it("an unmonitored add asks for no search, and the search box is off and unavailable", async () => {
+    const dialog = await openDialog();
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "Monitor it" }));
+    const box = within(dialog).getByRole("checkbox", { name: "Search for it as soon as it is added" });
+    expect(box).toBeDisabled();
+    expect(box).not.toBeChecked();
+    cleanup();
+    expect(await addManually(true)).toMatchObject({ monitored: false, searchForMissingNow: false, searchForCutoffUnmetNow: false });
   });
 });
