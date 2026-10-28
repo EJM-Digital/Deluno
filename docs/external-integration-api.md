@@ -651,7 +651,7 @@ against this table gets exactly these; each row is held by a test
 | `400` | `libraryId` is missing or names no library. Deluno will not guess an import destination. | Validation problem on `libraryId`. |
 | `400` | A completed (or partial) `outputPath` is outside the library's configured clean output folder; or `sourcePath` does not match the hand-off; or the file is recognisably another download's. Nothing was queued. | Validation problem on `outputPath` or `sourcePath`. |
 | `401` | No credentials. | none |
-| `403` | The key lacks the `imports` scope. | `{ "message": "This API key does not include the required scope: imports." }` |
+| `403` | The key holds neither the `imports` nor the `queue` scope. | `{ "error": "This credential does not have the 'imports' or 'queue' scope.", "required": ["imports", "queue"], "granted": [ ... ] }` |
 | `409` | The library is set to standard import, so it accepts no processor events. | `{ "message" }` |
 | `409` | No waiting hand-off matches `handoffId` (or the exact `sourcePath` Deluno recorded). Deluno never creates a hand-off from a callback. | `{ "message" }` |
 | `202` | `handoffId` is an older hand-off of a source path that Deluno has since sent again (a release removed and sent again gets a new `handoffId` for the same path). The report is settled against that older hand-off and nothing else changes; the new hand-off settles from its own report. The shape is the repeat-report one above. | `{ "status": "superseded", "handoffId", "alreadyHandled": true }` |
