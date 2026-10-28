@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { api, openScreen } from "../helpers/real";
+import { api, openScreen, recordRequests } from "../helpers/real";
 import { untilQuiet } from "../helpers/settle";
 
 /**
@@ -53,6 +53,75 @@ test.describe("General settings", () => {
       await expect.poll(async () => (await settings(page)).keepComputerAwake).toBe(!(before.keepComputerAwake ?? false));
     } finally {
       await patch(page, { checkConnectionsRegularly: before.checkConnectionsRegularly ?? true, keepComputerAwake: before.keepComputerAwake ?? false });
+    }
+  });
+
+  test("the How Deluno is reached card shows the port the server reports and Yes, No or Unknown for other devices", async ({ page }) => {
+    const lan = (await api<{ state: string; port: number | null }>(page, "GET", "/api/system/lan-access")).body;
+    const card = page;
+    await expect(card.getByText("Read-only — set outside the app")).toBeVisible();
+    await expect(card.locator("[role=row]:has-text('Port')").first()).toContainText(String(lan.port));
+    const expected = lan.state === "open" ? "Yes" : lan.state === "blocked" ? "No" : "Unknown from here";
+    await expect(card.locator("[role=row]:has-text('Other devices on your network can connect')").first()).toContainText(expected);
+    await expect(card.getByText("Change either there and restart", { exact: false })).toBeVisible();
+  });
+
+  test("turning the tracker-definition schedule on sends {isEnabled, intervalHours}, shows Check every, and a new hour count saves when the field is left", async ({ page }) => {
+    const get = async () => (await api<{ isEnabled: boolean; intervalHours: number }>(page, "GET", "/api/trackers/definitions/update-check")).body;
+    const before = await get();
+    const sw = page.getByRole("switch", { name: "Update tracker definitions automatically" });
+    try {
+      await api(page, "PUT", "/api/trackers/definitions/update-check", { isEnabled: false, intervalHours: 24 });
+      await page.reload();
+      await untilQuiet(page);
+      await expect(sw).not.toBeChecked();
+      await expect(page.getByLabel("Check every")).toHaveCount(0);
+      const requests = recordRequests(page);
+      await sw.click();
+      await expect(page.getByLabel("Check every")).toHaveValue("24");
+      await page.getByLabel("Check every").fill("48");
+      await page.getByLabel("Check every").blur();
+      await expect.poll(async () => (await get()).intervalHours).toBe(48);
+      requests.stop();
+      const puts = requests.find("PUT", /update-check$/);
+      expect(puts[0].body).toEqual({ isEnabled: true, intervalHours: 24 });
+      expect(puts.at(-1)?.body).toEqual({ isEnabled: true, intervalHours: 48 });
+      expect((await get()).isEnabled).toBe(true);
+      await sw.click();
+      await expect(page.getByLabel("Check every")).toHaveCount(0);
+      await expect.poll(async () => (await get()).isEnabled).toBe(false);
+    } finally {
+      await api(page, "PUT", "/api/trackers/definitions/update-check", { isEnabled: before.isEnabled, intervalHours: before.intervalHours });
+    }
+  });
+
+  test("leaving with an unsaved helper address asks, Cancel stays, Discard and continue throws it away, Save and continue saves it", async ({ page }) => {
+    const helper = async () => ((await settings(page)) as { cloudflareHelperUrl?: string | null }).cloudflareHelperUrl ?? "";
+    const original = await helper();
+    const address = `http://127.0.0.1:${8000 + (Date.now() % 900)}`;
+    const field = page.getByLabel("Helper address");
+    const prompt = page.getByRole("dialog", { name: "Unsaved changes" });
+    try {
+      await field.fill(address);
+      await page.getByRole("link", { name: "Dashboard" }).first().click();
+      await expect(prompt).toBeVisible();
+      await prompt.getByRole("button", { name: "Cancel", exact: true }).click();
+      await expect(page).toHaveURL(/\/settings\/general/);
+      await expect(field).toHaveValue(address);
+      await page.getByRole("link", { name: "Dashboard" }).first().click();
+      await prompt.getByRole("button", { name: "Discard and continue", exact: true }).click();
+      await expect(page).not.toHaveURL(/settings\/general/);
+      expect(await helper()).toBe(original);
+
+      await openScreen(page, "/settings/general");
+      await untilQuiet(page);
+      await field.fill(address);
+      await page.getByRole("link", { name: "Dashboard" }).first().click();
+      await prompt.getByRole("button", { name: "Save and continue", exact: true }).click();
+      await expect(page).not.toHaveURL(/settings\/general/);
+      await expect.poll(helper).toBe(address);
+    } finally {
+      await patch(page, { cloudflareHelperUrl: original } as Settings);
     }
   });
 });
