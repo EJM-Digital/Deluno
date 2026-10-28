@@ -6,8 +6,10 @@
 //
 // .NET: Stryker.NET's diff mode (`--since:<sha>`) mutates only the lines the change touched, in every production project
 // whose source changed. The Windows-only tray is left to the nightly run (it cannot build on Linux).
-// JavaScript: StrykerJS has no diff mode, so `--mutate` lists the changed source files of apps/web, sdk/typescript and
-// services/metadata-gateway; every line of a changed file is mutated.
+// JavaScript: StrykerJS has no diff mode, but `--mutate` takes line ranges (`file:start-end`), so it is given the lines the
+// change added or altered in each changed source file of apps/web, sdk/typescript and services/metadata-gateway, the way
+// Stryker.NET's diff mode works. A one-line fix in a large page no longer has to answer for every old line of it (29 Oct 2026:
+// a #1395 fix met 887 survivors that were there before it).
 // Each run leaves <dir>/<project>.json; `check-mutation-ratchet.mjs --reports <dir> --survivors` then fails on any
 // survivor that docs/testing/mutation-equivalents.json does not list.
 import { execFileSync } from "node:child_process";
@@ -32,6 +34,23 @@ export function plan(changed) {
     if (hit.length) js.push({ name: p.name, dir: p.dir, files: hit.map((f) => f.slice(p.dir.length + 1)).sort() });
   }
   return { dotnet, js };
+}
+
+// The lines a unified diff with no context (`git diff -U0`) adds or changes in the new file, as [start, end] pairs. A hunk that
+// only removes lines leaves nothing to mutate.
+export function changedRanges(diffText) {
+  const ranges = [];
+  for (const match of diffText.matchAll(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/gm)) {
+    const start = Number(match[1]);
+    const count = match[2] === undefined ? 1 : Number(match[2]);
+    if (count > 0) ranges.push([start, start + count - 1]);
+  }
+  return ranges;
+}
+
+// StrykerJS mutate entries for one file: one `file:start-end` per changed range, or nothing when no line was added.
+export function mutateEntries(file, ranges) {
+  return ranges.map(([start, end]) => `${file}:${start}-${end}`);
 }
 
 function run(cmd, args, opts = {}) {
@@ -63,7 +82,13 @@ function main() {
     else console.log(`${name}: no mutants in the changed lines.`);
   }
   for (const j of p.js) {
-    run("npx", ["stryker", "run", "--mutate", j.files.join(",")], { cwd: j.dir });
+    const entries = j.files.flatMap((file) => mutateEntries(file, changedRanges(
+      execFileSync("git", ["diff", "-U0", `${base}...HEAD`, "--", `${j.dir}/${file}`], { encoding: "utf8" }))));
+    if (entries.length === 0) {
+      console.log(`${j.name}: the change only removed lines; nothing to mutate.`);
+      continue;
+    }
+    run("npx", ["stryker", "run", "--mutate", entries.join(",")], { cwd: j.dir });
     const report = path.join(j.dir, "reports", "mutation", `${j.name}.json`);
     if (existsSync(report)) copyFileSync(report, path.join(out, `${j.name}.json`));
   }
