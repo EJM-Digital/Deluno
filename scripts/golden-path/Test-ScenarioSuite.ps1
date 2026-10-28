@@ -920,8 +920,10 @@ if ($edge) {
             $page = New-CdpPage 'about:blank'
             $html = '<html><body><h1>Queue</h1><button onclick="document.title=''clicked''">Send to Weir again</button><div role="dialog">Drawer text</div></body></html>'
             Send-Cdp -Page $page -Method 'Page.navigate' -Params @{ url = 'data:text/html,' + [uri]::EscapeDataString($html) } | Out-Null
-            Start-Sleep -Seconds 1 # reason: UI settle after input; Windows raises no event for it
-            Check 'the page text is read' ((Get-PageText -Page $page) -match 'Queue')
+            # The page is read once it has loaded (a fixed second was too short on a CI runner, 28 Oct).
+            $read = $false
+            for ($i = 0; $i -lt 40 -and -not $read; $i++) { Start-Sleep -Milliseconds 250; $read = (Get-PageText -Page $page) -match 'Queue' } # reason: poll interval inside a loop bounded by its deadline
+            Check 'the page text is read' $read
             Check 'the open drawer text is read' ((Get-DrawerText -Page $page) -match 'Drawer text')
             Check 'a button is found by its text and pressed with a real click' (Click-PageText -Page $page -Pattern '^Send to .* again')
             Start-Sleep -Milliseconds 300 # reason: UI settle after input; Windows raises no event for it
