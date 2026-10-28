@@ -35,6 +35,7 @@ public static class TransfersSeedTestEndpoints
             IJobScheduler scheduler,
             Deluno.Movies.Data.IMovieCatalogRepository movies,
             IDelunoDatabaseConnectionFactory databases,
+            Deluno.Integrations.DownloadClients.IDownloadTelemetrySnapshotStore telemetryStore,
             TimeProvider timeProvider,
             CancellationToken cancellationToken) =>
         {
@@ -129,6 +130,10 @@ public static class TransfersSeedTestEndpoints
                     new ProcessorHandoffObservation(state, request.ProcessorMessage, request.QueuePosition, request.ScheduledForUtc, now, now, request.Unreachable == true ? now : null, now),
                     cancellationToken);
             }
+
+            // The screen is served from the last capture of the clients, which an idle install renews every twenty seconds (#1379):
+            // a test that seeds a download and opens Transfers at once would otherwise read a capture older than the seed.
+            await telemetryStore.RefreshAsync(TimeSpan.FromTicks(-1), cancellationToken);
 
             return Results.Ok(new { handoffId = handoff?.Id, dispatchId, importJobId, recoveryCaseId, clientId, queueItemId });
         });

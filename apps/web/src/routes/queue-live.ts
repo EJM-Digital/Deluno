@@ -69,6 +69,11 @@ export function applyDownloadProgress(client: Cache, event: DownloadProgressEven
   return true;
 }
 
+function isListed(id: string): boolean {
+  const overview = queryClient.getQueryData<DownloadTelemetryOverview>(sharedSources.telemetry.key);
+  return overview?.clients.some((entry) => entry.queue.some((item) => item.id === id)) ?? false;
+}
+
 /** A client became unreachable or reachable, or was paused or resumed: its row in Clients says so. */
 export function applyClientStateToTelemetry(client: Cache, event: ClientStateChangedEvent): boolean {
   const overview = client.getQueryData<DownloadTelemetryOverview>(sharedSources.telemetry.key);
@@ -153,7 +158,11 @@ export function useTransfersLiveEvents(refreshDispatches: () => void, refreshAct
       timer.current = null;
       const readings = [...buffer.current.values()];
       buffer.current.clear();
-      for (const reading of readings) applyDownloadProgress(queryClient, reading);
+      // A reading for a download the screen does not list means the screen is older than the client's answer (a download that
+      // arrived with no "added" push of its own): the list is read again, once, and the row appears (#1379).
+      let unknown = false;
+      for (const reading of readings) if (!applyDownloadProgress(queryClient, reading) && !isListed(reading.id)) unknown = true;
+      if (unknown) refreshTelemetry();
     }, PROGRESS_FLUSH_MS);
   });
   useLiveEvent("QueueItemStatusChanged", (event) => applyQueueStatus(queryClient, event));
