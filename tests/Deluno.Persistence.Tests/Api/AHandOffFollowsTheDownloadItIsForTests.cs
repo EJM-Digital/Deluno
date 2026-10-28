@@ -31,7 +31,7 @@ namespace Deluno.Persistence.Tests.Api;
 ///
 /// Everything here goes through the real endpoints, repositories and planner.
 /// </summary>
-public sealed class AHandOffFollowsTheDownloadItIsForTests
+public sealed partial class AHandOffFollowsTheDownloadItIsForTests
 {
     private const string Release = "Nosferatu.1922.1080p.BluRay.x264-HD4U";
     private const string Client = "deluge-1";

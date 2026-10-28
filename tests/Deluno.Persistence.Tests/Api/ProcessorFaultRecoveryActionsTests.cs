@@ -67,6 +67,35 @@ public sealed class ProcessorFaultRecoveryActionsTests
     }
 
     [Fact]
+    public async Task Import_original_stores_the_hand_off_as_released_and_a_released_hand_off_reads_as_an_ordinary_download_ready_to_import()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var (library, dispatchId) = await SeedAsync(app);
+        var connection = await CreateConnectionAsync(app);
+        var handoff = await CreateCompletedHandoffAsync(app, library, connection.Name);
+        var recoveryCase = await AddCaseAsync(app, dispatchId);
+        // The download's own file is on disk, where the client left it.
+        var original = Path.Combine(app.DataRoot, "downloads", Release, Release + ".mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(original)!);
+        await File.WriteAllBytesAsync(original, new byte[64]);
+
+        var response = await app.Client.PostAsJsonAsync($"/api/movies/import-recovery/{recoveryCase.Id}/import-original", new { });
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+
+        // The released state is in the real database file, not only in the answer.
+        Assert.Equal(ProcessorHandoffStatuses.Released, await ApiScenes.TextAsync(app, "platform", $"SELECT status FROM processor_handoffs WHERE id = '{handoff.Id}';"));
+        var stored = await app.Services.GetRequiredService<IProcessorRepository>().GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
+        Assert.Equal(
+            Deluno.Integrations.DownloadClients.DownloadQueueStatuses.ImportReady,
+            Deluno.Integrations.DownloadClients.ProcessorHandoffQueueStatus.Resolve(
+                stored!,
+                new Dictionary<string, JobQueueItem>(),
+                Deluno.Integrations.DownloadClients.DownloadQueueStatuses.ImportReady));
+        // Releasing a hand-off never removes the original.
+        Assert.True(File.Exists(original));
+    }
+
+    [Fact]
     public async Task Search_again_queues_a_replacement_search_and_never_blocklists_the_release()
     {
         await using var app = await ApplicationTestHost.StartAsync();
