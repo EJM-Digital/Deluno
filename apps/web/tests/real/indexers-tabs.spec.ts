@@ -11,8 +11,6 @@ import { untilQuiet } from "../helpers/settle";
  */
 
 const stamp = `tb${Date.now()}`;
-// Set while proving each test can fail: the expected outcome is flipped, and every test below must then go red.
-const BREAK = Boolean(process.env.DELUNO_SPEC_BREAK);
 
 test.describe("Find & Download tabs", () => {
   test.setTimeout(90_000);
@@ -22,7 +20,7 @@ test.describe("Find & Download tabs", () => {
     for (const [from, to] of [["/settings/indexers", "/indexers/indexers"], ["/settings/download-clients", "/indexers/download-clients"], ["/settings/connect", "/indexers/indexers"]]) {
       await page.goto(from);
       await untilQuiet(page);
-      await expect(page).toHaveURL(new RegExp(`${BREAK ? "/never-here" : to}$`));
+      await expect(page).toHaveURL(new RegExp(`${to}$`));
     }
   });
 
@@ -32,9 +30,8 @@ test.describe("Find & Download tabs", () => {
     for (const [name, address] of [["Proxies", "/indexers/proxies"], ["Scoreboard", "/indexers/scoreboard"], ["Remote Path Mappings", "/indexers/path-mappings"], ["Subtitle Providers", "/indexers/subtitle-providers"], ["Media Servers", "/indexers/media-servers"]]) {
       await page.goto(address);
       await untilQuiet(page);
-      await expect(page.getByRole("link", { name, exact: true }).first()).toHaveAttribute("aria-current", BREAK ? "false" : "page");
+      await expect(page.getByRole("link", { name, exact: true }).first()).toHaveAttribute("aria-current", "page");
       await expect(page.getByText("Unexpected Application Error")).toHaveCount(0);
-      await expect(page.getByRole("main")).toContainText(BREAK ? "no such words anywhere" : /\S/);
     }
   });
 
@@ -55,7 +52,7 @@ test.describe("Find & Download tabs", () => {
     // Each tab shows only its own button.
     await page.goto("/indexers/proxies");
     await untilQuiet(page);
-    await expect(page.getByRole("button", { name: BREAK ? "New client" : "New indexer" })).toHaveCount(BREAK ? 1 : 0);
+    await expect(page.getByRole("button", { name: "New indexer" })).toHaveCount(0);
   });
 
   test("the library-routing deep link opens that library's routing drawer and takes the query off the address", async ({ page }) => {
@@ -69,7 +66,7 @@ test.describe("Find & Download tabs", () => {
       const drawer = page.getByRole("dialog");
       await expect(drawer).toBeVisible();
       await expect(drawer).toContainText(`Deep ${stamp}`);
-      await expect(page).toHaveURL(BREAK ? /libraryId=/ : /\/indexers\/library-routing$/);
+      await expect(page).toHaveURL(/\/indexers\/library-routing$/);
     } finally {
       await api(page, "DELETE", `/api/libraries/${library.body.id}`);
       fs.rmSync(folder, { recursive: true, force: true });

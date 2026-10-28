@@ -8,8 +8,6 @@ import { untilQuiet } from "../helpers/settle";
  */
 
 const stamp = `px${Date.now()}`;
-// Set while proving each test can fail: the expected outcome is flipped, and every test below must then go red.
-const BREAK = Boolean(process.env.DELUNO_SPEC_BREAK);
 const httpAddress = `http://${stamp}-http.example.test:3128`;
 const helperAddress = `http://${stamp}-helper.example.test:8191`;
 
@@ -44,7 +42,7 @@ test.describe("Proxies", () => {
     for (const column of ["Name", "Type", "Used by", "On"]) await expect(page.getByRole("columnheader", { name: column })).toBeVisible();
     const line = row(page, httpAddress);
     await expect(line).toContainText("HTTP");
-    await expect(line).toContainText(BREAK ? "2 indexers" : "1 indexer");
+    await expect(line).toContainText("1 indexer");
     await expect(line).toContainText("On");
   });
 
@@ -60,7 +58,7 @@ test.describe("Proxies", () => {
 
     await row(page, httpAddress).click();
     const drawer = page.getByRole("dialog");
-    await expect(drawer.getByText(BREAK ? "No indexer is assigned" : `1 indexer: Uses proxy ${stamp}`)).toBeVisible();
+    await expect(drawer.getByText(`1 indexer: Uses proxy ${stamp}`)).toBeVisible();
     await page.keyboard.press("Escape");
     await row(page, `${stamp}-idle.example.test`).click();
     await expect(page.getByRole("dialog").getByText("No indexer is assigned to this proxy yet.")).toBeVisible();
@@ -76,7 +74,7 @@ test.describe("Proxies", () => {
 
     await row(page, helperAddress).click();
     let drawer = page.getByRole("dialog");
-    await expect(drawer.getByLabel("Username")).toHaveCount(BREAK ? 1 : 0);
+    await expect(drawer.getByLabel("Username")).toHaveCount(0);
     await expect(drawer.getByLabel("Password")).toHaveCount(0);
     await page.keyboard.press("Escape");
 
@@ -91,7 +89,7 @@ test.describe("Proxies", () => {
     requests.stop();
     const put = requests.find("PUT", /\/api\/indexer-proxies\//)[0];
     expect(put, "the save was sent").toBeTruthy();
-    expect(Boolean((put.body as { password?: string }).password)).toBe(BREAK);
+    expect(Boolean((put.body as { password?: string }).password)).toBe(false);
     expect((await byAddress(page, httpAddress))?.username).toBe("renamed");
     const unreadable = (await byAddress(page, httpAddress)) as (Proxy & { secretUnreadable?: boolean }) | undefined;
     expect(unreadable?.secretUnreadable ?? false).toBe(false);
@@ -103,8 +101,7 @@ test.describe("Proxies", () => {
     const made = await api<Proxy>(page, "POST", "/api/indexer-proxies", { proxyType: "http", address: httpAddress, isEnabled: true });
     expect(made.status, JSON.stringify(made.body)).toBeLessThan(300);
     await expect(row(page, httpAddress)).toBeVisible();
-    // Proving the check can fail: with the removal left out the row must stay, so the "gone" expectation below goes red.
-    if (!BREAK) expect((await api(page, "DELETE", `/api/indexer-proxies/${made.body.id}`)).status).toBeLessThan(300);
+    expect((await api(page, "DELETE", `/api/indexer-proxies/${made.body.id}`)).status).toBeLessThan(300);
     await expect(row(page, httpAddress)).toHaveCount(0);
   });
 });

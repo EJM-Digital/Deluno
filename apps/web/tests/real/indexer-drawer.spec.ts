@@ -13,8 +13,6 @@ import { untilQuiet } from "../helpers/settle";
 
 const stamp = `ix${Date.now()}`;
 const url = (name: string) => `http://${name}-${stamp}.example.test`;
-// Set while proving each test can fail: the expected outcome is flipped, and every test below must then go red.
-const BREAK = Boolean(process.env.DELUNO_SPEC_BREAK);
 
 interface Indexer {
   id: string; name: string; baseUrl: string; isEnabled: boolean; healthStatus?: string; requestIntervalSeconds?: number | null;
@@ -84,8 +82,7 @@ test.describe("Indexer drawer", () => {
     expect(routedItem && unroutedItem).toBeTruthy();
     const ids = routing.body.sources.map((source) => source.indexerId);
     expect(ids).toContain(routedItem!.id);
-    if (BREAK) expect(ids).toContain(unroutedItem!.id);
-    else expect(ids).not.toContain(unroutedItem!.id);
+    expect(ids).not.toContain(unroutedItem!.id);
   });
 
   test("a fresh create form has a usable Add, and an incomplete one says what is missing instead of doing nothing", async ({ page }) => {
@@ -97,7 +94,7 @@ test.describe("Indexer drawer", () => {
     const add = drawer.getByRole("button", { name: "Add indexer" });
     await expect(add).toBeEnabled();
     await add.click();
-    await expect(drawer.getByText(BREAK ? "never shown" : /API key/i).first()).toBeVisible();
+    await expect(drawer.getByText(/API key/i).first()).toBeVisible();
     await expect(drawer).toBeVisible();
     expect((await indexers(page)).length).toBe(before);
   });
@@ -115,7 +112,7 @@ test.describe("Indexer drawer", () => {
     await expect(drawer.getByText("Saved just now")).toBeVisible();
     await closeDrawer(page);
     const after = await byUrl(page, url("enabled"));
-    expect(after?.isEnabled).toBe(!BREAK);
+    expect(after?.isEnabled).toBe(true);
     expect(after?.healthStatus).toBe("untested");
   });
 
@@ -126,7 +123,7 @@ test.describe("Indexer drawer", () => {
     await untilQuiet(page);
     const drawer = await openIndexer(page, "seed");
     const field = drawer.getByLabel("Season-pack seed time");
-    await expect(field).toHaveCount(BREAK ? 1 : 0);
+    await expect(field).toHaveCount(0);
     await drawer.getByRole("radio", { name: "Yes, it is strict" }).click();
     await expect(field).toBeVisible();
     await field.fill("720");
@@ -150,7 +147,7 @@ test.describe("Indexer drawer", () => {
     await drawer.getByRole("button", { name: "Save indexer" }).click();
     await expect(drawer.getByText("Saved just now")).toBeVisible();
     await closeDrawer(page);
-    expect((await byUrl(page, url("interval")))?.requestIntervalSeconds).toBe(BREAK ? 11 : 10);
+    expect((await byUrl(page, url("interval")))?.requestIntervalSeconds).toBe(10);
 
     drawer = await openIndexer(page, "interval");
     await drawer.getByRole("button", { name: /Fine-tune/ }).click();
@@ -176,8 +173,7 @@ test.describe("Indexer drawer", () => {
     await expect(drawer.getByText("VIP expiring soon")).toBeVisible();
     await drawer.getByRole("button", { name: "Acknowledge" }).click();
     const acknowledged = expect.poll(async () => (await byUrl(page, url("vip")))?.vipWarningAcknowledgedExpiryUtc);
-    if (BREAK) await acknowledged.toBeFalsy();
-    else await acknowledged.toBeTruthy();
+    await acknowledged.toBeTruthy();
     await expect(drawer.getByText("VIP expiring soon")).toHaveCount(0);
   });
 });

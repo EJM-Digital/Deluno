@@ -8,8 +8,6 @@ import { untilQuiet } from "../helpers/settle";
  */
 
 const stamp = `sb${Date.now()}`;
-// Set while proving each test can fail: the expected outcome is flipped, and every test below must then go red.
-const BREAK = Boolean(process.env.DELUNO_SPEC_BREAK);
 
 interface Row { name: string; totalQueries: number; successfulGrabs: number }
 interface Snapshot { activeIndexers: number; totalIndexers: number; totalQueries: number; totalGrabs: number; successfulGrabs: number; windowDays: number; insight: string; indexers: Row[] }
@@ -45,13 +43,13 @@ test.describe("Scoreboard", () => {
     await expect(page.getByText(`${server.successfulGrabs.toLocaleString("en-US")} successful`, { exact: true })).toBeVisible();
     await expect(page.getByText("Query → grab")).toBeVisible();
     await expect(page.getByText("successful grabs per query", { exact: true }).first()).toBeVisible();
-    expect(server.totalIndexers).toBeGreaterThanOrEqual(BREAK ? 99 : 2);
+    expect(server.totalIndexers).toBeGreaterThanOrEqual(2);
   });
 
   test("Deluno's read is the server's own sentence, with the window and the retention note under it", async ({ page }) => {
     const server = await snapshot(page);
     await expect(page.getByText("Deluno's read", { exact: true })).toBeVisible();
-    await expect(page.getByText(BREAK ? "a sentence the server never says" : server.insight, { exact: true })).toBeVisible();
+    await expect(page.getByText(server.insight, { exact: true })).toBeVisible();
     await expect(page.getByText(`Window: ${server.windowDays} days. Query history is retained for 30 days and excludes credentials and full request URLs.`)).toBeVisible();
   });
 
@@ -68,7 +66,5 @@ test.describe("Scoreboard", () => {
     await expect.poll(async () => (await names()).join()).not.toBe(first.join());
     const second = await names();
     expect([first, second].map((order) => order.join()).sort()).toEqual(["alpha,beta", "beta,alpha"]);
-    // Proving the check can fail: a header that did not reverse would leave both clicks with the same order.
-    if (BREAK) expect(second).toEqual(first);
   });
 });

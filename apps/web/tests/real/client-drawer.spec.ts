@@ -8,8 +8,6 @@ import { untilQuiet } from "../helpers/settle";
  */
 
 const stamp = `cd${Date.now()}`;
-// Set while proving each test can fail: the expected outcome is flipped, and every test below must then go red.
-const BREAK = Boolean(process.env.DELUNO_SPEC_BREAK);
 const host = `client-${stamp}.example.test`;
 
 interface Client { id: string; host: string; useSsl?: boolean; urlBase?: string | null; name?: string }
@@ -44,7 +42,7 @@ test.describe("Download client drawer", () => {
     await drawer.getByRole("button", { name: "Save client" }).click();
     await expect(drawer.getByText("Saved just now")).toBeVisible();
     const saved = await mine(page);
-    expect(saved?.useSsl).toBe(!BREAK);
+    expect(saved?.useSsl).toBe(true);
     expect(saved?.urlBase).toBe("sabnzbd");
   });
 
@@ -60,7 +58,7 @@ test.describe("Download client drawer", () => {
     await expect(ask).toHaveCount(0);
     await expect(drawer.getByRole("switch", { name: "Use SSL" }).first()).toBeChecked();
     await page.keyboard.press("Escape");
-    await ask.getByRole("button", { name: BREAK ? "Keep" : "Discard", exact: true }).click();
+    await ask.getByRole("button", { name: "Discard", exact: true }).click();
     await expect(drawer).toHaveCount(0);
     requests.stop();
     expect(requests.seen.filter((r) => r.method !== "GET")).toEqual([]);
