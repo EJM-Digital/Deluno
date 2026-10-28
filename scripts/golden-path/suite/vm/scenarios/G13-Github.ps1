@@ -26,11 +26,11 @@ function Set-GithubFeedBlocked {
     $path = Get-HostsFilePath
     $lines = @(Get-Content -LiteralPath $path -ErrorAction SilentlyContinue | Where-Object { $_ -notlike "*$($script:GithubHostsTag)*" })
     if ($Blocked) { $lines += "127.0.0.1 github.com www.github.com codeload.github.com $($script:GithubHostsTag)" }
-    # Windows (Defender, the DNS client) can hold the hosts file open for a moment: "Stream was not readable" on 20 Oct. Try again
-    # for a few seconds before calling it a failure.
+    # Windows (the DNS client re-reads it after each change) can hold the hosts file open: Set-Content said "Stream was not readable"
+    # on 20 Oct and again on 29 Oct after 10 s of tries, with nothing in Defender's history. A plain write is tried for 30 s.
     for ($attempt = 1; ; $attempt++) {
-        try { Set-Content -LiteralPath $path -Value $lines -Encoding ascii -ErrorAction Stop; break }
-        catch { if ($attempt -ge 20) { throw } ; Start-Sleep -Milliseconds 500 } # reason: a retry pause while Windows holds the hosts file; no event says it was let go
+        try { [System.IO.File]::WriteAllLines($path, [string[]] $lines, [System.Text.Encoding]::ASCII); break }
+        catch { if ($attempt -ge 60) { throw "The hosts file could not be written for 30 s: $($_.Exception.Message)" } ; Start-Sleep -Milliseconds 500 } # reason: a retry pause while Windows holds the hosts file; no event says it was let go
     }
     try { & ipconfig.exe /flushdns | Out-Null } catch { }
 }
