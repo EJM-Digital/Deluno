@@ -34,6 +34,8 @@ Choosing releases:
 Fixes:
 - An update applied on Windows is now recorded in Activity as "Deluno updated
   from X to Y", the same as on Docker.
+- A new download shows on Transfers as soon as its client reports it, instead
+  of up to 20 seconds later.
 - Two quick edits to the Subtitles permission fields are both saved.
 - Editing either side of a remote path mapping saves in one step, and a path
   that is already mapped says so plainly instead of showing a server error.
