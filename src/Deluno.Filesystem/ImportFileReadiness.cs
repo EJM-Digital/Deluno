@@ -12,6 +12,9 @@ public static class ImportFileReadiness
 
     private static readonly TimeSpan MinimumStableAge = TimeSpan.FromSeconds(2);
 
+    /// <summary>What a pack preview says of a member that is still being written; the preview then holds it back from the plan, so readiness reads it here.</summary>
+    public const string PackMemberStillBeingWrittenReason = "Source file is still being written or locked.";
+
     public static bool IsPreviewReady(ImportPreviewResponse preview)
     {
         if (!preview.SourceExists)
@@ -31,6 +34,13 @@ public static class ImportFileReadiness
             var packSourcePaths = pack.Files.Select(file => file.SourcePath)
                 .Concat((pack.SkippedFiles ?? []).Select(file => file.SourcePath))
                 .ToArray();
+            // A member that is still arriving is named in the pack's block reasons and left out of both lists, so the
+            // lists alone would read a pack with one unsettled member as ready.
+            if (pack.BlockReasons.Any(reason => reason.Contains(PackMemberStillBeingWrittenReason, StringComparison.Ordinal)))
+            {
+                return false;
+            }
+
             return packSourcePaths.Length > 0 && packSourcePaths.All(IsReady);
         }
 

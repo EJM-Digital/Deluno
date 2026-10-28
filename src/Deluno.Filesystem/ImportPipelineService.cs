@@ -1143,7 +1143,7 @@ public sealed partial class ImportPipelineService(
                 // (see ExecuteTvPackAsync) before this method is ever called, so
                 // this only fires from a preview - it is informational there,
                 // not something a still-arriving file should be skipped over.
-                packWideWarnings.Add("Source file is still being written or locked.");
+                packWideWarnings.Add(ImportFileReadiness.PackMemberStillBeingWrittenReason);
             }
             if (!Path.IsPathRooted(preview.DestinationPath))
             {
