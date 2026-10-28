@@ -86,6 +86,17 @@ describe("the title search in the Add dialog", () => {
     expect(within(dialog).getByText("7.4 rating")).toBeInTheDocument();
   });
 
+  it("an empty box submitted says Type a movie name first. and searches nothing, with Add movie manually disabled", async () => {
+    const dialog = await openDialog();
+    const before = searches().length;
+
+    fireEvent.submit(titleBox(dialog).closest("form")!);
+
+    await waitFor(() => expect(mocks.toast.info).toHaveBeenCalledWith("Type a movie name first."));
+    expect(searches().length).toBe(before);
+    expect(within(dialog).getByRole("button", { name: "Add movie manually" })).toBeDisabled();
+  });
+
   it("asks again as the text changes, and the answer for the newest text replaces the older one", async () => {
     metadataReply = () => (searches().at(-1)?.url.includes("query=Arriv") ? [match("2", "Arrival")] : [match("1", "Arrow")]);
     const dialog = await openDialog();
