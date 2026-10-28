@@ -55,6 +55,20 @@ public sealed class CommandEdgesTests
     }
 
     [Fact]
+    public async Task Refreshing_the_monitored_downloads_polls_the_clients_once_and_says_how_many_it_checked_in_words()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+
+        var response = await app.Client.PostAsJsonAsync("/api/command", new { name = "RefreshMonitoredDownloads" });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var command = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("completed", command.GetProperty("status").GetString());
+        Assert.Equal("Checked 0 downloads with the download clients.", command.GetProperty("message").GetString());
+        Assert.Equal(0, command.GetProperty("jobIds").GetArrayLength());
+    }
+
+    [Fact]
     public async Task A_commands_status_follows_its_job_from_queued_to_started_to_completed()
     {
         await using var app = await ApplicationTestHost.StartAsync();
