@@ -1,9 +1,9 @@
 {
   "app": "jellyfin",
-  "version": "12.2.0",
+  "version": "12.4.0",
   "state": "identity",
-  "recordedAt": "2026-10-19T02:20:38Z",
-  "note": "The public identity and the full system info Deluno reads for the version and server id (jellyfin 12.2.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "recordedAt": "2026-10-27T22:48:53Z",
+  "note": "The public identity and the full system info Deluno reads for the version and server id (jellyfin 12.4.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {
       "request": {
@@ -17,11 +17,11 @@
         },
         "body": {
           "LocalAddress": "http://192.168.1.10:8096",
-          "ServerName": "a645f148af30",
-          "Version": "12.2.0",
+          "ServerName": "134c4155fc05",
+          "Version": "12.4.0",
           "ProductName": "Jellyfin Server",
           "OperatingSystem": "",
-          "Id": "6c5f6a6fea8e4011ad35856c884c5306",
+          "Id": "0ae55b67e38642b1a0f4d76820694b5f",
           "StartupWizardCompleted": false
         }
       }
@@ -66,11 +66,11 @@
           "EncoderLocation": "System",
           "SystemArchitecture": "X64",
           "LocalAddress": "http://192.168.1.10:8096",
-          "ServerName": "a645f148af30",
-          "Version": "12.2.0",
+          "ServerName": "134c4155fc05",
+          "Version": "12.4.0",
           "ProductName": "Jellyfin Server",
           "OperatingSystem": "",
-          "Id": "6c5f6a6fea8e4011ad35856c884c5306",
+          "Id": "0ae55b67e38642b1a0f4d76820694b5f",
           "StartupWizardCompleted": true
         }
       }

@@ -10,7 +10,7 @@ namespace Deluno.Persistence.Tests.Api;
 
 /// <summary>
 /// The media-server routes when the request is right (coverage register, area api), against the real replies of Jellyfin
-/// 12.2.0 (tests/fixtures/recorded) served over a real loopback port: the real client, the real HTTP calls and the real
+/// 12.4.0 (tests/fixtures/recorded) served over a real loopback port: the real client, the real HTTP calls and the real
 /// answers, so a test, a saved connection and a path mapping behave as against the installed server.
 /// </summary>
 public sealed class MediaServerRoutesAgainstRecordedAppsTests
@@ -48,7 +48,7 @@ public sealed class MediaServerRoutesAgainstRecordedAppsTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.True(body.GetProperty("ok").GetBoolean(), body.ToString());
-        Assert.Equal("12.2.0", body.GetProperty("version").GetString());
+        Assert.Equal("12.4.0", body.GetProperty("version").GetString());
         Assert.Contains(jellyfin.Requests, request => request.PathAndQuery.StartsWith("/System/Info", StringComparison.Ordinal));
         Assert.Empty(jellyfin.Unanswered);
         Assert.Equal("[]", (await app.Client.GetStringAsync("/api/media-servers")).Replace(" ", ""));
@@ -136,7 +136,7 @@ public sealed class MediaServerRoutesAgainstRecordedAppsTests
     [Fact]
     public async Task A_saved_media_server_going_unhealthy_and_coming_back_on_a_test_is_announced_once_each_way()
     {
-        // Jellyfin 12.2.0's own refusal of a token it does not know answers the first look at the server, its own server info answers the second.
+        // Jellyfin 12.4.0's own refusal of a token it does not know answers the first look at the server, its own server info answers the second.
         var refused = RecordedReplies.Jellyfin("wrong-token").Exchanges[0];
         var info = RecordedReplies.Jellyfin("identity").Exchanges[1];
         var outbound = new RecordingOutbound();

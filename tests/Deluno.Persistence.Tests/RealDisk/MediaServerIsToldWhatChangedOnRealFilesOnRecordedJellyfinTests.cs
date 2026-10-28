@@ -12,7 +12,7 @@ namespace Deluno.Persistence.Tests.RealDisk;
 
 /// <summary>
 /// A media server told what changed in the library (#662), from real imports and removals: real files in a real library folder, the real import
-/// pipeline, the real job queue, the real refresh handler and notifier, and a real SQLite backlog, with Jellyfin 12.2.0 answering over a real loopback
+/// pipeline, the real job queue, the real refresh handler and notifier, and a real SQLite backlog, with Jellyfin 12.4.0 answering over a real loopback
 /// port from its own recorded replies (tests/fixtures/recorded/jellyfin). The server is asked to refresh by the same call it was recorded taking
 /// (POST /Library/Media/Updated with the paths and their kind), so what the test reads is what Deluno really said to it.
 /// </summary>

@@ -1,9 +1,9 @@
 {
   "app": "jellyfin",
-  "version": "12.2.0",
+  "version": "12.4.0",
   "state": "item-deleted",
-  "recordedAt": "2026-10-19T02:26:57Z",
-  "note": "A film deleted by its id (the server removes the item and its file), then the list; and a delete of an id it does not have (jellyfin 12.2.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "recordedAt": "2026-10-27T22:55:14Z",
+  "note": "A film deleted by its id (the server removes the item and its file), then the list; and a delete of an id it does not have (jellyfin 12.4.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {
       "request": {
@@ -19,7 +19,7 @@
           "Items": [
             {
               "Name": "Recorded collection",
-              "ServerId": "6c5f6a6fea8e4011ad35856c884c5306",
+              "ServerId": "0ae55b67e38642b1a0f4d76820694b5f",
               "Id": "18da5b93435bf32b1375cc6efe0ca347",
               "PremiereDate": "2010-09-30T00:00:00.0000000Z",
               "OfficialRating": "PG",
@@ -36,7 +36,7 @@
             },
             {
               "Name": "Recorded Delete (2021)",
-              "ServerId": "6c5f6a6fea8e4011ad35856c884c5306",
+              "ServerId": "0ae55b67e38642b1a0f4d76820694b5f",
               "Id": "53969038408cbf2d267c0f1fdc77b8df",
               "Container": "mkv",
               "ChannelId": null,
@@ -46,12 +46,12 @@
               "Type": "Movie",
               "VideoType": "VideoFile",
               "ImageTags": {
-                "Primary": "fb40e999a1c3fb27d70448becfb49ffe"
+                "Primary": "04fe7f3fedcff0a67ddb0aa621acfa8b"
               },
               "BackdropImageTags": [],
               "ImageBlurHashes": {
                 "Primary": {
-                  "fb40e999a1c3fb27d70448becfb49ffe": "W~K_I9D[OqKoXLMRtQadrvSvayVvsonOodjbf6Xls;WFX5n$fikB"
+                  "04fe7f3fedcff0a67ddb0aa621acfa8b": "W~K_I9D[OqKoXLMRtQadrvSvayVvsonOodjbf6Xls;WFX5n$fikB"
                 }
               },
               "LocationType": "FileSystem",
@@ -88,7 +88,7 @@
           "Items": [
             {
               "Name": "Recorded collection",
-              "ServerId": "6c5f6a6fea8e4011ad35856c884c5306",
+              "ServerId": "0ae55b67e38642b1a0f4d76820694b5f",
               "Id": "18da5b93435bf32b1375cc6efe0ca347",
               "PremiereDate": "2010-09-30T00:00:00.0000000Z",
               "OfficialRating": "PG",

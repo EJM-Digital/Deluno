@@ -199,6 +199,22 @@ async function embyFamily(kind) {
     save(kind, version, 'item-deleted', note('A film deleted by its id (the server removes the item and its file), then the list; and a delete of an id it does not have'), [before, del, await get('/Items?Recursive=true&IncludeItemTypes=Movie'), await send('DELETE', '/Items/00000000000000000000000000000000')]);
   } else addMissing(`${kind} item-deleted: the throwaway film was not scanned in within 2 minutes`);
 
+  // A delete the server cannot carry out: a throwaway film whose file is made immutable (the golden VM's service account lacked delete rights; here the
+  // root-run server is stopped from removing the file the same way), so DELETE /Items/{id} answers 500. The file is freed again afterwards.
+  const lockedFile = '/media/Movies/Recorded Locked (2022)/Recorded Locked (2022).mkv';
+  const onMedia = (entry, ...args) => docker('run', '--rm', '--privileged', '-v', `${project}_media:/media`, '--entrypoint', entry, 'jellyfin/jellyfin:latest', ...args);
+  // chattr is not in the Jellyfin image; Alpine's e2fsprogs-extra has it.
+  const chattr = (flag) => docker('run', '--rm', '--privileged', '-v', `${project}_media:/media`, 'alpine:latest', 'sh', '-c', `apk add -q e2fsprogs-extra && chattr ${flag} "${lockedFile}"`);
+  onMedia('sh', '-c', `mkdir -p "/media/Movies/Recorded Locked (2022)" && cp "${MOVIE_FILE}" "${lockedFile}" && chmod -R a+rwX /media`);
+  await send('POST', '/Library/Refresh');
+  const locked = await until('the locked film to be scanned', 120, async () => replyJson(await get('/Items?Recursive=true&IncludeItemTypes=Movie'))?.Items?.find((i) => /^Recorded Locked/.test(i.Name)), 4000).catch(() => null);
+  if (locked) {
+    chattr('+i');
+    const refused = await send('DELETE', `/Items/${locked.Id}`);
+    chattr('-i');
+    save(kind, version, 'item-delete-refused', note('DELETE /Items/{id} for a film whose file the server could not remove (made immutable): the server answers with its own failure'), [refused]);
+  } else addMissing(`${kind} item-delete-refused: the locked film was not scanned in within 2 minutes`);
+
   // Library/Media/Updated refused: a body the server cannot read.
   save(kind, version, 'media-updated-refused', note('POST /Library/Media/Updated with a body that is not the update list (the server refuses it), and with no body'), [
     await c.send({ method: 'POST', path: `${prefix}/Library/Media/Updated`, headers: keyHeaders, text: 'not json', contentType: 'application/json' }), await send('POST', '/Library/Media/Updated')]);

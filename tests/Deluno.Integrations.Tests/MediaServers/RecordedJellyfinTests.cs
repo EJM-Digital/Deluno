@@ -6,7 +6,7 @@ using Deluno.Tests.Recorded;
 namespace Deluno.Integrations.Tests.MediaServers;
 
 /// <summary>
-/// Deluno's Jellyfin client against Jellyfin 12.2.0's own replies, recorded from the real server with a library of one film
+/// Deluno's Jellyfin client against Jellyfin 12.4.0's own replies, recorded from the real server with a library of one film
 /// and a two-episode series (tests/fixtures/recorded/jellyfin, #1237). A call is answered by the recorded reply to the same
 /// kind of call; the ids in a call are the test's own.
 /// </summary>
@@ -142,7 +142,7 @@ public sealed class RecordedJellyfinTests
     [Fact]
     public async Task When_Jellyfin_refuses_the_targeted_call_with_400_or_415_Deluno_asks_for_a_full_library_scan_instead()
     {
-        // Recorded from Jellyfin 12.2.0 in Docker: a body it cannot read is 400, a call with no content type 415.
+        // Recorded from Jellyfin 12.4.0 in Docker: a body it cannot read is 400, a call with no content type 415.
         var refused = RecordedReplies.Jellyfin("media-updated-refused");
         Assert.Equal([400, 415], refused.Exchanges.Select(e => e.Reply.Status));
         foreach (var exchange in refused.Exchanges)

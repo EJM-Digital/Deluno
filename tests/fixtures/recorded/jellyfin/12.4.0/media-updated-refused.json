@@ -1,9 +1,9 @@
 {
   "app": "jellyfin",
-  "version": "12.2.0",
+  "version": "12.4.0",
   "state": "media-updated-refused",
-  "recordedAt": "2026-10-19T02:26:57Z",
-  "note": "POST /Library/Media/Updated with a body that is not the update list (the server refuses it), and with no body (jellyfin 12.2.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "recordedAt": "2026-10-27T22:55:14Z",
+  "note": "POST /Library/Media/Updated with a body that is not the update list (the server refuses it), and with no body (jellyfin 12.4.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
   "exchanges": [
     {
       "request": {
@@ -28,7 +28,7 @@
               "The dto field is required."
             ]
           },
-          "traceId": "00-143c91232f2b0a5dae4e1f7516b4ed6c-a25822c39eaaf1e1-00"
+          "traceId": "00-67f7c9686c4d15278e965591986202f0-42fcde9305b35fa4-00"
         }
       }
     },
@@ -46,7 +46,7 @@
           "type": "https://tools.ietf.org/html/rfc9110#section-15.5.16",
           "title": "Unsupported Media Type",
           "status": 415,
-          "traceId": "00-ea94baa64f3e68825646d3c084ccaaa2-dab9ff820dd036b3-00"
+          "traceId": "00-516f83e0c673db4d5514f63423978a62-99371333e8118ad0-00"
         }
       }
     }

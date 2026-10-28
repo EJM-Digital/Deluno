@@ -7,7 +7,7 @@ using Deluno.Tests.Recorded;
 namespace Deluno.Integrations.Tests.MediaServers;
 
 /// <summary>
-/// #1117: a media server's test carries the version it reported, from the recorded answer of the real server (Plex 1.43.4, Jellyfin 12.2.0 and
+/// #1117: a media server's test carries the version it reported, from the recorded answer of the real server (Plex 1.43.4, Jellyfin 12.4.0 and
 /// Emby 4.10.1.0, tests/fixtures/recorded); no version means nothing is shown.
 /// </summary>
 public sealed class MediaServerVersionTests
@@ -61,7 +61,7 @@ public sealed class MediaServerVersionTests
         var result = await client.TestAsync(Server(MediaServerKinds.Jellyfin, "http://192.168.1.51:8096"), CancellationToken.None);
 
         Assert.True(result.Ok);
-        Assert.Equal("12.2.0", result.Version);
+        Assert.Equal("12.4.0", result.Version);
     }
 
     [Fact]

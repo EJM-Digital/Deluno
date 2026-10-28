@@ -12,7 +12,7 @@ namespace Deluno.Persistence.Tests.Api;
 /// <summary>
 /// A connection going bad and coming back, told to a phone (#859): each Test click is the real route on the whole application with its own
 /// databases, the other app is a loopback server that answers as the real one did (Jackett 0.24.2850's wrong-key reply, SABnzbd 5.1.3's refused
-/// key, Jellyfin 12.2.0), and the phone is a push service answering as the real ntfy 2.34.0 did. A fault is reported on every Test; a recovery
+/// key, Jellyfin 12.4.0), and the phone is a push service answering as the real ntfy 2.34.0 did. A fault is reported on every Test; a recovery
 /// once; and neither when the one health switch is off.
 /// </summary>
 public sealed class HealthChangesDeliveredToRecordedReceiversTests
