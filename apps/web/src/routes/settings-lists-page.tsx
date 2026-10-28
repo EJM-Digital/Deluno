@@ -51,6 +51,7 @@ import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { cn } from "../lib/utils";
 import { formatDateTime, formatShortDate, type DisplayPreferences, useDisplayPreferences } from "../lib/display-preferences";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
+import { INTAKE_SYNC_PRESETS } from "../lib/intake-sync-interval";
 
 const PROVIDERS = [
   { label: "Custom list URL", value: "url-list" },
@@ -80,15 +81,6 @@ const TMDB_PERSON_CREDIT_TYPES = [
   { value: "writing", label: "Writing", description: "Films and shows this person writes." }
 ] as const;
 type TmdbPersonCreditType = typeof TMDB_PERSON_CREDIT_TYPES[number]["value"];
-const SYNC_OPTIONS = [
-  { label: "Every 6 hours", value: "6" },
-  { label: "Every 12 hours", value: "12" },
-  { label: "Daily", value: "24" },
-  { label: "Every 3 days", value: "72" },
-  { label: "Weekly", value: "168" },
-  { label: "Fortnightly", value: "336" },
-  { label: "Monthly", value: "720" }
-];
 
 interface LoaderData {
   libraries: LibraryItem[];
@@ -745,7 +737,7 @@ export function SettingsListsPage() {
 
         <DrawerSection title="Behaviour">
           <Field label="Check the list" help="How often Deluno re-reads the list for new titles.">
-            <PresetField inputType="number" value={form.syncIntervalHours} onChange={(value) => setForm((current) => ({ ...current, syncIntervalHours: value }))} options={SYNC_OPTIONS} customLabel="Custom interval" customPlaceholder="Hours" />
+            <PresetField inputType="number" value={form.syncIntervalHours} onChange={(value) => setForm((current) => ({ ...current, syncIntervalHours: value }))} options={INTAKE_SYNC_PRESETS} customLabel="Custom interval" customPlaceholder="Hours" />
           </Field>
           <FieldRow>
             <SwitchRow label="Search when a title is added" description="Turn off to add titles without downloading anything yet." checked={form.searchOnAdd} onCheckedChange={(checked) => setForm((current) => ({ ...current, searchOnAdd: checked }))} />
