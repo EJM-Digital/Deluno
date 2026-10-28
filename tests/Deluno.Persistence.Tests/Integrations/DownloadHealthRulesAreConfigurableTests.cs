@@ -228,6 +228,18 @@ public sealed class DownloadHealthRulesAreConfigurableTests
         Assert.DoesNotContain(findings, finding => finding.Kind == DownloadHealthStrikes.LowSpeed);
     }
 
+    /// <summary>The upper end of the range counts too: a download past "Up to this % complete" is never matched.</summary>
+    [Fact]
+    public void A_rule_scoped_below_the_downloads_completion_never_matches_and_one_that_covers_it_does()
+    {
+        var past = new[] { TooSlowRule(kbps: 100, timerMinutes: 30) with { MinCompletionPercent = 0, MaxCompletionPercent = 40 } };
+        var covers = new[] { TooSlowRule(kbps: 100, timerMinutes: 30) with { MinCompletionPercent = 0, MaxCompletionPercent = 70 } };
+        var item = CreateItem(speedMbps: 0.001, addedUtc: CapturedUtc.AddMinutes(-60), progressPercent: 60);
+
+        Assert.DoesNotContain(Evaluate(item, past), finding => finding.Kind == DownloadHealthStrikes.LowSpeed);
+        Assert.Contains(Evaluate(item, covers), finding => finding.Kind == DownloadHealthStrikes.LowSpeed);
+    }
+
     /// <summary>#815: a private-only rule never strikes a public download.</summary>
     [Fact]
     public void A_rule_scoped_to_private_only_never_matches_a_public_download()
