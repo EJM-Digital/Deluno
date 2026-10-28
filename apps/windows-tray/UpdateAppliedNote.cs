@@ -52,7 +52,11 @@ public static class UpdateAppliedNote
         }
     }
 
-    /// <summary>Best guess at the version an update replaced, from the full packages Velopack keeps beside the install.</summary>
+    /// <summary>
+    /// The version an update replaced: the newest other full package Velopack kept beside the install, by the version written in
+    /// the package's own nuspec. The file name is no guide: it carries the channel, "-rc-full" for a release candidate, and read
+    /// as a version that made the new build's own package look older than itself (#1387).
+    /// </summary>
     public static string? PreviousVersionFromPackages(string packagesFolder, string toVersion)
     {
         try
@@ -61,14 +65,8 @@ public static class UpdateAppliedNote
             string? best = null;
             foreach (var file in Directory.EnumerateFiles(packagesFolder, "*-full.nupkg"))
             {
-                var name = Path.GetFileNameWithoutExtension(file); // Deluno-1.2.3-rc.4-win-full
-                var stem = name.EndsWith("-full", StringComparison.OrdinalIgnoreCase) ? name[..^5] : name;
-                var dash = stem.IndexOf('-');
-                if (dash < 0) continue;
-                var version = stem[(dash + 1)..];
-                var channel = version.LastIndexOf("-win", StringComparison.OrdinalIgnoreCase);
-                if (channel > 0) version = version[..channel];
-                if (string.Equals(version, toVersion, StringComparison.OrdinalIgnoreCase)) continue;
+                var version = PackageVersion(file);
+                if (version is null || DelunoVersion.Same(version, toVersion)) continue;
                 if (best is null || DelunoVersion.IsNewer(version, best)) best = version;
             }
 
@@ -76,6 +74,24 @@ public static class UpdateAppliedNote
         }
         catch
         {
+            return null;
+        }
+    }
+
+    private static string? PackageVersion(string nupkg)
+    {
+        try
+        {
+            using var zip = System.IO.Compression.ZipFile.OpenRead(nupkg);
+            var nuspec = zip.Entries.FirstOrDefault(e => e.FullName.EndsWith(".nuspec", StringComparison.OrdinalIgnoreCase) && !e.FullName.Contains('/'));
+            if (nuspec is null) return null;
+            using var stream = nuspec.Open();
+            var version = System.Xml.Linq.XDocument.Load(stream).Descendants().FirstOrDefault(e => e.Name.LocalName == "version")?.Value.Trim();
+            return string.IsNullOrEmpty(version) ? null : version;
+        }
+        catch
+        {
+            // Not a package Velopack could have made; it names no version.
             return null;
         }
     }

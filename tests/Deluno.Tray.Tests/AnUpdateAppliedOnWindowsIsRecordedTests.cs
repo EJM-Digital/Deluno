@@ -85,18 +85,53 @@ public sealed class AnUpdateAppliedOnWindowsIsRecordedTests : IDisposable
         Assert.False(File.Exists(NotePath));
     }
 
-    [Fact]
-    public void The_previous_version_is_the_newest_other_full_package_Velopack_kept()
+    // The nuspec in Deluno-1.0.0-rc.30.36-rc-full.nupkg as the release shipped it, with only the version and channel filled in.
+    private const string ShippedNuspec = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+        <metadata>
+        <id>Deluno</id>
+        <title>Deluno</title>
+        <description>Deluno</description>
+        <authors>Deluno</authors>
+        <version>{0}</version>
+        <channel>{1}</channel>
+        <mainExe>Deluno.exe</mainExe>
+        <os>win</os>
+        <rid>win-x64</rid>
+        <shortcutLocations>Desktop,StartMenuRoot</shortcutLocations>
+        <shortcutAmuid>velopack.Deluno</shortcutAmuid>
+        <machineArchitecture>x64</machineArchitecture>
+        </metadata>
+        </package>
+        """;
+
+    private static void Package(string folder, string fileName, string version, string channel)
+    {
+        using var zip = System.IO.Compression.ZipFile.Open(Path.Combine(folder, fileName), System.IO.Compression.ZipArchiveMode.Create);
+        using var writer = new StreamWriter(zip.CreateEntry("Deluno.nuspec").Open());
+        writer.Write(string.Format(System.Globalization.CultureInfo.InvariantCulture, ShippedNuspec, version, channel));
+    }
+
+    [Theory]
+    // As shipped: the channel is in the name, "-rc-full". The rc.30.36 suite's update.in-app named "1.0.0-rc.30.36-rc" as the
+    // version it came from (#1387).
+    [InlineData("rc", "Deluno-{0}-rc-full.nupkg")]
+    [InlineData("win", "Deluno-{0}-win-full.nupkg")]
+    [InlineData("stable", "Deluno-{0}-full.nupkg")]
+    public void The_previous_version_is_the_newest_other_full_package_Velopack_kept(string channel, string nameFormat)
     {
         var packages = Path.Combine(_root, "packages");
         Directory.CreateDirectory(packages);
-        foreach (var name in new[] { "Deluno-0.30.31-win-full.nupkg", "Deluno-0.30.33-win-full.nupkg", "Deluno-0.30.35-win-full.nupkg", "Deluno-0.30.35-win-delta.nupkg" })
+        foreach (var version in new[] { "1.0.0-rc.30.33", "1.0.0-rc.30.35", "1.0.0-rc.30.36" })
         {
-            File.WriteAllText(Path.Combine(packages, name), "x");
+            Package(packages, string.Format(System.Globalization.CultureInfo.InvariantCulture, nameFormat, version), version, channel);
         }
+        File.WriteAllText(Path.Combine(packages, "Deluno-1.0.0-rc.30.36-rc-delta.nupkg"), "not a full package");
+        File.WriteAllText(Path.Combine(packages, "Deluno-9.9.9-rc-full.nupkg"), "a damaged package names no version");
 
-        Assert.Equal("0.30.33", UpdateAppliedNote.PreviousVersionFromPackages(packages, "0.30.35"));
-        Assert.Null(UpdateAppliedNote.PreviousVersionFromPackages(Path.Combine(_root, "nowhere"), "0.30.35"));
+        Assert.Equal("1.0.0-rc.30.35", UpdateAppliedNote.PreviousVersionFromPackages(packages, "1.0.0-rc.30.36"));
+        Assert.Null(UpdateAppliedNote.PreviousVersionFromPackages(Path.Combine(_root, "nowhere"), "1.0.0-rc.30.36"));
     }
 
     [Fact]

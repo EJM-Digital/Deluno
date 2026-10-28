@@ -249,10 +249,12 @@ function Invoke-UpdateInApp {
             # date, and one "Deluno updated" line in Activity.
             $appliedList = if ($s2 -and $s2.PSObject.Properties['appliedUpdates'] -and $null -ne $s2.appliedUpdates) { @($s2.appliedUpdates) } else { @() }
             $appliedNow = @($appliedList | Where-Object { $_.version -like "*$CandidateVersion*" })
-            Add-Check 'The Updates card lists the applied version with its date' ($appliedNow.Count -eq 1 -and $appliedNow[0].appliedAtUtc) $(if ($appliedList.Count) { ($appliedList | ForEach-Object { "$($_.version) at $($_.appliedAtUtc)" }) -join '; ' } else { 'no applied versions listed' })
+            Add-Check 'The Updates card lists the applied version with its date' ($appliedNow.Count -eq 1 -and $appliedNow[0].appliedAtUtc) $(if (@($appliedList).Count) { (@($appliedList) | ForEach-Object { "$($_.version) at $($_.appliedAtUtc)" }) -join '; ' } else { 'no applied versions listed' })
             $lines = @(Get-ActivityText | Where-Object { $_ -match "Deluno updated (from \S+ )?to (version )?\S*$([regex]::Escape($CandidateVersion))" })
             Add-Check 'Activity has one "Deluno updated" line for the new version' ($lines.Count -eq 1) $(if ($lines.Count) { $lines -join ' | ' } else { 'no such line' })
-            Add-Note $(if ($lines.Count -and $lines[0] -match 'updated from') { "The line names the version it came from: $($lines[0])" } else { 'The line names only the new version: the previous release leaves no packages the new build can read the old version from.' })
+            # The line names the release it came from (#1387: rc.30.36's run named "1.0.0-rc.30.36-rc", read from a package's file name).
+            $from = ("$($ctx.PreviousVersion)" -split '\+')[0]
+            Add-Check 'The Activity line names the release it came from' ($lines.Count -eq 1 -and $lines[0] -match "from $([regex]::Escape($from)) to ") $(if ($lines.Count) { "previous release $from; $($lines[0])" } else { "previous release $from; no such line" })
             Save-Evidence -Name 'update-in-app-feed-requests.txt' -Text ((Get-UpdateFeedRequests) -join "`n")
         }
         finally { Stop-UpdateFeed $feed }
