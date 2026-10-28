@@ -14,6 +14,7 @@ import { authedFetch } from "../../lib/use-auth";
 import { fetchJson } from "../../lib/api";
 import { describeRequestFailure } from "../../lib/search-reasons";
 import { cn } from "../../lib/utils";
+import { plural } from "../../routes/dashboard/format";
 import type { SubtitleSearchCandidateItem } from "../../lib/api";
 
 export function SubtitleManualSearchDialog({
@@ -179,7 +180,7 @@ export function SubtitleManualSearchDialog({
                         <p className="truncate text-(length:--type-caption) text-muted-foreground">
                           {candidate.providerName} · {candidate.matchDescription}
                           {candidate.hearingImpaired ? " · Hearing-impaired" : ""}
-                          {candidate.downloadCount !== null ? ` · ${candidate.downloadCount} downloads` : ""}
+                          {candidate.downloadCount !== null ? ` · ${plural(candidate.downloadCount, "download")}` : ""}
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">

@@ -146,6 +146,15 @@ describe("the by-hand subtitle search dialog", () => {
     expect(mocks.fetchJson).toHaveBeenCalledWith("/api/movies/m1/subtitles/en/candidates");
   });
 
+  it("reads 1 download for one, N downloads for more, and nothing when the count is unknown", async () => {
+    mocks.fetchJson.mockResolvedValue([candidate("a", { downloadCount: 1 }), candidate("b", { downloadCount: 0 }), candidate("c", { downloadCount: null })]);
+    render(dialog());
+
+    expect(await screen.findByText("OpenSubtitles · Matches the release · 1 download")).toBeInTheDocument();
+    expect(screen.getByText("OpenSubtitles · Matches the release · 0 downloads")).toBeInTheDocument();
+    expect(screen.getByText("OpenSubtitles · Matches the release")).toBeInTheDocument();
+  });
+
   it("a show's episode searches under the episode's own path", async () => {
     mocks.fetchJson.mockResolvedValue([]);
     render(dialog({ basePath: "/api/series/episodes/e1" }));
