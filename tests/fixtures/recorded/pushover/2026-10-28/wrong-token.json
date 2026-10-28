@@ -1,0 +1,30 @@
+{
+  "app": "pushover",
+  "version": "2026-10-28",
+  "state": "wrong-token",
+  "recordedAt": "2026-10-28T23:22:36Z",
+  "note": "A message sent with an application token and user key Pushover does not know: its own refusal.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/1/messages.json",
+        "bodyText": "token=<scrubbed>&user=<scrubbed>&title=Import+completed&message=Sintel+%282010%29"
+      },
+      "reply": {
+        "status": 400,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "token": "<scrubbed>",
+          "errors": [
+            "application token is invalid, see https://pushover.net/api"
+          ],
+          "status": 0,
+          "request": "bd2b6973-4755-412d-a681-53ed2d9988e3"
+        }
+      }
+    }
+  ]
+}
