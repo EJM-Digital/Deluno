@@ -125,4 +125,26 @@ public sealed class MetadataRefreshOnTheRecordedGatewayTests
         Assert.Contains($"Deluno learned {learned} more episode{(learned == 1 ? "" : "s")} of Breaking Bad Old Name", await app.Client.GetStringAsync("/api/activity?take=100"));
         Assert.True(File.Exists(show.FilePath));
     }
+
+    [Fact]
+    public async Task The_background_series_refresh_says_how_many_newly_announced_episodes_it_added_from_the_recorded_catalogue()
+    {
+        var replay = new GatewayReplay();
+        await using var app = await StartAsync(replay);
+        var show = await ApiScenes.ShowOnDiskAsync(app, "Breaking Bad Old Name", 2008);
+        await ApiScenes.ExecuteAsync(app, "series", $"UPDATE series_entries SET metadata_provider = 'tmdb', metadata_provider_id = '1396' WHERE id = '{show.SeriesId}';");
+        var before = int.Parse((await ApiScenes.TextAsync(app, "series", $"SELECT COUNT(*) FROM episode_entries WHERE series_id = '{show.SeriesId}'"))!);
+        var handler = app.Services.GetServices<Deluno.Worker.Jobs.IJobHandler>().Single(candidate => candidate.JobType == "series.metadata.refresh");
+        var now = DateTimeOffset.UtcNow;
+        var job = new Deluno.Jobs.Contracts.JobQueueItem(
+            "job-1", "series.metadata.refresh", "test", "running", null, 1, now, now, now, null, null, null, null,
+            "series", show.SeriesId, null, null, 3, now, null);
+
+        var message = await handler.HandleAsync(job, CancellationToken.None);
+
+        var added = int.Parse((await ApiScenes.TextAsync(app, "series", $"SELECT COUNT(*) FROM episode_entries WHERE series_id = '{show.SeriesId}'"))!) - before;
+        Assert.True(added > 0, "the recorded catalogue announces episodes the show did not have");
+        Assert.Equal($"Refreshed metadata for Breaking Bad Old Name and added {added} newly announced episode{(added == 1 ? "" : "s")}.", message);
+        Assert.Contains($"Deluno learned {added} more episode", await app.Client.GetStringAsync("/api/activity?take=100"));
+    }
 }
