@@ -137,6 +137,18 @@ test.describe("Automation overview", () => {
     await expect(page.getByText("Sent to downloads", { exact: true })).toHaveCount(0);
   });
 
+  test("the When a download finishes card's heading count follows the three modes", async ({ page }) => {
+    await open(page, "/search-cycles");
+    const mode = page.getByRole("radiogroup", { name: "What Deluno does with the original" });
+    await expect(page.getByText("Shares, then tidies up", { exact: true })).toBeVisible();
+    await mode.getByRole("radio", { name: "Tidy up now" }).click();
+    await expect(page.getByText("Tidies up straight away", { exact: true })).toBeVisible();
+    await mode.getByRole("radio", { name: "Leave it alone" }).click();
+    await expect(page.getByText("Left alone", { exact: true })).toBeVisible();
+    await mode.getByRole("radio", { name: "Share, then tidy up" }).click();
+    await expect(page.getByText("Shares, then tidies up", { exact: true })).toBeVisible();
+  });
+
   test("Failed Downloads: the Download health card says where the rules live and its button opens Download Health", async ({ page }) => {
     await open(page, "/search-cycles/failed-downloads");
     await expect(page.getByText("each rule has its own strike count and its own action", { exact: false })).toBeVisible();
