@@ -39,6 +39,8 @@ Fixes:
 - When the processor does not answer a hand-off (it is restarting, updating or
   briefly busy), Deluno sends it again after 1, 2 and 5 minutes, instead of
   leaving it failed until you press Try again.
+- Switching Deluno to run as a Windows service no longer leaves a dead Deluno
+  icon in the notification area.
 - Two quick edits to the Subtitles permission fields are both saved.
 - Editing either side of a remote path mapping saves in one step, and a path
   that is already mapped says so plainly instead of showing a server error.

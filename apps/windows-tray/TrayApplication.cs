@@ -1247,6 +1247,8 @@ public sealed class TrayApplication : ApplicationContext
         _supervisor.Cancel();
         await StopHostAsync("running as a service");
         ServiceManager.Apply(dialog.SelectedMode, dialog.ServiceUsername, dialog.ServicePassword);
+        // The tray is not disposed after Application.Run, so an icon left showing stays in the notification area, dead.
+        _notify.Visible = false;
         Application.Exit();
     }
 
