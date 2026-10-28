@@ -167,4 +167,51 @@ public sealed class KeylessSubtitleDownloadsOnRecordedRepliesTests
         Assert.Empty(found);
         Assert.Equal(["GET subf2m.co/subtitles/searchbytitle"], handler.Calls);
     }
+
+    /// <summary>Answers SuperSubtitles' one address by its action and term, as the site itself tells its calls apart.</summary>
+    private sealed class SupersubtitlesSite(Recording recording) : HttpMessageHandler
+    {
+        public List<string> Calls { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var query = request.RequestUri!.Query;
+            var action = System.Web.HttpUtility.ParseQueryString(query)["action"];
+            var term = System.Web.HttpUtility.ParseQueryString(query)["term"];
+            Calls.Add(action ?? "");
+            var exchange = recording.Exchanges.First(e =>
+            {
+                var recorded = System.Web.HttpUtility.ParseQueryString(e.Request.Path.Split('?', 2)[1]);
+                return recorded["action"] == action && (term is null || recorded["term"] == term);
+            });
+            return Task.FromResult(exchange.Reply.ToResponse());
+        }
+    }
+
+    private static SubtitleSearchRequest Episode(string show)
+        => new(show, null, 1, 1, null, null, null, ["en"], IsEpisode: true);
+
+    [Fact]
+    public async Task SuperSubtitles_finds_the_show_and_then_reports_the_season_listing_its_site_refused_with_a_Cloudflare_403()
+    {
+        var site = new SupersubtitlesSite(RecordedReplies.Supersubtitles("show-search"));
+
+        var refused = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            new SupersubtitlesSubtitleProvider(new Factory(site)).SearchAsync(Episode("Breaking Bad"), SubtitleProviderCredentials.None, CancellationToken.None));
+
+        Assert.Equal(System.Net.HttpStatusCode.Forbidden, refused.StatusCode);
+        Assert.Equal("supersubtitles returned HTTP 403 (Forbidden).", refused.Message);
+        Assert.Equal(["autoname", "xbmc"], site.Calls);
+    }
+
+    [Fact]
+    public async Task A_show_SuperSubtitles_does_not_hold_finds_nothing_and_asks_for_no_season_listing()
+    {
+        var site = new SupersubtitlesSite(RecordedReplies.Supersubtitles("show-search"));
+
+        var found = await new SupersubtitlesSubtitleProvider(new Factory(site)).SearchAsync(Episode("Zzzz Not A Show Zzzz"), SubtitleProviderCredentials.None, CancellationToken.None);
+
+        Assert.Empty(found);
+        Assert.Equal(["autoname"], site.Calls);
+    }
 }

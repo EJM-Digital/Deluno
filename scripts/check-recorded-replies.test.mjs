@@ -84,6 +84,20 @@ test('the repository passes its own rule', () => {
   assert.deepEqual(problems, []);
 });
 
+test("a test class whose name ends in RecordedRepliesTests counts as replaying; only the recordings' own self-test is passed over", () => {
+  const recording = JSON.stringify({ app: 'subf2m', version: '2026-10-28', state: 'sintel-english', exchanges: [{ request: { method: 'GET', path: '/x' }, reply: { status: 200 } }] });
+  let root = repo({
+    'tests/fixtures/recorded/subf2m/2026-10-28/sintel-english.json': recording,
+    'tests/A.Tests/KeylessSubtitleDownloadsOnRecordedRepliesTests.cs': 'var r = RecordedReplies.Subf2m("sintel-english");'
+  });
+  try { assert.doesNotMatch(check(root).problems.join('\n'), /"sintel-english" is replayed by no test/); } finally { rmSync(root, { recursive: true, force: true }); }
+  root = repo({
+    'tests/fixtures/recorded/subf2m/2026-10-28/sintel-english.json': recording,
+    'tests/A.Tests/Recorded/RecordedRepliesTests.cs': 'var r = RecordedReplies.Subf2m("sintel-english");'
+  });
+  try { assert.match(check(root).problems.join('\n'), /"sintel-english" is replayed by no test/); } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('a recording no test replays fails, naming it, unless it is listed as having no behaviour in Deluno', () => {
   const recording = JSON.stringify({ app: 'qbittorrent', version: '5.2.1', state: 'resumed', exchanges: [{ request: { method: 'GET', path: '/x' }, reply: { status: 200 } }] });
   const files = {

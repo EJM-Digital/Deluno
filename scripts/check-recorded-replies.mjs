@@ -18,7 +18,7 @@
 //
 // Usage: node scripts/check-recorded-replies.mjs [--root <repo>] [--list]   (--list prints the files that need entries)
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Keys only these apps answer with. `all` keys must all be present in the one literal.
@@ -172,7 +172,9 @@ export function unreplayedStates(root, noBehaviour = []) {
   const sources = [];
   const files = [];
   for (const file of testFiles(join(root, 'tests'))) {
-    if (file.endsWith('RecordedRepliesTests.cs')) continue;
+    // The recordings' own self-test, by its exact name: a test class such as KeylessSubtitleDownloadsOnRecordedRepliesTests ends the same
+    // way and replays real states, and was skipped by a suffix match (29 Oct 2026).
+    if (basename(file) === 'RecordedRepliesTests.cs') continue;
     const text = readFileSync(file, 'utf8');
     sources.push(text);
     files.push({ dir: dirname(file), text });
