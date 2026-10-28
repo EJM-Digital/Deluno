@@ -52,6 +52,16 @@ describe("display preferences", () => {
     expect(formatShortDate(day, { ...DEFAULT_DISPLAY_PREFERENCES, shortDateFormat: "iso", showRelativeDates: false }, sameDay)).toBe("2026-03-25");
   });
 
+  it("says Yesterday and Tomorrow for the days either side of today", () => {
+    expect(formatShortDate(new Date(2026, 2, 24, 13, 5), DEFAULT_DISPLAY_PREFERENCES, sameDay)).toBe("Yesterday");
+    expect(formatShortDate(new Date(2026, 2, 26, 9), DEFAULT_DISPLAY_PREFERENCES, sameDay)).toBe("Tomorrow");
+  });
+
+  it("shows the clock in 12-hour form by default", () => {
+    expect(formatTime(day, DEFAULT_DISPLAY_PREFERENCES)).toMatch(/1:05\s*PM/i);
+    expect(formatTime(day, DEFAULT_DISPLAY_PREFERENCES)).not.toMatch(/13:05/);
+  });
+
   it("applies the shared long date, time and datetime formats", () => {
     const preferences = { ...DEFAULT_DISPLAY_PREFERENCES, showRelativeDates: false };
     expect(formatLongDate(day, preferences)).toContain("Wednesday");

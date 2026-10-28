@@ -28,6 +28,20 @@ describe("the live connection badge", () => {
     expect(badge).toHaveAttribute("aria-label", expect.stringContaining("the numbers on screen may be out of date"));
   });
 
+  it("says Connecting… in grey while the first connection is made, and Not live: reconnecting is an amber pulsing dot", () => {
+    state.status = "connecting";
+    const { unmount } = render(<WsStatusBadge />);
+    const connecting = screen.getByRole("status");
+    expect(connecting).toHaveTextContent("Connecting…");
+    expect(connecting.querySelector("span")!.className).toContain("bg-muted-foreground");
+    unmount();
+
+    state.status = "reconnecting";
+    render(<WsStatusBadge />);
+    const reconnecting = screen.getByRole("status");
+    expect(reconnecting.querySelector("span")!.className).toContain("bg-warning animate-pulse");
+  });
+
   it("says 'Not live: trying again' when the connection is down", () => {
     state.status = "disconnected";
     render(<WsStatusBadge />);

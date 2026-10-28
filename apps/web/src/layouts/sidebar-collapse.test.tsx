@@ -95,3 +95,27 @@ describe("the account menu", () => {
     expect(onLogout).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("the sidebar's links and counts", () => {
+  it("Collections, Discover and Search are links to their own screens", () => {
+    render(
+      <MemoryRouter>
+        <DesktopSidebar attention={attention} user={user} onLogout={() => undefined} collapsed={false} onToggleCollapsed={() => undefined} />
+      </MemoryRouter>
+    );
+    expect(screen.getByRole("link", { name: "Collections" }).getAttribute("href")).toBe("/collections");
+    expect(screen.getByRole("link", { name: "Discover" }).getAttribute("href")).toBe("/discover");
+    expect(screen.getByRole("link", { name: "Search" }).getAttribute("href")).toBe("/search");
+  });
+
+  it("the Movies and TV Shows links carry their wanted counts", () => {
+    const counted = { ...attention, movieWanted: 4, tvWanted: 2 } as unknown as Parameters<typeof DesktopSidebar>[0]["attention"];
+    render(
+      <MemoryRouter>
+        <DesktopSidebar attention={counted} user={user} onLogout={() => undefined} collapsed={false} onToggleCollapsed={() => undefined} />
+      </MemoryRouter>
+    );
+    expect(screen.getByRole("link", { name: /^Movies/ }).textContent).toContain("4");
+    expect(screen.getByRole("link", { name: /^TV Shows/ }).textContent).toContain("2");
+  });
+});

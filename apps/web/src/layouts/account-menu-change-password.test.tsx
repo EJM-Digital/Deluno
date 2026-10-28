@@ -50,6 +50,27 @@ describe("the account menu's Change password dialog", () => {
     expect(screen.queryByRole("heading", { name: "Change password" })).toBeNull();
   });
 
+  it("Save password stays disabled until all three fields have text, then shows a spinner while it saves", async () => {
+    let finish: () => void = () => {};
+    changePassword.mockReturnValue(new Promise<void>((resolve) => { finish = resolve; }));
+    renderSidebar();
+    openDialog();
+    const save = () => screen.getByRole("button", { name: "Save password" }) as HTMLButtonElement;
+
+    expect(save().disabled).toBe(true);
+    fill("old-pass", "", "");
+    expect(save().disabled).toBe(true);
+    fill("old-pass", "new-pass-1", "");
+    expect(save().disabled).toBe(true);
+    fill("old-pass", "new-pass-1", "new-pass-1");
+    expect(save().disabled).toBe(false);
+
+    fireEvent.click(save());
+    await waitFor(() => expect(save().querySelector(".animate-spin")).not.toBeNull());
+    expect(save().disabled).toBe(true);
+    finish();
+  });
+
   it("mismatched new passwords say New passwords do not match and send nothing", async () => {
     renderSidebar();
     openDialog();
