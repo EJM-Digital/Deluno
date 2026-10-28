@@ -3,8 +3,7 @@ import { api, openScreen } from "../helpers/real";
 import { untilQuiet } from "../helpers/settle";
 
 /**
- * Settings > Metadata against the real server, nothing stubbed (measure 4, issue 1329): a language or region the server
- * cannot use is refused under its field, and leaving the page with an unsaved edit asks. Each test puts back what it changed.
+ * Settings > Metadata against the real server, nothing stubbed (measure 4, issue 1329): leaving the page with an unsaved edit asks. Each test puts back what it changed.
  */
 
 interface Settings { metadataLanguage: string | null; metadataCertificationCountry: string | null }
