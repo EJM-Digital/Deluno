@@ -48,6 +48,19 @@ describe("the sign-in page", () => {
     await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("/series?sort=name"));
   });
 
+  it("a validation or server-error reply on sign-in is shown as words, not as the JSON the server sent", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(
+      JSON.stringify({ errors: { username: ["Username is required."] } }),
+      { status: 400, headers: { "Content-Type": "application/json" } }));
+    renderLogin("/login");
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "owner" } });
+    fireEvent.change(screen.getByLabelText("Password", { exact: true }), { target: { value: "x" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(await screen.findByText("Username is required.")).toBeTruthy();
+    expect(document.body.textContent).not.toContain(String.raw`{"error"`);
+  });
+
   it("while signing in the button reads Signing in… with a spinning icon and cannot be pressed again", async () => {
     let finish: (response: Response) => void = () => {};
     vi.spyOn(globalThis, "fetch").mockReturnValue(new Promise<Response>((resolve) => { finish = resolve; }));

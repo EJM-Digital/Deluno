@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { queryClient } from "../lib/route-cache";
@@ -210,6 +210,49 @@ describe("the theme button", () => {
 
     expect(live.theme.setTheme).toHaveBeenCalledWith("light");
     await waitFor(() => expect(JSON.parse(live.authedFetch.mock.calls[0][1].body)).toEqual({ uiTheme: "light" }));
+  });
+});
+
+describe("the wide-screen topbar controls", () => {
+  it("the wide Search & navigate button opens the command palette", async () => {
+    await mount("/");
+    const wide = screen.getByRole("button", { name: /^Search & navigate \(/ });
+    fireEvent.click(wide);
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+  });
+
+  it("the Keyboard shortcuts button opens the shortcuts overlay, titled Keyboard shortcuts", async () => {
+    await mount("/");
+    fireEvent.click(screen.getByRole("button", { name: "Keyboard shortcuts" }));
+    const dialog = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+    expect(dialog).toBeTruthy();
+  });
+
+  it("? opens the shortcuts overlay, but is ignored while typing in a text box", async () => {
+    await mount("/");
+    press("?", { shiftKey: true, code: "Slash" }, document.body);
+    expect(await screen.findByRole("dialog", { name: "Keyboard shortcuts" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    press("?", { shiftKey: true, code: "Slash" }, screen.getByLabelText("A text box"));
+    await settle();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("the overlay lists Global, Navigation, Table and Row groups with their keys, and closes with its Close button", async () => {
+    await mount("/");
+    press("?", { shiftKey: true, code: "Slash" }, document.body);
+    const dialog = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+    for (const group of ["Global", "Navigation", "Table", "Row"]) {
+      expect(within(dialog).getByText(group, { selector: "p" })).toBeTruthy();
+    }
+    expect(within(dialog).getByText("Focus next row").closest("li")!.textContent).toContain("j");
+    expect(within(dialog).getByText("Toggle monitored").closest("li")!.textContent).toContain("m");
+    expect(within(dialog).getAllByText("then").length).toBeGreaterThan(0);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 });
 
