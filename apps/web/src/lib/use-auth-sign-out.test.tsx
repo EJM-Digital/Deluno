@@ -38,7 +38,7 @@ describe("signing out", () => {
 
     await act(async () => { button.click(); });
 
-    expect(fetchMock).toHaveBeenCalledExactlyOnceWith("/api/auth/logout", { method: "POST", headers: { Authorization: "Bearer session-token" } });
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith("/api/auth/logout", { method: "POST", headers: { Authorization: "Bearer session-token" }, keepalive: true });
     expect(localStorage.getItem("deluno-auth-token")).toBeNull();
     expect(localStorage.getItem("deluno-auth-user")).toBeNull();
     expect(replace).toHaveBeenCalledWith("/login?return=" + encodeURIComponent("/movies"));

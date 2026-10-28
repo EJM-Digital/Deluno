@@ -274,9 +274,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     const nextToken = token ?? readStored().token;
     if (nextToken) {
+      // keepalive: the page moves to sign-in at once, and a navigation cancels an ordinary request still in flight, which
+      // left the session working on the server (#1388).
       void fetch("/api/auth/logout", {
         method: "POST",
-        headers: { Authorization: `Bearer ${nextToken}` }
+        headers: { Authorization: `Bearer ${nextToken}` },
+        keepalive: true
       }).catch(() => undefined);
     }
 

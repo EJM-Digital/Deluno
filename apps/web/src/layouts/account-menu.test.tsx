@@ -159,7 +159,7 @@ describe("Signing out and what a password change does to the open tab", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Leave" }));
 
-    expect(fetchSpy).toHaveBeenCalledWith("/api/auth/logout", { method: "POST", headers: { Authorization: "Bearer tok-1" } });
+    expect(fetchSpy).toHaveBeenCalledWith("/api/auth/logout", { method: "POST", headers: { Authorization: "Bearer tok-1" }, keepalive: true });
     expect(localStorage.getItem("deluno-auth-token")).toBeNull();
     expect(localStorage.getItem("deluno-auth-user")).toBeNull();
     expect(replace).toHaveBeenCalledWith("/login?return=" + encodeURIComponent("/system"));

@@ -35,8 +35,8 @@ test.describe("signing in and out through the real host", () => {
 
     await expect(page).toHaveURL(/\/login/);
     expect(await page.evaluate(() => window.localStorage.getItem("deluno-auth-token"))).toBeNull();
-    const after = await page.request.get("/api/tags", { headers: { Authorization: `Bearer ${token}` } });
-    expect(after.status()).toBe(401);
+    // The page leaves for sign-in without waiting on the server; the old token stops working once the logout lands (#1388).
+    await expect.poll(async () => (await page.request.get("/api/tags", { headers: { Authorization: `Bearer ${token}` } })).status(), { timeout: 5_000 }).toBe(401);
   });
 
   for (const [label, address] of [["//other-host", "%2F%2Fother-host"], ["a backslash", "%2F%5Cother-host"], ["a full address", "https%3A%2F%2Fother-host%2F"], ["javascript:", "javascript%3Aalert(1)"]]) {
