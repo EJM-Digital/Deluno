@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  candidateSortValue,
   defaultSortDirection,
   filterCandidates,
   formatGrabs,
@@ -120,5 +121,26 @@ describe("formatting helpers", () => {
     expect(formatGrabs(0)).toBe("0");
     expect(formatGrabs(null)).toBe("—");
     expect(formatGrabs(undefined)).toBe("—");
+  });
+});
+
+describe("candidateSortValue (the sort key each results column uses)", () => {
+  it("gives each column its own value, with the protocol lower-cased and a zero kept as zero", () => {
+    const full = candidate({ indexerName: "A", indexerProtocol: "Torznab", releaseAgeHours: 5, seeders: 0, leechers: 2, sizeBytes: 900, grabs: 3 });
+
+    expect(candidateSortValue(full, "protocol")).toBe("torznab");
+    expect(candidateSortValue(full, "age")).toBe(5);
+    expect(candidateSortValue(full, "seeders")).toBe(0);
+    expect(candidateSortValue(full, "leechers")).toBe(2);
+    expect(candidateSortValue(full, "size")).toBe(900);
+    expect(candidateSortValue(full, "grabs")).toBe(3);
+  });
+
+  it("gives null for a value the indexer did not report, in every column", () => {
+    const empty = candidate({ indexerName: "B" });
+
+    for (const key of ["protocol", "age", "seeders", "leechers", "size", "grabs"] as const) {
+      expect(candidateSortValue(empty, key)).toBeNull();
+    }
   });
 });
