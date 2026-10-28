@@ -37,12 +37,14 @@ export function defineTryAgain(media: Media) {
     stopWeir();
     try {
       for (const kind of kinds) films.set(kind, await sendFilm(stack, kind, "Retry", "file"));
-      for (const kind of kinds) {
+      // Every client's hand-off is watched at once: watched one after another, the later ones went through their waiting
+      // minutes unseen while the first was watched (CI run 40656077743).
+      await Promise.all(kinds.map(async (kind) => {
         const { film } = films.get(kind)!;
-        await until(`${kind} to finish ${film.release}`, 240, () => clientFinished(stack, kind, film), 2000);
+        waited.set(kind, false);
         try {
+          await until(`${kind} to finish ${film.release}`, 240, () => clientFinished(stack, kind, film), 2000);
           // A send Weir does not answer waits and goes again after 1, 2 and 5 minutes (#1385); only the fourth try fails it.
-          waited.set(kind, false);
           const h = await until(`the hand-off of ${film.release} to fail`, 720, async () => {
             const found = await handoffOf(stack, film.release);
             if (found?.status === "waiting" && /did not answer/.test(found.failureMessage ?? "")) waited.set(kind, true);
@@ -50,7 +52,7 @@ export function defineTryAgain(media: Media) {
           }, 2000);
           failed.set(kind, h.value);
         } catch (error) { console.log(`${kind}: ${error}`); }
-      }
+      }));
     } finally { startWeir(); }
     try { await until("Weir to answer again", 120, weirAnswers, 1000); weirBack = true; } catch { /* the first check says so */ }
     // A person would not press the instant Weir is back: Deluno's own check interval is the behaviour being allowed for.

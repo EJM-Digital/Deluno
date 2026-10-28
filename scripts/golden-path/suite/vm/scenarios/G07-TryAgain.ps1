@@ -19,19 +19,19 @@ function Invoke-GroupTryAgain {
             $f = New-FilmFor -Kind $kind -Layout 'file' -Label 'retry'
             $films[$kind] = Send-Film -Film $f -Kind $kind
         }
-        foreach ($kind in $kinds) {
-            $f = $films[$kind]
-            Wait-FilmFinished -Film $f -TimeoutSec 240 | Out-Null
-            # A send Weir does not answer waits and goes again after 1, 2 and 5 minutes (#1385); only the fourth try fails it.
-            $seen = @{ Waiting = $false }
-            $w = Wait-Until -TimeoutSec 720 -IntervalSec 2 -Condition {
-                $h = Get-FilmHandoff -Film $f
-                if ($h -and $h.status -eq 'waiting' -and "$($h.failureMessage)" -match 'did not answer') { $seen.Waiting = $true }
-                if ($h -and $h.status -in 'failed', 'rejected') { $h } else { $null }
+        foreach ($kind in $kinds) { Wait-FilmFinished -Film $films[$kind] -TimeoutSec 240 | Out-Null; $waited[$kind] = $false }
+        # A send Weir does not answer waits and goes again after 1, 2 and 5 minutes (#1385); only the fourth try fails it. Every
+        # client's hand-off is read on each pass: read one after another, the later ones went through their waiting minutes unseen
+        # while the first was watched (CI run 40656077743).
+        Wait-Until -TimeoutSec 720 -IntervalSec 2 -Condition {
+            foreach ($kind in $kinds) {
+                if ($failed.ContainsKey($kind)) { continue }
+                $h = Get-FilmHandoff -Film $films[$kind]
+                if ($h -and $h.status -eq 'waiting' -and "$($h.failureMessage)" -match 'did not answer') { $waited[$kind] = $true }
+                if ($h -and $h.status -in 'failed', 'rejected') { $failed[$kind] = $h }
             }
-            $failed[$kind] = $w.Value
-            $waited[$kind] = $seen.Waiting
-        }
+            if ($failed.Count -ge $kinds.Count) { $true } else { $null }
+        } | Out-Null
     }
     finally { Start-WeirApp }
     $up = Wait-Until -TimeoutSec 120 -IntervalSec 1 -Condition { Test-WeirAnswering }
