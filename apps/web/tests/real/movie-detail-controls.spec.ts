@@ -295,4 +295,31 @@ test.describe("A movie's page", () => {
     await page.keyboard.press("Escape");
     await expect(close).toHaveCount(0);
   });
+
+  test("the Next step card offers the one thing to do: Search now for a movie with no file, and Resume automation for an unmonitored one", async ({ page }) => {
+    await openScreen(page, "/movies");
+    const movie = await addMovie(page, `Next ${stamp}`);
+    await openMovie(page, movie);
+    const card = page.getByLabel("Next Step");
+
+    const requests = recordRequests(page);
+    await card.getByRole("button", { name: "Search now" }).click();
+    await expect.poll(() => requests.find("POST", new RegExp(`^/api/movies/${movie.id}/search`)).length).toBe(1);
+    requests.stop();
+
+    await api(page, "PUT", "/api/movies/monitoring", { movieIds: [movie.id], monitored: false });
+    await openMovie(page, movie);
+    await card.getByRole("button", { name: "Resume automation" }).click();
+    await expect.poll(async () => (await api<{ monitored: boolean }>(page, "GET", `/api/movies/${movie.id}`)).body.monitored).toBe(true);
+  });
+
+  test("Everything about this film opens Activity narrowed to that film", async ({ page }) => {
+    await openScreen(page, "/movies");
+    const movie = await addMovie(page, `Activity ${stamp}`);
+    await openMovie(page, movie);
+    await page.getByRole("tab", { name: "History", exact: true }).click();
+    await page.getByRole("link", { name: "Everything about this film", exact: true }).click();
+    await expect(page).toHaveURL(/\/activity\?/);
+    await expectNoErrorScreen(page);
+  });
 });

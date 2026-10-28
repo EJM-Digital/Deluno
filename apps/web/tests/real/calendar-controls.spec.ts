@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { api, expectNoErrorScreen, openScreen, recordRequests } from "../helpers/real";
 import { untilQuiet } from "../helpers/settle";
@@ -103,6 +106,31 @@ test.describe("Calendar", () => {
       expect((await page.request.get(`${url.pathname}${url.search}`)).status(), "the first link stopped working").toBeGreaterThanOrEqual(400);
     } finally {
       await removeLinkKeys(page);
+    }
+  });
+
+  test("an episode airing today sits on today's cell and clicking it opens that show", async ({ page }) => {
+    test.setTimeout(90_000);
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), "deluno-real-calendar-"));
+    await openScreen(page, "/calendar");
+    const library = await api<{ id: string }>(page, "POST", "/api/libraries", { name: "Calendar shows", mediaType: "tv", purpose: "collection", rootPath: folder, importWorkflow: "copy" });
+    expect(library.status, JSON.stringify(library.body)).toBeLessThan(300);
+    const title = `Calendar Show ${Date.now()}`;
+    const today = new Date();
+    const key = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const seeded = await api<{ seriesId: string }>(page, "POST", "/api/testing/series/seed", { libraryId: library.body.id, title, year: 2024, episodeCount: 1, firstAirDate: key });
+    expect(seeded.status, JSON.stringify(seeded.body)).toBe(200);
+    try {
+      await page.reload();
+      await untilQuiet(page);
+      const entry = page.getByRole("button", { name: new RegExp(title) }).first();
+      await expect(entry).toBeVisible();
+      await entry.click();
+      await expect(page).toHaveURL(new RegExp(`/tv/${seeded.body.seriesId}`));
+    } finally {
+      await api(page, "POST", "/api/series/bulk", { seriesIds: [seeded.body.seriesId], operation: "remove" });
+      await api(page, "DELETE", `/api/libraries/${library.body.id}`);
+      fs.rmSync(folder, { recursive: true, force: true });
     }
   });
 });
