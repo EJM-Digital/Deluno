@@ -1,0 +1,22 @@
+{
+  "app": "subf2m",
+  "version": "2026-10-28",
+  "state": "search-no-title",
+  "recordedAt": "2026-10-28T16:36:16Z",
+  "note": "The title search for a title Subf2m does not hold.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/subtitles/searchbytitle?query=Zzzz-Not-A-Title-Zzzz&l="
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "bodyText": "<!DOCTYPE html>\n<html lang=\"en\">\n\n<head>\n\t<meta charset=\"utf-8\" />\n\t<meta name=\"viewport\" content=\"width=device-width\" />\n\t<title>Search For Zzzz-Not-A-Title-Zzzz</title>\n\t<link rel=\"canonical\" href=\"/subtitles/searchbytitle?query=Zzzz-Not-A-Title-Zzzz\" />\n\t<link rel=\"search\" type=\"application/opensearchdescription+xml\" href=\"/public/opensearch.xml\" title=\"Subf2m\" />\n\t<link href=\"/favicon.ico\" rel=\"shortcut icon\" type=\"image/x-icon\" />\n\t<link href=\"/public/assets/css/abc.css\" rel=\"stylesheet\">\n\t<link href=\"/public/assets/css/jquery.scrollbar.css\" rel=\"stylesheet\">\n\t<script src=\"/public/assets/js/jquery-3.2.0.min.js\" type=\"text/javascript\"></script>\n\t<script src=\"/public/assets/js/jquery.scrollbar.min.js\" type=\"text/javascript\"></script>\n\t<script src=\"/public/assets/js/tog.js\" type=\"text/javascript\"></script>\n\t<script type=\"text/javascript\">\n\tjQuery(document).ready(function() {\n\t\tjQuery('.scrollbar-macosx').scrollbar();\n\t});\n\twindow.onerror = function() {};\n\t</script>\n</head>\n\n<body cz-shortcut-listen=\"true\">\n\t<div class=\"container\">\n\t\t<header>\n\t\t\t<div id=\"logo\"> <a href=\"/\"><em>Subf2m 3.0 </em></a> </div>\n\t\t\t<div id=\"search\">\n\t\t\t\t<div class=\"filter\">\n\t\t\t\t\t<ul> </ul>\n\t\t\t\t</div>\n\t      <form action=\"/subtitles/searchbytitle?query=\">\n\t\t\t\t\t<input type=\"text\" name=\"query\" id=\"query\" class=\"text\" value=\"Zzzz-Not-A-Title-Zzzz\" />\n\t\t\t\t\t<input type=\"hidden\" name=\"l\" id=\"l\" class=\"text\" value=\"\" />\n\t\t\t\t\t<button type=\"submit\">Subtitle Search</button>\n\t\t\t\t</form>\n\t\t\t</div>\n\t\t\t<nav class=\"main\">\n\t\t\t\t<ul> </ul>\n\t\t\t</nav>\n\t\t</header>\n\t\t<div id=\"content\" class=\"clearfix\">\n\t\t\t<div id=\"bh_3\"></div>\n\t\t\t<div id=\"bh_4\"></div>\n\t\t\t<div class=\"banner\" style=\"min-height:0px\"> </div>\n\t\t\t<div id=\"columns\" class=\"clearfix\">\n\t\t\t\t<div id=\"left\">\n\t\t\t\t\t<div class=\"byTitle\">\n\t\t\t\t\t\t<div class=\"search-result\">\n\t\t\t\t\t\t\t<h2 class=\"exact\">Exact</h2>\n\t\t\t\t\t\t\t<ul>\n              \n              \t\n              \n\t\t\t\t\t\t\t</ul>\n\n<!--              \n\t\t\t\t\t\t\t<h2>TV-Series</h2>\n\t\t\t\t\t\t\t<ul>\n\n                  \t\n              \n\t\t\t\t\t\t\t</ul>\n              \n              \n              \n              \t<h2>Close</h2>\n\t\t\t\t\t\t\t<ul>\n\n                  \t\n              \n\t\t\t\t\t\t\t</ul>\n              \n              \n              \n              \t<h2>Popular</h2>\n\t\t\t\t\t\t\t<ul>\n\n                  \t\n              \n\t\t\t\t\t\t\t</ul>\n-->              \n\t\t\t\t\t\t</div>\n\t\t\t\t\t</div>\n\t\t\t\t</div>\n\t\t\t</div>\n\t\t\t<div class=\"bottom\"> </div>\n\t\t</div>\n\t\t<div id=\"sidebar-left\">\n\t\t\t<div class=\"banner\">\n\t\t\t\t<div style='width:160px;'> </div>\n\t\t\t</div>\n\t\t</div>\n\t\t<div id=\"sb_120x240\" class=\"fixed120-sabavision\"></div>\n\t\t<script type=\"text/javascript\" src=\"/public/assets/app.js?ver=3\"></script>\n\t\t<footer>\n\t\t\t<nav>\n\t\t\t\t<ul>\n\t\t\t\t\t<li><a href=\"/\">Home Page</a></li>\n\t\t\t\t\t<li><a href=\"/ads\">ADS</a></li>\n\t\t\t\t\t<li><a href=\"/contact\">Contact US</a></li>\n\t\t\t\t</ul>\n\t\t\t</nav>\n\t\t</footer>\n\t</div>\n\t</div>\n<!-- Google tag (gtag.js) -->\n<script async src=\"https://www.googletagmanager.com/gtag/js?id=G-XQB0QGX65V\"></script>\n<script>\n  window.dataLayer = window.dataLayer || [];\n  function gtag(){dataLayer.push(arguments);}\n  gtag('js', new Date());\n\n  gtag('config', 'G-XQB0QGX65V');\n</script>\t\n</body>\n\n</html>"
+      }
+    }
+  ]
+}
