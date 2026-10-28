@@ -228,6 +228,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             }
 
             var errors = ValidateSettings(request);
+            AddLocaleProblems(errors, request.MetadataLanguage, request.MetadataCertificationCountry);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -277,6 +278,8 @@ public static class PlatformEndpointRouteBuilderExtensions
             var current = await repository.GetAsync(cancellationToken);
             var merged = PlatformSettingsPatchMerger.Apply(current, request);
             var errors = ValidateSettings(merged);
+            // Only what this patch sends: an older install may hold a value saved before codes were checked, and that must not block saving something else.
+            AddLocaleProblems(errors, request.MetadataLanguage, request.MetadataCertificationCountry);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -962,6 +965,19 @@ public static class PlatformEndpointRouteBuilderExtensions
         }
 
         return errors;
+    }
+
+    private static void AddLocaleProblems(Dictionary<string, string[]> errors, string? language, string? country)
+    {
+        if (!string.IsNullOrWhiteSpace(language) && !MetadataLocaleCodes.IsLanguage(language))
+        {
+            errors["metadataLanguage"] = ["Details language must be a language code such as en, de or pt-BR."];
+        }
+
+        if (!string.IsNullOrWhiteSpace(country) && !MetadataLocaleCodes.IsCountry(country))
+        {
+            errors["metadataCertificationCountry"] = ["Ratings region must be a two-letter country code such as US, GB or NL."];
+        }
     }
 
     private static Dictionary<string, string[]> ValidateSettings(UpdatePlatformSettingsRequest request)
