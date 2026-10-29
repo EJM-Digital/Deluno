@@ -73,7 +73,7 @@ test.describe("The add dialog", () => {
       expect(requests.seen.filter((r) => r.method === "POST")).toHaveLength(0);
     });
 
-    test(`the ${variant.name} dialog adds into the library chosen, with the IMDb ID typed, Monitor it off and the search switch on, and the server keeps it that way`, async ({ page }) => {
+    test(`the ${variant.name} dialog adds into the library chosen, with the IMDb ID typed, Monitor it off (which switches the search box off), and the server keeps it that way`, async ({ page }) => {
       await openScreen(page, variant.path);
       const title = `Dialog ${variant.name} ${stamp}`;
       await page.getByRole("button", { name: variant.button, exact: true }).first().click();
@@ -84,9 +84,9 @@ test.describe("The add dialog", () => {
       await dialog.getByRole("combobox", { name: "Library" }).selectOption(libs[variant.other].id);
       await dialog.getByRole("checkbox", { name: "Monitor it" }).uncheck();
       await expect(dialog.getByRole("checkbox", { name: "Monitor it" })).not.toBeChecked();
-      await dialog.getByRole("checkbox", { name: "Search for it as soon as it is added" }).check();
-      await expect(dialog.getByRole("checkbox", { name: "Search for it as soon as it is added" })).toBeChecked();
-      await dialog.getByRole("checkbox", { name: "Search for it as soon as it is added" }).uncheck();
+      // #1399: a title kept unmonitored is never searched for, so the search box is off and unavailable.
+      await expect(dialog.getByRole("checkbox", { name: "Search for it as soon as it is added" })).toBeDisabled();
+      await expect(dialog.getByRole("checkbox", { name: "Search for it as soon as it is added" })).not.toBeChecked();
 
       const requests = recordRequests(page);
       await dialog.getByRole("button", { name: variant.manual, exact: true }).click();
