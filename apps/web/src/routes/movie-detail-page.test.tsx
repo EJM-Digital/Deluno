@@ -1225,3 +1225,41 @@ describe("the film's poster and quality tile", () => {
     expect(within(screen.getByText("Quality").closest("div")!).getByText("Unknown")).toBeInTheDocument();
   });
 });
+
+/**
+ * Coverage register (area movie-detail, low rows #1329): the detail cards that the film's metadata fills in.
+ */
+describe("the film's metadata cards (coverage, #1329)", () => {
+  const withMetadata = (metadata: unknown) =>
+    setup((url) => (url.split("?")[0] === "/api/movies/m1" ? { body: { ...MOVIE, metadataJson: JSON.stringify(metadata) } } : undefined));
+
+  it("shows extra backdrop stills in a Screenshots card when the metadata has them, and no card when it has none", async () => {
+    withMetadata({ Screenshots: ["https://image.tmdb.org/still1.jpg", "https://image.tmdb.org/still2.jpg"] });
+    await renderPage();
+    const heading = screen.getByText("Screenshots");
+    const card = heading.parentElement!;
+    const stills = Array.from(card.querySelectorAll("img")).map((img) => img.getAttribute("src"));
+    expect(stills.filter((src) => src?.includes("still"))).toHaveLength(2);
+    cleanup();
+
+    setup();
+    await renderPage();
+    expect(screen.queryByText("Screenshots")).toBeNull();
+  });
+
+  it("Release dates & certification: the certification country's row leads, highlighted, and the other countries follow", async () => {
+    withMetadata({
+      ReleaseFactsByCountry: [
+        { Country: "GB", Certification: "12A", InCinemas: "2026-03-08" },
+        { Country: "US", Certification: "PG-13" }
+      ]
+    });
+    await renderPage();
+    const card = screen.getByText("Release dates & certification").parentElement!;
+    const rows = within(card).getAllByText(/^(US|GB)$/).map((el) => el.parentElement!);
+    expect(rows.map((row) => within(row).getByText(/^(US|GB)$/).textContent)).toEqual(["US", "GB"]);
+    expect(rows[0]).toHaveClass("bg-primary/10");
+    expect(rows[1]).not.toHaveClass("bg-primary/10");
+    expect(within(rows[1]).getByText("12A")).toBeInTheDocument();
+  });
+});
