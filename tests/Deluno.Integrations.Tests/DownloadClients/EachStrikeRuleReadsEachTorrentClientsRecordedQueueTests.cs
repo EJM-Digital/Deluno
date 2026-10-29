@@ -146,6 +146,30 @@ public sealed class EachStrikeRuleReadsEachTorrentClientsRecordedQueueTests
         Assert.Contains(findings, f => f.Kind == DownloadHealthStrikes.LowSpeed);
     }
 
+    // ---- Post-processing failed -----------------------------------------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("qbittorrent")]
+    [InlineData("transmission")]
+    [InlineData("deluge")]
+    public async Task A_finished_recorded_download_the_processor_failed_on_is_a_critical_finding_with_the_processors_own_words_and_when_it_gave_none_the_plain_default(string app)
+    {
+        var polled = await PollAsync(app, "finished-single-file");
+        var weirsWords = RecordedReplies.Weir("status-failed").Single.Reply.Body!;
+        var processorMessage = System.Text.Json.JsonDocument.Parse(weirsWords).RootElement.GetProperty("message").GetString()!;
+        var at = polled.Item.AddedUtc.AddMinutes(10);
+
+        var withMessage = Assert.Single(Judge(polled with { Item = polled.Item with { Status = "processingFailed", ErrorMessage = processorMessage } }, at), f => f.Kind == "post-processing-failed");
+        var withoutMessage = Assert.Single(Judge(polled with { Item = polled.Item with { Status = "processingFailed", ErrorMessage = null } }, at), f => f.Kind == "post-processing-failed");
+        var notFailed = Judge(polled, at);
+
+        Assert.Equal("critical", withMessage.Severity);
+        Assert.Equal(processorMessage, withMessage.Evidence);
+        Assert.Equal("The configured post-processing step failed before import.", withMessage.Summary);
+        Assert.Equal("The processor did not produce an import-ready output.", withoutMessage.Evidence);
+        Assert.DoesNotContain(notFailed, f => f.Kind == "post-processing-failed");
+    }
+
     // ---- Dead torrent ---------------------------------------------------------------------------------------------------------------
 
     [Theory]
