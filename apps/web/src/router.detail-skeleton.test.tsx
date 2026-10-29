@@ -3,7 +3,7 @@ import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
-// #1329 (movie-detail and show-detail, route loading): a title's page is a lazy route. While its module and its loader are on the
+// #1329 (movie-detail, show-detail and automation, route loading): a title's page and the Automation screens are lazy routes. While its module and its loader are on the
 // way the person sees the busy placeholder (never a blank page or half a title), and the page itself only draws once the loader
 // has answered.
 
@@ -23,7 +23,11 @@ function find(routes: readonly RouteObject[], pattern: string, parent = ""): Rou
 
 describe.each([
   ["/movies/:id", "/movies/some-film", "a film"],
-  ["/tv/:id", "/tv/some-show", "a show"]
+  ["/tv/:id", "/tv/some-show", "a show"],
+  ["/search-cycles", "/search-cycles", "the Automation schedules screen"],
+  ["/search-cycles/retention", "/search-cycles/retention", "the Retention screen"],
+  ["/search-cycles/download-health", "/search-cycles/download-health", "the download health screen"],
+  ["/search-cycles/keep-seeding", "/search-cycles/keep-seeding", "the keep-seeding screen"]
 ])("%s (%s)", (pattern, address, what) => {
   it(`shows the busy placeholder while ${what}'s page module is on the way and its loader has not answered`, { timeout: 60000 }, async () => {
     const route = find(router.routes as RouteObject[], pattern);
