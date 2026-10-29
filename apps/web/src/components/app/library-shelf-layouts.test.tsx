@@ -91,6 +91,22 @@ describe("the compact list", () => {
     expect(handlers.onToggle).toHaveBeenLastCalledWith("a");
   });
 
+  it("the arrow keys move one row, and Page Down and Page Up jump ten rows and stop at the first and last", async () => {
+    renderTable();
+    await screen.findAllByRole("checkbox", { name: "Select row" });
+    const row = (index: number) => document.querySelector(`tr[data-row-index="${index}"]`) as HTMLElement;
+    row(0).focus();
+
+    fireEvent.keyDown(row(0), { key: "PageDown" });
+    expect(document.activeElement).toBe(row(2));
+    fireEvent.keyDown(row(2), { key: "PageUp" });
+    expect(document.activeElement).toBe(row(0));
+    fireEvent.keyDown(row(0), { key: "ArrowDown" });
+    expect(document.activeElement).toBe(row(1));
+    fireEvent.keyDown(row(1), { key: "ArrowUp" });
+    expect(document.activeElement).toBe(row(0));
+  });
+
   it("clicking a row's title opens that title", async () => {
     const handlers = renderTable();
 
