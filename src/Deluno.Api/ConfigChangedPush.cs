@@ -2,6 +2,7 @@ using Deluno.Contracts;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Deluno.Api;
 
@@ -94,25 +95,39 @@ public static class ConfigChangedPush
                 return;
             }
 
-            var publisher = context.RequestServices.GetService<IRealtimeEventPublisher>();
-            if (context.Request.Path.Value is { } value && value.StartsWith("/api/", StringComparison.OrdinalIgnoreCase))
+            // The write is already saved: a push that fails is logged and never turns that answer into an error (#1413).
+            try
             {
-                foreach (var (prefix, publish) in OwnEvents)
+                await PublishAsync(context);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                context.RequestServices.GetService<ILoggerFactory>()?.CreateLogger("Deluno.Api.ConfigChangedPush")
+                    .LogWarning(ex, "The live-update push after a saved {Method} {Path} failed; the write's answer is unchanged.", context.Request.Method, context.Request.Path.Value);
+            }
+        });
+
+    private static async Task PublishAsync(HttpContext context)
+    {
+        var publisher = context.RequestServices.GetService<IRealtimeEventPublisher>();
+        if (context.Request.Path.Value is { } value && value.StartsWith("/api/", StringComparison.OrdinalIgnoreCase))
+        {
+            foreach (var (prefix, publish) in OwnEvents)
+            {
+                if (Matches(value.AsSpan(5), prefix))
                 {
-                    if (Matches(value.AsSpan(5), prefix))
-                    {
-                        await publish(publisher, CancellationToken.None);
-                        return;
-                    }
+                    await publish(publisher, CancellationToken.None);
+                    return;
                 }
             }
+        }
 
-            var area = AreaFor(context.Request.Path);
-            if (area is null)
-            {
-                return;
-            }
+        var area = AreaFor(context.Request.Path);
+        if (area is null)
+        {
+            return;
+        }
 
-            await publisher.PublishConfigChangedAsync(area, CancellationToken.None);
-        });
+        await publisher.PublishConfigChangedAsync(area, CancellationToken.None);
+    }
 }
