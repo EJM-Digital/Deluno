@@ -71,10 +71,34 @@ public static class GuidePackageCatalog
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json))).ToLowerInvariant();
     }
 
+    /// <summary>
+    /// Every problem with a package, in plain words. It never throws: a damaged or hand-edited package comes back as
+    /// sentences saying what to fix, not as a crash (#1417).
+    /// </summary>
     public static IReadOnlyList<string> Validate(GuidePackage package)
     {
-        ArgumentNullException.ThrowIfNull(package);
         var errors = new List<string>();
+        if (package is null)
+        {
+            errors.Add("The guide package is missing.");
+            return errors;
+        }
+
+        try
+        {
+            ValidateCore(package, errors);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // A shape no check above anticipated: say so as a problem rather than crash on a damaged package.
+            errors.Add($"The guide package is damaged and could not be fully checked: {exception.Message}");
+        }
+
+        return errors;
+    }
+
+    private static void ValidateCore(GuidePackage package, List<string> errors)
+    {
 
         if (string.IsNullOrWhiteSpace(package.Id)) errors.Add("The guide package needs a stable id.");
         if (string.IsNullOrWhiteSpace(package.Name)) errors.Add("The guide package needs a name.");
@@ -91,10 +115,10 @@ public static class GuidePackageCatalog
             if (string.IsNullOrWhiteSpace(package.Source.Adaptation)) errors.Add("Guide source provenance needs an adaptation note.");
         }
 
-        var tiers = package.QualityTiers ?? [];
-        var formats = package.CustomFormats ?? [];
-        var profiles = package.QualityProfiles ?? [];
-        var bundles = package.Bundles ?? [];
+        var tiers = WithoutEmptyEntries(package.QualityTiers, "quality tier", errors);
+        var formats = WithoutEmptyEntries(package.CustomFormats, "custom format", errors);
+        var profiles = WithoutEmptyEntries(package.QualityProfiles, "quality profile", errors);
+        var bundles = WithoutEmptyEntries(package.Bundles, "format bundle", errors);
         ValidateUnique(tiers.Select(item => item.Id), "quality tier", errors);
         ValidateUnique(formats.Select(item => item.TrashId), "custom format", errors);
         ValidateUnique(profiles.Select(item => item.Id), "quality profile", errors);
@@ -172,18 +196,17 @@ public static class GuidePackageCatalog
         {
             ValidateGenuineFormats(package, errors);
         }
-
-        return errors;
     }
 
     private static void ValidateGenuineFormats(GuidePackage package, ICollection<string> errors)
     {
         var sourceById = (package.SourceInventory?.CustomFormats ?? [])
-            .Where(item => !string.IsNullOrWhiteSpace(item.TrashId))
-            .ToDictionary(item => item.TrashId, StringComparer.OrdinalIgnoreCase);
-        foreach (var format in package.CustomFormats ?? [])
+            .Where(item => item is not null && !string.IsNullOrWhiteSpace(item.TrashId))
+            .GroupBy(item => item.TrashId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        foreach (var format in (package.CustomFormats ?? []).Where(item => item is not null))
         {
-            var upstream = sourceById.GetValueOrDefault(format.TrashId);
+            var upstream = string.IsNullOrWhiteSpace(format.TrashId) ? null : sourceById.GetValueOrDefault(format.TrashId);
             switch (format.SourceKind)
             {
                 case GenuineSourceKind:
@@ -340,7 +363,8 @@ public static class GuidePackageCatalog
 
         if (source.SchemaVersion <= 0)
             errors.Add("The guide source inventory schema version must be positive.");
-        if (!string.Equals(source.UpstreamRevision, package.Source.UpstreamRevision, StringComparison.OrdinalIgnoreCase))
+        // With no provenance there is nothing to compare; that is already a problem of its own.
+        if (package.Source is not null && !string.Equals(source.UpstreamRevision, package.Source.UpstreamRevision, StringComparison.OrdinalIgnoreCase))
             errors.Add("The guide source inventory revision must match the package provenance revision.");
         ValidateUnique((source.CustomFormats ?? []).Select(item => item.TrashId), "source custom format", errors);
         ValidateUnique((source.FormatGroups ?? []).Select(item => item.TrashId), "source format group", errors);
@@ -398,6 +422,19 @@ public static class GuidePackageCatalog
                     errors.Add($"Source quality profile '{profile.TrashId}' refers to unknown source custom format '{assignment.TrashId}'.");
             }
         }
+    }
+
+    /// <summary>A list's entries without the empty ones, each empty one reported (a hand-edited package can leave one).</summary>
+    private static IReadOnlyList<T> WithoutEmptyEntries<T>(IReadOnlyList<T>? entries, string kind, ICollection<string> errors)
+        where T : class
+    {
+        var present = (entries ?? []).Where(item => item is not null).ToArray();
+        if (present.Length != (entries?.Count ?? 0))
+        {
+            errors.Add($"The guide has an empty {kind} entry.");
+        }
+
+        return present;
     }
 
     private static void ValidateUnique(IEnumerable<string?> values, string kind, ICollection<string> errors)
