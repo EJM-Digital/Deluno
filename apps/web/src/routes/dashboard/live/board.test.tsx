@@ -210,6 +210,25 @@ describe("working on now", () => {
     expect(within(region).queryByRole("link", { name: /more in Activity/ })).toBeNull();
   });
 
+  it("sends a search row to the search cycles, a grab, processor and import row to the Queue", () => {
+    const ops = buildOperations(
+      [
+        { key: "search:l1", kind: "search", text: "Searching Movies for what is missing or could be better", progress: 30, detail: "12 of 40", to: "/search-cycles" },
+        { key: "grab:g1", kind: "grab", text: "Sending Sintel.2010.1080p to Deluge", to: "/queue" }
+      ],
+      [card({ key: "p", stage: "processor", processor: "FileFlows", state: { tone: "info", label: "Being cleaned" } }), card({ key: "i", stage: "importing", title: "Moon (2009)", state: { tone: "info", label: "Importing now" } })],
+      NO_TITLES
+    );
+    withRouter(<Band summary={fullSummary} samples={[]} operations={ops} upcoming={[]} />);
+    const region = screen.getByRole("region", { name: "Working on now" });
+    const hrefs = within(region).getAllByRole("link").map((link) => [link.textContent ?? "", link.getAttribute("href")] as const);
+
+    expect(hrefs.find(([text]) => /Searching Movies/.test(text))?.[1]).toBe("/search-cycles");
+    expect(hrefs.find(([text]) => /Sending Sintel/.test(text))?.[1]).toBe("/queue");
+    expect(hrefs.find(([text]) => /FileFlows is working on/.test(text))?.[1]).toBe("/queue");
+    expect(hrefs.find(([text]) => /Importing/.test(text))?.[1]).toBe("/queue");
+  });
+
   it("lists at most four, and says how many more there are", () => {
     const six = Array.from({ length: 6 }, (_, index) => ({ key: `grab:${index}`, kind: "grab" as const, text: `Sending Movie ${index}`, to: "/queue" }));
     withRouter(<Band summary={fullSummary} samples={[]} operations={buildOperations(six, [], NO_TITLES)} upcoming={[]} />);
