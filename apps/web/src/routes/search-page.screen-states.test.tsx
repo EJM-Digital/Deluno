@@ -109,6 +109,15 @@ async function search(text = "Example") {
 }
 
 describe("the Search page's query and type", () => {
+  it("before any search the page explains what the search does, and the explanation goes once results arrive", async () => {
+    await renderPage();
+    expect(screen.getByText("Nothing searched yet")).toBeTruthy();
+    expect(screen.getByText(/Use Filter to choose the type, particular indexers or categories first\./)).toBeTruthy();
+    await search();
+    await screen.findByText("Example.Release.WEB.1080p");
+    expect(screen.queryByText("Nothing searched yet")).toBeNull();
+  });
+
   it("the query box takes focus when the page opens", async () => {
     render(<MemoryRouter><SearchPage /></MemoryRouter>);
 

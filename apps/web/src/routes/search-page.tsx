@@ -319,6 +319,13 @@ export function SearchPage() {
         </div>
       ) : null}
 
+      {results === null ? (
+        <ListEmpty
+          title="Nothing searched yet"
+          description="Type part of a release name and press Search. Deluno asks every enabled indexer that covers the type and lists what each one answered, so you can pick a release to send to your download client. Use Filter to choose the type, particular indexers or categories first."
+        />
+      ) : null}
+
       {results !== null ? (
         <ListCard
           title="Results"
