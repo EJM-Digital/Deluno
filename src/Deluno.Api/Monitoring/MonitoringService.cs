@@ -131,37 +131,38 @@ public sealed class MonitoringService(
         AddParameter(command, "@sinceUtc", query.SinceUtc?.ToString("O"));
         AddParameter(command, "@query", string.IsNullOrWhiteSpace(query.Query) ? null : query.Query.Trim());
         AddParameter(command, "@likeQuery", string.IsNullOrWhiteSpace(query.Query) ? null : $"%{query.Query.Trim()}%");
-        AddParameter(command, "@take", pageSize + 1);
-        AddParameter(command, "@createdUtc", token?[0]);
-        AddParameter(command, "@id", token?[1]);
-
+        // Severity is worked out from the category name, not stored, so a severity filter is applied while reading
+        // rows and the read stops once the page and one more match are in hand (#1401). Without one, SQL cuts the page.
         var severityFilter = string.IsNullOrWhiteSpace(query.Severity)
             ? null
             : query.Severity.Trim();
+        AddParameter(command, "@take", severityFilter is null ? pageSize + 1 : -1);
+        AddParameter(command, "@createdUtc", token?[0]);
+        AddParameter(command, "@id", token?[1]);
 
         var results = new List<MonitoringDiagnosticItem>(pageSize + 1);
-        var fetched = 0;
+        var matched = 0;
         string? cursorCreatedUtc = null;
         string? cursorId = null;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            fetched++;
-            if (fetched > pageSize)
-            {
-                continue;
-            }
-
             var category = reader.GetString(1);
             var severity = SeverityForCategory(category);
-            cursorCreatedUtc = reader.GetString(6);
-            cursorId = reader.GetInt64(7).ToString(CultureInfo.InvariantCulture);
             if (severityFilter is not null &&
                 !string.Equals(severity, severityFilter, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
+            matched++;
+            if (matched > pageSize)
+            {
+                break;
+            }
+
+            cursorCreatedUtc = reader.GetString(6);
+            cursorId = reader.GetInt64(7).ToString(CultureInfo.InvariantCulture);
             results.Add(new MonitoringDiagnosticItem(
                 Id: reader.GetString(0),
                 Category: category,
@@ -173,7 +174,7 @@ public sealed class MonitoringService(
                 CreatedUtc: DateTimeOffset.Parse(reader.GetString(6), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)));
         }
 
-        var hasMore = fetched > pageSize;
+        var hasMore = matched > pageSize;
 
         return Page<MonitoringDiagnosticItem>.Of(
             results,

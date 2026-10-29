@@ -76,6 +76,14 @@ public static class DelunoRequestPipeline
         return ["write"];
     }
 
+    /// <summary>What a caller is answered when a route throws: the one place it is decided, for the answer and for the request record (#1400).</summary>
+    internal static int StatusForFailure(Exception? failure)
+    {
+        if (DiskFull.Caused(failure)) return StatusCodes.Status507InsufficientStorage;
+        var stateFile = failure as StateFileException ?? failure?.InnerException as StateFileException;
+        return stateFile is not null ? StatusCodes.Status503ServiceUnavailable : StatusCodes.Status500InternalServerError;
+    }
+
     /// <summary>
     /// Forwarded headers, response compression and the rate limiters. Allowed
     /// Hosts (#939) matches against the request host, so a reverse proxy or
@@ -209,7 +217,7 @@ public static class DelunoRequestPipeline
                 // A state file Deluno could not read or write (busy, damaged) already carries the reason in everyday
                 // words and says nothing was changed, so that is what the screen is told, not a bare 500.
                 var stateFile = failure as StateFileException ?? failure?.InnerException as StateFileException;
-                context.Response.StatusCode = diskFull ? StatusCodes.Status507InsufficientStorage : stateFile is not null ? StatusCodes.Status503ServiceUnavailable : 500;
+                context.Response.StatusCode = StatusForFailure(failure);
                 context.Response.ContentType = "application/json";
                 await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(new { error = diskFull ? DiskFull.PlainMessage : stateFile?.Message ?? "An unexpected error occurred." }));
             });
@@ -322,9 +330,17 @@ public static class DelunoRequestPipeline
             }
 
             var started = Stopwatch.GetTimestamp();
+            // The exception handler sits outside this step, so when a route throws the response still reads 200 here.
+            // The record must say what the handler will answer (#1400).
+            int? thrownStatus = null;
             try
             {
                 await next();
+            }
+            catch (Exception failure) when (failure is not OperationCanceledException)
+            {
+                thrownStatus = StatusForFailure(failure);
+                throw;
             }
             finally
             {
@@ -333,7 +349,7 @@ public static class DelunoRequestPipeline
                 tracker.Record(
                     context.Request.Path.HasValue ? context.Request.Path.Value! : "unknown",
                     elapsed,
-                    context.Response.StatusCode);
+                    thrownStatus ?? context.Response.StatusCode);
             }
         });
 

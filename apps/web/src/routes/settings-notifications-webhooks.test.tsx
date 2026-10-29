@@ -216,9 +216,43 @@ describe("webhook drawer", () => {
     expect(screen.getByText("Save your changes first.")).toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText(/https?:\/\//i), { target: { value: "https://hooks.example.test/a" } });
     expect(send).toBeEnabled();
+    vi.mocked(authedFetch).mockImplementation(async (input: RequestInfo | URL) => String(input).startsWith("/api/tags") ? json([]) : json({ sent: true, status: "delivered", attempts: 1 }));
     fireEvent.click(send);
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Test event sent to Test target"));
     expect(vi.mocked(authedFetch)).toHaveBeenCalledWith("/api/notification-webhooks/e2/test", { method: "POST" });
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("does not say a test event was sent when the answer is a 2xx that does not say it was sent (#1403)", async () => {
+    loader.webhooks = [hook({ id: "e5", name: "Quiet target" })];
+    renderPage();
+    fireEvent.click(screen.getByText("Quiet target"));
+    for (const body of [{}, { sent: null }, { id: "x" }, "not json at all"]) {
+      toastError.mockReset();
+      vi.mocked(authedFetch).mockImplementation(async (input: RequestInfo | URL) => String(input).startsWith("/api/tags") ? json([]) : typeof body === "string" ? new Response(body, { status: 200 }) : json(body));
+      fireEvent.click(screen.getByRole("button", { name: "Send a test event" }));
+      await waitFor(() => expect(toastError).toHaveBeenCalledWith("Nothing was sent. The answer did not say the event was delivered."));
+    }
+    expect(toastSuccess).not.toHaveBeenCalled();
+  });
+
+  it("says why when the test event was not sent (paused, off or failed) and when the server refuses it (#1403)", async () => {
+    loader.webhooks = [hook({ id: "e6", name: "Paused target" })];
+    renderPage();
+    fireEvent.click(screen.getByText("Paused target"));
+    const answers: Array<[unknown, number, string]> = [
+      [{ sent: false, message: "Notifications are paused. Turn on Send notifications to test this webhook." }, 200, "Notifications are paused. Turn on Send notifications to test this webhook."],
+      [{ sent: false, status: "dead-letter", error: "Webhook returned HTTP 503 (Service Unavailable)." }, 200, "Webhook returned HTTP 503 (Service Unavailable)."],
+      [{ sent: false, status: "disabled" }, 200, "Test notification could not be sent."],
+      [{}, 500, "Test notification could not be sent."]
+    ];
+    for (const [body, status, message] of answers) {
+      toastError.mockReset();
+      vi.mocked(authedFetch).mockImplementation(async (input: RequestInfo | URL) => String(input).startsWith("/api/tags") ? json([]) : json(body, status));
+      fireEvent.click(screen.getByRole("button", { name: "Send a test event" }));
+      await waitFor(() => expect(toastError).toHaveBeenCalledWith(message));
+    }
+    expect(toastSuccess).not.toHaveBeenCalled();
   });
 
   it("deletes after a confirmation that names the webhook, toasts '<name> removed' and closes the drawer", async () => {

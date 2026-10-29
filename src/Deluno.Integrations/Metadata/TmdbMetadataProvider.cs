@@ -263,7 +263,7 @@ public sealed partial class TmdbMetadataProvider(
         }
 
         var config = await GetMetadataConfigurationAsync(cancellationToken);
-        var apiKey = config.TmdbApiKey ?? await GetApiKeyAsync(cancellationToken);
+        var apiKey = DirectKeyForMode(config);
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             return [];
@@ -464,7 +464,7 @@ public sealed partial class TmdbMetadataProvider(
             }
         }
 
-        var apiKey = config.TmdbApiKey ?? await GetApiKeyAsync(cancellationToken);
+        var apiKey = DirectKeyForMode(config);
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             return new MetadataProviderRecordLookup(
@@ -1519,6 +1519,13 @@ public sealed partial class TmdbMetadataProvider(
         command.Parameters.Add(parameter);
     }
 
+    /// <summary>
+    /// The one place that says which TMDb key a lookup may use (#1402). Broker mode never uses a local key: when the broker has
+    /// no answer the lookup ends with none, it does not call TMDb directly. Direct and hybrid use the key they were given.
+    /// </summary>
+    private static string? DirectKeyForMode(MetadataProviderConfiguration config)
+        => string.Equals(config.ProviderMode, "broker", StringComparison.OrdinalIgnoreCase) ? null : config.TmdbApiKey;
+
     private async Task<MetadataProviderConfiguration> GetMetadataConfigurationAsync(CancellationToken cancellationToken)
     {
         var settings = await platformRepository.GetAsync(cancellationToken);
@@ -2077,7 +2084,7 @@ public sealed partial class TmdbMetadataProvider(
                 providerId);
         }
 
-        var apiKey = config.TmdbApiKey ?? await GetApiKeyAsync(cancellationToken);
+        var apiKey = DirectKeyForMode(config);
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             logger.LogWarning(
@@ -2118,7 +2125,7 @@ public sealed partial class TmdbMetadataProvider(
                 providerId);
         }
 
-        var apiKey = config.TmdbApiKey ?? await GetApiKeyAsync(cancellationToken);
+        var apiKey = DirectKeyForMode(config);
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             return [];
@@ -2149,7 +2156,7 @@ public sealed partial class TmdbMetadataProvider(
             }
         }
 
-        var apiKey = config.TmdbApiKey ?? await GetApiKeyAsync(cancellationToken);
+        var apiKey = DirectKeyForMode(config);
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             return MetadataReleaseDates.None;
@@ -2188,7 +2195,7 @@ public sealed partial class TmdbMetadataProvider(
             }
         }
 
-        var apiKey = config.TmdbApiKey ?? await GetApiKeyAsync(cancellationToken);
+        var apiKey = DirectKeyForMode(config);
         return string.IsNullOrWhiteSpace(apiKey)
             ? null
             : await GetTmdbCollectionAsync(id, apiKey, cancellationToken);
@@ -2223,7 +2230,7 @@ public sealed partial class TmdbMetadataProvider(
             }
         }
 
-        var apiKey = config.TmdbApiKey ?? await GetApiKeyAsync(cancellationToken);
+        var apiKey = DirectKeyForMode(config);
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             return [];
