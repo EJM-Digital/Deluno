@@ -201,6 +201,18 @@ describe("the Download Clients tab, low rows (#1329)", () => {
     expect(cellOf("Never")).toContain("Not tested");
   });
 
+  it("a switched-off client with nothing running still shows when it was last tested, even though the server reports it as idle", () => {
+    const idle = { activeCount: 0, totalSpeedMbps: 0, importReadyCount: 0 };
+    reset({
+      clients: [client({ id: "a", name: "Off tested", isEnabled: false, lastHealthTestUtc: new Date(Date.now() - 3 * 60_000).toISOString() }), client({ id: "b", name: "Off never", isEnabled: false })],
+      telemetry: { clients: [{ clientId: "a", clientPaused: false, summary: idle }, { clientId: "b", clientPaused: false, summary: idle }] }
+    });
+    show("/indexers/download-clients");
+    const cellOf = (name: string) => within(screen.getAllByRole("row").find((row) => row.textContent?.includes(name))!).getAllByRole("cell")[3].textContent ?? "";
+    expect(cellOf("Off tested")).toMatch(/Tested .*ago/);
+    expect(cellOf("Off never")).toContain("Not tested");
+  });
+
   it("a pushed download-progress reading moves that download's figures and its client's speed in the held telemetry, without asking the server", () => {
     const summary = { activeCount: 1, queuedCount: 0, completedCount: 0, stalledCount: 0, processingCount: 0, importReadyCount: 0, totalSpeedMbps: 6, totalUploadSpeedMbps: 0 };
     queryClient.setQueryData(indexersSources.telemetry.key, { capturedUtc: "2026-10-29T00:00:00Z", summary, clients: [{ clientId: "a", clientPaused: false, summary, queue: [{ id: "one", progress: 0.1, speedMbps: 6 }] }] });
