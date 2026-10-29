@@ -111,6 +111,20 @@ describe("filter conditions", () => {
     expect(describeCondition({ field: "added", operator: "within", values: ["1"] }, added)).toBe("Added in the last 1 day");
     expect(describeCondition({ field: "added", operator: "within", values: ["30"] }, added)).toBe("Added in the last 30 days");
   });
+
+  it("reads an unreadable relative number as typed with days after it, a minutes field with min, and a plain value with no unit", () => {
+    const added = { label: "Added" } as Parameters<typeof describeCondition>[1];
+    expect(describeCondition({ field: "added", operator: "within", values: ["soon"] }, added)).toBe("Added in the last soon days");
+    expect(describeCondition({ field: "runtime", operator: "min", values: ["90"] }, { label: "Runtime", valueKind: "minutes" } as Parameters<typeof describeCondition>[1]))
+      .toBe("Runtime at least 90 min");
+    expect(describeCondition({ field: "title", operator: "min", values: ["7"] }, { label: "Title", valueKind: "text" } as Parameters<typeof describeCondition>[1]))
+      .toBe("Title at least 7");
+  });
+
+  it("reads a condition that takes no value as just the field and the operator", () => {
+    const added = { label: "Added" } as Parameters<typeof describeCondition>[1];
+    expect(describeCondition({ field: "added", operator: "set", values: ["30"] }, added)).toBe("Added has a value");
+  });
 });
 
 describe("reading a saved view", () => {
