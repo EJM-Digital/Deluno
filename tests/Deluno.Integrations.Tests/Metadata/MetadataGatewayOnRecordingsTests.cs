@@ -214,6 +214,24 @@ public sealed class MetadataGatewayOnRecordingsTests : IDisposable
     }
 
     [Fact]
+    public async Task In_broker_mode_release_dates_never_ask_TMDb_with_a_local_key_even_when_the_broker_has_none()
+    {
+        var asked = new List<Uri>();
+        var rig = await RigAsync(request =>
+        {
+            asked.Add(request.RequestUri!);
+            // The gateway's recorded "TMDb has none" reply stands in for a film it cannot give dates for.
+            return request.RequestUri!.Host == "metadata.deluno.test" ? Reply("collection-missing") : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"results\":[]}") };
+        }, localTmdbKey: "a-local-key");
+
+        var dates = await rig.GetMovieReleaseDatesAsync("999999999", CancellationToken.None);
+
+        Assert.False(dates.HasAny);
+        Assert.DoesNotContain(asked, uri => uri.Host.Contains("themoviedb", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(asked, uri => uri.AbsolutePath == "/metadata/movie/999999999/release-dates");
+    }
+
+    [Fact]
     public async Task A_collection_is_read_with_its_films_and_a_collection_TMDb_has_not_is_none()
     {
         var rig = await RigAsync(Gateway);
@@ -402,10 +420,10 @@ public sealed class MetadataGatewayOnRecordingsTests : IDisposable
 
     // ---- the rig ----
 
-    private Task<TmdbMetadataProvider> RigAsync(Func<HttpRequestMessage, HttpResponseMessage> respond, string language = "en")
-        => RigAsync((request, _) => Task.FromResult(respond(request)), language);
+    private Task<TmdbMetadataProvider> RigAsync(Func<HttpRequestMessage, HttpResponseMessage> respond, string language = "en", string? localTmdbKey = null)
+        => RigAsync((request, _) => Task.FromResult(respond(request)), language, localTmdbKey);
 
-    private async Task<TmdbMetadataProvider> RigAsync(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond, string language = "en")
+    private async Task<TmdbMetadataProvider> RigAsync(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond, string language = "en", string? localTmdbKey = null)
     {
         var settings = new Mock<IPlatformSettingsRepository>();
         settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
@@ -436,7 +454,7 @@ public sealed class MetadataGatewayOnRecordingsTests : IDisposable
         var policy = new IntegrationResiliencePolicy(clock, factory, NullLogger<IntegrationResiliencePolicy>.Instance);
         return new TmdbMetadataProvider(
             new HttpClient(new StubHandler(respond)),
-            new ConfigurationBuilder().Build(),
+            new ConfigurationBuilder().AddInMemoryCollection(localTmdbKey is null ? [] : new Dictionary<string, string?> { ["Deluno:Metadata:TMDbApiKey"] = localTmdbKey }).Build(),
             settings.Object,
             factory,
             storageOptions,

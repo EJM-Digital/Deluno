@@ -2149,7 +2149,9 @@ public sealed partial class TmdbMetadataProvider(
             }
         }
 
-        var apiKey = config.TmdbApiKey ?? await GetApiKeyAsync(cancellationToken);
+        // Broker mode never reads a local TMDb key (config.TmdbApiKey is null there on purpose, #1402): when the broker has no
+        // dates the answer is none, not a direct call.
+        var apiKey = config.TmdbApiKey;
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             return MetadataReleaseDates.None;
