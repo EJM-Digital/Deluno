@@ -115,6 +115,26 @@ public sealed class SubtitleInventoryTests
     }
 
     [Fact]
+    public async Task Every_subtitle_format_and_a_Subtitles_folder_are_found_and_not_only_srt_in_a_Subs_folder()
+    {
+        using var folder = new TempFolder();
+        var video = folder.WriteVideo("Dune (2021).mkv");
+        var byLanguage = new[] { ("en", "ass"), ("fr", "ssa"), ("es", "vtt"), ("it", "sub"), ("nl", "idx"), ("pl", "sup"), ("sv", "smi") };
+        foreach (var (language, extension) in byLanguage)
+        {
+            folder.Write($"Dune (2021).{language}.{extension}");
+        }
+
+        folder.WriteNested("Subtitles", "Dune (2021).de.srt");
+
+        var inventory = await Inspect(video, probe: MediaProbeInfoFake.Unavailable);
+
+        Assert.Equal(
+            ["Dune (2021).de.srt", "Dune (2021).en.ass", "Dune (2021).es.vtt", "Dune (2021).fr.ssa", "Dune (2021).it.sub", "Dune (2021).nl.idx", "Dune (2021).pl.sup", "Dune (2021).sv.smi"],
+            inventory.Subtitles.Select(subtitle => Path.GetFileName(subtitle.Path!)).Order(StringComparer.Ordinal).ToArray());
+    }
+
+    [Fact]
     public async Task Tracks_inside_the_container_count_and_a_forced_one_is_marked_as_forced()
     {
         using var folder = new TempFolder();
