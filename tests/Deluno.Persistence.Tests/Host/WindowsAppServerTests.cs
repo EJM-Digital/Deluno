@@ -261,6 +261,7 @@ public sealed class WindowsAppServerTests : IAsyncLifetime
                 Content = JsonContent.Create(new UpdateLocalNetworkAuthRequest(enabled, [], [], []))
             };
             save.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            save.Headers.Add(Deluno.Security.CurrentPasswordGate.Header, Password);
             Assert.Equal(HttpStatusCode.OK, (await _client.SendAsync(save)).StatusCode);
         }
 

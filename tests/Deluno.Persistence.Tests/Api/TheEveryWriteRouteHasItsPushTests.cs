@@ -66,6 +66,10 @@ public sealed class TheEveryWriteRouteHasItsPushTests
         "/api/auth/login",
         "/api/auth/logout",
         "/api/auth/password",
+        // recovery codes belong to the signed-in person and are read back on the Account screen; the reset signs the person out (#1392)
+        "/api/auth/recovery-codes",
+        "/api/auth/recovery/check",
+        "/api/auth/recovery/reset",
         // publishes the AutomationState event
         "/api/automation/catalogue/bulk",
         "/api/automation/series/{seriesId}/episodes/bulk",

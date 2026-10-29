@@ -394,6 +394,25 @@ public sealed class SqliteSecurityRepository(
         return changed;
     }
 
+    public async Task<bool> VerifyUserPasswordAsync(string userId, string password, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT password_hash FROM users WHERE id = @id LIMIT 1;";
+        AddParameter(command, "@id", userId);
+        var stored = await command.ExecuteScalarAsync(cancellationToken) as string;
+        if (string.IsNullOrWhiteSpace(stored))
+        {
+            VerifyPassword(password, DummyPasswordHash);
+            return false;
+        }
+
+        return VerifyPassword(password, stored);
+    }
+
     public async Task<RecoveryCodesStatus> GetRecoveryCodesStatusAsync(string userId, CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(

@@ -56,6 +56,9 @@ public interface ISecurityRepository
         BootstrapUserRequest request,
         CancellationToken cancellationToken);
 
+    /// <summary>Whether this is the current password of the user (#1433).</summary>
+    Task<bool> VerifyUserPasswordAsync(string userId, string password, CancellationToken cancellationToken);
+
     /// <summary>How many recovery codes are left, and whether any were ever made (#1392).</summary>
     Task<RecoveryCodesStatus> GetRecoveryCodesStatusAsync(string userId, CancellationToken cancellationToken);
 

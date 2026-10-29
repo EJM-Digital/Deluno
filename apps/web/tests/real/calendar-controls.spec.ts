@@ -1,3 +1,4 @@
+import { givePassword } from "../helpers/auth-helper";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -73,6 +74,7 @@ test.describe("Calendar", () => {
       await drawer.getByRole("textbox", { name: /Only these tags/ }).fill("Anime, Kids");
       const requests = recordRequests(page);
       await drawer.getByRole("button", { name: "Create calendar link", exact: true }).click();
+      await givePassword(page);
       await expect(drawer.getByText("Your calendar link")).toBeVisible();
       requests.stop();
 
@@ -100,6 +102,7 @@ test.describe("Calendar", () => {
       await page.getByRole("button", { name: "Subscribe", exact: true }).click();
       await expect(page.getByRole("dialog", { name: "Subscribe to the schedule" }).getByText("You already have a link")).toBeVisible();
       await page.getByRole("button", { name: "Replace calendar link", exact: true }).click();
+      await givePassword(page);
       await expect(page.getByText("Your calendar link")).toBeVisible();
       const keys = (await api<Key[]>(page, "GET", "/api/api-keys")).body.filter((k) => k.name === LINK_KEY);
       expect(keys, "one link at a time").toHaveLength(1);

@@ -215,6 +215,12 @@ public static class SecurityEndpointRouteBuilderExtensions
                 return Results.Unauthorized();
             }
 
+            var asked = await CurrentPasswordGate.RequireAsync(httpContext, repository, cancellationToken);
+            if (asked is not null)
+            {
+                return asked;
+            }
+
             return Results.Ok(new RecoveryCodesMade(await repository.CreateRecoveryCodesAsync(user.Id, cancellationToken)));
         })
             .RequireAuthorization(DelunoAuthorizationPolicies.Read);
@@ -305,6 +311,12 @@ public static class SecurityEndpointRouteBuilderExtensions
                 return denied;
             }
 
+            var asked = await CurrentPasswordGate.RequireAsync(httpContext, repository, cancellationToken);
+            if (asked is not null)
+            {
+                return asked;
+            }
+
             if (string.IsNullOrWhiteSpace(request.Name))
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>
@@ -337,6 +349,12 @@ public static class SecurityEndpointRouteBuilderExtensions
             if (denied is not null)
             {
                 return denied;
+            }
+
+            var asked = await CurrentPasswordGate.RequireAsync(httpContext, repository, cancellationToken);
+            if (asked is not null)
+            {
+                return asked;
             }
 
             var removed = await repository.DeleteApiKeyAsync(id, cancellationToken);
@@ -374,7 +392,8 @@ public static class SecurityEndpointRouteBuilderExtensions
             [FromServices] ILocalNetworkAuthRepository repository,
             [FromServices] ILocalNetworkAuthSettingsCache settingsCache,
             [FromServices] ILocalNetworkAuthChangeNotifier changeNotifier,
-            CancellationToken cancellationToken) => LocalNetworkAuthEndpoints.SaveAsync(request, httpContext, repository, settingsCache, changeNotifier, cancellationToken));
+            [FromServices] ISecurityRepository securityRepository,
+            CancellationToken cancellationToken) => LocalNetworkAuthEndpoints.SaveAsync(request, httpContext, repository, settingsCache, changeNotifier, securityRepository, cancellationToken));
 
         return endpoints;
     }

@@ -3,6 +3,12 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AllowedHostsOverview, LocalNetworkAuthOverview } from "../lib/api";
 
+// The password question (#1433) is answered at once here; its own tests ask it for real.
+vi.mock("../components/app/password-prompt", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/app/password-prompt")>()),
+  usePasswordPrompt: () => ({ ask: async () => "the-password", prompt: null })
+}));
+
 /**
  * #939: Allowed Hosts is a tick list built from detected addresses, never a
  * raw text box, and saving must be refused client-side before it ever

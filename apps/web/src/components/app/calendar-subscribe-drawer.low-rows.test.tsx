@@ -2,6 +2,12 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { CalendarSubscribeDrawer } from "./calendar-subscribe-drawer";
 
+// The password question (#1433) is answered at once here; its own tests ask it for real.
+vi.mock("./password-prompt", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./password-prompt")>()),
+  usePasswordPrompt: () => ({ ask: async () => "the-password", prompt: null })
+}));
+
 const authedFetch = vi.fn();
 vi.mock("../../lib/use-auth", () => ({ authedFetch: (...args: unknown[]) => authedFetch(...args) }));
 

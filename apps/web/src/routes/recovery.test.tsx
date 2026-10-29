@@ -16,6 +16,12 @@ import { LoginPage } from "./login-page";
 
 const CODES = Array.from({ length: 10 }, (_, i) => `AAAA-BBBB-${String(1000 + i).replace(/0/g, "C").replace(/1/g, "D")}`);
 
+/** Answers the password question that stands in front of making recovery codes (#1433). */
+async function givePassword() {
+  fireEvent.change(await screen.findByLabelText("Current password"), { target: { value: "the-password" } });
+  fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+}
+
 type Reply = { status?: number; body?: unknown } | Error;
 let replies: Record<string, Reply[]>;
 let calls: Array<{ url: string; method: string; body: unknown }>;
@@ -91,9 +97,12 @@ describe("the recovery calls", () => {
     await expect(readRecoveryStatus()).rejects.toThrow("Could not read your recovery codes.");
 
     reply("POST /api/auth/recovery-codes", { body: { codes: CODES } });
-    expect(await makeRecoveryCodes()).toEqual(CODES);
+    expect(await makeRecoveryCodes("the-password")).toEqual(CODES);
+    expect(new Headers(vi.mocked(fetch).mock.calls.at(-1)![1]!.headers).get("X-Current-Password")).toBe("the-password");
     reply("POST /api/auth/recovery-codes", { status: 500, body: {} });
-    await expect(makeRecoveryCodes()).rejects.toThrow("Could not make new recovery codes.");
+    await expect(makeRecoveryCodes("the-password")).rejects.toThrow("Could not make new recovery codes.");
+    reply("POST /api/auth/recovery-codes", { status: 400, body: { errors: { currentPassword: ["Current password is not correct."] } } });
+    await expect(makeRecoveryCodes("wrong")).rejects.toThrow("Current password is not correct.");
   });
 });
 
@@ -253,6 +262,7 @@ describe("the recovery codes manager", () => {
 
     expect(await screen.findByText(/You have no recovery codes yet/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Make recovery codes" }));
+    await givePassword();
 
     expect(await screen.findByRole("list", { name: "Recovery codes" })).toBeTruthy();
     fireEvent.click(screen.getByLabelText("I have saved these codes"));
@@ -272,6 +282,7 @@ describe("the recovery codes manager", () => {
     expect(calls.some((call) => call.method === "POST")).toBe(false);
 
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Make new codes" }));
+    await givePassword();
     expect(await screen.findByRole("list", { name: "Recovery codes" })).toBeTruthy();
     expect(calls.filter((call) => call.method === "POST")).toHaveLength(1);
   });
@@ -297,6 +308,7 @@ describe("the recovery codes manager", () => {
     reply("POST /api/auth/recovery-codes", { status: 500, body: {} });
     render(<RecoveryCodesManager />);
     fireEvent.click(await screen.findByRole("button", { name: "Make recovery codes" }));
+    await givePassword();
     expect((await screen.findByRole("alert")).textContent).toBe("Could not make new recovery codes.");
   });
 });
@@ -332,6 +344,7 @@ describe("the first sign-in prompt for an older account", () => {
     renderPrompt();
 
     fireEvent.click(await screen.findByRole("button", { name: "Make recovery codes" }));
+    await givePassword();
     expect(await screen.findByRole("list", { name: "Recovery codes" })).toBeTruthy();
     fireEvent.click(screen.getByLabelText("I have saved these codes"));
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
@@ -345,6 +358,7 @@ describe("the first sign-in prompt for an older account", () => {
     reply("POST /api/auth/recovery-codes", { status: 500, body: {} });
     renderPrompt();
     fireEvent.click(await screen.findByRole("button", { name: "Make recovery codes" }));
+    await givePassword();
     expect((await screen.findByRole("alert")).textContent).toBe("Could not make new recovery codes.");
     expect(screen.getByRole("button", { name: "Not now" })).toBeTruthy();
   });

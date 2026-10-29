@@ -76,7 +76,7 @@ public sealed class LocalNetworkAuthEndpointsTests
 
         var result = await LocalNetworkAuthEndpoints.SaveAsync(
             new UpdateLocalNetworkAuthRequest(true, [], ["not-an-address"], []),
-            context, repository, cache, notifier, CancellationToken.None);
+            context, repository, cache, notifier, new Moq.Mock<Deluno.Security.Data.ISecurityRepository>().Object, CancellationToken.None);
 
         Assert.IsType<ProblemHttpResult>(result);
         Assert.Null(repository.Saved);
@@ -94,7 +94,7 @@ public sealed class LocalNetworkAuthEndpointsTests
 
         var result = await LocalNetworkAuthEndpoints.SaveAsync(
             new UpdateLocalNetworkAuthRequest(true, [], ["192.168.1.20", "192.168.1.0/28"], ["10.0.0.5"]),
-            context, repository, cache, notifier, CancellationToken.None);
+            context, repository, cache, notifier, new Moq.Mock<Deluno.Security.Data.ISecurityRepository>().Object, CancellationToken.None);
 
         Assert.IsType<Ok<LocalNetworkAuthSettings>>(result);
         Assert.NotNull(repository.Saved);
@@ -114,7 +114,7 @@ public sealed class LocalNetworkAuthEndpointsTests
 
         var result = await LocalNetworkAuthEndpoints.SaveAsync(
             new UpdateLocalNetworkAuthRequest(true, [], ["192.168.1.20"], []),
-            context, repository, cache, notifier, CancellationToken.None);
+            context, repository, cache, notifier, new Moq.Mock<Deluno.Security.Data.ISecurityRepository>().Object, CancellationToken.None);
 
         Assert.IsType<Ok<LocalNetworkAuthSettings>>(result);
         Assert.Empty(notifier.Notified);

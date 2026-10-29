@@ -12,6 +12,12 @@ import { RecoveryPage } from "./recovery-page";
 const CODES = Array.from({ length: 10 }, (_, i) => `AAAA-BBBB-CC${String(i).padStart(2, "D")}`);
 const REFUSED = { status: 400, body: { message: "That did not work. Check it and try again." } };
 
+/** Answers the password question that stands in front of making recovery codes (#1433). */
+async function givePassword() {
+  fireEvent.change(await screen.findByLabelText("Current password"), { target: { value: "the-password" } });
+  fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+}
+
 type Reply = { status?: number; body?: unknown } | Error;
 let replies: Record<string, Reply[]>;
 
@@ -83,7 +89,7 @@ describe("the recovery calls, low rows", () => {
     reply("GET /api/auth/recovery-codes", new TypeError("Failed to fetch"));
     await expect(readRecoveryStatus()).rejects.toThrow(words);
     reply("POST /api/auth/recovery-codes", new TypeError("Failed to fetch"));
-    await expect(makeRecoveryCodes()).rejects.toThrow(words);
+    await expect(makeRecoveryCodes("the-password")).rejects.toThrow(words);
   });
 });
 
@@ -191,11 +197,13 @@ describe("the recovery codes manager, low rows", () => {
     reply("POST /api/auth/recovery-codes", { status: 500, body: {} });
     render(<RecoveryCodesManager />);
     fireEvent.click(await screen.findByRole("button", { name: "Make recovery codes" }));
+    await givePassword();
     await screen.findByRole("alert");
     expect((screen.getByRole("button", { name: "Make recovery codes" }) as HTMLButtonElement).disabled).toBe(false);
 
     const release = holdNext("POST /api/auth/recovery-codes");
     fireEvent.click(screen.getByRole("button", { name: "Make recovery codes" }));
+    await givePassword();
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
     expect((screen.getByRole("button", { name: "Make recovery codes" }) as HTMLButtonElement).disabled).toBe(true);
     release(200, { codes: CODES });
@@ -208,6 +216,7 @@ describe("the recovery codes manager, low rows", () => {
     render(<RecoveryCodesManager />);
     fireEvent.click(await screen.findByRole("button", { name: "Make new codes" }));
     fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Make new codes" }));
+    await givePassword();
     await screen.findByRole("list", { name: "Recovery codes" });
     fireEvent.click(screen.getByLabelText("I have saved these codes"));
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
@@ -232,6 +241,7 @@ describe("the first sign-in prompt, low rows", () => {
     renderPrompt();
     await screen.findByText("Save your recovery codes");
     fireEvent.click(screen.getByRole("button", { name: "Make recovery codes" }));
+    await givePassword();
     await screen.findByRole("list", { name: "Recovery codes" });
 
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });

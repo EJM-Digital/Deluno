@@ -110,6 +110,7 @@ public sealed class RateLimitsOnTheRealPipelineTests : IAsyncLifetime
         {
             using var create = new HttpRequestMessage(HttpMethod.Post, "/api/api-keys/") { Content = JsonContent.Create(new { name, scopes = "read" }) };
             create.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session);
+            create.Headers.Add(Deluno.Security.CurrentPasswordGate.Header, Password);
             var created = await _client.SendAsync(create);
             Assert.True(created.IsSuccessStatusCode, await created.Content.ReadAsStringAsync());
             return (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("apiKey").GetString()!;

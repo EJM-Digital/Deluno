@@ -73,8 +73,8 @@ export async function readRecoveryStatus(): Promise<RecoveryCodesStatus> {
 }
 
 /** A new set of ten codes, shown once. Making them voids every earlier code. */
-export async function makeRecoveryCodes(): Promise<string[]> {
-  const response = await signedIn("/api/auth/recovery-codes", { method: "POST" });
-  if (!response.ok) throw new Error("Could not make new recovery codes.");
+export async function makeRecoveryCodes(currentPassword: string): Promise<string[]> {
+  const response = await signedIn("/api/auth/recovery-codes", { method: "POST", headers: { "X-Current-Password": currentPassword } });
+  if (!response.ok) throw new Error(await sentenceFrom(response, "Could not make new recovery codes."));
   return ((await response.json()) as { codes: string[] }).codes;
 }

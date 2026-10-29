@@ -13,6 +13,7 @@ import { Input } from "../components/ui/input";
 import { Field } from "../components/ui/field";
 import { PresetField } from "../components/ui/preset-field";
 import { authedFetch } from "../lib/use-auth";
+import { refusalSentence, usePasswordPrompt, withCurrentPassword } from "../components/app/password-prompt";
 import { fetchJson, type ApiKeyItem, type CreatedApiKeyResponse } from "../lib/api";
 import { formatDateTime, type DisplayPreferences, useDisplayPreferences } from "../lib/display-preferences";
 import { plural } from "../lib/plural";
@@ -63,6 +64,7 @@ export function SystemApiPage() {
   const integrationRoutes = loaderData.integrationRoutes ?? [];
   const revalidator = useRevalidator();
   const save = useSaveStatus();
+  const { ask, prompt } = usePasswordPrompt();
   const { preferences } = useDisplayPreferences();
   const [name, setName] = useState("External automation");
   const [scopes, setScopes] = useState(
@@ -74,13 +76,15 @@ export function SystemApiPage() {
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const currentPassword = await ask("Creating an API key needs your password, because a key lets another program act as you.");
+    if (!currentPassword) return;
     setBusy(true);
     save.markSyncing("Generating...");
 
     try {
       const created = await fetchJson<CreatedApiKeyResponse>("/api/api-keys", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: withCurrentPassword(currentPassword, { "Content-Type": "application/json" }),
         body: JSON.stringify({ name, scopes })
       });
 
@@ -115,11 +119,13 @@ export function SystemApiPage() {
     if (!revokeTarget) return;
     const item = revokeTarget;
     setRevokeTarget(null);
+    const currentPassword = await ask("Revoking an API key needs your password.");
+    if (!currentPassword) return;
     setDeletingId(item.id);
     try {
-      const response = await authedFetch(`/api/api-keys/${item.id}`, { method: "DELETE" });
+      const response = await authedFetch(`/api/api-keys/${item.id}`, { method: "DELETE", headers: withCurrentPassword(currentPassword) });
       if (!response.ok) {
-        throw new Error("API key could not be revoked.");
+        throw new Error(await refusalSentence(response, "API key could not be revoked."));
       }
 
       if (createdKey?.item.id === item.id) {
@@ -137,6 +143,7 @@ export function SystemApiPage() {
 
   return (
     <div className="flex flex-col gap-(--page-gap)">
+      {prompt}
       <ListCard
         title="Generate an API key"
         count="Shown once — Deluno stores only a hash, so copy it before you leave"

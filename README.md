@@ -173,6 +173,8 @@ The first time you open Deluno it asks you to create your account, then walks yo
 
 If you lose both your password and your recovery codes, the only way forward is a fresh install.
 
+Creating or deleting an API key, making new recovery codes and changing who skips sign-in on your home network each ask for your current password, even from a device the skip lets in without one.
+
 ## Reaching Deluno from another computer, safely
 
 Deluno listens only on the computer it runs on until you allow more, because a fresh install has no password yet and nothing else on your network should be able to reach it.

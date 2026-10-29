@@ -2,6 +2,13 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const askMock = vi.hoisted(() => vi.fn(async (_reason: string): Promise<string | null> => "the-password"));
+// The password question (#1433) is answered at once here; its own tests ask it for real.
+vi.mock("../components/app/password-prompt", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/app/password-prompt")>()),
+  usePasswordPrompt: () => ({ ask: askMock, prompt: null })
+}));
+
 /**
  * System > API (#1294): the key-generating form and the list of keys, on the data the route hands the page.
  * Creating goes through the shared JSON helper and revoking through the signed-in fetch; each is mocked so a
@@ -104,6 +111,25 @@ describe("Generate an API key", () => {
     expect(screen.getByText("one-time secret")).toBeInTheDocument();
     expect(toastMock.success).toHaveBeenCalledWith("API key generated");
     expect(revalidate).toHaveBeenCalled();
+  });
+
+  it("asks for the password first, sends it with the new key, and a cancelled question sends nothing", async () => {
+    askMock.mockClear();
+    loader.data = { apiKeys: [], scopeTemplates: templates };
+    fetchJsonMock.mockResolvedValueOnce({ apiKey: "deluno_secret_value", item: key(1) });
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate API key" }));
+    await screen.findByText("deluno_secret_value");
+    expect(askMock).toHaveBeenCalledWith("Creating an API key needs your password, because a key lets another program act as you.");
+    expect(fetchJsonMock.mock.calls[0][1].headers).toEqual({ "Content-Type": "application/json", "X-Current-Password": "the-password" });
+
+    fetchJsonMock.mockClear();
+    askMock.mockResolvedValueOnce(null);
+    fireEvent.change(screen.getByLabelText("Key name"), { target: { value: "Another" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate API key" }));
+    await waitFor(() => expect(askMock).toHaveBeenCalledTimes(2));
+    expect(fetchJsonMock).not.toHaveBeenCalled();
   });
 
   it("Copy writes the new key to the clipboard and toasts; a browser that refuses says to copy it by hand", async () => {
@@ -272,13 +298,29 @@ describe("Revoke", () => {
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
   });
 
+  it("a cancelled password question keeps the key", async () => {
+    const dialog = await askToRevoke();
+    askMock.mockResolvedValueOnce(null);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Revoke key" }));
+    await waitFor(() => expect(askMock).toHaveBeenCalledWith("Revoking an API key needs your password."));
+    expect(authedFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("a wrong password says so in the server words and keeps the key", async () => {
+    authedFetchMock.mockResolvedValueOnce({ ok: false, status: 400, clone: () => ({ json: async () => ({ errors: { currentPassword: ["Current password is not correct."] } }) }) });
+    const dialog = await askToRevoke();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Revoke key" }));
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith("Current password is not correct."));
+    expect(toastMock.success).not.toHaveBeenCalledWith("API key revoked");
+  });
+
   it("confirming deletes the key, says it was revoked and reads the list again", async () => {
     authedFetchMock.mockResolvedValueOnce({ ok: true, status: 204 });
     const dialog = await askToRevoke();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Revoke key" }));
 
-    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/api-keys/k1", { method: "DELETE" }));
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/api-keys/k1", { method: "DELETE", headers: { "X-Current-Password": "the-password" } }));
     await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith("API key revoked"));
     expect(revalidate).toHaveBeenCalled();
   });

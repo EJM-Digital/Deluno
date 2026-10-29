@@ -1,3 +1,4 @@
+import { usePasswordPrompt, withCurrentPassword } from "../components/app/password-prompt";
 import { useEffect, useMemo, useState } from "react";
 import { useFollowLoaded } from "../hooks/use-follow-loaded";
 import { useLoaderData, useRevalidator } from "react-router-dom";
@@ -214,6 +215,7 @@ function AllowedHostsCard({ overview, onSaved }: { overview: AllowedHostsOvervie
  * also local; empty means every local address does, as designed.
  */
 function LocalNetworkAuthCard({ overview, onSaved }: { overview: LocalNetworkAuthOverview; onSaved: () => void }) {
+  const { ask, prompt } = usePasswordPrompt();
   const [enabled, setEnabled] = useState(overview.enabled);
   const [allowList, setAllowList] = useState<string[]>(overview.allowList);
   const [newEntry, setNewEntry] = useState("");
@@ -244,12 +246,14 @@ function LocalNetworkAuthCard({ overview, onSaved }: { overview: LocalNetworkAut
 
   async function save() {
     if (saveState === "saving") return;
+    const currentPassword = await ask("Changing who skips sign-in needs your password, because it decides who can use Deluno without one.");
+    if (!currentPassword) return;
     setSaveState("saving");
     setMessage(null);
     try {
       await fetchJson("/api/security/local-network-auth", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: withCurrentPassword(currentPassword, { "Content-Type": "application/json" }),
         body: JSON.stringify({
           enabled,
           additionalLocalNetworks: overview.additionalLocalNetworks,
@@ -274,6 +278,7 @@ function LocalNetworkAuthCard({ overview, onSaved }: { overview: LocalNetworkAut
 
   return (
     <>
+      {prompt}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

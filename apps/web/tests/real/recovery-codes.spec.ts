@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { fallbackCredentials } from "../helpers/auth-helper";
+import { fallbackCredentials, givePassword } from "../helpers/auth-helper";
 import { api, expectNoErrorScreen, openScreen, recordRequests } from "../helpers/real";
 import { untilQuiet } from "../helpers/settle";
 
@@ -48,6 +48,7 @@ test.describe("Settings, Account", () => {
     const question = page.getByRole("dialog", { name: "Make new recovery codes?" });
     await expect(question).toContainText("The codes you have now stop working.");
     await question.getByRole("button", { name: "Make new codes" }).click();
+    await givePassword(page);
 
     const codes = page.getByRole("list", { name: "Recovery codes" }).getByRole("listitem");
     await expect(codes).toHaveCount(10);

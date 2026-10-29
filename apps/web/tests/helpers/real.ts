@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, type Request } from "@playwright/test";
-import { authenticateAndNavigate } from "./auth-helper";
+import { authenticateAndNavigate, fallbackCredentials } from "./auth-helper";
 
 /**
  * Helpers for the real specs under tests/real (docs/testing/STRATEGY.md, measure 4).
@@ -20,7 +20,8 @@ export async function openScreen(page: Page, path: string) {
 
 export async function authHeaders(page: Page): Promise<Record<string, string>> {
   const token = await page.evaluate(() => localStorage.getItem("deluno-auth-token"));
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  // The password rides along for the changes that ask for it (#1433); every other call ignores it.
+  return token ? { Authorization: `Bearer ${token}`, "X-Current-Password": fallbackCredentials.password } : {};
 }
 
 /** Calls the real API as the signed-in person (seeding, and reading back what a screen action did). */

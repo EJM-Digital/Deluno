@@ -3,6 +3,7 @@ import { KeyRound } from "lucide-react";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { makeRecoveryCodes, readRecoveryStatus, type RecoveryCodesStatus } from "../../lib/recovery";
+import { usePasswordPrompt } from "./password-prompt";
 import { RecoveryCodesPanel } from "./recovery-codes-panel";
 
 /** Reads how many recovery codes are left and makes a new set (#1392). A new set voids the old one. */
@@ -24,11 +25,11 @@ export function useRecoveryCodes() {
     void refresh();
   }, [refresh]);
 
-  const make = useCallback(async () => {
+  const make = useCallback(async (currentPassword: string) => {
     setBusy(true);
     setError(null);
     try {
-      setCodes(await makeRecoveryCodes());
+      setCodes(await makeRecoveryCodes(currentPassword));
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -48,6 +49,12 @@ export function useRecoveryCodes() {
 export function RecoveryCodesManager() {
   const { status, codes, busy, error, make, finish } = useRecoveryCodes();
   const [confirming, setConfirming] = useState(false);
+  const { ask, prompt } = usePasswordPrompt();
+
+  async function makeWithPassword() {
+    const password = await ask("Making recovery codes needs your password, because they let anyone who holds them take over your account.");
+    if (password) await make(password);
+  }
 
   if (codes) {
     return <RecoveryCodesPanel codes={codes} onSaved={finish} doneLabel="Done" />;
@@ -73,11 +80,12 @@ export function RecoveryCodesManager() {
         variant="outline"
         className="gap-2"
         disabled={busy || status === null}
-        onClick={() => (made ? setConfirming(true) : void make())}
+        onClick={() => (made ? setConfirming(true) : void makeWithPassword())}
       >
         <KeyRound className="h-4 w-4" strokeWidth={1.75} />
         {made ? "Make new codes" : "Make recovery codes"}
       </Button>
+      {prompt}
       <ConfirmDialog
         open={confirming}
         onOpenChange={setConfirming}
@@ -89,7 +97,7 @@ export function RecoveryCodesManager() {
         busy={busy}
         onConfirm={() => {
           setConfirming(false);
-          void make();
+          void makeWithPassword();
         }}
       />
     </div>

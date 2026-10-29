@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Button } from "../ui/button";
 import * as Dialog from "../ui/dialog-primitives";
+import { usePasswordPrompt } from "./password-prompt";
 import { RecoveryCodesPanel } from "./recovery-codes-panel";
 import { useRecoveryCodes } from "./recovery-codes-manager";
 
@@ -23,6 +24,12 @@ export function RecoveryCodesPrompt() {
   const { pathname } = useLocation();
   const { status, codes, busy, error, make, finish } = useRecoveryCodes();
   const [dismissed, setDismissed] = useState(wasDismissed);
+  const { ask, prompt } = usePasswordPrompt();
+
+  async function makeWithPassword() {
+    const password = await ask("Making recovery codes needs your password, because they let anyone who holds them take over your account.");
+    if (password) await make(password);
+  }
 
   // The guided setup asks for them on its own account step.
   const asking = status?.made === false && !dismissed && !pathname.startsWith("/setup-guide");
@@ -39,6 +46,7 @@ export function RecoveryCodesPrompt() {
   }
 
   return (
+    <>
     <Dialog.Root open={open} onOpenChange={(next) => (!next && codes === null ? notNow() : undefined)}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]" />
@@ -63,7 +71,7 @@ export function RecoveryCodesPrompt() {
                 <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={notNow}>
                   Not now
                 </Button>
-                <Button type="button" size="sm" disabled={busy} onClick={() => void make()}>
+                <Button type="button" size="sm" disabled={busy} onClick={() => void makeWithPassword()}>
                   Make recovery codes
                 </Button>
               </div>
@@ -72,5 +80,7 @@ export function RecoveryCodesPrompt() {
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+    {prompt}
+    </>
   );
 }

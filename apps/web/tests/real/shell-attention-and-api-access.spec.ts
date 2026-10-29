@@ -1,3 +1,4 @@
+import { givePassword } from "../helpers/auth-helper";
 import { expect, test, type Page } from "@playwright/test";
 import { api, openScreen, recordRequests } from "../helpers/real";
 import { untilQuiet } from "../helpers/settle";
@@ -97,6 +98,7 @@ test.describe("System > API Access", () => {
     await expect(page.getByRole("heading", { name: "Active keys" }).or(page.getByText("Active keys")).first()).toBeVisible();
 
     await page.getByRole("button", { name: "Generate API key" }).click();
+    await givePassword(page);
 
     // Shown once, in full, with a Copy button.
     await expect(page.getByText("Key created")).toBeVisible();
@@ -132,6 +134,7 @@ test.describe("System > API Access", () => {
 
     await row.getByRole("button", { name: "Revoke" }).click();
     await dialog.getByRole("button", { name: "Revoke key" }).click();
+    await givePassword(page);
     await expect(page.getByText("API key revoked")).toBeVisible();
     await expect.poll(async () => (await page.request.get("/api/integrations/external/manifest", { headers: { "X-Api-Key": secret } })).status()).toBe(401);
     const after = (await api<Array<{ id: string }>>(page, "GET", "/api/api-keys")).body;
