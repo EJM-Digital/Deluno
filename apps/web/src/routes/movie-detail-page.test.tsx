@@ -1225,3 +1225,133 @@ describe("the film's poster and quality tile", () => {
     expect(within(screen.getByText("Quality").closest("div")!).getByText("Unknown")).toBeInTheDocument();
   });
 });
+
+/**
+ * Coverage register (area movie-detail, low rows #1329): the detail cards that the film's metadata fills in.
+ */
+describe("the film's metadata cards (coverage, #1329)", () => {
+  const withMetadata = (metadata: unknown) =>
+    setup((url) => (url.split("?")[0] === "/api/movies/m1" ? { body: { ...MOVIE, metadataJson: JSON.stringify(metadata) } } : undefined));
+
+  it("shows extra backdrop stills in a Screenshots card when the metadata has them, and no card when it has none", async () => {
+    withMetadata({ Screenshots: ["https://image.tmdb.org/still1.jpg", "https://image.tmdb.org/still2.jpg"] });
+    await renderPage();
+    const heading = screen.getByText("Screenshots");
+    const card = heading.parentElement!;
+    const stills = Array.from(card.querySelectorAll("img")).map((img) => img.getAttribute("src"));
+    expect(stills.filter((src) => src?.includes("still"))).toHaveLength(2);
+    cleanup();
+
+    setup();
+    await renderPage();
+    expect(screen.queryByText("Screenshots")).toBeNull();
+  });
+
+  it("Release dates & certification: the certification country's row leads, highlighted, and the other countries follow", async () => {
+    withMetadata({
+      ReleaseFactsByCountry: [
+        { Country: "GB", Certification: "12A", InCinemas: "2026-03-08" },
+        { Country: "US", Certification: "PG-13" }
+      ]
+    });
+    await renderPage();
+    const card = screen.getByText("Release dates & certification").parentElement!;
+    const rows = within(card).getAllByText(/^(US|GB)$/).map((el) => el.parentElement!);
+    expect(rows.map((row) => within(row).getByText(/^(US|GB)$/).textContent)).toEqual(["US", "GB"]);
+    expect(rows[0]).toHaveClass("bg-primary/10");
+    expect(rows[1]).not.toHaveClass("bg-primary/10");
+    expect(within(rows[1]).getByText("12A")).toBeInTheDocument();
+  });
+});
+
+describe("the film's header facts (coverage, #1329)", () => {
+  const renderPageAt = async (name: string) => {
+    const router = createMemoryRouter(
+      [{ path: "/movies/:id", element: <MovieDetailPage />, loader: movieDetailLoader }, { path: "*", element: <p>elsewhere</p> }],
+      { initialEntries: ["/movies/m1"] }
+    );
+    render(<RouterProvider router={router} />);
+    await screen.findByRole("heading", { level: 1, name });
+  };
+  const withMovie = (patch: Record<string, unknown>) =>
+    setup((url) => (url.split("?")[0] === "/api/movies/m1" ? { body: { ...MOVIE, ...patch } } : undefined));
+
+  it("the heading shows the film's title, or the localized title when the metadata has one", async () => {
+    withMovie({ metadataJson: JSON.stringify({ LocalizedTitle: "Grosses Kaninchen", LocalizedLanguage: "de" }) });
+    await renderPageAt("Grosses Kaninchen");
+    const heading = screen.getByRole("heading", { level: 1 });
+    expect(heading).toHaveTextContent("Grosses Kaninchen");
+    expect(heading).toHaveAttribute("title", "Grosses Kaninchen");
+    cleanup();
+
+    setup();
+    await renderPageAt("Big Buck Bunny");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Big Buck Bunny");
+  });
+
+  it("Alternate titles line lists the region spellings used to match a release, and is absent when there are none", async () => {
+    withMovie({ metadataJson: JSON.stringify({ AlternateTitles: ["Big Buck Bunny (UK)", "Bugs Bunny Movie"] }) });
+    await renderPage();
+    const line = screen.getByText(/^Alternate titles:/);
+    expect(line).toHaveTextContent("Alternate titles: Big Buck Bunny (UK), Bugs Bunny Movie");
+    expect(line).toHaveAttribute("title", "Used to match a release filed under a region-specific spelling");
+    cleanup();
+
+    setup();
+    await renderPage();
+    expect(screen.queryByText(/^Alternate titles:/)).toBeNull();
+  });
+
+  it("the certification badge, the year and the runtime sit on the meta line, with the genres kept in the chip row", async () => {
+    withMovie({ runtimeMinutes: 10, genres: "Animation, Comedy", metadataJson: JSON.stringify({ Certification: "PG" }) });
+    await renderPage();
+    expect(screen.getByText("PG")).toHaveAttribute("title", "Classification");
+    expect(screen.getByText("2008")).toBeInTheDocument();
+    expect(screen.getByText("10m")).toBeInTheDocument();
+    expect(document.querySelector('[title="Animation, Comedy"]')).not.toBeNull();
+  });
+
+  it("the Ratings & IDs panel says no ratings are stored yet when the film has none", async () => {
+    withMovie({ rating: null, ratings: [] });
+    await renderPage();
+    expect(screen.getByText(/No ratings stored yet/)).toBeInTheDocument();
+  });
+
+  it("the Ratings & IDs panel lists each rating with its score", async () => {
+    withMovie({ ratings: [{ source: "tmdb", label: "TMDb", score: 7.1, maxScore: 10 }] });
+    await renderPage();
+    const panel = screen.getByText("Ratings & IDs").closest("aside")!;
+    expect(within(panel).getByText("7.1", { exact: false })).toBeInTheDocument();
+    expect(within(panel).queryByText(/No ratings stored yet/)).toBeNull();
+  });
+
+  it("the provider mark names the metadata source, or Not linked, and always shows the IMDb id", async () => {
+    await renderPage();
+    const panel = screen.getByText("Ratings & IDs").closest("aside")!;
+    expect(within(panel).getAllByText("TMDB").length).toBeGreaterThan(0);
+    expect(within(panel).getByText("tt1254207")).toBeInTheDocument();
+    cleanup();
+
+    withMovie({ metadataProvider: null, imdbId: null });
+    await renderPage();
+    const bare = screen.getByText("Ratings & IDs").closest("aside")!;
+    expect(within(bare).getByText("Not linked")).toBeInTheDocument();
+    expect(within(bare).getByText("—")).toBeInTheDocument();
+  });
+
+  it("the TMDb credit is shown on the film page under the ratings", async () => {
+    await renderPage();
+    const panel = screen.getByText("Ratings & IDs").closest("aside")!;
+    const credit = screen.getByText(/Film and TV details from/);
+    expect(within(credit).getByRole("link", { name: "TMDB" })).toHaveAttribute("href");
+    expect(within(panel).getAllByText(/Film and TV details from/).length).toBe(1);
+  });
+});
+
+describe("the film's toolbar links (coverage, #1329)", () => {
+  it("the All movies toolbar link returns to the movies list", async () => {
+    await renderPage();
+    fireEvent.click(screen.getAllByRole("link", { name: "All movies" })[0]);
+    expect(await screen.findByText("All the movies")).toBeInTheDocument();
+  });
+});
