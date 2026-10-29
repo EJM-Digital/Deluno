@@ -81,7 +81,7 @@ test.describe("Keyboard shortcuts", () => {
 
     await page.keyboard.press("g");
     await page.keyboard.press("a");
-    await expect(page).toHaveURL(/\/activity/);
+    await expect(page).toHaveURL(/\/queue\?view=history/);
   });
 });
 
@@ -99,7 +99,7 @@ test.describe("Notifications bell", () => {
 
     await bell.click();
     await panel.getByRole("link", { name: /Show all activity/ }).or(panel.getByRole("button", { name: /Show all activity/ })).first().click();
-    await expect(page).toHaveURL(/\/activity/);
+    await expect(page).toHaveURL(/\/queue\?view=history/);
     await expect(panel).toHaveCount(0);
   });
 });
@@ -156,8 +156,9 @@ test.describe("More on a phone", () => {
     // Every area's own destinations are the tabs in its toolbar, so no area here has an arrow of its own.
     await more.click();
     await expect(nav.getByRole("button", { name: /^(Expand|Collapse) / })).toHaveCount(0);
-    await nav.getByRole("link", { name: /Activity/ }).first().click();
-    await expect(page).toHaveURL(/\/activity/);
+    await expect(nav.getByRole("link", { name: /Activity/ })).toHaveCount(0);
+    await nav.getByRole("link", { name: /Discover/ }).first().click();
+    await expect(page).toHaveURL(/\/discover/);
 
     await more.click();
     await page.getByRole("button", { name: "Sign out", exact: true }).click();

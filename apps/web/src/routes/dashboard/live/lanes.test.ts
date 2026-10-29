@@ -6,6 +6,6 @@ describe("where the Pipeline stations go", () => {
     for (const stage of ["grabbed", "downloading", "processor", "importing"] as const) {
       expect(LANES[stage].to).toBe("/queue");
     }
-    expect(LANES.imported.to).toBe("/activity?status=done");
+    expect(LANES.imported.to).toBe("/queue?view=history&status=done");
   });
 });

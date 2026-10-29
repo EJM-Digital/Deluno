@@ -605,7 +605,7 @@ test.describe("dashboard workflow", () => {
     await expect(page.getByText("Check health, keep backups, install updates, and manage advanced access.", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Guided configuration for your media library, quality policy, automation, and runtime behaviour.").first()).toBeVisible();
     await page.getByRole("link", { name: "Transfers" }).click();
-    await expect(page.getByText("Follow downloads through processing and safe import", { exact: true })).toBeVisible();
+    await expect(page.getByText("Downloads, hand-offs to the processor, and the record of what happened", { exact: true })).toBeVisible();
     await expect(page.getByText("Control room", { exact: true })).toHaveCount(0);
   });
 
@@ -952,8 +952,8 @@ test.describe("dashboard workflow", () => {
 
     // A real click: on a page this short the link sits where the sidebar account menu's flyout opens, and the closed
     // flyout must not catch the click.
-    await page.getByRole("link", { name: /See everything in Activity/ }).click();
-    await expect(page).toHaveURL(/\/activity/);
+    await page.getByRole("link", { name: /See the history and events/ }).click();
+    await expect(page).toHaveURL(/view=history/);
   });
 
   test("keeps activity as a readable history", async ({ page }) => {

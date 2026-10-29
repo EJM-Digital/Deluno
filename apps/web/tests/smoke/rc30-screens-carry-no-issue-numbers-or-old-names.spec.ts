@@ -8,7 +8,7 @@ import { authenticateAndNavigate } from "../helpers/auth-helper";
 
 const SCREENS = [
   "/", "/setup-guide", "/movies", "/movies/wanted", "/movies/upgrades", "/movies/import", "/tv", "/tv/wanted", "/tv/season-pass", "/tv/upgrades", "/tv/import",
-  "/collections", "/calendar", "/discover", "/search", "/queue", "/activity",
+  "/collections", "/calendar", "/discover", "/search", "/queue", "/queue?view=handoffs", "/queue?view=history", "/activity",
   "/settings/libraries", "/settings/media-management", "/settings/import-policy", "/settings/processing", "/settings/destination-rules",
   "/settings/policy-sets", "/settings/profiles", "/settings/quality", "/settings/custom-formats", "/settings/release-rules",
   "/settings/lists", "/settings/automation", "/settings/migration", "/settings/metadata", "/settings/auto-tagging", "/settings/tags",

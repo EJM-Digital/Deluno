@@ -236,7 +236,7 @@ test.describe("A show's page", () => {
     await openShow(page);
     await page.getByRole("tab", { name: "History", exact: true }).click();
     await page.getByRole("link", { name: "Everything about this show", exact: true }).click();
-    await expect(page).toHaveURL(/\/activity\?/);
+    await expect(page).toHaveURL(/\/queue\?view=history&/);
     await expectNoErrorScreen(page);
   });
 

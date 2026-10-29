@@ -1,5 +1,5 @@
 import type { HeldReleaseRow } from "../lib/held-releases";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DownloadClientTelemetrySnapshot, DownloadQueueItem, OrphanedDownloadItem } from "../lib/api";
@@ -129,6 +129,17 @@ describe("Transfers views", () => {
     expect(screen.queryByText("Import & Naming")).toBeNull();
   });
 
+  it("the live downloads draw no processing connector card when there is no connector and no hand-off", () => {
+    show("/queue");
+    cleanup();
+    (queueLoaderData as { processorConnections: unknown[] }).processorConnections = [];
+    queueLoaderData.processorHandoffs = [];
+    render(<MemoryRouter initialEntries={["/queue"]}><QueuePage /></MemoryRouter>);
+    expect(screen.queryByText("Processing Connector")).toBeNull();
+    expect(screen.queryByText("Nothing is with a processor or being imported")).toBeNull();
+    expect(screen.getByText("Media Pipeline")).toBeInTheDocument();
+  });
+
   it("the Hand-offs view holds the processing connector and the imports, and none of the live downloads' cards", () => {
     show("/queue?view=handoffs");
 
@@ -190,5 +201,59 @@ describe("Transfers views", () => {
   it("the link to the history opens the History view", () => {
     show("/queue");
     expect(screen.getByRole("link", { name: /See the history and events/ })).toHaveAttribute("href", "/queue?view=history");
+  });
+
+  const orphan = { path: "D:/Downloads/Left.Over", name: "Left.Over", libraryName: "Films", sizeBytes: 1000, isSafeToRemove: true };
+  const importJob = (status: string) => ({
+    id: "job-1", jobType: "filesystem.import.execute", status, attempts: 1, maxAttempts: 5, label: "Import", sourceLabel: "Films", target: "Arrival", lastError: null,
+    payloadJson: JSON.stringify({ title: "Arrival (2016)", fileName: "Arrival.2016.mkv", sourcePath: "D:/in/Arrival.2016.mkv", destinationPath: "D:/Films/Arrival (2016)/Arrival.2016.mkv" }),
+    scheduledUtc: "2026-10-01T00:00:00Z", startedUtc: "2026-10-01T00:00:01Z", completedUtc: null
+  });
+
+  it("Needs attention is on the live downloads only, and only when something needs a person", () => {
+    (queueLoaderData as { orphans: unknown[] }).orphans = [orphan];
+    try {
+      show("/queue");
+      expect(screen.getByText("Needs Attention")).toBeInTheDocument();
+      const handoffsView = show("/queue?view=handoffs");
+      expect(within(handoffsView.container).queryByText("Needs Attention")).toBeNull();
+    } finally {
+      (queueLoaderData as { orphans: unknown[] }).orphans = [];
+    }
+    cleanup();
+    show("/queue");
+    expect(screen.queryByText("Needs Attention")).toBeNull();
+  });
+
+  it("the Hand-offs view shows a connector with no hand-off yet, and not the empty note", () => {
+    show("/queue?view=handoffs");
+    queueLoaderData.processorHandoffs = [];
+    cleanup();
+    show("/queue?view=handoffs");
+    queueLoaderData.processorHandoffs = [];
+    cleanup();
+    (queueLoaderData as { processorConnections: unknown[] }).processorConnections = [connection()];
+    render(<MemoryRouter initialEntries={["/queue?view=handoffs"]}><QueuePage /></MemoryRouter>);
+    expect(screen.getByText("Processing Connector")).toBeInTheDocument();
+    expect(screen.queryByText("Nothing is with a processor or being imported")).toBeNull();
+  });
+
+  it("an import being written shows on the Hand-offs view with its own card, never on the live downloads, and counts on its chip", () => {
+    (queueLoaderData as { jobs: unknown[] }).jobs = [importJob("running")];
+    try {
+      const handoffs = show("/queue?view=handoffs");
+      expect(within(handoffs.container).getByText("Import & Naming")).toBeInTheDocument();
+      expect(within(handoffs.container).queryByText("Nothing is with a processor or being imported")).toBeNull();
+      // One import being written, and the one hand-off that is still with the processor.
+      queueLoaderData.processorHandoffs = [handoff({ status: "started" })];
+      cleanup();
+      render(<MemoryRouter initialEntries={["/queue?view=handoffs"]}><QueuePage /></MemoryRouter>);
+      expect(screen.getByRole("radio", { name: "Hand-offs 2" })).toBeInTheDocument();
+      cleanup();
+      show("/queue");
+      expect(screen.queryByText("Import & Naming")).toBeNull();
+    } finally {
+      (queueLoaderData as { jobs: unknown[] }).jobs = [];
+    }
   });
 });

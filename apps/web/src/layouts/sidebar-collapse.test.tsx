@@ -144,3 +144,18 @@ describe("one Transfers entry holds what Transfers and Activity were (#1426)", (
     expect(screen.getByRole("link", { name: /^Transfers/ }).textContent).toMatch(/10$/);
   });
 });
+
+describe("each sidebar entry counts its own things", () => {
+  it("Movies counts wanted films, TV Shows wanted episodes, Transfers its own, and the others nothing", () => {
+    const counted = { movieWanted: 3, tvWanted: 4, indexerAlerts: 5, failedJobs: 0, failedTitleJobs: 0, downloadsNeedingAction: 6 } as unknown as typeof attention;
+    render(
+      <MemoryRouter>
+        <DesktopSidebar attention={counted} user={user} onLogout={() => undefined} collapsed={false} onToggleCollapsed={() => undefined} />
+      </MemoryRouter>
+    );
+    expect(screen.getByRole("link", { name: /^Movies/ }).textContent).toMatch(/3$/);
+    expect(screen.getByRole("link", { name: /^TV Shows/ }).textContent).toMatch(/4$/);
+    expect(screen.getByRole("link", { name: /^Transfers/ }).textContent).toMatch(/6$/);
+    expect(screen.getByRole("link", { name: /^Dashboard/ }).textContent).toBe("Dashboard");
+  });
+});

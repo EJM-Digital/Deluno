@@ -52,7 +52,9 @@ test("Activity explains a failed download handoff with retry and trace attributi
   });
 
   await page.goto("/activity?status=failed");
-  await page.getByText("Example.Movie.2026.2160p.WEB-DL", { exact: true }).click();
+  // The release name is a link to its indexer's page (#1426); the row opens the details from anywhere else on it.
+  await expect(page.getByRole("link", { name: "Example.Movie.2026.2160p.WEB-DL" })).toHaveAttribute("href", "/indexers/indexers?indexer=Example+Indexer");
+  await page.getByRole("row").filter({ hasText: "Example.Movie.2026.2160p.WEB-DL" }).getByRole("cell").nth(1).click();
 
   await expect(page.getByRole("heading", { name: "Why it failed" })).toBeVisible();
   await expect(page.getByText("qBittorrent could not be reached while Deluno sent the release.", { exact: true })).toBeVisible();

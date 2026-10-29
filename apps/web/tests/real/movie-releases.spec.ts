@@ -250,7 +250,7 @@ test.describe("A film's releases", () => {
       await untilQuiet(page);
       await page.getByRole("tab", { name: "History", exact: true }).click();
       await page.getByRole("link", { name: "This file's history", exact: true }).click();
-      await expect(page).toHaveURL(/\/activity\?/);
+      await expect(page).toHaveURL(/\/queue\?view=history&/);
       expect(decodeURIComponent(page.url()).replaceAll("+", " ")).toContain(name);
       await expectNoErrorScreen(page);
     } finally {

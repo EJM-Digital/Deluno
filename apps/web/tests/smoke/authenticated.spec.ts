@@ -75,6 +75,8 @@ test.describe("authenticated app smoke", () => {
     "/indexers/library-routing",
     "/activity",
     "/queue",
+    "/queue?view=handoffs",
+    "/queue?view=history",
     "/settings",
     "/settings/media-management",
     "/settings/processing",

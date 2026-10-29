@@ -53,7 +53,7 @@ test("a hand-off still with the processor can be ended from its drawer", async (
     message: "You stopped waiting for Weir, and it was asked to drop Pioneer.One.S01E01.1080p.WEB-DL.DDP5.1.H.264-DELUNO."
   });
 
-  await page.goto("/queue");
+  await page.goto("/queue?view=handoffs");
   await page.getByRole("row").filter({ hasText: waiting.releaseName }).first().click();
   await expect(page.getByRole("button", { name: "Stop waiting" })).toBeVisible();
 
@@ -70,7 +70,7 @@ test("a processor that has started work is not interrupted, and says so", async 
     message: "Weir has started work on Pioneer.One.S01E01.1080p.WEB-DL.DDP5.1.H.264-DELUNO, so Deluno will not interrupt it."
   });
 
-  await page.goto("/queue");
+  await page.goto("/queue?view=handoffs");
   await page.getByRole("row").filter({ hasText: waiting.releaseName }).first().click();
   await page.getByRole("button", { name: "Stop waiting" }).click();
 

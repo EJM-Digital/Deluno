@@ -596,7 +596,7 @@ test.describe("every screen fits three widths", () => {
     await authenticateAndNavigate(page, "/movies");
     const { seriesId } = await seedTitles(page);
     await seedLongData(page, seriesId);
-    await page.goto("/queue");
+    await page.goto("/queue?view=handoffs");
     await expect(page.getByText("Processing connector").first()).toBeVisible();
     const rows = page.locator("[role=row]").filter({ hasText: "A Very Long Processor Connector Name" });
     await expect(rows.first()).toBeVisible();

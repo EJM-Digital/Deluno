@@ -14,7 +14,7 @@ export function IndexerLink({ indexerName, children, className }: { indexerName:
       to={indexerPageLink(name)}
       title={`Open ${name}`}
       onClick={(event) => event.stopPropagation()}
-      className={`hover:text-primary hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${className ?? ""}`}
+      className={["hover:text-primary hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring", className].filter(Boolean).join(" ")}
     >
       {children}
     </Link>

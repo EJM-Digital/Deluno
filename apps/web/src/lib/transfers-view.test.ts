@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { historyPath, indexerPageLink, legacyActivityTarget, paramsWithView, transfersViewFromParams } from "./transfers-view";
+import { navigationCommands } from "./command-registry";
+import { TRANSFERS_VIEWS, historyPath, indexerPageLink, legacyActivityTarget, paramsWithView, transfersViewFromParams } from "./transfers-view";
 
 describe("the views of Transfers (#1426)", () => {
+  it("names the three views the chips show, in the order they are shown", () => {
+    expect(TRANSFERS_VIEWS).toEqual([
+      { value: "live", label: "Live downloads" },
+      { value: "handoffs", label: "Hand-offs" },
+      { value: "history", label: "History & events" }
+    ]);
+  });
+
   it("reads the view from the address; no view, or one that is not a view, is the live downloads", () => {
     expect(transfersViewFromParams(new URLSearchParams(""))).toBe("live");
     expect(transfersViewFromParams(new URLSearchParams("view=handoffs"))).toBe("handoffs");
@@ -27,6 +36,7 @@ describe("the views of Transfers (#1426)", () => {
   it("sends the old Activity address to the history, keeping all it carried", () => {
     expect(legacyActivityTarget("")).toBe("/queue?view=history");
     expect(legacyActivityTarget("?status=failed")).toBe("/queue?view=history&status=failed");
+    expect(legacyActivityTarget("title=what?")).toBe("/queue?view=history&title=what%3F");
     expect(legacyActivityTarget("?section=jobs")).toBe("/queue?view=history&section=jobs");
     expect(legacyActivityTarget("?event=evt-1&since=2026-10-01&until=2026-10-01")).toBe("/queue?view=history&event=evt-1&since=2026-10-01&until=2026-10-01");
   });
@@ -34,5 +44,13 @@ describe("the views of Transfers (#1426)", () => {
   it("links an indexer by name to the Indexers list with that indexer opened", () => {
     expect(indexerPageLink("NZBgeek")).toBe("/indexers/indexers?indexer=NZBgeek");
     expect(indexerPageLink("Nyaa.si & Co")).toBe("/indexers/indexers?indexer=Nyaa.si+%26+Co");
+  });
+});
+
+describe("Activity in the command palette (#1426)", () => {
+  it("opens the history view of Transfers, found by its old words too", () => {
+    const activity = navigationCommands.find((item) => item.id === "nav.activity");
+    expect(activity?.to).toBe("/queue?view=history");
+    expect(activity?.keywords).toEqual(["queue", "history", "events", "jobs", "downloads"]);
   });
 });

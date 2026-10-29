@@ -132,7 +132,7 @@ describe("Working on now", () => {
     renderTab(summary);
 
     expect(await within(working()).findByRole("link", { name: /Searching Movies for what is missing/ })).toHaveAttribute("href", "/search-cycles");
-    expect(within(working()).getByRole("link", { name: /2 background jobs are running/ })).toHaveAttribute("href", "/activity?status=in-progress");
+    expect(within(working()).getByRole("link", { name: /2 background jobs are running/ })).toHaveAttribute("href", "/queue?view=history&status=in-progress");
   });
 });
 

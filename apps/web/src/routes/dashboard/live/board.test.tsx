@@ -193,7 +193,7 @@ describe("what comes next", () => {
 describe("working on now", () => {
   it("counts what is running, lists up to four with a bar where it knows (the rest fit by the card's height), and says how many more are in Activity", () => {
     const ops = buildOperations(
-      [{ key: "search:l1", kind: "search", text: "Searching Movies for what is missing or could be better", progress: 30, detail: "12 of 40", to: "/search-cycles" }, { key: "job:a", kind: "jobs", text: "Reading your files", to: "/activity" }],
+      [{ key: "search:l1", kind: "search", text: "Searching Movies for what is missing or could be better", progress: 30, detail: "12 of 40", to: "/search-cycles" }, { key: "job:a", kind: "jobs", text: "Reading your files", to: "/queue?view=history" }],
       [card({ key: "p", stage: "processor", processor: "FileFlows", state: { tone: "info", label: "Being cleaned" } }), card({ key: "i", stage: "importing", title: "Moon (2009)", state: { tone: "info", label: "Importing now" } }), card({ key: "w", stage: "importing", title: "Waiting (2001)", state: { tone: "idle", label: "Downloaded" } })],
       NO_TITLES
     );
@@ -234,7 +234,7 @@ describe("working on now", () => {
     withRouter(<Band summary={fullSummary} samples={[]} operations={buildOperations(six, [], NO_TITLES)} upcoming={[]} />);
     const region = screen.getByRole("region", { name: "Working on now" });
     expect(within(region).getAllByRole("listitem")).toHaveLength(4);
-    expect(within(region).getByRole("link", { name: "2 more in Activity" })).toHaveAttribute("href", "/activity?status=in-progress");
+    expect(within(region).getByRole("link", { name: "2 more in Activity" })).toHaveAttribute("href", "/queue?view=history&status=in-progress");
   });
 
   it("shows only the rows that fit its height, hiding the rest and counting them", () => {
@@ -708,18 +708,18 @@ describe("turned down today", () => {
     expect(card.querySelector('[data-reason="other"]')).toHaveClass("zero");
     expect(card.querySelector('[data-reason="language"]')).not.toHaveClass("zero");
     // Every bar goes to Activity filtered to that reason today; the card's own link to today's turned-down releases.
-    expect(card.querySelector('[data-reason="language"]')).toHaveAttribute("href", "/activity?type=turned-down&since=today&reason=language");
-    expect(card.querySelector('[data-reason="notBetter"]')).toHaveAttribute("href", "/activity?type=turned-down&since=today&reason=notBetter");
-    expect(within(card).getByRole("link", { name: "In Activity: Turned down today" })).toHaveAttribute("href", "/activity?type=turned-down&since=today");
+    expect(card.querySelector('[data-reason="language"]')).toHaveAttribute("href", "/queue?view=history&type=turned-down&since=today&reason=language");
+    expect(card.querySelector('[data-reason="notBetter"]')).toHaveAttribute("href", "/queue?view=history&type=turned-down&since=today&reason=notBetter");
+    expect(within(card).getByRole("link", { name: "In Activity: Turned down today" })).toHaveAttribute("href", "/queue?view=history&type=turned-down&since=today");
   });
 
   it("opens Activity on today's turned-down releases, and a reason's bar opens just that reason (#1100)", () => {
     withRouter(<TurnedDownCard view={mergeTurnedDown(base, [], inMs(0))} lit={new Set()} />);
     const card = screen.getByRole("region", { name: "Turned down today" });
 
-    expect(within(card).getByRole("link", { name: /In Activity/ })).toHaveAttribute("href", "/activity?type=turned-down&since=today");
-    expect(within(card).getByRole("link", { name: /Not in a language you want: 14/ })).toHaveAttribute("href", "/activity?type=turned-down&since=today&reason=language");
-    expect(within(card).getByRole("link", { name: /Bigger than your size limit: 9/ })).toHaveAttribute("href", "/activity?type=turned-down&since=today&reason=tooBig");
+    expect(within(card).getByRole("link", { name: /In Activity/ })).toHaveAttribute("href", "/queue?view=history&type=turned-down&since=today");
+    expect(within(card).getByRole("link", { name: /Not in a language you want: 14/ })).toHaveAttribute("href", "/queue?view=history&type=turned-down&since=today&reason=language");
+    expect(within(card).getByRole("link", { name: /Bigger than your size limit: 9/ })).toHaveAttribute("href", "/queue?view=history&type=turned-down&since=today&reason=tooBig");
   });
 
   it("holds whole bars only: as many as the height holds above the 'and N more' line, never more than fit", () => {

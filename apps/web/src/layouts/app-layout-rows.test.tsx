@@ -342,6 +342,12 @@ describe("each route names itself in the topbar (#1329)", () => {
     expect(title()).toBe(expected);
   });
 
+  it.each(["/queue", "/queue?view=handoffs", "/queue?view=history&status=failed"])("%s is Transfers, which holds what Activity was, and says so", async (path) => {
+    await mount(path);
+    expect(title()).toBe("Transfers");
+    expect(screen.getByText("Downloads, hand-offs to the processor, and the record of what happened")).toBeInTheDocument();
+  });
+
   it("a film or show page leaves the heading to the page, but a named sub-route of it is an ordinary page", async () => {
     await mount("/movies/movie-1");
     expect(title()).toBeUndefined();

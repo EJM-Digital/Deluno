@@ -22,7 +22,7 @@ export function settingsRoutes(): string[] {
   return [...routes].sort();
 }
 
-/** The sidebar's own destinations: the library group and Transfers/Activity. */
+/** The sidebar's own destinations: the library group and Transfers (which holds what Transfers and Activity were). */
 export function sidebarRoutes(): string[] {
   const layout = readFileSync(path.join(src, "layouts/app-layout.tsx"), "utf8");
   const routes = new Set<string>();

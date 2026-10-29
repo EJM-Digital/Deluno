@@ -23,8 +23,9 @@ async function seed(page: Page, body: Record<string, unknown>) {
   return reply.body;
 }
 
-async function openTransfers(page: Page) {
-  await page.goto("/queue");
+/** The live downloads by default; a hand-off whose download has left the client is on the Hand-offs view (#1426). */
+async function openTransfers(page: Page, address = "/queue") {
+  await page.goto(address);
   await untilQuiet(page);
   await expectNoErrorScreen(page);
 }
@@ -66,7 +67,7 @@ test.describe("Transfers, with hand-offs to a processor", () => {
   test("a hand-off still with the processor is a row of its own, in the processor's words, and clicking it opens its drawer with the release and 'Weir · submitted'", async ({ page }) => {
     await openScreen(page, "/queue");
     await seed(page, { releaseName: "Click.The.Row.2021.1080p-GRP", status: "submitted", processorState: "queued", queuePosition: 3 });
-    await openTransfers(page);
+    await openTransfers(page, "/queue?view=handoffs");
 
     const row = rowOf(page, "Click.The.Row.2021.1080p-GRP");
     await expect(row).toContainText("Weir: 3rd in queue");
@@ -85,7 +86,8 @@ test.describe("Transfers, with hand-offs to a processor", () => {
     const withTheProcessor = ["waiting", "submitted", "accepted", "started"];
     const ended = ["failed", "timed-out", "lost", "source-gone"];
     for (const status of [...withTheProcessor, ...ended]) await seed(page, { releaseName: `Hand.Off.${status}.2022.1080p-GRP`, status, failureMessage: ended.includes(status) ? "It did not work out." : null });
-    await openTransfers(page);
+    // Those still with the processor are on the Hand-offs view; those that ended need a person, so they are on the live downloads.
+    await openTransfers(page, "/queue?view=handoffs");
 
     for (const status of withTheProcessor) {
       await rowOf(page, `Hand.Off.${status}.2022.1080p-GRP`).click();
@@ -96,6 +98,7 @@ test.describe("Transfers, with hand-offs to a processor", () => {
       await page.keyboard.press("Escape");
       await expect(drawer).toHaveCount(0);
     }
+    await openTransfers(page);
     for (const status of ended) {
       await rowOf(page, `Hand.Off.${status}.2022.1080p-GRP`).click();
       const drawer = page.getByRole("dialog");

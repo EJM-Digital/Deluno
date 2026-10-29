@@ -33,9 +33,9 @@ describe("Live Activity stream (low rows)", () => {
 
     expect(container.querySelectorAll("li.lact-ev")).toHaveLength(20);
     const more = screen.getByRole("link", { name: "10 more in the activity log" });
-    expect(more).toHaveAttribute("href", "/activity");
+    expect(more).toHaveAttribute("href", "/queue?view=history");
     expect(more).toHaveTextContent("10 more");
-    expect(screen.getByRole("link", { name: /All activity/ })).toHaveAttribute("href", "/activity");
+    expect(screen.getByRole("link", { name: /All activity/ })).toHaveAttribute("href", "/queue?view=history");
   });
 
   it("counts the entries that do not fit the card's height as more, and says nothing more when they all fit", () => {

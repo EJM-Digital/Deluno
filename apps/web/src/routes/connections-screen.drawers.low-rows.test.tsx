@@ -311,6 +311,19 @@ describe("an indexer link from Transfers (#1426)", () => {
     expect(within(dialog).getByDisplayValue("Beta")).toBeInTheDocument();
     await waitFor(() => expect(router.state.location.search).toBe(""));
     expect(router.state.location.pathname).toBe("/indexers/indexers");
+    // The link is not left in the history for Back to open again.
+    expect(router.state.historyAction).toBe("REPLACE");
+  });
+
+  it("opens the indexer of a second link followed while the page is already open", async () => {
+    reset({ indexers: [indexer(), indexer({ id: "i2", name: "Beta", baseUrl: "https://beta.example/api" })] });
+    const router = createMemoryRouter([{ path: "*", element: <IndexersPage /> }], { initialEntries: ["/indexers/indexers"] });
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RouterProvider router={router} /></QueryClientProvider>);
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    await router.navigate("/indexers/indexers?indexer=Alpha");
+
+    expect(await within(await screen.findByRole("dialog")).findByDisplayValue("Alpha")).toBeInTheDocument();
   });
 
   it("a name no indexer has opens nothing and still clears the address", async () => {

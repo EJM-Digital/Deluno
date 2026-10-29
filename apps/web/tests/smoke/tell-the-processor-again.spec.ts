@@ -55,7 +55,7 @@ test("a report the processor did not take can be said again from the hand-off's 
     });
   });
 
-  await page.goto("/queue");
+  await page.goto("/queue?view=handoffs");
   await page.getByRole("row").filter({ hasText: handoff.releaseName }).first().click();
   await expect(page.getByText("What Weir was told")).toBeVisible();
   await expect(page.getByText("Weir has no record of this hand-off.")).toBeVisible();
@@ -76,7 +76,7 @@ test("a long path in a hand-off's drawer is cut short rather than widening the d
     await route.fulfill({ contentType: "application/json", body: JSON.stringify([{ ...handoff, outputPath: longPath }]) });
   });
 
-  await page.goto("/queue");
+  await page.goto("/queue?view=handoffs");
   await page.getByRole("row").filter({ hasText: handoff.releaseName }).first().click();
   const drawer = page.getByRole("dialog").last();
   await expect(drawer.getByText("What Weir was told")).toBeVisible();

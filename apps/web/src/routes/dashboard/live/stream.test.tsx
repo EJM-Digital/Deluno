@@ -20,7 +20,7 @@ describe("the Activity stream's links (#1114)", () => {
     const rows = [{ id: "e1", category: "library.scan.completed", message: "Read the library", label: "Library", relatedEntityType: null, relatedEntityId: null, createdUtc: new Date().toISOString(), severity: null }] as never;
     const { container } = render(<MemoryRouter><ActivityStream rows={rows} titles={new Map() as never} /></MemoryRouter>);
     const hrefs = [...container.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(hrefs).toContain("/activity");
+    expect(hrefs).toContain("/queue?view=history");
     expect(hrefs.some((href) => href?.includes("section="))).toBe(false);
   });
 });

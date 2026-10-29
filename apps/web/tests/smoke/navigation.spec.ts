@@ -9,6 +9,8 @@ test.describe("protected navigation", () => {
     "/calendar",
     "/indexers",
     "/activity",
+    "/queue?view=handoffs",
+    "/queue?view=history",
     "/queue",
     "/settings",
     "/settings/general",

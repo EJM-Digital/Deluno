@@ -27,7 +27,7 @@ test.describe("Transfers", () => {
     }
     expect(text).toContain("all clear");
     expect(text).toContain("nothing waiting");
-    await expect(page.getByRole("link", { name: /See everything in Activity/ })).toHaveAttribute("href", "/activity");
+    await expect(page.getByRole("link", { name: /See the history and events/ })).toHaveAttribute("href", "/queue?view=history");
   });
 
   test("the cleanup safeguards read Off on a fresh install, as nothing is automatic until chosen", async ({ page }) => {

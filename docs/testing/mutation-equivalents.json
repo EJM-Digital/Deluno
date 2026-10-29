@@ -209,6 +209,14 @@
       "line": 158,
       "replacement": "false",
       "reason": "A type guard that narrows the dropdown's string to a colour mode; the dropdown offers only the two valid modes, so the guard never refuses and removing it changes nothing a person or test can reach."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/connections-screen.tsx",
+      "mutator": "ObjectLiteral",
+      "line": 624,
+      "replacement": "{}",
+      "reason": "Navigating to an empty location object and navigating to the current path with an empty search both land on the current path with no query, so the address ends the same either way; no test can tell them apart."
     }
   ]
 }

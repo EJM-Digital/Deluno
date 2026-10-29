@@ -1022,7 +1022,7 @@ describe("download drawer: availability, last activity and completion (#970)", (
 
 /** #1115: the history lives on Activity; Transfers keeps only a way there. */
 describe("Transfers points to Activity for the history (#1115)", () => {
-  it("has no Recent activity card, and links to Activity", () => {
+  it("has no Recent activity card, and links to the history", () => {
     render(
       <MemoryRouter>
         <QueuePage />

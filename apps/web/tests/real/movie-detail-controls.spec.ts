@@ -319,7 +319,7 @@ test.describe("A movie's page", () => {
     await openMovie(page, movie);
     await page.getByRole("tab", { name: "History", exact: true }).click();
     await page.getByRole("link", { name: "Everything about this film", exact: true }).click();
-    await expect(page).toHaveURL(/\/activity\?/);
+    await expect(page).toHaveURL(/\/queue\?view=history&/);
     await expectNoErrorScreen(page);
   });
 });

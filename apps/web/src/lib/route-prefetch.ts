@@ -33,12 +33,8 @@ const targets: PrefetchTarget[] = [
   { match: (path) => path.startsWith("/settings"), load: () => import("../routes/settings-overview-page") }
 ];
 
-function requestFor(to: string): { request: Request } | undefined {
-  try {
-    return { request: new Request(new URL(to, window.location.origin)) };
-  } catch {
-    return undefined;
-  }
+function requestFor(to: string): { request: Request } {
+  return { request: new Request(new URL(to, window.location.origin)) };
 }
 
 function targetFor(to: string): PrefetchTarget | undefined {
