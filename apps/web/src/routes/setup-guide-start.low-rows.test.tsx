@@ -96,6 +96,21 @@ describe("the Start step, low rows (#1329)", () => {
     expect(within(ready).getByText("Single-copy link first")).toBeTruthy();
   });
 
+  it("leaving out the root folder and the quality keeps the person on Start and says each one there, beside what it is about (#1422)", async () => {
+    renderFinish({ settings: { movieRootPath: "", seriesRootPath: "" }, draft: { ...ANSWERED, qualityPreset: "", movieRootPath: "", seriesRootPath: "" } });
+    const create = await createButton();
+
+    // Enter in a field of the Start step submits the form: it must not carry the person to another step.
+    fireEvent.submit(create.closest("form")!);
+
+    await waitFor(() => expect(screen.getByText(/Still needed before Deluno can create the baseline:.*a library root folder.*a picture quality/)).toBeTruthy());
+    expect(await createButton()).toBeTruthy();
+    expect(cell("Libraries").textContent).toContain("No root folder yet");
+    expect(cell("Quality").textContent).toContain("Not chosen");
+    expect(create.disabled).toBe(true);
+    expect(fetchJson.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "POST")).toBe(false);
+  });
+
   it("Create baseline is disabled until everything is chosen, including Updates, and its tooltip says what is missing", async () => {
     renderFinish();
     expect((await createButton()).title).toBe("Choose a picture quality and release preference first");
