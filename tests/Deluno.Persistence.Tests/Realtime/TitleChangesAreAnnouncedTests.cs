@@ -163,6 +163,44 @@ public sealed class TitleChangesAreAnnouncedTests
     }
 
     [Fact]
+    public async Task Twenty_five_changed_episodes_are_each_announced_by_their_own_id_and_one_more_makes_it_one_note()
+    {
+        using var storage = TestStorage.Create();
+        var series = await SeriesAsync(storage);
+        var show = await series.AddAsync(new CreateSeriesRequest("The Wire", 2002, "tt0306414"), CancellationToken.None);
+        var recorder = new Recorder();
+        var notifier = NotifierFor(storage, recorder);
+        await notifier.FlushAsync(DelunoDatabaseNames.Series, CancellationToken.None);
+
+        async Task WriteEpisodesAsync(int from, int to)
+        {
+            recorder.Clear();
+            await using var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Series, CancellationToken.None);
+            for (var episode = from; episode <= to; episode++)
+            {
+                await using var command = connection.CreateCommand();
+                command.CommandText =
+                    "INSERT INTO episode_entries (id, series_id, season_number, episode_number, monitored, created_utc, updated_utc) " +
+                    "VALUES (@id, @series, 1, @episode, 1, '2026-10-08T00:00:00Z', '2026-10-08T00:00:00Z')";
+                command.Parameters.Add(new SqliteParameter("@id", $"ep-{episode}"));
+                command.Parameters.Add(new SqliteParameter("@series", show.Id));
+                command.Parameters.Add(new SqliteParameter("@episode", episode));
+                await command.ExecuteNonQueryAsync();
+            }
+
+            await notifier.FlushAsync(DelunoDatabaseNames.Series, CancellationToken.None);
+        }
+
+        await WriteEpisodesAsync(1, 25);
+        var named = recorder.Entities.Where(entity => entity.Type == "Episode").Select(entity => entity.Id).Order().ToArray();
+        Assert.Equal(Enumerable.Range(1, 25).Select(episode => $"ep-{episode}").Order().ToArray(), named);
+
+        await WriteEpisodesAsync(26, 51);
+        Assert.Single(recorder.Entities, entity => entity is { Type: "Episode", Id: "*" });
+        Assert.DoesNotContain(recorder.Entities, entity => entity.Type == "Episode" && entity.Id != "*");
+    }
+
+    [Fact]
     public async Task A_removed_film_says_that_films_changed_even_though_its_row_is_gone()
     {
         using var storage = TestStorage.Create();
@@ -249,6 +287,27 @@ public sealed class TitleChangesAreAnnouncedTests
         Assert.Equal(("Series", show.Id), (announced.Type, announced.Id));
         Assert.Equal(["lib-tv"], announced.Libraries);
         Assert.Equal([("Episode", "ep-9")], recorder.Entities.ToArray());
+    }
+
+    [Fact]
+    public async Task A_change_to_a_film_that_names_no_library_is_announced_to_every_library_that_holds_it()
+    {
+        using var storage = TestStorage.Create();
+        var movies = await MoviesAsync(storage);
+        var film = await movies.AddAsync(new CreateMovieRequest("Heat", 1995, null), CancellationToken.None);
+        await movies.EnsureWantedStateAsync(film.Id, "lib-1", "missing", "Wanted", hasFile: false, null, "WEB 1080p", false, CancellationToken.None);
+        await movies.EnsureWantedStateAsync(film.Id, "lib-2", "missing", "Wanted", hasFile: false, null, "WEB 1080p", false, CancellationToken.None);
+        var recorder = new Recorder();
+        var notifier = NotifierFor(storage, recorder);
+        await notifier.FlushAsync(DelunoDatabaseNames.Movies, CancellationToken.None);
+        recorder.Clear();
+
+        await ExecuteAsync(storage, DelunoDatabaseNames.Movies, $"UPDATE movie_entries SET title = 'Heat (Director''s Cut)' WHERE id = '{film.Id}'");
+        await notifier.FlushAsync(DelunoDatabaseNames.Movies, CancellationToken.None);
+
+        var announced = Assert.Single(recorder.Titles);
+        Assert.Equal(("Movie", film.Id), (announced.Type, announced.Id));
+        Assert.Equal(["lib-1", "lib-2"], announced.Libraries.Order().ToArray());
     }
 
     private static async Task ExecuteAsync(TestStorage storage, string database, string sql)

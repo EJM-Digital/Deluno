@@ -198,6 +198,63 @@ public sealed class ExistingLibraryImportHandlesWhatGoesWrongTests
     }
 
     [Fact]
+    public async Task Choosing_titles_to_import_takes_at_most_a_hundred_paths_and_a_path_that_is_not_valid_is_named_while_the_others_still_import()
+    {
+        using var world = await WorldAsync("movies", root => Film(root, "Good Film One (1991)"));
+        var service = ServiceFor(world);
+        var good = Path.Combine(world.Root, "Good Film One (1991)");
+        var many = Enumerable.Range(0, 101).Select(number => Path.Combine(world.Root, $"Not There {number}")).ToArray();
+
+        var capped = await service.ImportSelectedAsync(world.LibraryId, many, CancellationToken.None);
+        var withBadPath = await service.ImportSelectedAsync(world.LibraryId, [good, "broken path"], CancellationToken.None);
+
+        Assert.Equal(100, capped!.RequestedCount);
+        Assert.Equal(0, capped.ImportedCount);
+        Assert.Equal(100, capped.Issues.Count);
+        Assert.DoesNotContain(capped.Issues, issue => issue.SourcePath.EndsWith("Not There 100", StringComparison.Ordinal));
+        Assert.Equal(1, withBadPath!.ImportedCount);
+        var bad = Assert.Single(withBadPath.Issues);
+        Assert.Equal(("invalidPath", "The selected path is not valid."), (bad.Kind, bad.Detail));
+        Assert.Equal(["Good Film One"], (await world.Movies.ListAsync(CancellationToken.None)).Select(movie => movie.Title).ToArray());
+    }
+
+    [Fact]
+    public async Task Choosing_the_same_title_twice_by_two_spellings_of_its_path_imports_it_once()
+    {
+        using var world = await WorldAsync("movies", root => Film(root, "Good Film One (1991)"));
+        var service = ServiceFor(world);
+        var plain = Path.Combine(world.Root, "Good Film One (1991)");
+        var roundabout = Path.Combine(world.Root, ".", "Good Film One (1991)");
+
+        var result = await service.ImportSelectedAsync(world.LibraryId, [plain, roundabout], CancellationToken.None);
+
+        Assert.Equal(1, result!.ImportedCount);
+        Assert.Empty(result.Issues);
+        Assert.Single(await world.Movies.ListAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task The_preview_is_read_a_page_at_a_time_and_each_page_hands_over_the_last_path_it_showed_to_continue_from()
+    {
+        using var world = await WorldAsync("movies", root => { Film(root, "Alpha (1991)"); Film(root, "Bravo (2001)"); Film(root, "Charlie (2004)"); });
+        var service = ServiceFor(world);
+
+        var first = await service.PreviewAsync(world.LibraryId, null, 2, CancellationToken.None);
+        var second = await service.PreviewAsync(world.LibraryId, first!.NextCursor, 2, CancellationToken.None);
+        var clampedUp = await service.PreviewAsync(world.LibraryId, null, 0, CancellationToken.None);
+        var clampedDown = await service.PreviewAsync(world.LibraryId, null, 100000, CancellationToken.None);
+
+        Assert.Equal(["Alpha (1991)", "Bravo (2001)"], first.Items.Select(item => Path.GetFileName(item.SourcePath)).ToArray());
+        Assert.True(first.HasMore);
+        Assert.Equal(first.Items[^1].SourcePath, first.NextCursor);
+        Assert.Equal(["Charlie (2004)"], second!.Items.Select(item => Path.GetFileName(item.SourcePath)).ToArray());
+        Assert.False(second.HasMore);
+        Assert.Null(second.NextCursor);
+        Assert.Single(clampedUp!.Items);
+        Assert.Equal(3, clampedDown!.Items.Count);
+    }
+
+    [Fact]
     public async Task A_slice_that_fails_records_why_on_the_run_and_throws_so_the_job_system_retries()
     {
         using var world = await WorldAsync("movies", root => Film(root, "Silent Harbour (1991)"));
