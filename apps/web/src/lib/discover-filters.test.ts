@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  LANGUAGES,
   NO_FILTERS,
   TV_GENRES,
   MOVIE_GENRES,
@@ -25,6 +26,13 @@ describe("Discover lists and filters (#1429)", () => {
       { value: "now-playing", label: "In cinemas", title: "In cinemas now, on TMDb" }
     ]);
     expect(discoverLists("series")[3]).toEqual({ value: "now-playing", label: "On air", title: "On air now, on TMDb" });
+  });
+
+  it("offers fourteen original languages, each by its TMDb code", () => {
+    expect(LANGUAGES.map((language) => `${language.value}:${language.label}`)).toEqual([
+      "en:English", "fr:French", "de:German", "es:Spanish", "it:Italian", "pt:Portuguese", "ja:Japanese",
+      "ko:Korean", "zh:Chinese", "hi:Hindi", "ru:Russian", "sv:Swedish", "da:Danish", "nl:Dutch"
+    ]);
   });
 
   it("has each kind's own genres", () => {
