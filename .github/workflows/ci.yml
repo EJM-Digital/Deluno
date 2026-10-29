@@ -1110,7 +1110,9 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.run_mutation == 'true' }}
     runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
-    timeout-minutes: 90
+    # A push that carries a day of changes across several .NET projects ran past 90 minutes (29 Oct 2026); the repository is
+    # public, so a longer limit costs no Actions minutes.
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
