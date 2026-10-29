@@ -435,7 +435,7 @@ public static class AttentionSummaryBuilder
     private static bool IsBackgroundJob(JobQueueItem job)
         => job.JobType != ImportJobType && string.IsNullOrWhiteSpace(job.RelatedEntityId);
 
-    private static readonly string[] DispatchFailureWords = ["failed", "blocked", "rejected", "unresolved", "error", "not_found", "circuit_open", "paused"];
+    private static readonly string[] DispatchFailureWords = ["failed", "blocked", "rejected", "unresolved", "error", GrabStatuses.StoredNotFound, GrabStatuses.StoredCircuitOpen, GrabStatuses.StoredPaused];
 
     private static bool IsDispatchFailure(DownloadDispatchItem dispatch)
     {

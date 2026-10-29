@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Jobs.Contracts;
 using Deluno.Recovery.Contracts;
@@ -34,7 +35,7 @@ public sealed class DispatchCleanupService(
 
         foreach (var dispatch in stale)
         {
-            var policy = ChoosePolicy(dispatch.GrabFailureCode, dispatch.ImportFailureCode);
+            var policy = ChoosePolicy(dispatch.GrabStatus, dispatch.GrabFailureCode, dispatch.ImportFailureCode);
 
             if (policy == CleanupPolicy.Archive)
             {
@@ -124,16 +125,19 @@ public sealed class DispatchCleanupService(
         return new DispatchCleanupResult(archivedCount, skippedCount, summary);
     }
 
-    private static CleanupPolicy ChoosePolicy(string? grabFailureCode, string? importFailureCode)
+    private static CleanupPolicy ChoosePolicy(string? grabStatus, string? grabFailureCode, string? importFailureCode)
     {
         var code = importFailureCode ?? grabFailureCode ?? string.Empty;
-        return code switch
+        if (code == "max-retries-exceeded")
         {
-            "max-retries-exceeded" => CleanupPolicy.Archive,
-            "notFound" or "paused" or "planned" => CleanupPolicy.Skip,
-            "circuitOpen" => CleanupPolicy.Skip,
-            _ => CleanupPolicy.Archive
-        };
+            return CleanupPolicy.Archive;
+        }
+
+        // A grab waiting on something (its client gone, paused, not yet sent, or stopped after repeated
+        // failures) is left alone, whether the store kept that as the failure code or as the grab status (#1412).
+        return GrabStatuses.IsStoredWaiting(code) || GrabStatuses.IsStoredWaiting(grabStatus)
+            ? CleanupPolicy.Skip
+            : CleanupPolicy.Archive;
     }
 
     private enum CleanupPolicy { Archive, Skip }

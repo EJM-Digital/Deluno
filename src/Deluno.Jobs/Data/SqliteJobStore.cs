@@ -5108,26 +5108,16 @@ public sealed class SqliteJobStore(
         var reason = string.IsNullOrWhiteSpace(grabFailureCode) ? "." : $" — {grabFailureCode}.";
         return status switch
         {
-            "sent" => ("download.dispatch.recorded", $"Deluno sent {releaseName} to {downloadClientName}."),
-            "planned" => ("download.dispatch.planned", $"Deluno chose {releaseName} for {downloadClientName} and has not sent it yet."),
-            "paused" => ("download.dispatch.paused", $"Deluno held {releaseName} back because {downloadClientName} is paused."),
-            "circuitOpen" => ("download.dispatch.failed", $"Deluno stopped sending to {downloadClientName} after repeated failures, so {releaseName} was not sent{reason}"),
-            "notFound" => ("download.dispatch.failed", $"Deluno could not find {downloadClientName} to send {releaseName} to{reason}"),
+            GrabStatuses.Sent => ("download.dispatch.recorded", $"Deluno sent {releaseName} to {downloadClientName}."),
+            GrabStatuses.Planned => ("download.dispatch.planned", $"Deluno chose {releaseName} for {downloadClientName} and has not sent it yet."),
+            GrabStatuses.Paused => ("download.dispatch.paused", $"Deluno held {releaseName} back because {downloadClientName} is paused."),
+            GrabStatuses.CircuitOpen => ("download.dispatch.failed", $"Deluno stopped sending to {downloadClientName} after repeated failures, so {releaseName} was not sent{reason}"),
+            GrabStatuses.NotFound => ("download.dispatch.failed", $"Deluno could not find {downloadClientName} to send {releaseName} to{reason}"),
             _ => ("download.dispatch.failed", $"Deluno could not send {releaseName} to {downloadClientName}{reason}")
         };
     }
 
-    private static string MapStatusToGrabStatus(string status) =>
-        status switch
-        {
-            "sent" => "succeeded",
-            "failed" => "failed",
-            "planned" => "planned",
-            "circuitOpen" => "circuit_open",
-            "notFound" => "not_found",
-            "paused" => "paused",
-            _ => status
-        };
+    private static string MapStatusToGrabStatus(string status) => GrabStatuses.ToStored(status);
 
     private static DispatchDecisionTelemetry? TryParseDispatchDecisionTelemetry(string? notesJson)
     {

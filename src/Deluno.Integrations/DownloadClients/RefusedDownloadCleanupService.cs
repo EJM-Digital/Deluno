@@ -29,7 +29,7 @@ public static class RefusedDownloadCleanupOutcomes
     /// <summary>The client did not answer, or refused.</summary>
     public const string ClientUnavailable = "clientUnavailable";
 
-    public const string NotFound = "notFound";
+    public const string NotFound = GrabStatuses.NotFound;
 
     /// <summary>Deluno never sent this download, so it is left in the client for its owner.</summary>
     public const string NotSentByDeluno = "notSentByDeluno";

@@ -46,12 +46,12 @@ public sealed class DownloadClientGrabService(
             .FirstOrDefault(item => string.Equals(item.Id, clientId, StringComparison.OrdinalIgnoreCase));
         if (client is null)
         {
-            return Failed(clientId, request, "notFound", "Download client was not found.");
+            return Failed(clientId, request, GrabStatuses.NotFound, "Download client was not found.");
         }
 
         if (!client.IsEnabled)
         {
-            return Failed(client.Id, request, "paused", "Download client is disabled.");
+            return Failed(client.Id, request, GrabStatuses.Paused, "Download client is disabled.");
         }
 
         if (client.SecretUnreadable)
@@ -72,7 +72,7 @@ public sealed class DownloadClientGrabService(
 
         if (string.IsNullOrWhiteSpace(request.DownloadUrl))
         {
-            return Failed(client.Id, request, "planned", "No downloadable URL was available for this release.");
+            return Failed(client.Id, request, GrabStatuses.Planned, "No downloadable URL was available for this release.");
         }
 
         // #750: an indexer's own grab cap, checked before any network call
@@ -177,7 +177,7 @@ public sealed class DownloadClientGrabService(
                     return Failed(
                         client.Id,
                         request,
-                        "circuitOpen",
+                        GrabStatuses.CircuitOpen,
                         "Deluno paused grabs for this client after repeated failures. Test the client connection before sending another release.",
                         result.Failure);
                 }

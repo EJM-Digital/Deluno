@@ -213,7 +213,7 @@ public sealed class SqliteDownloadDispatchesRepository(
             {
                 command.Transaction = transaction;
                 command.CommandText =
-                    """
+                    $"""
                     UPDATE download_dispatches
                     SET
                         detected_utc = COALESCE(detected_utc, @now),
@@ -223,9 +223,9 @@ public sealed class SqliteDownloadDispatchesRepository(
                         -- A client that was down for longer than the detection
                         -- limit shows the download late. That undoes the ending
                         -- MarkNeverDetectedAsync gave it; any other failure stands.
-                        status = CASE WHEN status = 'failed' AND grab_failure_code = 'not_found' THEN 'sent' ELSE status END,
-                        grab_message = CASE WHEN grab_failure_code = 'not_found' THEN NULL ELSE grab_message END,
-                        grab_failure_code = CASE WHEN grab_failure_code = 'not_found' THEN NULL ELSE grab_failure_code END
+                        status = CASE WHEN status = 'failed' AND grab_failure_code = '{GrabStatuses.StoredNotFound}' THEN 'sent' ELSE status END,
+                        grab_message = CASE WHEN grab_failure_code = '{GrabStatuses.StoredNotFound}' THEN NULL ELSE grab_message END,
+                        grab_failure_code = CASE WHEN grab_failure_code = '{GrabStatuses.StoredNotFound}' THEN NULL ELSE grab_failure_code END
                     WHERE id = @dispatchId
                     """;
 
@@ -576,9 +576,9 @@ public sealed class SqliteDownloadDispatchesRepository(
         // still counts: its client may only be unreachable, and counting it
         // costs a delay, while not counting it costs a second download.
         command.CommandText =
-            """
+            $"""
             SELECT entity_type, entity_id, release_name,
-                   CASE WHEN status = 'failed' AND grab_failure_code = 'not_found' THEN 1 ELSE 0 END,
+                   CASE WHEN status = 'failed' AND grab_failure_code = '{GrabStatuses.StoredNotFound}' THEN 1 ELSE 0 END,
                    download_client_id, download_client_name, torrent_hash_or_item_id
             FROM download_dispatches
             WHERE grab_status = 'succeeded'
@@ -1303,7 +1303,7 @@ public sealed class SqliteDownloadDispatchesRepository(
 
     private static bool IsFailedGrab(DownloadDispatchItem dispatch)
         => !string.IsNullOrWhiteSpace(dispatch.GrabFailureCode)
-            || dispatch.GrabStatus?.Trim().ToLowerInvariant() is "failed" or "not_found" or "circuit_open" or "paused";
+            || dispatch.GrabStatus?.Trim().ToLowerInvariant() is GrabStatuses.StoredFailed or GrabStatuses.StoredNotFound or GrabStatuses.StoredCircuitOpen or GrabStatuses.StoredPaused;
 
     private static IntegrationFailure? TryReadTypedFailure(string? json)
     {
@@ -1413,9 +1413,9 @@ public sealed class SqliteDownloadDispatchesRepository(
             // grab_status stays 'succeeded': the client did accept it, and the
             // indexer scoreboard reads that column.
             command.CommandText =
-                """
+                $"""
                 UPDATE download_dispatches
-                SET status = 'failed', grab_failure_code = 'not_found', grab_message = @message
+                SET status = 'failed', grab_failure_code = '{GrabStatuses.StoredNotFound}', grab_message = @message
                 WHERE id = @id
                   AND detected_utc IS NULL
                   AND COALESCE(status, '') NOT IN ('failed', 'archived');

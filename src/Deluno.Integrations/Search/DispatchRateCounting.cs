@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 namespace Deluno.Integrations.Search;
 
 /// <summary>
@@ -29,7 +30,7 @@ public static class DispatchRateCounting
     public const string FailedInClientSql =
         "(COALESCE(import_status, '') != 'imported' AND ("
         + "(import_status = 'failed' AND COALESCE(import_failure_code, '') IN ('client-reported-failure', 'download-integrity-failed'))"
-        + " OR (grab_status = 'failed' AND COALESCE(grab_failure_code, '') != 'not_found')))";
+        + " OR (grab_status = 'failed' AND COALESCE(grab_failure_code, '') != '" + GrabStatuses.StoredNotFound + "')))";
 
     /// <summary>The rows that count toward the rate, whichever way they went.</summary>
     public const string CountsTowardRateSql = "(" + ImportedSql + " OR " + FailedInClientSql + ")";

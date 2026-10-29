@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Jobs.Data;
@@ -46,10 +47,12 @@ public sealed class TheDispatchCleanupPassOnTheRealStoreTests
         await InsertAsync(storage, "old-timeout", "failed", "timeout", null, ageDays: 9);
         await InsertAsync(storage, "old-no-code", "failed", null, null, ageDays: 8);
         await InsertAsync(storage, "old-retries", "failed", null, "max-retries-exceeded", ageDays: 30);
-        await InsertAsync(storage, "old-notfound", "failed", "notFound", null, ageDays: 9);
-        await InsertAsync(storage, "old-paused", "failed", "paused", null, ageDays: 9);
-        await InsertAsync(storage, "old-planned", "failed", "planned", null, ageDays: 9);
-        await InsertAsync(storage, "old-circuit", "failed", "circuitOpen", null, ageDays: 9);
+        // A not-found grab as the real store records it: the client accepted it, then never showed it (#1412).
+        await InsertAsync(storage, "old-notfound", "sent", null, null, ageDays: 9);
+        Assert.True(await dispatches.MarkNeverDetectedAsync("old-notfound", "SABnzbd accepted this download and then never showed it.", CancellationToken.None));
+        await InsertAsync(storage, "old-paused", "failed", GrabStatuses.StoredPaused, null, ageDays: 9);
+        await InsertAsync(storage, "old-planned", "failed", GrabStatuses.StoredPlanned, null, ageDays: 9);
+        await InsertAsync(storage, "old-circuit", "failed", GrabStatuses.StoredCircuitOpen, null, ageDays: 9);
         await InsertAsync(storage, "recent-failed", "failed", "timeout", null, ageDays: 3);
         await InsertAsync(storage, "old-sent", "sent", null, null, ageDays: 20);
 

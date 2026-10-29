@@ -914,7 +914,7 @@ public sealed class DownloadClientTelemetryService(
                     clientId,
                     clientId,
                     $"action:{request.Action}",
-                    "notFound",
+                    GrabStatuses.NotFound,
                     "Download client was not found.")
             };
         }
@@ -1096,7 +1096,7 @@ public sealed class DownloadClientTelemetryService(
             return new QueueRemovalResult(clientId, queueItemId, reason, false, "Download client was not found.", false, false, null, null)
             {
                 Failure = IntegrationFailureFactory.FromLegacy(
-                    "download-client", clientId, clientId, "queue:remove", "notFound", "Download client was not found.")
+                    "download-client", clientId, clientId, "queue:remove", GrabStatuses.NotFound, "Download client was not found.")
             };
         }
 
