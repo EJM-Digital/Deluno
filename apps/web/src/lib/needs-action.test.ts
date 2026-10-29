@@ -450,6 +450,23 @@ describe("plainFailure", () => {
 });
 
 describe("handoffStatusLabel", () => {
+  it.each([
+    ["waiting", "Waiting to submit"],
+    ["submitted", "Submitted to connector"],
+    ["accepted", "Accepted by connector"],
+    ["started", "Processing media"],
+    ["completed", "Output received"],
+    ["timed-out", "Timed out"],
+    ["failed", "Processing failed"],
+    ["rejected", "Rejected · searching again"],
+    ["stalled", "Stalled"],
+    ["lost", "Processor has no record"],
+    ["cancelled", "Cancelled"],
+    ["released", "Importing the original"]
+  ])("the hand-off status %s reads %s", (status, words) => {
+    expect(handoffStatusLabel(status)).toBe(words);
+  });
+
   it("is the one set of words for a hand-off status, and a gone download never blames the processor (#1186)", () => {
     expect(handoffStatusLabel("source-gone")).toBe("Download gone");
     expect(handoffStatusLabel("SOURCE-GONE")).toBe("Download gone");
