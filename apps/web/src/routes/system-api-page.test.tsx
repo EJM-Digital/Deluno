@@ -28,7 +28,7 @@ vi.mock("react-router-dom", async (importOriginal) => ({
   useRevalidator: () => ({ revalidate })
 }));
 
-const { SystemApiPage } = await import("./system-api-page");
+const { SystemApiPage, systemApiLoader } = await import("./system-api-page");
 
 const templates = [
   { id: "automation", name: "Automation", description: "Read everything and queue downloads.", scopes: ["read", "queue"], capabilities: [] },
@@ -295,5 +295,25 @@ describe("Revoke", () => {
     fireEvent.click(await within(await screen.findByRole("dialog")).findByRole("button", { name: "Revoke key" }));
 
     await waitFor(() => expect(screen.queryByText("deluno_fresh")).toBeNull());
+  });
+});
+
+describe("The route's loader", () => {
+  it("reads the keys, the access presets and the integration routes with their scopes from the server", async () => {
+    const answers: Record<string, unknown> = {
+      "/api/api-keys": [key(1)],
+      "/api/api-keys/scope-templates": templates,
+      "/api/api-keys/integration-routes": [{ scope: "queue", method: "POST", path: "/api/integrations/external/trigger-refresh" }]
+    };
+    fetchJsonMock.mockImplementation(async (url: string) => answers[url]);
+
+    const data = await systemApiLoader();
+
+    expect(data).toEqual({
+      apiKeys: [key(1)],
+      scopeTemplates: templates,
+      integrationRoutes: [{ scope: "queue", method: "POST", path: "/api/integrations/external/trigger-refresh" }]
+    });
+    expect(fetchJsonMock).toHaveBeenCalledTimes(3);
   });
 });

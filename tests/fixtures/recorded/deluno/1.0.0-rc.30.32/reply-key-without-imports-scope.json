@@ -2,7 +2,7 @@
   "app": "deluno",
   "version": "1.0.0-rc.30.32",
   "state": "reply-key-without-imports-scope",
-  "recordedAt": "2026-10-14T06:06:59Z",
+  "recordedAt": "2026-10-29T01:45:01Z",
   "note": "Each of the four routes called with a valid API key that carries only the read scope: the two reads reach the route and are refused by it, the two writes are refused before it. Recorded from the real server code through the in-process test host (ApplicationTestHost), by DelunoRepliesToWeirTests; generated ids, times and the data folder are replaced by <id>, <utc> and <data-root>.",
   "exchanges": [
     {
@@ -16,10 +16,16 @@
       "reply": {
         "status": 403,
         "headers": {
-          "content-type": "application/json; charset=utf-8"
+          "content-type": "application/json"
         },
         "body": {
-          "message": "This API key does not include the required scope: imports."
+          "error": "This credential does not have the 'imports' scope.",
+          "required": [
+            "imports"
+          ],
+          "granted": [
+            "read"
+          ]
         }
       }
     },
@@ -34,10 +40,16 @@
       "reply": {
         "status": 403,
         "headers": {
-          "content-type": "application/json; charset=utf-8"
+          "content-type": "application/json"
         },
         "body": {
-          "message": "This API key does not include the required scope: imports."
+          "error": "This credential does not have the 'imports' scope.",
+          "required": [
+            "imports"
+          ],
+          "granted": [
+            "read"
+          ]
         }
       }
     },
@@ -55,10 +67,9 @@
           "content-type": "application/json"
         },
         "body": {
-          "error": "This credential does not have the 'imports' or 'queue' scope.",
+          "error": "This credential does not have the 'imports' scope.",
           "required": [
-            "imports",
-            "queue"
+            "imports"
           ],
           "granted": [
             "read"
@@ -80,10 +91,9 @@
           "content-type": "application/json"
         },
         "body": {
-          "error": "This credential does not have the 'imports' or 'queue' scope.",
+          "error": "This credential does not have the 'imports' scope.",
           "required": [
-            "imports",
-            "queue"
+            "imports"
           ],
           "granted": [
             "read"
