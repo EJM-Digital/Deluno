@@ -1,7 +1,7 @@
 import type { HeldReleaseRow } from "../lib/held-releases";
 import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DownloadClientTelemetrySnapshot, DownloadQueueItem, JobQueueItem, OrphanedDownloadItem } from "../lib/api";
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { QueuePage } from "./queue-screen";
@@ -241,5 +241,88 @@ describe("Transfers: the Processing connector card", () => {
     showQueue([]);
 
     expect(screen.getByText(words)).toBeVisible();
+  });
+});
+
+describe("Transfers: the summary strip cells", () => {
+  const zeroSummary = {
+    activeCount: 0, queuedCount: 0, completedCount: 0, stalledCount: 0,
+    processingCount: 0, importReadyCount: 0, totalSpeedMbps: 0, totalUploadSpeedMbps: 0, waitingForProcessorCount: 0
+  };
+  const cellOf = (label: string) => screen.getAllByText(label, { selector: "span" })[0].parentElement as HTMLElement;
+
+  beforeEach(() => {
+    queueLoaderData.telemetry = { ...queueLoaderData.telemetry, summary: { ...zeroSummary } };
+    queueLoaderData.processorConnections = [];
+    queueLoaderData.processorHandoffs = [];
+    queueLoaderData.jobs = [];
+  });
+
+  it("Downloading counts the active downloads and says the combined speed to one decimal", () => {
+    queueLoaderData.telemetry = { ...queueLoaderData.telemetry, summary: { ...zeroSummary, activeCount: 3, totalSpeedMbps: 12.34 } };
+    showQueue([]);
+
+    expect(cellOf("Downloading")).toHaveTextContent("3");
+    expect(cellOf("Downloading")).toHaveTextContent("12.3 MB/s combined");
+  });
+
+  it("Processing says no processor is connected when none is configured", () => {
+    showQueue([]);
+
+    expect(cellOf("Processing")).toHaveTextContent("no processor connected");
+  });
+
+  it("Processing counts the hand-offs the processor is holding and says how many are with it", () => {
+    queueLoaderData.processorHandoffs = [{
+      id: "handoff-1", status: "submitted", releaseName: "Handed.Over.2026.1080p-GROUP", processorName: "Weir", mediaType: "movies",
+      createdUtc: "2026-10-14T01:00:00Z", updatedUtc: "2026-10-14T01:00:00Z", sourcePath: null, detail: null, failureReason: null
+    }];
+    showQueue([]);
+
+    expect(cellOf("Processing")).toHaveTextContent("1 with the processor");
+  });
+
+  it("Importing counts the active import jobs and says what is being written, or that nothing is", () => {
+    queueLoaderData.jobs = [{ id: "job-run", jobType: "filesystem.import.execute", label: "Import", source: "download-client", sourceLabel: "A download", status: "running", payloadJson: "{}", attempts: 1, maxAttempts: 5, nextAttemptUtc: null, createdUtc: "2026-10-14T01:00:00Z", scheduledUtc: "2026-10-14T01:00:00Z", startedUtc: null, completedUtc: null, leasedUntilUtc: null, workerId: null, lastError: null, relatedEntityType: null, relatedEntityId: null, idempotencyKey: null, dedupeKey: null } as unknown as JobQueueItem];
+    showQueue([]);
+    expect(cellOf("Importing")).toHaveTextContent("writing into your library");
+    expect(cellOf("Importing")).toHaveTextContent("1");
+  });
+
+  it("Importing reads nothing being written when no import job is active", () => {
+    showQueue([]);
+
+    expect(cellOf("Importing")).toHaveTextContent("nothing being written");
+  });
+
+  it("Ready to import counts the downloads Deluno imports next, and reads nothing waiting when there are none", () => {
+    showQueue([item("Ready.One.2026.1080p-GROUP", { status: "importReady", progress: 100 })]);
+    expect(cellOf("Ready to import")).toHaveTextContent("Deluno imports these next");
+    expect(cellOf("Ready to import")).toHaveTextContent("1");
+  });
+
+  it("Ready to import reads nothing waiting when no download is ready", () => {
+    showQueue([]);
+
+    expect(cellOf("Ready to import")).toHaveTextContent("nothing waiting");
+  });
+
+  it("Needs action counts a release the strike rules blocked", () => {
+    showQueue([item("Blocked.Release.2026.1080p-GROUP", {
+      status: "downloading",
+      healthFindings: [{
+        severity: "warning", kind: "stall", summary: "Stuck.", evidence: "No progress.", recommendedAction: "Block.", canSafelyRetry: false,
+        canSafelyRemove: true, strikeCount: 3, candidateBlocked: true, ignoredUntilUtc: null, ruleId: null, ruleActionPreset: null, ruleStrikeLimit: null, nextStrikeUtc: null
+      }]
+    })]);
+
+    expect(cellOf("Needs action")).toHaveTextContent("1 release blocked");
+  });
+
+  it("with nothing in motion, the table says Nothing in motion and why it is empty", () => {
+    showQueue([]);
+
+    expect(screen.getByText("Nothing in motion")).toBeVisible();
+    expect(screen.getByText(/Media appears here from the moment Deluno sends it to a download client/)).toBeVisible();
   });
 });
