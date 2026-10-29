@@ -5,4 +5,8 @@ set -eu
 # those set their commits landed on this clone's main and one set core.bare (pushing the rc.30.36 tag, 29 Oct 2026).
 unset $(git rev-parse --local-env-vars)
 
-npm run ci:check
+# Only the fast repository checks run here; CI is the gate for builds and tests (the owner, 30 Oct 2026).
+node scripts/check-github-action-pins.mjs
+node scripts/check-workflow-hygiene.mjs
+node scripts/check-release-workflow-gates.mjs
+node scripts/check-coverage-register.mjs --base origin/main

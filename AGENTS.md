@@ -47,10 +47,10 @@ This file is the small entry point for agent work. It is a map, not the full man
 
 ## Validation
 
-Run the smallest relevant checks while working. Before the first push of a batch, run the full gate. If one step then
-fails and the fix stays inside one area, re-run only the steps that fix can affect: `npm run test:web` for a web-only
-fix, a Release build plus the affected test projects for a backend-only fix. Run the whole gate again only when a fix
-crosses areas: backend and web, a migration, or a shared contract (the owner, 3 Oct 2026). The full gate is:
+**CI is the gate** (the owner, 30 Oct 2026). Locally, run only the tests for what you changed, then push and let
+`ci.yml` run everything; a red run means a fix and another push. The pre-push hook runs only the fast repository
+checks (action pins, workflow hygiene, release gates, the coverage register), not a build. The full local gate below
+still exists for when CI cannot answer, such as a run that needs this machine:
 
 ```powershell
 npm run gate

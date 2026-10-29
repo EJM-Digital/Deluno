@@ -31,13 +31,16 @@ function powershell(args, cwd) {
 
 // ---- GAT-01: the pre-push hook
 
-test("the pre-push hook runs the repository checks and stops the push when they fail", () => {
+test("the pre-push hook runs only the fast repository checks and stops the push when one fails", () => {
   const hook = read(".githooks/pre-push");
   assert.match(hook, /^set -eu$/m, "a failed check must end the hook, and so the push");
-  assert.match(hook, /^npm run ci:check$/m);
-  // The checks' tests make throwaway repositories; with git's GIT_DIR still set they wrote into this clone (rc.30.36's tag push).
-  assert.ok(hook.indexOf("unset $(git rev-parse --local-env-vars)") >= 0 && hook.indexOf("unset $(git rev-parse --local-env-vars)") < hook.indexOf("npm run ci:check"),
-    "the hook clears git's own repository variables before the checks run");
+  const checks = ["check-github-action-pins", "check-workflow-hygiene", "check-release-workflow-gates", "check-coverage-register"];
+  for (const check of checks) assert.match(hook, new RegExp(`^node scripts/${check}\.mjs`, "m"));
+  // CI is the gate for builds and tests (the owner, 30 Oct 2026): nothing heavy runs on every push.
+  for (const forbidden of [/ci:check/, /dotnet/, /npm run gate/, /vitest/, /playwright/]) assert.doesNotMatch(hook, forbidden);
+  // The checks make throwaway repositories; with git's GIT_DIR still set they wrote into this clone (rc.30.36's tag push).
+  const unset = hook.indexOf("unset $(git rev-parse --local-env-vars)");
+  assert.ok(unset >= 0 && unset < hook.indexOf("node scripts/"), "the hook clears git's own repository variables before the checks run");
   const scripts = JSON.parse(read("package.json")).scripts;
   assert.equal(scripts["ci:check"], "node scripts/run-powershell.mjs scripts/ci-check.ps1");
 });
@@ -45,7 +48,7 @@ test("the pre-push hook runs the repository checks and stops the push when they 
 test("the pre-push checks build and check the repository but run no backend, tray, web unit or smoke test", () => {
   const checks = read("scripts/ci-check.ps1");
   for (const forbidden of [/dotnet test/, /vitest/, /playwright/, /test:web\b/, /test:smoke/]) {
-    assert.doesNotMatch(checks, forbidden, `ci:check is the pre-push hook; ${forbidden} would make every push run it`);
+    assert.doesNotMatch(checks, forbidden, `ci:check stays the quick repository check; ${forbidden} belongs in the suites`);
   }
   assert.match(checks, /dotnet/, "it still builds");
 });
