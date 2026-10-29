@@ -230,6 +230,46 @@ public sealed class NotificationProviderPayloadTests
         Assert.Contains("import.completed", handler.LastRequestBody);
     }
 
+    [Fact]
+    public async Task Every_chat_provider_puts_the_tags_line_in_what_it_sends()
+    {
+        var providers = new (string Provider, string Url, string? Config)[]
+        {
+            (NotificationProviders.Discord, "https://discord.com/api/webhooks/1/abc", null),
+            (NotificationProviders.Slack, "https://hooks.slack.example.test/services/T/B/x", null),
+            (NotificationProviders.Telegram, string.Empty, """{"botToken":"123:ABC","chatId":"555"}"""),
+            (NotificationProviders.Pushover, string.Empty, """{"appToken":"apptok","userKey":"userkey"}"""),
+            (NotificationProviders.Gotify, "https://gotify.example.test", """{"appToken":"gotifytoken"}"""),
+            (NotificationProviders.Apprise, "https://apprise.example.test/notify", null)
+        };
+
+        foreach (var (provider, url, config) in providers)
+        {
+            using var storage = TestStorage.Create();
+            var (service, handler) = await CreateServiceAsync(storage, provider, url, config);
+
+            await service.DispatchAsync("import.completed", "Imported", "Akira", null, CancellationToken.None, titleTags: ["anime", "4k"]);
+
+            Assert.True(Uri.UnescapeDataString(handler.LastRequestBody!.Replace('+', ' ')).Contains("Tags: anime, 4k", StringComparison.Ordinal), $"{provider} sent: {handler.LastRequestBody}");
+        }
+    }
+
+    [Fact]
+    public async Task The_generic_payload_carries_the_details_as_an_object_and_the_time_it_was_fired()
+    {
+        using var storage = TestStorage.Create();
+        var (service, handler) = await CreateServiceAsync(storage, NotificationProviders.Generic, "https://example.test/hook", null);
+        var before = DateTimeOffset.UtcNow.AddMinutes(-1);
+
+        await service.DispatchAsync("import.completed", "Imported", "Akira", """{"title":"Akira","year":1988}""", CancellationToken.None);
+
+        using var doc = System.Text.Json.JsonDocument.Parse(handler.LastRequestBody!);
+        var details = doc.RootElement.GetProperty("details");
+        Assert.Equal(System.Text.Json.JsonValueKind.Object, details.ValueKind);
+        Assert.Equal(("Akira", 1988), (details.GetProperty("title").GetString(), details.GetProperty("year").GetInt32()));
+        Assert.True(doc.RootElement.GetProperty("firedAt").GetDateTimeOffset() > before);
+    }
+
     private sealed class SingleClientFactory(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
