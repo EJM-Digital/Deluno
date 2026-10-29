@@ -19,9 +19,9 @@ describe("the navigation glyphs", () => {
   });
 
   it("adds the caller's class to the default size", () => {
-    const { container } = render(<DelunoNavGlyph kind="activity" className="text-red-500" />);
+    const { container } = render(<DelunoNavGlyph kind="activity" className="text-warning" />);
     const svg = container.querySelector("svg");
     expect(svg?.getAttribute("class")).toContain("h-5 w-5");
-    expect(svg?.getAttribute("class")).toContain("text-red-500");
+    expect(svg?.getAttribute("class")).toContain("text-warning");
   });
 });
