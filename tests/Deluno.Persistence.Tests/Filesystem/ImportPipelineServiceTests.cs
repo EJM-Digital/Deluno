@@ -7184,6 +7184,312 @@ public sealed partial class ImportPipelineServiceTests
         Assert.Contains(recovery.RecentCases, item => item.Summary.Contains("rolled back", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>The real series catalogue, except that committing the pack runs a fault first.</summary>
+    public class FaultsWhenThePackIsCommitted : System.Reflection.DispatchProxy
+    {
+        public ISeriesCatalogRepository Inner { get; set; } = null!;
+
+        public Func<Task>? Fault { get; set; }
+
+        protected override object? Invoke(System.Reflection.MethodInfo? targetMethod, object?[]? args)
+        {
+            if (targetMethod!.Name == nameof(ISeriesCatalogRepository.ImportExistingAsync) && Fault is not null)
+            {
+                Exception failure;
+                try
+                {
+                    Fault!().GetAwaiter().GetResult();
+                    failure = new InvalidOperationException("injected pack commit failure");
+                }
+                catch (Exception exception)
+                {
+                    failure = exception;
+                }
+
+                return typeof(Task).GetMethods()
+                    .First(method => method.Name == nameof(Task.FromException) && method.IsGenericMethodDefinition)
+                    .MakeGenericMethod(targetMethod.ReturnType.GetGenericArguments()[0])
+                    .Invoke(null, [failure]);
+            }
+
+            try
+            {
+                return targetMethod.Invoke(Inner, args);
+            }
+            catch (System.Reflection.TargetInvocationException exception) when (exception.InnerException is not null)
+            {
+                throw exception.InnerException;
+            }
+        }
+    }
+
+    private sealed record PackFaultRun(ImportPipelineResult? Result, Exception? Thrown, string PackDirectory, string PlacedFolder, string[] SourceNames, bool AnyEpisodeHasFile, IReadOnlyList<SeriesImportRecoveryCase> RecoveryCases);
+
+    private static async Task<PackFaultRun> RunPackWithFaultAsync(string transferMode, Func<string, CancellationTokenSource, Task> fault)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Fault Pack", 2026, null), CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(1, 1, "One", null, timeProvider.GetUtcNow().AddDays(-2)),
+                new CatalogueEpisodeItem(1, 2, "Two", null, timeProvider.GetUtcNow().AddDays(-1))
+            ],
+            "provider",
+            CancellationToken.None);
+        var packDirectory = Path.Combine(downloadsPath, "Fault.Pack.S01");
+        Directory.CreateDirectory(packDirectory);
+        foreach (var episode in new[] { 1, 2 })
+        {
+            var source = Path.Combine(packDirectory, $"Fault.Pack.S01E{episode:D2}.mkv");
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)(0x70 + episode), 4096).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+        }
+
+        using var cancellation = new CancellationTokenSource();
+        var proxy = System.Reflection.DispatchProxy.Create<ISeriesCatalogRepository, FaultsWhenThePackIsCommitted>();
+        var faulting = (FaultsWhenThePackIsCommitted)(object)proxy;
+        faulting.Inner = repository;
+        faulting.Fault = () => fault(packDirectory, cancellation);
+        var service = CreateService(storage, timeProvider, platform, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider), seriesCatalogRepository: proxy);
+        var request = new ImportExecuteRequest(
+            new ImportPreviewRequest(
+                packDirectory, null, "tv", series.Title, series.StartYear, [], [], null, null,
+                SeriesId: series.Id, SeriesType: SeriesTypes.Standard, NumberingScheme: SeriesNumberingSchemes.Standard),
+            transferMode, false, true);
+        var preview = await service.PreviewAsync(request.Preview, CancellationToken.None);
+        Assert.True(preview.Pack!.CanExecute, string.Join(" | ", preview.Pack.BlockReasons));
+
+        ImportPipelineResult? result = null;
+        Exception? thrown = null;
+        try
+        {
+            result = await service.ExecuteAsync(request, cancellation.Token);
+        }
+        catch (Exception exception)
+        {
+            thrown = exception;
+        }
+
+        var sources = Directory.Exists(packDirectory) ? Directory.GetFiles(packDirectory, "*.mkv").Select(Path.GetFileName).OfType<string>().Order().ToArray() : [];
+        var placed = Path.Combine(seriesRootPath, "Fault Pack (2026)");
+        var anyFile = (await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None))!.Episodes.Any(episode => episode.HasFile);
+        var cases = (await repository.GetImportRecoverySummaryAsync(CancellationToken.None)).RecentCases;
+        return new PackFaultRun(result, thrown, packDirectory, placed, sources, anyFile, cases);
+    }
+
+    [Theory]
+    [InlineData("copy")]
+    [InlineData("move")]
+    public async Task A_cancellation_after_the_pack_is_placed_rolls_every_file_back_and_leaves_every_source_where_it_was_before_it_rethrows(string transferMode)
+    {
+        var run = await RunPackWithFaultAsync(transferMode, async (_, cancellation) =>
+        {
+            await cancellation.CancelAsync();
+            cancellation.Token.ThrowIfCancellationRequested();
+        });
+
+        Assert.IsAssignableFrom<OperationCanceledException>(run.Thrown);
+        Assert.Equal(["Fault.Pack.S01E01.mkv", "Fault.Pack.S01E02.mkv"], run.SourceNames);
+        Assert.Empty(Directory.Exists(run.PlacedFolder) ? Directory.GetFiles(run.PlacedFolder, "*", SearchOption.AllDirectories) : []);
+        Assert.False(run.AnyEpisodeHasFile);
+    }
+
+    [Fact]
+    public async Task A_pack_whose_moved_sources_cannot_be_restored_names_the_files_and_tells_the_person_not_to_retry()
+    {
+        // The pack folder is removed while the files are placed, so the moved sources have nowhere to return to.
+        var run = await RunPackWithFaultAsync("move", (packDirectory, _) =>
+        {
+            Directory.Delete(packDirectory, recursive: true);
+            return Task.CompletedTask;
+        });
+
+        Assert.Null(run.Thrown);
+        Assert.False(run.Result!.Succeeded);
+        Assert.Contains("needs manual recovery", run.Result.Message, StringComparison.Ordinal);
+        Assert.Contains("Fault.Pack.S01E01.mkv", run.Result.Message, StringComparison.Ordinal);
+        Assert.Contains("Fault.Pack.S01E02.mkv", run.Result.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("rolled back", run.Result.Message, StringComparison.OrdinalIgnoreCase);
+        var recovered = Assert.Single(run.RecoveryCases, item => item.Summary.Contains("needs manual recovery", StringComparison.Ordinal));
+        Assert.StartsWith("Do not retry yet.", recovered.RecommendedAction, StringComparison.Ordinal);
+    }
+
+    /// <summary>Probes every file as 1080p, except a file whose name contains the marker, which is 720p.</summary>
+    private sealed class LowerForMarkedFilesProbeService(string marker) : IMediaProbeService
+    {
+        public async Task<MediaProbeInfo> ProbeAsync(string path, CancellationToken cancellationToken)
+        {
+            var probe = await new SuccessfulProbeService().ProbeAsync(path, cancellationToken);
+            return Path.GetFileName(path).Contains(marker, StringComparison.Ordinal)
+                ? probe with { VideoStreams = [probe.VideoStreams[0] with { Width = 1280, Height = 720 }] }
+                : probe;
+        }
+    }
+
+    private static async Task<ImportPipelineResult> ReplaceWithAWorseFileAsync(bool forceReplacement, bool processedByAProcessor)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-29T09:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            mediaProbeService: new LowerForMarkedFilesProbeService("LOWER"),
+            downloadDispatchesRepository: new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider));
+        var catalogued = await movies.AddAsync(new CreateMovieRequest("The Wild Robot", 2024, null), CancellationToken.None);
+
+        async Task<ImportPipelineResult> ImportAsync(string fileName, bool replace, string? processedFrom)
+        {
+            var source = Path.Combine(downloadsPath, fileName);
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)0x31, 4096).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+            var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+                libraryId: library.Id, mediaType: "movies", entityType: "movie", entityId: catalogued.Id,
+                releaseName: Path.GetFileNameWithoutExtension(fileName), indexerName: "TestIndexer",
+                downloadClientId: "client-1", downloadClientName: "TestClient",
+                status: "sent", notesJson: null, cancellationToken: CancellationToken.None);
+            return await service.ExecuteAsync(
+                new ImportExecuteRequest(
+                    new ImportPreviewRequest(source, null, "movies", "The Wild Robot", 2024, [], [], null, null),
+                    "copy", Overwrite: replace, AllowCopyFallback: true, ForceReplacement: replace && forceReplacement,
+                    DispatchId: dispatchId, ProcessedFromPath: processedFrom,
+                    ExpectedExistingPath: replace ? Directory.GetFiles(movieRootPath, "*.mkv", SearchOption.AllDirectories).Single() : null),
+                CancellationToken.None);
+        }
+
+        var first = await ImportAsync("The.Wild.Robot.2024.1080p.mkv", replace: false, processedFrom: null);
+        Assert.True(first.Succeeded, first.Message);
+        var original = Path.Combine(downloadsPath, "Original");
+        Directory.CreateDirectory(original);
+        return await ImportAsync("The.Wild.Robot.2024.LOWER.720p.mkv", replace: true, processedFrom: processedByAProcessor ? original : null);
+    }
+
+    [Fact]
+    public async Task A_worse_file_is_refused_over_a_better_one_unless_the_grab_authorised_the_replacement()
+    {
+        var guarded = await ReplaceWithAWorseFileAsync(forceReplacement: false, processedByAProcessor: false);
+        Assert.False(guarded.Succeeded);
+        Assert.Contains("Replacement blocked", guarded.Message, StringComparison.Ordinal);
+
+        var forced = await ReplaceWithAWorseFileAsync(forceReplacement: true, processedByAProcessor: false);
+        Assert.True(forced.Succeeded, forced.Message);
+    }
+
+    [Fact]
+    public async Task A_file_a_processor_handed_back_is_guarded_even_when_the_grab_authorised_the_replacement()
+    {
+        var processed = await ReplaceWithAWorseFileAsync(forceReplacement: true, processedByAProcessor: true);
+        Assert.False(processed.Succeeded);
+        Assert.Contains("Replacement blocked", processed.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>Imports one film into a library whose profile has the given cutoff, optionally with the film's own profile, and reads back what was recorded with the file.</summary>
+    private static async Task<MovieListItem> ImportedFilmsWantedStateAsync(string releaseName, string libraryCutoff, string? titleCutoff)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-29T10:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        var quality = new SqliteQualityRepository(storage.Factory, timeProvider);
+        const string allowed = "WEB 720p,WEB 1080p,Bluray 1080p";
+        var libraryProfile = await quality.CreateQualityProfileAsync(
+            new CreateQualityProfileRequest("Library profile", "movies", libraryCutoff, allowed, string.Empty, UpgradeUntilCutoff: true, UpgradeUnknownItems: false),
+            CancellationToken.None);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath, qualityProfileId: libraryProfile.Id);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var catalogued = await movies.AddAsync(new CreateMovieRequest("The Wild Robot", 2024, null), CancellationToken.None);
+        if (titleCutoff is not null)
+        {
+            var own = await quality.CreateQualityProfileAsync(
+                new CreateQualityProfileRequest("Film profile", "movies", titleCutoff, allowed, string.Empty, UpgradeUntilCutoff: true, UpgradeUnknownItems: false),
+                CancellationToken.None);
+            Assert.True(await movies.UpdateQualityProfileAsync(catalogued.Id, own.Id, CancellationToken.None));
+        }
+
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            qualityRepository: quality,
+            downloadDispatchesRepository: new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider));
+        var source = Path.Combine(downloadsPath, releaseName + ".mkv");
+        await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)0x41, 4096).ToArray());
+        File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            libraryId: library.Id, mediaType: "movies", entityType: "movie", entityId: catalogued.Id,
+            releaseName: releaseName, indexerName: "TestIndexer",
+            downloadClientId: "client-1", downloadClientName: "TestClient",
+            status: "sent", notesJson: null, cancellationToken: CancellationToken.None);
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(source, null, "movies", "The Wild Robot", 2024, [], [], null, null),
+                "copy", Overwrite: false, AllowCopyFallback: true, DispatchId: dispatchId),
+            CancellationToken.None);
+        Assert.True(result.Succeeded, result.Message);
+        return (await movies.GetByIdAsync(catalogued.Id, CancellationToken.None))!;
+    }
+
+    [Fact]
+    public async Task A_film_imported_at_the_librarys_cutoff_is_recorded_with_its_quality_and_the_cutoff_met()
+    {
+        var film = await ImportedFilmsWantedStateAsync("The.Wild.Robot.2024.1080p.WEB-DL", "WEB 1080p", titleCutoff: null);
+
+        Assert.Equal("WEB 1080p", film.CurrentQuality);
+        Assert.Equal("WEB 1080p", film.TargetQuality);
+        Assert.True(film.QualityCutoffMet);
+    }
+
+    [Fact]
+    public async Task A_film_imported_below_the_librarys_cutoff_is_recorded_as_still_upgrading()
+    {
+        var film = await ImportedFilmsWantedStateAsync("The.Wild.Robot.2024.720p.WEB-DL", "WEB 1080p", titleCutoff: null);
+
+        Assert.Equal("WEB 720p", film.CurrentQuality);
+        Assert.Equal("WEB 1080p", film.TargetQuality);
+        Assert.False(film.QualityCutoffMet);
+        Assert.Equal("upgrade", film.WantedStatus);
+    }
+
+    [Fact]
+    public async Task A_film_with_its_own_profile_is_judged_against_that_cutoff_not_the_librarys()
+    {
+        var film = await ImportedFilmsWantedStateAsync("The.Wild.Robot.2024.1080p.WEB-DL", "WEB 1080p", titleCutoff: "Bluray 1080p");
+
+        Assert.Equal("Bluray 1080p", film.TargetQuality);
+        Assert.False(film.QualityCutoffMet);
+    }
+
     [Fact]
     public async Task Tv_pack_replacement_requires_exact_episode_ownership_and_converges_idempotently()
     {
