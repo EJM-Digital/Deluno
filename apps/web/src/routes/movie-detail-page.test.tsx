@@ -1347,3 +1347,11 @@ describe("the film's header facts (coverage, #1329)", () => {
     expect(within(panel).getAllByText(/Film and TV details from/).length).toBe(1);
   });
 });
+
+describe("the film's toolbar links (coverage, #1329)", () => {
+  it("the All movies toolbar link returns to the movies list", async () => {
+    await renderPage();
+    fireEvent.click(screen.getAllByRole("link", { name: "All movies" })[0]);
+    expect(await screen.findByText("All the movies")).toBeInTheDocument();
+  });
+});
