@@ -51,13 +51,13 @@ describe("the Dashboard's setup banner and ladder (low rows)", () => {
   });
 
   it("the empty-library row shows while the library is empty and is gone once it has a title", async () => {
-    const empty = { ...fullSummary, library: { ...fullSummary.library, movies: { ...fullSummary.library.movies, total: 0 }, shows: { ...fullSummary.library.shows, total: 0 } } };
+    const empty = { ...fullSummary, library: { ...fullSummary.library!, movies: { ...fullSummary.library!.movies, total: 0 }, shows: { ...fullSummary.library!.shows, total: 0 } } };
     const view = render(<QueryClientProvider client={queryClient}><MemoryRouter><LiveTab summary={empty as never} /></MemoryRouter></QueryClientProvider>);
     expect(await screen.findByText("Nothing in your library yet.")).toBeVisible();
     expect(within(view.container).getByRole("link", { name: "Add a movie" })).toHaveAttribute("href", "/movies?add=true");
     view.unmount();
 
-    const held = { ...fullSummary, library: { ...fullSummary.library, movies: { ...fullSummary.library.movies, total: 5 } } };
+    const held = { ...fullSummary, library: { ...fullSummary.library!, movies: { ...fullSummary.library!.movies, total: 5 } } };
     render(<QueryClientProvider client={queryClient}><MemoryRouter><LiveTab summary={held as never} /></MemoryRouter></QueryClientProvider>);
     await waitFor(() => expect(screen.getByRole("region", { name: /pipeline/i })).toBeInTheDocument());
     expect(screen.queryByText("Nothing in your library yet.")).toBeNull();
