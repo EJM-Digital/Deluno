@@ -111,6 +111,25 @@ describe("the Start step, low rows (#1329)", () => {
     expect(fetchJson.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "POST")).toBe(false);
   });
 
+  it("says No root folder yet only when no folder is set for the media being set up, in the warning colour", async () => {
+    const librariesCell = async (media: string, movieRoot: string, seriesRoot: string) => {
+      renderFinish({ settings: { movieRootPath: "", seriesRootPath: "" }, draft: { ...ANSWERED, mediaIntent: media, movieRootPath: movieRoot, seriesRootPath: seriesRoot } });
+      await createButton();
+      const text = cell("Libraries");
+      const result = { text: text.textContent ?? "", warning: text.querySelector(".text-warning") !== null };
+      cleanup();
+      return result;
+    };
+
+    expect(await librariesCell("movies", "", "D:/Media/TV")).toEqual({ text: "LibrariesMovies - No root folder yet", warning: true });
+    expect(await librariesCell("tv", "D:/Media/Movies", "")).toEqual({ text: "LibrariesTV - No root folder yet", warning: true });
+    expect(await librariesCell("both", "", "")).toEqual({ text: "LibrariesMovies + TV - No root folder yet", warning: true });
+    expect(await librariesCell("movies", "D:/Media/Movies", "")).toEqual({ text: "LibrariesMovies", warning: false });
+    expect(await librariesCell("tv", "", "D:/Media/TV")).toEqual({ text: "LibrariesTV", warning: false });
+    expect(await librariesCell("both", "  ", "D:/Media/TV")).toEqual({ text: "LibrariesMovies + TV", warning: false });
+    expect(await librariesCell("both", "D:/Media/Movies", "  ")).toEqual({ text: "LibrariesMovies + TV", warning: false });
+  });
+
   it("Create baseline is disabled until everything is chosen, including Updates, and its tooltip says what is missing", async () => {
     renderFinish();
     expect((await createButton()).title).toBe("Choose a picture quality and release preference first");
