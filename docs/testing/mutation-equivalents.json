@@ -217,6 +217,254 @@
       "line": 624,
       "replacement": "{}",
       "reason": "Navigating to an empty location object and navigating to the current path with an empty search both land on the current path with no query, so the address ends the same either way; no test can tell them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/setup-guide-page.tsx",
+      "mutator": "StringLiteral",
+      "line": 948,
+      "replacement": "\"\"",
+      "reason": "The guided setup's password question (#1433) shows only on the final Create baseline press and is walked by the real-host guided setup spec (tests/smoke/zz-guided-setup-on-the-real-host.spec.ts), which this tool cannot see; its wording has no test of its own."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/setup-guide-page.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 946,
+      "replacement": "false",
+      "reason": "The guided setup's password question (#1433) shows only on the final Create baseline press and is walked by the real-host guided setup spec (tests/smoke/zz-guided-setup-on-the-real-host.spec.ts), which this tool cannot see; its wording has no test of its own."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/setup-guide-page.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 946,
+      "replacement": "true",
+      "reason": "The guided setup's password question (#1433) shows only on the final Create baseline press and is walked by the real-host guided setup spec (tests/smoke/zz-guided-setup-on-the-real-host.spec.ts), which this tool cannot see; its wording has no test of its own."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/setup-guide-page.tsx",
+      "mutator": "EqualityOperator",
+      "line": 946,
+      "replacement": "form.skipSignInLocalNetwork === null",
+      "reason": "The guided setup's password question (#1433) shows only on the final Create baseline press and is walked by the real-host guided setup spec (tests/smoke/zz-guided-setup-on-the-real-host.spec.ts), which this tool cannot see; its wording has no test of its own."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/password-prompt.tsx",
+      "mutator": "StringLiteral",
+      "line": 46,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Inside the password question: the first state and the reset of the field are both set again by ask() before the question is shown, and the settle callback is always set while the question is open, so removing one of them changes nothing a person or test can reach."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/password-prompt.tsx",
+      "mutator": "OptionalChaining",
+      "line": 43,
+      "replacement": "settle.current(value)",
+      "reason": "Inside the password question: the first state and the reset of the field are both set again by ask() before the question is shown, and the settle callback is always set while the question is open, so removing one of them changes nothing a person or test can reach."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/password-prompt.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 40,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list that is constant either way: the callbacks it names never change, so the hook runs once with the list empty or filled."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/password-prompt.tsx",
+      "mutator": "StringLiteral",
+      "line": 31,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Inside the password question: the first state and the reset of the field are both set again by ask() before the question is shown, and the settle callback is always set while the question is open, so removing one of them changes nothing a person or test can reach."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/calendar-subscribe-drawer.tsx",
+      "mutator": "ObjectLiteral",
+      "line": 69,
+      "replacement": "{}",
+      "reason": "The calendar drawer's password question (#1433) is answered at once in its tests; the explanatory sentence and the header are checked by the real-host calendar spec (tests/real/calendar-controls.spec.ts), which this tool cannot see."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/calendar-subscribe-drawer.tsx",
+      "mutator": "StringLiteral",
+      "line": 69,
+      "replacement": "\"\"",
+      "reason": "The calendar drawer's password question (#1433) is answered at once in its tests; the explanatory sentence and the header are checked by the real-host calendar spec (tests/real/calendar-controls.spec.ts), which this tool cannot see."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/calendar-subscribe-drawer.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 58,
+      "replacement": "false",
+      "reason": "The calendar drawer's password question (#1433) is answered at once in its tests; the explanatory sentence and the header are checked by the real-host calendar spec (tests/real/calendar-controls.spec.ts), which this tool cannot see."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/calendar-subscribe-drawer.tsx",
+      "mutator": "StringLiteral",
+      "line": 57,
+      "replacement": "\"\"",
+      "reason": "The calendar drawer's password question (#1433) is answered at once in its tests; the explanatory sentence and the header are checked by the real-host calendar spec (tests/real/calendar-controls.spec.ts), which this tool cannot see."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/recovery-codes-manager.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 22,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list that is constant either way: the callbacks it names never change, so the hook runs once with the list empty or filled."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/recovery-codes-manager.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 26,
+      "replacement": "[]",
+      "reason": "A React dependency list that is constant either way: the callbacks it names never change, so the hook runs once with the list empty or filled."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/recovery-codes-manager.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 38,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list that is constant either way: the callbacks it names never change, so the hook runs once with the list empty or filled."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/recovery-codes-manager.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 43,
+      "replacement": "[]",
+      "reason": "A React dependency list that is constant either way: the callbacks it names never change, so the hook runs once with the list empty or filled."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/recovery-codes-prompt.tsx",
+      "mutator": "BlockStatement",
+      "line": 14,
+      "replacement": "{}",
+      "reason": "Reading the dismissal flag from a browser that refuses storage, or the dialog being open while the codes are on screen: both give the same result to the person, since the status only changes once the codes are saved."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/recovery-codes-prompt.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 36,
+      "replacement": "false",
+      "reason": "Reading the dismissal flag from a browser that refuses storage, or the dialog being open while the codes are on screen: both give the same result to the person, since the status only changes once the codes are saved."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/layouts/app-layout.tsx",
+      "mutator": "MethodExpression",
+      "line": 121,
+      "replacement": "path.endsWith(\"/settings/ui\")",
+      "reason": "The topbar title match for the Preferences tabs: startsWith and endsWith agree on every address these screens have (none has a sub-address), so no reachable address tells them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/layouts/app-layout.tsx",
+      "mutator": "MethodExpression",
+      "line": 121,
+      "replacement": "path.endsWith(\"/settings/migration\")",
+      "reason": "The topbar title match for the Preferences tabs: startsWith and endsWith agree on every address these screens have (none has a sub-address), so no reachable address tells them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/layouts/app-layout.tsx",
+      "mutator": "MethodExpression",
+      "line": 121,
+      "replacement": "path.endsWith(\"/settings/notifications\")",
+      "reason": "The topbar title match for the Preferences tabs: startsWith and endsWith agree on every address these screens have (none has a sub-address), so no reachable address tells them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/layouts/app-layout.tsx",
+      "mutator": "MethodExpression",
+      "line": 121,
+      "replacement": "path.endsWith(\"/settings/general\")",
+      "reason": "The topbar title match for the Preferences tabs: startsWith and endsWith agree on every address these screens have (none has a sub-address), so no reachable address tells them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/layouts/app-layout.tsx",
+      "mutator": "MethodExpression",
+      "line": 121,
+      "replacement": "path.endsWith(\"/settings/account\")",
+      "reason": "The topbar title match for the Preferences tabs: startsWith and endsWith agree on every address these screens have (none has a sub-address), so no reachable address tells them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/layouts/app-layout.tsx",
+      "mutator": "StringLiteral",
+      "line": 121,
+      "replacement": "\"\"",
+      "reason": "The topbar title match for the Preferences tabs: startsWith and endsWith agree on every address these screens have (none has a sub-address), so no reachable address tells them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/recovery-page.tsx",
+      "mutator": "StringLiteral",
+      "line": 26,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "The first text of the username state is replaced before the password step shows it; and the label's fixed Tailwind class list changes only size and colour, which no test reads."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/recovery-page.tsx",
+      "mutator": "StringLiteral",
+      "line": 21,
+      "replacement": "\"\"",
+      "reason": "The first text of the username state is replaced before the password step shows it; and the label's fixed Tailwind class list changes only size and colour, which no test reads."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/setup-page.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 38,
+      "replacement": "true",
+      "reason": "The guided setup is opened twice on the way out of the codes step, by the Continue button and by the sign-in effect that sees the lock released; either alone gives the same result, so removing one part changes nothing a person or test can reach."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/setup-page.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 101,
+      "replacement": "true",
+      "reason": "The guided setup is opened twice on the way out of the codes step, by the Continue button and by the sign-in effect that sees the lock released; either alone gives the same result, so removing one part changes nothing a person or test can reach."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/setup-page.tsx",
+      "mutator": "CallExpression",
+      "line": 102,
+      "replacement": ";",
+      "reason": "The guided setup is opened twice on the way out of the codes step, by the Continue button and by the sign-in effect that sees the lock released; either alone gives the same result, so removing one part changes nothing a person or test can reach."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/setup-page.tsx",
+      "mutator": "ObjectLiteral",
+      "line": 103,
+      "replacement": "{}",
+      "reason": "The guided setup is opened twice on the way out of the codes step, by the Continue button and by the sign-in effect that sees the lock released; either alone gives the same result, so removing one part changes nothing a person or test can reach."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/setup-page.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 103,
+      "replacement": "false",
+      "reason": "The guided setup is opened twice on the way out of the codes step, by the Continue button and by the sign-in effect that sees the lock released; either alone gives the same result, so removing one part changes nothing a person or test can reach."
     }
   ]
 }

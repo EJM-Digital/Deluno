@@ -226,6 +226,41 @@ describe("the recovery codes manager, low rows", () => {
   });
 });
 
+describe("a cancelled password question makes no codes (#1433)", () => {
+  async function cancelThePasswordQuestion() {
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByLabelText("Current password")).toBeNull());
+  }
+
+  it("in the manager", async () => {
+    reply("GET /api/auth/recovery-codes", { body: { remaining: 0, made: false } });
+    render(<RecoveryCodesManager />);
+    fireEvent.click(await screen.findByRole("button", { name: "Make recovery codes" }));
+    expect(await screen.findByText("Making recovery codes needs your password, because they let anyone who holds them take over your account.")).toBeTruthy();
+
+    await cancelThePasswordQuestion();
+
+    expect(sent.some((call) => call.key === "POST /api/auth/recovery-codes")).toBe(false);
+    expect(screen.queryByRole("list", { name: "Recovery codes" })).toBeNull();
+  });
+
+  it("in the first sign-in prompt", async () => {
+    reply("GET /api/auth/recovery-codes", { body: { remaining: 0, made: false } });
+    render(
+      <MemoryRouter initialEntries={["/movies"]}>
+        <RecoveryCodesPrompt />
+      </MemoryRouter>
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Make recovery codes" }));
+    expect(await screen.findByText("Making recovery codes needs your password, because they let anyone who holds them take over your account.")).toBeTruthy();
+
+    await cancelThePasswordQuestion();
+
+    expect(sent.some((call) => call.key === "POST /api/auth/recovery-codes")).toBe(false);
+    expect(screen.getByText("Save your recovery codes")).toBeTruthy();
+  });
+});
+
 describe("the first sign-in prompt, low rows", () => {
   function renderPrompt(path = "/movies") {
     return render(

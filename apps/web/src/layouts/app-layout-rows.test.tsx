@@ -335,6 +335,10 @@ describe("each route names itself in the topbar (#1329)", () => {
     ["/settings/quality", "Quality & Release"],
     ["/settings/lists", "Discover Media"],
     ["/settings/general", "Preferences"],
+    ["/settings/ui", "Preferences"],
+    ["/settings/notifications", "Preferences"],
+    ["/settings/migration", "Preferences"],
+    ["/settings/account", "Preferences"],
     ["/setup-guide", "Guided setup"],
     ["/search-cycles", "Automation & Recovery"]
   ])("%s is titled %s", async (path, expected) => {
