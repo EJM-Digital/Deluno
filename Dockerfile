@@ -45,6 +45,8 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY --from=publish /app/publish ./
+# The command that makes the one-time sign-in PIN: docker exec <container> deluno-reset-pin (#1392).
+COPY --chmod=0755 installer/docker/deluno-reset-pin /usr/local/bin/deluno-reset-pin
 
 ENV ASPNETCORE_ENVIRONMENT=Production \
     ASPNETCORE_URLS=http://+:8080 \

@@ -1,6 +1,7 @@
 using Deluno.Security.Contracts;
 using Deluno.Security.Data;
 using Deluno.Security.Hardening;
+using Deluno.Security.Recovery;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
@@ -107,7 +108,10 @@ public static class SecurityEndpointRouteBuilderExtensions
                 });
             }
 
-            return Results.Ok(UserAuthorization.IssueLoginResponse(dataProtectionProvider, timeProvider, created));
+            // The account's first recovery codes, shown once; setup waits for the person to say they are saved (#1392).
+            var codes = await repository.CreateRecoveryCodesAsync(created.Id, cancellationToken);
+            var session = UserAuthorization.IssueLoginResponse(dataProtectionProvider, timeProvider, created);
+            return Results.Ok(new BootstrapResponse(session.AccessToken, session.ExpiresUtc, session.User, codes));
         })
             .AllowAnonymous()
             .WithMetadata(new DelunoPublicEndpointAttribute());
@@ -173,6 +177,113 @@ public static class SecurityEndpointRouteBuilderExtensions
             return Results.NoContent();
         })
             .RequireAuthorization(DelunoAuthorizationPolicies.Read);
+
+        // #1392: recovery codes, kept by the person.
+        auth.MapGet("/recovery-codes", async (
+            HttpContext httpContext,
+            [FromServices] ISecurityRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (!UserAuthorization.TryReadUser(httpContext, out var user) || user is null)
+            {
+                return Results.Unauthorized();
+            }
+
+            return Results.Ok(await repository.GetRecoveryCodesStatusAsync(user.Id, cancellationToken));
+        })
+            .RequireAuthorization(DelunoAuthorizationPolicies.Read);
+
+        auth.MapPost("/recovery-codes", async (
+            HttpContext httpContext,
+            [FromServices] ISecurityRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (!UserAuthorization.TryReadUser(httpContext, out var user) || user is null)
+            {
+                return Results.Unauthorized();
+            }
+
+            return Results.Ok(new RecoveryCodesMade(await repository.CreateRecoveryCodesAsync(user.Id, cancellationToken)));
+        })
+            .RequireAuthorization(DelunoAuthorizationPolicies.Read);
+
+        // What the sign-in page may offer: the one-time PIN only where the host runs in a container.
+        auth.MapGet("/recovery-options", (
+            [FromServices] IRecoveryHostInfo host) => Results.Ok(new RecoveryOptions(host.InContainer)))
+            .AllowAnonymous()
+            .WithMetadata(new DelunoPublicEndpointAttribute());
+
+        login.MapPost("/recovery/check", async (
+            [FromBody] RecoveryProofRequest request,
+            [FromServices] AccountRecovery recovery,
+            CancellationToken cancellationToken) =>
+        {
+            var (result, username) = await recovery.CheckAsync(request, cancellationToken);
+            return result == RecoveryResult.Done
+                ? Results.Ok(new RecoveryUsername(username!))
+                : RecoveryRefusal(result);
+        })
+            .AllowAnonymous()
+            .WithMetadata(new DelunoPublicEndpointAttribute());
+
+        login.MapPost("/recovery/reset", async (
+            [FromBody] RecoveryResetRequest request,
+            [FromServices] AccountRecovery recovery,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 8)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["newPassword"] = ["Use at least 8 characters for the new password."]
+                });
+            }
+
+            var result = await recovery.ResetAsync(request, request.NewPassword, cancellationToken);
+            return result == RecoveryResult.Done ? Results.NoContent() : RecoveryRefusal(result);
+        })
+            .AllowAnonymous()
+            .WithMetadata(new DelunoPublicEndpointAttribute());
+
+        // The command run inside the container asks here. Only the container's own console can: a browser never gets a PIN.
+        auth.MapPost("/recovery/pin", async (
+            HttpContext httpContext,
+            [FromServices] IRecoveryHostInfo host,
+            [FromServices] RecoveryPins pins,
+            [FromServices] ISecurityRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            if (!host.InContainer)
+            {
+                return Results.NotFound();
+            }
+
+            if (!host.IsCallerInsideTheHost(httpContext))
+            {
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            }
+
+            if (await repository.GetSoleUserAsync(cancellationToken) is null)
+            {
+                return Results.Conflict(new { message = "Deluno has no account yet. Open it in a browser to set one up." });
+            }
+
+            return Results.Ok(pins.Make());
+        })
+            .AllowAnonymous()
+            .WithMetadata(new DelunoPublicEndpointAttribute());
 
         apiKeys.MapGet(string.Empty, async (
             HttpContext httpContext,
@@ -301,6 +412,11 @@ public static class SecurityEndpointRouteBuilderExtensions
 
         return endpoints;
     }
+
+    private static IResult RecoveryRefusal(RecoveryResult result)
+        => result == RecoveryResult.Locked
+            ? Results.Json(new { message = AccountRecovery.LockedMessage }, statusCode: StatusCodes.Status429TooManyRequests)
+            : Results.BadRequest(new { message = AccountRecovery.RefusedMessage });
 
     private static Dictionary<string, string[]> ValidateUser(string? username, string? password)
     {

@@ -72,6 +72,7 @@ public static class DelunoApplicationComposition
         // #993: overrides Deluno.Security's no-op default now that Jobs'
         // Activity feed is registered -- see ActivityLocalNetworkAuthChangeNotifier.
         services.AddSingleton<Deluno.Security.Hardening.ILocalNetworkAuthChangeNotifier, Security.ActivityLocalNetworkAuthChangeNotifier>();
+        services.AddSingleton<Deluno.Security.Recovery.IAccountResetReporter, Security.ActivityAccountResetReporter>();
         // After the media modules: the composite recovery handler resolves the
         // per-kind components they register.
         services.AddDelunoRecoveryModule();

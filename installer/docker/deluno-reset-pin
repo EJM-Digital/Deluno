@@ -1,0 +1,20 @@
+#!/bin/sh
+# Prints a one-time PIN for getting back into Deluno when the recovery codes are lost (#1392).
+# Run it inside the container:  docker exec <container> deluno-reset-pin
+# The PIN lasts 15 minutes and works once. It is printed here and nowhere else.
+set -eu
+
+port="${Server__Port:-8080}"
+reply="$(curl --silent --show-error --fail-with-body --request POST "http://127.0.0.1:${port}/api/auth/recovery/pin")" || {
+  echo "Deluno could not make a PIN. ${reply:-}" >&2
+  exit 1
+}
+
+pin="$(printf '%s' "$reply" | sed -n 's/.*"pin":"\([0-9]*\)".*/\1/p')"
+if [ -z "$pin" ]; then
+  echo "Deluno could not make a PIN." >&2
+  exit 1
+fi
+
+echo "Your one-time Deluno PIN is: $pin"
+echo "It works once and expires in 15 minutes. Enter it on the sign-in page under 'Forgot your username or password?'."

@@ -55,4 +55,19 @@ public interface ISecurityRepository
     Task<UserItem> BootstrapUserAsync(
         BootstrapUserRequest request,
         CancellationToken cancellationToken);
+
+    /// <summary>How many recovery codes are left, and whether any were ever made (#1392).</summary>
+    Task<RecoveryCodesStatus> GetRecoveryCodesStatusAsync(string userId, CancellationToken cancellationToken);
+
+    /// <summary>Makes a new set of recovery codes, voiding every earlier one. Only their hashes are stored.</summary>
+    Task<IReadOnlyList<string>> CreateRecoveryCodesAsync(string userId, CancellationToken cancellationToken);
+
+    /// <summary>The owner of an unused recovery code, without using it up; null for a code that is wrong or already used.</summary>
+    Task<UserItem?> FindUserByRecoveryCodeAsync(string code, CancellationToken cancellationToken);
+
+    /// <summary>Uses the code up and sets a new password, signing every session out. Null when the code is wrong or used.</summary>
+    Task<UserItem?> ResetPasswordWithRecoveryCodeAsync(string code, string newPassword, CancellationToken cancellationToken);
+
+    /// <summary>Sets a new password without the old one (after a one-time PIN), signing every session out.</summary>
+    Task<UserItem?> ResetPasswordAsync(string userId, string newPassword, CancellationToken cancellationToken);
 }
