@@ -187,6 +187,27 @@ field names because the app parses it as a TMDb list:
 Cached three hours per media type and page, with the same rate limit and error
 codes as the other catalogue routes.
 
+## Recommendation lists and filtered discover (Discover, #1429)
+
+`GET /metadata/{movies|tv}/{trending|top-rated|upcoming|now-playing|discover}?page=N` answer in the popular list's shape
+above, clamped and cached the same way (three hours, keyed by list, page and the filters kept). `movie` is accepted for
+`movies`. TMDb has no upcoming list for shows, so `/metadata/tv/upcoming` is `404 not_found`; a show's "not out yet" is a
+`discover` filter on its first air date. The routes map to TMDb's `trending/{movie|tv}/{day|week}`, `{movie|tv}/top_rated`,
+`movie/upcoming`, `movie/now_playing` (`tv/on_the_air` for shows) and `discover/{movie|tv}`.
+
+- `trending` takes `window=day|week` (anything else is `week`).
+- `discover` passes on only these TMDb discover fields, each held to plain characters (letters, digits, `. , | : - _`, at most 120):
+  `sort_by`, `with_genres`, `without_genres`, `primary_release_date.gte|lte`, `first_air_date.gte|lte`, `release_date.gte|lte`,
+  `air_date.gte|lte`, `vote_average.gte|lte`, `vote_count.gte`, `with_original_language`, `with_runtime.gte|lte`, `with_status`,
+  `with_release_type`, `with_keywords`, `with_companies`, `with_networks` and `region`. Anything else, an API key included, is dropped.
+
+The app's `GET /api/discover` takes `list`, `release` (`released|upcoming`), `yearFrom`, `yearTo`, `genres` (TMDb genre ids),
+`ratingMin`, `votesMin`, `language`, `runtimeMin`, `runtimeMax`, `sort` (`popular|rating|newest|oldest`), `window` and `page`.
+Any filter turns the ask into a `discover`; with none, the list asked for (popular by default) is read. Direct and hybrid
+installs ask TMDb itself for the same lists with their own key. The recorded replies for these routes can only be made once the
+gateway carrying them is deployed; until then the tests feed the gateway and the app the recorded popular reply, which is the
+same list shape.
+
 ## Managed gateway deployment
 
 The Deluno-managed Cloudflare Worker is deployed at
