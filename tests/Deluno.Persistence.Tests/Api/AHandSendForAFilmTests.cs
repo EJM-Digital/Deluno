@@ -241,4 +241,34 @@ public sealed class AHandSendForAFilmTests
             return proxy;
         }
     }
+
+    [Theory]
+    [InlineData(false, "movie.grab.manual")]
+    [InlineData(true, "movie.grab.force")]
+    public async Task A_send_by_hand_and_a_forced_send_each_write_a_decision_row_with_the_client_the_routing_reason_and_the_policy_version(bool force, string scope)
+    {
+        var grabs = new CountingGrabService();
+        await using var app = await StartAsync(grabs, removed: null);
+        var filmId = await SeedAsync(app);
+        var release = force ? "Big.Buck.Bunny.2008.HDCAM.x264-GRP" : Release;
+
+        using var sent = await GrabAsync(app, filmId, release, force: force, overrideReason: force ? "It is the only copy there is." : null);
+        Assert.Equal(HttpStatusCode.OK, sent.StatusCode);
+
+        var decisions = await app.Client.GetFromJsonAsync<JsonElement>($"/api/decisions?relatedEntityType=movie&relatedEntityId={filmId}");
+        var items = decisions.ValueKind == JsonValueKind.Array ? decisions : decisions.GetProperty("items");
+        var row = Assert.Single(items.EnumerateArray(), item => item.GetProperty("scope").GetString() == scope);
+        var inputs = row.GetProperty("inputs");
+        Assert.Equal(release, inputs.GetProperty("releaseName").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(inputs.GetProperty("downloadClientName").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(inputs.GetProperty("downloadClientId").GetString()));
+        Assert.True(inputs.TryGetProperty("downloadClientRoutingReason", out _));
+        Assert.True(inputs.TryGetProperty("policyVersion", out _));
+        Assert.Equal(force.ToString(), inputs.GetProperty("forceOverride").GetString());
+        Assert.Equal("sent", row.GetProperty("status").GetString());
+        if (force)
+        {
+            Assert.Contains("It is the only copy there is.", row.GetProperty("reason").GetString(), StringComparison.Ordinal);
+        }
+    }
 }

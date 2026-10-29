@@ -43,4 +43,38 @@ public sealed class SearchHistoryIsWrittenSmallTests
         Assert.DoesNotContain("apikey", row.DetailsJson!);
         Assert.True(row.DetailsJson!.Length < plan.Length / 5);
     }
+
+    [Fact]
+    public async Task The_small_record_is_what_GET_movies_search_history_reads_back()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var added = await app.Client.PostAsJsonAsync("/api/movies", new { title = "Wanted Film", releaseYear = 2011, monitored = true });
+        var movieId = (await added.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        var repository = app.Services.GetRequiredService<IMovieCatalogRepository>();
+        var candidates = new JsonArray();
+        for (var i = 0; i < 20; i++)
+        {
+            candidates.Add(new JsonObject
+            {
+                ["ReleaseName"] = $"Wanted.Film.{i}",
+                ["Quality"] = "WEB 1080p",
+                ["DecisionStatus"] = "eligible",
+                ["DownloadUrl"] = "https://indexer.example/dl?apikey=secret"
+            });
+        }
+
+        await repository.RecordSearchAttemptAsync(
+            movieId, "lib", "automatic", "held", DateTimeOffset.UtcNow, null, "Found 20", "Wanted.Film.0", "Fixture",
+            new JsonObject { ["Candidates"] = candidates, ["Summary"] = "Found 20" }.ToJsonString(), CancellationToken.None);
+
+        var text = await app.Client.GetStringAsync($"/api/movies/search-history?movieId={movieId}");
+        var row = Assert.Single(JsonDocument.Parse(text).RootElement.EnumerateArray());
+
+        Assert.Equal("held", row.GetProperty("outcome").GetString());
+        Assert.Equal("Wanted.Film.0", row.GetProperty("releaseName").GetString());
+        var details = row.GetProperty("detailsJson");
+        var detailsNode = JsonNode.Parse(details.ValueKind == JsonValueKind.String ? details.GetString()! : details.GetRawText())!;
+        Assert.Equal(20, detailsNode["CandidateCount"]!.GetValue<int>());
+        Assert.DoesNotContain("apikey", text, StringComparison.OrdinalIgnoreCase);
+    }
 }

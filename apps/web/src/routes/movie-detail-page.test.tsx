@@ -1415,6 +1415,28 @@ describe("the film's subtitles, logo and hero (coverage, area movie-detail)", ()
     expect(screen.getByText("Forced")).toBeInTheDocument();
   });
 
+  it("Subtitles table gives each row its source and its timing with the reason, and a header sorts the rows", async () => {
+    setup(
+      subtitleRows([
+        { language: "fr", forced: false, hearingImpaired: false, source: "provider", provider: "Fixture", timingStatus: "ok", timingReason: "In sync with the film." },
+        { language: "de", forced: false, hearingImpaired: false, source: "provider", provider: "Other Provider", timingStatus: "ok", timingReason: "Starts four seconds late." },
+        { language: "en", forced: false, hearingImpaired: false, source: "provider", provider: "Fixture", timingStatus: "ok", timingReason: "In sync with the film." }
+      ])
+    );
+    await renderPage();
+    await screen.findByText("3 on disk");
+    expect(screen.getAllByText("Fixture").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("Other Provider")).toBeInTheDocument();
+    expect(screen.getAllByText("In sync with the film.")).toHaveLength(2);
+    expect(screen.getByText("Starts four seconds late.")).toBeInTheDocument();
+    const order = () => screen.getAllByText(/^(EN|FR|DE)$/).map((cell) => cell.textContent);
+    expect(order()).toEqual(["FR", "DE", "EN"]);
+
+    fireEvent.click(within(screen.getByText("3 on disk").closest("section, div[class]") as HTMLElement).getAllByRole("button", { name: /^Language/ })[0]);
+
+    expect(order()).toEqual(["DE", "EN", "FR"]);
+  });
+
   it("Subtitles table is absent when the film has no subtitles on disk", async () => {
     await renderPage();
     expect(screen.queryByText("Subtitles", { exact: true })).toBeNull();

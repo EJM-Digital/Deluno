@@ -1,4 +1,4 @@
-import { configure, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, configure, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { stubVirtualLayout } from "../../test/virtual-layout";
@@ -123,6 +123,23 @@ describe("the Search icon on a TV poster", () => {
 
     expect(await result("Severance")).toHaveTextContent("Search failed");
     expect(screen.queryByRole("status", { name: "Result for Silo" })).toBeNull();
+  });
+
+  it("the Search failed answer goes away by itself after 6 seconds, not before", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      reply = () => ({ ok: false, status: 500, body: {} });
+      await renderShelf("shows");
+      fireEvent.click(await screen.findByRole("button", { name: "Search for Severance now" }));
+      expect(await result("Severance")).toHaveTextContent("Search failed");
+
+      act(() => { vi.advanceTimersByTime(5_000); });
+      expect(screen.queryByRole("status", { name: "Result for Severance" })).not.toBeNull();
+      act(() => { vi.advanceTimersByTime(1_500); });
+      expect(screen.queryByRole("status", { name: "Result for Severance" })).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

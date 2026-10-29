@@ -155,7 +155,8 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-import { activityLinkForTitle } from "../lib/activity-history";
+import { activityLinkForFile, activityLinkForTitle } from "../lib/activity-history";
+import { friendlyRuleName } from "../lib/guide-names";
 
 beforeEach(() => window.localStorage.clear());
 
@@ -164,6 +165,40 @@ const withCases = (...cases: ReturnType<typeof importCase>[]): Handler => (url) 
   url.startsWith("/api/movies/import-recovery?") ? { body: { openCount: cases.length, recentCases: cases } } : undefined;
 
 describe("the film header and summary strip (low rows)", () => {
+  it("the facts grid shows only the facts that have a value, each under its own label", async () => {
+    const fact = (label: string) => screen.queryByText(label, { selector: "dt" })?.nextElementSibling?.textContent ?? null;
+    const full = {
+      ...MOVIE,
+      hasFile: true,
+      filePath: "/films/Big Buck Bunny (2008)/Big.Buck.Bunny.2008.mkv",
+      fileSizeBytes: 2_147_483_648,
+      videoCodec: "x265",
+      audioCodec: "EAC3",
+      releaseGroup: "GRP",
+      metadataJson: JSON.stringify({ Studio: "Blender Foundation", OriginalLanguage: "English", Collection: "Open Movies", Director: "Sacha Goedegebure" })
+    };
+    setup((url) => (url === "/api/movies/m1" ? { body: full } : url.startsWith("/api/movies/import-recovery?") ? withCases(importCase("c1"))(url) : undefined));
+    await renderPage();
+
+    expect(fact("Path")).toBe("/films/Big Buck Bunny (2008)/Big.Buck.Bunny.2008.mkv");
+    expect(fact("Size")).toBe("2.0 GB");
+    expect(fact("Studio")).toBe("Blender Foundation");
+    expect(fact("Language")).toBe("English");
+    expect(fact("Collection")).toBe("Open Movies");
+    expect(fact("Director")).toBe("Sacha Goedegebure");
+    expect(fact("Codec")).toBe("x265 · EAC3");
+    expect(fact("Release group")).toBe("GRP");
+    expect(fact("Added")).toBeTruthy();
+    expect(fact("Import issues")).toBe("1");
+    cleanup();
+
+    setup();
+    await renderPage();
+    for (const label of ["Path", "Size", "Studio", "Language", "Collection", "Director", "Codec", "Release group", "Import issues"]) {
+      expect(fact(label), `${label} is left out when the film has no value for it`).toBeNull();
+    }
+  });
+
   it("shows an 'N import issue(s)' warning badge in the header when recovery cases name this film, and none otherwise", async () => {
     setup(withCases(importCase("c1"), importCase("c2")));
     await renderPage();
@@ -216,6 +251,64 @@ describe("the film header and summary strip (low rows)", () => {
     expect(document.body.textContent).toMatch(/Upgradable.{0,6}unmonitored/i);
   });
 
+  it("How this movie was added lists each import list and says removing the list never removes the movie or its files", async () => {
+    setup((url) => (url.startsWith("/api/intake-title-origins") ? { body: [{ id: "o1", sourceId: "src1", sourceName: "Trakt watchlist", provider: "trakt", mediaType: "movies", entityId: "m1", entryKey: "k", title: "Big Buck Bunny", year: 2008, imdbId: null, firstSeenUtc: "2026-09-01T00:00:00Z", lastSeenUtc: "2026-10-01T00:00:00Z" }] } : undefined));
+    await renderPage();
+    fireEvent.click(screen.getByRole("radio", { name: "Destination" }));
+
+    expect(await screen.findByText(/^How this movie was added$/i)).toBeInTheDocument();
+    expect(screen.getByText("1 import list")).toBeInTheDocument();
+    expect(screen.getByText("Trakt watchlist")).toBeInTheDocument();
+    expect(screen.getByText("Removing the list never removes this movie or its files.")).toBeInTheDocument();
+    cleanup();
+
+    setup();
+    await renderPage();
+    fireEvent.click(screen.getByRole("radio", { name: "Destination" }));
+    expect(screen.queryByText(/^How this movie was added$/i)).toBeNull();
+  });
+
+  it("Routing and destination names the library, root folder, downloads folder and import workflow, and says No library linked when there is none", async () => {
+    setup((url) => (url === "/api/libraries" ? { body: [{ id: "lib1", name: "Films", mediaType: "movies", rootPath: "/films", downloadsPath: "/downloads/films", importWorkflow: "standard" }] } : undefined));
+    await renderPage();
+    fireEvent.click(screen.getByRole("radio", { name: "Destination" }));
+    const heading = await screen.findByText(/^Routing and destination$/i);
+    const card = heading.closest("section") ?? heading.parentElement!.parentElement!.parentElement!;
+    const text = (label: string) => (within(card as HTMLElement).getByText(label).closest("[role='row']") as HTMLElement).textContent ?? "";
+
+    expect(text("Library")).toContain("Films");
+    expect(text("Root folder")).toContain("/films");
+    expect(text("Downloads folder")).toContain("/downloads/films");
+    expect(text("Import workflow")).toContain("Import immediately");
+    cleanup();
+
+    setup((url) => (url === "/api/libraries" ? { body: [] } : url === "/api/movies/m1/libraries/" ? { body: [] } : undefined));
+    await renderPage();
+    fireEvent.click(screen.getByRole("radio", { name: "Destination" }));
+    const empty = (await screen.findByText(/^Routing and destination$/i)).closest("section") as HTMLElement;
+    expect(within(empty).getByText("No library linked")).toBeInTheDocument();
+    expect(within(empty).getByText("Not linked")).toBeInTheDocument();
+    expect(within(empty).getByText("No root configured")).toBeInTheDocument();
+    expect(within(empty).getByText("Download client default")).toBeInTheDocument();
+  });
+
+  it("the Matched row of the routing table lists the custom formats the release matched, in friendly names, and is absent when none matched", async () => {
+    setup((url) => (url === "/api/movies/m1/copy" ? { body: { releaseName: "Big.Buck.Bunny.2008.1080p.WEB-DL-GRP", formats: [{ name: "HDR10" }, { name: "Dolby Vision" }] } } : undefined));
+    await renderPage();
+    fireEvent.click(screen.getByRole("radio", { name: "Destination" }));
+    const heading = await screen.findByText(/^Routing and destination$/i);
+    const card = within(heading.closest("section") as HTMLElement);
+    const matched = card.getByText("Matched").closest("[role='row']") as HTMLElement;
+    expect(matched.textContent).toContain(`${friendlyRuleName("HDR10")}, ${friendlyRuleName("Dolby Vision")}`);
+    cleanup();
+
+    setup();
+    await renderPage();
+    fireEvent.click(screen.getByRole("radio", { name: "Destination" }));
+    const bare = (await screen.findByText(/^Routing and destination$/i)).closest("section") as HTMLElement;
+    expect(within(bare).queryByText("Matched")).toBeNull();
+  });
+
   it("a film with no overview reads the fallback sentence in the synopsis", async () => {
     setup((url) => (url === "/api/movies/m1" ? { body: { ...MOVIE, overview: null } } : undefined));
     await renderPage();
@@ -240,6 +333,21 @@ describe("the film's History tab Activity card (low rows)", () => {
     expect(screen.queryByText("Searched Big Buck Bunny, pass 10")).toBeNull();
     expect(calls.some((c) => c.url.startsWith("/api/activity?relatedEntityType=movie&relatedEntityId=m1"))).toBe(true);
     expect(screen.getByRole("link", { name: "Everything about this film" })).toHaveAttribute("href", activityLinkForTitle("Big Buck Bunny", "movie", "m1"));
+  });
+
+  it("offers This file's history only when the film has a file, linked to that file's trail", async () => {
+    setup((url) => (url === "/api/movies/m1" ? { body: { ...MOVIE, hasFile: true, filePath: "/films/Big Buck Bunny (2008)/Big.Buck.Bunny.2008.mkv" } } : undefined));
+    await renderPage();
+    fireEvent.click(screen.getByRole("radio", { name: "History" }));
+    const link = await screen.findByRole("link", { name: "This file's history" });
+    expect(link).toHaveAttribute("href", activityLinkForFile("/films/Big Buck Bunny (2008)/Big.Buck.Bunny.2008.mkv"));
+    cleanup();
+
+    setup();
+    await renderPage();
+    fireEvent.click(screen.getByRole("radio", { name: "History" }));
+    expect(await screen.findByRole("link", { name: "Everything about this film" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "This file's history" })).toBeNull();
   });
 
   it("says Nothing has happened yet when the film has no events", async () => {
