@@ -163,3 +163,46 @@ describe("staying current", () => {
     expect(setColorMode).toHaveBeenCalledWith("impaired");
   });
 });
+
+describe("every choice the Interface page offers, with its stored value (#1431)", () => {
+  const offered: Record<string, [string, string][]> = {
+    Theme: [["system", "System"], ["dark", "Dark"], ["light", "Light"]],
+    "Colour-impaired mode": [["standard", "Standard"], ["impaired", "Colour-impaired"]],
+    "Interface language": [["en-AU", "English (Australia)"], ["en-US", "English (United States)"]],
+    "First day of week": [["monday", "Monday"], ["sunday", "Sunday"]],
+    "Week column headers": [["ddd d/M", "Tue 25/03"], ["ddd m/d", "Tue 03/25"], ["ddd d mmm", "Tue 25 Mar"]],
+    "Runtime format": [["hoursMinutes", "1h 15m"], ["minutes", "75 minutes"]],
+    "Time format": [["12", "12-hour"], ["24", "24-hour"]],
+    "Short date format": [["dmy", "25/03/2026"], ["mdy", "03/25/2026"], ["iso", "2026-03-25"]],
+    "Long date format": [["full", "Wednesday, 25 March"], ["mdy", "Wednesday, March 25"]],
+    "Default movies view": [["grid", "Grid"], ["list", "List"]],
+    "Default TV view": [["grid", "Grid"], ["list", "List"]]
+  };
+
+  it.each(Object.entries(offered))("%s offers exactly its values with their plain labels", (name, options) => {
+    renderPage();
+    const items = within(screen.getByRole("combobox", { name })).getAllByRole("option") as HTMLOptionElement[];
+    expect(items.map((item) => [item.value, item.textContent])).toEqual(options);
+  });
+
+  it("the relative-dates switch, the timezone box and Use this browser all reach the save", async () => {
+    mutate.mockResolvedValueOnce({ ...base });
+    renderPage();
+    const relative = screen.getByLabelText("Relative dates");
+    fireEvent.click(relative);
+    fireEvent.change(screen.getByRole("textbox", { name: "Timezone" }), { target: { value: "Pacific/Auckland" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save interface settings" }));
+    await waitFor(() => expect(mutate).toHaveBeenCalled());
+    expect(mutate.mock.calls[0][0]).toMatchObject({ showRelativeDates: false, timezone: "Pacific/Auckland" });
+
+    cleanup();
+    mutate.mockClear();
+    mutate.mockResolvedValueOnce({ ...base });
+    loaderData.settings = { ...base, timezone: "Pacific/Auckland" };
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Use this browser" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save interface settings" }));
+    await waitFor(() => expect(mutate).toHaveBeenCalled());
+    expect(mutate.mock.calls[0][0]).toMatchObject({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+  });
+});

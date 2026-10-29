@@ -185,6 +185,30 @@
       "line": 113,
       "replacement": "true",
       "reason": "A chip's leading dot is drawn only for tones that ask for it and is purely cosmetic, so no test can tell dot true from false by behaviour."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/info-hint.tsx",
+      "mutator": "StringLiteral",
+      "line": 25,
+      "replacement": "\"\"",
+      "reason": "The icon button's fixed Tailwind class list: emptying it changes only how the button looks, which no test reads."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/info-hint.tsx",
+      "mutator": "StringLiteral",
+      "line": 38,
+      "replacement": "\"\"",
+      "reason": "The note's fixed Tailwind class list: emptying it changes only the text's size and colour, which no test reads."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/settings-ui-page.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 158,
+      "replacement": "false",
+      "reason": "A type guard that narrows the dropdown's string to a colour mode; the dropdown offers only the two valid modes, so the guard never refuses and removing it changes nothing a person or test can reach."
     }
   ]
 }

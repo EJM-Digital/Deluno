@@ -34,6 +34,16 @@ describe("the (i) on a Field", () => {
     expect(screen.queryByRole("note")).toBeNull();
   });
 
+  it("colours the icon only while its description is open", async () => {
+    const user = userEvent.setup();
+    render(<Field label="Colour" info="a"><Input /></Field>);
+    const icon = screen.getByRole("button", { name: "More about Colour" });
+
+    expect(icon.className).not.toContain("text-primary");
+    await user.click(icon);
+    expect(icon.className).toContain("text-primary");
+  });
+
   it("keeps the label wired to its control and gives each (i) its own name", () => {
     render(<><Field label="One" info="a"><Input /></Field><Field label="Two" info="b"><Input /></Field></>);
 
