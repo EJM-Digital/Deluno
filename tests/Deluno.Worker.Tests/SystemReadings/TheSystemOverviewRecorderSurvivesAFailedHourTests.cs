@@ -40,4 +40,31 @@ public sealed class TheSystemOverviewRecorderSurvivesAFailedHourTests
         store.Verify(item => item.RecordDriveSpaceAsync("C:", It.IsAny<DateOnly>(), 400, 1000, It.IsAny<CancellationToken>()), Times.Once);
         store.Verify(item => item.PruneAsync(It.Is<DateTimeOffset>(cutoff => cutoff <= clock.GetUtcNow() - TimeSpan.FromDays(14) && cutoff > clock.GetUtcNow() - TimeSpan.FromDays(14) - TimeSpan.FromHours(2)), It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task Each_start_of_Deluno_is_recorded_at_once_and_each_drive_is_recorded_under_the_day_it_was_read()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero));
+        var store = new Mock<ISystemOverviewStore>();
+        var facts = new Mock<ISystemOverviewFacts>();
+        facts.Setup(item => item.ReadDrivesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new DriveFacts("C:", "System", @"C:\", 1000, 400, 10, null), new DriveFacts("D:", "Media", @"D:\", 5000, 2500, 10, null)]);
+        var services = new ServiceCollection().AddSingleton(store.Object).BuildServiceProvider();
+        var recorder = new SystemOverviewRecorder(
+            services.GetRequiredService<IServiceScopeFactory>(), facts.Object, clock, NullLogger<SystemOverviewRecorder>.Instance);
+
+        await recorder.StartAsync(CancellationToken.None);
+        await Wait.UntilAsync(() => store.Invocations.Any(call => call.Method.Name == nameof(ISystemOverviewStore.RecordStartAsync)), "the start to be recorded");
+        // Before the first drive reading (30 seconds in) the start is already written, with the moment Deluno started.
+        store.Verify(item => item.RecordStartAsync(new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero), It.IsAny<CancellationToken>()), Times.Once);
+        store.Verify(item => item.RecordDriveSpaceAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<long>(), It.IsAny<long>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        await Wait.UntilAsync(() => { clock.Advance(TimeSpan.FromSeconds(10)); return store.Invocations.Any(call => call.Method.Name == nameof(ISystemOverviewStore.PruneAsync)); }, "the first drive reading");
+        await recorder.StopAsync(CancellationToken.None);
+
+        var today = DateOnly.FromDateTime(clock.GetLocalNow().Date);
+        store.Verify(item => item.RecordDriveSpaceAsync("C:", It.Is<DateOnly>(day => day == today || day == today.AddDays(-1)), 400, 1000, It.IsAny<CancellationToken>()), Times.Once);
+        store.Verify(item => item.RecordDriveSpaceAsync("D:", It.Is<DateOnly>(day => day == today || day == today.AddDays(-1)), 2500, 5000, It.IsAny<CancellationToken>()), Times.Once);
+        store.Verify(item => item.RecordStartAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
 }
