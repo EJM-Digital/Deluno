@@ -88,4 +88,18 @@ public sealed class UpdateStatusReadsTheContainerEnvironmentTests
         var status = await StatusWith(("DELUNO_IMAGE_REF", "ghcr.io/example/deluno@" + Digest), ("DELUNO_IMAGE_DIGEST", "sha256:given"));
         Assert.Equal("sha256:given", status.CurrentImageDigest);
     }
+
+    [Fact]
+    public async Task A_docker_install_is_told_to_pull_a_newer_image_and_recreate_the_container_and_has_nothing_to_apply()
+    {
+        var status = await StatusWith(("DOTNET_RUNNING_IN_CONTAINER", "true"), ("DELUNO_IMAGE_REF", "ghcr.io/example/deluno:1.2.3"), ("DELUNO_IMAGE_DIGEST", Digest));
+
+        Assert.Equal(UpdateInstallKinds.Docker, status.InstallKind);
+        Assert.Equal("Docker installs do not support in-place binary updates. Pull a newer image tag and recreate the container.", status.Message);
+        Assert.False(status.CanApply);
+        Assert.False(status.CanDownload);
+        Assert.Contains(status.Notes, note => note.StartsWith("Recreate: run `docker compose up -d --no-build`"));
+        Assert.Equal("ghcr.io/example/deluno:1.2.3", status.CurrentImageRef);
+        Assert.Equal(Digest, status.CurrentImageDigest);
+    }
 }
