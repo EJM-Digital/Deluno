@@ -167,7 +167,7 @@ test.describe("first-run and auth screens", () => {
     await page.getByRole("button", { name: /Time and region/ }).click();
 
     await expect(page.getByRole("heading", { name: "Time and region", exact: true })).toBeVisible();
-    await expect(page.getByRole("combobox", { name: "Interface language" })).toBeVisible();
+    await expect(page.getByRole("radiogroup", { name: "Interface language" })).toBeVisible();
     await expect(page.getByLabel("Timezone")).not.toHaveValue("");
     await expect(page.getByRole("button", { name: "Use this browser" })).toBeVisible();
   });
