@@ -176,6 +176,7 @@ export function RetentionTitleCard({ entityId, onChanged }: { entityId: string; 
                   variant="ghost"
                   onClick={() => void undo(`/api/retention/episode-removals/${item.episodeId}`, `episode:${item.episodeId}`, `${episodeLabel(item.seasonNumber, item.episodeNumber)} is wanted again.`)}
                   disabled={busy !== null}
+                  aria-label={`Want it again for ${episodeLabel(item.seasonNumber, item.episodeNumber)}`}
                 >
                   Want it again
                 </Button>

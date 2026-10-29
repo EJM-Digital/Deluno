@@ -1350,6 +1350,23 @@ describe("Force a re-download on a show", () => {
     await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url === "/api/series/s1/force-redownload?libraryId=lib2")).toBe(true));
   });
 
+  it("offers Want it again only per removed episode, never for a library (#1420)", async () => {
+    setup((url) => {
+      if (url === "/api/series/s1/libraries/") return { body: [{ libraryId: "lib1", libraryName: "Shows", hasFile: false, notWantedHere: true, canRemove: false, canMove: false }] };
+      if (url === "/api/retention/titles/s1") {
+        return { body: { marks: [], keeps: [], episodeRemovals: [{ episodeId: "e2", seasonNumber: 1, episodeNumber: 2, ruleName: "Watched and old", reason: "Watched 400 days ago", removedUtc: "2026-10-01T00:00:00Z" }] } };
+      }
+      return undefined;
+    });
+    await renderPage();
+    const put = await screen.findByRole("button", { name: "Want it again for S01E02" });
+    openTab("Destination");
+    await screen.findByText("Libraries");
+
+    expect(screen.queryByRole("button", { name: /^Want it again in / })).toBeNull();
+    expect(screen.getAllByRole("button", { name: /^Want it again/ })).toEqual([put]);
+  });
+
   it("names no library when the show is in just one", async () => {
     setup(blocked);
     await renderPage();

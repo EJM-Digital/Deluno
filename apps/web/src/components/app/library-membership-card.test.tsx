@@ -54,6 +54,26 @@ describe("LibraryMembershipCard, a film that stopped being wanted in one library
   });
 });
 
+describe("LibraryMembershipCard, Want it again is for films (#1420)", () => {
+  it("offers no library Want it again on a show, even when a row says it stopped being wanted there", () => {
+    render(
+      <LibraryMembershipCard
+        route="/api/series"
+        mediaId="show-1"
+        noun="show"
+        libraries={[]}
+        memberships={memberships}
+        selectedLibraryId="lib-hd"
+        onSelect={vi.fn()}
+        onChanged={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: /want it again/i })).toBeNull();
+    expect(screen.queryByText("Not wanted here")).toBeNull();
+  });
+});
+
 describe("LibraryMembershipCard, the libraries a title is in (#530)", () => {
   const libraries = [
     { id: "lib-hd", name: "Movies", mediaType: "movies" },

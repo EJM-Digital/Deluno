@@ -124,10 +124,24 @@ describe("the Retention card on a title's page", () => {
     expect(await screen.findByText("S01E05")).toBeInTheDocument();
     expect(screen.getByText("Watched 400 days ago")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Want it again" }));
+    fireEvent.click(screen.getByRole("button", { name: "Want it again for S01E05" }));
 
     await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith("S01E05 is wanted again."));
     expect(calls.some((c) => c.url === "/api/retention/episode-removals/e1" && c.method === "DELETE")).toBe(true);
+  });
+
+  it("each removed episode has its own Want it again, so the show page says which episode comes back", async () => {
+    status = {
+      marks: [], keeps: [],
+      episodeRemovals: [
+        { episodeId: "e1", seasonNumber: 1, episodeNumber: 5, ruleName: "Watched and old", reason: "Watched 400 days ago", removedUtc: "2026-10-01T00:00:00Z" },
+        { episodeId: "e2", seasonNumber: 2, episodeNumber: 1, ruleName: "Watched and old", reason: "Watched 400 days ago", removedUtc: "2026-10-01T00:00:00Z" }
+      ]
+    };
+    render(<RetentionTitleCard entityId="s1" />);
+
+    expect(await screen.findByRole("button", { name: "Want it again for S01E05" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Want it again for S02E01" })).toBeInTheDocument();
   });
 
   it("an undo the server refuses says it could not be undone", async () => {

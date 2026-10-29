@@ -124,7 +124,9 @@ export function LibraryMembershipCard({
         >
           {(rows) => rows.map((membership) => {
             const chip = membership.hasFile ? STATUS_PRESENTATION["transfer.imported"] : { tone: "idle" as const, label: "No file" };
-            const stoppedHere = membership.notWantedHere === true;
+            // Only a film can stop being wanted in one library (#1065); a show is wanted as a whole, and what a rule removed
+            // from it comes back per episode on the Retention card (#1420).
+            const stoppedHere = noun === "film" && membership.notWantedHere === true;
             return (
               <ListRow key={membership.libraryId}>
                 <ListNameCell name={membership.libraryName} sub={stoppedHere ? "Its file was deleted, so Deluno stopped wanting it here. The other copy is still managed." : memberships.length > 1 && membership.libraryId === selectedLibraryId ? "Search and download go through this library" : undefined} />
