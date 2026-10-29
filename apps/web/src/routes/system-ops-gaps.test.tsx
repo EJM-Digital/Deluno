@@ -197,6 +197,51 @@ describe("Activity timeline (System > Audit)", () => {
     expect(revalidateMock).toHaveBeenCalledTimes(1);
   });
 
+  it("a page size the server refuses says so in plain words, never says Page size saved, and keeps the stored size (#1415)", async () => {
+    answer({ "PUT /api/activity/display-settings": refuse(400, { message: "Page size must be 50, 100, 250 or 1000." }) });
+    renderAt("/system/audit");
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Rows shown" }));
+    fireEvent.click(screen.getByRole("option", { name: "1000 rows" }));
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/activity/display-settings", expect.objectContaining({ method: "PUT" })));
+    expect(await screen.findByText("Page size must be 50, 100, 250 or 1000.")).toBeInTheDocument();
+    expect(screen.queryByText("Page size saved")).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Rows shown" })).not.toHaveTextContent("1000 rows");
+    expect(revalidateMock).not.toHaveBeenCalled();
+  });
+
+  it("a page size refused with no reason still says the save failed in plain words (#1415)", async () => {
+    answer({ "PUT /api/activity/display-settings": refuse(500, "") });
+    renderAt("/system/audit");
+    fireEvent.click(screen.getByRole("combobox", { name: "Rows shown" }));
+    fireEvent.click(screen.getByRole("option", { name: "250 rows" }));
+    expect(await screen.findByText("The page size could not be saved. The old size is kept.")).toBeInTheDocument();
+    expect(screen.queryByText("Page size saved")).not.toBeInTheDocument();
+  });
+
+  it("a page size save sends JSON, ignores a second change while it is in flight, and a non-error failure still gets plain words (#1415)", async () => {
+    let release: (value: Response) => void = () => undefined;
+    authedFetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === "/api/activity/display-settings" && init?.method === "PUT") return new Promise<Response>((resolve) => { release = resolve; });
+      return jsonResponse([]);
+    });
+    renderAt("/system/audit");
+    fireEvent.click(screen.getByRole("combobox", { name: "Rows shown" }));
+    fireEvent.click(screen.getByRole("option", { name: "100 rows" }));
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/activity/display-settings", expect.objectContaining({ headers: { "Content-Type": "application/json" } })));
+    fireEvent.click(screen.getByRole("combobox", { name: "Rows shown" }));
+    fireEvent.click(screen.getByRole("option", { name: "250 rows" }));
+    const puts = () => authedFetchMock.mock.calls.filter(([url, init]) => url === "/api/activity/display-settings" && (init as RequestInit | undefined)?.method === "PUT");
+    expect(puts()).toHaveLength(1);
+    release({ ok: true, status: 200, text: () => Promise.resolve("{}") } as Response);
+    expect(await screen.findByText("Page size saved")).toBeInTheDocument();
+
+    authedFetchMock.mockImplementation(() => Promise.reject("offline"));
+    fireEvent.click(screen.getByRole("combobox", { name: "Rows shown" }));
+    fireEvent.click(screen.getByRole("option", { name: "1000 rows" }));
+    expect(await screen.findByText("Could not save page size")).toBeInTheDocument();
+  });
+
   it("the live-connection badge on the card says nothing while connected, and says Connecting, Not live: reconnecting or Not live: trying again otherwise", () => {
     answer({});
     socketStatus.value = "connected";

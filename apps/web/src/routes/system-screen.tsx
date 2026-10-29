@@ -207,11 +207,12 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
   async function changeActivityPageSize(nextPageSize: number) {
     setActivityBusy("pageSize");
     try {
-      await authedFetch("/api/activity/display-settings", {
+      const response = await authedFetch("/api/activity/display-settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pageSize: nextPageSize })
       });
+      if (!response.ok) throw new Error(await readErrorText(response, "The page size could not be saved. The old size is kept."));
       setActivityPageSize(nextPageSize);
       activityStatus.markSaved("Page size saved");
       revalidator.revalidate();
@@ -281,7 +282,7 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
             <MenuSelect
               label="Rows shown"
               value={String(activityPageSize)}
-              onChange={(next) => { if (activityBusy === null) void changeActivityPageSize(Number(next)); }}
+              onChange={(next) => { if (activityBusy !== "pageSize" && activityBusy !== "clear") void changeActivityPageSize(Number(next)); }}
               align="end"
               options={[
                 { value: "50", label: "50 rows" },
