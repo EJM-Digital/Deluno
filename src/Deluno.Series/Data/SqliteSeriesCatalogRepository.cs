@@ -4309,10 +4309,7 @@ public sealed class SqliteSeriesCatalogRepository(
         return !string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder) ? folder : null;
     }
 
-    private static readonly HashSet<string> RepairVideoExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".m2ts"
-    };
+    private static readonly IReadOnlySet<string> RepairVideoExtensions = VideoFileExtensions.Extensions;
 
     /// <summary>
     /// The episode's own file (#1174): a video in the show's folder whose name gives that

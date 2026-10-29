@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
 using Deluno.Platform.Contracts;
 
@@ -9,7 +10,7 @@ namespace Deluno.Integrations.DownloadClients;
 /// </summary>
 public static class DownloadAttempts
 {
-    private static readonly string[] FileExtensions = [".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".m2ts", ".nzb"];
+    private static readonly string[] FileExtensions = [.. VideoFileExtensions.Extensions, ".nzb"];
 
     /// <summary>
     /// Whether two names are one release. A client names a single-file torrent after the file ("Film.2020.1080p-GRP.mkv")

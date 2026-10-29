@@ -2426,7 +2426,7 @@ public sealed partial class ImportPipelineService(
             if (!Directory.Exists(processedFrom)) return null;
 
             return Directory.EnumerateFiles(processedFrom, "*.*", SearchOption.AllDirectories)
-                .Where(path => Path.GetExtension(path).ToLowerInvariant() is ".mkv" or ".mp4" or ".avi" or ".mov" or ".m4v" or ".ts")
+                .Where(path => SupportedVideoExtensions.Contains(path))
                 .OrderByDescending(path => new FileInfo(path).Length)
                 .FirstOrDefault();
         }

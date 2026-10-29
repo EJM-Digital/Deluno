@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using System.Text.RegularExpressions;
 using Deluno.Platform.Contracts;
 
@@ -23,7 +24,7 @@ namespace Deluno.Platform.Processing;
 /// </summary>
 public static class ProcessorOutputLayout
 {
-    private static readonly string[] VideoExtensions = [".mkv", ".mp4", ".m4v", ".avi", ".mov", ".ts", ".wmv", ".mpg", ".mpeg", ".iso"];
+    private static readonly IReadOnlySet<string> VideoExtensions = VideoFileExtensions.Extensions;
 
     /// <summary>
     /// The folder the processor watches for a library, in Deluno's own path space: the entry the processor's folder list
@@ -178,7 +179,7 @@ public static class ProcessorOutputLayout
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static bool IsVideoName(string fileName)
-        => VideoExtensions.Contains(Path.GetExtension(fileName), StringComparer.OrdinalIgnoreCase);
+        => VideoExtensions.Contains(Path.GetExtension(fileName));
 
     private static string[] Split(string path)
         => path.Trim().Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
