@@ -77,6 +77,37 @@ public sealed class HeldReleasesOverHttpTests
     }
 
     [Fact]
+    public async Task A_different_release_held_for_the_same_film_is_listed_and_a_dismissal_is_forgotten_once_the_film_stops_being_held()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var movies = app.Services.GetRequiredService<IMovieCatalogRepository>();
+        var id = await HeldMovieAsync(app, "Big Buck Bunny", "held");
+        using var dismissed = await app.Client.PostAsync($"/api/attention/held-releases/{await HistoryIdAsync(app)}/dismiss", content: null);
+        Assert.Equal(HttpStatusCode.NoContent, dismissed.StatusCode);
+        Assert.Empty((await app.Client.GetFromJsonAsync<JsonElement>("/api/attention/held-releases")).EnumerateArray());
+
+        // Held for a different release: a new problem, so it is listed again.
+        const string Other = "Big.Buck.Bunny.2008.1080p.BluRay-OTHER";
+        await movies.RecordSearchAttemptAsync(
+            id, "lib", "automatic", "held", DateTimeOffset.UtcNow, null, "Held.", Other, "Nyaa",
+            HeldPlan.Replace("Big.Buck.Bunny.2008.2160p.WEB-DL-GRP", Other), CancellationToken.None);
+        var listed = await app.Client.GetFromJsonAsync<JsonElement>("/api/attention/held-releases");
+        Assert.Equal(Other, Assert.Single(listed.EnumerateArray()).GetProperty("releaseName").GetString());
+
+        // A search that sent something ends the hold, which forgets what was answered; the first release held again is a new problem.
+        await Task.Delay(1100); // reason: searches are told apart by their time, which is kept to the second
+        await movies.RecordSearchAttemptAsync(
+            id, "lib", "automatic", "matched", DateTimeOffset.UtcNow, null, "Sent.", null, null, null, CancellationToken.None);
+        Assert.Empty((await app.Client.GetFromJsonAsync<JsonElement>("/api/attention/held-releases")).EnumerateArray());
+        await Task.Delay(1100); // reason: as above
+        await movies.RecordSearchAttemptAsync(
+            id, "lib", "automatic", "held", DateTimeOffset.UtcNow, null, "Held.",
+            "Big.Buck.Bunny.2008.2160p.WEB-DL-GRP", "Nyaa", HeldPlan, CancellationToken.None);
+        var again = await app.Client.GetFromJsonAsync<JsonElement>("/api/attention/held-releases");
+        Assert.Equal("Big.Buck.Bunny.2008.2160p.WEB-DL-GRP", Assert.Single(again.EnumerateArray()).GetProperty("releaseName").GetString());
+    }
+
+    [Fact]
     public async Task Approving_a_film_that_has_its_file_since_is_a_plain_409_and_sends_nothing()
     {
         await using var app = await ApplicationTestHost.StartAsync();

@@ -66,6 +66,36 @@ public sealed class ATitleWithNoReleaseCanBeDismissedFromTheBellTests
     }
 
     [Fact]
+    public async Task A_later_search_that_found_something_takes_the_title_off_the_list()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var id = await WantedFilmAsync(app, "checked");
+        Assert.Equal(id, Assert.Single((await ListedAsync(app)).EnumerateArray()).GetProperty("id").GetString());
+
+        await Task.Delay(1100); // reason: the two searches are told apart by their time, which is kept to the second
+        await SearchedAsync(app, id, "matched");
+
+        Assert.Empty((await ListedAsync(app)).EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Dismissing_a_show_is_204_too_and_changes_nothing_about_the_show()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var shows = await ApiScenes.CreateLibraryAsync(app, "tv");
+        var series = app.Services.GetRequiredService<Deluno.Series.Data.ISeriesCatalogRepository>();
+        var show = await series.AddAsync(new Deluno.Series.Contracts.CreateSeriesRequest("Quiet Show", 2021, null), CancellationToken.None);
+        await series.EnsureWantedStateAsync(show.Id, shows, "missing", "Wanted", hasFile: false, null, "WEB 1080p", false, CancellationToken.None);
+
+        var response = await app.Client.PostAsync($"/api/attention/no-release/series/{show.Id}/dismiss", content: null);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var after = await series.GetByIdAsync(show.Id, CancellationToken.None);
+        Assert.NotNull(after);
+        Assert.True(after!.Monitored);
+    }
+
+    [Fact]
     public async Task Dismissing_a_kind_of_title_that_does_not_exist_is_404_and_changes_nothing()
     {
         await using var app = await ApplicationTestHost.StartAsync();

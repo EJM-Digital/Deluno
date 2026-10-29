@@ -220,4 +220,39 @@ public sealed class QualityApiLowGapTests
         Assert.Equal(HttpStatusCode.NotFound, (await app.Client.DeleteAsync($"/api/policy-sets/{plan.Id}")).StatusCode);
         lock (pushes.Changed) Assert.Empty(pushes.Changed);
     }
+
+    [Fact]
+    public async Task Creating_changing_restoring_and_deleting_a_media_plan_each_push_it_and_deleting_unlinks_the_libraries_that_used_it()
+    {
+        var (app, pushes) = await StartAsync();
+        await using var _a = app;
+        var libraryId = await ApiScenes.CreateLibraryAsync(app, "movies");
+        var created = await app.Client.PostAsJsonAsync("/api/policy-sets",
+            new CreatePolicySetRequest($"Plan {Guid.NewGuid():N}", "movies", null, null, null, null, null, true, true, null));
+        Assert.Equal(HttpStatusCode.OK, created.StatusCode);
+        var plan = (await created.Content.ReadFromJsonAsync<PolicySetItem>())!;
+        string[] Pushed() { lock (pushes.Changed) return pushes.Changed.Where(item => item.Type == "PolicySet").Select(item => item.Id).ToArray(); }
+        Assert.Equal([plan.Id], Pushed());
+
+        var changed = await app.Client.PutAsJsonAsync($"/api/policy-sets/{plan.Id}",
+            new UpdatePolicySetRequest(plan.Name + " changed", "movies", null, null, null, null, null, true, true, "second"));
+        Assert.Equal(HttpStatusCode.OK, changed.StatusCode);
+        Assert.Equal([plan.Id, plan.Id], Pushed());
+
+        var restored = await app.Client.PostAsJsonAsync($"/api/policy-sets/{plan.Id}/rollback", new { version = 1 });
+        Assert.Equal(HttpStatusCode.OK, restored.StatusCode);
+        Assert.Equal([plan.Id, plan.Id, plan.Id], Pushed());
+        Assert.Equal(plan.Name, (await restored.Content.ReadFromJsonAsync<PolicySetItem>())!.Name);
+
+        using var linked = await app.Client.PutAsJsonAsync($"/api/libraries/{libraryId}/media-plan", new { policySetId = plan.Id });
+        Assert.True(linked.IsSuccessStatusCode);
+        async Task<string?> DefaultPlanAsync()
+            => (await app.Client.GetFromJsonAsync<JsonElement>("/api/libraries/")).EnumerateArray()
+                .Single(item => item.GetProperty("id").GetString() == libraryId).GetProperty("defaultPolicySetId").GetString();
+        Assert.Equal(plan.Id, await DefaultPlanAsync());
+
+        Assert.Equal(HttpStatusCode.NoContent, (await app.Client.DeleteAsync($"/api/policy-sets/{plan.Id}")).StatusCode);
+        Assert.Equal(4, Pushed().Length);
+        Assert.Null(await DefaultPlanAsync());
+    }
 }
