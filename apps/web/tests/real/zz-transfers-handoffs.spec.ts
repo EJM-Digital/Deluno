@@ -237,13 +237,18 @@ test.describe("Transfers, with hand-offs to a processor", () => {
     await seed(page, { releaseName: "Job.OfAHandOff.2021.1080p-GRP", status: "completed", outputPath: path.join(libraryFolder, "x.mkv"), importJob: "running" });
     // A failed hand-off with an import behind it is one problem row: its import is not also in progress.
     await seed(page, { releaseName: "Job.OfAFailedHandOff.2021.1080p-GRP", status: "failed", failureMessage: "Weir refused the hand-off.", importJob: "running" });
-    await openTransfers(page);
+    // The imports in progress are on the Hand-offs view; the problem rows are on the live downloads (#1426).
+    await openTransfers(page, "/queue?view=handoffs");
 
     await expect(page.getByText("4 active · latest 3")).toBeVisible();
     const card = page.locator("section, div").filter({ has: page.getByText("4 active · latest 3") }).last();
     await expect(card.getByRole("row")).toHaveCount(4); // the header and the three imports it lists
     await expect(card.getByText("running")).toHaveCount(2);
     await expect(card.getByText("queued")).toHaveCount(1);
+    // And the hand-off that is being imported is no longer a row of the processor's.
+    await expect(page.getByRole("row").filter({ hasText: "Job.OfAHandOff.2021.1080p-GRP" })).toHaveCount(0);
+
+    await openTransfers(page);
     // The dead-lettered job is one problem row, and the failed hand-off another.
     await expect(page.getByText("2 things Deluno could not finish on its own")).toBeVisible();
     await expect(page.getByText("Import job", { exact: true })).toHaveCount(1);
