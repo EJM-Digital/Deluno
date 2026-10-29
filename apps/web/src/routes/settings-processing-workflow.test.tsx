@@ -100,6 +100,35 @@ describe("the finished download workflow of a library", () => {
     expect(within(refined).getByText("Needs a folder")).toBeVisible();
   });
 
+  it("names the six columns of the list", () => {
+    load([library()]);
+    renderPage();
+    const headers = screen.getAllByRole("columnheader").map((header) => header.textContent ?? "");
+    for (const name of ["Library", "What happens", "Processed folder", "After import", "If processing fails", "Status"]) {
+      expect(headers.some((text) => text.includes(name)), `${name} is a column`).toBe(true);
+    }
+  });
+
+  it("a refine-before-import library is Ready only with its output folder and, when it names a processor, an enabled one that exists", () => {
+    const refined = (name: string, over: Record<string, unknown>) => library({ id: name, name, importWorkflow: "refine-before-import", processorOutputPath: "D:/Processed", ...over });
+    load(
+      [
+        refined("Watching the folder", {}),
+        refined("Enabled processor", { processorConnectionId: "pc-1", processorName: "Weir" }),
+        refined("Switched-off processor", { processorConnectionId: "pc-2", processorName: "Old Weir" }),
+        refined("Missing processor", { processorConnectionId: "pc-gone", processorName: "Gone" })
+      ],
+      [processor(), processor({ id: "pc-2", name: "Old Weir", isEnabled: false })]
+    );
+    renderPage();
+    const chip = (name: string) => within(screen.getByText(name).closest("[role=row]") as HTMLElement).queryByText(/^(Ready|Needs a folder)$/)?.textContent;
+
+    expect(chip("Watching the folder")).toBe("Ready");
+    expect(chip("Enabled processor")).toBe("Ready");
+    expect(chip("Switched-off processor")).toBe("Needs a folder");
+    expect(chip("Missing processor")).toBe("Needs a folder");
+  });
+
   it("opens the library with its own choices and saves the workflow with a processor that cleans the files first", async () => {
     load([library()], [processor()]);
     authedFetchMock.mockImplementation((path: string, init?: RequestInit) => reply(init?.method === "PUT" ? library() : []));
