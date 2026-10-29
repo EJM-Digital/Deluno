@@ -161,6 +161,30 @@
       "line": 64,
       "replacement": "open || anchor",
       "reason": "Guarding code that runs only once the panel is open, where the guard's other branch cannot be reached by a test."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/discover-filter-bar.tsx",
+      "mutator": "StringLiteral",
+      "line": 95,
+      "replacement": "\"\"",
+      "reason": "The class string of a genre button only styles it; the pressed state a test can read is aria-pressed, which the mutant leaves alone."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/library-collections.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 87,
+      "replacement": "true",
+      "reason": "A chip's leading dot is drawn only for tones that ask for it and is purely cosmetic, so no test can tell dot true from false by behaviour."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/library-collections.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 113,
+      "replacement": "true",
+      "reason": "A chip's leading dot is drawn only for tones that ask for it and is purely cosmetic, so no test can tell dot true from false by behaviour."
     }
   ]
 }
