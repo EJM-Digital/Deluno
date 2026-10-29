@@ -186,7 +186,9 @@ describe("Discover list entries carry their own status", () => {
     const row = (title: string) => screen.getByText(title).closest("li") ?? screen.getByText(title).parentElement!.parentElement!;
     expect(within(row("Fresh Pick")).getByText("Would add")).toBeInTheDocument();
     expect(within(row("Held Pick")).getByText("Already in library")).toBeInTheDocument();
-    expect(within(row("Dropped Pick")).getAllByText("Excluded")[0]).toBeInTheDocument();
+    expect(within(row("Dropped Pick")).getAllByText("Excluded")).toHaveLength(1);
+    const manage = within(row("Dropped Pick")).getByRole("link", { name: "Manage exclusions for Dropped Pick" });
+    expect(manage).toHaveAttribute("href", "/settings/lists");
     expect(within(row("Dropped Pick")).queryByText("Would add")).toBeNull();
     expect(within(row("Ineligible Pick")).getByText("Not eligible")).toBeInTheDocument();
     expect(within(row("Held Pick")).getByText("Held")).toBeInTheDocument();
