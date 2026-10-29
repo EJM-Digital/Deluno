@@ -277,6 +277,24 @@ describe("ListTable startOverWhen (#1418)", () => {
   });
 });
 
+describe("ListTable startOverWhen without a sort (#1418)", () => {
+  it("writes nothing to the browser when the new results find no sort to drop", () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const removeItem = vi.spyOn(Storage.prototype, "removeItem");
+    const view = (results: Item[]) => (
+      <ListTable listId="demo" columns={columns} items={results} startOverWhen={results} chevron={false}>
+        {(rows) => rows.map((item) => <ListRow key={item.id} data-testid={`row-${item.id}`}><ListCell primary={item.name} /></ListRow>)}
+      </ListTable>
+    );
+    const { rerender } = render(view(items));
+    rerender(view([...items]));
+    expect(setItem).not.toHaveBeenCalled();
+    expect(removeItem).not.toHaveBeenCalled();
+    setItem.mockRestore();
+    removeItem.mockRestore();
+  });
+});
+
 describe("ListTable column order (#1119)", () => {
   it("drags a header past its neighbour: headers and cells reorder together, once, on drop", () => {
     mockLayout();
