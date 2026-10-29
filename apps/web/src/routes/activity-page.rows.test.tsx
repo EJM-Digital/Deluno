@@ -506,3 +506,62 @@ describe("Activity's live steps (#1329)", () => {
     expect(handoffCalls()).toHaveLength(0);
   });
 });
+
+describe("Activity decides an import case from its drawer (#1329)", () => {
+  const faultCase = () => {
+    (loaderData.movieRecovery as unknown as { recentCases: unknown[]; openCount: number }).openCount = 1;
+    (loaderData.movieRecovery as unknown as { recentCases: unknown[] }).recentCases = [{
+      id: "case-7", title: "Tangerine", failureKind: "processedFileIsLess", summary: "The processed file is smaller.", recommendedAction: "Choose what to do.",
+      detailsJson: JSON.stringify({ DispatchId: "d1" }), detectedUtc: "2026-09-27T08:00:00Z"
+    }];
+  };
+  const decide = async (button: string) => {
+    renderActivity("/activity?status=needs-decision");
+    await userEvent.click(await screen.findByText("Tangerine"));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: button }));
+  };
+
+  it("Import original posts import-original, says the title will be imported unprocessed, and closes the drawer", async () => {
+    faultCase();
+    await decide("Import original: Tangerine");
+
+    await waitFor(() => expect(toasts.success).toHaveBeenCalledWith("Tangerine will be imported unprocessed."));
+    expect(authedFetchMock).toHaveBeenCalledWith("/api/movies/import-recovery/case-7/import-original", expect.objectContaining({ method: "POST" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("Search again posts search-again, says it is searching for another release, and blocklists nothing", async () => {
+    faultCase();
+    await decide("Search again: Tangerine");
+
+    await waitFor(() => expect(toasts.success).toHaveBeenCalledWith("Searching for another release for Tangerine."));
+    const paths = authedFetchMock.mock.calls.map((call) => String(call[0]));
+    expect(paths).toContain("/api/movies/import-recovery/case-7/search-again");
+    expect(paths.some((path) => /blocklist|block-list/i.test(path))).toBe(false);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("a decision the server answers 409 with a message shows the server's words, reads the list again and keeps the drawer", async () => {
+    faultCase();
+    override = (path) => (path.endsWith("/import-original")
+      ? { ok: false, status: 409, json: async () => ({ message: "That import was already finished." }), text: async () => JSON.stringify({ message: "That import was already finished." }) }
+      : undefined);
+    await decide("Import original: Tangerine");
+
+    await waitFor(() => expect(toasts.error).toHaveBeenCalledWith("That import was already finished."));
+    expect(toasts.success).not.toHaveBeenCalled();
+    expect(revalidateMock).toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("clicking a File row in an event's drawer goes to that file's history and closes the drawer", async () => {
+    events = [event({ id: "ev-file", message: "Imported the file", title: "Arrival", filePath: "C:/Films/Arrival.mkv" })];
+    renderActivity();
+
+    await userEvent.click(await screen.findByText("Imported the file"));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("link", { name: "C:/Films/Arrival.mkv" }));
+
+    expect(screen.getByLabelText("address").textContent).toBe(`/activity?file=${encodeURIComponent("C:/Films/Arrival.mkv")}`);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+});
