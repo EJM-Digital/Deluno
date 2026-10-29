@@ -1,0 +1,189 @@
+{
+  "app": "stevenlu",
+  "version": "2026-10-29",
+  "state": "popular-movies",
+  "recordedAt": "2026-10-29T00:16:03Z",
+  "note": "StevenLu's popular-movies list (movies.json): a JSON array of titles with their IMDb ids, as the file is served (no account).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/popular-movies/movies.json"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": [
+          {
+            "title": "Spider-Man: Brand New Day",
+            "tmdb_id": 969681,
+            "imdb_id": "tt22084616",
+            "poster_url": "http://image.tmdb.org/t/p/w500/bjiS5ipwxb9JFy3XRRN4OAilSeX.jpg",
+            "genres": [
+              "science_fiction",
+              "action",
+              "adventure"
+            ]
+          },
+          {
+            "title": "The Odyssey",
+            "tmdb_id": 1368337,
+            "imdb_id": "tt33764258",
+            "poster_url": "http://image.tmdb.org/t/p/w500/5rhTDKUhPYvpdQIijFIs5VoWsON.jpg",
+            "genres": [
+              "adventure",
+              "action",
+              "fantasy"
+            ]
+          },
+          {
+            "title": "Minions & Monsters",
+            "tmdb_id": 1315772,
+            "imdb_id": "tt32890033",
+            "poster_url": "http://image.tmdb.org/t/p/w500/4LwvU9SZc8QQzW1X1FAPhNbXnEU.jpg",
+            "genres": [
+              "adventure",
+              "animation",
+              "comedy",
+              "family",
+              "fantasy"
+            ]
+          },
+          {
+            "title": "Resident Evil",
+            "tmdb_id": 1423191,
+            "imdb_id": "tt35538033",
+            "poster_url": "http://image.tmdb.org/t/p/w500/i7UyjfPio0VFHB9rBUZSFyhOoM8.jpg",
+            "genres": [
+              "horror",
+              "science_fiction",
+              "adventure"
+            ]
+          },
+          {
+            "title": "The End of Oak Street",
+            "tmdb_id": 1101383,
+            "imdb_id": "tt27165187",
+            "poster_url": "http://image.tmdb.org/t/p/w500/7DmtuAK5gYGlMFA45Oxkl1bEpIC.jpg",
+            "genres": [
+              "science_fiction",
+              "mystery",
+              "thriller"
+            ]
+          },
+          {
+            "title": "Moana",
+            "tmdb_id": 1108427,
+            "imdb_id": "tt27419466",
+            "poster_url": "http://image.tmdb.org/t/p/w500/gaet1xQ2nxrG0V1Ep9T20ZMNEIC.jpg",
+            "genres": [
+              "family",
+              "fantasy",
+              "comedy",
+              "adventure"
+            ]
+          },
+          {
+            "title": "Coyote vs. Acme",
+            "tmdb_id": 1204680,
+            "imdb_id": "tt1756855",
+            "poster_url": "http://image.tmdb.org/t/p/w500/kYDCl2y0VPvhT5eYWbMRInPoB03.jpg",
+            "genres": [
+              "comedy",
+              "adventure",
+              "family"
+            ]
+          },
+          {
+            "title": "Avatar Aang: The Last Airbender",
+            "tmdb_id": 980431,
+            "imdb_id": "tt18259538",
+            "poster_url": "http://image.tmdb.org/t/p/w500/3sgnSfNT27Bx5O5ukr7B26mhEQq.jpg",
+            "genres": [
+              "animation",
+              "adventure",
+              "fantasy",
+              "action"
+            ]
+          },
+          {
+            "title": "Insidious: Out of the Further",
+            "tmdb_id": 1291595,
+            "imdb_id": "tt32393988",
+            "poster_url": "http://image.tmdb.org/t/p/w500/4tTrW9dXCByS5wt2pXVWb58zNjz.jpg",
+            "genres": [
+              "horror",
+              "thriller"
+            ]
+          },
+          {
+            "title": "Evil Dead Burn",
+            "tmdb_id": 1212763,
+            "imdb_id": "tt31170389",
+            "poster_url": "http://image.tmdb.org/t/p/w500/uRxrNXQWkHoENm3nwVOZDYSCx2F.jpg",
+            "genres": [
+              "horror"
+            ]
+          },
+          {
+            "title": "PAW Patrol: The Dino Movie",
+            "tmdb_id": 1185806,
+            "imdb_id": "tt29356163",
+            "poster_url": "http://image.tmdb.org/t/p/w500/cxXSF4aY5N2cOGwaga5OnpPFHzk.jpg",
+            "genres": [
+              "animation",
+              "adventure",
+              "family",
+              "fantasy",
+              "comedy"
+            ]
+          },
+          {
+            "title": "Digger",
+            "tmdb_id": 1248832,
+            "imdb_id": "tt31450459",
+            "poster_url": "http://image.tmdb.org/t/p/w500/1ATXKrIPJyKNwnJ6lcG088Sa6zi.jpg",
+            "genres": [
+              "comedy",
+              "drama"
+            ]
+          },
+          {
+            "title": "The Dog Stars",
+            "tmdb_id": 1384216,
+            "imdb_id": "tt21285562",
+            "poster_url": "http://image.tmdb.org/t/p/w500/A7i16oDi03qrKep5pBfuTWNUTb.jpg",
+            "genres": [
+              "action",
+              "thriller",
+              "science_fiction",
+              "family"
+            ]
+          },
+          {
+            "title": "Heart of the Beast",
+            "tmdb_id": 1263337,
+            "imdb_id": "tt7526136",
+            "poster_url": "http://image.tmdb.org/t/p/w500/1ApfSA8JTqeha3GTFEY8syV4auq.jpg",
+            "genres": [
+              "adventure",
+              "thriller"
+            ]
+          },
+          {
+            "title": "Mayday",
+            "tmdb_id": 1137844,
+            "imdb_id": "tt28014327",
+            "poster_url": "http://image.tmdb.org/t/p/w500/hVXjX1jLZ1ljFSNGXpjJfbTUOa7.jpg",
+            "genres": [
+              "action",
+              "comedy"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

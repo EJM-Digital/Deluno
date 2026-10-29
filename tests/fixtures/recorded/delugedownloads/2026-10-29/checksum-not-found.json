@@ -1,0 +1,22 @@
+{
+  "app": "delugedownloads",
+  "version": "2026-10-29",
+  "state": "checksum-not-found",
+  "recordedAt": "2026-10-29T00:10:10Z",
+  "note": "The reply for a checksum file the directory does not hold (the host's own 404 page).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/pub/deluge/windows/deluge-2.2.0-win-none-setup.exe.sha256"
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "text/html; charset=iso-8859-1"
+        },
+        "bodyText": "<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 2.0//EN\">\n<html><head>\n<title>404 Not Found</title>\n</head><body>\n<h1>Not Found</h1>\n<p>The requested URL was not found on this server.</p>\n<hr>\n<address>Apache Server at ftp.osuosl.org Port 443</address>\n</body></html>\n"
+      }
+    }
+  ]
+}

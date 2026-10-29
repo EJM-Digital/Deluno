@@ -1,0 +1,22 @@
+{
+  "app": "delugedownloads",
+  "version": "2026-10-29",
+  "state": "installer-checksum",
+  "recordedAt": "2026-10-29T00:10:10Z",
+  "note": "The checksum file beside the newest installer (deluge-2.2.0-win64-setup.exe.sha256): a \"hash  filename\" line.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/pub/deluge/windows/deluge-2.2.0-win64-setup.exe.sha256"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/octet-stream"
+        },
+        "bodyText": "b2e414dd9cf637d3ea9f5b783972bb36cbb801134b6df79d67c1c08f68f4e889  deluge-2.2.0-win64-setup.exe\n"
+      }
+    }
+  ]
+}
