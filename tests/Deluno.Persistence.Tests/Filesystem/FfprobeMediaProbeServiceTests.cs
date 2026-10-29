@@ -9,7 +9,7 @@ namespace Deluno.Persistence.Tests.Filesystem;
 /// ffprobe can end is tried without needing ffprobe on the machine.
 /// </summary>
 [Collection("FfprobeEnvironment")]
-public sealed class FfprobeMediaProbeServiceTests : IDisposable
+public sealed partial class FfprobeMediaProbeServiceTests : IDisposable
 {
     private const string Variable = "DELUNO_FFPROBE_PATH";
     private readonly string _folder = Path.Combine(Path.GetTempPath(), "deluno-ffprobe-" + Guid.NewGuid().ToString("N"));
