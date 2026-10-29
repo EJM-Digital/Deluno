@@ -68,6 +68,18 @@ test.describe("Guided setup", () => {
     await expectNoErrorScreen(page);
     const requests = recordRequests(page);
 
+    // Deluno installs these tools only on Windows, outside a service (CompanionToolsService.Availability), and CI's host is Linux.
+    // There the page must say so and leave every box unticked and disabled, and nothing may reach the server.
+    const listed = await api<{ availability: { available: boolean; reason: string | null } }>(page, "GET", "/api/companion-tools");
+    if (!listed.body.availability.available) {
+      await expect(page.getByText(listed.body.availability.reason!)).toBeVisible();
+      await expect(page.getByRole("checkbox", { name: "Set up Transmission" })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Set up tools", exact: true })).toBeDisabled();
+      requests.stop();
+      expect(requests.find("POST", /^\/api\/companion-tools\//)).toHaveLength(0);
+      return;
+    }
+
     await page.getByRole("checkbox", { name: "Set up Transmission" }).check();
     await page.getByRole("button", { name: "Set up 1 tool", exact: true }).click();
 
