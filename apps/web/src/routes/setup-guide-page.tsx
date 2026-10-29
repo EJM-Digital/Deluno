@@ -71,6 +71,7 @@ import { ListCard, ListCell, ListNameCell, ListRow, ListTable, LIST_TRACK } from
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { LanAccessNotice } from "../components/app/lan-access-notice";
 import { isUsenetProtocol } from "../lib/protocol";
+import { CLIENT_PRESETS } from "./connections/presets";
 import { ConnectInstalledApps } from "../components/app/connect-installed-apps";
 
 /**
@@ -239,7 +240,7 @@ interface GuideForm {
   indexerUrl: string;
   indexerApiKey: string;
   clientName: string;
-  clientProtocol: "qbittorrent" | "sabnzbd" | "transmission" | "deluge" | "nzbget" | "utorrent";
+  clientProtocol: (typeof CLIENT_PRESETS)[number]["protocol"];
   clientHost: string;
   clientPort: string;
   clientUsername: string;
@@ -644,14 +645,28 @@ const INDEXER_SETUP_PRESETS = [
   }
 ] as const;
 
-const CLIENT_SETUP_PRESETS = [
-  { protocol: "qbittorrent" as const, label: "qBittorrent", port: "8080", copy: "Best default torrent client for most users." },
-  { protocol: "sabnzbd" as const, label: "SABnzbd", port: "8080", copy: "Best default Usenet downloader." },
-  { protocol: "transmission" as const, label: "Transmission", port: "9091", copy: "Lightweight torrent client for Linux/NAS installs." },
-  { protocol: "deluge" as const, label: "Deluge", port: "8112", copy: "Flexible torrent client with Web UI support." },
-  { protocol: "nzbget" as const, label: "NZBGet", port: "6789", copy: "Efficient Usenet downloader for lower-resource systems." },
-  { protocol: "utorrent" as const, label: "uTorrent", port: "8080", copy: "Legacy Web UI support for migrations." }
-] as const;
+/** What the guide says under each client; a client Connections offers that is not named here still shows, with the generic line. */
+const CLIENT_SETUP_COPY: Record<string, string> = {
+  qbittorrent: "Best default torrent client for most users.",
+  sabnzbd: "Best default Usenet downloader.",
+  transmission: "Lightweight torrent client for Linux/NAS installs.",
+  deluge: "Flexible torrent client with Web UI support.",
+  nzbget: "Efficient Usenet downloader for lower-resource systems.",
+  utorrent: "Legacy Web UI support for migrations.",
+  rtorrent: "Torrent client that runs behind a web server on Linux/NAS installs."
+};
+
+/** The guide's client choices are Connections' own list (#1416), so the two cannot drift. */
+export function clientSetupCopy(protocol: string, kind: string) {
+  return CLIENT_SETUP_COPY[protocol] ?? `${kind} download client.`;
+}
+
+export const CLIENT_SETUP_PRESETS = CLIENT_PRESETS.map((preset) => ({
+  protocol: preset.protocol,
+  label: preset.label,
+  port: String(preset.defaultPort),
+  copy: clientSetupCopy(preset.protocol, preset.kind)
+}));
 
 export async function setupGuideLoader(): Promise<SetupGuideLoaderData> {
   const [settings, libraries, qualityProfiles, customFormats, indexers, clients, metadataStatus, progress, draft, guide, allowedHosts, contentBlocklist, localNetworkAuth, updatePreferences] = await Promise.all([
@@ -1566,12 +1581,7 @@ function ServicesStep({
           />
           <Field label="Download client protocol" hideLabel>
             <Select value={form.clientProtocol} onChange={(event) => patch({ clientProtocol: event.target.value as GuideForm["clientProtocol"], clientPort: defaultClientPort(event.target.value) })}>
-              <option value="qbittorrent">qBittorrent</option>
-              <option value="sabnzbd">SABnzbd</option>
-              <option value="transmission">Transmission</option>
-              <option value="deluge">Deluge</option>
-              <option value="nzbget">NZBGet</option>
-              <option value="utorrent">uTorrent</option>
+              {CLIENT_SETUP_PRESETS.map((preset) => <option key={preset.protocol} value={preset.protocol}>{preset.label}</option>)}
             </Select>
           </Field>
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px]">
@@ -3288,12 +3298,5 @@ async function saveRouting(libraryId: string, indexerId: string | null, download
 }
 
 function defaultClientPort(protocol: string) {
-  return {
-    qbittorrent: "8080",
-    sabnzbd: "8080",
-    transmission: "9091",
-    deluge: "8112",
-    nzbget: "6789",
-    utorrent: "8080"
-  }[protocol] ?? "8080";
+  return CLIENT_SETUP_PRESETS.find((preset) => preset.protocol === protocol)?.port ?? "8080";
 }
