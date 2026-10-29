@@ -48,6 +48,8 @@ public static class RecordedReplies
     public static Recording Ntfy(string state) => RecordedReplies.LoadLatest("ntfy", state);
     /// <summary>Deluge's own download directory on ftp.osuosl.org (an Apache index and the checksum files beside the installers), real unauthenticated GETs from the internet (#1301).</summary>
     public static Recording Delugedownloads(string state) => RecordedReplies.LoadLatest("delugedownloads", state);
+    /// <summary>StevenLu's public popular-movies list (a JSON file on S3), real unauthenticated GETs from the internet (#1301).</summary>
+    public static Recording Stevenlu(string state) => RecordedReplies.LoadLatest("stevenlu", state);
     /// <summary>Sonarr v4's API (<c>/api/v3</c>), recorded from the real app with one real series.</summary>
     public static Recording Sonarr(string state) => RecordedReplies.LoadLatest("sonarr", state);
     /// <summary>Radarr's API (<c>/api/v3</c>), recorded from the real app with one real film.</summary>

@@ -1,0 +1,22 @@
+{
+  "app": "stevenlu",
+  "version": "2026-10-29",
+  "state": "list-not-found",
+  "recordedAt": "2026-10-29T00:16:03Z",
+  "note": "The reply for a list file the bucket does not hold (S3's own XML error).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/popular-movies/no-such-list.json"
+      },
+      "reply": {
+        "status": 403,
+        "headers": {
+          "content-type": "application/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>AccessDenied</Code><Message>Access Denied</Message><RequestId>H98JY3RM3HB3BH0S</RequestId><HostId>h4zuwb6BrbkDVWdytbIYMT1HepEm6OZELRKrAjHIw3naKDD4N+0AAjQRobAA7enkLYGn+qoMLJorm6nH/IFWPFZq0xEegVVU</HostId></Error>"
+      }
+    }
+  ]
+}
