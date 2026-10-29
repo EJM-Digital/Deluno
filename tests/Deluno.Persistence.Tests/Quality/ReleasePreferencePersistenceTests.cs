@@ -855,6 +855,42 @@ public sealed class ReleasePreferencePersistenceTests
         Assert.Equal(plan.PlanHash, snapshot.PlanHash);
     }
 
+    [Theory]
+    [InlineData(MediaKind.Movie, "facts_json")]
+    [InlineData(MediaKind.Movie, "evaluation_json")]
+    [InlineData(MediaKind.Series, "matched_rule_ids_json")]
+    public async Task A_stored_snapshot_that_cannot_be_read_gives_none_not_an_error(MediaKind kind, string damagedColumn)
+    {
+        using var storage = TestStorage.Create();
+        var now = new DateTimeOffset(2026, 8, 31, 3, 0, 0, TimeSpan.Zero);
+        var clock = new FixedTimeProvider(now);
+        await InitializeSchemaAsync(storage, clock, kind);
+        var mediaId = await AddMediaAsync(storage, clock, kind);
+        var repository = new SqliteMediaStateRepository(storage.Factory, clock);
+        var plan = Plan("1");
+        var facts = new[] { new PreferenceFact("quality.web-1080p", PreferenceFactState.Present, new PreferenceEvidence("file-probe", Confidence: 1)) };
+        var snapshot = new PreferenceEvaluationSnapshot(
+            mediaId, "main", "/media/title/title.mkv", "/media/title/title.mkv", 1234, plan.Id, plan.Version, plan.PlanHash,
+            facts, ReleasePreferenceEvaluator.Evaluate(plan, facts), ["rule-a"], now, "import");
+        await repository.SavePreferenceEvaluationSnapshotAsync(kind, snapshot, CancellationToken.None);
+        Assert.NotNull(await repository.GetLatestPreferenceEvaluationSnapshotAsync(kind, mediaId, "main", snapshot.FileIdentity, CancellationToken.None));
+
+        await using (var connection = await storage.Factory.OpenConnectionAsync(MediaTableMap.For(kind).DatabaseName, CancellationToken.None))
+        {
+            using var damage = connection.CreateCommand();
+            damage.CommandText = $"UPDATE media_preference_evaluations SET {damagedColumn} = 'this is not json' WHERE media_id = @mediaId;";
+            var parameter = damage.CreateParameter();
+            parameter.ParameterName = "@mediaId";
+            parameter.Value = mediaId;
+            damage.Parameters.Add(parameter);
+            Assert.Equal(1, await damage.ExecuteNonQueryAsync());
+        }
+
+        var read = await repository.GetLatestPreferenceEvaluationSnapshotAsync(kind, mediaId, "main", snapshot.FileIdentity, CancellationToken.None);
+
+        Assert.Null(read);
+    }
+
     private static ReleasePreferencePlan Plan(string version)
         => new(
             "test/movies",

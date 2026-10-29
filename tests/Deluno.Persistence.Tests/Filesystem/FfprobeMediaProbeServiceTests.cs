@@ -83,6 +83,33 @@ public sealed class FfprobeMediaProbeServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task With_ffprobe_nowhere_to_be_found_the_answer_is_unavailable_with_the_reinstall_words()
+    {
+        var pathBefore = Environment.GetEnvironmentVariable("PATH");
+        var directoryBefore = Environment.GetEnvironmentVariable(FfmpegTools.DirectoryVariable);
+        try
+        {
+            // The override names a file that is not there, the folder variable names an empty folder, and nothing is on the PATH.
+            Environment.SetEnvironmentVariable(Variable, Path.Combine(_folder, "no-such-ffprobe"));
+            Environment.SetEnvironmentVariable(FfmpegTools.DirectoryVariable, _folder);
+            Environment.SetEnvironmentVariable("PATH", _folder);
+
+            Assert.Null(FfmpegTools.Ffprobe());
+            var info = await new FfprobeMediaProbeService().ProbeAsync(Film(), CancellationToken.None);
+
+            Assert.Equal("unavailable", info.Status);
+            Assert.Contains("ffprobe is missing from this install", info.Message);
+            Assert.Contains("reinstall", info.Message);
+            Assert.Empty(info.VideoStreams);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", pathBefore);
+            Environment.SetEnvironmentVariable(FfmpegTools.DirectoryVariable, directoryBefore);
+        }
+    }
+
+    [Fact]
     public async Task A_good_reply_is_read_into_video_audio_and_subtitle_streams()
     {
         FakeFfprobe(Reply);

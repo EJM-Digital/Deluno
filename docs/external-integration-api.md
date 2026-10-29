@@ -194,12 +194,15 @@ traits.
 
 Integration responses and operational history carry a typed `failure` (or
 `lastFailure`) when a provider or client boundary did not complete. The object
-identifies the stable `kind` (`authentication`, `rate-limit`, `timeout`,
-`unavailable`, `malformed-response`, `rejected-action`, or `unknown`), the
-`state` (`active`, `retry-scheduled`, `circuit-open`, `resolved`, or
-`permanent`), `service`, `operation`, provider/client detail, an optional HTTP
-status, `retryAfterUtc`, and a plain-English `nextAction`. Secrets and request
-credentials are never included.
+identifies the service by `serviceType`, `serviceId` and `serviceName`, the
+`operation`, the stable `kind` (`Authentication`, `RateLimit`, `Timeout`,
+`Protocol`, `Unavailable`, `MalformedResponse`, `RejectedAction`,
+`Configuration`, `CircuitOpen`, `QuotaExceeded`, `Blocked`, or `Unknown`) and
+the `retryState` (`NotRetryable`, `Retrying`, `RetryScheduled`, `CircuitOpen`,
+or `ManualAction`), with the provider/client `message`, an optional `code`,
+`httpStatus`, `upstreamDetail` and `externalId`, `attempts`, `retryAfterUtc`,
+and a plain-English `nextAction`. Secrets and request credentials are never
+included.
 
 A failure is not the same thing as an empty result. Callers should retain the
 typed failure alongside the final outcome and use `retryAfterUtc` or the

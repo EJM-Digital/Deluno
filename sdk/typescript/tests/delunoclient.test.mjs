@@ -2,6 +2,9 @@
 // reports a refusal. Run with `node --test sdk/typescript/tests/delunoclient.test.mjs` (Node runs the .ts source directly).
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { DelunoClient, DelunoApiError } from '../src/index.ts';
 
 function recorder(reply = () => new Response('{}', { status: 200 })) {
@@ -255,4 +258,14 @@ test('a validation problem keeps its title and its errors on the error, whatever
   await assert.rejects(clientOn('http://deluno.example', fetch).createBackup(), (error) => {
     return error instanceof DelunoApiError && error.status === 400 && error.body.errors.name[0] === 'Give this key a name.' && typeof error.message === 'string' && error.message.length > 0;
   });
+});
+
+test('the SDK source compiles under strict tsc, the check typecheck:sdk runs in CI', () => {
+  const sdkRoot = fileURLToPath(new URL('..', import.meta.url));
+  const tsconfig = JSON.parse(readFileSync(`${sdkRoot}tsconfig.json`, 'utf8'));
+  assert.equal(tsconfig.compilerOptions.strict, true);
+  const tsc = fileURLToPath(new URL('../../../node_modules/typescript/bin/tsc', import.meta.url));
+  const run = spawnSync(process.execPath, [tsc, '--noEmit', '-p', `${sdkRoot}tsconfig.json`], { encoding: 'utf8' });
+  assert.equal(run.status, 0, `tsc reported:
+${run.stdout}${run.stderr}`);
 });
