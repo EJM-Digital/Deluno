@@ -7491,6 +7491,148 @@ public sealed partial class ImportPipelineServiceTests
     }
 
     [Fact]
+    public async Task A_refusal_opens_a_recovery_case_fails_the_dispatch_pushes_the_live_event_writes_activity_and_decision_and_notifies()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-29T11:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+        var realtime = new RecordingRealtimeEventPublisher();
+        var outbound = new RecordingOutboundNotificationService();
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, realtime, new NullDownloadDispatchesRepository());
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            downloadDispatchesRepository: dispatches,
+            outboundNotificationService: outbound,
+            realtimeEventPublisher: realtime);
+        var catalogued = await movies.AddAsync(new CreateMovieRequest("The Wild Robot", 2024, null), CancellationToken.None);
+
+        async Task<(ImportPipelineResult Result, string DispatchId)> ImportAsync(byte fill, bool overwrite)
+        {
+            var source = Path.Combine(downloadsPath, "The.Wild.Robot.2024.1080p.mkv");
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat(fill, 4096).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+            var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+                libraryId: library.Id, mediaType: "movies", entityType: "movie", entityId: catalogued.Id,
+                releaseName: "The Wild Robot 2024 1080p", indexerName: "TestIndexer",
+                downloadClientId: "client-1", downloadClientName: "TestClient",
+                status: "sent", notesJson: null, cancellationToken: CancellationToken.None);
+            var result = await service.ExecuteAsync(
+                new ImportExecuteRequest(
+                    new ImportPreviewRequest(source, null, "movies", "The Wild Robot", 2024, [], [], null, null),
+                    "copy", Overwrite: overwrite, AllowCopyFallback: true, DispatchId: dispatchId),
+                CancellationToken.None);
+            return (result, dispatchId);
+        }
+
+        Assert.True((await ImportAsync(0x11, overwrite: false)).Result.Succeeded);
+        outbound.DispatchedCategories.Clear();
+
+        // An overwrite nobody named the file for: the destination is not the file this title owned, so it is refused.
+        var (refused, dispatchId) = await ImportAsync(0x22, overwrite: true);
+
+        Assert.False(refused.Succeeded);
+        var recoveryCase = Assert.Single((await movies.GetImportRecoverySummaryAsync(CancellationToken.None)).RecentCases);
+        Assert.Equal("The Wild Robot", recoveryCase.Title);
+        Assert.Equal("importFailed", recoveryCase.FailureKind);
+        Assert.Contains("Replacement blocked", recoveryCase.Summary, StringComparison.Ordinal);
+        Assert.False(string.IsNullOrWhiteSpace(recoveryCase.RecommendedAction));
+        using (var details = JsonDocument.Parse(recoveryCase.DetailsJson!))
+        {
+            Assert.Equal(dispatchId, details.RootElement.GetProperty("DispatchId").GetString());
+            Assert.Equal(dispatchId, details.RootElement.GetProperty("RetryRequest").GetProperty("DispatchId").GetString());
+        }
+
+        Assert.Contains(realtime.ImportCompletions, push => push.DispatchId == dispatchId && !push.Succeeded && push.FailureReason == recoveryCase.Summary);
+        Assert.Contains("import.failed", outbound.DispatchedCategories);
+        Assert.Contains("manual_interaction_required", outbound.DispatchedCategories);
+
+        await using var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Jobs, CancellationToken.None);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT import_status, import_failure_code FROM download_dispatches WHERE id = '" + dispatchId + "';";
+        await using (var reader = await command.ExecuteReaderAsync())
+        {
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal("failed", reader.GetString(0));
+            Assert.Equal("replacementOwnershipMismatch", reader.GetString(1));
+        }
+
+        command.CommandText = "SELECT category, COUNT(*) FROM activity_events WHERE category IN ('filesystem.import.failed', 'decision.explained') GROUP BY category;";
+        command.Parameters.Clear();
+        var counts = new Dictionary<string, long>();
+        await using (var reader = await command.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                counts[reader.GetString(0)] = reader.GetInt64(1);
+            }
+        }
+
+        Assert.Equal(1, counts["filesystem.import.failed"]);
+        Assert.True(counts["decision.explained"] >= 1);
+    }
+
+    [Fact]
+    public async Task Subtitles_nfo_and_artwork_that_come_with_a_download_stay_in_the_download_folder_and_only_the_video_enters_the_library()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-29T12:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var release = Path.Combine(downloadsPath, "Dune.2021.1080p.WEB-DL.x264-DELUNO");
+        Directory.CreateDirectory(Path.Combine(release, "Subs"));
+        Directory.CreateDirectory(movieRootPath);
+        var video = Path.Combine(release, "Dune.2021.1080p.WEB-DL.x264-DELUNO.mkv");
+        await File.WriteAllBytesAsync(video, Enumerable.Repeat((byte)0x52, 4096).ToArray());
+        string[] companions =
+        [
+            Path.Combine(release, "Subs", "English.srt"),
+            Path.Combine(release, "Dune.2021.1080p.WEB-DL.x264-DELUNO.en.srt"),
+            Path.Combine(release, "Dune.2021.1080p.WEB-DL.x264-DELUNO.nfo"),
+            Path.Combine(release, "poster.jpg")
+        ];
+        foreach (var companion in companions)
+        {
+            await File.WriteAllTextAsync(companion, "companion");
+        }
+
+        foreach (var file in companions.Append(video))
+        {
+            File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddMinutes(-1));
+        }
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(release, null, "movies", "Dune", 2021, [], [], null, "en", ImdbId: "tt1160419"),
+                "copy", Overwrite: false, AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        var inLibrary = Directory.GetFiles(movieRootPath, "*", SearchOption.AllDirectories);
+        var imported = Assert.Single(inLibrary);
+        Assert.EndsWith(".mkv", imported, StringComparison.Ordinal);
+        Assert.All(companions, companion => Assert.True(File.Exists(companion), companion));
+    }
+
+    [Fact]
     public async Task Tv_pack_replacement_requires_exact_episode_ownership_and_converges_idempotently()
     {
         using var storage = TestStorage.Create();
@@ -9620,7 +9762,8 @@ public sealed partial class ImportPipelineServiceTests
         Deluno.Integrations.Seerr.ISeerrClient? seerrClient = null,
         IMediaTagStore? mediaTagStore = null,
         IForceImportAttemptsRepository? forceImportAttempts = null,
-        Deluno.Contracts.IClientHeldFileProbe? clientHeldFiles = null)
+        Deluno.Contracts.IClientHeldFileProbe? clientHeldFiles = null,
+        Deluno.Contracts.IRealtimeEventPublisher? realtimeEventPublisher = null)
         => new(
             platform,
             librariesRepository,
@@ -9634,7 +9777,7 @@ public sealed partial class ImportPipelineServiceTests
             downloadDispatchesRepository,
             connectionsRepository,
             NullLogger<ImportPipelineService>.Instance,
-            null,
+            realtimeEventPublisher,
             // #1318: a replaced file only ever leaves through the bin, so the service is built with the real one.
             new Deluno.Platform.RecycleBinService(Microsoft.Extensions.Options.Options.Create(new StoragePathOptions { DataRoot = storage.DataRoot }), timeProvider, NullLogger<Deluno.Platform.RecycleBinService>.Instance),
             qualityRepository,

@@ -12,6 +12,17 @@ internal sealed class RecordingRealtimeEventPublisher : NullRealtimeEventPublish
     public IReadOnlyList<T> LiveEventsOf<T>(string name) where T : class
         => liveEvents.Where(item => item.Name == name).Select(item => (T)item.Payload).ToArray();
 
+    private readonly ConcurrentQueue<(string DispatchId, bool Succeeded, string? FailureReason)> importCompletions = new();
+
+    /// <summary>Every dispatch import-completed push, in order.</summary>
+    public IReadOnlyList<(string DispatchId, bool Succeeded, string? FailureReason)> ImportCompletions => importCompletions.ToArray();
+
+    public override Task PublishDispatchImportCompletedAsync(string dispatchId, string releaseName, bool succeeded, string? importedPath, string? failureReason, CancellationToken cancellationToken)
+    {
+        importCompletions.Enqueue((dispatchId, succeeded, failureReason));
+        return Task.CompletedTask;
+    }
+
     private readonly ConcurrentQueue<(string JobId, string State)> importStates = new();
 
     /// <summary>Every import-state push (#1209), in order.</summary>
