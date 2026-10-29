@@ -8,7 +8,7 @@ vi.mock("../lib/api", async (importOriginal) => ({ ...(await importOriginal<obje
 vi.mock("../lib/api/client", async (importOriginal) => ({ ...(await importOriginal<object>()), fetchJson }));
 vi.mock("../lib/use-auth", async (importOriginal) => ({ ...(await importOriginal<object>()), authedFetch }));
 
-const { SetupGuidePage, STEPS } = await import("./setup-guide-page");
+const { SetupGuidePage, STEPS, AUTOMATION_QUESTIONS } = await import("./setup-guide-page");
 
 type Over = {
   stepId: string; draft?: Record<string, unknown>; settings?: Record<string, unknown>;
@@ -207,5 +207,21 @@ describe("the guide shell and step rail, low rows (#1329)", () => {
     expect((screen.getByLabelText("Download client port") as HTMLInputElement).value).toBe("6789");
     fireEvent.change(screen.getByLabelText("Download client protocol"), { target: { value: "deluge" } });
     expect((screen.getByLabelText("Download client port") as HTMLInputElement).value).toBe("8112");
+  });
+
+  it("every Automation question shows its help text under it, and the ones that can be switched off say what happens if they are", async () => {
+    renderStep({ stepId: "automation" });
+    await screen.findByRole("radiogroup", { name: AUTOMATION_QUESTIONS[0].question });
+
+    for (const item of AUTOMATION_QUESTIONS) {
+      const group = screen.getByRole("radiogroup", { name: item.question });
+      const shell = group.parentElement!.parentElement!;
+      expect(shell.textContent, item.question).toContain(item.help);
+      expect(item.help.length, item.question).toBeGreaterThan(20);
+    }
+    expect(AUTOMATION_QUESTIONS.filter((item) => item.help.includes("If off,")).length).toBeGreaterThanOrEqual(8);
+    const start = AUTOMATION_QUESTIONS[0];
+    expect(screen.getByText(start.help)).toBeTruthy();
+    expect(start.help.startsWith("If off, automation stays paused")).toBe(true);
   });
 });
