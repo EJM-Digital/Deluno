@@ -137,6 +137,26 @@ public sealed class EnginesRequestPipelineRowsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Every_answer_carries_a_trace_id_a_safe_one_sent_in_is_kept_and_an_unsafe_one_is_replaced()
+    {
+        var made = await GetAsync("/api/system/overview");
+        var generated = Assert.Single(made.Headers.GetValues("X-Deluno-Trace-Id"));
+        Assert.False(string.IsNullOrWhiteSpace(generated));
+
+        using var kept = new HttpRequestMessage(HttpMethod.Get, "/api/system/overview");
+        kept.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _session);
+        kept.Headers.Add("X-Deluno-Trace-Id", "call-42_a.b");
+        Assert.Equal("call-42_a.b", Assert.Single((await _client.SendAsync(kept)).Headers.GetValues("X-Deluno-Trace-Id")));
+
+        using var unsafeId = new HttpRequestMessage(HttpMethod.Get, "/api/system/overview");
+        unsafeId.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _session);
+        unsafeId.Headers.TryAddWithoutValidation("X-Deluno-Trace-Id", "bad id with spaces;drop");
+        var replaced = Assert.Single((await _client.SendAsync(unsafeId)).Headers.GetValues("X-Deluno-Trace-Id"));
+        Assert.NotEqual("bad id with spaces;drop", replaced);
+        Assert.DoesNotContain(' ', replaced);
+    }
+
+    [Fact]
     public async Task Api_and_hub_answers_are_never_cached_while_the_poster_route_is_left_alone()
     {
         var api = await GetAsync("/api/system/overview");
