@@ -82,19 +82,20 @@ export function activeFilterCount(filters: DiscoverFilters): number {
 export function discoverQuery(kind: DiscoverKind, list: DiscoverListName, filters: DiscoverFilters, page: number): string {
   const params = new URLSearchParams({ mediaType: kind });
   if (page > 1) params.set("page", String(page));
-  const filtered = activeFilterCount(filters) > 0;
-  if (!filtered && list !== "popular") params.set("list", list);
-  if (filtered) {
-    if (filters.release) params.set("release", filters.release);
-    const from = Number.parseInt(filters.yearFrom, 10);
-    const to = Number.parseInt(filters.yearTo, 10);
-    if (Number.isFinite(from)) params.set("yearFrom", String(from));
-    if (Number.isFinite(to)) params.set("yearTo", String(to));
-    if (filters.genres.length > 0) params.set("genres", filters.genres.join(","));
-    if (filters.ratingMin) params.set("ratingMin", filters.ratingMin);
-    if (filters.language) params.set("language", filters.language);
-    if (filters.sort) params.set("sort", filters.sort);
+  if (activeFilterCount(filters) === 0) {
+    if (list !== "popular") params.set("list", list);
+    return params.toString();
   }
+
+  if (filters.release) params.set("release", filters.release);
+  const from = Number.parseInt(filters.yearFrom, 10);
+  const to = Number.parseInt(filters.yearTo, 10);
+  if (Number.isFinite(from)) params.set("yearFrom", String(from));
+  if (Number.isFinite(to)) params.set("yearTo", String(to));
+  if (filters.genres.length > 0) params.set("genres", filters.genres.join(","));
+  if (filters.ratingMin) params.set("ratingMin", filters.ratingMin);
+  if (filters.language) params.set("language", filters.language);
+  if (filters.sort) params.set("sort", filters.sort);
   return params.toString();
 }
 

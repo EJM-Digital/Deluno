@@ -17,6 +17,14 @@ describe("Discover lists and filters (#1429)", () => {
     expect(discoverLists("series").find((item) => item.value === "now-playing")?.label).toBe("On air");
     expect(discoverLists("movies").find((item) => item.value === "now-playing")?.label).toBe("In cinemas");
     expect(discoverLists("movies")[0]).toEqual({ value: "popular", label: "Popular", title: "Popular on TMDb" });
+    expect(discoverLists("movies")).toEqual([
+      { value: "popular", label: "Popular", title: "Popular on TMDb" },
+      { value: "trending", label: "Trending", title: "Trending this week on TMDb" },
+      { value: "top-rated", label: "Top rated", title: "Top rated on TMDb" },
+      { value: "upcoming", label: "Upcoming", title: "Upcoming films on TMDb" },
+      { value: "now-playing", label: "In cinemas", title: "In cinemas now, on TMDb" }
+    ]);
+    expect(discoverLists("series")[3]).toEqual({ value: "now-playing", label: "On air", title: "On air now, on TMDb" });
   });
 
   it("has each kind's own genres", () => {
@@ -33,6 +41,8 @@ describe("Discover lists and filters (#1429)", () => {
     expect(activeFilterCount({ ...NO_FILTERS, yearTo: "2005" })).toBe(1);
     expect(activeFilterCount({ ...NO_FILTERS, yearFrom: "1999", yearTo: "2005" })).toBe(1);
     expect(activeFilterCount({ ...NO_FILTERS, yearFrom: "  " })).toBe(0);
+    expect(activeFilterCount({ ...NO_FILTERS, yearTo: "  " })).toBe(0);
+    expect(activeFilterCount({ ...NO_FILTERS, yearFrom: " ", yearTo: " " })).toBe(0);
     expect(activeFilterCount({ ...NO_FILTERS, genres: [28] })).toBe(1);
     expect(activeFilterCount({ ...NO_FILTERS, ratingMin: "7" })).toBe(1);
     expect(activeFilterCount({ ...NO_FILTERS, language: "ja" })).toBe(1);
@@ -56,6 +66,14 @@ describe("Discover lists and filters (#1429)", () => {
     expect(query.has("list")).toBe(false);
   });
 
+  it("sends a filter only when it is set", () => {
+    const query = new URLSearchParams(discoverQuery("movies", "popular", { ...NO_FILTERS, ratingMin: "7" }, 1));
+    expect([...query.keys()].sort()).toEqual(["mediaType", "ratingMin"]);
+    expect(Object.fromEntries(new URLSearchParams(discoverQuery("series", "popular", { ...NO_FILTERS, language: "ja" }, 1)))).toEqual({ mediaType: "series", language: "ja" });
+    expect(Object.fromEntries(new URLSearchParams(discoverQuery("series", "popular", { ...NO_FILTERS, sort: "oldest" }, 1)))).toEqual({ mediaType: "series", sort: "oldest" });
+    expect(Object.fromEntries(new URLSearchParams(discoverQuery("movies", "popular", { ...NO_FILTERS, release: "released" }, 1)))).toEqual({ mediaType: "movies", release: "released" });
+  });
+
   it("leaves out a year that is not a number", () => {
     const query = new URLSearchParams(discoverQuery("movies", "popular", { ...NO_FILTERS, yearFrom: "abc", yearTo: "", genres: [18] }, 1));
     expect(query.has("yearFrom")).toBe(false);
@@ -70,6 +88,8 @@ describe("Discover lists and filters (#1429)", () => {
     expect(describeFilters("movies", { ...NO_FILTERS, yearFrom: "1990", yearTo: "1999" })).toBe("1990 to 1999");
     expect(describeFilters("movies", { ...NO_FILTERS, yearFrom: "1990" })).toBe("from 1990");
     expect(describeFilters("movies", { ...NO_FILTERS, yearTo: "1999" })).toBe("up to 1999");
+    expect(describeFilters("movies", { ...NO_FILTERS, yearFrom: " ", yearTo: "1999" })).toBe("up to 1999");
+    expect(describeFilters("movies", { ...NO_FILTERS, yearFrom: "1990", yearTo: " " })).toBe("from 1990");
     expect(describeFilters("movies", { ...NO_FILTERS, genres: [28, 12] })).toBe("Action and Adventure");
     expect(describeFilters("series", { ...NO_FILTERS, genres: [10759] })).toBe("Action & Adventure");
     expect(describeFilters("movies", { ...NO_FILTERS, ratingMin: "7", language: "ja" })).toBe("rated 7+, in Japanese");
