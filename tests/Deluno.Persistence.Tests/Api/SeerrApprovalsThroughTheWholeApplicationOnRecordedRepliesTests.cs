@@ -327,4 +327,30 @@ public sealed class SeerrApprovalsThroughTheWholeApplicationOnRecordedRepliesTes
         Assert.Contains("No destination rule matched \"Sintel\"", said.GetProperty("message").GetString(), StringComparison.Ordinal);
         Assert.Empty(await rig.App.Services.GetRequiredService<IMovieCatalogRepository>().ListAsync(CancellationToken.None));
     }
+
+    [Fact]
+    public async Task Who_asked_is_read_from_the_username_then_the_email_then_the_display_name()
+    {
+        await using var rig = await StartAsync();
+        string With(string? username, string? email, string? display) => Edited(FilmApproval(), json =>
+        {
+            var request = json["request"]!.AsObject();
+            request["requestedBy_username"] = username;
+            request["requestedBy_email"] = email;
+            request["requestedBy_displayName"] = display;
+        });
+
+        foreach (var body in new[]
+        {
+            With("by-username", "by-email@example.com", "By Display"),
+            With(null, "by-email@example.com", "By Display"),
+            With(null, null, "By Display")
+        })
+        {
+            Assert.Equal(HttpStatusCode.OK, (await PostAsync(rig, body)).StatusCode);
+        }
+
+        var asked = (await AcquisitionsAsync(rig)).EnumerateArray().Select(item => item.GetProperty("requestedBy").GetString()!).Order().ToArray();
+        Assert.Equal(["By Display", "by-email@example.com", "by-username"], asked);
+    }
 }
