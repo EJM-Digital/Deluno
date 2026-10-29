@@ -283,6 +283,72 @@ public sealed class MetadataGatewayOnRecordingsTests : IDisposable
         Assert.All(shows, show => Assert.Equal("tv", show.MediaType));
     }
 
+    [Theory]
+    [InlineData("movies", "trending", "/metadata/movies/trending", "page=1&window=week")]
+    [InlineData("movies", "top-rated", "/metadata/movies/top-rated", "page=1")]
+    [InlineData("movies", "upcoming", "/metadata/movies/upcoming", "page=1")]
+    [InlineData("movies", "now-playing", "/metadata/movies/now-playing", "page=1")]
+    [InlineData("tv", "trending", "/metadata/tv/trending", "page=1&window=week")]
+    [InlineData("tv", "top-rated", "/metadata/tv/top-rated", "page=1")]
+    [InlineData("tv", "now-playing", "/metadata/tv/now-playing", "page=1")]
+    public async Task Discovers_other_recommendation_lists_are_asked_of_the_gateway_and_read_as_a_list_of_titles(string mediaType, string list, string path, string query)
+    {
+        // The lists are TMDb lists in the popular list's own shape, so the recorded popular reply is what the gateway answers them with.
+        Uri? asked = null;
+        var rig = await RigAsync(request =>
+        {
+            if (request.RequestUri!.Host == "metadata.deluno.test") asked = request.RequestUri;
+            return Reply(mediaType == "tv" ? "popular-tv" : "popular-movies");
+        });
+
+        var titles = await rig.GetDiscoverListAsync(mediaType, new DiscoverListQuery(list, 1), CancellationToken.None);
+
+        Assert.Equal(path, asked!.AbsolutePath);
+        Assert.Equal(query, asked.Query.TrimStart('?'));
+        Assert.NotEmpty(titles);
+        Assert.All(titles, title => Assert.Equal(mediaType, title.MediaType));
+    }
+
+    [Fact]
+    public async Task A_filtered_discover_sends_each_filter_to_the_gateway_and_a_list_TMDb_lacks_asks_nothing()
+    {
+        var asked = new List<Uri>();
+        var rig = await RigAsync(request => { if (request.RequestUri!.Host == "metadata.deluno.test") asked.Add(request.RequestUri); return Reply("popular-movies"); });
+        var filters = new Dictionary<string, string>
+        {
+            ["with_genres"] = "28,12", ["vote_average.gte"] = "7.5", ["primary_release_date.gte"] = "2020-01-01", ["empty"] = " "
+        };
+
+        var titles = await rig.GetDiscoverListAsync("movies", new DiscoverListQuery("discover", 3, filters), CancellationToken.None);
+        var noShowsUpcoming = await rig.GetDiscoverListAsync("tv", new DiscoverListQuery("upcoming", 1), CancellationToken.None);
+        var unknown = await rig.GetDiscoverListAsync("movies", new DiscoverListQuery("nonsense", 1), CancellationToken.None);
+        var trendingWithFilters = await rig.GetDiscoverListAsync("movies", new DiscoverListQuery("trending", 1, filters, "day"), CancellationToken.None);
+
+        Assert.NotEmpty(titles);
+        Assert.Empty(noShowsUpcoming);
+        Assert.Empty(unknown);
+        Assert.NotEmpty(trendingWithFilters);
+        Assert.Equal(2, asked.Count);
+        Assert.Equal("/metadata/movies/discover", asked[0].AbsolutePath);
+        Assert.Equal("page=3&with_genres=28%2C12&vote_average.gte=7.5&primary_release_date.gte=2020-01-01", asked[0].Query.TrimStart('?'));
+        Assert.Equal("page=1&window=day", asked[1].Query.TrimStart('?'));
+    }
+
+    [Fact]
+    public async Task The_popular_list_asked_through_the_list_call_is_the_popular_route_and_a_gateway_with_no_answer_is_an_empty_list()
+    {
+        var asked = new List<Uri>();
+        var rig = await RigAsync(request => { if (request.RequestUri!.Host == "metadata.deluno.test") asked.Add(request.RequestUri); return new HttpResponseMessage(HttpStatusCode.NotFound); });
+
+        var popular = await rig.GetDiscoverListAsync("tv", new DiscoverListQuery("popular", 2), CancellationToken.None);
+        var trending = await rig.GetDiscoverListAsync("tv", new DiscoverListQuery("trending", 1), CancellationToken.None);
+
+        Assert.Empty(popular);
+        Assert.Empty(trending);
+        Assert.Equal("/metadata/tv/popular", asked[0].AbsolutePath);
+        Assert.Equal("page=2", asked[0].Query.TrimStart('?'));
+    }
+
     // ---- translations and the TheTVDB routes ----
 
     [Fact]

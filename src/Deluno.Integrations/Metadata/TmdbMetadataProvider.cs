@@ -2240,6 +2240,77 @@ public sealed partial class TmdbMetadataProvider(
         return await LocalizeArtworkAsync(direct, cancellationToken);
     }
 
+    /// <summary>
+    /// Trending, top rated, upcoming, now playing and the filtered discover (#1429): the gateway first, then TMDb
+    /// with the install's own key, as the popular list does. The popular list with no filter is that one.
+    /// </summary>
+    public async Task<IReadOnlyList<MetadataSearchResult>> GetDiscoverListAsync(
+        string mediaType,
+        DiscoverListQuery query,
+        CancellationToken cancellationToken)
+    {
+        var normalizedMediaType = NormalizeMediaType(mediaType);
+        if (!DiscoverListQuery.Offers(query.List, normalizedMediaType))
+        {
+            return [];
+        }
+
+        var pageNumber = Math.Clamp(query.Page, 1, 500);
+        if (query.List == DiscoverListQuery.Popular)
+        {
+            return await GetPopularAsync(normalizedMediaType, pageNumber, cancellationToken);
+        }
+
+        var config = await GetMetadataConfigurationAsync(cancellationToken);
+        var window = query.Window == "day" ? "day" : "week";
+        var filters = query.List == DiscoverListQuery.Discover
+            ? (query.Filters ?? new Dictionary<string, string>()).Where(pair => !string.IsNullOrWhiteSpace(pair.Value)).ToArray()
+            : [];
+        var suffix = string.Concat(filters.Select(pair => $"&{Uri.EscapeDataString(pair.Key)}={Uri.EscapeDataString(pair.Value)}"));
+
+        if (config.ProviderMode is "broker" or "hybrid" && !string.IsNullOrWhiteSpace(config.BrokerUrl))
+        {
+            var brokerUrl = $"{BuildGatewayBaseUrl(config.BrokerUrl)}/{normalizedMediaType}/{query.List}?page={pageNumber.ToString(CultureInfo.InvariantCulture)}"
+                + (query.List == DiscoverListQuery.Trending ? $"&window={window}" : suffix);
+            var fromBroker = await GetJsonWithResilienceAsync<TmdbSearchResponse>(
+                brokerUrl,
+                $"metadata:broker:list:{BuildHostKey(config.BrokerUrl)}",
+                "metadata.broker.list",
+                cancellationToken);
+            if (fromBroker?.Results is { Count: > 0 } brokerResults)
+            {
+                return await LocalizeArtworkAsync(brokerResults.Select(item => ToDiscoverResult(item, normalizedMediaType)).ToArray(), cancellationToken);
+            }
+
+            if (config.ProviderMode == "broker")
+            {
+                return [];
+            }
+        }
+
+        var apiKey = DirectKeyForMode(config);
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return [];
+        }
+
+        var kind = normalizedMediaType == "tv" ? "tv" : "movie";
+        var path = query.List switch
+        {
+            DiscoverListQuery.Trending => $"trending/{kind}/{window}",
+            DiscoverListQuery.TopRated => $"{kind}/top_rated",
+            DiscoverListQuery.Upcoming => "movie/upcoming",
+            DiscoverListQuery.NowPlaying => kind == "tv" ? "tv/on_the_air" : "movie/now_playing",
+            _ => $"discover/{kind}"
+        };
+        var languageParam = string.IsNullOrWhiteSpace(config.Language) ? string.Empty : $"&language={Uri.EscapeDataString(config.Language)}";
+        var url = $"https://api.themoviedb.org/3/{path}?api_key={Uri.EscapeDataString(apiKey)}&page={pageNumber.ToString(CultureInfo.InvariantCulture)}{languageParam}{suffix}";
+        var direct = await GetJsonWithResilienceAsync<TmdbSearchResponse>(url, "metadata:tmdb:list", "metadata.tmdb.list", cancellationToken);
+        return direct?.Results is { Count: > 0 } results
+            ? await LocalizeArtworkAsync(results.Select(item => ToDiscoverResult(item, normalizedMediaType)).ToArray(), cancellationToken)
+            : [];
+    }
+
     private async Task<IReadOnlyList<MetadataSearchResult>?> TryBrokerPopularAsync(
         string brokerUrl,
         string mediaType,

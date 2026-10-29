@@ -646,6 +646,9 @@ export interface DiscoverListSection {
 export interface DiscoverResponse {
   popular: DiscoverItem[];
   lists: DiscoverListSection[];
+  /** Which list `popular` holds: popular, trending, top-rated, upcoming, now-playing, or discover for a filtered search. */
+  list?: string;
+  page?: number;
 }
 
 export interface DiscoverAddRequest {

@@ -169,6 +169,14 @@ export function matchRoute(pathname) {
     return { kind: "popular", mediaType: popular[1] === "tv" ? "tv" : "movies" };
   }
 
+  const list = /^\/metadata\/(movies?|tv)\/(trending|top-rated|upcoming|now-playing|discover)$/.exec(pathname);
+  if (list) {
+    const mediaType = list[1] === "tv" ? "tv" : "movies";
+    // TMDb has no upcoming list for shows; the discover route filters them by first air date instead.
+    if (mediaType === "tv" && list[2] === "upcoming") return null;
+    return { kind: "list", list: list[2], mediaType };
+  }
+
   const personImdb = /^\/person\/(\d{1,12})\/imdb$/.exec(pathname);
   if (personImdb) {
     return { kind: "person-imdb", id: personImdb[1] };
@@ -237,8 +245,12 @@ function redirectToImdb(imdbId) {
 }
 
 async function serveCatalogueRoute(route, env, params = new URLSearchParams(), provider = fetch) {
-  const page = route.kind === "popular" ? parsePopularPage(params) : 1;
-  const key = route.kind === "catalogue"
+  const isList = route.kind === "popular" || route.kind === "list";
+  const page = isList ? parsePopularPage(params) : 1;
+  const listQuery = route.kind === "list" ? listQueryFor(route.list, params) : null;
+  const key = route.kind === "list"
+    ? `list:v1:${route.mediaType}:${route.list}:${page}:${listQuery.toString()}`
+    : route.kind === "catalogue"
     ? `catalogue:v1:${route.id}`
     : route.kind === "episode-groups"
       ? `episode-groups:v1:${route.id}`
@@ -264,6 +276,8 @@ async function serveCatalogueRoute(route, env, params = new URLSearchParams(), p
       ? await lookupSeriesCatalogue(route.id, env.TMDB_API_KEY, provider)
       : route.kind === "episode-groups"
         ? await lookupEpisodeGroups(route.id, env.TMDB_API_KEY, provider)
+        : route.kind === "list"
+          ? await lookupList(route.mediaType, route.list, page, listQuery, env.TMDB_API_KEY, provider)
         : route.kind === "popular"
           ? await lookupPopular(route.mediaType, page, env.TMDB_API_KEY, provider)
       : route.kind === "release-dates"
@@ -278,7 +292,7 @@ async function serveCatalogueRoute(route, env, params = new URLSearchParams(), p
       payload,
       route.kind === "translations"
         ? TRANSLATIONS_TTL_SECONDS
-        : route.kind === "popular"
+        : route.kind === "popular" || route.kind === "list"
           ? POPULAR_TTL_SECONDS
           : CATALOGUE_TTL_SECONDS);
     return json(payload, 200, { "Cache-Control": "public, max-age=600" });
@@ -309,7 +323,59 @@ export function parsePopularPage(params) {
  * TMDb's own field names, which is the shape the app's client parses.
  */
 export async function lookupPopular(mediaType, page, apiKey, request = fetch) {
-  const endpoint = new URL(`https://api.themoviedb.org/3/${mediaType === "tv" ? "tv" : "movie"}/popular`);
+  return fetchTrimmedList(new URL(`https://api.themoviedb.org/3/${mediaType === "tv" ? "tv" : "movie"}/popular`), page, apiKey, request);
+}
+
+// The TMDb discover filters the gateway passes through (#1429). Anything else is dropped, and a value is
+// held to plain characters, so this stays a small broker boundary and never a general TMDb passthrough.
+const DISCOVER_FILTERS = new Set([
+  "sort_by", "with_genres", "without_genres", "primary_release_date.gte", "primary_release_date.lte",
+  "first_air_date.gte", "first_air_date.lte", "release_date.gte", "release_date.lte", "vote_average.gte",
+  "vote_average.lte", "vote_count.gte", "with_original_language", "with_runtime.gte", "with_runtime.lte",
+  "with_status", "with_release_type", "with_keywords", "with_companies", "with_networks", "region",
+  "air_date.gte", "air_date.lte"
+]);
+const FILTER_VALUE = /^[A-Za-z0-9_.,|:-]{1,120}$/;
+const TRENDING_WINDOWS = new Set(["day", "week"]);
+
+/** The query a list route forwards to TMDb: the discover filters, or a trending window; sorted so equal asks share a cache entry. */
+export function listQueryFor(list, params) {
+  const kept = new URLSearchParams();
+  if (list === "trending") {
+    const window = params.get("window");
+    kept.set("window", TRENDING_WINDOWS.has(window) ? window : "week");
+    return kept;
+  }
+
+  if (list === "discover") {
+    for (const name of [...DISCOVER_FILTERS].sort()) {
+      const value = params.get(name);
+      if (value !== null && FILTER_VALUE.test(value)) kept.set(name, value);
+    }
+  }
+
+  return kept;
+}
+
+const LIST_PATHS = {
+  movies: { "top-rated": "movie/top_rated", upcoming: "movie/upcoming", "now-playing": "movie/now_playing", discover: "discover/movie", trending: "trending/movie" },
+  tv: { "top-rated": "tv/top_rated", "now-playing": "tv/on_the_air", discover: "discover/tv", trending: "trending/tv" }
+};
+
+/** One of TMDb's other lists (trending, top rated, upcoming, now playing) or a filtered discover, in the popular list's shape. */
+export async function lookupList(mediaType, list, page, query, apiKey, request = fetch) {
+  const path = LIST_PATHS[mediaType === "tv" ? "tv" : "movies"][list];
+  if (!path) throw new TmdbRequestError(404);
+  const window = list === "trending" ? `/${query.get("window") ?? "week"}` : "";
+  const endpoint = new URL(`https://api.themoviedb.org/3/${path}${window}`);
+  if (list === "discover") {
+    for (const [name, value] of query) endpoint.searchParams.set(name, value);
+  }
+
+  return fetchTrimmedList(endpoint, page, apiKey, request);
+}
+
+async function fetchTrimmedList(endpoint, page, apiKey, request) {
   endpoint.searchParams.set("api_key", apiKey);
   endpoint.searchParams.set("page", String(page));
   const body = await getJson(endpoint, request);

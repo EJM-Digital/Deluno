@@ -36,6 +36,9 @@ public sealed class MetadataSearchAndDiscoverOnTheRecordedGatewayTests
             }
             else if (path == "/metadata/tv/popular") state = "popular-tv";
             else if (path == "/metadata/movies/popular") state = "popular-movies";
+            // The other lists and the filtered discover answer in the popular list's own shape (#1429), so its recording stands in.
+            else if (path.StartsWith("/metadata/tv/", StringComparison.Ordinal)) state = "popular-tv";
+            else if (path.StartsWith("/metadata/movies/", StringComparison.Ordinal)) state = "popular-movies";
             return state is null
                 ? throw new InvalidOperationException($"No gateway recording answers {request.Method} {path}{query}.")
                 : Task.FromResult(RecordedReplies.Tmdb(state).Single.Reply.ToResponse());
@@ -110,6 +113,58 @@ public sealed class MetadataSearchAndDiscoverOnTheRecordedGatewayTests
         Assert.False(Card("Reacher").GetProperty("inLibrary").GetBoolean());
         Assert.Single(popular, card => card.GetProperty("inLibrary").GetBoolean());
         Assert.Single(popular, card => card.GetProperty("excluded").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("movies", "list=trending", "/metadata/movies/trending", "page=1&window=week")]
+    [InlineData("series", "list=top-rated", "/metadata/tv/top-rated", "page=1")]
+    [InlineData("movies", "list=upcoming", "/metadata/movies/upcoming", "page=1")]
+    [InlineData("series", "list=nonsense", "/metadata/tv/popular", "page=1")]
+    [InlineData("series", "list=upcoming", "/metadata/tv/popular", "page=1")]
+    [InlineData("movies", "list=trending&window=day&page=2", "/metadata/movies/trending", "page=2&window=day")]
+    public async Task Discover_with_no_filter_reads_the_list_asked_for_from_the_broker_and_names_it(string mediaType, string query, string path, string brokerQuery)
+    {
+        var replay = new GatewayReplay();
+        await using var app = await StartAsync(replay);
+
+        var response = await app.Client.GetAsync($"/api/discover?mediaType={mediaType}&{query}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.NotEmpty(body.GetProperty("popular").EnumerateArray());
+        Assert.Equal(path.Split('/').Last(), body.GetProperty("list").GetString());
+        Assert.Contains(replay.Asked, asked => asked == $"{path}?{brokerQuery}");
+    }
+
+    [Fact]
+    public async Task Discover_with_filters_asks_the_broker_for_a_filtered_search_for_films_and_for_shows()
+    {
+        var replay = new GatewayReplay();
+        await using var app = await StartAsync(replay);
+
+        var films = await app.Client.GetFromJsonAsync<JsonElement>(
+            "/api/discover?mediaType=movies&list=trending&release=upcoming&yearFrom=2020&genres=28,12,x&ratingMin=7.5&votesMin=100&language=en&runtimeMin=90&runtimeMax=150&sort=rating&page=2");
+        var shows = await app.Client.GetFromJsonAsync<JsonElement>("/api/discover?mediaType=series&release=released&yearTo=2015&sort=newest");
+
+        Assert.Equal("discover", films.GetProperty("list").GetString());
+        Assert.Equal(2, films.GetProperty("page").GetInt32());
+        Assert.Equal("discover", shows.GetProperty("list").GetString());
+        var asked = replay.Asked.Where(path => path.Contains("/discover?", StringComparison.Ordinal)).ToArray();
+        Assert.Equal(2, asked.Length);
+        var filmQuery = System.Web.HttpUtility.ParseQueryString(asked[0].Split('?')[1]);
+        Assert.Equal("/metadata/movies/discover", asked[0].Split('?')[0]);
+        Assert.Equal("28,12", filmQuery["with_genres"]);
+        Assert.Equal("7.5", filmQuery["vote_average.gte"]);
+        Assert.Equal("100", filmQuery["vote_count.gte"]);
+        Assert.Equal("en", filmQuery["with_original_language"]);
+        Assert.Equal("90", filmQuery["with_runtime.gte"]);
+        Assert.Equal("150", filmQuery["with_runtime.lte"]);
+        Assert.Equal("vote_average.desc", filmQuery["sort_by"]);
+        Assert.NotNull(filmQuery["primary_release_date.gte"]);
+        var showQuery = System.Web.HttpUtility.ParseQueryString(asked[1].Split('?')[1]);
+        Assert.Equal("/metadata/tv/discover", asked[1].Split('?')[0]);
+        Assert.Equal("first_air_date.desc", showQuery["sort_by"]);
+        Assert.NotNull(showQuery["first_air_date.lte"]);
     }
 
     [Fact]

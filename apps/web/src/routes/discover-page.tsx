@@ -18,7 +18,7 @@ import { useCoalescedRevalidate } from "../hooks/use-live-interval";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { ArtworkImage } from "../components/ui/artwork-image";
 import { Link, useLoaderData } from "react-router-dom";
-import { CircleSlash, Compass, Plus, ShieldCheck } from "lucide-react";
+import { CircleSlash, Compass, Plus, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import {
   fetchJson,
   readErrorText,
@@ -34,6 +34,17 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { AutomationPausedNotice } from "../components/app/automation-paused-notice";
+import { DiscoverFilterBar } from "../components/app/discover-filter-bar";
+import {
+  FILTERED_TITLE,
+  NO_FILTERS,
+  activeFilterCount,
+  describeFilters,
+  discoverLists,
+  discoverQuery,
+  type DiscoverFilters,
+  type DiscoverListName
+} from "../lib/discover-filters";
 import { Drawer, DrawerFooter, DrawerSection } from "../components/ui/drawer";
 import { EmptyState } from "../components/shell/empty-state";
 import { Field } from "../components/ui/field";
@@ -123,7 +134,7 @@ export function DiscoverPage() {
     <FilterChips<DiscoverMediaType>
       label="Discover media type"
       value={mediaType}
-      onValueChange={setMediaType}
+      onValueChange={chooseKind}
       options={[
         { value: "movies", label: "Movies" },
         { value: "series", label: "TV" }
@@ -133,13 +144,24 @@ export function DiscoverPage() {
   const [data, setData] = useState<DiscoverResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // The list the grid shows (popular, trending...) and the filters over it. Any filter turns the grid into a filtered search.
+  const [list, setList] = useState<DiscoverListName>("popular");
+  const [filters, setFilters] = useState<DiscoverFilters>(NO_FILTERS);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [noMore, setNoMore] = useState(false);
+  const filterCount = activeFilterCount(filters);
+  const lists = discoverLists(mediaType);
   const [addTarget, setAddTarget] = useState<{ candidate: AddCandidate; mediaType: DiscoverMediaType } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
     setError(null);
-    fetchJson<DiscoverResponse>(`/api/discover?mediaType=${mediaType}`)
+    setPage(1);
+    setNoMore(false);
+    fetchJson<DiscoverResponse>(`/api/discover?${discoverQuery(mediaType, list, filters, 1)}`)
       .then((response) => {
         if (!cancelled) setData(response);
       })
@@ -152,7 +174,23 @@ export function DiscoverPage() {
     return () => {
       cancelled = true;
     };
-  }, [mediaType]);
+  }, [mediaType, list, filters]);
+
+  async function showMore() {
+    const next = page + 1;
+    setLoadingMore(true);
+    try {
+      const more = await fetchJson<DiscoverResponse>(`/api/discover?${discoverQuery(mediaType, list, filters, next)}`);
+      const fresh = more.popular.filter((item) => !data?.popular.some((have) => have.providerId === item.providerId));
+      setData((current) => current ? { ...current, popular: [...current.popular, ...fresh] } : more);
+      setPage(next);
+      if (fresh.length === 0) setNoMore(true);
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : "More titles could not be loaded.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   // A film or show joining or leaving the library changes which popular titles are "Already in library".
   // Read again quietly (no spinner, nothing cleared) as the change is announced (#1179).
@@ -160,8 +198,8 @@ export function DiscoverPage() {
   shownType.current = mediaType;
   const readAgain = useCoalescedRevalidate(() => {
     const asked = mediaType;
-    fetchJson<DiscoverResponse>(`/api/discover?mediaType=${asked}`)
-      .then((response) => { if (shownType.current === asked) setData(response); })
+    fetchJson<DiscoverResponse>(`/api/discover?${discoverQuery(asked, list, filters, 1)}`)
+      .then((response) => { if (shownType.current === asked) { setData(response); setPage(1); } })
       .catch(() => undefined);
   }, 500);
   useSignalREvent("MovieChanged", RealtimeGroups.Dashboard, () => { if (mediaType === "movies") readAgain(); });
@@ -183,6 +221,13 @@ export function DiscoverPage() {
     ),
     [qualityProfiles, mediaType]
   );
+
+  function chooseKind(next: DiscoverMediaType) {
+    // Each kind has its own lists and genres, so the choice over the other kind is not carried across.
+    setList("popular");
+    setFilters(NO_FILTERS);
+    setMediaType(next);
+  }
 
   function markPopularAdded(title: string, year: number | null) {
     setData((current) =>
@@ -211,11 +256,42 @@ export function DiscoverPage() {
       <Card as="section" className="dark:border-white/[0.07]">
         <header className="flex min-h-(--list-header-height) items-center gap-2 border-b border-hairline px-(--card-pad-x)">
           <Compass className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-(length:--type-card-title) font-semibold leading-none text-foreground">Popular on TMDb</h2>
+          <h2 className="text-(length:--type-card-title) font-semibold leading-none text-foreground">
+            {filterCount > 0 ? FILTERED_TITLE : lists.find((item) => item.value === list)?.title ?? "Popular on TMDb"}
+          </h2>
           {data ? (
             <span className="text-(length:--type-caption) text-muted-foreground">{data.popular.length} titles</span>
           ) : null}
+          <div className="ml-auto flex flex-wrap items-center gap-2 py-1.5">
+            <FilterChips<DiscoverListName | "">
+              label="Discover list"
+              size="sm"
+              value={filterCount > 0 ? "" : list}
+              onValueChange={(next) => {
+                if (next === "") return;
+                setFilters(NO_FILTERS);
+                setList(next);
+              }}
+              options={lists.map((item) => ({ value: item.value, label: item.label }))}
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant={filtersOpen || filterCount > 0 ? "secondary" : "outline"}
+              aria-expanded={filtersOpen}
+              aria-label={filterCount > 0 ? `Filters, ${filterCount} on` : "Filters"}
+              onClick={() => setFiltersOpen((open) => !open)}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" /> Filters{filterCount > 0 ? ` · ${filterCount}` : ""}
+            </Button>
+          </div>
         </header>
+        {filtersOpen ? <DiscoverFilterBar kind={mediaType} filters={filters} onChange={setFilters} /> : null}
+        {filterCount > 0 ? (
+          <p className="border-b border-hairline px-(--card-pad-x) py-2 text-(length:--type-caption) text-muted-foreground">
+            Showing {mediaType === "series" ? "shows" : "films"}: {describeFilters(mediaType, filters) || "in your chosen order"}.
+          </p>
+        ) : null}
 
         {isLoading ? (
           <div className="p-(--tile-pad)"><LibraryGridSkeleton count={12} /></div>
@@ -228,8 +304,10 @@ export function DiscoverPage() {
         ) : !data || data.popular.length === 0 ? (
           <EmptyState
             variant="library"
-            title="Nothing to show right now"
-            description="The popular list could not be loaded just now. Deluno will try again when you open this page."
+            title={filterCount > 0 ? "Nothing matches those filters" : "Nothing to show right now"}
+            description={filterCount > 0
+              ? "Loosen a filter, or clear them all, to see more."
+              : "This list could not be loaded just now. Deluno will try again when you open this page."}
           />
         ) : (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(var(--library-card-sm),1fr))] gap-(--library-grid-gap) p-(--tile-pad)">
@@ -243,6 +321,13 @@ export function DiscoverPage() {
             ))}
           </div>
         )}
+        {!isLoading && !error && data && data.popular.length > 0 ? (
+          <div className="flex justify-center border-t border-hairline p-2">
+            <Button type="button" size="sm" variant="ghost" disabled={loadingMore || noMore} onClick={() => void showMore()}>
+              {loadingMore ? "Loading" : noMore ? "That is everything TMDb lists" : "Show more"}
+            </Button>
+          </div>
+        ) : null}
       </Card>
 
       {!isLoading && data && data.lists.length > 0

@@ -49,6 +49,8 @@ public static class DiscoverEndpointRouteBuilderExtensions
             HttpContext httpContext,
             string? mediaType,
             int? page,
+            [AsParameters] DiscoverFilterQuery filterQuery,
+            TimeProvider timeProvider,
             IMetadataProvider metadataProvider,
             IMetadataLibraryPresence libraryPresence,
             IUnifiedExclusionRepository exclusionRepository,
@@ -65,7 +67,10 @@ public static class DiscoverEndpointRouteBuilderExtensions
             var normalized = NormalizeMediaType(mediaType);
             var tmdbMediaType = normalized == "series" ? "tv" : "movies";
 
-            var popularRaw = await metadataProvider.GetPopularAsync(tmdbMediaType, Math.Max(page ?? 1, 1), cancellationToken);
+            // #1429: a filter makes the list a filtered discover; with none, the list is the one asked for (popular by default).
+            var listQuery = DiscoverFilters.ToListQuery(
+                filterQuery, tmdbMediaType, Math.Max(page ?? 1, 1), DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime));
+            var popularRaw = await metadataProvider.GetDiscoverListAsync(tmdbMediaType, listQuery, cancellationToken);
             var popularMarked = await libraryPresence.MarkHeldTitlesAsync(popularRaw, cancellationToken);
             var exclusions = await exclusionRepository.ListActiveAsync(normalized, null, null, cancellationToken);
 
@@ -119,7 +124,7 @@ public static class DiscoverEndpointRouteBuilderExtensions
                 }
             }
 
-            return Results.Ok(new DiscoverResponse(popular, lists));
+            return Results.Ok(new DiscoverResponse(popular, lists, listQuery.List, listQuery.Page));
         });
 
         discover.MapPost("/add", async (
@@ -391,7 +396,11 @@ public sealed record DiscoverListEntry(
 
 public sealed record DiscoverListSection(string SourceId, string SourceName, IReadOnlyList<DiscoverListEntry> Items);
 
-public sealed record DiscoverResponse(IReadOnlyList<DiscoverItem> Popular, IReadOnlyList<DiscoverListSection> Lists);
+/// <summary>
+/// <see cref="Popular"/> holds the titles of the list asked for (the name is older than #1429): <see cref="List"/> says which
+/// one it is (popular, trending, top-rated, upcoming, now-playing, or discover for a filtered search) and <see cref="Page"/> its page.
+/// </summary>
+public sealed record DiscoverResponse(IReadOnlyList<DiscoverItem> Popular, IReadOnlyList<DiscoverListSection> Lists, string List = "popular", int Page = 1);
 
 public sealed record DiscoverAddRequest(
     string MediaType,
@@ -412,3 +421,89 @@ public sealed record DiscoverAddRequest(
     bool SearchForCutoffUnmetNow = false);
 
 public sealed record DiscoverAddResponse(string Id, string MediaType, string? LibraryId);
+
+/// <summary>The Discover filters a person can set (#1429). Every one is optional; a value that is not understood is ignored.</summary>
+public sealed record DiscoverFilterQuery(
+    string? List = null,
+    /// <summary>released | upcoming</summary>
+    string? Release = null,
+    int? YearFrom = null,
+    int? YearTo = null,
+    /// <summary>Comma-separated TMDb genre ids.</summary>
+    string? Genres = null,
+    double? RatingMin = null,
+    int? VotesMin = null,
+    /// <summary>The title's original language, as a two or three letter code.</summary>
+    string? Language = null,
+    int? RuntimeMin = null,
+    int? RuntimeMax = null,
+    /// <summary>popular | rating | newest | oldest</summary>
+    string? Sort = null,
+    /// <summary>day | week, for the trending list.</summary>
+    string? Window = null);
+
+/// <summary>Turns the filters on the Discover page into the broker's list ask.</summary>
+public static class DiscoverFilters
+{
+    public static DiscoverListQuery ToListQuery(DiscoverFilterQuery query, string tmdbMediaType, int page, DateOnly today)
+    {
+        var isTv = tmdbMediaType == "tv";
+        var filters = new Dictionary<string, string>(StringComparer.Ordinal);
+        var dateField = isTv ? "first_air_date" : "primary_release_date";
+
+        var from = Year(query.YearFrom) is { } yearFrom ? new DateOnly(yearFrom, 1, 1) : (DateOnly?)null;
+        var to = Year(query.YearTo) is { } yearTo ? new DateOnly(yearTo, 12, 31) : (DateOnly?)null;
+        switch (query.Release?.Trim().ToLowerInvariant())
+        {
+            case "released":
+                to = to is { } limit && limit < today ? limit : today;
+                break;
+            case "upcoming":
+                var tomorrow = today.AddDays(1);
+                from = from is { } start && start > tomorrow ? start : tomorrow;
+                break;
+        }
+
+        if (from is { } gte) filters[$"{dateField}.gte"] = gte.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        if (to is { } lte) filters[$"{dateField}.lte"] = lte.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
+        var genres = (query.Genres ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(id => id.Length is > 0 and <= 8 && id.All(char.IsAsciiDigit))
+            .Distinct()
+            .ToArray();
+        if (genres.Length > 0) filters["with_genres"] = string.Join(',', genres);
+
+        if (query.RatingMin is { } rating and > 0 and <= 10) filters["vote_average.gte"] = rating.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+        if (query.VotesMin is { } votes and > 0) filters["vote_count.gte"] = votes.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (query.Language?.Trim().ToLowerInvariant() is { Length: >= 2 and <= 3 } language && language.All(char.IsAsciiLetter)) filters["with_original_language"] = language;
+        if (query.RuntimeMin is { } runtimeMin and > 0) filters["with_runtime.gte"] = runtimeMin.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (query.RuntimeMax is { } runtimeMax and > 0) filters["with_runtime.lte"] = runtimeMax.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+        var sort = query.Sort?.Trim().ToLowerInvariant() switch
+        {
+            "rating" => "vote_average.desc",
+            "newest" => $"{dateField}.desc",
+            "oldest" => $"{dateField}.asc",
+            _ => null
+        };
+        if (sort is not null) filters["sort_by"] = sort;
+        // TMDb advises a vote floor when sorting by rating, or a title one person rated 10 tops the list.
+        if (sort == "vote_average.desc" && !filters.ContainsKey("vote_count.gte")) filters["vote_count.gte"] = "200";
+
+        if (filters.Count > 0)
+        {
+            return new DiscoverListQuery(DiscoverListQuery.Discover, page, filters);
+        }
+
+        var list = query.List?.Trim().ToLowerInvariant();
+        if (list is null || !DiscoverListQuery.Offers(list, tmdbMediaType) || list == DiscoverListQuery.Discover)
+        {
+            list = DiscoverListQuery.Popular;
+        }
+
+        return new DiscoverListQuery(list, page, null, query.Window?.Trim().ToLowerInvariant() == "day" ? "day" : "week");
+    }
+
+    private static int? Year(int? year) => year is >= 1888 and <= 2100 ? year : null;
+}

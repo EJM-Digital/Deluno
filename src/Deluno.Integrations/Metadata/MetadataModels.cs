@@ -187,6 +187,34 @@ public sealed record MetadataCountryFacts(
     DateOnly? Physical,
     string? Certification);
 
+/// <summary>
+/// One of the provider's recommendation lists, or a filtered discover (#1429). <see cref="Filters"/> are TMDb's own
+/// discover parameters (<c>with_genres</c>, <c>vote_average.gte</c>, <c>primary_release_date.gte</c> and the rest) and
+/// only apply to the <c>discover</c> list; <see cref="Window"/> (<c>day</c> or <c>week</c>) only to <c>trending</c>.
+/// </summary>
+public sealed record DiscoverListQuery(
+    string List,
+    int Page,
+    IReadOnlyDictionary<string, string>? Filters = null,
+    string Window = "week")
+{
+    public const string Popular = "popular";
+    public const string Trending = "trending";
+    public const string TopRated = "top-rated";
+    public const string Upcoming = "upcoming";
+    public const string NowPlaying = "now-playing";
+    public const string Discover = "discover";
+
+    /// <summary>Whether TMDb offers this list for the kind: it has no upcoming list for shows.</summary>
+    public static bool Offers(string list, string mediaType)
+        => list switch
+        {
+            Popular or Trending or TopRated or NowPlaying or Discover => true,
+            Upcoming => mediaType != "tv",
+            _ => false
+        };
+}
+
 /// <summary>A provider collection and its full movie membership.</summary>
 public sealed record MetadataCollection(
     string Provider,

@@ -224,3 +224,119 @@ describe("Discover Movies and TV chips", () => {
     expect(screen.getByRole("radio", { name: "TV" })).toHaveAttribute("aria-checked", "true");
   });
 });
+
+describe("Discover lists and filters (#1429)", () => {
+  function lastDiscoverPath() {
+    return authedFetch.mock.calls.map(([path]) => path as string).filter((path) => path.startsWith("/api/discover?")).at(-1)!;
+  }
+
+  it("opens on the popular list and switches to trending, top rated and the films-only lists by name", async () => {
+    window.localStorage.clear();
+    await renderDiscoverPage();
+    await waitFor(() => expect(screen.getByText("The Matrix")).toBeInTheDocument());
+    expect(screen.getByRole("heading", { name: "Popular on TMDb" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Trending" }));
+    await waitFor(() => expect(lastDiscoverPath()).toBe("/api/discover?mediaType=movies&list=trending"));
+    expect(screen.getByRole("heading", { name: "Trending this week on TMDb" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "Upcoming" }));
+    await waitFor(() => expect(lastDiscoverPath()).toBe("/api/discover?mediaType=movies&list=upcoming"));
+    expect(screen.getByRole("radio", { name: "In cinemas" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: "TV" }));
+    await waitFor(() => expect(lastDiscoverPath()).toBe("/api/discover?mediaType=series"));
+    expect(screen.queryByRole("radio", { name: "Upcoming" })).toBeNull();
+    expect(screen.getByRole("radio", { name: "On air" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Popular" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("filters by release, years, genre, rating, language and order, says so, and clears them again", async () => {
+    window.localStorage.clear();
+    await renderDiscoverPage();
+    await waitFor(() => expect(screen.getByText("The Matrix")).toBeInTheDocument());
+    expect(screen.queryByRole("group", { name: "Discover filters" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    const bar = screen.getByRole("group", { name: "Discover filters" });
+    fireEvent.change(within(bar).getByRole("combobox", { name: "Release" }), { target: { value: "upcoming" } });
+    await waitFor(() => expect(lastDiscoverPath()).toBe("/api/discover?mediaType=movies&release=upcoming"));
+    expect(screen.getByRole("heading", { name: "Titles that match your filters" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Filters, 1 on" })).toBeInTheDocument();
+    expect(screen.getByText(/Showing films: not out yet\./)).toBeInTheDocument();
+    for (const chip of within(screen.getByRole("radiogroup", { name: "Discover list" })).getAllByRole("radio")) expect(chip).toHaveAttribute("aria-checked", "false");
+
+    fireEvent.change(within(bar).getByRole("textbox", { name: "From year" }), { target: { value: "20a27" } });
+    fireEvent.change(within(bar).getByRole("textbox", { name: "To year" }), { target: { value: "2030" } });
+    fireEvent.click(within(bar).getByRole("button", { name: "Action" }));
+    fireEvent.click(within(bar).getByRole("button", { name: "Comedy" }));
+    expect(within(bar).getByRole("button", { name: "Action" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(bar).getByRole("button", { name: "Comedy" }));
+    expect(within(bar).getByRole("button", { name: "Comedy" })).toHaveAttribute("aria-pressed", "false");
+    fireEvent.change(within(bar).getByRole("combobox", { name: "Lowest rating" }), { target: { value: "7" } });
+    fireEvent.change(within(bar).getByRole("combobox", { name: "Original language" }), { target: { value: "ja" } });
+    fireEvent.change(within(bar).getByRole("combobox", { name: "Order" }), { target: { value: "rating" } });
+    await waitFor(() => expect(lastDiscoverPath()).toBe(
+      "/api/discover?mediaType=movies&release=upcoming&yearFrom=2027&yearTo=2030&genres=28&ratingMin=7&language=ja&sort=rating"));
+    expect(screen.getByRole("button", { name: "Filters, 6 on" })).toBeInTheDocument();
+    expect(screen.getByText(/Showing films: not out yet, 2027 to 2030, Action, rated 7\+, in Japanese\./)).toBeInTheDocument();
+
+    fireEvent.click(within(bar).getByRole("button", { name: "Clear filters" }));
+    await waitFor(() => expect(lastDiscoverPath()).toBe("/api/discover?mediaType=movies"));
+    expect(screen.getByRole("button", { name: "Filters" })).toBeInTheDocument();
+    expect(screen.queryByText(/^Showing films/)).toBeNull();
+  });
+
+  it("choosing a list drops the filters, and choosing Movies or TV drops them too", async () => {
+    window.localStorage.clear();
+    await renderDiscoverPage();
+    await waitFor(() => expect(screen.getByText("The Matrix")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Lowest rating" }), { target: { value: "8" } });
+    await waitFor(() => expect(lastDiscoverPath()).toContain("ratingMin=8"));
+
+    fireEvent.click(screen.getByRole("radio", { name: "Top rated" }));
+    await waitFor(() => expect(lastDiscoverPath()).toBe("/api/discover?mediaType=movies&list=top-rated"));
+    expect(screen.getByRole("button", { name: "Filters" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Lowest rating" }), { target: { value: "6" } });
+    await waitFor(() => expect(lastDiscoverPath()).toContain("ratingMin=6"));
+    fireEvent.click(screen.getByRole("radio", { name: "TV" }));
+    await waitFor(() => expect(lastDiscoverPath()).toBe("/api/discover?mediaType=series"));
+    expect(screen.getByRole("radio", { name: "Popular" })).toHaveAttribute("aria-checked", "true");
+    expect(within(screen.getByRole("group", { name: "Genres of shows" })).getByRole("button", { name: "Kids" })).toBeInTheDocument();
+  });
+
+  it("offers more pages until TMDb has no more, and says when filters leave nothing", async () => {
+    window.localStorage.clear();
+    authedFetch.mockImplementation((path: string) => {
+      if (path.startsWith("/api/discover?")) {
+        if (path.includes("ratingMin=8")) return jsonResponse(discoverResponse({ popular: [], lists: [] }));
+        if (path.includes("page=2")) {
+          return jsonResponse(discoverResponse({ popular: [
+            { ...discoverResponse().popular[0] },
+            { ...discoverResponse().popular[0], providerId: "999", title: "Page Two Film" }
+          ], lists: [] }));
+        }
+        return jsonResponse(discoverResponse());
+      }
+      return jsonResponse([]);
+    });
+    const { DiscoverPage } = await import("./discover-page");
+    render(<MemoryRouter><DiscoverPage /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText("The Matrix")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    await waitFor(() => expect(screen.getByText("Page Two Film")).toBeInTheDocument());
+    expect(screen.getAllByText("The Matrix")).toHaveLength(1);
+    expect(authedFetch).toHaveBeenCalledWith("/api/discover?mediaType=movies&page=2", expect.anything());
+
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "That is everything TMDb lists" })).toBeDisabled());
+
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Lowest rating" }), { target: { value: "8" } });
+    await waitFor(() => expect(screen.getByText("Nothing matches those filters")).toBeInTheDocument());
+    expect(screen.getByText(/Loosen a filter/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Show more|everything TMDb lists/ })).toBeNull();
+  });
+});

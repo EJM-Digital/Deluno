@@ -93,4 +93,11 @@ internal sealed class RecordingMetadataProvider(
         return Task.FromResult<IReadOnlyList<MetadataSearchResult>>(
             cards.Where(card => card.MediaType == normalized).ToArray());
     }
+
+    /// <summary>The same cards for any list: the test's own list, whatever list was asked for (#1429).</summary>
+    public Task<IReadOnlyList<MetadataSearchResult>> GetDiscoverListAsync(
+        string mediaType,
+        DiscoverListQuery query,
+        CancellationToken cancellationToken)
+        => GetPopularAsync(mediaType, query.Page, cancellationToken);
 }

@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import {
   buildCacheKey,
   lookupMovieReleaseDates,
   lookupEpisodeGroups,
   lookupPopular,
+  lookupList,
+  listQueryFor,
   parsePopularPage,
   lookupMovieCollection,
   lookupPersonImdbId,
@@ -595,4 +598,90 @@ test("the gateway serves episode groups and popular lists, caches them, and keep
   assert.equal((await unavailable.json()).error, "provider_unavailable");
   const unconfigured = await viaGateway("/metadata/tv/popular", tmdb, { TMDB_API_KEY: "" });
   assert.equal(unconfigured.status, 503);
+});
+
+// TMDb's trending, top rated, upcoming, now playing and discover lists answer in the same list shape as its popular list,
+// so the recorded popular reply (tests/fixtures/recorded/tmdb) is the upstream body these tests feed the gateway.
+const recordedPopular = JSON.parse(
+  readFileSync(new URL("../../../tests/fixtures/recorded/tmdb/2026-10-18/popular-movies.json", import.meta.url), "utf8")
+).exchanges[0].reply.body;
+
+test("routes the recommendation lists and discover for films and shows (#1429)", () => {
+  assert.deepEqual(matchRoute("/metadata/movies/trending"), { kind: "list", list: "trending", mediaType: "movies" });
+  assert.deepEqual(matchRoute("/metadata/movie/top-rated"), { kind: "list", list: "top-rated", mediaType: "movies" });
+  assert.deepEqual(matchRoute("/metadata/movies/upcoming"), { kind: "list", list: "upcoming", mediaType: "movies" });
+  assert.deepEqual(matchRoute("/metadata/tv/now-playing"), { kind: "list", list: "now-playing", mediaType: "tv" });
+  assert.deepEqual(matchRoute("/metadata/tv/discover"), { kind: "list", list: "discover", mediaType: "tv" });
+  assert.equal(matchRoute("/metadata/tv/upcoming"), null, "TMDb has no upcoming list for shows");
+  assert.equal(matchRoute("/metadata/movies/discover/extra"), null);
+});
+
+test("a discover query keeps only the filters TMDb lists offer and plain values", () => {
+  const query = listQueryFor("discover", new URLSearchParams(
+    "with_genres=28,12&vote_average.gte=7.5&primary_release_date.gte=2020-01-01&api_key=steal&include_adult=true&sort_by=popularity.desc&with_keywords=a%20b&region=%26x"));
+  assert.equal(query.get("with_genres"), "28,12");
+  assert.equal(query.get("vote_average.gte"), "7.5");
+  assert.equal(query.get("primary_release_date.gte"), "2020-01-01");
+  assert.equal(query.get("sort_by"), "popularity.desc");
+  assert.equal(query.get("api_key"), null);
+  assert.equal(query.get("include_adult"), null);
+  assert.equal(query.get("with_keywords"), null, "a value with a space is dropped");
+  assert.equal(query.get("region"), null);
+  assert.equal(listQueryFor("trending", new URLSearchParams("window=day")).get("window"), "day");
+  assert.equal(listQueryFor("trending", new URLSearchParams("window=year")).get("window"), "week");
+  assert.equal([...listQueryFor("top-rated", new URLSearchParams("with_genres=28"))].length, 0, "only discover takes filters");
+});
+
+test("each list is read from its own TMDb path, with the filters, and trims like the popular list", async () => {
+  const cases = [
+    ["movies", "trending", "/3/trending/movie/week"],
+    ["movies", "top-rated", "/3/movie/top_rated"],
+    ["movies", "upcoming", "/3/movie/upcoming"],
+    ["movies", "now-playing", "/3/movie/now_playing"],
+    ["tv", "top-rated", "/3/tv/top_rated"],
+    ["tv", "now-playing", "/3/tv/on_the_air"],
+    ["tv", "trending", "/3/trending/tv/week"],
+    ["movies", "discover", "/3/discover/movie"],
+    ["tv", "discover", "/3/discover/tv"]
+  ];
+  for (const [mediaType, list, path] of cases) {
+    const tmdb = stubTmdb({ [path]: recordedPopular });
+    const result = await lookupList(mediaType, list, 2, listQueryFor(list, new URLSearchParams()), "key", tmdb.fetch);
+    assert.deepEqual(tmdb.calls, [path]);
+    assert.equal(result.page, 2);
+    assert.equal(result.results.length, recordedPopular.results.length);
+    assert.equal(result.results[0].id, recordedPopular.results[0].id);
+  }
+
+  let asked;
+  await lookupList("movies", "discover", 1, listQueryFor("discover", new URLSearchParams("with_genres=28&vote_average.gte=7")), "key", async (url) => {
+    asked = new URL(url);
+    return { ok: true, status: 200, json: async () => recordedPopular };
+  });
+  assert.equal(asked.searchParams.get("with_genres"), "28");
+  assert.equal(asked.searchParams.get("vote_average.gte"), "7");
+  await assert.rejects(() => lookupList("tv", "upcoming", 1, new URLSearchParams(), "key", stubTmdb({}).fetch));
+});
+
+test("the gateway serves the lists and discover, caches each ask on its own, and keeps the error codes", async () => {
+  const tmdb = stubTmdb({ "/3/trending/movie/week": recordedPopular, "/3/discover/movie": recordedPopular, "/3/trending/movie/day": { results: [{ id: 5, title: "Day" }] } });
+  const kv = memoryKv();
+
+  const week = await viaGateway("/metadata/movies/trending", tmdb, { METADATA_CACHE: kv });
+  assert.equal(week.status, 200);
+  assert.equal((await week.json()).results[0].id, recordedPopular.results[0].id);
+  await viaGateway("/metadata/movies/trending", tmdb, { METADATA_CACHE: kv });
+  assert.equal(tmdb.calls.filter((path) => path === "/3/trending/movie/week").length, 1, "the second ask comes from the cache");
+  const day = await viaGateway("/metadata/movies/trending?window=day", tmdb, { METADATA_CACHE: kv });
+  assert.equal((await day.json()).results[0].title, "Day", "another window is another cache entry");
+
+  await viaGateway("/metadata/movies/discover?with_genres=28", tmdb, { METADATA_CACHE: kv });
+  await viaGateway("/metadata/movies/discover?with_genres=35", tmdb, { METADATA_CACHE: kv });
+  assert.equal(tmdb.calls.filter((path) => path === "/3/discover/movie").length, 2, "different filters are not shared");
+
+  assert.equal((await viaGateway("/metadata/tv/top-rated", stubTmdb({ "/3/tv/top_rated": 429 }))).status, 503);
+  const gone = await viaGateway("/metadata/tv/top-rated", stubTmdb({ "/3/tv/top_rated": 404 }));
+  assert.equal(gone.status, 404);
+  const down = await viaGateway("/metadata/movies/upcoming", stubTmdb({ "/3/movie/upcoming": 500 }));
+  assert.equal((await down.json()).error, "provider_unavailable");
 });

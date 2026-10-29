@@ -108,4 +108,14 @@ public interface IMetadataProvider
         string mediaType,
         int page,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Any of the provider's recommendation lists (trending, top rated, upcoming, now playing) or a filtered discover
+    /// (#1429), for Discover's grid. Empty when the provider cannot answer. A provider that has none of these answers empty.
+    /// </summary>
+    Task<IReadOnlyList<MetadataSearchResult>> GetDiscoverListAsync(
+        string mediaType,
+        DiscoverListQuery query,
+        CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<MetadataSearchResult>>([]);
 }
