@@ -249,7 +249,7 @@ $gatewaySyntax = Invoke-LoggedCommand -FilePath $nodePath -Arguments @("--check"
 $gatewayTvdbSyntax = Invoke-LoggedCommand -FilePath $nodePath -Arguments @("--check", "services/metadata-gateway/src/tvdb.js")
 $gatewayCacheSyntax = Invoke-LoggedCommand -FilePath $nodePath -Arguments @("--check", "services/metadata-gateway/src/cache.js")
 $gatewayLimitsSyntax = Invoke-LoggedCommand -FilePath $nodePath -Arguments @("--check", "services/metadata-gateway/src/limits.js")
-$gatewayTests = Invoke-LoggedCommand -FilePath $nodePath -Arguments @("--test", "services/metadata-gateway/test/index.test.js", "services/metadata-gateway/test/tvdb.test.js", "services/metadata-gateway/test/hardening.test.js", "services/metadata-gateway/test/limits.test.js", "services/metadata-gateway/test/contract.test.js")
+$gatewayTests = Invoke-LoggedCommand -FilePath $nodePath -Arguments @("--test", "services/metadata-gateway/test/index.test.js", "services/metadata-gateway/test/tvdb.test.js", "services/metadata-gateway/test/hardening.test.js", "services/metadata-gateway/test/limits.test.js", "services/metadata-gateway/test/contract.test.js", "services/metadata-gateway/test/low-gap.test.js", "services/metadata-gateway/test/low-gap-mapping.test.js")
 if ($gatewaySyntax.ExitCode -eq 0 -and $gatewayTvdbSyntax.ExitCode -eq 0 -and $gatewayCacheSyntax.ExitCode -eq 0 -and $gatewayLimitsSyntax.ExitCode -eq 0 -and $gatewayTests.ExitCode -eq 0) {
     Write-Ok "metadata gateway contract"
 } else {
