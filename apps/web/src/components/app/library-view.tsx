@@ -958,8 +958,8 @@ export function LibraryView({
               releaseYear: draft.year ? Number(draft.year) : null,
               imdbId: draft.imdbId || null,
               monitored: draft.monitored,
-              searchForMissingNow: draft.searchNow,
-              searchForCutoffUnmetNow: draft.searchNow,
+              searchForMissingNow: draft.monitored && draft.searchNow,
+              searchForCutoffUnmetNow: draft.monitored && draft.searchNow,
               qualityProfileId: draft.qualityProfileId || null,
               tags: parseTagList(draft.tags),
               libraryId: addIntoLibraryId,
@@ -973,8 +973,8 @@ export function LibraryView({
               // #991: "all" is the same as not sending a preset at all
               // (today's fully-monitored behaviour), so it is left out.
               listMonitorMode: draft.monitored && draft.monitorPreset !== "all" ? draft.monitorPreset : null,
-              searchForMissingNow: draft.searchNow,
-              searchForCutoffUnmetNow: draft.searchNow,
+              searchForMissingNow: draft.monitored && draft.searchNow,
+              searchForCutoffUnmetNow: draft.monitored && draft.searchNow,
               qualityProfileId: draft.qualityProfileId || null,
               tags: parseTagList(draft.tags),
               libraryId: addIntoLibraryId,

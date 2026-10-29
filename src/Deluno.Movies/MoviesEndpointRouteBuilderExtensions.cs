@@ -2127,9 +2127,9 @@ public static class MoviesEndpointRouteBuilderExtensions
                 // the choice off, the next scheduled search finds it. Targeted at
                 // this one film, the same shape as a recovery retry or an external
                 // redownload: real work for one id, not a fresh sweep of the library.
-                var searchOnAddRequested =
-                    (request.SearchForMissingNow && decision.WantedStatus == WantedStatuses.Missing) ||
-                    (request.SearchForCutoffUnmetNow && decision.WantedStatus == WantedStatuses.Upgrade);
+                var searchOnAddRequested = request.Monitored &&
+                    ((request.SearchForMissingNow && decision.WantedStatus == WantedStatuses.Missing) ||
+                    (request.SearchForCutoffUnmetNow && decision.WantedStatus == WantedStatuses.Upgrade));
                 if (searchOnAddRequested)
                 {
                     pendingSearches.Add(new

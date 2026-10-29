@@ -36,4 +36,23 @@ describe("Discover while automation is paused", () => {
     fireEvent.click(screen.getByRole("switch", { name: /Search for it as soon as it is added/ }));
     await waitFor(() => expect(screen.queryByText(/Automation is paused/)).not.toBeInTheDocument());
   });
+
+  it("names a show, and says nothing at all once Monitor it is off (#1399)", async () => {
+    window.localStorage.setItem("deluno-discover-type", "series");
+    authedFetch.mockImplementation((path: string) => {
+      if (path === "/api/settings") return json({ autoStartJobs: false });
+      if (path.startsWith("/api/discover")) return json({ popular: [{ ...matrix, providerId: "9", title: "Reacher" }], lists: [] });
+      return json([]);
+    });
+    const { DiscoverPage } = await import("./discover-page");
+    render(<MemoryRouter><DiscoverPage /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByText("Reacher")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Reacher" }));
+    await screen.findByRole("dialog", { name: /Add Reacher/ });
+    expect(await screen.findByText("Automation is paused, so this show won't be searched until you resume it.")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("switch", { name: /Monitor it/ }));
+    await waitFor(() => expect(screen.queryByText(/Automation is paused/)).not.toBeInTheDocument());
+  });
 });

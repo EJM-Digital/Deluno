@@ -206,14 +206,13 @@ public sealed class NewTitlesSearchRightAwayTests
     }
 
     /// <summary>
-    /// The add dialog's search-on-add checkboxes (#793) ask for this one title
-    /// right away independently of "Monitor and search automatically" - an
-    /// unmonitored add with "search for missing now" checked still searches.
+    /// #1399: the search-on-add checkboxes (#793) never search an unmonitored title:
+    /// someone who adds a title only to keep an eye on it did not ask for a download.
     /// </summary>
     [Theory]
     [InlineData(MediaKind.Movie)]
     [InlineData(MediaKind.Series)]
-    public async Task Search_for_missing_now_searches_an_unmonitored_missing_title(MediaKind kind)
+    public async Task Search_for_missing_now_does_not_search_an_unmonitored_missing_title(MediaKind kind)
     {
         await using var app = await ApplicationTestHost.StartAsync();
         var libraryId = await CreateLibraryAsync(app, kind);
@@ -225,9 +224,7 @@ public sealed class NewTitlesSearchRightAwayTests
 
         var refreshJob = await FindJobAsync(app, RefreshJobType(kind), id);
         Assert.NotNull(refreshJob);
-        using var payload = JsonDocument.Parse(refreshJob!.PayloadJson!);
-        var pending = Assert.Single(payload.RootElement.GetProperty("pendingSearches").EnumerateArray());
-        Assert.Equal(id, pending.GetProperty("targetEntityId").GetString());
+        Assert.Empty(NoPendingSearchesOr(refreshJob!.PayloadJson));
     }
 
     /// <summary>
@@ -268,6 +265,54 @@ public sealed class NewTitlesSearchRightAwayTests
         var refreshJob = await FindJobAsync(app, RefreshJobType(kind), id);
         Assert.NotNull(refreshJob);
         Assert.Empty(NoPendingSearchesOr(refreshJob!.PayloadJson));
+    }
+
+    /// <summary>
+    /// #1399: an unmonitored add queues no search whatever the search boxes say, through
+    /// every add route (the library's own add and Discover's); a monitored add with the
+    /// same boxes ticked still searches.
+    /// </summary>
+    [Theory]
+    [InlineData(MediaKind.Movie, false)]
+    [InlineData(MediaKind.Series, false)]
+    [InlineData(MediaKind.Movie, true)]
+    [InlineData(MediaKind.Series, true)]
+    public async Task Search_boxes_ticked_search_only_a_monitored_add_on_every_add_route(MediaKind kind, bool viaDiscover)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var libraryId = await CreateLibraryAsync(app, kind);
+
+        async Task<string> AddWithBoxesAsync(string title, bool monitored)
+        {
+            if (!viaDiscover)
+            {
+                return await AddAsync(app, Route(kind), CreateBody(kind, title, 2022, monitored, libraryId,
+                    searchForMissingNow: true, searchForCutoffUnmetNow: true));
+            }
+
+            return await AddAsync(app, "/api/discover/add", new
+            {
+                mediaType = kind == MediaKind.Movie ? "movie" : "series",
+                title,
+                year = 2022,
+                libraryId,
+                monitored,
+                searchForMissingNow = true,
+                searchForCutoffUnmetNow = true
+            });
+        }
+
+        var unmonitored = await AddWithBoxesAsync("Severance", monitored: false);
+        var monitoredId = await AddWithBoxesAsync("Chernobyl", monitored: true);
+
+        var unmonitoredRefresh = await FindJobAsync(app, RefreshJobType(kind), unmonitored);
+        Assert.NotNull(unmonitoredRefresh);
+        Assert.Empty(NoPendingSearchesOr(unmonitoredRefresh!.PayloadJson));
+        Assert.Null(await FindJobAsync(app, SearchJobType(kind), unmonitored));
+
+        var monitoredRefresh = await FindJobAsync(app, RefreshJobType(kind), monitoredId);
+        Assert.NotNull(monitoredRefresh);
+        Assert.Single(NoPendingSearchesOr(monitoredRefresh!.PayloadJson));
     }
 
     // ------------------------------------------------------------------ helpers

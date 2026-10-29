@@ -382,6 +382,8 @@ function DiscoverAddDrawer({
 
   const { candidate, mediaType } = target;
   const chosenLibrary = libraries.find((library) => library.id === libraryId);
+  // #1399: a title kept unmonitored is never searched for, so the box is off and unavailable.
+  const searchesNow = monitored && searchNow;
   const shownProfileId = qualityProfileId || chosenLibrary?.qualityProfileId || "";
 
   async function handleAdd() {
@@ -401,8 +403,8 @@ function DiscoverAddDrawer({
         // The library's own profile is the same as choosing nothing: the title keeps following the library.
         qualityProfileId: qualityProfileId && qualityProfileId !== chosenLibrary?.qualityProfileId ? qualityProfileId : null,
         monitored,
-        searchForMissingNow: searchNow,
-        searchForCutoffUnmetNow: searchNow
+        searchForMissingNow: searchesNow,
+        searchForCutoffUnmetNow: searchesNow
       };
       const response = await authedFetch("/api/discover/add", {
         method: "POST",
@@ -412,7 +414,7 @@ function DiscoverAddDrawer({
       if (!response.ok) {
         throw new Error(await readErrorText(response, `${candidate.title} could not be added.`));
       }
-      toast.success(`${candidate.title} added${searchNow ? " — searching now" : ""}.`);
+      toast.success(`${candidate.title} added${searchesNow ? " — searching now" : ""}.`);
       onAdded(candidate.title, candidate.year);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "That title could not be added.");
@@ -477,10 +479,11 @@ function DiscoverAddDrawer({
         <SwitchRow
           label="Search for it as soon as it is added"
           description="Ticked: Deluno searches right away. Unticked: nothing is searched until the next scheduled search."
-          checked={searchNow}
+          checked={searchesNow}
+          disabled={!monitored}
           onCheckedChange={setSearchNow}
         />
-        {searchNow ? <AutomationPausedNotice context="add" noun={mediaType === "series" ? "show" : "film"} /> : null}
+        {searchesNow ? <AutomationPausedNotice context="add" noun={mediaType === "series" ? "show" : "film"} /> : null}
       </DrawerSection>
     </Drawer>
   );

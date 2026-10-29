@@ -220,9 +220,9 @@ public static class DiscoverEndpointRouteBuilderExtensions
                         decision.QualityCutoffMet,
                         cancellationToken);
 
-                    var searchOnAddRequested =
-                        (request.SearchForMissingNow && decision.WantedStatus == WantedStatuses.Missing) ||
-                        (request.SearchForCutoffUnmetNow && decision.WantedStatus == WantedStatuses.Upgrade);
+                    var searchOnAddRequested = request.Monitored &&
+                        ((request.SearchForMissingNow && decision.WantedStatus == WantedStatuses.Missing) ||
+                        (request.SearchForCutoffUnmetNow && decision.WantedStatus == WantedStatuses.Upgrade));
                     if (searchOnAddRequested)
                     {
                         seriesPendingSearches.Add(new
@@ -312,9 +312,9 @@ public static class DiscoverEndpointRouteBuilderExtensions
                     decision.QualityCutoffMet,
                     cancellationToken);
 
-                var searchOnAddRequested =
-                    (request.SearchForMissingNow && decision.WantedStatus == WantedStatuses.Missing) ||
-                    (request.SearchForCutoffUnmetNow && decision.WantedStatus == WantedStatuses.Upgrade);
+                var searchOnAddRequested = request.Monitored &&
+                    ((request.SearchForMissingNow && decision.WantedStatus == WantedStatuses.Missing) ||
+                    (request.SearchForCutoffUnmetNow && decision.WantedStatus == WantedStatuses.Upgrade));
                 if (searchOnAddRequested)
                 {
                     moviePendingSearches.Add(new

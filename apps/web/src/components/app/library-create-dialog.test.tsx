@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createRef } from "react";
 import type { ComponentProps } from "react";
@@ -6,6 +6,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { MetadataSearchResult } from "../../lib/api";
 import type { CreateFormDraft, LibraryVariant } from "../../hooks/use-library-create";
+import { fetchJson } from "../../lib/api";
 import { LibraryCreateDialog } from "./library-create-dialog";
 
 vi.mock("../../lib/api", () => ({
@@ -97,6 +98,35 @@ function renderDialog(
 
   return { onSelectResult, onOpenHeldResult, setCreateForm };
 }
+
+describe("the add dialog's paused-automation notice (#1399)", () => {
+  it.each([["movies", "film"], ["shows", "show"]] as const)("names the %s kind while a search is going to be asked for, and is gone when Monitored is off", async (variant, noun) => {
+    vi.mocked(fetchJson).mockImplementation((async (url: string) => (url === "/api/settings" ? { autoStartJobs: false } : [])) as never);
+    renderDialog([], variant);
+    expect(await screen.findByText(`Automation is paused, so this ${noun} won't be searched until you resume it.`)).toBeVisible();
+    cleanup();
+    renderDialog([], variant, { monitored: false });
+    await new Promise((resolve) => setTimeout(resolve, 50)); // reason: shows nothing is drawn, so there is nothing to wait for
+    expect(screen.queryByText(/Automation is paused/)).not.toBeInTheDocument();
+  });
+});
+
+/** #1399: a title kept unmonitored is never searched for, so the box is off and unavailable. */
+describe("the add dialog's search box", () => {
+  it.each(["movies", "shows"] as const)("is ticked and usable while Monitored is on (%s)", (variant) => {
+    renderDialog([], variant);
+    const box = screen.getByRole("checkbox", { name: "Search for it as soon as it is added" });
+    expect(box).toBeEnabled();
+    expect(box).toBeChecked();
+  });
+
+  it.each(["movies", "shows"] as const)("is off and unavailable while Monitored is off, whatever the form holds (%s)", (variant) => {
+    renderDialog([], variant, { monitored: false, searchNow: true });
+    const box = screen.getByRole("checkbox", { name: "Search for it as soon as it is added" });
+    expect(box).toBeDisabled();
+    expect(box).not.toBeChecked();
+  });
+});
 
 /**
  * Monitor presets (#991): only shows have episodes to pick among, and the

@@ -298,7 +298,7 @@ public sealed class DiscoverEndpointTests : IAsyncDisposable
             BackdropUrl: null,
             LibraryId: library.Id,
             QualityProfileId: null,
-            Monitored: false,
+            Monitored: true,
             SearchForMissingNow: true,
             SearchForCutoffUnmetNow: false));
 
