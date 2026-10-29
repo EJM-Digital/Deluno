@@ -678,6 +678,7 @@ test.describe("dashboard workflow", () => {
     await expect(drawer.getByLabel("Match on").locator("option[value='releaseGroup']")).toHaveCount(1);
 
     await page.keyboard.press("Escape");
+    await page.getByRole("dialog", { name: "Discard unsaved changes?" }).getByRole("button", { name: "Discard" }).click();
     await expect(drawer).toHaveCount(0);
   });
 
@@ -696,7 +697,7 @@ test.describe("dashboard workflow", () => {
     await page.getByRole("button", { name: "New list" }).first().click();
     const drawer = page.getByRole("dialog", { name: "New import list" });
     await expect(drawer.getByText(/Paste a public list URL/)).toBeVisible();
-    await expect(drawer.getByLabel("Check the list").locator('option[value="720"]')).toHaveText("Monthly");
+    await expect(drawer.getByLabel("Check the list").locator('option[value="168"]')).toHaveText("Weekly");
   });
 
   test("uses a custom list URL for public MDbList lists without a separate provider", async ({ page }) => {

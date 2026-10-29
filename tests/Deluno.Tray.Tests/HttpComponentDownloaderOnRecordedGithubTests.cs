@@ -34,7 +34,7 @@ public sealed class HttpComponentDownloaderOnRecordedGithubTests : IAsyncLifetim
                 {
                     context = await listener.GetContextAsync();
                 }
-                catch (Exception exception) when (exception is HttpListenerException or ObjectDisposedException)
+                catch (Exception exception) when (exception is HttpListenerException or ObjectDisposedException or ArgumentException)
                 {
                     return;
                 }

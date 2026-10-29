@@ -226,7 +226,7 @@ describe("an existing rule", () => {
     expect(drawer.getByLabelText("Destination folder")).toHaveValue("E:/Anime");
     expect(drawer.getByRole("button", { name: "Save rule" })).toBeVisible();
     expect(drawer.getByText("Delete this rule")).toBeVisible();
-    expect(drawer.getByText("1 libraries")).toBeVisible();
+    expect(drawer.getByText("1 library")).toBeVisible();
   });
 
   it("Save rule puts the changed rule at its own id and says Saved just now", async () => {
