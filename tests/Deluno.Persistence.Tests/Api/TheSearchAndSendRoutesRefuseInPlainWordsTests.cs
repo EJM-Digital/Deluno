@@ -226,4 +226,30 @@ public sealed class TheSearchAndSendRoutesRefuseInPlainWordsTests
         Assert.Equal(1, grabs.Count);
         Assert.Equal("Sintel (2010) 720p BRRip x264 -YTS", (await forced.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("releaseName").GetString());
     }
+
+    [Theory]
+    [InlineData("not a link at all")]
+    [InlineData("/relative/path.torrent")]
+    [InlineData("ftp://indexer.example/get/1")]
+    [InlineData("magnet:xt=urn:btih:A779FA758F2229586EEBC2E5960EB32FE5659596")]
+    public async Task A_release_whose_download_link_is_not_an_address_a_client_can_take_is_refused_400_in_plain_words_for_a_film_and_a_show_and_nothing_is_sent(string link)
+    {
+        var grabs = new CountingGrabs();
+        await using var app = await StartAsync(grabs);
+        var films = await RoutedLibraryAsync(app, "movies", "Films");
+        var shows = await RoutedLibraryAsync(app, "tv", "Shows");
+        var filmId = await AddFilmAsync(app, films);
+        var (seriesId, _) = await AddShowAsync(app, shows);
+        var release = new { releaseName = "Sintel (2010) 720p BRRip x264 -YTS", downloadUrl = link, candidateQuality = "Bluray 720p", sizeBytes = 143151596L, force = true, overrideReason = "You chose it." };
+
+        foreach (var path in new[] { $"/api/movies/{filmId}/grab", $"/api/series/{seriesId}/grab" })
+        {
+            var response = await app.Client.PostAsJsonAsync(path, release);
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Equal("The selected release has an invalid download URL.", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("errors").GetProperty("downloadUrl")[0].GetString());
+        }
+
+        Assert.Equal(0, grabs.Count);
+    }
 }

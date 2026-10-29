@@ -177,6 +177,63 @@ public sealed class AcquisitionBlockersApiTests
 
     // ------------------------------------------------------------------ helpers
 
+    [Fact]
+    public async Task A_film_on_the_exclusion_list_by_its_imdb_id_or_by_its_title_reports_import_excluded_and_can_clear_it_and_another_film_does_not()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var exclusions = app.Services.GetRequiredService<IUnifiedExclusionRepository>();
+        async Task<string> FilmAsync(string title, string? imdbId)
+        {
+            var response = await app.Client.PostAsJsonAsync("/api/movies/", new { title, releaseYear = 2016, imdbId, monitored = true });
+            response.EnsureSuccessStatusCode();
+            return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        }
+
+        Task<MediaExclusionItem?> ExcludeAsync(string title, string? imdbId)
+            => exclusions.UpsertAsync(new UpsertMediaExclusionRequest("movies", "list", "list-1", "A list", "trakt", $"key-{title}", title, 2016, imdbId, null, null), CancellationToken.None);
+
+        async Task<bool> ExcludedAsync(string id)
+            => (await BlockersAsync(app, "/api/movies/", id)).GetProperty("blockers").EnumerateArray()
+                .Any(blocker => blocker.GetProperty("kind").GetString() == AcquisitionBlockerKinds.ImportExcluded && blocker.GetProperty("canClear").GetBoolean());
+
+        var byId = await FilmAsync("Arrival", "tt2543164");
+        var byTitle = await FilmAsync("Sicario", null);
+        var neither = await FilmAsync("Dune", "tt1160419");
+        Assert.False(await ExcludedAsync(byId));
+        Assert.False(await ExcludedAsync(byTitle));
+
+        await ExcludeAsync("Some Other Name For It", "tt2543164");
+        await ExcludeAsync("sicario", null);
+
+        Assert.True(await ExcludedAsync(byId));
+        Assert.True(await ExcludedAsync(byTitle));
+        Assert.False(await ExcludedAsync(neither));
+    }
+
+    [Fact]
+    public async Task A_film_in_two_libraries_is_answered_from_the_one_that_holds_its_file_at_target_and_otherwise_from_the_first()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var first = await ApiScenes.CreateLibraryAsync(app, "movies", "FilmsA", "Films A");
+        var second = await ApiScenes.CreateLibraryAsync(app, "movies", "FilmsB", "Films B");
+        var response = await app.Client.PostAsJsonAsync("/api/movies/", new { title = "Arrival", releaseYear = 2016, monitored = true, libraryId = first });
+        response.EnsureSuccessStatusCode();
+        var id = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        (await app.Client.PostAsJsonAsync($"/api/movies/{id}/libraries/", new { libraryId = second })).EnsureSuccessStatusCode();
+        var state = app.Services.GetRequiredService<IMediaStateRepository>();
+        await state.EnsureWantedStateAsync(MediaKind.Movie, id, first, WantedStatuses.Missing, "Wanted.", hasFile: false, null, "WEB 1080p", false, CancellationToken.None);
+        await state.EnsureWantedStateAsync(MediaKind.Movie, id, second, WantedStatuses.Missing, "Wanted.", hasFile: false, null, "WEB 1080p", false, CancellationToken.None);
+
+        async Task<string[]> KindsAsync()
+            => (await BlockersAsync(app, "/api/movies/", id)).GetProperty("blockers").EnumerateArray().Select(blocker => blocker.GetProperty("kind").GetString()!).ToArray();
+
+        Assert.DoesNotContain(AcquisitionBlockerKinds.AlreadyHeld, await KindsAsync());
+
+        await state.EnsureWantedStateAsync(MediaKind.Movie, id, second, WantedStatuses.Covered, "Imported from disk.", hasFile: true, "WEB 1080p", "WEB 1080p", true, CancellationToken.None);
+
+        Assert.Contains(AcquisitionBlockerKinds.AlreadyHeld, await KindsAsync());
+    }
+
     private static async Task<JsonElement> BlockersAsync(ApplicationTestHost app, string route, string id)
     {
         var response = await app.Client.GetAsync($"{route.TrimEnd('/')}/{id}/acquisition-blockers");
