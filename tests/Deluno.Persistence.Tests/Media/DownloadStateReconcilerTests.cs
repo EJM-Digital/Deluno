@@ -2,6 +2,7 @@ using Deluno.Contracts;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Media;
 using Deluno.Movies.Contracts;
+using Deluno.Series.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Series.Data;
 using Deluno.Persistence.Tests.Support;
@@ -80,6 +81,30 @@ public sealed class DownloadStateReconcilerTests
         var again = await Build(state, new FixedTimeProvider(Now.AddMinutes(1)), live: []).ReconcileAsync(CancellationToken.None);
 
         Assert.Equal(0, again);
+    }
+
+    [Fact]
+    public async Task A_show_whose_download_is_gone_is_put_back_on_the_work_list_and_a_live_one_is_left_alone()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(Now);
+        var (state, id) = await SeedDownloadingAsync(storage, clock);
+        var shows = new SqliteSeriesCatalogRepository(storage.Factory, clock);
+        var show = await shows.AddAsync(new CreateSeriesRequest("The Wire", 2002, null), CancellationToken.None);
+        await state.EnsureWantedStateAsync(
+            MediaKind.Series, show.Id, "library-tv", WantedStatuses.Missing,
+            "Not here yet.", hasFile: false, null, "WEB 1080p", qualityCutoffMet: false,
+            CancellationToken.None);
+        await state.SetDownloadingAsync(MediaKind.Series, show.Id, downloading: true, Now.AddHours(-2), CancellationToken.None);
+
+        var left = await Build(state, clock, live: [show.Id, id]).ReconcileAsync(CancellationToken.None);
+        Assert.Equal(0, left);
+        Assert.Equal(WantedStatuses.Downloading, (await state.ListWantedByIdsAsync(MediaKind.Series, [show.Id], CancellationToken.None)).Single().WantedStatus);
+
+        var cleared = await Build(state, clock, live: [id]).ReconcileAsync(CancellationToken.None);
+
+        Assert.Equal(1, cleared);
+        Assert.Equal(WantedStatuses.Missing, (await state.ListWantedByIdsAsync(MediaKind.Series, [show.Id], CancellationToken.None)).Single().WantedStatus);
     }
 
     /* ------------------------------------------------------------ helpers */

@@ -231,6 +231,24 @@ public sealed class TheFinishedItemsLibraryAndImportJobTests : IDisposable
         Assert.Equal("series-1", run.Job.RelatedEntityId);
     }
 
+    [Theory]
+    [InlineData(DownloadQueueStatuses.Downloading)]
+    [InlineData(DownloadQueueStatuses.Queued)]
+    [InlineData(DownloadQueueStatuses.Stalled)]
+    [InlineData("paused")]
+    public async Task A_download_that_is_still_downloading_paused_queued_or_stalled_is_never_queued_for_import_or_handed_to_a_processor(string status)
+    {
+        await RunAsync(
+            [Lib("a", "movies", "Downloads-A")],
+            routes: new(),
+            category: "movies",
+            downloadsFolder: "Downloads-A",
+            status: status,
+            expectJob: false);
+
+        Processors.Verify(r => r.EnsureProcessorHandoffAsync(It.IsAny<CreateProcessorHandoffRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     private static MovieListItem Movie()
         => (MovieListItem)RuntimeHelpers.GetUninitializedObject(typeof(MovieListItem)) with
         {
@@ -253,6 +271,16 @@ public sealed class TheFinishedItemsLibraryAndImportJobTests : IDisposable
             true, true, true, 6, 6, 10, null, null, "active", false, null, null, now, now);
     }
 
+    private Mock<IProcessorRepository> Processors { get; } = NewProcessors();
+
+    private static Mock<IProcessorRepository> NewProcessors()
+    {
+        var mock = new Mock<IProcessorRepository>();
+        mock.Setup(r => r.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ProcessorHandoffItem>());
+        return mock;
+    }
+
     private sealed record Outcome(ImportExecuteRequest Request, EnqueueJobRequest Job, string Message, (string? Scope, string? Id, string? JobId) ActivityScope);
 
     private async Task<Outcome> RunAsync(
@@ -264,7 +292,9 @@ public sealed class TheFinishedItemsLibraryAndImportJobTests : IDisposable
         string mediaType = "movies",
         DispatchCatalogueLink? dispatch = null,
         MovieListItem? movie = null,
-        SeriesListItem? series = null)
+        SeriesListItem? series = null,
+        string status = DownloadQueueStatuses.Completed,
+        bool expectJob = true)
     {
         var file = Path.Combine(_root, downloadsFolder, ReleaseName, ReleaseName + ".mkv");
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
@@ -309,7 +339,7 @@ public sealed class TheFinishedItemsLibraryAndImportJobTests : IDisposable
         var telemetry = new Mock<IDownloadClientTelemetryService> { CallBase = true };
         telemetry.Setup(service => service.GetOverviewAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Overview(new DownloadQueueItem(
             "queue-1", "client-1", "qBittorrent", "qbittorrent", mediaType, "Dune 2021 1080p WEB DL DDP5 1 H 264 DELUNO", ReleaseName,
-            category ?? "", DownloadQueueStatuses.Completed, 1, 0, 0, 100, 100, 0, "Indexer", null,
+            category ?? "", status, 1, 0, 0, 100, 100, 0, "Indexer", null,
             DateTimeOffset.UnixEpoch, file, assignedLibraryId)));
 
         var repository = new Mock<ILibrariesRepository>();
@@ -324,8 +354,7 @@ public sealed class TheFinishedItemsLibraryAndImportJobTests : IDisposable
         await new WorkPlanner(new FailingLogger(), jobs.Object, new ConfigurationBuilder().Build(), TimeProvider.System)
             .PlanImportAutomationAsync(
                 scheduler.Object,
-                Mock.Of<IProcessorRepository>(r => r.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>())
-                    == Task.FromResult<IReadOnlyList<ProcessorHandoffItem>>(Array.Empty<ProcessorHandoffItem>())),
+                Processors.Object,
                 repository.Object,
                 new LibraryAvailabilityService(Mock.Of<IActivityFeedRepository>(), TimeProvider.System, NullLogger<LibraryAvailabilityService>.Instance),
                 telemetry.Object,
@@ -335,6 +364,12 @@ public sealed class TheFinishedItemsLibraryAndImportJobTests : IDisposable
                 seriesRepository.Object,
                 TimeProvider.System,
                 CancellationToken.None);
+
+        if (!expectJob)
+        {
+            Assert.Null(queued);
+            return null!;
+        }
 
         Assert.NotNull(queued);
         var request = JsonSerializer.Deserialize<ImportExecuteRequest>(queued!.PayloadJson!, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;

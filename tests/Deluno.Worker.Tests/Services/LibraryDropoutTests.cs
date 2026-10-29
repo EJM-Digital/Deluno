@@ -343,6 +343,70 @@ public sealed class LibraryDropoutTests : IDisposable
         Assert.Equal(1, result.UnreachableRoots);
     }
 
+    [Fact]
+    public async Task Confirming_a_handful_of_files_tells_each_title_by_name_besides_the_one_summary_line()
+    {
+        var rig = new Rig(this, present: 2, missing: 8);
+        rig.ExistingNotice = true;
+        rig.ExistingDetails = "{\"libraryId\":\"lib-1\",\"missing\":8,\"total\":10}";
+
+        var result = await rig.Service.ConfirmFilesGoneAsync("lib-1", CancellationToken.None);
+
+        Assert.Equal(8, result!.MarkedGone);
+        var named = rig.Activity.Where(a => a.Category == "filesystem.reconciliation.unmonitored").ToArray();
+        Assert.Equal(8, named.Length);
+        Assert.All(Enumerable.Range(0, 8), i => Assert.Contains(named, a => a.Message.Contains($"Film {i}", StringComparison.Ordinal)));
+        Assert.Single(rig.Activity, a => a.Category == "library.files-gone");
+    }
+
+    [Fact]
+    public async Task Confirming_refuses_a_path_outside_the_root_and_a_file_tracked_in_another_library_and_says_how_many()
+    {
+        var rig = new Rig(this, present: 10, missing: 30);
+        await rig.Service.ScanAsync(CancellationToken.None);
+        rig.ExistingNotice = true;
+        rig.ExistingDetails = rig.HealthOutcomes.Single().DetailsJson;
+        rig.Tracked.Add(new MovieTrackedFileItem("movie-outside", "lib-1", "Outside", 2020, Path.Combine(Path.GetTempPath(), "deluno-elsewhere", "Outside.mkv"), 1, null, null));
+        rig.Tracked.Add(new MovieTrackedFileItem("movie-other", "lib-2", "Other", 2020, Path.Combine(_root, "Film Other", "Film Other.mkv"), 1, null, null));
+
+        var result = await rig.Service.ConfirmFilesGoneAsync("lib-1", CancellationToken.None);
+
+        Assert.Equal(30, result!.MarkedGone);
+        Assert.Contains("2 could not be changed", result.Message, StringComparison.Ordinal);
+        var batch = Assert.Single(rig.Batches);
+        Assert.DoesNotContain(batch, b => b.MovieId is "movie-outside" or "movie-other");
+    }
+
+    [Fact]
+    public async Task Confirming_stops_part_way_when_the_share_drops_between_two_writes_and_keeps_the_note()
+    {
+        var rig = new Rig(this, present: 10, missing: 1200);
+        await rig.Service.ScanAsync(CancellationToken.None);
+        rig.ExistingNotice = true;
+        rig.ExistingDetails = rig.HealthOutcomes.Single().DetailsJson;
+        rig.Movies.Setup(m => m.MarkTrackedFilesGoneAsync(It.IsAny<IReadOnlyList<MovieFileGoneRequest>>(), It.IsAny<CancellationToken>()))
+            .Returns((IReadOnlyList<MovieFileGoneRequest> items, CancellationToken _) =>
+            {
+                rig.Batches.Add(items.ToArray());
+                // The share goes away once the first chunk is written.
+                foreach (var entry in Directory.EnumerateFileSystemEntries(_root))
+                {
+                    Directory.Delete(entry, recursive: true);
+                }
+
+                return Task.FromResult<IReadOnlyList<Deluno.Movies.Contracts.MovieFileGoneOutcome>>(
+                    items.Select(_ => new Deluno.Movies.Contracts.MovieFileGoneOutcome(true)).ToArray());
+            });
+
+        var result = await rig.Service.ConfirmFilesGoneAsync("lib-1", CancellationToken.None);
+
+        Assert.True(result!.LibraryUnreachable);
+        Assert.Equal(500, result.MarkedGone);
+        Assert.Single(rig.Batches);
+        Assert.Contains("stopped being reachable part-way", result.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("notice:library-unreachable:lib-1", rig.Removed);
+    }
+
     private sealed class Rig
     {
         public Mock<IMovieCatalogRepository> Movies { get; } = new();
@@ -352,6 +416,7 @@ public sealed class LibraryDropoutTests : IDisposable
         public string? ExistingDetails { get; set; }
         public List<string> Removed { get; } = [];
         public List<IReadOnlyList<MovieFileGoneRequest>> Batches { get; } = [];
+        public List<MovieTrackedFileItem> Tracked { get; } = [];
         public string Root => _owner._root;
         private readonly LibraryDropoutTests _owner;
         public FilesystemReconciliationService Service { get; }
@@ -368,7 +433,7 @@ public sealed class LibraryDropoutTests : IDisposable
             libraries.Setup(l => l.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([library]);
 
             // The first `missing` movies have no file on disk; the rest do.
-            var tracked = new List<MovieTrackedFileItem>();
+            var tracked = Tracked;
             for (var i = 0; i < missing + present; i++)
             {
                 var folder = Path.Combine(owner._root, $"Film {i}");

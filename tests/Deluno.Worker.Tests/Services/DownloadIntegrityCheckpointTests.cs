@@ -96,6 +96,25 @@ public sealed class DownloadIntegrityCheckpointTests : IDisposable
             It.IsAny<string?>(), null, "movie", "movie-1", It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Fact]
+    public async Task A_failed_check_is_recorded_on_the_dispatch_as_an_import_failure_with_the_check_failed_code_and_the_reason()
+    {
+        var telemetry = Telemetry(out _);
+        telemetry.Setup(instance => instance.ExecuteActionAsync("client-1", It.IsAny<DownloadClientActionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DownloadClientActionResult("client-1", "queue-1", DownloadClientActions.DeleteWithData, true, "removed"));
+        var dispatches = new Mock<Deluno.Jobs.Data.IDownloadDispatchesRepository>();
+
+        await Run(new Mock<IJobScheduler>(), telemetry, new Mock<IBlockedReleaseRepository>(), checkEnabled: true, probe: Probe.Failed(), dispatches: dispatches);
+
+        dispatches.Verify(instance => instance.RecordImportOutcomeAsync(
+            "dispatch-1",
+            "failed",
+            null,
+            DownloadClientFailureCodes.IntegrityCheckFailed,
+            It.Is<string?>(reason => reason != null && reason.Contains("No video stream", StringComparison.Ordinal)),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     /// <summary>#1148: a removal the client refused is said as it was, never claimed.</summary>
     [Fact]
     public async Task A_removal_the_client_refused_is_named_with_its_reason_and_not_claimed()
@@ -422,11 +441,12 @@ processorRepository
         Probe probe,
         Mock<IActivityFeedRepository>? activity = null,
         LibraryItem? libraryOverride = null,
-        Mock<IProcessorRepository>? processorRepositoryOverride = null)
+        Mock<IProcessorRepository>? processorRepositoryOverride = null,
+        Mock<Deluno.Jobs.Data.IDownloadDispatchesRepository>? dispatches = null)
         => await RunWithProbe(
             scheduler, telemetry, blocked, checkEnabled,
             (_, _) => Task.FromResult(probe.Info),
-            activity, libraryOverride, processorRepositoryOverride);
+            activity, libraryOverride, processorRepositoryOverride, dispatches);
 
     /// <summary>Like <see cref="Run"/>, but lets a test answer differently per file path -- needed to prove a season pack's files are each checked (#917).</summary>
     private async Task RunWithProbe(
@@ -437,7 +457,8 @@ processorRepository
         Func<string, CancellationToken, Task<MediaProbeInfo>> probeByPath,
         Mock<IActivityFeedRepository>? activity = null,
         LibraryItem? libraryOverride = null,
-        Mock<IProcessorRepository>? processorRepositoryOverride = null)
+        Mock<IProcessorRepository>? processorRepositoryOverride = null,
+        Mock<Deluno.Jobs.Data.IDownloadDispatchesRepository>? dispatches = null)
     {
         var jobs = new Mock<IJobQueueRepository>();
         jobs.Setup(repository => repository.TryClaimScheduledPassAsync(It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
@@ -479,7 +500,8 @@ processorRepository
                 settings.Object,
                 probeService.Object,
                 blocked.Object,
-                Mock.Of<IQualityRepository>());
+                Mock.Of<IQualityRepository>(),
+                downloadIntegrityDispatches: dispatches?.Object);
     }
 
     private static Mock<IProcessorRepository> NoProcessorHandoffs()

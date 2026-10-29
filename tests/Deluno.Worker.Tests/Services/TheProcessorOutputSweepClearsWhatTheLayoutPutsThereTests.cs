@@ -35,7 +35,18 @@ public sealed class TheProcessorOutputSweepClearsWhatTheLayoutPutsThereTests : I
         _recordedWatched = (string)RecordedReplies.Weir("library-folders").Single.Reply.Json()["libraries"]![0]!["watched_folder"]!;
     }
 
-    public void Dispose() => Directory.Delete(_root, recursive: true);
+    private readonly List<string> _links = [];
+
+    public void Dispose()
+    {
+        // A link is taken away on its own first, so that clearing the folder never reaches what it points at.
+        foreach (var link in _links.Where(Directory.Exists))
+        {
+            Directory.Delete(link, recursive: false);
+        }
+
+        Directory.Delete(_root, recursive: true);
+    }
 
     [Fact]
     public async Task A_release_folder_and_a_collision_file_of_released_hand_offs_are_cleared_and_an_unrelated_file_is_left()
@@ -70,6 +81,87 @@ public sealed class TheProcessorOutputSweepClearsWhatTheLayoutPutsThereTests : I
 
         Assert.Equal(0, removed);
         Assert.True(Directory.Exists(releaseFolder));
+    }
+
+    private bool TryLink(string link, string target)
+    {
+        try
+        {
+            Directory.CreateSymbolicLink(link, target);
+            _links.Add(link);
+            return true;
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or PlatformNotSupportedException)
+        {
+            // No privilege for a symbolic link: a junction, which any Windows user may make, is a reparse point too.
+            if (!OperatingSystem.IsWindows())
+            {
+                return false;
+            }
+
+            using var mklink = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{target}\"")
+            {
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                UseShellExecute = false
+            })!;
+            mklink.WaitForExit(10_000);
+            _links.Add(link);
+            return mklink.ExitCode == 0 && Directory.Exists(link);
+        }
+    }
+
+    private string LibraryMedia()
+    {
+        var media = Directory.CreateDirectory(Path.Combine(_root, "media", "Dune (2021)")).FullName;
+        Put(Path.Combine(media, "Dune (2021).mkv"));
+        return media;
+    }
+
+    [Fact]
+    public async Task A_release_folder_that_is_a_link_to_library_media_is_left_alone_by_the_sweep()
+    {
+        var media = LibraryMedia();
+        var inside = Moved((string)JsonNode.Parse(RecordedReplies.Weir("handoff-source-files-accepted").Single.Request.Body!)!["sourceFiles"]![0]!);
+        var link = Path.Combine(_ready, Path.GetFileName(Path.GetDirectoryName(inside)!));
+        if (!TryLink(link, media))
+        {
+            return;
+        }
+
+        var removed = await Sweep(Handoff("handoff-1", inside));
+
+        Assert.Equal(0, removed);
+        Assert.True(File.Exists(Path.Combine(media, "Dune (2021).mkv")), "the library's file must be untouched");
+        Assert.True(Directory.Exists(link));
+    }
+
+    [Fact]
+    public void A_second_copy_that_is_a_link_to_library_media_or_holds_one_never_deletes_the_media()
+    {
+        var media = LibraryMedia();
+        var library = new LibraryItem(
+            "library-1", "Movies", "movies", "main", Path.Combine(_root, "media"), _downloads, null, null, null,
+            true, true, "refine-before-import", "Weir", _ready, 360, "block",
+            true, true, true, 6, 6, 10, null, null, "active", false, null, null, Now, Now);
+        var source = Path.Combine(_downloads, "Dune.2021", "Dune.2021.mkv");
+
+        // The output itself is a link to the library's folder.
+        var outputLink = Path.Combine(_ready, "Dune.2021");
+        if (!TryLink(outputLink, media))
+        {
+            return;
+        }
+
+        Deluno.Platform.Processing.ProcessorOutputPathPolicy.DeleteSecondCopy(outputLink, _ready, source, [library]);
+        Assert.True(File.Exists(Path.Combine(media, "Dune (2021).mkv")), "deleting a linked output must not delete the media it points at");
+
+        // A real release folder holding a link to the library's folder, and nothing else.
+        var release = Directory.CreateDirectory(Path.Combine(_ready, "Dune.2021.REAL")).FullName;
+        Assert.True(TryLink(Path.Combine(release, "extras"), media));
+        Put(Path.Combine(release, "Dune.2021.REAL.mkv"));
+        Deluno.Platform.Processing.ProcessorOutputPathPolicy.DeleteSecondCopy(Path.Combine(release, "Dune.2021.REAL.mkv"), _ready, Path.Combine(_downloads, "Dune.2021.REAL", "Dune.2021.REAL.mkv"), [library]);
+        Assert.True(File.Exists(Path.Combine(media, "Dune (2021).mkv")), "tidying a release folder must not follow a link into the library");
     }
 
     private string Moved(string recorded)

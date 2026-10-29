@@ -150,4 +150,21 @@ public sealed class NamingTemplateRendererTests
 
         Assert.Equal("Arrival___", rendered);
     }
+
+    [Fact]
+    public void RenderSegment_renders_edition_release_group_and_custom_formats_with_repeats_and_blanks_dropped()
+    {
+        var decision = new NamingDecision(
+            ReleaseGroup: "DELUNO",
+            CustomFormats: ["DSNP", "NF", "nf", " ", "DSNP"],
+            Editions: ["Extended Edition", "Extended Edition"]);
+
+        var rendered = NamingTemplateRenderer.RenderSegment(
+            "{Movie Title} {Edition} [{Release Group}] [{Custom Formats}]",
+            "Dune",
+            2021,
+            decision: decision);
+
+        Assert.Equal("Dune Extended Edition [DELUNO] [DSNP NF]", rendered);
+    }
 }
