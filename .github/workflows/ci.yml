@@ -34,10 +34,11 @@ on:
   workflow_dispatch:
 
 concurrency:
-  # A newer push supersedes a run still going: its tree contains the older one. Deluno's repository is private, so
-  # a run nobody will read is wasted runner time.
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Each push to main is its own run and finishes: an issue closes on the CI of the commit that fixed it, and a later
+  # push no longer cancels an earlier one (the repository is public, so runner time is free; 29 Oct 2026). A pull
+  # request's newer push still supersedes its older run.
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
