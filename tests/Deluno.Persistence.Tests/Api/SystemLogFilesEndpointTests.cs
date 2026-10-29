@@ -80,7 +80,9 @@ public sealed class SystemLogFilesEndpointTests
 
         var response = await app.Client.DeleteAsync($"/api/system/log-files/{todayName}");
 
-        Assert.False(response.IsSuccessStatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal("Today's log file is still being written to and cannot be deleted.", body.GetProperty("errors").GetProperty("name")[0].GetString());
         Assert.True(File.Exists(path));
     }
 

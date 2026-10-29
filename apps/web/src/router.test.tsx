@@ -140,3 +140,16 @@ describe("a screen's own revalidation rule survives the loading wrapper (#1329)"
     expect(loaded.shouldRevalidate).toBeUndefined();
   });
 });
+
+describe("a signed-out visit to a System page (#1329)", () => {
+  it.each(["/system/audit", "/system/recycle-bin", "/system/security"])("%s goes to the sign-in page and brings the person back to it afterwards", async (path) => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    const visit = createMemoryRouter(router.routes as RouteObject[], { initialEntries: [path] });
+
+    await waitFor(() => expect(visit.state.initialized).toBe(true), { timeout: 8000 });
+    await waitFor(() => expect(visit.state.location.pathname).toBe("/login"), { timeout: 8000 });
+    expect(visit.state.location.search).toBe(`?return=${encodeURIComponent(path)}`);
+    visit.dispose();
+  });
+});

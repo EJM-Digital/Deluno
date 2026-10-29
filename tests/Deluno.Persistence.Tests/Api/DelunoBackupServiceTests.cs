@@ -469,6 +469,31 @@ public sealed class DelunoBackupServiceTests
         Assert.False(File.Exists(Path.Combine(storage.Path, "escaped3.txt")));
     }
 
+    [Fact]
+    public async Task Creating_a_backup_records_the_run_time_in_the_saved_settings_and_pushes_BackupChanged()
+    {
+        using var storage = new TempDataRoot();
+        var publisher = new RecordingRealtimeEventPublisher();
+        var service = new DelunoBackupService(
+            Options.Create(new StoragePathOptions { DataRoot = storage.Path }),
+            new FixedTimeProvider(DateTimeOffset.Parse("2026-10-20T05:00:00Z")),
+            NullLogger<DelunoBackupService>.Instance,
+            realtime: publisher);
+        Assert.Null((await service.GetSettingsAsync(CancellationToken.None)).LastRunUtc);
+        var before = publisher.Published.Count(item => item.Type == "Backup");
+
+        await service.CreateBackupAsync("manual", CancellationToken.None);
+
+        var after = await service.GetSettingsAsync(CancellationToken.None);
+        Assert.Equal(DateTimeOffset.Parse("2026-10-20T05:00:00Z"), after.LastRunUtc);
+        Assert.True(publisher.Published.Count(item => item.Type == "Backup") > before, "BackupChanged was not pushed");
+        var reread = new DelunoBackupService(
+            Options.Create(new StoragePathOptions { DataRoot = storage.Path }),
+            new FixedTimeProvider(DateTimeOffset.Parse("2026-10-20T06:00:00Z")),
+            NullLogger<DelunoBackupService>.Instance);
+        Assert.Equal(DateTimeOffset.Parse("2026-10-20T05:00:00Z"), (await reread.GetSettingsAsync(CancellationToken.None)).LastRunUtc);
+    }
+
     private static DelunoBackupService CreateService(string dataRoot, string utcNowIso)
     {
         return new DelunoBackupService(

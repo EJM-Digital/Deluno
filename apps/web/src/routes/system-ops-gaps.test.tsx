@@ -51,10 +51,12 @@ const loaderData: any = {
 };
 
 const pushHandlers = vi.hoisted(() => new Map<string, Set<(payload: unknown) => void>>());
+const socketStatus = vi.hoisted(() => ({ value: null as string | null }));
 vi.mock("../lib/use-signalr", async (importOriginal) => {
   const original = await importOriginal<typeof import("../lib/use-signalr")>();
   return {
     ...original,
+    useSignalRStatus: () => socketStatus.value ?? original.useSignalRStatus(),
     useSignalREvent: (event: string, subjects: never, handler: (payload: unknown) => void) => {
       const set = pushHandlers.get(event) ?? new Set();
       set.add(handler);
@@ -127,6 +129,7 @@ function resetAll() {
   toastMock.success.mockReset();
   toastMock.error.mockReset();
   pushHandlers.clear();
+  socketStatus.value = null;
   loaderData.activity = [];
   loaderData.backups = [];
   loaderData.backupSettings = null;
@@ -173,6 +176,40 @@ describe("Activity timeline (System > Audit)", () => {
     await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/activity/clear", expect.objectContaining({ method: "POST" })));
     expect(await screen.findByText("Activity cleared")).toBeInTheDocument();
     expect(revalidateMock).toHaveBeenCalled();
+  });
+
+  it("changing Rows shown to 100 saves it, says Page size saved and reads the timeline again; a save that fails shows its error and keeps the old size", async () => {
+    answer({ "PUT /api/activity/display-settings": {} });
+    renderAt("/system/audit");
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Rows shown" }));
+    fireEvent.click(screen.getByRole("option", { name: "100 rows" }));
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/activity/display-settings", expect.objectContaining({ method: "PUT", body: JSON.stringify({ pageSize: 100 }) })));
+    expect(await screen.findByText("Page size saved")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Rows shown" })).toHaveTextContent("100 rows");
+    expect(revalidateMock).toHaveBeenCalledTimes(1);
+
+    authedFetchMock.mockImplementation(() => Promise.reject(new Error("The server did not answer.")));
+    fireEvent.click(screen.getByRole("combobox", { name: "Rows shown" }));
+    fireEvent.click(screen.getByRole("option", { name: "1000 rows" }));
+    expect(await screen.findByText("The server did not answer.")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Rows shown" })).toHaveTextContent("100 rows");
+    expect(revalidateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("the live-connection badge on the card says nothing while connected, and says Connecting, Not live: reconnecting or Not live: trying again otherwise", () => {
+    answer({});
+    socketStatus.value = "connected";
+    const first = renderAt("/system/audit");
+    expect(screen.queryByText(/Not live|Connecting/)).not.toBeInTheDocument();
+    first.unmount();
+
+    for (const [status, words] of [["connecting", "Connecting…"], ["reconnecting", "Not live: reconnecting"], ["disconnected", "Not live: trying again"]] as const) {
+      socketStatus.value = status;
+      const shown = renderAt("/system/audit");
+      expect(screen.getByText(words)).toBeInTheDocument();
+      shown.unmount();
+    }
   });
 
   it("Find an event narrows the timeline by message or by kind", () => {
@@ -828,6 +865,49 @@ describe("Updates (System > Updates)", () => {
     expect(screen.getByRole("combobox", { name: "Update behaviour" })).toHaveValue("download-background");
   });
 
+  it("shows the current version, channel, install kind and state in words, and the server's message with a GitHub reset time in the viewer's own time", () => {
+    setup({ currentVersion: "1.2.0", channel: "beta", installKind: "windows-packaged", state: "up-to-date", message: "GitHub allows more checks after 2026-10-20 14:30 UTC." });
+
+    const row = (label: string) => screen.getByText(label, { selector: "p" }).parentElement!.textContent ?? "";
+    expect(row("Current version")).toContain("1.2.0");
+    expect(row("Channel")).toContain("beta");
+    expect(row("Install kind")).toContain("Windows packaged");
+    expect(row("State")).toContain("Up to date");
+    expect(screen.queryByText(/14:30 UTC/)).not.toBeInTheDocument();
+    expect(screen.getByText(/GitHub allows more checks after /)).toBeInTheDocument();
+  });
+
+  it.each([
+    ["idle", "Idle"], ["checking", "Checking"], ["update-available", "Update available"], ["downloading", "Downloading"],
+    ["ready-to-restart", "Ready to restart"], ["up-to-date", "Up to date"], ["not-supported", "Not supported"], ["error", "Needs attention"]
+  ])("the state %s reads '%s', and a Docker or manual install is named as such", (state, words) => {
+    setup({ state, installKind: "manual", isInstalled: false, canCheck: false });
+    const row = screen.getByText("State", { selector: "p" }).parentElement!.textContent ?? "";
+    expect(row).toContain(words);
+    expect(screen.getByText("Install kind", { selector: "p" }).parentElement!.textContent).toContain("Manual");
+  });
+
+  it("shows 'Download progress: N%' while downloading", () => {
+    setup({ state: "downloading", progressPercent: 42 });
+    expect(screen.getByText(/^Download progress: 42/)).toBeInTheDocument();
+  });
+
+  it("shows no download progress line when nothing is downloading", () => {
+    setup({ progressPercent: null });
+    expect(screen.queryByText(/Download progress/)).not.toBeInTheDocument();
+  });
+
+  it("shows 'What's new in X' with the changelog for an available update", () => {
+    setup({ updateAvailable: true, latestVersion: "1.3.0", changelog: "- Faster searches - Fewer false alarms" });
+    expect(screen.getByText("What's new in 1.3.0")).toBeInTheDocument();
+    expect(screen.getByText(/Faster searches/)).toBeInTheDocument();
+  });
+
+  it("does not show 'What's new' when no update is available even if a changelog is held", () => {
+    setup({ updateAvailable: false, latestVersion: "1.3.0", changelog: "- Old notes" });
+    expect(screen.queryByText(/What's new in/)).not.toBeInTheDocument();
+  });
+
   it("the update history lists each applied version with its date and a collapsed What changed, or says there are no notes", () => {
     setup({
       appliedUpdates: [
@@ -843,5 +923,87 @@ describe("Updates (System > Updates)", () => {
     expect(within(changed).getByText("Faster").tagName).toBe("STRONG");
     expect(within(changed).getByText("Fewer false alarms")).toBeInTheDocument();
     expect(screen.getByText("No notes for this version.")).toBeInTheDocument();
+  });
+});
+
+describe("The This installation card on the System tabs", () => {
+  afterEach(resetAll);
+
+  it("sits below the form on Backups and on Updates, and is not on the Recycle bin", () => {
+    loaderData.updateStatus = {
+      currentVersion: "1.2.0", channel: "stable", installKind: "windows-packaged", behaviorMode: "notify-only", isInstalled: true,
+      canCheck: true, canDownload: false, canApply: false, updateAvailable: false, latestVersion: null, state: "idle",
+      progressPercent: null, restartRequired: false, lastCheckedUtc: null, lastDownloadedUtc: null, message: "You are up to date.",
+      lastError: null, notes: [], currentImageRef: null, currentImageDigest: null, changelog: null, appliedUpdates: []
+    };
+    loaderData.backupSettings = settings();
+    answer({});
+
+    const backups = renderAt("/system/backups");
+    const create = screen.getByRole("button", { name: "Create backup" });
+    expect(create.compareDocumentPosition(screen.getByText("Host settings and defaults")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    backups.unmount();
+
+    const updates = renderAt("/system/updates");
+    const check = screen.getByRole("button", { name: "Check now" });
+    expect(check.compareDocumentPosition(screen.getByText("Host settings and defaults")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    updates.unmount();
+
+    renderAt("/system/recycle-bin");
+    expect(screen.queryByText("Host settings and defaults")).not.toBeInTheDocument();
+  });
+});
+
+describe("Recycle bin title and form (#1329)", () => {
+  afterEach(resetAll);
+
+  const item = (n: number) => ({
+    id: `r${n}`, libraryId: "lib-1", libraryName: "Movies", mediaType: "movies", originalPath: `D:/Movies/Film ${n}/Film ${n}.mkv`, recyclePath: `D:/bin/${n}`,
+    isDirectory: false, sizeBytes: 1_048_576 * n, createdUtc: "2026-10-01T10:00:00Z", expiresUtc: "2026-10-31T10:00:00Z", titleSnapshotId: null
+  });
+
+  it("says '1 stored item' or 'N stored items' for what is in the bin and 'Nothing stored' with the empty state when it is empty", () => {
+    loaderData.recycleBin = [item(1)];
+    answer({});
+    const one = renderAt("/system/recycle-bin");
+    expect(screen.getByText("1 stored item")).toBeInTheDocument();
+    one.unmount();
+
+    loaderData.recycleBin = [item(1), item(2), item(3)];
+    const three = renderAt("/system/recycle-bin");
+    expect(screen.getByText("3 stored items")).toBeInTheDocument();
+    three.unmount();
+
+    loaderData.recycleBin = [];
+    renderAt("/system/recycle-bin");
+    expect(screen.getByText("Nothing stored")).toBeInTheDocument();
+    expect(screen.getByText("Recycle bin is empty")).toBeInTheDocument();
+    expect(screen.queryByText(/stored items?$/)).not.toBeInTheDocument();
+  });
+
+  it("keeps what was typed in the settings form when a newer answer arrives", () => {
+    answer({});
+    renderAt("/system/recycle-bin");
+    const days = () => screen.getAllByRole("spinbutton")[0]!;
+    expect(days()).toHaveValue(30);
+
+    fireEvent.change(days(), { target: { value: "45" } });
+    loaderData.recycleBinSettings = { retentionDays: 60, maxSizeMb: 102400 };
+    act(() => bump());
+    expect(days()).toHaveValue(45);
+  });
+});
+
+describe("Backup retention count limits (#1329)", () => {
+  afterEach(resetAll);
+
+  it("the field lets a person choose 1 to 100 and the box says so", () => {
+    loaderData.backupSettings = settings();
+    answer({});
+    renderAt("/system/backups");
+
+    const field = screen.getByLabelText("Backup retention count");
+    expect(field).toHaveAttribute("min", "1");
+    expect(field).toHaveAttribute("max", "100");
   });
 });

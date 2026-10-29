@@ -20,6 +20,7 @@ public sealed class ActivityDisplaySettingsStoreTests
         {
             var options = Options.Create(new StoragePathOptions { DataRoot = dataRoot });
             var store = new FileActivityDisplaySettingsStore(options);
+            Assert.Equal(500, FileActivityDisplaySettingsStore.DefaultPageSize);
             Assert.Equal(FileActivityDisplaySettingsStore.DefaultPageSize, store.PageSize);
 
             await store.SetPageSizeAsync(50, CancellationToken.None);
