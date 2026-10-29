@@ -28,12 +28,19 @@ public sealed class AnNzbgetJobStuckNearTheEndIsNotCalledQueuedTests
     [Theory]
     [InlineData("QUEUED", 5_000_000, false)]
     [InlineData("QUEUED", 0, true)]
-    [InlineData("PAUSED", 0, false)]
-    public async Task A_job_waiting_behind_a_moving_client_or_paused_or_a_paused_client_stays_queued(string status, long rate, bool clientPaused)
+    public async Task A_job_waiting_behind_a_moving_client_or_a_paused_client_stays_queued(string status, long rate, bool clientPaused)
     {
         var item = Assert.Single((await Snapshot(status, activeDownloads: 0, clientRate: rate, clientPaused: clientPaused)).Queue);
 
         Assert.Equal(DownloadQueueStatuses.Queued, item.Status);
+    }
+
+    [Fact]
+    public async Task A_job_a_person_paused_reads_paused_not_queued()
+    {
+        var item = Assert.Single((await Snapshot("PAUSED", activeDownloads: 0, clientRate: 0, clientPaused: false)).Queue);
+
+        Assert.Equal(DownloadQueueStatuses.Paused, item.Status);
     }
 
     [Fact]

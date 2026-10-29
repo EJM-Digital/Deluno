@@ -533,7 +533,9 @@ internal static class DownloadClientHelpers
         }
 
         if (DownloadHealthStrikes.IsFinishedPercent(progress) || normalized.Contains("complete") || normalized.Contains("seeding")) return DownloadQueueStatuses.ImportReady;
-        if (normalized.Contains("pause") || normalized.Contains("queue")) return DownloadQueueStatuses.Queued;
+        // A job a person paused is Paused, never "waiting its turn" (#1414).
+        if (normalized.Contains("pause")) return DownloadQueueStatuses.Paused;
+        if (normalized.Contains("queue")) return DownloadQueueStatuses.Queued;
         return DownloadQueueStatuses.Downloading;
     }
 

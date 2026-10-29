@@ -167,7 +167,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
             }
             return new DownloadQueueItem(item.NzoId ?? item.Filename ?? Guid.CreateVersion7().ToString("N"), client.Id, client.Name, client.Protocol,
                 DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.Filename ?? "Unknown SABnzbd item"),
-                item.Filename ?? "Unknown SABnzbd item", item.Category ?? string.Empty, NormalizeStatus(item.Status, progress), progress,
+                item.Filename ?? "Unknown SABnzbd item", item.Category ?? string.Empty, QueueRowStatus(item.Status, progress, payload?.Queue?.Paused == true), progress,
                 ParseMegabytes(payload?.Queue?.Speed), ParseEta(item.TimeLeft), sizeBytes, downloadedBytes, 0, "SABnzbd",
                 QueueError(item.Status), capturedUtc);
         }).ToArray();
@@ -909,9 +909,23 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
         // stages map to and Deluno's own cleanup step already uses.
         if (IsPostProcessingStage(normalized)) return DownloadQueueStatuses.Processing;
         if (Deluno.Platform.Contracts.DownloadHealthStrikes.IsFinishedPercent(progress) || normalized.Contains("complete")) return DownloadQueueStatuses.ImportReady;
-        if (normalized.Contains("pause") || normalized.Contains("queued")) return DownloadQueueStatuses.Queued;
+        // A job a person paused is Paused, not waiting its turn (#1414); Queued is only a job that is waiting.
+        if (normalized.Contains("pause")) return DownloadQueueStatuses.Paused;
+        if (normalized.Contains("queued")) return DownloadQueueStatuses.Queued;
         if (normalized.Contains("fail") || normalized.Contains("error")) return DownloadQueueStatuses.Stalled;
         return DownloadQueueStatuses.Downloading;
+    }
+
+    /// <summary>
+    /// One queue row's status. With the whole queue paused (<c>queue.paused</c>) nothing moves, so a job that would
+    /// read Queued or Downloading reads Paused; a finished, processing or failed job reads as it is (#1414).
+    /// </summary>
+    internal string QueueRowStatus(string? nativeStatus, double? progress, bool queuePaused)
+    {
+        var status = NormalizeStatus(nativeStatus, progress);
+        return queuePaused && status is DownloadQueueStatuses.Queued or DownloadQueueStatuses.Downloading
+            ? DownloadQueueStatuses.Paused
+            : status;
     }
 
     /// <summary>SABnzbd queue slot statuses distinct from Downloading (#663).</summary>
