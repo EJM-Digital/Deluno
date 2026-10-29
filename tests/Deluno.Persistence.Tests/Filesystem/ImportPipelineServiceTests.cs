@@ -1067,6 +1067,97 @@ public sealed partial class ImportPipelineServiceTests
         Assert.Contains("rename", outbound.DispatchedCategories);
     }
 
+    [Fact]
+    public async Task A_rename_on_import_stays_silent_when_its_switch_is_off()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Arrival.2016.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var outbound = new RecordingOutboundNotificationService();
+        var enabledPrefs = new FakeNotificationService(new NotificationPreferences());
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            outboundNotificationService: outbound,
+            notificationService: enabledPrefs);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(sourcePath, null, "movies", "Arrival", 2016, [], [], null, "en", ImdbId: "tt2543164"),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        // The staged name (Arrival.2016.WEB.1080p.mkv) differs from the
+        // destination Deluno names it (Arrival (2016) [WEB 1080p].mkv).
+        Assert.DoesNotContain("rename", outbound.DispatchedCategories);
+    }
+
+    [Fact]
+    public async Task A_failed_import_that_needs_a_person_stays_silent_about_it_when_its_switch_is_off()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var releaseFolder = Path.Combine(downloadsPath, "Arrival.2016.1080p.WEB-VERIFY");
+        Directory.CreateDirectory(releaseFolder);
+        Directory.CreateDirectory(movieRootPath);
+        await File.WriteAllTextAsync(Path.Combine(releaseFolder, "Arrival.2016.nfo"), "clutter");
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var outbound = new RecordingOutboundNotificationService();
+        var enabledPrefs = new FakeNotificationService(new NotificationPreferences());
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            outboundNotificationService: outbound,
+            notificationService: enabledPrefs);
+
+        // No importable video inside the release folder: a real import
+        // failure, which is exactly what opens the recovery case.
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: releaseFolder,
+                    FileName: "Arrival.2016.1080p.WEB-VERIFY.mkv",
+                    MediaType: "movies",
+                    Title: "Arrival",
+                    Year: 2016,
+                    Genres: [],
+                    Tags: [],
+                    Studio: null,
+                    OriginalLanguage: null),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.DoesNotContain("manual_interaction_required", outbound.DispatchedCategories);
+    }
+
     /// <summary>
     /// #1255: the quality of the file an upgrade replaced is read from that file's own name, not from the
     /// library folders above it. A library root called "library-2160-cache" made a WEB 720p copy count as
