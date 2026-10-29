@@ -276,6 +276,20 @@ describe("Remove from the bar", () => {
     expect(screen.getByRole("button", { name: /^(De)?select Silo$/i })).toBeInTheDocument();
   });
 
+  it("says how many titles could not be removed in the plural, and removes the rest", async () => {
+    writeReply = () => ({ ok: true, body: { results: [{ seriesId: "s1", succeeded: true }, { seriesId: "s2", succeeded: false }, { seriesId: "s3", succeeded: false }], failureCount: 2 } });
+    await renderShelf("shows");
+    await select("Severance", "Silo", "Andor");
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    fireEvent.click(await within(await screen.findByRole("dialog", { name: /Remove 3 TV shows\?/ })).findByRole("button", { name: "Remove TV shows" }));
+
+    await waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith("2 titles could not be removed."));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /^(De)?select Severance$/i })).toBeNull());
+    expect(screen.getByRole("button", { name: /^(De)?select Silo$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^(De)?select Andor$/i })).toBeInTheDocument();
+  });
+
   it("a request that fails says so and removes nothing from the shelf", async () => {
     writeReply = () => ({ ok: false, status: 500, body: {} });
     await renderShelf("shows");
