@@ -309,6 +309,7 @@ export function SearchPage() {
           ) : (
             <ListTable
               listId="manual-search-results"
+                startOverWhen={results}
               items={visibleResults}
               columns={[
                 { id: "release", label: "Release", sort: (candidate) => candidate.releaseName.toLowerCase() },

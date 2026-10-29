@@ -1524,6 +1524,7 @@ export function ShowDetailPage() {
               <ListTable
                 // The server's ranking is the order until a header is clicked.
                 listId="show-release-candidates"
+                startOverWhen={releaseCandidates}
                 items={visibleCandidates}
                 columns={[
                   { id: "release", label: "Release", sort: (candidate) => candidate.releaseName.toLowerCase() },

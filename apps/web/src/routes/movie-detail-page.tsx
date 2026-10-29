@@ -1217,6 +1217,7 @@ export function MovieDetailPage() {
               <ListTable
                 // The server's ranking is the order until a header is clicked.
                 listId="movie-release-candidates"
+                startOverWhen={releaseCandidates}
                 items={visibleCandidates}
                 columns={[
                   { id: "release", label: "Release", sort: (candidate) => candidate.releaseName.toLowerCase() },
