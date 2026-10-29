@@ -68,6 +68,4 @@ public interface ISecurityRepository
     /// <summary>Uses the code up and sets a new password, signing every session out. Null when the code is wrong or used.</summary>
     Task<UserItem?> ResetPasswordWithRecoveryCodeAsync(string code, string newPassword, CancellationToken cancellationToken);
 
-    /// <summary>Sets a new password without the old one (after a one-time PIN), signing every session out.</summary>
-    Task<UserItem?> ResetPasswordAsync(string userId, string newPassword, CancellationToken cancellationToken);
 }

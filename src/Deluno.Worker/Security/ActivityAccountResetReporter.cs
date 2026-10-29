@@ -17,13 +17,11 @@ public sealed class ActivityAccountResetReporter(
 {
     public const string Category = "security.password-reset";
 
-    public static string Words(RecoveryMethod method) => method == RecoveryMethod.OneTimePin
-        ? "Password reset with a one-time PIN. Every signed-in session was ended."
-        : "Password reset with a recovery code. Every signed-in session was ended.";
+    public const string Words = "Password reset with a recovery code. Every signed-in session was ended.";
 
-    public async Task ReportResetAsync(RecoveryMethod method, CancellationToken cancellationToken)
+    public async Task ReportResetAsync(CancellationToken cancellationToken)
     {
-        var words = Words(method);
+        var words = Words;
         await activity.RecordActivityAsync(Category, words, null, null, null, null, cancellationToken);
 
         try

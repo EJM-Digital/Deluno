@@ -9,6 +9,7 @@ import {
   Download,
   Film,
   FolderTree,
+  KeyRound,
   Keyboard,
   LayoutDashboard,
   ListChecks,
@@ -309,6 +310,14 @@ export const settingsCommands: CommandItem[] = [
     group: "navigation",
     icon: FolderTree,
     to: "/settings/migration"
+  },
+  {
+    id: "settings.account",
+    label: "System & Settings · Account",
+    keywords: ["recovery", "codes", "password", "username", "sign in", "account", "forgot"],
+    group: "navigation",
+    icon: KeyRound,
+    to: "/settings/account"
   },
   {
     id: "settings.guided-setup",

@@ -8,7 +8,6 @@ using Deluno.Notifications;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Security.Contracts;
 using Deluno.Security.Recovery;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
@@ -16,19 +15,13 @@ using Microsoft.Extensions.Time.Testing;
 namespace Deluno.Persistence.Tests.Api;
 
 /// <summary>
-/// #1392: recovery codes and the Docker-only one-time PIN, over HTTP on the real application with a real database file.
+/// #1392: recovery codes, over HTTP on the real application with a real database file.
 /// </summary>
-public sealed class RecoveryCodesAndThePinOnTheRealHostTests
+public sealed class RecoveryCodesOnTheRealHostTests
 {
     private const string OwnerPassword = "Deluno-Test-2026!";
     private const string NewPassword = "a-brand-new-password";
     private const string Refused = "That did not work. Check it and try again.";
-
-    private sealed class Host(bool inContainer, bool callerInside) : IRecoveryHostInfo
-    {
-        public bool InContainer => inContainer;
-        public bool IsCallerInsideTheHost(HttpContext context) => callerInside;
-    }
 
     private sealed class RecordingNotifications : IOutboundNotificationService
     {
@@ -49,9 +42,7 @@ public sealed class RecoveryCodesAndThePinOnTheRealHostTests
 
     private static Task<ApplicationTestHost> StartAsync(
         FakeTimeProvider? clock = null,
-        RecordingNotifications? notifications = null,
-        bool? inContainer = null,
-        bool callerInside = true)
+        RecordingNotifications? notifications = null)
         => ApplicationTestHost.StartAsync(replaceServices: services =>
         {
             if (clock is not null)
@@ -64,10 +55,6 @@ public sealed class RecoveryCodesAndThePinOnTheRealHostTests
                 services.AddSingleton<IOutboundNotificationService>(notifications);
             }
 
-            if (inContainer is not null)
-            {
-                services.AddSingleton<IRecoveryHostInfo>(new Host(inContainer.Value, callerInside));
-            }
         });
 
     private static async Task<IReadOnlyList<string>> MakeCodesAsync(ApplicationTestHost app)
@@ -77,21 +64,14 @@ public sealed class RecoveryCodesAndThePinOnTheRealHostTests
         return (await made.Content.ReadFromJsonAsync<RecoveryCodesMade>())!.Codes;
     }
 
-    private static async Task<HttpResponseMessage> CheckAsync(ApplicationTestHost app, string? code = null, string? pin = null)
-        => await app.CreateAnonymousClient().PostAsJsonAsync("/api/auth/recovery/check", new RecoveryProofRequest(code, pin));
+    private static async Task<HttpResponseMessage> CheckAsync(ApplicationTestHost app, string? code = null)
+        => await app.CreateAnonymousClient().PostAsJsonAsync("/api/auth/recovery/check", new RecoveryProofRequest(code));
 
-    private static async Task<HttpResponseMessage> ResetAsync(ApplicationTestHost app, string? code = null, string? pin = null, string password = NewPassword)
-        => await app.CreateAnonymousClient().PostAsJsonAsync("/api/auth/recovery/reset", new RecoveryResetRequest(code, pin, password));
+    private static async Task<HttpResponseMessage> ResetAsync(ApplicationTestHost app, string? code = null, string password = NewPassword)
+        => await app.CreateAnonymousClient().PostAsJsonAsync("/api/auth/recovery/reset", new RecoveryResetRequest(code, password));
 
     private static async Task<string> MessageAsync(HttpResponseMessage response)
         => (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("message").GetString()!;
-
-    private static async Task<string> MakePinAsync(ApplicationTestHost app)
-    {
-        var made = await app.CreateAnonymousClient().PostAsync("/api/auth/recovery/pin", null);
-        Assert.Equal(HttpStatusCode.OK, made.StatusCode);
-        return (await made.Content.ReadFromJsonAsync<RecoveryPinMade>())!.Pin;
-    }
 
     private static async Task<HttpStatusCode> SignInAsync(ApplicationTestHost app, string password)
         => (await app.CreateAnonymousClient().PostAsJsonAsync("/api/auth/login", new LoginRequest("owner", password))).StatusCode;
@@ -228,18 +208,16 @@ public sealed class RecoveryCodesAndThePinOnTheRealHostTests
     }
 
     [Fact]
-    public async Task A_wrong_code_a_blank_one_and_a_wrong_pin_all_get_the_same_plain_refusal()
+    public async Task A_wrong_code_and_a_blank_one_get_the_same_plain_refusal()
     {
-        await using var app = await StartAsync(inContainer: true);
+        await using var app = await StartAsync();
         await MakeCodesAsync(app);
-        await MakePinAsync(app);
 
         var wrongCode = await CheckAsync(app, "AAAA-BBBB-CCCC");
         var blank = await CheckAsync(app);
-        var wrongPin = await CheckAsync(app, pin: "00000000");
         var resetWrong = await ResetAsync(app, "AAAA-BBBB-CCCC");
 
-        foreach (var response in new[] { wrongCode, blank, wrongPin, resetWrong })
+        foreach (var response in new[] { wrongCode, blank, resetWrong })
         {
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
             Assert.Equal(Refused, await MessageAsync(response));
@@ -333,145 +311,6 @@ public sealed class RecoveryCodesAndThePinOnTheRealHostTests
             }
 
             Assert.Equal(HttpStatusCode.OK, (await CheckAsync(app, codes[0])).StatusCode);
-        }
-    }
-
-    [Fact]
-    public async Task Outside_a_container_there_is_no_pin_offered_made_or_accepted()
-    {
-        await using var app = await StartAsync(inContainer: false);
-
-        var options = (await app.CreateAnonymousClient().GetFromJsonAsync<RecoveryOptions>("/api/auth/recovery-options"))!;
-        Assert.False(options.PinAvailable);
-        Assert.Equal(HttpStatusCode.NotFound, (await app.CreateAnonymousClient().PostAsync("/api/auth/recovery/pin", null)).StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, (await CheckAsync(app, pin: "12345678")).StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, (await ResetAsync(app, pin: "12345678")).StatusCode);
-    }
-
-    [Fact]
-    public async Task In_a_container_a_pin_is_made_by_the_console_checked_and_used_once_to_reset()
-    {
-        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
-        var notifications = new RecordingNotifications();
-        await using var app = await StartAsync(clock, notifications, inContainer: true);
-
-        Assert.True((await app.CreateAnonymousClient().GetFromJsonAsync<RecoveryOptions>("/api/auth/recovery-options"))!.PinAvailable);
-
-        var made = await app.CreateAnonymousClient().PostAsync("/api/auth/recovery/pin", null);
-        var pin = (await made.Content.ReadFromJsonAsync<RecoveryPinMade>())!;
-        Assert.Matches("^[0-9]{8}$", pin.Pin);
-        Assert.Equal(clock.GetUtcNow().AddMinutes(15), pin.ExpiresUtc);
-
-        var check = await CheckAsync(app, pin: pin.Pin);
-        Assert.Equal("owner", (await check.Content.ReadFromJsonAsync<RecoveryUsername>())!.Username);
-
-        Assert.Equal(HttpStatusCode.NoContent, (await ResetAsync(app, pin: pin.Pin)).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, await SignInAsync(app, NewPassword));
-
-        Assert.Equal(HttpStatusCode.BadRequest, (await ResetAsync(app, pin: pin.Pin, password: "another-new-password")).StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, (await CheckAsync(app, pin: pin.Pin)).StatusCode);
-
-        var activity = await app.Services.GetRequiredService<IActivityFeedRepository>().ListActivityAsync(20, null, null, CancellationToken.None);
-        Assert.Contains(activity, item => item.Message == "Password reset with a one-time PIN. Every signed-in session was ended.");
-        Assert.Equal("Password reset with a one-time PIN. Every signed-in session was ended.", Assert.Single(notifications.Sent).Message);
-    }
-
-    [Fact]
-    public async Task A_pin_works_for_fifteen_minutes_and_not_after()
-    {
-        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
-        await using var app = await StartAsync(clock, inContainer: true);
-
-        var pin = await MakePinAsync(app);
-        clock.Advance(TimeSpan.FromMinutes(14) + TimeSpan.FromSeconds(59));
-        Assert.Equal(HttpStatusCode.OK, (await CheckAsync(app, pin: pin)).StatusCode);
-
-        clock.Advance(TimeSpan.FromSeconds(2));
-        Assert.Equal(HttpStatusCode.BadRequest, (await CheckAsync(app, pin: pin)).StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, (await ResetAsync(app, pin: pin)).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, await SignInAsync(app, OwnerPassword));
-    }
-
-    [Fact]
-    public async Task A_second_pin_replaces_the_first()
-    {
-        await using var app = await StartAsync(inContainer: true);
-
-        var first = await MakePinAsync(app);
-        var second = await MakePinAsync(app);
-        Assert.NotEqual(first, second);
-
-        Assert.Equal(HttpStatusCode.BadRequest, (await CheckAsync(app, pin: first)).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await CheckAsync(app, pin: second)).StatusCode);
-    }
-
-    [Fact]
-    public async Task Wrong_pins_are_rate_limited_and_lock_a_right_one_out()
-    {
-        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
-        await using var app = await StartAsync(clock, inContainer: true);
-        var pin = await MakePinAsync(app);
-        var wrong = pin == "00000000" ? "11111111" : "00000000";
-
-        for (var i = 0; i < 5; i++)
-        {
-            Assert.Equal(HttpStatusCode.BadRequest, (await CheckAsync(app, pin: wrong)).StatusCode);
-        }
-
-        Assert.Equal(HttpStatusCode.TooManyRequests, (await CheckAsync(app, pin: pin)).StatusCode);
-        clock.Advance(TimeSpan.FromMinutes(11));
-        Assert.Equal(HttpStatusCode.OK, (await CheckAsync(app, pin: pin)).StatusCode);
-    }
-
-    [Fact]
-    public async Task A_caller_from_outside_the_container_gets_no_pin()
-    {
-        await using var app = await StartAsync(inContainer: true, callerInside: false);
-
-        var made = await app.CreateAnonymousClient().PostAsync("/api/auth/recovery/pin", null);
-
-        Assert.Equal(HttpStatusCode.Forbidden, made.StatusCode);
-        Assert.DoesNotContain("pin", await made.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Theory]
-    [InlineData("127.0.0.1", null, true)]
-    [InlineData("::1", null, true)]
-    [InlineData("127.0.0.1", "X-Forwarded-For", false)]
-    [InlineData("127.0.0.1", "Forwarded", false)]
-    [InlineData("127.0.0.1", "X-Real-IP", false)]
-    [InlineData("192.168.1.20", null, false)]
-    [InlineData(null, null, false)]
-    public void Only_the_console_inside_the_host_counts_as_inside(string? peer, string? header, bool expected)
-    {
-        var context = new DefaultHttpContext();
-        if (peer is not null)
-        {
-            context.Connection.RemoteIpAddress = IPAddress.Parse(peer);
-        }
-
-        if (header is not null)
-        {
-            context.Request.Headers[header] = "203.0.113.9";
-        }
-
-        Assert.Equal(expected, new RecoveryHostInfo().IsCallerInsideTheHost(context));
-    }
-
-    [Fact]
-    public void A_host_is_in_a_container_only_when_dotnet_says_so()
-    {
-        var before = Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER");
-        try
-        {
-            Environment.SetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER", "true");
-            Assert.True(new RecoveryHostInfo().InContainer);
-            Environment.SetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER", null);
-            Assert.False(new RecoveryHostInfo().InContainer);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER", before);
         }
     }
 

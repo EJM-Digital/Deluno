@@ -491,7 +491,7 @@ public sealed class SqliteSecurityRepository(
         return await ResetPasswordAsync(match.Value.UserId, newPassword, cancellationToken);
     }
 
-    public async Task<UserItem?> ResetPasswordAsync(string userId, string newPassword, CancellationToken cancellationToken)
+    private async Task<UserItem?> ResetPasswordAsync(string userId, string newPassword, CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,

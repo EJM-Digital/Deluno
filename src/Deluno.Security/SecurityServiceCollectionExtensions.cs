@@ -17,9 +17,7 @@ public static class SecurityServiceCollectionExtensions
         // UseDelunoBadRequestAnswers can say what was wrong.
         services.Configure<Microsoft.AspNetCore.Routing.RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
         services.AddSingleton<ISecurityRepository, SqliteSecurityRepository>();
-        // #1392: recovery codes, and the one-time PIN offered only in a container.
-        services.TryAddSingleton<IRecoveryHostInfo, RecoveryHostInfo>();
-        services.AddSingleton<RecoveryPins>();
+        // #1392: recovery codes.
         services.AddSingleton<RecoveryAttempts>();
         services.AddSingleton<AccountRecovery>();
         // The host that can see Activity and Notifications registers the real one (Deluno.Worker).

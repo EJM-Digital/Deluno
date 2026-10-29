@@ -1,3 +1,4 @@
+import { RecoveryCodesManager } from "../components/app/recovery-codes-manager";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { ArtworkImage } from "../components/ui/artwork-image";
 import { Link, useLoaderData, useNavigate, useSearchParams } from "react-router-dom";
@@ -1758,6 +1759,9 @@ function AccountStep({ user }: { user: { displayName: string; username: string }
       <div className="rounded-xl border border-hairline bg-background/35 p-3">
         <p className="text-sm font-semibold text-foreground">{user?.displayName ?? "Your account"}</p>
         <p className="mt-1 text-xs text-muted-foreground">{user ? `Signed in as ${user.username}` : "Signed in"}</p>
+      </div>
+      <div className="mt-3">
+        <RecoveryCodesManager />
       </div>
     </FieldShell>
   );

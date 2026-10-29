@@ -219,12 +219,6 @@ public static class SecurityEndpointRouteBuilderExtensions
         })
             .RequireAuthorization(DelunoAuthorizationPolicies.Read);
 
-        // What the sign-in page may offer: the one-time PIN only where the host runs in a container.
-        auth.MapGet("/recovery-options", (
-            [FromServices] IRecoveryHostInfo host) => Results.Ok(new RecoveryOptions(host.InContainer)))
-            .AllowAnonymous()
-            .WithMetadata(new DelunoPublicEndpointAttribute());
-
         login.MapPost("/recovery/check", async (
             [FromBody] RecoveryProofRequest request,
             [FromServices] AccountRecovery recovery,
@@ -253,34 +247,6 @@ public static class SecurityEndpointRouteBuilderExtensions
 
             var result = await recovery.ResetAsync(request, request.NewPassword, cancellationToken);
             return result == RecoveryResult.Done ? Results.NoContent() : RecoveryRefusal(result);
-        })
-            .AllowAnonymous()
-            .WithMetadata(new DelunoPublicEndpointAttribute());
-
-        // The command run inside the container asks here. Only the container's own console can: a browser never gets a PIN.
-        auth.MapPost("/recovery/pin", async (
-            HttpContext httpContext,
-            [FromServices] IRecoveryHostInfo host,
-            [FromServices] RecoveryPins pins,
-            [FromServices] ISecurityRepository repository,
-            CancellationToken cancellationToken) =>
-        {
-            if (!host.InContainer)
-            {
-                return Results.NotFound();
-            }
-
-            if (!host.IsCallerInsideTheHost(httpContext))
-            {
-                return Results.StatusCode(StatusCodes.Status403Forbidden);
-            }
-
-            if (await repository.GetSoleUserAsync(cancellationToken) is null)
-            {
-                return Results.Conflict(new { message = "Deluno has no account yet. Open it in a browser to set one up." });
-            }
-
-            return Results.Ok(pins.Make());
         })
             .AllowAnonymous()
             .WithMetadata(new DelunoPublicEndpointAttribute());

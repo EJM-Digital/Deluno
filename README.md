@@ -169,6 +169,10 @@ The first time you open Deluno it asks you to create your account, then walks yo
 
 **Nothing automatic is on until you say so.** Searching on a schedule, upgrading, cleaning up, keeping to an address list: the guide asks about each with a plain Yes or No, and a fresh install starts with them all off. Anything left off shows up on the dashboard so you do not forget it, and anything that is on writes what it did to Activity.
 
+**Keep your recovery codes.** Creating your account shows 10 single-use recovery codes, once. Keep them in a password manager or print them. If you forget your username or password, choose "Forgot your username or password?" on the sign-in page, enter a code, and Deluno shows your username and lets you set a new password. That signs every device out; API keys keep working. Settings, Account shows how many codes are left and makes a new set (which stops the old ones working). An account made before this existed is asked to make its codes after its next sign-in.
+
+If you lose both your password and your recovery codes, the only way forward is a fresh install.
+
 ## Reaching Deluno from another computer, safely
 
 Deluno listens only on the computer it runs on until you allow more, because a fresh install has no password yet and nothing else on your network should be able to reach it.

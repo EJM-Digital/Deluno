@@ -125,7 +125,8 @@ export const systemSettingsNavItems = [
   { to: "/settings/general", label: "General", end: false },
   { to: "/settings/ui", label: "Interface", end: false },
   { to: "/settings/notifications", label: "Notifications", end: false },
-  { to: "/settings/migration", label: "Migration", end: false }
+  { to: "/settings/migration", label: "Migration", end: false },
+  { to: "/settings/account", label: "Account", end: false }
 ] as const;
 
 /** The running installation itself, as toolbar tabs. */
@@ -264,6 +265,12 @@ export const settingsPageMeta = [
     match: (path: string) => path.startsWith("/settings/lists"),
     title: "Discover Media",
     description: "Watchlists and curated lists that can add the movies or shows you want Deluno to manage.",
+    chrome: "none"
+  },
+  {
+    match: (path: string) => path.startsWith("/settings/account"),
+    title: "Account",
+    description: "Recovery codes: the way back in if you forget your username or password.",
     chrome: "none"
   },
   {

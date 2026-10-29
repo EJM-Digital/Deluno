@@ -22,7 +22,7 @@ const MEDIA_MANAGEMENT_PATHS = [
   "/settings/auto-tagging"
 ];
 
-const PREFERENCES_PATHS = ["/settings/general", "/settings/ui", "/settings/notifications", "/settings/migration"];
+const PREFERENCES_PATHS = ["/settings/general", "/settings/ui", "/settings/notifications", "/settings/migration", "/settings/account"];
 
 export const CONFIGURATION_AREAS: readonly ConfigurationArea[] = [
   {

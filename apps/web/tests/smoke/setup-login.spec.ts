@@ -56,6 +56,11 @@ test.describe("first-run and auth screens", () => {
     await page.getByLabel("Password", { exact: true }).fill(fallbackCredentials.password);
     await page.getByLabel("Confirm password").fill(fallbackCredentials.password);
     await page.getByRole("button", { name: "Create account" }).click();
+    await expect(page.getByRole("heading", { name: "Save your recovery codes" })).toBeVisible();
+    await expect(page.getByRole("list", { name: "Recovery codes" }).getByRole("listitem")).toHaveCount(10);
+    await expect(page.getByRole("button", { name: "Continue" })).toBeDisabled();
+    await page.getByLabel("I have saved these codes").check();
+    await page.getByRole("button", { name: "Continue" }).click();
 
     await expect(page).not.toHaveURL(/\/setup/);
     await expect(page.getByText("Unexpected Application Error")).toHaveCount(0);

@@ -30,6 +30,8 @@ Implemented:
 - `POST /api/auth/bootstrap`
 - `POST /api/auth/logout`
 - `PUT /api/auth/password`
+- `GET /api/auth/recovery-codes` and `POST /api/auth/recovery-codes`: how many recovery codes are left; make a new set of 10 (voids the old). `POST /api/auth/bootstrap` also returns the first set as `recoveryCodes`.
+- `POST /api/auth/recovery/check` and `POST /api/auth/recovery/reset` (anonymous, rate limited: 5 wrong tries lock recovery for 10 minutes): a body of `{ code }` (and `newPassword` for reset). A wrong code is always `400 { message }` and never says which part was wrong. A reset signs every session out, writes Activity and sends a notification.
 
 UI expectations:
 

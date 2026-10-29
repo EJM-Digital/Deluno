@@ -23,6 +23,8 @@ interface LoginPayload {
   accessToken: string;
   expiresUtc: string;
   user: UserProfile;
+  /** First-run only: the account's first recovery codes, shown once (#1392). */
+  recoveryCodes?: string[];
 }
 
 interface AuthContextValue {
@@ -31,7 +33,8 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isLoading: boolean;
   login(username: string, password: string, keepSignedIn?: boolean): Promise<void>;
-  bootstrap(displayName: string, username: string, password: string): Promise<void>;
+  /** Creates the account and signs in; answers with its first recovery codes, which are shown once. */
+  bootstrap(displayName: string, username: string, password: string): Promise<string[]>;
   changePassword(currentPassword: string, newPassword: string): Promise<void>;
   logout(): void;
 }
@@ -256,6 +259,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const data = (await res.json()) as LoginPayload;
     applyLoginPayload(data, setToken, setUser);
+    return data.recoveryCodes ?? [];
   }, []);
 
   const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
