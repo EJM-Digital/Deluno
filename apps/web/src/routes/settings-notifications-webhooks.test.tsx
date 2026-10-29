@@ -227,9 +227,9 @@ describe("webhook drawer", () => {
     loader.webhooks = [hook({ id: "e5", name: "Quiet target" })];
     renderPage();
     fireEvent.click(screen.getByText("Quiet target"));
-    for (const body of [{}, { sent: null }, { id: "x" }]) {
+    for (const body of [{}, { sent: null }, { id: "x" }, "not json at all"]) {
       toastError.mockReset();
-      vi.mocked(authedFetch).mockImplementation(async (input: RequestInfo | URL) => String(input).startsWith("/api/tags") ? json([]) : json(body));
+      vi.mocked(authedFetch).mockImplementation(async (input: RequestInfo | URL) => String(input).startsWith("/api/tags") ? json([]) : typeof body === "string" ? new Response(body, { status: 200 }) : json(body));
       fireEvent.click(screen.getByRole("button", { name: "Send a test event" }));
       await waitFor(() => expect(toastError).toHaveBeenCalledWith("Nothing was sent. The answer did not say the event was delivered."));
     }
