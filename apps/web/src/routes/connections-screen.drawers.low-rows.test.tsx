@@ -273,3 +273,30 @@ describe("the download client drawer, low rows (#1329)", () => {
     expect(enabled.getAttribute("aria-checked")).toBe("false");
   });
 });
+
+describe("the Tags button of the indexers list, low rows (#1329)", () => {
+  it("opens the tags dialog for the ticked indexers and, once applied, clears the selection", async () => {
+    reset({ indexers: [indexer({ id: "a", name: "Alpha" }), indexer({ id: "b", name: "Bravo", baseUrl: "https://bravo.example/api" }), indexer({ id: "c", name: "Charlie", baseUrl: "https://charlie.example/api" })] });
+    fetchJson.mockImplementation(async (url: string) => (url === "/api/tags" ? [{ id: "t1", name: "Kids", color: "blue" }] : []));
+    authedFetch.mockImplementation(async () => ok({ updated: 2 }));
+    show("/indexers/indexers");
+
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Alpha" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Bravo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Change tags on the selected indexers" }));
+
+    expect(await screen.findByText("Change tags: 2 selected indexers")).toBeTruthy();
+    fireEvent.click(screen.getByRole("textbox", { name: "Tags to apply" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add Kids to Tags to apply" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add tags" }));
+
+    await waitFor(() => expect(authedFetch).toHaveBeenCalledWith("/api/tags/bulk-connections", expect.objectContaining({ method: "POST" })));
+    const body = JSON.parse(String((authedFetch.mock.calls[0][1] as RequestInit).body));
+    expect(body).toMatchObject({ kind: "indexer", tags: ["Kids"], mode: "add" });
+    expect([...body.ids].sort()).toEqual(["a", "b"]);
+    await waitFor(() => expect(screen.queryByText("Change tags: 2 selected indexers")).toBeNull());
+    expect((screen.getByRole("checkbox", { name: "Select Alpha" }) as HTMLInputElement).getAttribute("aria-checked")).not.toBe("true");
+    expect((screen.getByRole("checkbox", { name: "Select Bravo" }) as HTMLInputElement).getAttribute("aria-checked")).not.toBe("true");
+  });
+});

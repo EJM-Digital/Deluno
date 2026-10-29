@@ -35,7 +35,7 @@ describe("the Subtitle providers list follows a change made elsewhere (#1329)", 
     const send = (name: string, payload: unknown) => act(() => { for (const handler of [...handlers]) handler(name, payload); });
     vi.useFakeTimers();
 
-    send("ConfigChanged", { area: ConfigAreas.general });
+    send("ConfigChanged", { area: ConfigAreas.notifications });
     send("ConfigChanged", null);
     act(() => { vi.advanceTimersByTime(5_000); });
     expect(revalidate).not.toHaveBeenCalled();

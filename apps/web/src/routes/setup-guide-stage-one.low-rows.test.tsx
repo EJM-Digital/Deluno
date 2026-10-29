@@ -62,7 +62,7 @@ describe("Stage 1 of the guide, low rows (#1329)", () => {
     ["Short date format", "2026-03-25", "shortDateFormat", "iso"],
     ["Short date format", "03/25/2026", "shortDateFormat", "mdy"],
     ["Long date format", "Wednesday, March 25", "longDateFormat", "mdy"]
-  ])("%s: choosing %s selects it (%s=%s is what the baseline later writes)", async (group, label, key, value) => {
+  ])("%s: choosing %s selects it (%s=%s is what the baseline later writes)", async (group, label, _key, _value) => {
     renderStep("timeRegion");
     const option = await choice(group, label);
     expect(option.getAttribute("aria-checked")).toBe("false");

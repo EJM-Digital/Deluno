@@ -8,7 +8,8 @@ import { IndexersPage, indexersSources } from "./connections-screen";
 // #1329: the Find & Download tabs on the data they are handed: the indexer and download-client lists, the empty states of the
 // path mappings, routing, proxies and scoreboard, and what the screen does when the server pushes a change.
 
-const fetchJson = vi.hoisted(() => vi.fn(async () => []));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const fetchJson = vi.hoisted(() => vi.fn(async (..._args: any[]): Promise<unknown> => []));
 vi.mock("../lib/api", async (importOriginal) => ({ ...(await importOriginal<object>()), fetchJson }));
 vi.mock("../lib/api/client", async (importOriginal) => ({ ...(await importOriginal<object>()), fetchJson }));
 vi.mock("../lib/use-auth", () => ({ authedFetch: async () => ({ ok: true, status: 200, json: async () => [], text: async () => "[]" }) }));
@@ -18,7 +19,7 @@ vi.mock("../components/shell/toaster", () => ({ toast: { success: vi.fn(), error
 const sources: any = {};
 const pending = { on: false };
 const pushHandlers = vi.hoisted(() => new Map<string, Set<(payload: unknown) => void>>());
-const refetchSources = vi.hoisted(() => vi.fn(async () => undefined));
+const refetchSources = vi.hoisted(() => vi.fn(async (..._keys: unknown[]) => undefined));
 
 vi.mock("../lib/use-signalr", async (importOriginal) => {
   const original = await importOriginal<typeof import("../lib/use-signalr")>();
@@ -32,7 +33,7 @@ vi.mock("../lib/use-signalr", async (importOriginal) => {
 
 vi.mock("../lib/live-refresh", async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  useCoalescedSourceRefresh: () => (...keys: unknown[]) => { refetchSources(...keys); }
+  useCoalescedSourceRefresh: () => (...keys: unknown[]) => { (refetchSources as (...args: unknown[]) => unknown)(...keys); }
 }));
 
 vi.mock("../lib/route-cache", async (importOriginal) => {
