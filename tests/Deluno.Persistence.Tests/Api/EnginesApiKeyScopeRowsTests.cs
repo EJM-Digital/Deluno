@@ -137,6 +137,26 @@ public sealed class EnginesApiKeyScopeRowsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task The_outside_callers_import_preview_is_behind_the_integrations_gate_so_an_imports_or_queue_key_is_admitted_and_a_read_only_key_is_refused()
+    {
+        var readOnly = await KeyClientAsync("read");
+        var imports = await KeyClientAsync("imports");
+        var queueOnly = await KeyClientAsync("queue");
+        var body = new { sourcePath = Path.Combine(_root, "not-there.mkv"), mediaType = "movies", title = "Arrival", year = 2016 };
+
+        var refused = await readOnly.PostAsJsonAsync("/api/integrations/external/import-preview", body);
+
+        Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+        Assert.Equal("This credential does not have the 'imports' or 'queue' scope.", (await refused.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
+        foreach (var key in new[] { imports, queueOnly })
+        {
+            var admitted = await key.PostAsJsonAsync("/api/integrations/external/import-preview", body);
+            Assert.Equal(HttpStatusCode.OK, admitted.StatusCode);
+            Assert.False((await admitted.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("sourceExists").GetBoolean());
+        }
+    }
+
+    [Fact]
     public async Task The_download_client_webhook_needs_the_queue_scope_and_answers_an_unknown_download_404_with_a_plain_message()
     {
         var queueOnly = await KeyClientAsync("queue");

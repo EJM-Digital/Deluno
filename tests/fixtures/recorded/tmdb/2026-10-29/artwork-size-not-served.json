@@ -1,0 +1,24 @@
+{
+  "app": "tmdb",
+  "version": "2026-10-29",
+  "state": "artwork-size-not-served",
+  "recordedAt": "2026-10-29T00:20:29Z",
+  "note": "GET /artwork/w300/{file} on the gateway: a size it does not serve answers 404 not_found.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/artwork/w300/msqeiEyIRpPAtrCeRGFNZQ9tkJL.jpg"
+      },
+      "reply": {
+        "status": 404,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "error": "not_found"
+        }
+      }
+    }
+  ]
+}
