@@ -257,6 +257,72 @@ describe("searching a film: the buttons, the Next step card and the candidate li
   });
 });
 
+describe("the candidate table: Decision sort, fresh searches and Force (search-grab low rows, second set)", () => {
+  it("clicking the Decision header sorts the candidates by tone, the worst first and then the best first", async () => {
+    const REJECTED = { ...ELIGIBLE, releaseName: "Big.Buck.Bunny.2008.480p.DVD-BAD", decisionStatus: "rejected", qualityDelta: -1, meetsCutoff: false };
+    const WARN = { ...ELIGIBLE, meetsCutoff: false };
+    setup(RESPONSES([WARN, REJECTED, PREFERRED]));
+    await renderPage();
+    press("Choose a release");
+    await screen.findByText(PREFERRED.releaseName);
+    // The server order holds until a header is pressed.
+    expect(order()[0]).toContain(WARN.releaseName);
+
+    fireEvent.click(screen.getByRole("button", { name: /^Decision/ }));
+    await waitFor(() => expect(screen.getByRole("columnheader", { name: /^Decision/ })).toHaveAttribute("aria-sort", "ascending"));
+    const ascending = order().map((text) => [PREFERRED, WARN, REJECTED].findIndex((candidate) => text.includes(candidate.releaseName)));
+    expect(ascending).toEqual([2, 1, 0]);
+    fireEvent.click(screen.getByRole("button", { name: /^Decision/ }));
+    await waitFor(() => expect(order()[0]).toContain(PREFERRED.releaseName));
+  });
+
+  it("clears the protocol filter whenever a fresh search is run", async () => {
+    setup(RESPONSES([{ ...PREFERRED, seeders: 40 }, { ...ELIGIBLE, seeders: 90 }, { ...ELIGIBLE, releaseName: "Big.Buck.Bunny.2008.480p.DVD-X", indexerProtocol: "newznab" }]));
+    await renderPage();
+    press("Choose a release");
+    await screen.findByText(PREFERRED.releaseName);
+    fireEvent.click(screen.getByRole("combobox", { name: "Filter by protocol" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Usenet" }));
+    expect(await screen.findByText("1 of 3 candidates")).toBeInTheDocument();
+
+    press("Choose a release");
+    await waitFor(() => expect(calls.filter((call) => call.url.startsWith("/api/movies/m1/search?mode=preview"))).toHaveLength(2));
+    expect(await screen.findByText("3 of 3 candidates")).toBeInTheDocument();
+    expect(order()[0]).toContain(PREFERRED.releaseName);
+  });
+
+  it("opens the collapsed Force with the engine's own summary as the reason it suggests", async () => {
+    setup(RESPONSES([PREFERRED, ELIGIBLE]));
+    await renderPage();
+    press("Choose a release");
+    fireEvent.click(await screen.findByText(ELIGIBLE.releaseName));
+    const drawer = await screen.findByRole("dialog", { name: ELIGIBLE.releaseName });
+    fireEvent.click(within(drawer).getAllByRole("button", { name: "Cancel" })[0]);
+    expect(within(drawer).queryByRole("textbox", { name: "Why force this release?" })).toBeNull();
+
+    fireEvent.click(within(drawer).getByRole("button", { name: "Force" }));
+    expect(within(drawer).getByRole("textbox", { name: "Why force this release?" })).toHaveValue(ELIGIBLE.summary);
+  });
+});
+
+describe("the Next step card after Choose a release (low rows)", () => {
+  it("Review candidates brings a person on another tab back to the candidates", async () => {
+    setup(RESPONSES([PREFERRED, ELIGIBLE]));
+    await renderPage();
+    press("Choose a release");
+    const review = await screen.findByRole("button", { name: "Review candidates" });
+    expect(screen.getByText(PREFERRED.releaseName)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: "History" }));
+    await waitFor(() => expect(screen.queryByText(PREFERRED.releaseName)).toBeNull());
+
+    fireEvent.click(screen.getByRole("button", { name: "Review candidates" }));
+    expect(await screen.findByText(PREFERRED.releaseName)).toBeInTheDocument();
+    expect(screen.getByText("2 of 2 candidates")).toBeInTheDocument();
+    expect(review).toBeDefined();
+  });
+});
+
 describe("the automatic search button while it runs (search-grab low rows)", () => {
   it("disables both search buttons and shows the spinner on Search now only", async () => {
     let release!: () => void;
