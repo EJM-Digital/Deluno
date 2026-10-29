@@ -244,6 +244,57 @@ describe("ListTable column sorting (#1119)", () => {
   });
 });
 
+describe("ListTable startOverWhen (#1418)", () => {
+  function Searching({ results }: { results: Item[] }) {
+    return (
+      <ListTable listId="demo" columns={columns} items={results} startOverWhen={results} chevron={false}>
+        {(rows) => rows.map((item) => (
+          <ListRow key={item.id} data-testid={`row-${item.id}`}>
+            <ListCell primary={item.name} />
+            <ListCell primary={String(item.size)} mobile />
+            <ListCell primary={item.when} mobile />
+            <ListCell primary="x" mobile />
+          </ListRow>
+        ))}
+      </ListTable>
+    );
+  }
+
+  it("a fresh set of results starts from the list's own order, not the last chosen sort", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<Searching results={items} />);
+    const header = screen.getByRole("columnheader", { name: /^Name/ });
+    await user.click(within(header).getByRole("button"));
+    expect(rowOrder()).toEqual(["row-a", "row-b", "row-c"]);
+    // The same results again (a re-render) keep the person's sort.
+    rerender(<Searching results={items} />);
+    expect(rowOrder()).toEqual(["row-a", "row-b", "row-c"]);
+    // A new search brings a new list.
+    rerender(<Searching results={[...items]} />);
+    expect(header).not.toHaveAttribute("aria-sort");
+    expect(rowOrder()).toEqual(["row-b", "row-a", "row-c"]);
+    expect(localStorageEmpty()).toBe(true);
+  });
+});
+
+describe("ListTable startOverWhen without a sort (#1418)", () => {
+  it("writes nothing to the browser when the new results find no sort to drop", () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const removeItem = vi.spyOn(Storage.prototype, "removeItem");
+    const view = (results: Item[]) => (
+      <ListTable listId="demo" columns={columns} items={results} startOverWhen={results} chevron={false}>
+        {(rows) => rows.map((item) => <ListRow key={item.id} data-testid={`row-${item.id}`}><ListCell primary={item.name} /></ListRow>)}
+      </ListTable>
+    );
+    const { rerender } = render(view(items));
+    rerender(view([...items]));
+    expect(setItem).not.toHaveBeenCalled();
+    expect(removeItem).not.toHaveBeenCalled();
+    setItem.mockRestore();
+    removeItem.mockRestore();
+  });
+});
+
 describe("ListTable column order (#1119)", () => {
   it("drags a header past its neighbour: headers and cells reorder together, once, on drop", () => {
     mockLayout();

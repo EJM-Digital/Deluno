@@ -5,6 +5,7 @@ import { authedFetch } from "../lib/use-auth";
 import { toast } from "../components/shell/toaster";
 import { moveRefusalLines, toastMoveRefusals, type MoveResult } from "../lib/move-refusals";
 import { describeRequestFailure, RequestFailedError } from "../lib/search-reasons";
+import { plural } from "../lib/plural";
 
 export type BulkWorkflowOperation = "monitoring" | "quality" | "minimumAvailability" | "reassignLibrary" | "tags" | "search" | "renamePreview";
 
@@ -299,8 +300,8 @@ export function useBulkEdit({
       );
       toast.success(
         monitored
-          ? `${selectedIds.length} title${selectedIds.length === 1 ? "" : "s"} now monitored`
-          : `${selectedIds.length} title${selectedIds.length === 1 ? "" : "s"} unmonitored`
+          ? `${plural(selectedIds.length, "title")} now monitored`
+          : `${plural(selectedIds.length, "title")} unmonitored`
       );
       setSelectedIds([]);
     } catch {
@@ -320,12 +321,12 @@ export function useBulkEdit({
     }
     setIsBulkUpdating(true);
     const loadingId = toast.loading(
-      `Searching ${selectedItems.length} title${selectedItems.length === 1 ? "" : "s"}…`
+      `Searching ${plural(selectedItems.length, "title")}…`
     );
     try {
       await applySearchNow(selectedIds);
       toast.success(
-        `Manual search dispatched for ${selectedItems.length} title${selectedItems.length === 1 ? "" : "s"}`,
+        `Manual search dispatched for ${plural(selectedItems.length, "title")}`,
         { id: loadingId }
       );
       setSelectedIds([]);
@@ -554,12 +555,12 @@ export function useBulkEdit({
         // record — "only the record was reassigned" is the whole point of
         // #787 when moveFiles was left off.
         if (refusalLines.length > 0) {
-          if (totalReassigned > 0) toast.success(`Library assignment updated for ${totalReassigned} title${totalReassigned === 1 ? "" : "s"}.`);
+          if (totalReassigned > 0) toast.success(`Library assignment updated for ${plural(totalReassigned, "title")}.`);
           toastMoveRefusals(refusalLines);
         } else if (!moveFiles) {
           toast.success("Library assignment updated. Files were left where they are.");
         } else {
-          toast.success(`Library assignment updated. ${totalFilesMoved} file${totalFilesMoved === 1 ? "" : "s"} moved.`);
+          toast.success(`Library assignment updated. ${plural(totalFilesMoved, "file")} moved.`);
         }
       }
       else if (bulkOperation === "minimumAvailability") {
@@ -738,11 +739,11 @@ export function useBulkEdit({
       const failures = payload.failures ?? [];
 
       if (renamedCount > 0) {
-        toast.success(`${renamedCount} folder${renamedCount === 1 ? "" : "s"} renamed.`);
+        toast.success(`${plural(renamedCount, "folder")} renamed.`);
       }
       if (failures.length > 0) {
         toast.error(
-          `${failures.length} folder${failures.length === 1 ? "" : "s"} could not be renamed`,
+          `${plural(failures.length, "folder")} could not be renamed`,
           { duration: Infinity, description: failures.map((item) => `${item.title ?? "Untitled"}: ${item.reason ?? "unknown reason"}`).join("; ") }
         );
       }

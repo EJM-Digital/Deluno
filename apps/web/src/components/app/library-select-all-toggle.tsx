@@ -1,4 +1,5 @@
 import { cn } from "../../lib/utils";
+import { pluralNoun } from "../../lib/plural";
 
 type LibrarySelectAllToggleProps = {
   totalCount: number;
@@ -42,13 +43,13 @@ export function LibrarySelectAllToggle({
       */}
       <p className="text-(length:--library-toolbar-size) font-medium text-muted-foreground">
         {isQueryLoading ? (
-          <><span className="font-bold tabular text-foreground">{filteredCount.toLocaleString()}</span> {filteredCount === 1 ? "title" : "titles"} shown <span className="animate-pulse">— updating</span></>
+          <><span className="font-bold tabular text-foreground">{filteredCount.toLocaleString()}</span> {pluralNoun(filteredCount, "title")} shown <span className="animate-pulse">— updating</span></>
         ) : isLoadingMore && totalCount > loadedCount ? (
           <>Showing <span className="font-bold tabular text-foreground">{filteredCount.toLocaleString()}</span> of {totalCount.toLocaleString()} <span className="animate-pulse">— still loading</span></>
         ) : totalCount > loadedCount ? (
           <>Showing <span className="font-bold tabular text-foreground">{filteredCount.toLocaleString()}</span> of {totalCount.toLocaleString()}</>
         ) : (
-          <><span className="font-bold tabular text-foreground">{filteredCount.toLocaleString()}</span> {filteredCount === 1 ? "title" : "titles"} shown</>
+          <><span className="font-bold tabular text-foreground">{filteredCount.toLocaleString()}</span> {pluralNoun(filteredCount, "title")} shown</>
         )}
       </p>
       <button

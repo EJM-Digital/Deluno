@@ -23,6 +23,7 @@ import { CategoryPicker } from "./category-picker";
 import { IndexerFlagPicker } from "./indexer-flag-picker";
 import { TrackerFields } from "./tracker-fields";
 import { MessageWithPreferencesLink, mentionsCloudflare } from "./preferences-link";
+import { plural } from "../../lib/plural";
 export function IndexerDrawerBody({
   form,
   setForm,
@@ -80,7 +81,7 @@ export function IndexerDrawerBody({
   const categoryCount = form.categories.split(",").map((item) => item.trim()).filter(Boolean).length;
   const categoriesSummary = standardCategories
     ? `The standard ${scopeWords} categories for ${preset.label}.`
-    : `Custom: ${categoryCount} ${categoryCount === 1 ? "category" : "categories"} chosen for this indexer.`;
+    : `Custom: ${plural(categoryCount, "category")} chosen for this indexer.`;
 
   function chooseProtocol(protocol: IndexerProtocol) {
     const next = INDEXER_PRESETS.find((item) => item.protocol === protocol)!;
@@ -380,7 +381,7 @@ export function IndexerDrawerBody({
             <dt className="text-muted-foreground">Last test</dt>
             <dd className="flex items-center gap-2"><Chip tone={chip.tone}>{chip.label}</Chip><span className="text-muted-foreground">{relative(editing.lastHealthTestUtc)}{editing.lastHealthLatencyMs != null ? ` · ${editing.lastHealthLatencyMs} ms` : ""}</span></dd>
             <dt className="text-muted-foreground">Pacing</dt>
-            <dd aria-live="polite" className="text-foreground">{throttle?.waiting ? `Deluno is waiting on ${throttle.host} before sending ${throttle.waiting} request${throttle.waiting === 1 ? "" : "s"}.` : throttle?.nextPermitInSeconds ? `Deluno will send the next request to ${throttle.host} in about ${formatSeconds(throttle.nextPermitInSeconds)}.` : "No request is waiting. Deluno will still follow this indexer's safe request interval."}</dd>
+            <dd aria-live="polite" className="text-foreground">{throttle?.waiting ? `Deluno is waiting on ${throttle.host} before sending ${plural(throttle.waiting, "request")}.` : throttle?.nextPermitInSeconds ? `Deluno will send the next request to ${throttle.host} in about ${formatSeconds(throttle.nextPermitInSeconds)}.` : "No request is waiting. Deluno will still follow this indexer's safe request interval."}</dd>
             {editing.lastHealthMessage && !repeatsSecretNotice(editing, editing.lastHealthMessage) ? (<><dt className="text-muted-foreground">Message</dt><dd className="text-foreground"><MessageWithPreferencesLink text={editing.lastHealthMessage} /></dd></>) : null}
             {editing.lastHealthFailure ? (
               <>

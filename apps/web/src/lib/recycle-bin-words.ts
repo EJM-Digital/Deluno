@@ -1,3 +1,4 @@
+import { plural } from "./plural";
 /**
  * Saying what emptying the recycle bin would take, before it takes it.
  *
@@ -64,7 +65,7 @@ export function describeRemovalOutcome(metadata: Record<string, string | null> |
   if (!itemIds.length) return { itemIds: [], description: null };
 
   const days = Number(metadata?.recycleBinRetentionDays);
-  const keptFor = Number.isFinite(days) && days > 0 ? ` for ${days} ${days === 1 ? "day" : "days"}` : "";
+  const keptFor = Number.isFinite(days) && days > 0 ? ` for ${plural(days, "day")}` : "";
   return {
     itemIds,
     description: `Its files are in Deluno's recycle bin${keptFor}. Restore brings back the title with them.`

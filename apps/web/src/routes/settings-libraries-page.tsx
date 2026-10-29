@@ -37,6 +37,7 @@ import { ExistingMediaImportDialog } from "../components/app/existing-media-impo
 import { downloadsPathProblem } from "../lib/library-paths";
 import { FolderChainSection } from "./connections/folder-chain-section";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
+import { plural } from "../lib/plural";
 
 interface LoaderData {
   libraries: LibraryItem[];
@@ -296,7 +297,7 @@ export function SettingsLibrariesPage() {
 
 
       <ListCard
-        title={libraries.length ? `${libraries.length} ${libraries.length === 1 ? "library" : "libraries"}` : "0 libraries"}
+        title={libraries.length ? `${plural(libraries.length, "library")}` : "0 libraries"}
         titleCase={false}
       >
         {libraries.length === 0 ? (

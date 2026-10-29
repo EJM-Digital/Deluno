@@ -1,4 +1,5 @@
 import type { IntegrationFailure } from "./api/types";
+import { plural } from "./plural";
 
 export interface SearchReasonExplanation {
   title: string;
@@ -17,7 +18,7 @@ export function formatSearchFailureNotice(failures?: IntegrationFailure[] | null
   const summary = first.summary || `${first.serviceName} ${first.operation} failed: ${first.message}`;
   const nextAction = first.nextAction ? ` ${first.nextAction}` : "";
   const remainder = failures.length > 1
-    ? ` ${failures.length - 1} other source${failures.length === 2 ? "" : "s"} also need attention.`
+    ? ` ${plural(failures.length - 1, "other source also needs", "other sources also need")} attention.`
     : "";
   return `${summary}${nextAction}${remainder}`;
 }
@@ -116,7 +117,7 @@ export async function describeRequestFailure(
       description: [
         detail,
         seconds
-          ? `Wait ${seconds} second${seconds === 1 ? "" : "s"}, then ${context.action} again.`
+          ? `Wait ${plural(seconds, "second")}, then ${context.action} again.`
           : `Wait a minute, then ${context.action} again.`,
       ].filter(Boolean).join(" "),
     };
@@ -279,7 +280,7 @@ export function describeSearchNow(payload: {
   plannedEpisodes?: number;
 }): SearchNowNotice | null {
   const planned = payload.plannedEpisodes ?? 0;
-  const episodes = planned > 0 ? `Searching for ${planned} missing episode${planned === 1 ? "" : "s"}, each on its own.` : null;
+  const episodes = planned > 0 ? `Searching for ${plural(planned, "missing episode")}, each on its own.` : null;
   const best = payload.releaseName ? `${payload.releaseName}${payload.indexerName ? ` via ${payload.indexerName}` : ""}` : null;
 
   if (best && payload.dispatchStatus) {

@@ -31,7 +31,6 @@ import { Textarea } from "../components/ui/textarea";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { LibraryImpactLinks } from "../components/ui/library-impact";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
-import { plural } from "./dashboard/format";
 import { ListGroupHeader, MediaTypeFilter, mediaTypeLabel, useMediaTypeSplit } from "../components/ui/media-type-split";
 import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
@@ -91,6 +90,7 @@ import { authedFetch } from "../lib/use-auth";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { KNOWN_INDEXER_FLAGS } from "./connections/presets";
 import { localizeResetTimes } from "../lib/reset-times";
+import { plural } from "../lib/plural";
 
 const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")?.items ?? [];
 
@@ -602,7 +602,7 @@ export function SettingsCustomFormatsPage() {
       const imported = results.filter((result) => result.imported).length;
       setImportState(imported === results.length ? "saved" : "error");
       setImportMessage(
-        `Imported ${imported} of ${results.length} ${results.length === 1 ? "rule" : "rules"}.`
+        `Imported ${imported} of ${plural(results.length, "rule")}.`
         + (results.some((result) => result.droppedConditions.length) ? " Some conditions could not be understood — see below." : "")
       );
       revalidator.revalidate();
@@ -648,7 +648,7 @@ export function SettingsCustomFormatsPage() {
       const notMoved = result.outcomes.filter((outcome) => !outcome.moved);
       setMoveState(notMoved.length ? "error" : "saved");
       setMoveMessage(
-        `Moved ${result.moved} ${result.moved === 1 ? "rule" : "rules"}; each move is recorded in Activity.`
+        `Moved ${plural(result.moved, "rule")}; each move is recorded in Activity.`
         + (notMoved.length ? ` Not moved: ${notMoved.map((outcome) => `${outcome.name} (${outcome.message})`).join("; ")}` : "")
       );
       revalidator.revalidate();
@@ -686,7 +686,7 @@ export function SettingsCustomFormatsPage() {
         }
       }
       setPresetState("saved");
-      setPresetMessage(`Added ${missing.length} ${missing.length === 1 ? "rule" : "rules"}${applied ? ` — ${applied} were already here` : ""}.`);
+      setPresetMessage(`Added ${plural(missing.length, "rule")}${applied ? ` — ${applied} were already here` : ""}.`);
       revalidator.revalidate();
     } catch (error) {
       setPresetState("error");
@@ -895,7 +895,7 @@ export function SettingsCustomFormatsPage() {
                     <Chip tone={change.changeType === "removed" || change.isInUse ? "warn" : "info"}>{change.changeType === "removed" ? "Removed upstream" : "Changed upstream"}</Chip>
                   </div>
                   <p className="mt-1 text-(length:--type-caption) text-muted-foreground">
-                    {change.mediaType === "tv" ? "TV" : "Movies"} · {change.kind} · {change.isInUse ? `used by ${change.inUseCustomFormatIds.length} saved custom format${change.inUseCustomFormatIds.length === 1 ? "" : "s"}` : "not used by a saved custom format"}
+                    {change.mediaType === "tv" ? "TV" : "Movies"} · {change.kind} · {change.isInUse ? `used by ${plural(change.inUseCustomFormatIds.length, "saved custom format")}` : "not used by a saved custom format"}
                   </p>
                 </div>
               ))}
@@ -953,7 +953,7 @@ export function SettingsCustomFormatsPage() {
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <span className="text-(length:--type-body-sm) font-medium text-foreground">{diff.profileName}</span>
                               <span className="text-(length:--type-caption) text-muted-foreground">
-                                {diff.currentAdvancedRuleCount} → {diff.proposedAdvancedRuleCount} rule{diff.proposedAdvancedRuleCount === 1 ? "" : "s"} needing review
+                                {diff.currentAdvancedRuleCount} → {plural(diff.proposedAdvancedRuleCount, "rule")} needing review
                               </span>
                             </div>
                             <ul className="mt-1 grid gap-0.5 text-(length:--type-caption) text-muted-foreground">
@@ -986,7 +986,7 @@ export function SettingsCustomFormatsPage() {
           {versions.length > 1 ? (
             <Disclosure
               title="Guide version history"
-              summary={`${versions.length} retained version${versions.length === 1 ? "" : "s"} · go back to any of them`}
+              summary={`${plural(versions.length, "retained version")} · go back to any of them`}
               open={guideVersionsOpen}
               onOpenChange={setGuideVersionsOpen}
             >
@@ -1045,7 +1045,7 @@ export function SettingsCustomFormatsPage() {
             </Button>
           </>
         }
-        count={customFormats.length ? `${customFormats.length} ${customFormats.length === 1 ? "rule" : "rules"} · full TRaSH and custom controls` : undefined}>
+        count={customFormats.length ? `${plural(customFormats.length, "rule")} · full TRaSH and custom controls` : undefined}>
         {customFormats.length === 0 ? (
           <ListEmpty
             title="No advanced release rules yet"
@@ -1085,7 +1085,7 @@ export function SettingsCustomFormatsPage() {
                     {/* Guide rules are raw regex — lead with what they mean, not the pattern. */}
                     <ListCell
                       primary={repeatsAbove ? "Reads the same as the rule above" : description}
-                      secondary={conditionCount ? `${conditionCount} ${conditionCount === 1 ? "condition" : "conditions"}` : "never matches anything"}
+                      secondary={conditionCount ? `${plural(conditionCount, "condition")}` : "never matches anything"}
                     />
                     {/*
                       A library reaches these rules through its quality profile,
@@ -1291,7 +1291,7 @@ export function SettingsCustomFormatsPage() {
         </Disclosure>
 
         {lockedDefinition ? (
-          <DrawerSection title="Matching" aside={`${lockedDefinition.length} ${lockedDefinition.length === 1 ? "condition" : "conditions"}`}>
+          <DrawerSection title="Matching" aside={`${plural(lockedDefinition.length, "condition")}`}>
             <p className="text-(length:--type-caption) text-muted-foreground">
               {lockedDefinition.some((specification) => specification.implementation !== "ReleaseTitleSpecification" || specification.required)
                 ? "Matched exactly as TRaSH defines it: every required condition must hold, and at least one condition of each kind. These are TRaSH's, so they are not edited here."
@@ -1468,7 +1468,7 @@ export function SettingsCustomFormatsPage() {
           <DrawerFooter
             state={moveState ?? "clean"}
             message={moveMessage}
-            saveLabel={`Move ${moveSelection.length} ${moveSelection.length === 1 ? "rule" : "rules"}`}
+            saveLabel={`Move ${plural(moveSelection.length, "rule")}`}
             saveType="button"
             saveEnabled={moveSelection.length > 0}
             onSave={() => void applyGuideMove()}
@@ -1778,7 +1778,7 @@ export function SettingsCustomFormatsPage() {
                   </div>
                 ))}
               </div>
-              <p className="text-(length:--type-caption) text-muted-foreground">Detected {typedPreview.candidateFacts.length} typed evidence item{typedPreview.candidateFacts.length === 1 ? "" : "s"}. The plan hash is {typedPreview.planHash.slice(0, 12)}…</p>
+              <p className="text-(length:--type-caption) text-muted-foreground">Detected {plural(typedPreview.candidateFacts.length, "typed evidence item")}. The plan hash is {typedPreview.planHash.slice(0, 12)}…</p>
             </div>
           </DrawerSection>
         ) : null}

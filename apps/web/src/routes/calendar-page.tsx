@@ -49,6 +49,7 @@ import {
   useDisplayPreferences
 } from "../lib/display-preferences";
 import type { MediaType } from "../lib/media-types";
+import { plural } from "../lib/plural";
 
 interface SeriesCalendarEpisode {
   episodeId: string;
@@ -387,7 +388,7 @@ function CalendarPageBody({ data: loaderData }: { data: CalendarLoaderData }) {
           <header className="flex min-h-(--list-header-height) flex-wrap items-center gap-x-3 gap-y-2 border-b border-hairline px-(--card-pad-x) py-2">
             <h2 className="text-(length:--type-card-title) font-semibold leading-none text-foreground">{range.label}</h2>
             <span className="text-(length:--type-caption) text-muted-foreground">
-              {visible.length} {visible.length === 1 ? "thing" : "things"}
+              {plural(visible.length, "thing")}
             </span>
             <div className="ml-auto flex max-w-full flex-wrap items-center gap-2">{cardActions}</div>
           </header>
@@ -474,7 +475,7 @@ function CalendarPageBody({ data: loaderData }: { data: CalendarLoaderData }) {
       ) : (
       <ListCard
         title={range.label}
-        count={visible.length ? `${byDay.length} ${byDay.length === 1 ? "day" : "days"} with something on` : undefined}
+        count={visible.length ? `${plural(byDay.length, "day")} with something on` : undefined}
         actions={cardActions}
       >
         {visible.length === 0 ? (
@@ -497,7 +498,7 @@ function CalendarPageBody({ data: loaderData }: { data: CalendarLoaderData }) {
               <div key={day}>
                 <ListGroupHeader
                   label={formatDayLabel(new Date(`${day}T00:00:00`), preferences)}
-                  detail={`${dayEntries.length} ${dayEntries.length === 1 ? "thing" : "things"}`}
+                  detail={`${plural(dayEntries.length, "thing")}`}
                 />
                 {dayEntries.map((entry) => (
                   <ListRow

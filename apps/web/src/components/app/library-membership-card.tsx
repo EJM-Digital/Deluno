@@ -11,6 +11,7 @@ import { Field } from "../ui/field";
 import { LIST_TRACK, ListCard, ListCell, ListNameCell, ListRow, ListTable } from "../ui/list-card";
 import { Select } from "../ui/select";
 import { STATUS_PRESENTATION } from "../../lib/status-tones";
+import { plural } from "../../lib/plural";
 
 /** Mirrors `Deluno.Worker.MediaLibraryMembershipItem`. */
 export interface LibraryMembership {
@@ -124,7 +125,9 @@ export function LibraryMembershipCard({
         >
           {(rows) => rows.map((membership) => {
             const chip = membership.hasFile ? STATUS_PRESENTATION["transfer.imported"] : { tone: "idle" as const, label: "No file" };
-            const stoppedHere = membership.notWantedHere === true;
+            // Only a film can stop being wanted in one library (#1065); a show is wanted as a whole, and what a rule removed
+            // from it comes back per episode on the Retention card (#1420).
+            const stoppedHere = noun === "film" && membership.notWantedHere === true;
             return (
               <ListRow key={membership.libraryId}>
                 <ListNameCell name={membership.libraryName} sub={stoppedHere ? "Its file was deleted, so Deluno stopped wanting it here. The other copy is still managed." : memberships.length > 1 && membership.libraryId === selectedLibraryId ? "Search and download go through this library" : undefined} />
@@ -205,7 +208,7 @@ export function LibraryMembershipCard({
           if (!next) setRemoving(null);
         }}
         title={`Stop wanting it in ${removing?.libraryName ?? "this library"}?`}
-        description={`It holds no file there. It stays in its other ${memberships.length - 1 === 1 ? "library" : "libraries"}.`}
+        description={`It holds no file there. It stays in ${plural(memberships.length - 1, "other library")}.`}
         confirmLabel="Remove from library"
         busy={busy}
         onConfirm={() => {

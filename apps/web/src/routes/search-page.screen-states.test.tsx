@@ -257,6 +257,19 @@ describe("the Search page's results", () => {
     expect(screen.getAllByText(/\.Film$/).map((el) => el.textContent)).toEqual(["Big.Film", "Small.Film", "Missing.Film"]);
   });
 
+  it("a new search opens in the server's ranking, not in the column sorted for the last results", async () => {
+    searchReply = { body: { candidates: [row({ releaseName: "Big.Film", seeders: 50 }), row({ releaseName: "Small.Film", seeders: 2 })], indexersQueried: 2 } };
+    await renderPage();
+    await search("Film");
+    const header = await screen.findByRole("columnheader", { name: /^Seeders/ });
+    fireEvent.click(within(header).getByRole("button"));
+    expect(screen.getAllByText(/\.Film$/).map((el) => el.textContent)).toEqual(["Small.Film", "Big.Film"]);
+
+    await search("Film");
+    await waitFor(() => expect(screen.getAllByText(/\.Film$/).map((el) => el.textContent)).toEqual(["Big.Film", "Small.Film"]));
+    expect(screen.getByRole("columnheader", { name: /^Seeders/ })).not.toHaveAttribute("aria-sort");
+  });
+
   it("a new search resets both the protocol and the indexer filters to Any", async () => {
     searchReply = { body: { candidates: [row({ releaseName: "Example.A.1080p" }), row({ releaseName: "Example.B.1080p", indexerProtocol: "newznab", indexerId: "idx-2", indexerName: "Enabled Two" })], indexersQueried: 2 } };
     await renderPage();

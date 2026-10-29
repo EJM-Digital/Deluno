@@ -28,6 +28,7 @@ import { ConnectionVersionBeside } from "../components/app/connection-version";
 import { ConnectionUpdatePanel } from "../components/app/connection-update-panel";
 import { useConnectionVersions, versionKey } from "../lib/connection-versions";
 import { SeerrServersCard, type SeerrCleanup, type SeerrServer } from "../components/app/seerr-servers-card";
+import { plural } from "../lib/plural";
 
 const TABS = configurationNavAreas.find((area) => area.to === "/indexers/indexers")?.items ?? [];
 
@@ -495,7 +496,7 @@ export function MediaServersPage() {
         {editing ? (
           <Disclosure
             title="Advanced path mapping"
-            summary={mappings.length ? `${mappings.length} saved path ${mappings.length === 1 ? "mapping" : "mappings"}` : "Only when Deluno and this server see different paths"}
+            summary={mappings.length ? plural(mappings.length, "saved path mapping") : "Only when Deluno and this server see different paths"}
             open={mappingOpen}
             onOpenChange={setMappingOpen}
           >
@@ -555,7 +556,7 @@ export function MediaServersPage() {
                     <dd className={collection.problem ? "text-destructive" : "text-foreground"}>
                       {collection.problem
                         ? `${collection.problem} Tried ${relative(collection.attemptedUtc)}; tried again at the next check.`
-                        : `${collection.members === 0 ? "Removed, nothing is leaving" : `${collection.members} ${collection.members === 1 ? "title" : "titles"}`} · updated ${relative(collection.syncedUtc ?? collection.attemptedUtc)}`}
+                        : `${collection.members === 0 ? "Removed, nothing is leaving" : `${plural(collection.members, "title")}`} · updated ${relative(collection.syncedUtc ?? collection.attemptedUtc)}`}
                       {collection.skipped > 0 ? <span className="block text-(length:--type-caption) text-muted-foreground">{collection.skipped} seasons or episodes cannot sit in a Plex show collection.</span> : null}
                     </dd>
                   </div>

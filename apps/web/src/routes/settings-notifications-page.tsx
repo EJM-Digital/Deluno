@@ -37,6 +37,7 @@ import { ConnectionSelectAll, ConnectionSelectButton, ConnectionSelectionBar, Co
 import { useRowSelection } from "../lib/connection-tags";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
+import { plural } from "../lib/plural";
 
 /** One tick per trigger, like Radarr and Sonarr's per-connection On... boxes (#1016). Stored as a comma-separated list in eventFilters; "all" means every event. */
 const TRIGGER_OPTIONS = [
@@ -398,7 +399,7 @@ export function SettingsNotificationsPage() {
 
       <ListCard
         title="Webhooks"
-        count={webhooks.length ? `${webhooks.length} ${webhooks.length === 1 ? "webhook" : "webhooks"} · ${webhooks.filter((webhook) => webhook.isEnabled).length} enabled · send Deluno events to other tools` : undefined}
+        count={webhooks.length ? `${plural(webhooks.length, "webhook")} · ${webhooks.filter((webhook) => webhook.isEnabled).length} enabled · send Deluno events to other tools` : undefined}
         actions={webhooks.length > 0 ? <ConnectionSelectButton active={selection.active} onClick={selection.toggleActive} /> : undefined}
       >
         {webhooks.length === 0 ? (

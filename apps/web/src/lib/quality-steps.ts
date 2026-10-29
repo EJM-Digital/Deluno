@@ -1,4 +1,5 @@
 import type { CustomFormatItem, GuideCustomFormat, GuidePackage } from "./api";
+import { plural } from "./plural";
 
 /**
  * The seven questions a quality profile is, and which of Deluno's own nouns
@@ -178,7 +179,7 @@ export function describeAnswer(
 
   if (names.length === 0) {
     const nothing = step.id === "never" ? "Nothing refused outright" : "No preference — anything is fine";
-    return off ? `${nothing} · ${off} ${off === 1 ? "rule is" : "rules are"} off` : nothing;
+    return off ? `${nothing} · ${plural(off, "rule is", "rules are")} off` : nothing;
   }
 
   const alsoOff = off ? ` · ${off} off` : "";

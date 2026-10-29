@@ -100,6 +100,7 @@ import {
   SEASON_PACK_COMPLETED_CATEGORY,
   SEASON_PACK_LEFTOVERS_DELETED_CATEGORY
 } from "../lib/season-pack-leftovers";
+import { plural } from "../lib/plural";
 
 /**
  * Nothing here is read on a timer (#1179): the lists are read when the screen opens, and each one again, once,
@@ -314,7 +315,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
       if (isBackgroundJob(job)) continue;
       rows.push({
         key: `job-${job.id}`, kind: "job", status: "failed", whenUtc: jobWhen(job), title: job.target ?? job.label, step: job.target ? `${job.label} · ${job.sourceLabel}` : job.sourceLabel,
-        detail: job.lastError ?? `${getJobStatusLabel(job.status as JobStatus)} after ${job.attempts} ${job.attempts === 1 ? "attempt" : "attempts"}`,
+        detail: job.lastError ?? `${getJobStatusLabel(job.status as JobStatus)} after ${plural(job.attempts, "attempt")}`,
         pill: OPEN_PILL.failed, entityId: job.relatedEntityId, entityType: job.relatedEntityType,
         open: () => setOpenJobId(job.id), selected: openJobId === job.id
       });
@@ -436,7 +437,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
       title: event.title ?? eventLabel(event),
       step: event.title ? eventLabel(event) : event.sourceName ?? undefined,
       detail: event.message,
-      detailSub: [event.detail, foldedFrom.length ? `+${foldedFrom.length} more step${foldedFrom.length === 1 ? "" : "s"} for this run — open to see them` : null].filter(Boolean).join(" · ") || undefined,
+      detailSub: [event.detail, foldedFrom.length ? `+${plural(foldedFrom.length, "more step")} for this run — open to see them` : null].filter(Boolean).join(" · ") || undefined,
       pill: event.outcome === "problem" ? { tone: "bad" as Tone, label: "Went wrong" } : { tone: "ok" as Tone, label: "Done" },
       open: () => setOpenEvent(event), selected: openEvent?.id === event.id
     })),
@@ -463,7 +464,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
       const response = await authedFetch("/api/jobs/retry-failed", { method: "POST" });
       if (!response.ok) throw new Error("Failed jobs could not be requeued.");
       const result = (await response.json()) as { retried?: number };
-      toast.success(`${result.retried ?? 0} failed job${result.retried === 1 ? "" : "s"} requeued`);
+      toast.success(`${plural(result.retried ?? 0, "failed job")} requeued`);
       revalidator.revalidate();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Retry failed.");
@@ -493,7 +494,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
       if (body?.refused?.length) {
         toast.error(`Deleted ${deletedCount} of ${openEventLeftovers.length}. ${body.refused.length} could not be removed.`);
       } else {
-        toast.success(`Deleted ${deletedCount} leftover file${deletedCount === 1 ? "" : "s"}.`);
+        toast.success(`Deleted ${plural(deletedCount, "leftover file")}.`);
       }
       revalidator.revalidate();
     } catch (error) {
@@ -804,7 +805,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
             ) : null}
 
             {openEventLeftovers.length > 0 ? (
-              <DrawerSection title="What didn't match" aside={`${openEventLeftovers.length} file${openEventLeftovers.length === 1 ? "" : "s"}`}>
+              <DrawerSection title="What didn't match" aside={`${plural(openEventLeftovers.length, "file")}`}>
                 <ul className="flex flex-col gap-2">
                   {openEventLeftovers.map((file) => (
                     <li key={file.sourcePath} className="text-(length:--type-body-sm) leading-relaxed text-foreground">
@@ -930,7 +931,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
         title="Delete leftover files?"
         description={
           openEventLeftovers.length > 0
-            ? `This permanently deletes ${openEventLeftovers.length} file${openEventLeftovers.length === 1 ? "" : "s"} that never matched an episode: ${openEventLeftovers.map((file) => fileNameFromPath(file.sourcePath)).join(", ")}.`
+            ? `This permanently deletes ${plural(openEventLeftovers.length, "file")} that never matched an episode: ${openEventLeftovers.map((file) => fileNameFromPath(file.sourcePath)).join(", ")}.`
             : "This permanently deletes the leftover files that never matched an episode."
         }
         confirmLabel="Delete"

@@ -133,7 +133,7 @@ describe("formatSearchFailureNotice, the indexers that failed beside a usable an
   });
 
   it("says one other source also needs attention for two failures", () => {
-    expect(formatSearchFailureNotice([failure("Alpha", { summary: "Alpha failed." }), failure("Beta")])).toBe("Alpha failed. 1 other source also need attention.");
+    expect(formatSearchFailureNotice([failure("Alpha", { summary: "Alpha failed." }), failure("Beta")])).toBe("Alpha failed. 1 other source also needs attention.");
   });
 
   it("counts the others for three failures", () => {

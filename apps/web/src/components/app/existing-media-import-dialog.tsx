@@ -8,6 +8,7 @@ import { Chip } from "../ui/chip";
 import { fetchJson, type ExistingLibraryCandidate, type ExistingLibraryImportResult, type ExistingLibraryPreviewPage, type LibraryItem } from "../../lib/api";
 import { authedFetch } from "../../lib/use-auth";
 import { toast } from "../shell/toaster";
+import { plural } from "../../lib/plural";
 
 export function ExistingMediaImportDialog({
   open,
@@ -101,7 +102,7 @@ export function ExistingMediaImportDialog({
       setLastResult(result);
       setSelected(new Set());
       onImported?.();
-      toast.success(`${result.importedCount} ${library.mediaType === "tv" ? "TV show" : "movie"}${result.importedCount === 1 ? "" : "s"} reviewed and added.`);
+      toast.success(`${plural(result.importedCount, library.mediaType === "tv" ? "TV show" : "movie")} reviewed and added.`);
       await loadPage(library.id, cursor);
     } catch (importError) {
       toast.error(importError instanceof Error ? importError.message : "The selected media could not be imported.");
@@ -165,10 +166,10 @@ export function ExistingMediaImportDialog({
 
               {lastResult ? (
                 <div className="rounded-xl border border-success/25 bg-success/5 px-4 py-3 text-(length:--type-body-sm)">
-                  <p className="flex items-center gap-2 font-semibold text-foreground"><CheckCircle2 className="h-4 w-4 text-success" />{lastResult.importedCount} selected item{lastResult.importedCount === 1 ? "" : "s"} added</p>
+                  <p className="flex items-center gap-2 font-semibold text-foreground"><CheckCircle2 className="h-4 w-4 text-success" />{plural(lastResult.importedCount, "selected item")} added</p>
                   {lastResult.issues.length ? (
                     <div className="mt-1 text-muted-foreground">
-                      <p>{lastResult.issues.length} warning{lastResult.issues.length === 1 ? "" : "s"} or skipped item{lastResult.issues.length === 1 ? "" : "s"} need review.</p>
+                      <p>{plural(lastResult.issues.length, "warning or skipped item needs", "warnings or skipped items need")} review.</p>
                       <ul className="mt-2 grid gap-1 text-(length:--type-caption)">
                         {lastResult.issues.slice(0, 5).map((issue) => <li key={`${issue.sourcePath}:${issue.kind}`}><span className="font-medium text-foreground">{issue.sourcePath}</span> — {issue.detail}</li>)}
                       </ul>

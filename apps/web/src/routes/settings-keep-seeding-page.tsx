@@ -34,6 +34,7 @@ import type {
 } from "../lib/api";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { authedFetch } from "../lib/use-auth";
+import { plural } from "../lib/plural";
 
 export async function settingsKeepSeedingLoader(): Promise<KeepSeedingView> {
   return fetchJson<KeepSeedingView>("/api/download-health/keep-seeding");
@@ -295,7 +296,7 @@ export function SettingsKeepSeedingPage() {
                 <ListNameCell name={problem.releaseName} sub={problem.clientName} />
                 <ListCell
                   primary={problem.message}
-                  secondary={problem.kind === "refused" ? `Tried ${problem.attempts} ${problem.attempts === 1 ? "time" : "times"}. Deluno tries again at every check and has deleted nothing.` : "Left alone until a category is set."}
+                  secondary={problem.kind === "refused" ? `Tried ${plural(problem.attempts, "time")}. Deluno tries again at every check and has deleted nothing.` : "Left alone until a category is set."}
                 />
                 <ListCell primary={
                   <Button type="button" variant="outline" size="sm" aria-label={`Clear ${problem.releaseName}`} onClick={() => void clearProblem(problem)} disabled={busy === `problem:${problem.key}`}>

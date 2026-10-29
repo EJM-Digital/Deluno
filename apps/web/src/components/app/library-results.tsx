@@ -10,6 +10,7 @@ import { GlassTile } from "../shell/page-hero";
 import { LibraryGridSkeleton } from "../shell/skeleton";
 import { Button } from "../ui/button";
 import type { LibraryListColumnKey } from "../../lib/library-list-columns";
+import { plural } from "../../lib/plural";
 
 type LibraryResultsProps = {
   /**
@@ -82,7 +83,7 @@ export function LibraryResults({
       <EmptyState
         variant="search"
         title="Nothing matches"
-        description={`Try clearing filters or broadening your search. Your library has ${libraryCount} total title${libraryCount === 1 ? "" : "s"}.`}
+        description={`Try clearing filters or broadening your search. Your library has ${plural(libraryCount, "total title")}.`}
         action={<Button variant="secondary" onClick={onClearFilters}>Clear filters</Button>}
       />
     ) : items.length === 0 ? (

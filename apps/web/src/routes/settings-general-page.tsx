@@ -34,6 +34,7 @@ import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save
 import { formatDateTime, useDisplayPreferences } from "../lib/display-preferences";
 
 import { SignedApiLink } from "../components/app/signed-api-link";
+import { plural } from "../lib/plural";
 interface LoaderData {
   libraries: LibraryItem[];
   qualityProfiles: QualityProfileItem[];
@@ -288,7 +289,7 @@ function TrackerDefinitionsCard() {
       if (next.status === "failed") {
         toast.error(localizeResetTimes(next.error ?? "The tracker definitions could not be updated."));
       } else if (next.updatedTrackerIds.length > 0) {
-        toast.success(`Updated ${next.updatedTrackerIds.length} tracker definition${next.updatedTrackerIds.length === 1 ? "" : "s"}.`);
+        toast.success(`Updated ${plural(next.updatedTrackerIds.length, "tracker definition")}.`);
       } else {
         toast.success("Tracker definitions are already up to date.");
       }

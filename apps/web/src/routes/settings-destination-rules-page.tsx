@@ -23,7 +23,6 @@ import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { LibraryImpactLinks } from "../components/ui/library-impact";
-import { plural } from "./dashboard/format";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { PathInput } from "../components/ui/path-input";
 import { PresetField } from "../components/ui/preset-field";
@@ -37,6 +36,7 @@ import { settingsOverviewLoader } from "./settings-overview-page";
 import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
+import { plural } from "../lib/plural";
 
 interface LoaderData {
   libraries: LibraryItem[];
@@ -320,7 +320,7 @@ export function SettingsDestinationRulesPage() {
         }
       />
 
-      <ListCard title={destinationRules.length ? `${destinationRules.length} ${destinationRules.length === 1 ? "rule" : "rules"} · ${destinationRules.filter((rule) => rule.isEnabled).length} active` : "0 rules"} titleCase={false}>
+      <ListCard title={destinationRules.length ? `${plural(destinationRules.length, "rule")} · ${destinationRules.filter((rule) => rule.isEnabled).length} active` : "0 rules"} titleCase={false}>
         {destinationRules.length === 0 ? (
           <ListEmpty
             title="No destination rules"

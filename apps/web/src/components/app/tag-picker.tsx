@@ -5,6 +5,7 @@ import type { TagItem, TagUsageItem } from "../../lib/api";
 import { authedFetch } from "../../lib/use-auth";
 import { cn } from "../../lib/utils";
 import { Input } from "../ui/input";
+import { plural } from "../../lib/plural";
 
 /** Tag names from a stored comma-separated string: split, trimmed, no repeats (case-insensitive). */
 export function parseTagList(raw: string | null | undefined): string[] {
@@ -201,7 +202,7 @@ export function TagPicker({
                 >
                   <span>{tag.name}</span>
                   <span className="text-(length:--type-caption) text-muted-foreground">
-                    {titleCount(tag.name) === 0 ? "No titles yet" : `${titleCount(tag.name)} ${titleCount(tag.name) === 1 ? "title" : "titles"}`}
+                    {titleCount(tag.name) === 0 ? "No titles yet" : plural(titleCount(tag.name), "title")}
                   </span>
                 </button>
               ))}

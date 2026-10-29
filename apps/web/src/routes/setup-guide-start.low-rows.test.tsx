@@ -96,6 +96,40 @@ describe("the Start step, low rows (#1329)", () => {
     expect(within(ready).getByText("Single-copy link first")).toBeTruthy();
   });
 
+  it("leaving out the root folder and the quality keeps the person on Start and says each one there, beside what it is about (#1422)", async () => {
+    renderFinish({ settings: { movieRootPath: "", seriesRootPath: "" }, draft: { ...ANSWERED, qualityPreset: "", movieRootPath: "", seriesRootPath: "" } });
+    const create = await createButton();
+
+    // Enter in a field of the Start step submits the form: it must not carry the person to another step.
+    fireEvent.submit(create.closest("form")!);
+
+    await waitFor(() => expect(screen.getByText(/Still needed before Deluno can create the baseline:.*a library root folder.*a picture quality/)).toBeTruthy());
+    expect(await createButton()).toBeTruthy();
+    expect(cell("Libraries").textContent).toContain("No root folder yet");
+    expect(cell("Quality").textContent).toContain("Not chosen");
+    expect(create.disabled).toBe(true);
+    expect(fetchJson.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "POST")).toBe(false);
+  });
+
+  it("says No root folder yet only when no folder is set for the media being set up, in the warning colour", async () => {
+    const librariesCell = async (media: string, movieRoot: string, seriesRoot: string) => {
+      renderFinish({ settings: { movieRootPath: "", seriesRootPath: "" }, draft: { ...ANSWERED, mediaIntent: media, movieRootPath: movieRoot, seriesRootPath: seriesRoot } });
+      await createButton();
+      const text = cell("Libraries");
+      const result = { text: text.textContent ?? "", warning: text.querySelector(".text-warning") !== null };
+      cleanup();
+      return result;
+    };
+
+    expect(await librariesCell("movies", "", "D:/Media/TV")).toEqual({ text: "LibrariesMovies - No root folder yet", warning: true });
+    expect(await librariesCell("tv", "D:/Media/Movies", "")).toEqual({ text: "LibrariesTV - No root folder yet", warning: true });
+    expect(await librariesCell("both", "", "")).toEqual({ text: "LibrariesMovies + TV - No root folder yet", warning: true });
+    expect(await librariesCell("movies", "D:/Media/Movies", "")).toEqual({ text: "LibrariesMovies", warning: false });
+    expect(await librariesCell("tv", "", "D:/Media/TV")).toEqual({ text: "LibrariesTV", warning: false });
+    expect(await librariesCell("both", "  ", "D:/Media/TV")).toEqual({ text: "LibrariesMovies + TV", warning: false });
+    expect(await librariesCell("both", "D:/Media/Movies", "  ")).toEqual({ text: "LibrariesMovies + TV", warning: false });
+  });
+
   it("Create baseline is disabled until everything is chosen, including Updates, and its tooltip says what is missing", async () => {
     renderFinish();
     expect((await createButton()).title).toBe("Choose a picture quality and release preference first");

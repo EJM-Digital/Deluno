@@ -7,8 +7,8 @@
 import type { DownloadClientItem, IndexerItem } from "../../../lib/api";
 import type { DashboardClientRow, LiveConnection } from "../../../lib/api/types/operations";
 import type { ConnectionCheckedEvent } from "../../../lib/api/types/system-overview";
-import { plural } from "../format";
 import { sizeText } from "./logic";
+import { plural } from "../../../lib/plural";
 
 export type ConnKind = "indexer" | "client" | "processor" | "mediaServer" | "requests" | "subtitles" | "lists" | "metadata";
 export type ConnState = "ok" | "slow" | "down" | "off";

@@ -21,6 +21,7 @@ import { PageToolbar } from "../components/ui/page-toolbar";
 import { Switch } from "../components/ui/switch";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { toast } from "../components/shell/toaster";
+import { plural } from "../lib/plural";
 
 interface SeasonPassLoaderData {
   seasons: SeriesSeasonPassItem[];
@@ -112,7 +113,7 @@ export function SeasonPassPage() {
         ]}
       />
 
-      <ListCard title="Season Pass" count={`${seasons.length} season${seasons.length === 1 ? "" : "s"}`}>
+      <ListCard title="Season Pass" count={`${plural(seasons.length, "season")}`}>
         {data.unreadable ? (
           <ListEmpty
             title="The seasons could not be read"

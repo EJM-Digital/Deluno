@@ -14,7 +14,8 @@ import { Link } from "react-router-dom";
 import { StatusLed } from "../../components/ui/status-led";
 import type { AlertAction, AlertActions } from "../../lib/alert-actions";
 import type { BellRow } from "../../lib/bell-rows";
-import { ActionButton, plural, send, UNIFORM_BUTTON, useAction } from "./downloads-kit";
+import { ActionButton, send, UNIFORM_BUTTON, useAction } from "./downloads-kit";
+import { plural } from "../../lib/plural";
 
 export type Action = ReturnType<typeof useAction>;
 

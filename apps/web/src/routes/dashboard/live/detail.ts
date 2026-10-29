@@ -10,6 +10,7 @@ import type { JourneyCard } from "./journey";
 import { startedLabel } from "./provenance";
 import { isUsenetProtocol } from "../../../lib/protocol";
 import { doneAbout } from "./times";
+import { pluralNoun } from "../../../lib/plural";
 
 /** A piece of a line: plain words, or a bold one. */
 export type Part = string | { bold: string };
@@ -48,7 +49,7 @@ export function detailLines(card: JourneyCard, indexers: number, now: number): D
       const asked = card.routeNote?.startsWith("Asked by ") ? ["Asked by ", bold(card.routeNote.slice("Asked by ".length))] : card.routeNote ? [card.routeNote] : [];
       if (asked.length > 0) lines.push({ parts: asked, right: card.at ? ago(card.at, now) || undefined : undefined });
       // The status line says how many indexers a plain search is looking on; a request says it here.
-      if (card.startedBy === "seerr" && indexers > 0) lines.push({ parts: [bold(indexers.toLocaleString("en-AU")), ` ${indexers === 1 ? "indexer" : "indexers"} to ask`] });
+      if (card.startedBy === "seerr" && indexers > 0) lines.push({ parts: [bold(indexers.toLocaleString("en-AU")), ` ${pluralNoun(indexers, "indexer")} to ask`] });
       break;
     }
     case "grabbed": {
@@ -62,7 +63,7 @@ export function detailLines(card: JourneyCard, indexers: number, now: number): D
       if (size && have !== undefined) lines.push({ parts: [bold(sizePair(have, size))], right: doneBy });
       else if (doneBy) lines.push({ parts: [], right: doneBy });
       if (card.stuck) break;
-      if (card.peers) lines.push({ parts: [bold(card.peers.toLocaleString("en-AU")), ` ${isUsenetProtocol(card.protocol) ? (card.peers === 1 ? "connection" : "connections") : card.peers === 1 ? "peer" : "peers"}`] });
+      if (card.peers) lines.push({ parts: [bold(card.peers.toLocaleString("en-AU")), ` ${pluralNoun(card.peers, isUsenetProtocol(card.protocol) ? "connection" : "peer")}`] });
       if (release) lines.push(release);
       break;
     }

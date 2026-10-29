@@ -90,6 +90,7 @@ import { formatDateTime, type DisplayPreferences, useDisplayPreferences } from "
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { healthChecksNeedingAttention, isHealthCheckSnoozed } from "../lib/health-snooze";
 import { formatProgressPercent } from "../lib/progress-format";
+import { plural } from "../lib/plural";
 
 /** GET /api/system/info (#869): uptime, runtime, and app-data details for the "This installation" card. */
 interface SystemInstallationInfo {
@@ -503,7 +504,7 @@ export function BackgroundJobsCard({ jobs, failedJobs, onChanged }: { jobs: JobQ
       const response = await authedFetch("/api/jobs/retry-failed", { method: "POST" });
       if (!response.ok) throw new Error("Failed jobs could not be requeued.");
       const result = (await response.json()) as { retried?: number };
-      toast.success(`${result.retried ?? 0} failed job${result.retried === 1 ? "" : "s"} requeued`);
+      toast.success(`${plural(result.retried ?? 0, "failed job")} requeued`);
       onChanged();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Retry failed.");
@@ -618,7 +619,7 @@ const RUN_NOW: Record<string, { path: string; label: string; said: (result: Libr
                 ? `${result.markedMissing} titles are now missing — search for them when you want them back.`
                 : null,
             result.unreachableRoots > 0
-              ? `${result.unreachableRoots} library ${result.unreachableRoots === 1 ? "root is" : "roots are"} unreachable, and nothing in ${result.unreachableRoots === 1 ? "it was" : "them was"} touched.`
+              ? `${plural(result.unreachableRoots, "library root is", "library roots are")} unreachable, and nothing in ${result.unreachableRoots === 1 ? "it was" : "them was"} touched.`
               : null
           ]
             .filter(Boolean)
@@ -638,7 +639,7 @@ const RUN_NOW: Record<string, { path: string; label: string; said: (result: Libr
       }
       return [
         result.removed > 0
-          ? `${result.removed} leftover${result.removed === 1 ? "" : "s"} removed.`
+          ? `${plural(result.removed, "leftover")} removed.`
           : null,
         result.held > 0
           ? `${result.held} held back — still in use, too young, or unproven.`
@@ -859,7 +860,7 @@ function RecycleBinCard({
     setMessage(null);
     try {
       const result = await fetchJson<{ removed: number }>("/api/recycle-bin/cleanup", { method: "POST" });
-      setMessage(result.removed ? `Removed ${result.removed} expired recycle-bin item${result.removed === 1 ? "" : "s"}.` : "No recycle-bin items were ready to expire.");
+      setMessage(result.removed ? `Removed ${plural(result.removed, "expired recycle-bin item")}.` : "No recycle-bin items were ready to expire.");
       setCleanupPreview(null);
       await reload();
     } catch (error) {
@@ -875,7 +876,7 @@ function RecycleBinCard({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Trash2 className="h-4 w-4 text-primary" />
-            {items.length ? `${items.length} stored item${items.length === 1 ? "" : "s"}` : "Nothing stored"}
+            {items.length ? `${plural(items.length, "stored item")}` : "Nothing stored"}
           </CardTitle>
           <CardDescription>Library removals and replaced files stay recoverable until their retention window expires.</CardDescription>
         </CardHeader>
@@ -1290,7 +1291,7 @@ function BackupCard({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ShieldCheck className="h-4 w-4 text-primary" />
-          {backups.length ? `${backups.length} backup${backups.length === 1 ? "" : "s"}` : "No backups yet"}
+          {backups.length ? `${plural(backups.length, "backup")}` : "No backups yet"}
         </CardTitle>
         <CardDescription>Protect the app database, settings, queues, and integration cache before changes.</CardDescription>
       </CardHeader>
@@ -1391,7 +1392,7 @@ function BackupCard({
           ) : null}
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">
-              Next run: {settings.nextRunUtc ? formatWhen(settings.nextRunUtc, preferences) : "Not scheduled"} · Retains latest {settings.retentionCount} backup{settings.retentionCount === 1 ? "" : "s"}
+              Next run: {settings.nextRunUtc ? formatWhen(settings.nextRunUtc, preferences) : "Not scheduled"} · Retains latest {plural(settings.retentionCount, "backup")}
             </p>
           </div>
         </div>
@@ -2041,7 +2042,7 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
   return (
     <>
     <ListCard
-      title={problems.length === 0 ? (sorted.length === 0 && suggestions.length === 0 ? "Everything checked out" : "All clear") : `${problems.length} need${problems.length === 1 ? "s" : ""} attention`}
+      title={problems.length === 0 ? (sorted.length === 0 && suggestions.length === 0 ? "Everything checked out" : "All clear") : `${plural(problems.length, "needs", "need")} attention`}
       titleCase={false}
       actions={
         <Button type="button" variant="outline" size="sm" aria-label="Run all the health checks now" disabled={runningChecks} onClick={() => void runChecksNow()}>

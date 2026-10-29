@@ -73,7 +73,7 @@ export function FolderChainSection({ libraryId, refreshKey }: { libraryId: strin
     <DrawerSection title="Folder check" aside={aside}>
       <p className="text-(length:--type-caption) text-muted-foreground">
         Where each download client really saves this library's downloads, read from the client, and whether that is the folder
-        {report?.usesProcessor ? ` ${report.processorName ?? "the processor"} and ` : " "}Deluno expect{report?.usesProcessor ? "" : "s"}. This checks the saved routing.
+        {report?.usesProcessor ? ` ${report.processorName ?? "the processor"} and ` : " "}Deluno {report?.usesProcessor ? "expect" : "expects"}. This checks the saved routing.
       </p>
       {failed ? <p role="alert" className="text-(length:--type-body-sm) text-destructive">{failed}</p> : null}
       {report ? (

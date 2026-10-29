@@ -21,6 +21,7 @@ import { connectionKey, connectionsSummary, type LiveConnectionKind } from "./co
 import { pulseOf, type IndexerScoreboardToday } from "./indexers";
 import { LiveCard as Panel } from "./live-card";
 import { clientBar, connectionPills, scoreRows, scoreSummary, STANDING_WORD } from "./scoreboard";
+import { plural } from "../../../lib/plural";
 import "./sources-card.css";
 
 const NO_ROWS: never[] = [];
@@ -140,7 +141,7 @@ export function SourcesCard({ indexers, scoreboard, summary, now, clientRows, cl
                   key={row.key}
                   href={row.to}
                   title={row.title}
-                  aria-label={`${row.name}: ${STANDING_WORD[row.standing]}, ${row.grabs} ${row.grabs === 1 ? "grab" : "grabs"}, ${row.results} ${row.results === 1 ? "result" : "results"}`}
+                  aria-label={`${row.name}: ${STANDING_WORD[row.standing]}, ${plural(row.grabs, "grab")}, ${plural(row.results, "result")}`}
                   className={cn("ls-row", row.standing !== "good" && row.standing, flash.get(row.key))}
                   data-indexer={row.id}
                   onClick={go(row.to)}

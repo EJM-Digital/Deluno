@@ -162,14 +162,16 @@ interface ListTableProps<T> {
   items?: readonly T[];
   /** From `useListColumns`, for a page that needs the sort itself (a list that loads a page at a time sorts on the server). */
   list?: ListColumnsState<T>;
+  /** When this value changes (a new search's results), the sort chosen for the old rows is dropped and the list starts in its own order. */
+  startOverWhen?: unknown;
   /** Rows open something on click — reserve the trailing chevron track. */
   chevron?: boolean;
   children: React.ReactNode | ((items: T[]) => React.ReactNode);
   className?: string;
 }
 
-export function ListTable<T = never>({ columns, listId, items, list, chevron = true, children, className }: ListTableProps<T>) {
-  const own = useListColumns<T>(list ? undefined : listId, (columns ?? []) as ListColumnSpec<T>[], items);
+export function ListTable<T = never>({ columns, listId, items, list, startOverWhen, chevron = true, children, className }: ListTableProps<T>) {
+  const own = useListColumns<T>(list ? undefined : listId, (columns ?? []) as ListColumnSpec<T>[], items, { startOverWhen });
   const state = list ?? own;
   const enabled = Boolean(state.listId);
   const headerRowRef = React.useRef<HTMLDivElement>(null);

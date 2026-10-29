@@ -7,6 +7,7 @@ import type {
   PolicySetItem,
   QualityProfileItem
 } from "./api";
+import { plural } from "./plural";
 
 export type SetupAttentionTone = "success" | "warn" | "info" | "neutral";
 export type SetupReadiness = "not-ready" | "acquisition-ready" | "automation-ready" | "operationally-ready";
@@ -268,10 +269,6 @@ function formatHealthParts(unhealthyIndexers: number, unhealthyClients: number) 
   ].filter((part): part is string => Boolean(part));
 
   return parts.length === 2 ? `${parts[0]} and ${parts[1]}` : parts[0] ?? "Connections";
-}
-
-function plural(count: number, singular: string, pluralLabel = `${singular}s`) {
-  return `${count} ${count === 1 ? singular : pluralLabel}`;
 }
 
 function isHealthy(status: string) {

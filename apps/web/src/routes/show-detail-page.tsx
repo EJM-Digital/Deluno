@@ -122,6 +122,7 @@ import { seasonMonitorState } from "./season-pass-page";
 import { parseSearchCandidates, searchCandidateCount } from "../lib/search-history";
 import { protocolGroup } from "../lib/protocol";
 import { useTitleLive, type TitleEventGroups, type TitleGroups } from "../lib/use-title-live";
+import { plural } from "../lib/plural";
 
 interface ShowDetailLoaderData {
   acquisitionBlockers: AcquisitionBlockersResponse | null;
@@ -566,7 +567,7 @@ export function ShowDetailPage() {
   const nextStep = importCases.length
     ? {
         eyebrow: "Needs attention",
-        title: `Review ${importCases.length} import issue${importCases.length === 1 ? "" : "s"}`,
+        title: `Review ${plural(importCases.length, "import issue")}`,
         description: "Something Deluno brought in could not be filed. It needs a decision before this show is settled.",
         action: "Open import issues",
         onAction: () => setSection("history")
@@ -592,7 +593,7 @@ export function ShowDetailPage() {
               eyebrow: "Episodes missing",
               // Aired episodes only. Offering to find one that has not aired is
               // offering to fail, and it used to offer for every one of them.
-              title: `Find ${missingCount} missing episode${missingCount === 1 ? "" : "s"}`,
+              title: `Find ${plural(missingCount, "missing episode")}`,
               description: "Deluno can search every indexer you have connected using this show's Library Profile.",
               action: "Search now",
               onAction: () => void handleSearchNow("automatic")
@@ -903,8 +904,8 @@ export function ShowDetailPage() {
         const found = payload.candidates?.length ?? 0;
         setSection("episodes");
         if (found) {
-          toast.success(`${found} release${found === 1 ? "" : "s"} compared. Choose one below.`, failureNotice ? { description: failureNotice } : undefined);
-          setSearchNote({ state: "done", tone: "success", title: `${found} release${found === 1 ? "" : "s"} compared. Choose one below.`, description: failureNotice ?? undefined });
+          toast.success(`${plural(found, "release")} compared. Choose one below.`, failureNotice ? { description: failureNotice } : undefined);
+          setSearchNote({ state: "done", tone: "success", title: `${plural(found, "release")} compared. Choose one below.`, description: failureNotice ?? undefined });
         } else {
           const explained = describeSearchReason(payload.reason, payload.summary ?? "No releases matched this show's Library Profile.");
           const action = explained.action;
@@ -1080,11 +1081,11 @@ export function ShowDetailPage() {
         toast.info("Already downloading, so nothing more was sent.", { description: payload.alreadyDownloading.join(" ") });
       } else if (compared > 0) {
         toast.success(
-          `Compared ${compared} release${compared === 1 ? "" : "s"}. Choose one below.`,
+          `Compared ${plural(compared, "release")}. Choose one below.`,
           failureNotice ? { description: failureNotice } : undefined
         );
       } else if (payload.reason && payload.reason !== "ok") {
-        const explained = describeSearchReason(payload.reason, `Searched ${searched} episode${searched === 1 ? "" : "s"}. Nothing matched yet.`);
+        const explained = describeSearchReason(payload.reason, `Searched ${plural(searched, "episode")}. Nothing matched yet.`);
         const action = explained.action;
         toast.info(explained.title, {
           description: [explained.description, failureNotice].filter(Boolean).join(" "),
@@ -1093,8 +1094,8 @@ export function ShowDetailPage() {
       } else {
         toast.success(
           matched > 0
-            ? `Searched ${searched} episode${searched === 1 ? "" : "s"}, matched ${matched}. ${formatDispatchSummary(payload)}`
-            : `Searched ${searched} episode${searched === 1 ? "" : "s"}. Nothing matched yet.`,
+            ? `Searched ${plural(searched, "episode")}, matched ${matched}. ${formatDispatchSummary(payload)}`
+            : `Searched ${plural(searched, "episode")}. Nothing matched yet.`,
           failureNotice ? { description: failureNotice } : undefined
         );
       }
@@ -1145,7 +1146,7 @@ export function ShowDetailPage() {
       } else {
         toast.success(
           matched > 0
-            ? `${formatSeasonLabel(resolved)}: ${matched} episode match${matched === 1 ? "" : "es"}. ${formatDispatchSummary(payload)}`
+            ? `${formatSeasonLabel(resolved)}: ${plural(matched, "episode match")}. ${formatDispatchSummary(payload)}`
             : `${formatSeasonLabel(resolved)}: search finished with no matches.`,
           failureNotice ? { description: failureNotice } : undefined
         );
@@ -1339,7 +1340,7 @@ export function ShowDetailPage() {
                     airedUpgradableCount: progress.upgradable
                   }}
                 />
-                {importCases.length ? <Badge variant="warning">{importCases.length} import issue{importCases.length === 1 ? "" : "s"}</Badge> : null}
+                {importCases.length ? <Badge variant="warning">{plural(importCases.length, "import issue")}</Badge> : null}
                 {series.genres?.split(",").map((genre) => <span key={genre} className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">{genre.trim()}</span>)}
               </div>
               <TitleTagsEditor id={series.id} mediaType="series" metadataJson={series.metadataJson} onSaved={() => revalidator.revalidate()} />
@@ -1501,7 +1502,7 @@ export function ShowDetailPage() {
         <>
           <SummaryStrip
             cells={[
-              { label: "Episodes", value: inventory.episodeCount, help: `${inventory.seasonCount} season${inventory.seasonCount === 1 ? "" : "s"}` },
+              { label: "Episodes", value: inventory.episodeCount, help: `${plural(inventory.seasonCount, "season")}` },
               { label: "On disk", value: inventory.importedEpisodeCount, help: "imported and verified" },
               // The mark's own red, not amber. These two are counts of work
               // Deluno is already doing on its schedule — amber claims a person
@@ -1518,12 +1519,13 @@ export function ShowDetailPage() {
           {releaseCandidates.length ? (
             <ListCard
               title={candidatesFor ? `Choose a release for ${candidatesFor}` : "Choose a release"}
-              count={`${visibleCandidates.length} of ${releaseCandidates.length} candidate${releaseCandidates.length === 1 ? "" : "s"}`}
+              count={`${visibleCandidates.length} of ${plural(releaseCandidates.length, "candidate")}`}
               actions={<ReleaseFilterMenus protocols={candidateProtocolOptions} protocol={candidateProtocolFilter} onProtocolChange={setCandidateProtocolFilter} indexers={candidateIndexerOptions} indexer={candidateIndexerFilter} onIndexerChange={setCandidateIndexerFilter} />}
             >
               <ListTable
                 // The server's ranking is the order until a header is clicked.
                 listId="show-release-candidates"
+                startOverWhen={releaseCandidates}
                 items={visibleCandidates}
                 columns={[
                   { id: "release", label: "Release", sort: (candidate) => candidate.releaseName.toLowerCase() },
@@ -1872,7 +1874,7 @@ export function ShowDetailPage() {
           </ListCard>
 
           {origins.length ? (
-            <ListCard title="How this show was added" count={`${origins.length} import list${origins.length === 1 ? "" : "s"}`}>
+            <ListCard title="How this show was added" count={`${plural(origins.length, "import list")}`}>
               <ListTable
                 chevron={false}
                 listId="show-origins"
@@ -2010,7 +2012,7 @@ export function ShowDetailPage() {
 
           <ListCard
             title="Sent to downloads"
-            count={seriesDispatches.length ? `${seriesDispatches.length} dispatch${seriesDispatches.length === 1 ? "" : "es"}` : undefined}
+            count={seriesDispatches.length ? `${plural(seriesDispatches.length, "dispatch")}` : undefined}
             actions={
               seriesDispatches.length ? (
                 <Button asChild type="button" size="sm" variant="outline">

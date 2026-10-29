@@ -54,6 +54,7 @@ import {
   type AutoTagRuleItem
 } from "../lib/auto-tagging";
 import { settingsOverviewLoader } from "./settings-overview-page";
+import { plural } from "../lib/plural";
 
 interface LoaderData {
   libraries: LibraryItem[];
@@ -234,7 +235,7 @@ export function SettingsAutoTaggingPage() {
     setBusy(true);
     try {
       const result = await fetchJson<{ changedTitles: number }>("/api/auto-tag-rules/run", { method: "POST" });
-      toast.success(result.changedTitles === 0 ? "Nothing needed tagging." : `Changed the tags on ${result.changedTitles} ${result.changedTitles === 1 ? "title" : "titles"}. Activity has the details.`);
+      toast.success(result.changedTitles === 0 ? "Nothing needed tagging." : `Changed the tags on ${plural(result.changedTitles, "title")}. Activity has the details.`);
       setConfirmRun(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "The rules could not be run.");
@@ -289,7 +290,7 @@ export function SettingsAutoTaggingPage() {
         }
       />
 
-      <ListCard title={rules.length ? `${rules.length} ${rules.length === 1 ? "rule" : "rules"} · ${rules.filter((rule) => rule.isEnabled).length} on` : "0 rules"} titleCase={false}>
+      <ListCard title={rules.length ? `${plural(rules.length, "rule")} · ${rules.filter((rule) => rule.isEnabled).length} on` : "0 rules"} titleCase={false}>
         {rules.length === 0 ? (
           <ListEmpty
             title="No auto-tagging rules"

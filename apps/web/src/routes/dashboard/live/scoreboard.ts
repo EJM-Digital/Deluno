@@ -8,6 +8,7 @@ import type { LiveConnection } from "../../../lib/api/types/operations";
 import type { ClientLight } from "./clients";
 import { connectionKey, connectionWords, sortConnections, tileName } from "./connections";
 import { SLOW_ANSWER_MS, type IndexerToday } from "./indexers";
+import { plural } from "../../../lib/plural";
 
 /** An enabled indexer that is not known to be healthy gets Test again (the bell's rule on the server is the same). */
 export function indexerNeedsButton(indexer: Pick<IndexerItem, "isEnabled" | "healthStatus">): boolean {
@@ -71,7 +72,7 @@ export function scoreRows(indexers: readonly IndexerItem[], today: ReadonlyMap<s
       const results = row?.candidatesReturned ?? 0;
       const said = standing === "off"
         ? "switched off"
-        : [`${number(grabs)} ${grabs === 1 ? "grab" : "grabs"} won`, `${number(results)} ${results === 1 ? "result" : "results"}`, ms !== null && standing !== "down" ? `${number(ms)} ms average response` : null, answeredPct !== null ? `answered ${answeredPct}% today` : "not asked yet today"].filter(Boolean).join(", ");
+        : [`${plural(grabs, "grab")} won`, plural(results, "result"), ms !== null && standing !== "down" ? `${number(ms)} ms average response` : null, answeredPct !== null ? `answered ${answeredPct}% today` : "not asked yet today"].filter(Boolean).join(", ");
       return {
         key: `indexer:${indexer.id}`,
         id: indexer.id,
@@ -96,7 +97,7 @@ export function scoreSummary(indexers: readonly IndexerItem[], today: ReadonlyMa
   const answering = enabled.filter((indexer) => !indexerNeedsButton(indexer)).length;
   const searches = today.size > 0 ? [...today.values()].reduce((sum, row) => sum + (row.totalQueries ?? 0), 0) : fallbackQueries;
   const parts = [`${number(answering)} of ${number(enabled.length)} answering`];
-  if (searches !== undefined) parts.push(`${number(searches)} ${searches === 1 ? "search" : "searches"} today`);
+  if (searches !== undefined) parts.push(`${plural(searches, "search")} today`);
   return parts.join(" · ");
 }
 

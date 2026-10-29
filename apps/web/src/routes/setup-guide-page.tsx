@@ -73,6 +73,7 @@ import { LanAccessNotice } from "../components/app/lan-access-notice";
 import { isUsenetProtocol } from "../lib/protocol";
 import { CLIENT_PRESETS } from "./connections/presets";
 import { ConnectInstalledApps } from "../components/app/connect-installed-apps";
+import { plural } from "../lib/plural";
 
 /**
  * #1034: two stages. Stage 1 ("This computer and you") covers the computer
@@ -925,22 +926,8 @@ export function SetupGuidePage() {
     setRollbackMessage(null);
 
     if (!canFinish) {
-      if (!canCreateMovies && !canCreateTv) {
-        setError("Choose at least one Movies or TV root folder before finishing simple setup.");
-        setStepIndex(1);
-      } else if (!hasQualityChoice || !hasReleaseRuleChoice) {
-        setError("Choose a picture quality and release preference before finishing simple setup.");
-        setStepIndex(2);
-      } else if (!hasAllAutomationAnswers) {
-        setError("Answer every automation question before finishing setup.");
-        setStepIndex(STEPS.findIndex((step) => step.id === "automation"));
-      } else if (!hasSkipSignInAnswer) {
-        setError("Answer \"Skip sign-in for devices on your home network?\" before finishing setup.");
-        setStepIndex(STEPS.findIndex((step) => step.id === "signIn"));
-      } else {
-        setError("Answer the Updates questions before finishing setup.");
-        setStepIndex(STEPS.findIndex((step) => step.id === "updates"));
-      }
+      // Stay on Start: its amber line already names every missing thing, and its summary marks each one beside what it is
+      // about. Sending the person to another step hid the message, since only Start shows it (#1422).
       return;
     }
 
@@ -2233,12 +2220,17 @@ function FinishStep({
   if (result) {
     return <SetupComplete result={result} />;
   }
+  const hasRootFolder = (form.mediaIntent !== "tv" && form.movieRootPath.trim().length > 0) || (form.mediaIntent !== "movies" && form.seriesRootPath.trim().length > 0);
 
   return (
     <div className="space-y-(--page-gap)">
       <SummaryStrip
         cells={[
-          { label: "Libraries", value: form.mediaIntent === "both" ? "Movies + TV" : form.mediaIntent === "tv" ? "TV" : "Movies" },
+          {
+            label: "Libraries",
+            value: `${form.mediaIntent === "both" ? "Movies + TV" : form.mediaIntent === "tv" ? "TV" : "Movies"}${hasRootFolder ? "" : " - No root folder yet"}`,
+            tone: hasRootFolder ? undefined : "warning"
+          },
           { label: "Quality", value: form.qualityPreset ? QUALITY_PRESETS[form.qualityPreset].label : "Not chosen", tone: form.qualityPreset ? undefined : "warning" },
           { label: "Release preferences", value: form.formatGoal ? FORMAT_GOALS[form.formatGoal].label : "Not chosen", tone: form.formatGoal ? undefined : "warning" },
           // The connection's name, not its protocol id: this read "torznab"
@@ -3262,7 +3254,7 @@ async function rollbackCreatedEntities(createdEntities: CreatedEntity[]) {
     }
   }
   return removed > 0
-    ? `Setup failed, so Deluno cleaned up ${removed} partially created item${removed === 1 ? "" : "s"}.`
+    ? `Setup failed, so Deluno cleaned up ${plural(removed, "partially created item")}.`
     : "Setup failed before Deluno created anything that needed cleanup.";
 }
 

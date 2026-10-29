@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /**
  * Column order and sort for one list, remembered per list in this browser
@@ -153,7 +153,7 @@ export function useListColumns<T>(
   listId: string | undefined,
   columns: ReadonlyArray<ListColumnSpec<T>>,
   items?: readonly T[],
-  options?: { serverSort?: boolean }
+  options?: { serverSort?: boolean; startOverWhen?: unknown }
 ): ListColumnsState<T> {
   const [stored, setStored] = useState<StoredState>(() => (listId ? readStored(listId) : { order: [], sort: null }));
 
@@ -209,6 +209,18 @@ export function useListColumns<T>(
   );
 
   const reset = useCallback(() => persist({ order: [], sort: null }), [persist]);
+
+  // A fresh set of rows (a new search) starts from the list's own order: the sort chosen for the
+  // last results is dropped, the column order the person set is kept (#1418).
+  const startOverWhen = options?.startOverWhen;
+  const lastStartOver = useRef(startOverWhen);
+  useEffect(() => {
+    if (Object.is(lastStartOver.current, startOverWhen)) return;
+    lastStartOver.current = startOverWhen;
+    if (stored.sort) persist({ order: stored.order, sort: null });
+    // Only a change of `startOverWhen` starts over; the stored state is read as it is then.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startOverWhen]);
 
   const sortColumn = activeSort ? columns[ids.indexOf(activeSort.id)] : undefined;
   const changed = movableOrder.some((id, index) => id !== defaultMovable[index]) || activeSort !== null;

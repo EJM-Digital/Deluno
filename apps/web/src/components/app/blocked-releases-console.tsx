@@ -32,6 +32,7 @@ import { Disclosure } from "../ui/disclosure";
 import { LIST_TRACK, ListCard, ListEmpty, ListNameCell, ListRow, ListTable } from "../ui/list-card";
 import { FailureRulesConsole } from "./failure-rules-console";
 import { FailureSchedulesConsole } from "./failure-schedules-console";
+import { plural } from "../../lib/plural";
 
 /**
  * Whether a person clicked Refuse, or Deluno decided this on its own (#800).
@@ -105,12 +106,12 @@ export function BlockedReleasesConsole({
       const result = (await response.json()) as { cleared: number; waitingOnSharing: number; failed: number };
       if (result.cleared > 0) {
         toast.success(
-          `Cleared ${result.cleared} release${result.cleared === 1 ? "" : "s"} at the download client.` +
+          `Cleared ${plural(result.cleared, "release")} at the download client.` +
             (result.waitingOnSharing > 0 ? ` ${result.waitingOnSharing} left alone — still sharing.` : "")
         );
         onChanged();
       } else if (result.waitingOnSharing > 0) {
-        toast.warning(`Nothing was cleared — ${result.waitingOnSharing} release${result.waitingOnSharing === 1 ? "" : "s"} still sharing.`);
+        toast.warning(`Nothing was cleared — ${plural(result.waitingOnSharing, "release")} still sharing.`);
       } else {
         toast.warning("There was nothing left to clear.");
       }
@@ -374,7 +375,7 @@ export function BlockedReleasesConsole({
         open={cleanUpAllOpen}
         onOpenChange={setCleanUpAllOpen}
         title="Clean up every refused release?"
-        description={`This clears ${refused.length} refused release${refused.length === 1 ? "" : "s"} at their download clients — the same as clicking Clean up now on each row. A copy your sharing rule still needs is left alone.`}
+        description={`This clears ${plural(refused.length, "refused release")} at their download clients — the same as clicking Clean up now on each row. A copy your sharing rule still needs is left alone.`}
         confirmLabel="Clean up all"
         confirmVariant="destructive"
         presentation="default"

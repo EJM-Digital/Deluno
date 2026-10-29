@@ -6,6 +6,7 @@ import { CheckboxRow } from "../ui/checkbox";
 import { Field } from "../ui/field";
 import { Input } from "../ui/input";
 import { Select } from "../ui/select";
+import { plural } from "../../lib/plural";
 
 type NamedOption = { id: string; name: string };
 
@@ -62,7 +63,7 @@ export function LibraryBulkToolsDialog({
   onRenameTemplateChange, onExecute, onApplyRename,
 }: LibraryBulkToolsDialogProps) {
   if (!open) return null;
-  const selectedTitleLabel = `${selectedCount} selected title${selectedCount === 1 ? "" : "s"}`;
+  const selectedTitleLabel = `${plural(selectedCount, "selected title")}`;
 
   return <div className="fixed inset-0 z-70 flex items-center justify-center bg-black/60 px-4 py-6 backdrop-blur-xs">
     <div className="w-full max-w-2xl space-y-(--page-gap) rounded-2xl border border-hairline bg-card p-5 shadow-2xl">
@@ -103,7 +104,7 @@ export function LibraryBulkToolsDialog({
           <Button type="button" onClick={onExecute} disabled={isUpdating || isOptionsLoading || isApplyingRename}>{isUpdating ? "Running..." : operation === "renamePreview" ? "Run preview" : confirming ? "Confirm and run" : "Review and continue"}</Button>
           {operation === "renamePreview" && renamePreview.length > 0 ? (
             <Button type="button" onClick={onApplyRename} disabled={isApplyingRename}>
-              {isApplyingRename ? "Applying..." : `Apply to ${renamePreview.length} title${renamePreview.length === 1 ? "" : "s"}`}
+              {isApplyingRename ? "Applying..." : `Apply to ${plural(renamePreview.length, "title")}`}
             </Button>
           ) : null}
         </div>

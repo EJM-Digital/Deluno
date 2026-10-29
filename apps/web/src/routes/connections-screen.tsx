@@ -71,6 +71,7 @@ import { toneSortValue } from "../lib/status-tones";
 import { ConnectionSelectAll, ConnectionSelectButton, ConnectionSelectionBar, ConnectionTagsDialog } from "../components/app/connection-tags-dialog";
 import { useRowSelection } from "../lib/connection-tags";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
+import { plural } from "../lib/plural";
 
 const TABS = configurationNavAreas.find((area) => area.to === "/indexers/indexers")?.items ?? [];
 
@@ -472,7 +473,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
     setBulkBusy(true);
     try {
       await Promise.all(ids.map((id) => send(`/api/indexers/${id}`, "PUT", { isEnabled })));
-      toast.success(`${ids.length} indexer${ids.length === 1 ? "" : "s"} ${isEnabled ? "enabled" : "paused"}`);
+      toast.success(`${plural(ids.length, "indexer")} ${isEnabled ? "enabled" : "paused"}`);
       setSelectedIndexerIds(new Set());
       revalidator.revalidate();
     } catch (error) {
@@ -487,7 +488,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
     setBulkBusy(true);
     try {
       await Promise.all(ids.map((id) => send(`/api/indexers/${id}`, "PUT", { mediaScope: scope })));
-      toast.success(`${ids.length} indexer${ids.length === 1 ? "" : "s"} set to ${scopeLabel(scope)}`);
+      toast.success(`${plural(ids.length, "indexer")} set to ${scopeLabel(scope)}`);
       setSelectedIndexerIds(new Set());
       revalidator.revalidate();
     } catch (error) {
@@ -502,7 +503,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
     setBulkBusy(true);
     try {
       await Promise.all(ids.map((id) => send(`/api/indexers/${id}`, "DELETE")));
-      toast.success(`${ids.length} indexer${ids.length === 1 ? "" : "s"} removed`);
+      toast.success(`${plural(ids.length, "indexer")} removed`);
       setSelectedIndexerIds(new Set());
       revalidator.revalidate();
     } catch (error) {
@@ -1110,8 +1111,8 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
                             their normal rule. */}
                         <ListCell primary={protocolLabel(item.protocol)} secondary={sharingRuleFrom(item) === "strict" ? "Strict sharing" : undefined} />
                         <ListCell primary={scopeLabel(item.mediaScope)} secondary={libraries.length === 0 ? `Priority ${item.priority}` : searchedBy.length ? `Searched by ${searchedBy.join(", ")}` : <RoutingFixLink>No library searches it. Switch it on in Library Routing</RoutingFixLink>} />
-                        <ListCell numeric primary={relative(item.lastHealthTestUtc)} secondary={item.consecutiveFailures > 0 ? `${item.consecutiveFailures} consecutive failure${item.consecutiveFailures === 1 ? "" : "s"}` : item.lastHealthLatencyMs != null ? `${item.lastHealthLatencyMs} ms` : item.lastHealthMessage ?? "—"} />
-                        <ListCell primary={<span aria-live="polite">{throttle?.waiting ? `${throttle.waiting} request${throttle.waiting === 1 ? "" : "s"} waiting` : throttle?.nextPermitInSeconds ? `Next in ${formatSeconds(throttle.nextPermitInSeconds)}` : "Ready"}</span>} secondary={throttle ? `Deluno is pacing ${throttle.host}` : "No recent requests"} />
+                        <ListCell numeric primary={relative(item.lastHealthTestUtc)} secondary={item.consecutiveFailures > 0 ? `${plural(item.consecutiveFailures, "consecutive failure")}` : item.lastHealthLatencyMs != null ? `${item.lastHealthLatencyMs} ms` : item.lastHealthMessage ?? "—"} />
+                        <ListCell primary={<span aria-live="polite">{throttle?.waiting ? `${plural(throttle.waiting, "request")} waiting` : throttle?.nextPermitInSeconds ? `Next in ${formatSeconds(throttle.nextPermitInSeconds)}` : "Ready"}</span>} secondary={throttle ? `Deluno is pacing ${throttle.host}` : "No recent requests"} />
                         <ListCell mobile>
                           <Chip tone={chip.tone}>{chip.label}</Chip>
                         </ListCell>
@@ -1138,7 +1139,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
             onNeedsSignIn={(status, result) => openPrefilledClient(status, result.host ?? status.defaultHost, result.port ?? status.defaultPort, false)}
           />
           <ListCard
-            title={clients.length ? `${clients.length} ${clients.length === 1 ? "client" : "clients"}` : "0 clients"}
+            title={clients.length ? `${plural(clients.length, "client")}` : "0 clients"}
             titleCase={false}
             actions={clients.length > 0 ? <ConnectionSelectButton active={clientSelection.active} onClick={clientSelection.toggleActive} /> : undefined}
           >
@@ -1193,7 +1194,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
                         </ListCell>
                       ) : null}
                       <ListCell primary={preset?.label ?? item.protocol} secondary={libraries.length > 0 && sentBy.length === 0 ? <RoutingFixLink>No library sends downloads here. Route it in Library Routing</RoutingFixLink> : sentBy.length ? `Used by ${sentBy.join(", ")}` : preset ? `${preset.kind} · ${preset.authMode}` : undefined} />
-                      <ListCell mono primary={[movies, tv].filter(Boolean).join(" · ") || "—"} secondary={movies && tv && movies === tv ? "Same for both — files will mix" : mappings.length ? `${mappings.length} file-location link${mappings.length === 1 ? "" : "s"}` : "Movies · TV"} />
+                      <ListCell mono primary={[movies, tv].filter(Boolean).join(" · ") || "—"} secondary={movies && tv && movies === tv ? "Same for both — files will mix" : mappings.length ? `${plural(mappings.length, "file-location link")}` : "Movies · TV"} />
                       <ListCell numeric primary={live ? `${live.summary.activeCount} active` : <span className="text-muted-foreground">—</span>} secondary={live ? `${live.summary.totalSpeedMbps.toFixed(1)} MB/s · ${live.summary.importReadyCount} ready to import` : item.lastHealthTestUtc ? `Tested ${relative(item.lastHealthTestUtc)}` : "Not tested"} />
                       <ListCell mobile className="max-md:max-w-[7.5rem]">
                         <div className="flex flex-wrap items-center gap-1.5">
@@ -1230,7 +1231,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
       {section === "pathMappings" ? (
         <>
           <ListCard
-            title={pathMappings.length ? `${pathMappings.length} ${pathMappings.length === 1 ? "mapping" : "mappings"}` : "0 mappings"}
+            title={pathMappings.length ? `${plural(pathMappings.length, "mapping")}` : "0 mappings"}
             titleCase={false}
           >
             <p className="px-(--card-pad-x) pb-3 text-(length:--type-caption) text-muted-foreground">
@@ -1343,7 +1344,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
           {/* The routing explainer that used to sit here said what the routing
               drawer already says beside the field itself, in more detail and in
               the place you actually need it. One subject, one home. */}
-          <ListCard title={libraries.length ? `${libraries.length} ${libraries.length === 1 ? "library" : "libraries"}` : "0 libraries"} titleCase={false}>
+          <ListCard title={libraries.length ? `${plural(libraries.length, "library")}` : "0 libraries"} titleCase={false}>
           {libraries.length === 0 ? (
             <ListEmpty title="No libraries yet" description="Create a Movies or TV library first, then choose its search and download connections here." />
           ) : (
@@ -1388,7 +1389,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
       ) : null}
 
       {section === "proxies" ? (
-        <ListCard title={proxies.length ? `${proxies.length} ${proxies.length === 1 ? "proxy" : "proxies"}` : "0 proxies"} titleCase={false}>
+        <ListCard title={proxies.length ? `${plural(proxies.length, "proxy")}` : "0 proxies"} titleCase={false}>
           {proxies.length === 0 ? (
             <ListEmpty
               title="No proxies yet"
@@ -1415,7 +1416,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
                 <ListRow key={item.id} onClick={() => openProxy(item)} selected={drawer.kind === "proxy" && drawer.id === item.id}>
                   <ListNameCell name={item.name} sub={<span className="font-mono">{item.address}</span>} />
                   <ListCell primary={PROXY_TYPE_LABELS[item.proxyType] ?? item.proxyType} />
-                  <ListCell primary={item.assignedIndexerNames.length ? `${item.assignedIndexerNames.length} indexer${item.assignedIndexerNames.length === 1 ? "" : "s"}` : <span className="text-muted-foreground">None</span>} secondary={item.assignedIndexerNames.join(", ") || undefined} />
+                  <ListCell primary={item.assignedIndexerNames.length ? `${plural(item.assignedIndexerNames.length, "indexer")}` : <span className="text-muted-foreground">None</span>} secondary={item.assignedIndexerNames.join(", ") || undefined} />
                   <ListCell mobile>
                     <Chip tone={item.isEnabled ? "ok" : "idle"}>{item.isEnabled ? "On" : "Off"}</Chip>
                   </ListCell>
@@ -1598,7 +1599,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
       <ConfirmDialog
         open={confirmBulkRemove}
         onOpenChange={setConfirmBulkRemove}
-        title={`Remove ${selectedIndexerIds.size} indexer${selectedIndexerIds.size === 1 ? "" : "s"}?`}
+        title={`Remove ${plural(selectedIndexerIds.size, "indexer")}?`}
         description="Libraries routed only to one of these indexers will need another one before Deluno can search for them."
         confirmLabel="Remove indexers"
         busy={bulkBusy}

@@ -25,6 +25,7 @@ import { startedLabel } from "./provenance";
 import { detailLines, type Part } from "./detail";
 import { faceOf, type TitleLookup } from "./titles";
 import { floorProgress, formatProgressPercent } from "../../../lib/progress-format";
+import { plural } from "../../../lib/plural";
 
 export interface CardContext {
   titles: TitleLookup;
@@ -81,7 +82,7 @@ export interface CardStatus {
 export function statusOf(card: JourneyCard, indexers: number): CardStatus {
   const percent = formatProgressPercent(card.progress);
   if (card.stage === "requested") {
-    const asked = card.startedBy === "seerr" ? "Asked for in Seerr · looking" : indexers > 0 ? `Looking on ${indexers.toLocaleString("en-AU")} ${indexers === 1 ? "indexer" : "indexers"}` : "Looking for it";
+    const asked = card.startedBy === "seerr" ? "Asked for in Seerr · looking" : indexers > 0 ? `Looking on ${plural(indexers, "indexer")}` : "Looking for it";
     return { text: asked, tone: "info", pulse: true };
   }
   // Only what is known: the download has stopped moving. Why is in its tooltip; Deluno is not claimed to be doing anything it may not be.

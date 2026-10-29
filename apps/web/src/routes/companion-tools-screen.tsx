@@ -15,6 +15,7 @@ import { Chip } from "../components/ui/chip";
 import { Drawer, DrawerFooter, DrawerSection } from "../components/ui/drawer";
 import { LIST_TRACK, ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable } from "../components/ui/list-card";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
+import { plural } from "../lib/plural";
 
 const TABS = configurationNavAreas.find((area) => area.to === "/indexers/indexers")?.items ?? [];
 
@@ -110,7 +111,7 @@ export function CompanionToolsPage() {
         tabs={TABS}
         actions={
           <PageToolbarAction type="button" onClick={() => void install()} disabled={busy || working || selected.length === 0 || !data.availability.available}>
-            {selected.length ? `Set up ${selected.length} ${selected.length === 1 ? "tool" : "tools"}` : "Set up tools"}
+            {selected.length ? `Set up ${plural(selected.length, "tool")}` : "Set up tools"}
           </PageToolbarAction>
         }
       />

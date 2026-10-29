@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DashboardActivityItem, DashboardSummary } from "../../lib/api";
 import { RealtimeGroups, useSignalREvent } from "../../lib/use-signalr";
 import { activityLinkForStatus } from "../../lib/activity-history";
+import { plural } from "../../lib/plural";
 
 /* ---------------------------------------------------------- progress */
 
@@ -184,17 +185,17 @@ export function useWorkingNow(summary: DashboardSummary | undefined, pushed?: { 
     }
     const downloads = summary?.downloads;
     if ((downloads?.processing ?? 0) > 0) {
-      items.push({ key: "processor", kind: "processor", text: `${downloads?.processing} ${downloads?.processing === 1 ? "download is" : "downloads are"} being cleaned by the processor`, to: "/queue" });
+      items.push({ key: "processor", kind: "processor", text: `${plural(downloads?.processing ?? 0, "download is", "downloads are")} being cleaned by the processor`, to: "/queue" });
     }
     if ((downloads?.importReady ?? 0) > 0) {
-      items.push({ key: "import-ready", kind: "import", text: `${downloads?.importReady} ${downloads?.importReady === 1 ? "download is" : "downloads are"} ready to import`, to: "/queue" });
+      items.push({ key: "import-ready", kind: "import", text: `${plural(downloads?.importReady ?? 0, "download is", "downloads are")} ready to import`, to: "/queue" });
     }
     // The jobs that have said they started are named; with none named, the summary's count stands.
     const named = pushed ? [...pushed.jobs.values()] : [];
     const running = summary?.system?.jobs.running ?? 0;
     if (named.length > 0) {
       for (const title of [...new Set(named.map((job) => job.title))]) items.push({ key: `job:${title}`, kind: "jobs", text: title, to: activityLinkForStatus("in-progress") });
-    } else if (running > 0) items.push({ key: "jobs", kind: "jobs", text: `${running} background ${running === 1 ? "job is" : "jobs are"} running`, to: activityLinkForStatus("in-progress") });
+    } else if (running > 0) items.push({ key: "jobs", kind: "jobs", text: `${plural(running, "background job is", "background jobs are")} running`, to: activityLinkForStatus("in-progress") });
     return items;
   }, [summary, started, pushed]);
 }

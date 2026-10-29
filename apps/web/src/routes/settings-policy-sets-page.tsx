@@ -51,6 +51,7 @@ import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { cn } from "../lib/utils";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
+import { plural, pluralWord } from "../lib/plural";
 
 const PLAN_TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")?.items ?? [];
 
@@ -546,7 +547,7 @@ export function SettingsPolicySetsPage() {
       />
 
       <ListCard
-        title={policySets.length ? `${policySets.length} ${policySets.length === 1 ? "profile" : "profiles"} · ${policySets.filter((plan) => plan.isEnabled).length} enabled` : "0 profiles"}
+        title={policySets.length ? `${plural(policySets.length, "profile")} · ${policySets.filter((plan) => plan.isEnabled).length} enabled` : "0 profiles"}
         titleCase={false}
         filter={policySets.length > 3 ? { value: filter, onChange: setFilter, placeholder: "Filter library profiles" } : undefined}
         actions={<MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />}
@@ -834,7 +835,7 @@ export function SettingsPolicySetsPage() {
         </DrawerSection>
 
         {mode.kind === "edit" ? (
-          <DrawerSection title="Plan history" aside={planVersionsBusy ? "Loading…" : planVersions.length ? `${planVersions.length} immutable ${planVersions.length === 1 ? "version" : "versions"}` : "No history yet"} className="min-w-0 py-4!">
+          <DrawerSection title="Plan history" aside={planVersionsBusy ? "Loading…" : planVersions.length ? `${plural(planVersions.length, "immutable version")}` : "No history yet"} className="min-w-0 py-4!">
             <p className="text-(length:--type-caption) text-muted-foreground">
               Every saved change is retained as a version. Rollback creates a new version, so the audit trail is never rewritten.
             </p>
@@ -870,7 +871,7 @@ export function SettingsPolicySetsPage() {
                 {preview ? (
                   <div className="rounded-[10px] border border-info/30 bg-info/5 px-3 py-2">
                     <p className="text-(length:--type-body-sm) font-medium text-foreground">
-                      {preview.hasChanges ? `${preview.changes.length} change${preview.changes.length === 1 ? "" : "s"} will create the next version.` : "No effective changes."}
+                      {preview.hasChanges ? `${plural(preview.changes.length, "change")} will create the next version.` : "No effective changes."}
                     </p>
                     {preview.changes.length ? (
                       <ul className="mt-1 grid gap-1 text-(length:--type-caption) text-muted-foreground">
@@ -1095,8 +1096,8 @@ function describeWhatItWants(
   };
 }
 
-function describeUsage(count: number, singular = "library", plural = "libraries") {
-  return `${count} ${count === 1 ? singular : plural}`;
+function describeUsage(count: number, singular = "library", many = pluralWord(singular)) {
+  return plural(count, singular, many);
 }
 
 function formatChangeKind(value: string) {

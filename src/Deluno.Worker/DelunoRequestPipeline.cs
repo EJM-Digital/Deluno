@@ -205,6 +205,9 @@ public static class DelunoRequestPipeline
         ArgumentNullException.ThrowIfNull(app);
         options ??= new DelunoPipelineOptions();
 
+        // First, outside the exception handler, so the handler's own log line for a failure is written inside the request's
+        // trace id scope and the answer can quote the same id (#1419).
+        app.UseDelunoCorrelation();
         app.UseExceptionHandler(errorApp =>
         {
             errorApp.Run(async context =>
@@ -217,7 +220,10 @@ public static class DelunoRequestPipeline
                 var stateFile = failure as StateFileException ?? failure?.InnerException as StateFileException;
                 context.Response.StatusCode = StatusForFailure(failure);
                 context.Response.ContentType = "application/json";
-                await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(new { error = diskFull ? DiskFull.PlainMessage : stateFile?.Message ?? "An unexpected error occurred." }));
+                // The handler starts a clean answer, so the trace header is set again; the body carries the same id so a
+                // failure on screen can be matched to its log line (#1419).
+                context.Response.Headers[Deluno.Infrastructure.Observability.DelunoObservability.TraceHeaderName] = context.TraceIdentifier;
+                await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(new { error = diskFull ? DiskFull.PlainMessage : stateFile?.Message ?? "An unexpected error occurred.", traceId = context.TraceIdentifier }));
             });
         });
 
@@ -298,7 +304,6 @@ public static class DelunoRequestPipeline
             OnPrepareResponse = DelunoStaticFileCaching.Apply
         });
         app.UseDelunoApiUnmatchedPathGuard();
-        app.UseDelunoCorrelation();
         app.UseDelunoConfigChangedPush();
         app.UseDelunoAttentionChangedPush();
         app.UseAuthentication();

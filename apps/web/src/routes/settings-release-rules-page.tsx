@@ -33,6 +33,7 @@ import { readErrorText, fetchJson, type IndexerItem, type PlatformSettingsSnapsh
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
+import { plural } from "../lib/plural";
 
 const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")?.items ?? [];
 
@@ -316,7 +317,7 @@ export function SettingsReleaseRulesPage() {
       <RuleModeCard mode={ruleMode} onChanged={() => revalidator.revalidate()} />
 
       <ListCard
-        title={profiles.length ? `${profiles.length} ${profiles.length === 1 ? "rule" : "rules"}` : "0 rules"}
+        title={profiles.length ? `${plural(profiles.length, "rule")}` : "0 rules"}
         titleCase={false}
       >
         {profiles.length === 0 ? (
@@ -361,7 +362,7 @@ export function SettingsReleaseRulesPage() {
                   <ListCell primary={tags.length ? joinTagList(tags) : firstMatch ? "Titles no other rule matches" : "Every title"} secondary={indexerScopeLabel(profile, indexers)} />
                   <ListCell primary={protocolLabel(profile.preferredProtocol)} />
                   <ListCell primary={formatTiming(profile)} secondary={formatAvailability(profile)} />
-                  <ListCell primary={termSummary(profile)} secondary={profile.preferredTerms.length ? `${profile.preferredTerms.length} weighted preference${profile.preferredTerms.length === 1 ? "" : "s"}` : undefined} />
+                  <ListCell primary={termSummary(profile)} secondary={profile.preferredTerms.length ? `${plural(profile.preferredTerms.length, "weighted preference")}` : undefined} />
                   {firstMatch ? (
                     <div role="cell" className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
                       {tags.length > 0 ? (
@@ -578,7 +579,7 @@ function indexerScopeLabel(profile: ReleaseProfileItem, indexers: IndexerItem[])
   const names = profile.indexerIds
     .map((id) => indexers.find((indexer) => indexer.id === id)?.name ?? null)
     .filter((name): name is string => Boolean(name));
-  return names.length ? names.join(", ") : `${profile.indexerIds.length} indexer${profile.indexerIds.length === 1 ? "" : "s"}`;
+  return names.length ? names.join(", ") : `${plural(profile.indexerIds.length, "indexer")}`;
 }
 
 function protocolLabel(value: string) {
@@ -599,5 +600,5 @@ function formatAvailability(profile: ReleaseProfileItem) {
 function termSummary(profile: ReleaseProfileItem) {
   const must = profile.mustContain ? "Must contain" : profile.mustNotContain ? "Must not contain" : "No hard terms";
   const hardCount = [profile.mustContain, profile.mustNotContain].filter(Boolean).length;
-  return hardCount ? `${must} · ${hardCount} hard rule${hardCount === 1 ? "" : "s"}` : "No hard terms";
+  return hardCount ? `${must} · ${plural(hardCount, "hard rule")}` : "No hard terms";
 }

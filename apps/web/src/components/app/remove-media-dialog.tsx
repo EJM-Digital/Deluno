@@ -1,3 +1,4 @@
+import { plural } from "../../lib/plural";
 import { removalDownloadSentence } from "../../lib/removal-download-words";
 import * as Dialog from "../ui/dialog-primitives";
 import { AlertTriangle, FolderX, ListMinus } from "lucide-react";
@@ -103,14 +104,14 @@ export function RemoveMediaDialog({
               label="Move imported files to the recycle bin"
               description={
                 hasImportedFiles
-                  ? `Move the imported ${mediaLabel} files and its title folder to Deluno's recycle bin. They are kept ${retentionDays ? `for ${retentionDays} ${retentionDays === 1 ? "day" : "days"}` : "until the recycle bin's retention runs out"}, and Restore brings back the ${mediaLabel} with them.`
+                  ? `Move the imported ${mediaLabel} files and its title folder to Deluno's recycle bin. They are kept ${retentionDays ? `for ${plural(retentionDays, "day")}` : "until the recycle bin's retention runs out"}, and Restore brings back the ${mediaLabel} with them.`
                   : `Deluno has no imported files recorded for this ${mediaLabel}.`
               }
               onCheckedChange={setDeleteFiles}
             />
             {hasImportedFiles ? (
               <div className="rounded-lg border border-hairline bg-surface-0 px-4 py-3 text-xs text-muted-foreground">
-                <p className="font-medium text-foreground">Affected library location{removalPreview.folderPaths.length === 1 ? "" : "s"}</p>
+                <p className="font-medium text-foreground">{plural((removalPreview.folderPaths.length ? removalPreview.folderPaths : removalPreview.filePaths).length, "affected library location")}</p>
                 <div className="mt-1 space-y-1 font-mono text-(length:--type-caption) leading-relaxed">
                   {(removalPreview.folderPaths.length ? removalPreview.folderPaths : removalPreview.filePaths).slice(0, 3).map((path) => (
                     <p key={path} className="break-all">{path}</p>

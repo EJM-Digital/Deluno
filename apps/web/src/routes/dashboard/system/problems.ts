@@ -9,7 +9,6 @@ import { isHealthCheckSnoozed } from "../../../lib/health-snooze";
 import { healthProblemActions, jobsGaveUpActions, screenLinkActions, STARTUP_PROBLEM_PREFIX, type AlertAction } from "../../../lib/alert-actions";
 import type { AttentionSummary } from "../../../lib/attention-summary";
 import { plainWords } from "../downloads-kit";
-import { plural } from "../format";
 import { AREAS, areaOf, areaOfAttention, type HealthArea } from "./logic";
 
 export const STARTUP_PREFIX = STARTUP_PROBLEM_PREFIX;

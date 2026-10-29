@@ -1,4 +1,5 @@
 import type { TagUsageItem } from "./api";
+import { plural } from "./plural";
 
 /** Plain words for each kind of thing that can carry a tag (#1039). */
 const KIND_LABELS: Record<string, string> = {
@@ -40,7 +41,7 @@ const KIND_NOUNS: Record<string, [string, string]> = {
 /** "3 titles and 1 download client": what still uses a tag, in plain words. */
 export function describeTagInUse(usage: TagUsageItem): string {
   const parts: string[] = [];
-  if (usage.totalCount > 0) parts.push(`${usage.totalCount} ${usage.totalCount === 1 ? "title" : "titles"}`);
+  if (usage.totalCount > 0) parts.push(`${plural(usage.totalCount, "title")}`);
   const counts = new Map<string, number>();
   for (const user of usage.users) counts.set(user.kind, (counts.get(user.kind) ?? 0) + 1);
   for (const [kind, count] of counts) {
@@ -55,9 +56,9 @@ export function describeTagInUse(usage: TagUsageItem): string {
 export function describeTagUsage(usage: TagUsageItem | undefined): string {
   if (!usage || usage.isUnused) return "Not used";
   const parts: string[] = [];
-  if (usage.totalCount > 0) parts.push(`${usage.totalCount} title${usage.totalCount === 1 ? "" : "s"}`);
+  if (usage.totalCount > 0) parts.push(`${plural(usage.totalCount, "title")}`);
   const others = usage.users.length;
-  if (others > 0) parts.push(`${others} ${others === 1 ? "setting" : "settings"}`);
+  if (others > 0) parts.push(`${plural(others, "setting")}`);
   return parts.join(", ");
 }
 

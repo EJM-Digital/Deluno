@@ -24,6 +24,7 @@ import type {
   SubtitleLanguageTypePreference,
   SubtitleTimingPolicy
 } from "../lib/api/types/resources";
+import { plural } from "../lib/plural";
 
 const TABS = configurationNavAreas.find((area) => area.to === "/settings/libraries")?.items ?? [];
 
@@ -312,7 +313,7 @@ export function SubtitleLanguagesPage() {
 
       <ListCard
         title="Subtitle languages"
-        count={asking.length ? `${asking.length} of ${libraries.length} ${libraries.length === 1 ? "library" : "libraries"} asking` : undefined}
+        count={asking.length ? `${asking.length} of ${plural(libraries.length, "library")} asking` : undefined}
       >
         {libraries.length === 0 ? (
           <ListEmpty
