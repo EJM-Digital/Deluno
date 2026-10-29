@@ -155,7 +155,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-import { activityLinkForTitle } from "../lib/activity-history";
+import { activityLinkForFile, activityLinkForTitle } from "../lib/activity-history";
 
 beforeEach(() => window.localStorage.clear());
 
@@ -240,6 +240,21 @@ describe("the film's History tab Activity card (low rows)", () => {
     expect(screen.queryByText("Searched Big Buck Bunny, pass 10")).toBeNull();
     expect(calls.some((c) => c.url.startsWith("/api/activity?relatedEntityType=movie&relatedEntityId=m1"))).toBe(true);
     expect(screen.getByRole("link", { name: "Everything about this film" })).toHaveAttribute("href", activityLinkForTitle("Big Buck Bunny", "movie", "m1"));
+  });
+
+  it("offers This file's history only when the film has a file, linked to that file's trail", async () => {
+    setup((url) => (url === "/api/movies/m1" ? { body: { ...MOVIE, hasFile: true, filePath: "/films/Big Buck Bunny (2008)/Big.Buck.Bunny.2008.mkv" } } : undefined));
+    await renderPage();
+    fireEvent.click(screen.getByRole("radio", { name: "History" }));
+    const link = await screen.findByRole("link", { name: "This file's history" });
+    expect(link).toHaveAttribute("href", activityLinkForFile("/films/Big Buck Bunny (2008)/Big.Buck.Bunny.2008.mkv"));
+    cleanup();
+
+    setup();
+    await renderPage();
+    fireEvent.click(screen.getByRole("radio", { name: "History" }));
+    expect(await screen.findByRole("link", { name: "Everything about this film" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "This file's history" })).toBeNull();
   });
 
   it("says Nothing has happened yet when the film has no events", async () => {
