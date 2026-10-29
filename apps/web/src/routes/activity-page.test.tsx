@@ -916,3 +916,83 @@ describe("Activity steps built from Transfers' sources (#1115)", () => {
     }
   });
 });
+
+/**
+ * Low-severity sweep (#1329): an empty chip says what would appear on it, in the words the chip promises.
+ */
+describe("Activity empty chips say what would appear there (#1329)", () => {
+  const saved = { jobs: loaderData.jobs, failedJobs: loaderData.failedJobs, dispatches: loaderData.dispatches, movieRecovery: loaderData.movieRecovery };
+  const restore = () => Object.assign(loaderData, saved);
+  const emptyEverything = () => {
+    loaderData.jobs = [] as never;
+    loaderData.failedJobs = [] as never;
+    loaderData.dispatches = [] as never;
+    loaderData.movieRecovery = { ...saved.movieRecovery, openCount: 0, recentCases: [] } as never;
+    authedFetchMock.mockImplementation(async (path: string) =>
+      path.startsWith("/api/activity?") ? jsonResponse({ items: [], nextPageToken: null, hasMore: false }) : answerActivityApi(path));
+  };
+  beforeEach(emptyEverything);
+  afterEach(restore);
+
+  it.each([["/activity", "Nothing has happened yet"], ["/activity?status=done", "Nothing has happened yet"]])(
+    "the empty history at %s says nothing has happened yet",
+    async (address, title) => {
+      renderActivity(address);
+      expect(await screen.findByText(title)).toBeInTheDocument();
+      expect(screen.getByText("Every consequential thing Deluno does is recorded here, with the reason behind it.")).toBeInTheDocument();
+    }
+  );
+
+  it("an empty In progress chip says nothing is in progress and names what appears there", async () => {
+    renderActivity("/activity?status=in-progress");
+    expect(await screen.findByText("Nothing in progress")).toBeInTheDocument();
+    expect(screen.getByText("Searches, downloads and imports for your titles appear here while they run.")).toBeInTheDocument();
+  });
+
+  it("an empty Needs a decision chip says nothing needs a decision and names the cases that land there", async () => {
+    renderActivity("/activity?status=needs-decision");
+    expect(await screen.findByText("Nothing needs a decision")).toBeInTheDocument();
+    expect(screen.getByText(/wrong quality, no match, corrupt/)).toBeInTheDocument();
+  });
+});
+
+describe("Activity filter tokens, time choices and the search box (#1329)", () => {
+  it("the Outcome, Until, Kind of title and From tokens show in words, and each one's remove button clears its own filter", async () => {
+    renderActivity("/activity?outcome=problem&until=2026-09-27&itemType=movie&source=indexer");
+    expect(await screen.findByText("Outcome: Went wrong")).toBeInTheDocument();
+    expect(screen.getByText("Until: 2026-09-27")).toBeInTheDocument();
+    expect(screen.getByText("Kind of title: movie")).toBeInTheDocument();
+    expect(screen.getByText("From: An indexer")).toBeInTheDocument();
+
+    for (const [token, param] of [["Outcome: Went wrong", "outcome="], ["Until: 2026-09-27", "until="], ["Kind of title: movie", "itemType="], ["From: An indexer", "source="]] as const) {
+      await userEvent.click(screen.getByRole("button", { name: `Remove filter ${token}` }));
+      await waitFor(() => expect(screen.getByLabelText("address").textContent).not.toContain(param));
+      expect(screen.queryByText(token)).not.toBeInTheDocument();
+    }
+  });
+
+  it("a hand-written since day shows as an extra Since choice on the Time control", async () => {
+    renderActivity("/activity?since=2026-09-20");
+    await userEvent.click(await screen.findByRole("button", { name: /^More filters/ }));
+    expect(await screen.findByRole("radio", { name: "Since 2026-09-20" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Today" })).toBeInTheDocument();
+  });
+
+  it("clicking a Time choice writes since and clears until", async () => {
+    renderActivity("/activity?until=2026-09-27");
+    await userEvent.click(await screen.findByRole("button", { name: /^More filters/ }));
+    await userEvent.click(await screen.findByRole("radio", { name: "Last 7 days" }));
+
+    await waitFor(() => expect(screen.getByLabelText("address").textContent).toContain("since=7d"));
+    expect(screen.getByLabelText("address").textContent).not.toContain("until=");
+  });
+
+  it("Escape in the search box leaves it", async () => {
+    renderActivity("/activity?status=done");
+    const box = screen.getByRole("searchbox", { name: "Find a title" });
+    await userEvent.click(box);
+    expect(box).toHaveFocus();
+    await userEvent.keyboard("{Escape}");
+    expect(box).not.toHaveFocus();
+  });
+});
