@@ -38,6 +38,10 @@ describe("legacy TV addresses", () => {
     expect(await openLegacy(path)).toBe("/tv");
   });
 
+  it.each(["/movies/import", "/movies/library"])("%s redirects to /movies", async (path) => {
+    expect(await openLegacy(path)).toBe("/movies");
+  });
+
   it("/shows/:id redirects to /tv/:id and keeps the id", async () => {
     expect(await openLegacy("/shows/show-42")).toBe("/tv/show-42");
   });
