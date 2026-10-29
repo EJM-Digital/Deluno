@@ -20,7 +20,7 @@ public sealed class TitleSearchAndGrabRoutesAgainstRecordedAppsTests
     private const string ShowPath = "/api/v2.0/indexers/thepiratebay/results/torznab/api";
     private const string Key = "0123456789abcdef0123456789abcdef";
 
-    private sealed class Rig(RecordedAppServer jackett, RecordedAppServer qbit, ApplicationTestHost app, string filmLibrary, string showLibrary) : IAsyncDisposable
+    internal sealed class Rig(RecordedAppServer jackett, RecordedAppServer qbit, ApplicationTestHost app, string filmLibrary, string showLibrary) : IAsyncDisposable
     {
         public RecordedAppServer Jackett { get; } = jackett;
 
@@ -40,7 +40,7 @@ public sealed class TitleSearchAndGrabRoutesAgainstRecordedAppsTests
         }
     }
 
-    private static async Task<JsonElement> PostOkAsync(ApplicationTestHost app, string url, object? body = null)
+    internal static async Task<JsonElement> PostOkAsync(ApplicationTestHost app, string url, object? body = null)
     {
         var response = body is null ? await app.Client.PostAsync(url, content: null) : await app.Client.PostAsJsonAsync(url, body);
         Assert.True(response.IsSuccessStatusCode, $"{url} answered {(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
@@ -105,7 +105,7 @@ public sealed class TitleSearchAndGrabRoutesAgainstRecordedAppsTests
         };
     }
 
-    private static async Task<Rig> RigAsync(params string[] moreQbitStates)
+    internal static async Task<Rig> RigAsync(params string[] moreQbitStates)
     {
         var jackett = await RecordedAppServer.StartAsync(
             "jackett",
@@ -183,7 +183,7 @@ public sealed class TitleSearchAndGrabRoutesAgainstRecordedAppsTests
     private static async Task<string> AddFilmAsync(Rig rig)
         => (await PostOkAsync(rig.App, "/api/movies", new { title = "Sintel", releaseYear = 2010, imdbId = "tt1727587", monitored = true, libraryId = rig.FilmLibrary })).GetProperty("id").GetString()!;
 
-    private static async Task<(string SeriesId, string EpisodeId)> AddShowAsync(Rig rig)
+    internal static async Task<(string SeriesId, string EpisodeId)> AddShowAsync(Rig rig)
     {
         var series = rig.App.Services.GetRequiredService<ISeriesCatalogRepository>();
         await series.ImportExistingAsync(

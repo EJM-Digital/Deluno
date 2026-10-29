@@ -147,6 +147,53 @@ public sealed class ManualSearchRoutesExplainThemselvesTests
     }
 
     [Fact]
+    public async Task A_TV_grab_names_TV_in_both_refusals_and_a_movie_library_does_not_stand_in_for_it()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        await CreateLibraryAsync(app, "movies", "Films");
+
+        var noLibrary = await GrabAsync(app, "tv", indexerId: "idx");
+        Assert.Equal(HttpStatusCode.BadRequest, noLibrary.StatusCode);
+        Assert.Contains("Add a TV library with a linked download client before grabbing from Search.", await noLibrary.Content.ReadAsStringAsync());
+
+        await CreateLibraryAsync(app, "tv", "Shows");
+        var noClient = await GrabAsync(app, "tv", indexerId: "idx");
+        Assert.Equal(HttpStatusCode.BadRequest, noClient.StatusCode);
+        Assert.Contains("Link a download client to a TV library before grabbing a release.", await noClient.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task A_Search_page_grab_goes_ahead_for_a_release_the_rules_would_reject_because_the_person_chose_it()
+    {
+        var grabs = new RecordingGrabService();
+        await using var app = await StartAsync(grabs);
+        var library = await CreateLibraryAsync(app, "movies", "Films");
+        var client = await AddClientAsync(app, "qBit", "qbittorrent");
+        await RouteAsync(app, library, client.Id);
+
+        var response = await app.Client.PostAsJsonAsync("/api/search/grab", new
+        {
+            releaseName = "Example.Movie.2010.HDCAM.x264-NOGRP",
+            indexerId = "idx",
+            downloadUrl = "https://fixture.invalid/x.torrent",
+            searchType = "movie",
+            quality = "CAM",
+            seeders = 0
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(body.GetProperty("succeeded").GetBoolean());
+        Assert.Equal(client.Id, grabs.LastClientId);
+        // The decision the dispatch keeps says the release needed an override, and that the person's choice was taken as one.
+        var notes = await ApiScenes.TextAsync(app, "jobs", "SELECT notes_json FROM download_dispatches WHERE download_client_id = '" + client.Id + "';");
+        var decision = JsonDocument.Parse(notes!).RootElement.GetProperty("decision");
+        Assert.True(decision.GetProperty("RequiresOverride").GetBoolean(), notes);
+        Assert.True(decision.GetProperty("CanDispatch").GetBoolean(), notes);
+        Assert.StartsWith("User override accepted", decision.GetProperty("Reason").GetString());
+    }
+
+    [Fact]
     public async Task A_grab_the_client_fails_records_a_failed_dispatch_and_a_failed_history_row_and_returns_the_message()
     {
         var grabs = new RecordingGrabService(succeeds: false);
