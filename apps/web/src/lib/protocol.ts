@@ -8,7 +8,8 @@ const USENET_PROTOCOLS = new Set(["newznab", "usenet", "sabnzbd", "nzbget"]);
 
 /** True for a Usenet indexer or client protocol, however the case or spacing. */
 export function isUsenetProtocol(protocol?: string | null): boolean {
-  return USENET_PROTOCOLS.has((protocol ?? "").trim().toLowerCase());
+  if (!protocol) return false;
+  return USENET_PROTOCOLS.has(protocol.trim().toLowerCase());
 }
 
 /** "usenet" or "torrent" for grouping a connection by what it fetches. */
