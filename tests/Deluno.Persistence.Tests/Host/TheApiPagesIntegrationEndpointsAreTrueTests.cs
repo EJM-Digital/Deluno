@@ -39,6 +39,8 @@ public sealed class TheApiPagesIntegrationEndpointsAreTrueTests
         var page = File.ReadAllText(Path.Combine(RepositoryRoot(), "apps", "web", "src", "routes", "system-api-page.tsx"));
         var rows = Row.Matches(page)
             .Select(match => (match.Groups["scope"].Value, match.Groups["method"].Value, PathOnly(match.Groups["path"].Value)))
+            // The integration rows come from the table the request gate reads (#1410), not from the page's source.
+            .Concat(Deluno.Security.IntegrationRouteScopes.All.Where(route => route.Featured).Select(route => (route.Scope, route.Method, route.Path)))
             .ToArray();
         Assert.True(rows.Length >= 20, $"expected the page's list of endpoints, found {rows.Length}");
         return rows;

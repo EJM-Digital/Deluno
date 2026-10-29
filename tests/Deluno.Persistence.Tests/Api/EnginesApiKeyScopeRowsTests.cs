@@ -115,10 +115,10 @@ public sealed class EnginesApiKeyScopeRowsTests : IAsyncLifetime
 
         var refused = await readOnly.PostAsJsonAsync("/api/integrations/processors/events", new { });
         Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
-        // The gate in front of /api/integrations asks for imports OR queue; the shipped words say so.
+        // The gate in front of /api/integrations asks for the one scope the API screen lists for the route (#1410).
         var refusal = await refused.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("This credential does not have the 'imports' or 'queue' scope.", refusal.GetProperty("error").GetString());
-        Assert.Equal(["imports", "queue"], refusal.GetProperty("required").EnumerateArray().Select(item => item.GetString()!).ToArray());
+        Assert.Equal("This credential does not have the 'imports' scope.", refusal.GetProperty("error").GetString());
+        Assert.Equal(["imports"], refusal.GetProperty("required").EnumerateArray().Select(item => item.GetString()!).ToArray());
         Assert.Equal(["read"], refusal.GetProperty("granted").EnumerateArray().Select(item => item.GetString()!).ToArray());
         Assert.Equal(HttpStatusCode.OK, (await readOnly.GetAsync("/api/integrations/external/health")).StatusCode);
     }
@@ -133,11 +133,11 @@ public sealed class EnginesApiKeyScopeRowsTests : IAsyncLifetime
 
         var changed = await queueOnly.PostAsJsonAsync("/api/integrations/external/file-changed", new { path = "/library/film.mkv", reason = "row", tool = "row" });
         Assert.Equal(HttpStatusCode.Forbidden, changed.StatusCode);
-        Assert.Equal("This API key does not include the required scope: imports.", await MessageAsync(changed));
+        Assert.Equal("This credential does not have the 'imports' scope.", (await changed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
     }
 
     [Fact]
-    public async Task The_outside_callers_import_preview_is_behind_the_integrations_gate_so_an_imports_or_queue_key_is_admitted_and_a_read_only_key_is_refused()
+    public async Task The_outside_callers_import_preview_needs_exactly_the_imports_scope_so_an_imports_key_is_admitted_and_a_queue_or_read_only_key_is_refused()
     {
         var readOnly = await KeyClientAsync("read");
         var imports = await KeyClientAsync("imports");
@@ -147,13 +147,11 @@ public sealed class EnginesApiKeyScopeRowsTests : IAsyncLifetime
         var refused = await readOnly.PostAsJsonAsync("/api/integrations/external/import-preview", body);
 
         Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
-        Assert.Equal("This credential does not have the 'imports' or 'queue' scope.", (await refused.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
-        foreach (var key in new[] { imports, queueOnly })
-        {
-            var admitted = await key.PostAsJsonAsync("/api/integrations/external/import-preview", body);
-            Assert.Equal(HttpStatusCode.OK, admitted.StatusCode);
-            Assert.False((await admitted.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("sourceExists").GetBoolean());
-        }
+        Assert.Equal("This credential does not have the 'imports' scope.", (await refused.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
+        Assert.Equal(HttpStatusCode.Forbidden, (await queueOnly.PostAsJsonAsync("/api/integrations/external/import-preview", body)).StatusCode);
+        var admitted = await imports.PostAsJsonAsync("/api/integrations/external/import-preview", body);
+        Assert.Equal(HttpStatusCode.OK, admitted.StatusCode);
+        Assert.False((await admitted.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("sourceExists").GetBoolean());
     }
 
     [Fact]

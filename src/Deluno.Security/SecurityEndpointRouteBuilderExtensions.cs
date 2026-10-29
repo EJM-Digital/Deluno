@@ -202,6 +202,20 @@ public static class SecurityEndpointRouteBuilderExtensions
             return Results.Ok(ApiKeyScopeTemplates.All);
         });
 
+        // The routes the API screen lists for outside tools and the one scope each needs: the same table the request gate reads (#1410).
+        apiKeyTemplates.MapGet("/integration-routes", async (
+            HttpContext httpContext,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            return Results.Ok(IntegrationRouteScopes.All.Where(route => route.Featured));
+        });
+
         apiKeys.MapPost(string.Empty, async (
             HttpContext httpContext,
             [FromBody] CreateApiKeyRequest request,
