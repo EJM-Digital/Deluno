@@ -254,7 +254,7 @@ export function DiscoverPage() {
       )}
 
       <Card as="section" className="dark:border-white/[0.07]">
-        <header className="flex min-h-(--list-header-height) items-center gap-2 border-b border-hairline px-(--card-pad-x)">
+        <header className="flex min-h-(--list-header-height) flex-wrap items-center gap-2 border-b border-hairline px-(--card-pad-x) max-md:py-2">
           <Compass className="h-4 w-4 text-muted-foreground" />
           <h2 className="text-(length:--type-card-title) font-semibold leading-none text-foreground">
             {filterCount > 0 ? FILTERED_TITLE : lists.find((item) => item.value === list)?.title ?? "Popular on TMDb"}
@@ -262,7 +262,7 @@ export function DiscoverPage() {
           {data ? (
             <span className="text-(length:--type-caption) text-muted-foreground">{data.popular.length} titles</span>
           ) : null}
-          <div className="ml-auto flex flex-wrap items-center gap-2 py-1.5">
+          <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center gap-2 py-1.5">
             <FilterChips<DiscoverListName | "">
               label="Discover list"
               size="sm"
