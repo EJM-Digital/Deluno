@@ -138,7 +138,7 @@ describe("Working on now", () => {
 
 describe("the shelf and counters follow the newest Activity row", () => {
   const row = (id: string, category: string) => ({ id, message: "Something happened", label: null, severity: "info", category, createdUtc: new Date().toISOString() });
-  const liveExtrasReads = (spy: ReturnType<typeof vi.spyOn>) => spy.mock.calls.filter(([filter]) => JSON.stringify((filter as { queryKey?: unknown }).queryKey) === JSON.stringify(liveSources.liveExtras.key));
+  const liveExtrasReads = (spy: ReturnType<typeof vi.spyOn>) => spy.mock.calls.filter(([filter]: unknown[]) => JSON.stringify((filter as { queryKey?: unknown }).queryKey) === JSON.stringify(liveSources.liveExtras.key));
 
   it.each(["filesystem.import.completed", "blocklist.release.refused", "seerr.request.added", "library.upgrade.imported"])("a new %s row asks the shelf and counters to read again at once", async (category) => {
     renderTab(emptySummary);

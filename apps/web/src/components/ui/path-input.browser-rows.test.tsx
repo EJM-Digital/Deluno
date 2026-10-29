@@ -74,7 +74,7 @@ describe("PathInput: the server folder browser (low rows)", () => {
   it("a path the server cannot open (400, 403 or 404) shows the drive list with a notice saying which path", async () => {
     for (const status of [400, 403, 404]) {
       fetchJsonMock.mockReset();
-      listing({ "": roots, "/gone": new ApiRequestError("nope", status) });
+      listing({ "": roots, "/gone": new ApiRequestError("nope", status, "/api/filesystem/browse", "") });
       const { unmount } = render(<div />);
       unmount();
       vi.stubGlobal("location", { hostname: "192.168.1.10" });
@@ -89,7 +89,7 @@ describe("PathInput: the server folder browser (low rows)", () => {
   });
 
   it("any other failure shows the error instead of the list", async () => {
-    listing({ "": new ApiRequestError("The server did not answer.", 500) });
+    listing({ "": new ApiRequestError("The server did not answer.", 500, "/api/filesystem/browse", "") });
     await openBrowser().catch(() => undefined);
     expect(await screen.findByText("The server did not answer.")).toBeInTheDocument();
   });
