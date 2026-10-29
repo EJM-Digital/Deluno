@@ -318,6 +318,7 @@ public static class ActivityEventLabels
             ["system"] = "System update",
             ["integration"] = "An outside app asked for a refresh",
             ["security.local-network-auth"] = "Local network sign-in setting changed",
+            ["security.password-reset"] = "Password reset with a recovery code",
             ["installer.components.connected"] = "Installed apps connected",
             ["connectivity.outage.started"] = "Internet connection lost",
             ["connectivity.outage.resolved"] = "Internet connection back",
