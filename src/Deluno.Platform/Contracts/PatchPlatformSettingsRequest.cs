@@ -39,7 +39,6 @@ public sealed record PatchPlatformSettingsRequest(
     int? DownloadHealthStrikeThreshold = null,
     bool? CleanupBlockReleaseAfterThreshold = null,
     bool? CleanupQueueReplacementAfterThreshold = null,
-    bool? CheckConnectionsRegularly = null,
     bool? KeepComputerAwake = null,
     bool? CleanupRemoveClientEntryAfterThreshold = null,
     bool? CleanupPurgePayloadAfterThreshold = null,

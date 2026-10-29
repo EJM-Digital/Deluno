@@ -6,10 +6,7 @@ import type { LibraryItem, QualityProfileItem } from "../lib/api";
 import { emptyPlatformSettingsSnapshot } from "../lib/api/types/settings";
 import { authedFetch } from "../lib/use-auth";
 
-/**
- * #1098: Check connections regularly is on for every install (it only reads) and Keep this computer awake is
- * off until switched on; both save the moment they are switched, in their own Settings section.
- */
+/** #1432: no Connection checks section; #1098: Keep this computer awake is off until switched on and saves at once. */
 
 vi.mock("../lib/use-auth", () => ({ authedFetch: vi.fn() }));
 vi.mock("../hooks/use-unsaved-changes", () => ({ useUnsavedChanges: () => undefined }));
@@ -34,30 +31,26 @@ function renderPage() {
   return render(<MemoryRouter><SettingsGeneralPage /></MemoryRouter>);
 }
 
-describe("connection checks (#1098)", () => {
+describe("keep awake and the removed connection checks (#1098, #1432)", () => {
   afterEach(() => vi.clearAllMocks());
 
-  it("starts with regular checks on and Keep awake off, as a new or upgraded install reads", async () => {
+  it("has no Connection checks section or switch: health checks always run", async () => {
     renderPage();
+    await screen.findByRole("switch", { name: "Keep this computer awake" });
 
-    expect(await screen.findByRole("switch", { name: "Check connections regularly" })).toBeChecked();
-    expect(screen.getByRole("switch", { name: "Keep this computer awake" })).not.toBeChecked();
+    expect(screen.queryByText(/connection checks/i)).toBeNull();
+    expect(screen.queryByRole("switch", { name: /check connections regularly/i })).toBeNull();
   });
 
-  it("saves each switch as soon as it is flipped, touching only that setting", async () => {
+  it("starts with Keep awake off and saves it as soon as it is flipped, touching only that setting", async () => {
     renderPage();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole("switch", { name: "Check connections regularly" }));
-    await waitFor(() => expect(vi.mocked(authedFetch).mock.calls.some(([path, init]) => path === "/api/settings" && (init as RequestInit).method === "PATCH")).toBe(true));
-    const first = vi.mocked(authedFetch).mock.calls.find(([path]) => path === "/api/settings")!;
-    expect(JSON.parse(String((first[1] as RequestInit).body))).toEqual({ checkConnectionsRegularly: false });
-    await waitFor(() => expect(screen.getByRole("switch", { name: "Check connections regularly" })).not.toBeChecked());
-
-    vi.mocked(authedFetch).mockClear();
-    await user.click(screen.getByRole("switch", { name: "Keep this computer awake" }));
+    const awake = await screen.findByRole("switch", { name: "Keep this computer awake" });
+    expect(awake).not.toBeChecked();
+    await user.click(awake);
     await waitFor(() => expect(vi.mocked(authedFetch).mock.calls.some(([path]) => path === "/api/settings")).toBe(true));
-    const second = vi.mocked(authedFetch).mock.calls.find(([path]) => path === "/api/settings")!;
-    expect(JSON.parse(String((second[1] as RequestInit).body))).toEqual({ keepComputerAwake: true });
+    const call = vi.mocked(authedFetch).mock.calls.find(([path]) => path === "/api/settings")!;
+    expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({ keepComputerAwake: true });
   });
 });

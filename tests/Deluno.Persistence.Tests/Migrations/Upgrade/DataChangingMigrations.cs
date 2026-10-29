@@ -55,6 +55,7 @@ internal static class DataChangingMigrations
         new(Platform, 120, ["~system_settings"], "DropMetadataArtworkEnabledMigrationTests"),
         new(Platform, 121, ["~destination_rules"], $"{PlatformTests}.V0121"),
         new(Platform, 125, ["release_profiles.tag_names", "release_profiles.position"], $"{PlatformTests}.V0125"),
+        new(Platform, 140, ["~system_settings"], "ConnectionChecksAlwaysOnMigrationTests"),
         new(Platform, 131, ["~system_settings"], "InstanceNameRemovedTests"),
         new(Platform, 132, [], "ProcessorLinksByIdTests"),
         new(Platform, 133, ["intake_sources.name", "download_clients.name", "media_servers.name", "notification_webhooks.name", "processor_connections.name", "seerr_servers.name", "indexer_sources.name"], "ConnectionNamesTests"),

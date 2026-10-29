@@ -68,7 +68,5 @@ public static class ConnectionCheckRules
     /// <summary>How many connections Test all and the regular check test at once.</summary>
     public const int Parallelism = 4;
 
-    public const string SettingKey = "connections.checkRegularly";
-
     public static bool IsSlow(bool ok, int? latencyMs) => ok && latencyMs is >= SlowAnswerMs;
 }

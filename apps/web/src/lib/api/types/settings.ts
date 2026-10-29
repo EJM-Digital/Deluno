@@ -83,8 +83,6 @@ export interface PlatformSettingsSnapshot {
   downloadHealthStrikeThreshold: number;
   cleanupBlockReleaseAfterThreshold: boolean;
   cleanupQueueReplacementAfterThreshold: boolean;
-  /** #1098: Deluno tests every connection for real when nothing has used it for 15 minutes. On unless turned off. */
-  checkConnectionsRegularly: boolean;
   /** #1098: Deluno asks Windows not to sleep while it runs. Off until the Keep awake button is pressed. */
   keepComputerAwake: boolean;
   cleanupRemoveClientEntryAfterThreshold: boolean;
@@ -423,7 +421,6 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   downloadHealthStrikeThreshold: 3,
   cleanupBlockReleaseAfterThreshold: false,
   cleanupQueueReplacementAfterThreshold: false,
-  checkConnectionsRegularly: true,
   keepComputerAwake: false,
   // #936: off by default (reverses #904), matching PlatformSettingsSnapshot's server-side default.
   cleanupRemoveClientEntryAfterThreshold: false,

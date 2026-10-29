@@ -130,7 +130,7 @@ export function SettingsGeneralPage() {
 
       <LogLevelCard />
 
-      <ConnectionChecksCard settings={settings} />
+      <KeepAwakeCard settings={settings} />
 
       <ListCard title="Cloudflare helper" count="For trackers behind a Cloudflare check">
         <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
@@ -365,14 +365,11 @@ function TrackerDefinitionsCard() {
 }
 
 /**
- * #1098: how Deluno keeps its connections honest, and the one thing the computer can do to stop Deluno
- * working. Checking connections regularly only reads, so it is on for every install; Keep awake is off until
- * it is switched on here or from the Machine problem that offers it. Both save the moment they are switched.
+ * #1098: the one thing the computer can do to stop Deluno working. Keep awake is off until it is switched on here
+ * or from the Machine problem that offers it, and saves the moment it is switched. (Connection checks always run: #1432.)
  */
-function ConnectionChecksCard({ settings }: { settings: PlatformSettingsSnapshot }) {
-  const [checkRegularly, setCheckRegularly] = useState(settings.checkConnectionsRegularly ?? true);
+function KeepAwakeCard({ settings }: { settings: PlatformSettingsSnapshot }) {
   const [keepAwake, setKeepAwake] = useState(settings.keepComputerAwake ?? false);
-  useEffect(() => setCheckRegularly(settings.checkConnectionsRegularly ?? true), [settings.checkConnectionsRegularly]);
   useEffect(() => setKeepAwake(settings.keepComputerAwake ?? false), [settings.keepComputerAwake]);
   const [busy, setBusy] = useState(false);
 
@@ -392,20 +389,8 @@ function ConnectionChecksCard({ settings }: { settings: PlatformSettingsSnapshot
   }
 
   return (
-    <ListCard title="Connection checks" count="Keeps what System says about your connections true">
+    <ListCard title="Keep awake" count="Stops Windows sleeping while Deluno runs">
       <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
-        <div className="flex items-center justify-between gap-3">
-          <div className="grid gap-0.5">
-            <span className="text-(length:--type-body-sm) font-medium text-foreground">Check connections regularly</span>
-            <span className="text-(length:--type-caption) text-muted-foreground">Every 15 minutes, Deluno tests any indexer, download client, processor, media server, Seerr, metadata service or list that nothing has used in that time, so the time shown as checked is true. It only reads; nothing is changed. A change in the answer is written to Activity.</span>
-          </div>
-          <Switch
-            checked={checkRegularly}
-            disabled={busy}
-            onCheckedChange={(checked) => void save({ checkConnectionsRegularly: checked }, () => setCheckRegularly(checked), () => setCheckRegularly(!checked), checked ? "Deluno will check connections regularly." : "Deluno will only test a connection when you ask.")}
-            aria-label="Check connections regularly"
-          />
-        </div>
         <div className="flex items-center justify-between gap-3">
           <div className="grid gap-0.5">
             <span className="text-(length:--type-body-sm) font-medium text-foreground">Keep this computer awake</span>

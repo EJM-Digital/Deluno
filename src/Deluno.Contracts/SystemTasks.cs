@@ -195,7 +195,7 @@ public static class SystemTasks
             TimeSpan.FromMinutes(15)),
         // One minute is how often Deluno looks, not how often it tests: a connection is tested for real only
         // when nothing has used or checked it for fifteen minutes (#1098). It only reads, so it is on for every
-        // install; the setting Check connections regularly turns it off.
+        // install and cannot be turned off (#1432).
         new(ConnectionsCheck, "Test connections",
             "Tests any indexer, download client, processor, media server, Seerr, metadata service or list that nothing has used for 15 minutes, so Checked on System is always true.",
             TimeSpan.FromMinutes(1)),

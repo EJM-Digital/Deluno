@@ -70,10 +70,7 @@ public sealed class TheRegularConnectionCheckRecordsItsPassTests
     {
         var app = await ApplicationTestHost.StartAsync();
         var tester = DispatchProxy.Create<IConnectionHealthTester, Tester>();
-        var settings = DispatchProxy.Create<IPlatformSettingsRepository, Settings>();
-        ((Settings)(object)settings).Snapshot = (PlatformSettingsSnapshot)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(PlatformSettingsSnapshot))
-            with { CheckConnectionsRegularly = true };
-        var services = new ServiceCollection().AddSingleton(tester).AddSingleton(settings).BuildServiceProvider();
+        var services = new ServiceCollection().AddSingleton(tester).BuildServiceProvider();
         var service = new RegularConnectionCheckService(
             NullLogger<RegularConnectionCheckService>.Instance,
             services.GetRequiredService<IServiceScopeFactory>(),

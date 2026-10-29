@@ -55,7 +55,6 @@ export interface PlatformSettingsPatch {
   downloadHealthStrikeThreshold?: number;
   cleanupBlockReleaseAfterThreshold?: boolean;
   cleanupQueueReplacementAfterThreshold?: boolean;
-  checkConnectionsRegularly?: boolean;
   keepComputerAwake?: boolean;
   cleanupRemoveClientEntryAfterThreshold?: boolean;
   cleanupPurgePayloadAfterThreshold?: boolean;

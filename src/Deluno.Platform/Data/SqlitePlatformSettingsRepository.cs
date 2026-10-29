@@ -231,11 +231,6 @@ public sealed class SqlitePlatformSettingsRepository(
         await UpsertSettingAsync(connection, transaction, "cleanup.blockReleaseAfterThreshold", request.CleanupBlockReleaseAfterThreshold is true ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "cleanup.queueReplacementAfterThreshold", request.CleanupQueueReplacementAfterThreshold is true ? "true" : "false", updatedUtc, cancellationToken);
         // Left as it is when a caller does not send it, so an older screen saving everything else cannot flip a choice.
-        if (request.CheckConnectionsRegularly is { } checkRegularly)
-        {
-            await UpsertSettingAsync(connection, transaction, "connections.checkRegularly", checkRegularly ? "true" : "false", updatedUtc, cancellationToken);
-        }
-
         if (request.KeepComputerAwake is { } keepAwake)
         {
             await UpsertSettingAsync(connection, transaction, "machine.keepAwake", keepAwake ? "true" : "false", updatedUtc, cancellationToken);
@@ -648,7 +643,6 @@ public sealed class SqlitePlatformSettingsRepository(
             DownloadHealthStrikeThreshold: ReadDownloadHealthStrikeThreshold(settings),
             CleanupBlockReleaseAfterThreshold: string.Equals(GetValue(settings, "cleanup.blockReleaseAfterThreshold"), "true", StringComparison.OrdinalIgnoreCase),
             CleanupQueueReplacementAfterThreshold: string.Equals(GetValue(settings, "cleanup.queueReplacementAfterThreshold"), "true", StringComparison.OrdinalIgnoreCase),
-            CheckConnectionsRegularly: !string.Equals(GetValue(settings, "connections.checkRegularly"), "false", StringComparison.OrdinalIgnoreCase),
             KeepComputerAwake: string.Equals(GetValue(settings, "machine.keepAwake"), "true", StringComparison.OrdinalIgnoreCase),
             // #904's "default on" change (commit 2e9f2125) never shipped in a
             // release: v1.0.0-rc.22 already read a missing key here as off

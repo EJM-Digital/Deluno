@@ -135,50 +135,30 @@ public sealed class ConnectionHealthTesterTests
     }
 
     [Fact]
-    public async Task The_regular_check_does_nothing_while_its_setting_is_off_and_runs_once_a_pass_when_on()
+    public async Task The_regular_check_always_runs_once_a_pass_with_no_setting_able_to_stop_it()
     {
         var tester = new Mock<IConnectionHealthTester>();
         tester.Setup(item => item.TestStaleAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
         var jobs = new Mock<IJobQueueRepository>();
         jobs.Setup(item => item.TryClaimScheduledPassAsync(SystemTasks.ConnectionsCheck, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
-        var settings = new Mock<IPlatformSettingsRepository>();
 
-        var services = new ServiceCollection()
-            .AddSingleton(tester.Object)
-            .AddSingleton(settings.Object)
-            .BuildServiceProvider();
+        // No settings repository is even registered: nothing the person set can switch the check off (#1432).
+        var services = new ServiceCollection().AddSingleton(tester.Object).BuildServiceProvider();
         var service = new RegularConnectionCheckService(
             NullLogger<RegularConnectionCheckService>.Instance,
             services.GetRequiredService<IServiceScopeFactory>(),
             jobs.Object,
             new FixedTime(Now));
 
-        settings.Setup(item => item.GetAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Snapshot(checkRegularly: false));
-        await service.RunOnceAsync(CancellationToken.None);
-        tester.Verify(item => item.TestStaleAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
-
-        settings.Setup(item => item.GetAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Snapshot(checkRegularly: true));
         await service.RunOnceAsync(CancellationToken.None);
         tester.Verify(item => item.TestStaleAsync(Now - ConnectionCheckRules.RegularInterval, It.IsAny<CancellationToken>()), Times.Once);
         jobs.Verify(item => item.RecordScheduledPassOutcomeAsync(SystemTasks.ConnectionsCheck, It.IsAny<DateTimeOffset>(), "completed", It.IsAny<long>(), It.IsAny<DateTimeOffset?>(), It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Fact]
-    public void The_setting_reads_as_on_for_a_new_install_and_an_upgraded_one()
-    {
-        // No key stored reads as on (see SqlitePlatformSettingsRepository), and the snapshot default is on.
-        Assert.True(Snapshot(checkRegularly: true).CheckConnectionsRegularly);
-        Assert.Equal("connections.checkRegularly", ConnectionCheckRules.SettingKey);
     }
 
     private sealed class FixedTime(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;
     }
-
-    private static PlatformSettingsSnapshot Snapshot(bool checkRegularly)
-        => (PlatformSettingsSnapshot)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(PlatformSettingsSnapshot))
-            with { CheckConnectionsRegularly = checkRegularly };
 
     /// <summary>#1117: a check that reads a version keeps it with the connection, under the project whose releases it is compared with.</summary>
     [Fact]

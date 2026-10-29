@@ -10,8 +10,7 @@ namespace Deluno.Worker.Connections;
 /// <summary>
 /// The regular, real test of every connection (#1098): an indexer, download client, processor, media server,
 /// Seerr, metadata service or list provider that no real call has used for fifteen minutes is tested, so the
-/// "last checked" System shows is always honest. It only reads, so it is on for every install; the setting
-/// Check connections regularly turns it off. The Activity feed hears only when a result changes.
+/// "last checked" System shows is always honest. It only reads, so it always runs (#1432). The Activity feed hears only when a result changes.
 /// </summary>
 public sealed class RegularConnectionCheckService(
     ILogger<RegularConnectionCheckService> logger,
@@ -49,16 +48,10 @@ public sealed class RegularConnectionCheckService(
         while (await timer.WaitForNextTickAsync(stoppingToken));
     }
 
-    /// <summary>One look: does nothing when the setting is off or another pass already ran this minute.</summary>
+    /// <summary>One look: does nothing when another pass already ran this minute.</summary>
     internal async Task RunOnceAsync(CancellationToken stoppingToken)
     {
         using var scope = scopeFactory.CreateScope();
-        var settings = await scope.ServiceProvider.GetRequiredService<IPlatformSettingsRepository>().GetAsync(stoppingToken);
-        if (!settings.CheckConnectionsRegularly)
-        {
-            return;
-        }
-
         if (!await jobQueueRepository.TryClaimScheduledPassAsync(
                 SystemTasks.ConnectionsCheck,
                 SystemTasks.IntervalFor(SystemTasks.ConnectionsCheck),
