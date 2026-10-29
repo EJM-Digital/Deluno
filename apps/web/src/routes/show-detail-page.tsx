@@ -52,6 +52,7 @@ import { cn, formatBytes } from "../lib/utils";
 import { isEpisodeMissing, isEpisodeUpcoming, isEpisodeUpgradable, summariseEpisodes } from "../lib/episode-progress";
 import { SearchResultNote, type SearchNote } from "../components/app/search-result-note";
 import { describeSearchNow, describeSearchReason, describeRequestFailure, formatGrabMessage, formatSearchFailureNotice } from "../lib/search-reasons";
+import { formatSearchOutcome, formatTriggerKind } from "../lib/search-history-format";
 import { candidateExplanation, candidateLabel, candidateTone, canWinSearch, isTypedCandidate, likesCandidate, plainCandidateReason, plainSearchResult } from "../lib/release-candidate-status";
 import {
   candidateSortValue,
@@ -3001,38 +3002,6 @@ function searchOutcomeTone(outcome: string): Tone {
       return "warn";
     default:
       return "idle";
-  }
-}
-
-function formatSearchOutcome(outcome: string) {
-  switch (outcome) {
-    case "matched":
-      return "Matched";
-    case "no_match":
-      return "No match";
-    case "error":
-      return "Error";
-    case "skipped":
-      return "Skipped";
-    case "pending":
-      return "Pending";
-    case "blocked":
-      return "Blocked";
-    default:
-      return outcome.charAt(0).toUpperCase() + outcome.slice(1).replace(/[-_]/g, " ");
-  }
-}
-
-function formatTriggerKind(value: string) {
-  switch (value) {
-    case "manual-episode":
-      return "Episode";
-    case "manual-season":
-      return "Season";
-    case "manual":
-      return "Manual";
-    default:
-      return "Scheduled";
   }
 }
 

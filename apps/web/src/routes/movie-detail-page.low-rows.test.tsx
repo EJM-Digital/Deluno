@@ -205,6 +205,17 @@ describe("the film header and summary strip (low rows)", () => {
     expect(screen.getAllByText(label).length).toBeGreaterThan(0);
   });
 
+  it("a film the acting library does not want carries unmonitored beside its state in the status mark", async () => {
+    setup((url) => {
+      if (url === "/api/movies/m1") return { body: { ...MOVIE, hasFile: true, wantedStatus: "upgrade" } };
+      if (url === "/api/movies/m1/libraries/") return { body: [{ libraryId: "lib1", libraryName: "Films", hasFile: true, notWantedHere: true, canRemove: true, canMove: true }] };
+      return undefined;
+    });
+    await renderPage();
+
+    expect(document.body.textContent).toMatch(/Upgradable.{0,6}unmonitored/i);
+  });
+
   it("a film with no overview reads the fallback sentence in the synopsis", async () => {
     setup((url) => (url === "/api/movies/m1" ? { body: { ...MOVIE, overview: null } } : undefined));
     await renderPage();
