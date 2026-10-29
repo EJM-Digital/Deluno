@@ -231,6 +231,30 @@ public sealed class MetadataGatewayOnRecordingsTests : IDisposable
         Assert.Contains(asked, uri => uri.AbsolutePath == "/metadata/movie/999999999/release-dates");
     }
 
+    /// <summary>#1402: in broker mode a lookup the broker cannot answer ends with none; it never calls TMDb with a key found on this install.</summary>
+    [Fact]
+    public async Task In_broker_mode_no_lookup_ever_asks_TMDb_with_a_local_key_when_the_broker_has_no_answer()
+    {
+        var asked = new List<Uri>();
+        var rig = await RigAsync(request =>
+        {
+            asked.Add(request.RequestUri!);
+            return request.RequestUri!.Host == "metadata.deluno.test"
+                ? Reply("collection-missing") // the gateway's recorded "TMDb has none" reply
+                : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"results\":[],\"seasons\":[],\"parts\":[]}") };
+        }, localTmdbKey: "a-local-key");
+
+        await rig.GetSeriesCatalogueAsync("999999999", MetadataCatalogueSource.TmdbOnly, CancellationToken.None);
+        await rig.GetSeriesEpisodeGroupsAsync("999999999", MetadataCatalogueSource.TmdbOnly, CancellationToken.None);
+        await rig.GetMovieCollectionAsync("999999999", CancellationToken.None);
+        await rig.GetPopularAsync("movies", 1, CancellationToken.None);
+        await rig.SearchAsync(new MetadataLookupRequest("603", "movies", null, "603", "tmdb"), CancellationToken.None);
+        await rig.ResolveProviderRecordAsync(new MetadataLookupRequest("Sintel", "movies", 2010, "999999999"), CancellationToken.None);
+
+        Assert.DoesNotContain(asked, uri => uri.Host.Contains("themoviedb", StringComparison.OrdinalIgnoreCase));
+        Assert.NotEmpty(asked);
+    }
+
     [Fact]
     public async Task A_collection_is_read_with_its_films_and_a_collection_TMDb_has_not_is_none()
     {
