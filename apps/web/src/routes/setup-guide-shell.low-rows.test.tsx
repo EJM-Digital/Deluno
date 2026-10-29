@@ -209,6 +209,17 @@ describe("the guide shell and step rail, low rows (#1329)", () => {
     expect((screen.getByLabelText("Download client port") as HTMLInputElement).value).toBe("8112");
   });
 
+  it("the download-client presets are a radio group with one radio per Connections client, and the arrow keys move between them", async () => {
+    const { CLIENT_PRESETS } = await import("./connections/presets");
+    renderStep({ stepId: "services" });
+    const group = await screen.findByRole("radiogroup", { name: "Download client presets" });
+    const radios = within(group).getAllByRole("radio");
+    expect(radios).toHaveLength(CLIENT_PRESETS.length);
+    fireEvent.click(radios[0]);
+    fireEvent.keyDown(radios[0], { key: "ArrowDown" });
+    expect(document.activeElement).toBe(within(group).getAllByRole("radio")[1]);
+  });
+
   it("every Automation question shows its help text under it, and the ones that can be switched off say what happens if they are", async () => {
     renderStep({ stepId: "automation" });
     await screen.findByRole("radiogroup", { name: AUTOMATION_QUESTIONS[0].question });

@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
+import { CLIENT_PRESETS } from "../../src/routes/connections/presets";
 
 const ruleIds = ["label", "aria-required-attr", "aria-allowed-role", "th-has-data-cells"] as const;
 const screens = [
@@ -53,7 +54,7 @@ test.describe("accessibility semantics", () => {
 
     const clientPresets = page.getByRole("radiogroup", { name: "Download client presets" });
     const clientOptions = clientPresets.getByRole("radio");
-    await expect(clientOptions).toHaveCount(6);
+    await expect(clientOptions).toHaveCount(CLIENT_PRESETS.length);
     await clientOptions.first().click();
     await clientOptions.first().press("ArrowDown");
     await expect(clientOptions.nth(1)).toBeFocused();
