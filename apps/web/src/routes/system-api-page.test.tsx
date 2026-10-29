@@ -117,6 +117,25 @@ describe("Generate an API key", () => {
     expect(screen.queryByText("one-time secret")).toBeNull();
   });
 
+  it("is off while a request is in flight, and a refusal ends in the error state with its words and no created key", async () => {
+    loader.data = { apiKeys: [], scopeTemplates: templates };
+    let refuse: (error: Error) => void = () => undefined;
+    fetchJsonMock.mockReturnValueOnce(new Promise((_resolve, reject) => { refuse = reject; }));
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate API key" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Generate API key" })).toBeDisabled());
+    expect(screen.queryByText("one-time secret")).toBeNull();
+
+    refuse(new Error("Give the key at least one scope."));
+
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith("Give the key at least one scope."));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Generate API key" })).not.toBeDisabled());
+    expect(screen.getAllByText("Give the key at least one scope.").length).toBeGreaterThan(0);
+    expect(screen.queryByText("one-time secret")).toBeNull();
+    expect(revalidate).not.toHaveBeenCalled();
+  });
+
   it("explains how integrations authenticate and lists the integration endpoints with their method and scope", () => {
     renderPage();
 
@@ -156,6 +175,29 @@ describe("Active keys", () => {
     expect(rows[1]!.textContent).toContain("Key 2");
     expect(rows[1]!.textContent).toContain("Never");
     expect(rows[1]!.textContent).toContain("unused");
+  });
+
+  it("sorts by the Key and Last used columns when their headings are pressed, and the heading says which way", () => {
+    loader.data = {
+      apiKeys: [key(1, { name: "Zeta", lastUsedUtc: "2026-10-12T10:00:00Z" }), key(2, { name: "Alpha" }), key(3, { name: "Mid", lastUsedUtc: "2026-10-01T10:00:00Z" })],
+      scopeTemplates: templates
+    };
+    renderPage();
+    const names = () => screen.getAllByRole("row")
+      .filter((row) => within(row).queryByRole("button", { name: "Revoke" }))
+      .map((row) => row.textContent!.match(/Zeta|Alpha|Mid/)![0]);
+    expect(names()).toEqual(["Zeta", "Alpha", "Mid"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Key" }));
+    expect(names()).toEqual(["Alpha", "Mid", "Zeta"]);
+    expect(screen.getByRole("columnheader", { name: /Key/ })).toHaveAttribute("aria-sort", "ascending");
+
+    fireEvent.click(screen.getByRole("button", { name: "Key" }));
+    expect(names()).toEqual(["Zeta", "Mid", "Alpha"]);
+    expect(screen.getByRole("columnheader", { name: /Key/ })).toHaveAttribute("aria-sort", "descending");
+
+    fireEvent.click(screen.getByRole("button", { name: "Last used" }));
+    expect(names()[0]).toBe("Mid");
   });
 });
 
