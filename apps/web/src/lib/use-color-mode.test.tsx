@@ -1,5 +1,5 @@
 import { act, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { COLOR_IMPAIRED_MARK_PALETTE, ColorModeProvider, useColorMode } from "./use-color-mode";
 
 /** The colour-impaired palette: one choice changes the page's mode mark, the title-mark colours and what is remembered. */
@@ -69,5 +69,18 @@ describe("colour mode", () => {
     localStorage.setItem("deluno-color-mode", "purple");
     render(<ColorModeProvider><Probe /></ColorModeProvider>);
     expect(root().dataset.colorMode).toBe("standard");
+  });
+
+  it("blocked storage does not break it: the page starts standard, a choice still applies for the session and nothing throws", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("storage is blocked"); });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("storage is blocked"); });
+    render(<ColorModeProvider><Probe /></ColorModeProvider>);
+    expect(root().dataset.colorMode).toBe("standard");
+
+    act(() => screen.getByRole("button", { name: "Impaired" }).click());
+    expect(screen.getByTestId("mode").textContent).toBe("impaired");
+    expect(root().dataset.colorMode).toBe("impaired");
+    expect(root().style.getPropertyValue("--mark-missing")).toBe(COLOR_IMPAIRED_MARK_PALETTE["--mark-missing"]);
+    vi.restoreAllMocks();
   });
 });
