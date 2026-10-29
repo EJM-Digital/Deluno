@@ -82,3 +82,19 @@ describe("the decision trail card", () => {
     expect(within(drawer).queryByText("Alternatives")).toBeNull();
   });
 });
+
+describe("the decision trail status chip tones", () => {
+  it.each([
+    ["completed", "ok"], ["matched", "ok"], ["sent", "ok"], ["requeued", "ok"],
+    ["held", "warn"], ["checked", "warn"], ["planned", "warn"], ["started", "warn"],
+    ["failed", "bad"], ["dead-letter", "bad"], ["blocked", "bad"],
+    ["something-else", "info"]
+  ])("a %s decision shows a chip in the %s tone", (status, tone) => {
+    render(<DecisionExplanationList decisions={[decision(0, { status })]} />);
+
+    const row = screen.getAllByRole("row")[1];
+    const chip = row.querySelector("span.rounded-full") as HTMLElement;
+    const toneClass = { ok: "text-success", warn: "text-warning", bad: "text-destructive", info: "text-info" }[tone as "ok"];
+    expect(chip.className).toContain(toneClass);
+  });
+});

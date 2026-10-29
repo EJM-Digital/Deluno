@@ -44,6 +44,12 @@ describe("LibraryActions Season Pass link (#959)", () => {
     expect(label).toHaveClass("min-[2100px]:inline");
   });
 
+  it("the Season Pass link opens /tv/season-pass", () => {
+    renderActions();
+
+    expect(screen.getByRole("link", { name: "Season Pass" })).toHaveAttribute("href", "/tv/season-pass");
+  });
+
   it("does not render the Season Pass link for movies", () => {
     renderActions({ showSeasonPassLink: false });
 
