@@ -150,6 +150,27 @@ public sealed class LifecycleNotificationTriggerTests
         Assert.Contains("kids", added.Tags!);
     }
 
+    [Fact]
+    public async Task A_new_show_is_announced_only_with_the_switch_on_and_adding_it_again_announces_nothing_more()
+    {
+        var outbound = new RecordingOutboundNotificationService();
+        await using var app = await ApplicationTestHost.StartAsync(
+            replaceServices: services => services.AddSingleton<IOutboundNotificationService>(outbound));
+
+        var off = await app.Client.PostAsJsonAsync("/api/series", new { title = "A Quiet Show", startYear = 2024, monitored = true });
+        Assert.Equal(HttpStatusCode.Created, off.StatusCode);
+        Assert.DoesNotContain("title.added", outbound.DispatchedCategories);
+
+        await SetPreferenceAsync(app, prefs => prefs.AddedEnabled = true);
+        var on = await app.Client.PostAsJsonAsync("/api/series", new { title = "A Loud Show", startYear = 2024, monitored = true });
+        Assert.Equal(HttpStatusCode.Created, on.StatusCode);
+        Assert.Single(outbound.DispatchedCategories, category => category == "title.added");
+
+        var again = await app.Client.PostAsJsonAsync("/api/series", new { title = "A Loud Show", startYear = 2024, monitored = true });
+        Assert.True(again.IsSuccessStatusCode);
+        Assert.Single(outbound.DispatchedCategories, category => category == "title.added");
+    }
+
     private static async Task<LibraryItem> CreateLibraryAsync(ApplicationTestHost app)
         => await app.Services.GetRequiredService<ILibrariesRepository>().CreateLibraryAsync(
             new CreateLibraryRequest(
