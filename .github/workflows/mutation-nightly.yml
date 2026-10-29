@@ -5,12 +5,12 @@
 #
 # Each .NET production project is one job (Stryker.NET, its stryker-config.json, the test projects that cover it), so a
 # slow project cannot starve the others. The web app, the API client and the metadata gateway are StrykerJS jobs.
-name: Mutation (nightly)
+name: Mutation (weekly)
 
 on:
   schedule:
     # Every night, 15:00 UTC: a quiet hour (GitHub-hosted runners are free for a public repository).
-    - cron: "0 15 * * *"
+    - cron: "0 15 * * 6"
   workflow_dispatch:
 
 concurrency:

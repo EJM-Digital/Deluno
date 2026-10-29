@@ -1,12 +1,12 @@
 # Nightly recording freshness (issue 1277, docs/testing/STRATEGY.md "Tiers"). Compares the newest version recorded for each
 # app under tests/fixtures/recorded/ with the app's newest release, and opens one defect issue naming the apps whose recording is
 # behind, so they are re-recorded with their one command. Runners come from the same variables as ci.yml.
-name: Recording freshness (nightly)
+name: Recording freshness (weekly)
 
 on:
   schedule:
     # Every night, 15:30 UTC: a quiet hour.
-    - cron: "30 15 * * *"
+    - cron: "30 15 * * 6"
   workflow_dispatch:
 
 concurrency:

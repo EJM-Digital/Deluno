@@ -6,12 +6,12 @@
 # repeat before every tag.
 #
 # Runners are GitHub-hosted, free for a public repository.
-name: Repeat suites (nightly)
+name: Repeat suites (weekly)
 
 on:
   schedule:
     # Every night, 15:00 UTC: a quiet hour.
-    - cron: "0 15 * * *"
+    - cron: "0 15 * * 6"
   workflow_dispatch:
     inputs:
       repeats:

@@ -134,4 +134,4 @@ The backend tests run in seven parallel jobs (issue 1346): the six smaller test 
 
 Shared with Weir. Rule 3, on mutation testing: A repository that gates releases on mutation testing judges it per area: each area (a mutation target) needs a passing result on the tagged commit, or on an earlier commit where that area's own mutated files, the tests that kill its mutants and its mutation setup are unchanged. An unchanged area carries forward from its last passing run even when other areas changed, and an area whose files changed needs a run that covers it, so a release usually runs only the changed areas.
 
-Deluno does not gate releases on mutation testing: it mutates the changed files on every code push and runs the full mutation set nightly, with score floors that can only go up (`docs/testing/mutation-thresholds.json`).
+Deluno does not gate releases on mutation testing: it mutates the changed files on every code push and runs the full mutation set weekly, with score floors that can only go up (`docs/testing/mutation-thresholds.json`).
