@@ -225,9 +225,12 @@ describe("search on add (#1399)", () => {
       const dialog = await screen.findByRole("dialog", { name: /Add TV show/ });
       fireEvent.change(within(dialog).getByPlaceholderText(/Search TV shows, for example/), { target: { value: "Reacher" } });
       if (unmonitor) fireEvent.click(within(dialog).getByRole("checkbox", { name: "Monitor it" }));
+      // The "which episodes to monitor" choice only exists while the show is monitored: an unmonitored add carries no episode preset.
+      expect(within(dialog).queryByLabelText("Which episodes to monitor") === null).toBe(unmonitor);
       fireEvent.click(within(dialog).getByRole("button", { name: "Add TV show manually" }));
       await waitFor(() => expect(calls.filter((c) => c.url === "/api/series")).toHaveLength(1));
       expect(calls.find((c) => c.url === "/api/series")!.body).toMatchObject({ monitored: !unmonitor, searchForMissingNow: !unmonitor, searchForCutoffUnmetNow: !unmonitor });
+      if (unmonitor) expect(calls.find((c) => c.url === "/api/series")!.body).toMatchObject({ listMonitorMode: null });
       cleanup();
     }
   });
