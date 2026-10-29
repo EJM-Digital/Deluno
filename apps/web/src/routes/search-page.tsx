@@ -5,7 +5,7 @@
  * sortable results table with the same enriched columns per-title
  * interactive search results show.
  *
- *   Query box · search-type picker · indexer & category checklists
+ *   Big query bar + Filter menu (type, indexers, categories)
  *   ListTable (sortable, filterable) -> Grab confirm
  *
  * Contracts: POST /api/search, /api/search/grab, GET /api/search/categories.
@@ -17,13 +17,15 @@
  * never a client hand-picked here.
  */
 import { formatBytes } from "../lib/utils";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Loader2, Search as SearchIcon } from "lucide-react";
 import { BlockReleaseAction } from "../components/app/block-release-action";
 import { Button } from "../components/ui/button";
 import { CheckboxRow } from "../components/ui/checkbox";
 import { Drawer, DrawerFacts, DrawerFooter } from "../components/ui/drawer";
 import { Field } from "../components/ui/field";
+import { FilterMenu } from "../components/ui/filter-menu";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { SegmentedControl } from "../components/ui/segmented-control";
@@ -105,9 +107,19 @@ function nameHoldsTheWords(releaseName: string, query: string): boolean {
   return wanted.every((word) => name.includes(word));
 }
 
+/** Indexers and Categories lay their choices out the same way, two to a row from `sm` up, and neither scrolls (#1428). */
+const CHOICE_GRID = "grid gap-1.5 sm:grid-cols-2";
+
+function typeFromAddress(value: string | null): SearchType {
+  return value === "tv" || value === "basic" ? value : "movie";
+}
+
 export function SearchPage() {
-  const [query, setQuery] = useState("");
-  const [searchType, setSearchType] = useState<SearchType>("movie");
+  const [params] = useSearchParams();
+  const addressQuery = params.get("q")?.trim() ?? "";
+  const addressType = params.get("type");
+  const [query, setQuery] = useState(addressQuery);
+  const [searchType, setSearchType] = useState<SearchType>(typeFromAddress(addressType));
   const [indexers, setIndexers] = useState<IndexerItem[] | null>(null);
   const [selectedIndexerIds, setSelectedIndexerIds] = useState<Set<string>>(new Set());
   const [categories, setCategories] = useState<SearchCategoryOption[] | null>(null);
@@ -136,8 +148,22 @@ export function SearchPage() {
     return () => { active = false; };
   }, []);
 
-  async function runSearch() {
-    const trimmed = query.trim();
+  // The address carries a search too (the search & navigate window sends "/search?q=..."), so the old address and the
+  // window both open the results; the same words typed again run again.
+  const ranFromAddress = useRef("");
+  useEffect(() => {
+    const key = `${addressQuery}|${addressType ?? ""}`;
+    if (!addressQuery || ranFromAddress.current === key) return;
+    ranFromAddress.current = key;
+    const type = typeFromAddress(addressType);
+    setQuery(addressQuery);
+    setSearchType(type);
+    void runSearch(addressQuery, type);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addressQuery, addressType]);
+
+  async function runSearch(words: string = query, type: SearchType = searchType) {
+    const trimmed = words.trim();
     if (!trimmed) {
       toast.error("Type something to search for.");
       return;
@@ -152,7 +178,7 @@ export function SearchPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           query: trimmed,
-          searchType,
+          searchType: type,
           indexerIds: selectedIndexerIds.size > 0 ? [...selectedIndexerIds] : null,
           categoryIds: selectedCategoryIds.size > 0 ? [...selectedCategoryIds] : null
         })
@@ -172,6 +198,7 @@ export function SearchPage() {
     }
   }
 
+  const activeFilters = (searchType !== "movie" ? 1 : 0) + (selectedIndexerIds.size > 0 ? 1 : 0) + (selectedCategoryIds.size > 0 ? 1 : 0);
   const namesMatching = results ? results.filter((item) => nameHoldsTheWords(item.releaseName, searchedQuery)).length : 0;
   const visibleResults = results
     ? filterCandidates(results, { protocol: protocolFilter, indexerName: indexerFilter })
@@ -226,24 +253,24 @@ export function SearchPage() {
 
   return (
     <div className="flex flex-col gap-(--page-gap)">
-      <ListCard title="Search every indexer at once" count="No title required">
-        <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
-          <Field label="Query">
-            <div className="flex gap-2">
-              <Input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                onKeyDown={(event) => { if (event.key === "Enter") void runSearch(); }}
-                placeholder="Search for a release…"
-                className="flex-1"
-                autoFocus
-              />
-              <Button type="button" onClick={() => void runSearch()} disabled={searching}>
-                {searching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SearchIcon className="h-3.5 w-3.5" />}
-                Search
-              </Button>
-            </div>
-          </Field>
+      <form
+        role="search"
+        aria-label="Search every indexer"
+        onSubmit={(event) => { event.preventDefault(); void runSearch(); }}
+        className="flex flex-wrap items-stretch gap-2"
+      >
+        <div className="relative min-w-0 flex-1 basis-64">
+          <SearchIcon aria-hidden className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            aria-label="Search every indexer"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search for a release…"
+            className="h-12 rounded-xl pl-12 text-(length:--type-body)"
+            autoFocus
+          />
+        </div>
+        <FilterMenu active={activeFilters}>
           <Field label="Type">
             <SegmentedControl
               value={searchType}
@@ -271,8 +298,12 @@ export function SearchPage() {
               onChange={setSelectedCategoryIds}
             />
           </Field>
-        </div>
-      </ListCard>
+        </FilterMenu>
+        <Button type="submit" className="h-12 rounded-xl px-5" disabled={searching}>
+          {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <SearchIcon className="h-4 w-4" />}
+          Search
+        </Button>
+      </form>
 
       {results !== null && failures.length > 0 ? (
         <div role="alert" className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-foreground">
@@ -441,7 +472,7 @@ function IndexerChecklist({
   }
 
   return (
-    <div className="grid gap-1.5">
+    <div className={CHOICE_GRID}>
       {indexers.filter((indexer) => indexer.isEnabled).map((indexer) => (
         <CheckboxRow
           key={indexer.id}
@@ -484,7 +515,7 @@ function CategoryChecklist({
   }
 
   return (
-    <div className="grid max-h-40 gap-1.5 overflow-y-auto sm:grid-cols-2">
+    <div className={CHOICE_GRID}>
       {relevant.map((category) => (
         <CheckboxRow
           key={category.value}

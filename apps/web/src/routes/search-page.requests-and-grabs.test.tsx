@@ -72,6 +72,7 @@ async function renderPage() {
       <SearchPage />
     </MemoryRouter>
   );
+  fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
   await screen.findByRole("checkbox", { name: "Enabled One" });
 }
 
@@ -86,7 +87,8 @@ describe("what the Search page asks for", () => {
     const box = screen.getByPlaceholderText("Search for a release…");
     fireEvent.change(box, { target: { value: "Example" } });
 
-    fireEvent.keyDown(box, { key: "Enter" });
+    // Enter in a form's box submits the form; the browser does that, so the test submits it.
+    fireEvent.submit(box.closest("form")!);
 
     await waitFor(() => expect(searchBody()).toMatchObject({ query: "Example" }));
   });

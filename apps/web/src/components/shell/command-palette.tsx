@@ -9,6 +9,7 @@ import {
   settingsCommands,
   type CommandItem
 } from "../../lib/command-registry";
+import { Search as SearchIcon } from "lucide-react";
 import { Kbd } from "../ui/kbd";
 
 const RECENTS_KEY = "deluno-cmd-recents";
@@ -110,6 +111,23 @@ export function CommandPalette({
               <Command.Empty className="px-3 py-6 text-center text-sm text-muted-foreground">
                 No matches.
               </Command.Empty>
+
+              {search.trim() ? (
+                <Command.Group forceMount heading="Search">
+                  <Command.Item
+                    forceMount
+                    value={`search every indexer for ${search}`}
+                    onSelect={() => {
+                      navigate(`/search?q=${encodeURIComponent(search.trim())}`);
+                      onOpenChange(false);
+                    }}
+                    className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-sm text-foreground aria-selected:bg-surface-2"
+                  >
+                    <SearchIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate">Search every indexer for “{search.trim()}”</span>
+                  </Command.Item>
+                </Command.Group>
+              ) : null}
 
               {recentItems.length > 0 ? (
                 <Command.Group

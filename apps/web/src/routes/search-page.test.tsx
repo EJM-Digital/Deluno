@@ -101,6 +101,7 @@ describe("multi-indexer manual Search page (#753)", () => {
   it("refuses to search with an empty query", async () => {
     mockFetch();
     renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
 
     fireEvent.click(screen.getByRole("button", { name: /^Search$/ }));
 
@@ -113,6 +114,7 @@ describe("multi-indexer manual Search page (#753)", () => {
   it("offers a basic search type alongside movie and TV", async () => {
     mockFetch();
     renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
 
     expect(screen.getByRole("radio", { name: "Movie" })).toBeTruthy();
     expect(screen.getByRole("radio", { name: "TV" })).toBeTruthy();
@@ -122,6 +124,7 @@ describe("multi-indexer manual Search page (#753)", () => {
   it("searches and shows enriched result columns", async () => {
     mockFetch();
     renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
 
     fireEvent.change(screen.getByPlaceholderText("Search for a release…"), { target: { value: "Example" } });
     fireEvent.click(screen.getByRole("button", { name: /^Search$/ }));
@@ -140,6 +143,7 @@ describe("multi-indexer manual Search page (#753)", () => {
   it("lets categories relevant to the chosen type be picked and sends them with the search", async () => {
     mockFetch();
     renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
 
     await waitFor(() => expect(screen.getByText("Movies/HD")).toBeTruthy());
     // TV categories are not relevant to a movie search.
@@ -157,6 +161,7 @@ describe("multi-indexer manual Search page (#753)", () => {
   it("grabs a result without asking which download client to use", async () => {
     mockFetch();
     renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
 
     fireEvent.change(screen.getByPlaceholderText("Search for a release…"), { target: { value: "Example" } });
     fireEvent.click(screen.getByRole("button", { name: /^Search$/ }));
@@ -183,6 +188,7 @@ describe("multi-indexer manual Search page (#753)", () => {
   it("offers Block this release on a search result and blocks it", async () => {
     mockFetch();
     renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
 
     fireEvent.change(screen.getByPlaceholderText("Search for a release…"), { target: { value: "Example" } });
     fireEvent.click(screen.getByRole("button", { name: /^Search$/ }));
@@ -212,6 +218,7 @@ describe("multi-indexer manual Search page (#753)", () => {
   it("shows no verdict chip, only a Grab button in the row, and opens details on a click", async () => {
     mockFetch();
     renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
 
     fireEvent.change(screen.getByPlaceholderText("Search for a release…"), { target: { value: "Example Release" } });
     fireEvent.click(screen.getByRole("button", { name: /^Search$/ }));
@@ -230,6 +237,7 @@ describe("multi-indexer manual Search page (#753)", () => {
   it("puts a hard rule's reason in words and keeps names without your words out of the list", async () => {
     mockFetch();
     renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
 
     fireEvent.change(screen.getByPlaceholderText("Search for a release…"), { target: { value: "Unrelated" } });
     fireEvent.click(screen.getByRole("button", { name: /^Search$/ }));

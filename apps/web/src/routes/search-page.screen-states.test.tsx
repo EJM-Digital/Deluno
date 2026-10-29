@@ -99,6 +99,7 @@ async function renderPage() {
       <SearchPage />
     </MemoryRouter>
   );
+  fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
   await screen.findByRole("checkbox", { name: "Enabled One" });
 }
 
@@ -109,7 +110,7 @@ async function search(text = "Example") {
 
 describe("the Search page's query and type", () => {
   it("the query box takes focus when the page opens", async () => {
-    await renderPage();
+    render(<MemoryRouter><SearchPage /></MemoryRouter>);
 
     expect(screen.getByPlaceholderText("Search for a release…")).toHaveFocus();
   });
@@ -158,6 +159,7 @@ describe("the Search page's query and type", () => {
   it("shows Loading categories while the list is on its way, and no list when the categories call fails", async () => {
     const held = holdRoute("/api/search/categories");
     render(<MemoryRouter><SearchPage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
     expect(await screen.findByText("Loading categories…")).toBeInTheDocument();
 
     held.release();
@@ -182,6 +184,7 @@ describe("the Search page's query and type", () => {
   it("the indexer list says Loading indexers until the list arrives", async () => {
     const held = holdRoute("/api/indexers");
     render(<MemoryRouter><SearchPage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
     expect(await screen.findByText("Loading indexers…")).toBeInTheDocument();
 
     held.release();
@@ -197,6 +200,7 @@ describe("the Search page's query and type", () => {
       return base(input, init);
     });
     render(<MemoryRouter><SearchPage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
 
     expect(await screen.findByText(/No indexers configured yet\. Add one under Find & Download\./)).toBeInTheDocument();
   });
@@ -209,6 +213,7 @@ describe("the Search page's query and type", () => {
       return base(input, init);
     });
     render(<MemoryRouter><SearchPage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
 
     expect(await screen.findByText(/No indexers configured yet\. Add one under Find/)).toBeInTheDocument();
   });

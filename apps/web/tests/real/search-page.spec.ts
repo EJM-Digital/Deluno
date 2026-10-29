@@ -63,7 +63,7 @@ test.describe("Search", () => {
   });
 
   const sintel = "Sintel (2010) 720p BRRip x264 -YTS";
-  const queryBox = (page: Page) => page.getByLabel("Query");
+  const queryBox = (page: Page) => page.getByPlaceholder("Search for a release…");
   const search = async (page: Page, words: string) => {
     await queryBox(page).fill(words);
     await page.getByRole("button", { name: "Search", exact: true }).click();
@@ -72,9 +72,12 @@ test.describe("Search", () => {
 
   test("a search sends the words, type and indexers chosen, and the list shows what each indexer really answered", async ({ page }) => {
     await open(page);
+    await page.getByRole("button", { name: /^Filter/ }).click();
     await expect(page.getByRole("checkbox", { name: indexerName })).not.toBeChecked();
     await page.getByRole("checkbox", { name: indexerName }).click();
     await page.getByRole("checkbox", { name: secondName }).click();
+    await expect(page.getByRole("button", { name: "Filter, 1 on" })).toBeVisible();
+    await page.keyboard.press("Escape");
     const requests = recordRequests(page);
     await queryBox(page).fill("Sintel");
     await queryBox(page).press("Enter");

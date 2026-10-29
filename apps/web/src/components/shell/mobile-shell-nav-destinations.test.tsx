@@ -64,7 +64,7 @@ describe("the phone's four bottom tabs", () => {
 
 describe("the More sheet", () => {
   const groups: Array<[string, string[]]> = [
-    ["Your Media", ["Collections", "Schedule", "Discover", "Search"]],
+    ["Your Media", ["Collections", "Schedule", "Discover"]],
     ["Live operations", ["Activity"]]
   ];
 
@@ -82,7 +82,7 @@ describe("the More sheet", () => {
   });
 
   it("choosing a destination from each group goes there and closes the sheet", async () => {
-    const choices: Array<[string, string]> = [["Collections", "/collections"], ["Schedule", "/calendar"], ["Discover", "/discover"], ["Search", "/search"], ["Activity", "/activity"]];
+    const choices: Array<[string, string]> = [["Collections", "/collections"], ["Schedule", "/calendar"], ["Discover", "/discover"], ["Activity", "/activity"]];
     for (const [name, path] of choices) {
       const { unmount } = renderAt("/");
       fireEvent.click(screen.getByRole("button", { name: "More destinations" }));

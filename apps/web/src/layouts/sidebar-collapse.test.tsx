@@ -97,7 +97,7 @@ describe("the account menu", () => {
 });
 
 describe("the sidebar's links and counts", () => {
-  it("Collections, Discover and Search are links to their own screens", () => {
+  it("Collections and Discover are links to their own screens, and Search is no tab", () => {
     render(
       <MemoryRouter>
         <DesktopSidebar attention={attention} user={user} onLogout={() => undefined} collapsed={false} onToggleCollapsed={() => undefined} />
@@ -105,7 +105,7 @@ describe("the sidebar's links and counts", () => {
     );
     expect(screen.getByRole("link", { name: "Collections" }).getAttribute("href")).toBe("/collections");
     expect(screen.getByRole("link", { name: "Discover" }).getAttribute("href")).toBe("/discover");
-    expect(screen.getByRole("link", { name: "Search" }).getAttribute("href")).toBe("/search");
+    expect(screen.queryByRole("link", { name: "Search" })).toBeNull();
   });
 
   it("the Movies and TV Shows links carry their wanted counts", () => {

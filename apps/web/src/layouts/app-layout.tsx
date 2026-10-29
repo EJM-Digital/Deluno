@@ -90,9 +90,8 @@ const libraryNav = [
   { to: "/tv", label: "TV Shows", icon: "shows", end: false, attention: "tv" as const },
   { to: "/collections", label: "Collections", icon: "library", end: false, attention: "none" as const },
   { to: "/calendar", label: "Schedule", icon: "schedule", end: false, attention: "none" as const },
-  { to: "/discover", label: "Discover", icon: "discover", end: false, attention: "none" as const },
-  // #753: a free-text search across every enabled indexer, no title required.
-  { to: "/search", label: "Search", icon: "search", end: false, attention: "none" as const }
+  { to: "/discover", label: "Discover", icon: "discover", end: false, attention: "none" as const }
+  // Search is no tab (#1427): the search & navigate bar in the top bar opens it, and "/search" still opens its results.
 ] as const;
 
 const operationsNav = [
@@ -890,7 +889,7 @@ function ContentTopbar({
           className={cn(
             TOPBAR_CONTROL,
             "hidden items-center gap-2.5 rounded-xl border border-hairline/70 bg-card/75 px-3.5 text-left text-(length:--shell-nav-size) font-medium text-muted-foreground transition md:flex",
-            "lg:w-[16rem] xl:w-[20rem]",
+            "lg:w-[20rem] xl:w-[30rem]",
             "hover:border-primary/30 hover:bg-muted/40 hover:text-foreground"
           )}
         >

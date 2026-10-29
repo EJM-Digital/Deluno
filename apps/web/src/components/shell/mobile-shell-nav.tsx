@@ -30,7 +30,6 @@ const DRAWER_LINKS = [
   { to: "/collections", label: "Collections", icon: "library", group: "Your Media" as const },
   { to: "/calendar", label: "Schedule", icon: "schedule", group: "Your Media" as const },
   { to: "/discover", label: "Discover", icon: "discover", group: "Your Media" as const },
-  { to: "/search", label: "Search", icon: "search", group: "Your Media" as const },
   { to: "/activity", label: "Activity", icon: "activity", group: "Live operations" as const }
 ] as const;
 
