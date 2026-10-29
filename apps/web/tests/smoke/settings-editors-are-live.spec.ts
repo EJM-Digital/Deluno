@@ -143,7 +143,7 @@ test.describe("Settings editors follow changes made elsewhere (#1179)", () => {
   test("General follows a setting saved elsewhere into the open form", async ({ page, request }) => {
     test.setTimeout(90_000);
     const navigations = await open(page, "/settings/general");
-    const helper = page.getByLabel("Helper address");
+    const helper = page.getByLabel(/^Helper address/);
     await expect(helper).toBeVisible();
     const original = await helper.inputValue();
     const afterLoad = navigations();

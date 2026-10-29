@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { emptyPlatformSettingsSnapshot } from "../lib/api/types/settings";
@@ -60,9 +61,20 @@ describe("How Deluno is reached", () => {
     expect(screen.getByLabelText("Other devices on your network can connect")).toHaveValue("Unavailable");
   });
 
-  it("still says where the port is set, naming both settings", async () => {
+  it("keeps the long explanation of where the port is set behind an (i) that shows and hides it", async () => {
     lan({ state: "open", port: 1, message: "" });
     await waitFor(() => expect(screen.getByLabelText("Port")).toHaveValue("1"));
-    expect(document.body.textContent).toContain("Server:Port and Server:AllowLan");
+    const user = userEvent.setup();
+    const icon = screen.getByRole("button", { name: "More about How Deluno is reached" });
+    expect(icon).toHaveAttribute("aria-expanded", "false");
+    expect(document.body.textContent).not.toContain("Server:Port");
+
+    await user.click(icon);
+    expect(icon).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("note").textContent).toContain("Server:Port and Server:AllowLan");
+
+    await user.click(icon);
+    expect(icon).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("note")).toBeNull();
   });
 });

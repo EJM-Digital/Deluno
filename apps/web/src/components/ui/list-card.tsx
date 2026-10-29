@@ -18,6 +18,7 @@ import { isColumnMovable, isColumnSortable, useListColumns, type ListColumnSpec,
 import { cn } from "../../lib/utils";
 import { ColumnsAnnouncements, ColumnsButton, useSharedColumnsHint, type ColumnsControls } from "./columns-menu";
 import { plainTitle } from "../../lib/plain-title";
+import { InfoHintBody, InfoHintButton, useInfoHint } from "./info-hint";
 
 /** A ListTable inside a ListCard hands its Columns controls up to the card, which draws the button last in its header. */
 interface ListCardContextValue {
@@ -33,15 +34,18 @@ interface ListCardProps {
   count?: React.ReactNode;
   /** Set false when `title` is a count or state phrase ("4 indexers · 3 of 4 healthy", "Up to date") that must keep its own casing. */
   titleCase?: boolean;
+  /** A longer description of the section, shown and hidden by an (i) beside the title (#1430). */
+  info?: React.ReactNode;
   filter?: { value: string; onChange: (value: string) => void; placeholder?: string };
   actions?: React.ReactNode;
   className?: string;
   children: React.ReactNode;
 }
 
-export function ListCard({ title, count, titleCase = true, filter, actions, className, children }: ListCardProps) {
+export function ListCard({ title, count, titleCase = true, info, filter, actions, className, children }: ListCardProps) {
   const filterId = React.useId();
   const titleId = React.useId();
+  const hint = useInfoHint();
   const [tables, setTables] = React.useState<Record<string, ColumnsControls>>({});
   const register = React.useCallback((id: string, controls: ColumnsControls | null) => {
     setTables((current) => {
@@ -60,6 +64,7 @@ export function ListCard({ title, count, titleCase = true, filter, actions, clas
     <section aria-labelledby={titleId} className={cn("overflow-hidden rounded-2xl border border-hairline bg-card shadow-card dark:border-white/[0.07]", className)}>
       <header className="flex min-h-(--list-header-height) flex-wrap items-center gap-x-3 gap-y-2 border-b border-hairline px-(--card-pad-x) py-2">
         <h2 id={titleId} className="text-(length:--type-card-title) font-semibold leading-none text-foreground">{typeof title === "string" && titleCase ? titleCaseLabel(title) : title}</h2>
+        {info ? <InfoHintButton about={typeof title === "string" ? title : "this section"} open={hint.open} onToggle={hint.toggle} describes={hint.bodyId} /> : null}
         {count ? <span className="text-(length:--type-caption) text-muted-foreground">{count}</span> : null}
         <span className="flex-1" />
         {filter ? (
@@ -84,6 +89,7 @@ export function ListCard({ title, count, titleCase = true, filter, actions, clas
           </>
         ) : null}
       </header>
+      {info && hint.open ? <InfoHintBody id={hint.bodyId} className="max-w-none border-b border-hairline px-(--card-pad-x) py-3">{info}</InfoHintBody> : null}
       <ListCardContext.Provider value={contextValue}>{children}</ListCardContext.Provider>
     </section>
   );

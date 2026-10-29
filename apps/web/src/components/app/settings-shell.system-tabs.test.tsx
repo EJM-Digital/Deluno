@@ -57,10 +57,10 @@ describe("System tab bar", () => {
   });
 
   it.each(["/system", "/system/audit", "/system/security", "/system/backups", "/system/recycle-bin", "/system/updates", "/system/api", "/system/docs"])(
-    "shows the System 'How this works' explainer under the tabs on %s",
+    "shows no 'How this works' explainer under the tabs on %s (#1430)",
     (path) => {
       renderBar(path);
-      expect(screen.getByRole("button", { name: "How this works" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "How this works" })).toBeNull();
     }
   );
 });

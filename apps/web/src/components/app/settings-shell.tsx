@@ -47,7 +47,7 @@ export const automationNavItems = [
  * page keep their children, because collapsing them would leave no way in.
  */
 /**
- * One matcher per area, shared with the explainer that opens it, so the tabs an
+ * One matcher per area, shared with the toolbar, so the tabs an
  * area shows and the words that describe them cannot drift apart.
  */
 function configurationAreaMatch(id: string) {

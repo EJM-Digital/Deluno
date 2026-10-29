@@ -4,7 +4,7 @@ import { CONFIGURATION_AREAS, findConfigurationArea } from "./configuration-area
 /**
  * Every tab of every configuration area, written out independently of the
  * matchers so this is a check rather than a restatement. A tab missing here is
- * a tab whose explainer nobody proved shows up.
+ * a tab nobody proved belongs to its area.
  */
 const AREA_TABS: Record<string, string[]> = {
   "media-management": [
@@ -32,24 +32,9 @@ describe("configuration areas", () => {
     expect(CONFIGURATION_AREAS.map((area) => area.id).sort()).toEqual(Object.keys(AREA_TABS).sort());
   });
 
-  it.each(Object.entries(AREA_TABS))("shows the %s explainer on every one of its tabs", (id, paths) => {
+  it.each(Object.entries(AREA_TABS))("places every %s tab in its own area", (id, paths) => {
     for (const path of paths) {
       expect(findConfigurationArea(path)?.id, path).toBe(id);
-    }
-  });
-
-  it("keeps every explainer inside the shape the pattern allows", () => {
-    for (const area of CONFIGURATION_AREAS) {
-      expect(area.explainer.lead.length, area.id).toBeGreaterThan(40);
-      // Two to four, or none at all. One step is not a sequence and five is a
-      // manual — an area whose parts have no order gets a lead and stops.
-      expect([0, 2, 3, 4], area.id).toContain(area.explainer.steps.length);
-      for (const step of area.explainer.steps) {
-        expect(step.title.trim(), area.id).not.toBe("");
-        expect(step.body.trim(), area.id).not.toBe("");
-        // The toolbar already said where you are.
-        expect(step.title.toLowerCase()).not.toBe(area.id.replaceAll("-", " "));
-      }
     }
   });
 
@@ -57,7 +42,7 @@ describe("configuration areas", () => {
     expect(findConfigurationArea("/setup-guide")).toBeUndefined();
   });
 
-  it.each(["/", "/movies", "/tv", "/calendar", "/queue", "/activity"])("puts no explainer on %s", (path) => {
+  it.each(["/", "/movies", "/tv", "/calendar", "/queue", "/activity"])("puts %s in no area", (path) => {
     expect(findConfigurationArea(path)).toBeUndefined();
   });
 });

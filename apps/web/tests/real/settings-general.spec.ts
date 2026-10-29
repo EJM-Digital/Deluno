@@ -61,7 +61,30 @@ test.describe("General settings", () => {
     await expect(port).toHaveAttribute("readonly", "");
     const expected = lan.state === "open" ? "Yes" : lan.state === "blocked" ? "No" : "Unknown from here";
     await expect(card.getByLabel("Other devices on your network can connect")).toHaveValue(expected);
+    // The long explanation is behind the (i), not on the page (#1430).
+    await expect(card.getByText("Change either there and restart", { exact: false })).toHaveCount(0);
+    const icon = card.getByRole("button", { name: "More about How Deluno is reached" });
+    await icon.click();
+    await expect(icon).toHaveAttribute("aria-expanded", "true");
     await expect(card.getByText("Change either there and restart", { exact: false })).toBeVisible();
+    await icon.click();
+    await expect(card.getByText("Change either there and restart", { exact: false })).toHaveCount(0);
+  });
+
+  test("an (i) shows and hides the longer description of a setting, and no screen has a How this works section (#1430)", async ({ page }) => {
+    const icon = page.getByRole("button", { name: "More about Helper address" });
+    await expect(icon).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByRole("note")).toHaveCount(0);
+    await icon.click();
+    await expect(page.getByRole("note")).toContainText("Cloudflare check in front of every page");
+    await icon.click();
+    await expect(page.getByRole("note")).toHaveCount(0);
+
+    for (const route of ["/settings/general", "/settings/libraries", "/indexers", "/search-cycles", "/settings/lists", "/system", "/settings/profiles"]) {
+      await openScreen(page, route);
+      await untilQuiet(page);
+      await expect(page.getByText("How this works", { exact: false }), route).toHaveCount(0);
+    }
   });
 
   test("every setting on the page is a read-only box, an editable box, a dropdown or a toggle, and nothing else (#1431)", async ({ page }) => {
@@ -107,7 +130,7 @@ test.describe("General settings", () => {
     const helper = async () => ((await settings(page)) as { cloudflareHelperUrl?: string | null }).cloudflareHelperUrl ?? "";
     const original = await helper();
     const address = `http://127.0.0.1:${8000 + (Date.now() % 900)}`;
-    const field = page.getByLabel("Helper address");
+    const field = page.getByLabel(/^Helper address/);
     const prompt = page.getByRole("dialog", { name: "Unsaved changes" });
     try {
       await field.fill(address);

@@ -933,18 +933,11 @@ test.describe("dashboard workflow", () => {
     await expectTabReachable(page, "Library Routing");
     await expect(page.getByRole("heading", { name: /of \d+ ready to search$|^0 indexers$/ })).toBeVisible();
 
-    // The explainer belongs to the area, so it is here on the tab you land on
-    // and still here three tabs along. It starts collapsed (#296).
-    const explainer = page.getByRole("button", { name: "How this works", exact: true });
-    await expect(explainer).toHaveAttribute("aria-expanded", "false");
-
+    // No "How this works" panel on any tab of the area (#1430).
+    await expect(page.getByRole("button", { name: "How this works", exact: true })).toHaveCount(0);
     await openTab(page, "Library Routing");
     await expect(page.getByRole("heading", { name: /^\d+ librar(y|ies)$/ })).toBeVisible();
-    await expect(explainer).toBeVisible();
-
-    await explainer.click();
-    await expect(page.getByText(/Add somewhere to search/)).toBeVisible();
-    await expect(page.getByText(/Tell each library which to use/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "How this works", exact: true })).toHaveCount(0);
   });
 
   test("gives downloads and imports a clear next step", async ({ page }) => {

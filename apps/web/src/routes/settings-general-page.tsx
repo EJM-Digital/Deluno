@@ -134,16 +134,16 @@ export function SettingsGeneralPage() {
 
       <ListCard title="Cloudflare helper" count="For trackers behind a Cloudflare check">
         <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
-          <Field label="Helper address" optional help="Some trackers, such as 1337x, put a Cloudflare check in front of every page. Deluno does not solve those checks itself: run FlareSolverr or Byparr and give its address here, and Deluno asks it for a page only when a tracker is behind a check. This one helper covers every tracker. A single indexer can have its own under Find & Download, Proxies; that one wins for that indexer." error={settingsMutation.fieldErrors.cloudflareHelperUrl}>
+          <Field label="Helper address" optional help="Where FlareSolverr or Byparr is running." info="Some trackers, such as 1337x, put a Cloudflare check in front of every page. Deluno does not solve those checks itself: run FlareSolverr or Byparr and give its address here, and Deluno asks it for a page only when a tracker is behind a check. This one helper covers every tracker. A single indexer can have its own under Find & Download, Proxies; that one wins for that indexer." error={settingsMutation.fieldErrors.cloudflareHelperUrl}>
             <Input value={form.cloudflareHelperUrl} onChange={(event) => { setHelperResult(null); setForm((current) => ({ ...current, cloudflareHelperUrl: event.target.value })); }} placeholder="http://127.0.0.1:8191" className="font-mono" autoComplete="off" spellCheck={false} />
           </Field>
-          <Field label="Helper timeout" optional help="How long Deluno waits for the helper to solve a check before giving up, in seconds (1-180)." error={settingsMutation.fieldErrors.cloudflareHelperTimeoutSeconds}>
+          <Field label="Helper timeout" optional help="Seconds to wait for a check to be solved (1-180)." error={settingsMutation.fieldErrors.cloudflareHelperTimeoutSeconds}>
             <div className="flex items-center gap-2">
               <Input type="number" min="1" max="180" step="1" value={form.cloudflareHelperTimeoutSeconds} onChange={(event) => setForm((current) => ({ ...current, cloudflareHelperTimeoutSeconds: event.target.value }))} placeholder="60" className="max-w-32" />
               <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">seconds</span>
             </div>
           </Field>
-          <Field label="Helper kind" optional help="FlareSolverr and Byparr answer almost the same way, but Byparr cannot send a POST or route through a proxy -- it stays quiet about it instead of refusing. Leave this on Auto-detect unless Deluno guesses wrong." error={settingsMutation.fieldErrors.cloudflareHelperKind}>
+          <Field label="Helper kind" optional help="Leave on Auto-detect unless Deluno guesses wrong." info="FlareSolverr and Byparr answer almost the same way, but Byparr cannot send a POST or route through a proxy -- it stays quiet about it instead of refusing." error={settingsMutation.fieldErrors.cloudflareHelperKind}>
             <Select value={form.cloudflareHelperKind} onChange={(event) => setForm((current) => ({ ...current, cloudflareHelperKind: event.target.value }))} options={cloudflareHelperKindOptions} className="max-w-48" />
           </Field>
           <div className="flex flex-wrap items-center gap-3">
@@ -207,7 +207,16 @@ function ReachabilityCard() {
     status?.state === "open" ? "Yes" : status?.state === "blocked" ? "No" : "Unknown from here";
 
   return (
-    <ListCard title="How Deluno is reached" count="Read-only — set outside the app">
+    <ListCard
+      title="How Deluno is reached"
+      count="Read-only — set outside the app"
+      info={<>
+        The port and LAN access are set where Deluno starts, not in this page: the <code>Server:Port</code> and{" "}
+        <code>Server:AllowLan</code> environment variables (<code>Server__Port</code> / <code>Server__AllowLan</code> in
+        Docker Compose), or the equivalent command-line arguments for a manual run. Change either there and restart
+        Deluno.
+      </>}
+    >
       <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
         <Field label="Port">
           <Input readOnly value={status ? String(status.port ?? "—") : loadFailed ? "Unavailable" : "Loading…"} className="max-w-48 font-mono" />
@@ -216,12 +225,6 @@ function ReachabilityCard() {
           <Input readOnly value={status ? reachabilityLabel : loadFailed ? "Unavailable" : "Loading…"} className="max-w-48" />
         </Field>
       </div>
-      <p className="p-(--card-pad-x) pt-0 text-(length:--type-caption) text-muted-foreground">
-        The port and LAN access are set where Deluno starts, not in this page: the <code>Server:Port</code> and{" "}
-        <code>Server:AllowLan</code> environment variables (<code>Server__Port</code> / <code>Server__AllowLan</code> in
-        Docker Compose), or the equivalent command-line arguments for a manual run. Change either there and restart
-        Deluno.
-      </p>
     </ListCard>
   );
 }
@@ -305,16 +308,19 @@ function TrackerDefinitionsCard() {
       : "Never";
 
   return (
-    <ListCard title="Tracker definitions" count="Keeps native tracker definitions current on their own">
+    <ListCard
+      title="Tracker definitions"
+      count="Keeps native tracker definitions current on their own"
+      info={<>
+        Deluno comes with hundreds of tracker sites, taken from the public Prowlarr repository on GitHub. Turning this
+        on checks that repository for newer site files on the schedule below and writes them to the data folder's
+        trackers directory. Off by default; "Check for newer site files" when adding an indexer does the same once,
+        on request.{" "}
+        <SignedApiLink className="font-medium text-primary hover:underline" path="/api/trackers/definitions/notice" mode="open" fallbackName="tracker-definitions-notice.md">Where the definitions come from and under what terms</SignedApiLink>.
+      </>}
+    >
       <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
-        <p className="text-(length:--type-body-sm) text-muted-foreground">
-          Deluno comes with hundreds of tracker sites, taken from the public Prowlarr repository on GitHub. Turning this
-          on checks that repository for newer site files on the schedule below and writes them to the data folder's
-          trackers directory. Off by default; "Check for newer site files" when adding an indexer does the same once,
-          on request.{" "}
-          <SignedApiLink className="font-medium text-primary hover:underline" path="/api/trackers/definitions/notice" mode="open" fallbackName="tracker-definitions-notice.md">Where the definitions come from and under what terms</SignedApiLink>.
-        </p>
-        <Field label="Update definitions automatically" help="Every change is written to Activity, naming what was updated.">
+        <Field label="Update definitions automatically" help="Every change is written to Activity.">
           <Switch
             checked={state?.isEnabled ?? false}
             disabled={!state || busy}
@@ -382,7 +388,7 @@ function KeepAwakeCard({ settings }: { settings: PlatformSettingsSnapshot }) {
   return (
     <ListCard title="Keep awake" count="Stops Windows sleeping while Deluno runs">
       <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
-        <Field label="Keep this computer awake" help="While Deluno is running, it asks Windows not to go to sleep, so searches, downloads and imports are not paused. Your Windows power settings are not changed. Off until you switch it on.">
+        <Field label="Keep this computer awake" help="Stops Windows sleeping while Deluno runs." info="While Deluno is running, it asks Windows not to go to sleep, so searches, downloads and imports are not paused. Your Windows power settings are not changed. Off until you switch it on.">
           <Switch
             checked={keepAwake}
             disabled={busy}

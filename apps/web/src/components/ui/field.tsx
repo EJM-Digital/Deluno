@@ -14,6 +14,7 @@
  */
 import { createContext, useContext, useId, type ReactNode } from "react";
 import { cn } from "../../lib/utils";
+import { InfoHintBody, InfoHintButton, useInfoHint } from "./info-hint";
 
 interface FieldContextValue {
   id: string;
@@ -38,6 +39,11 @@ interface FieldProps {
   /** Render the label but keep the control unlabelled visually (e.g. a switch row). */
   hideLabel?: boolean;
   optional?: boolean;
+  /**
+   * A longer description for a setting that truly needs one (#1430). It shows an (i) beside the label that shows and
+   * hides it; everything else stays a short `help` line.
+   */
+  info?: ReactNode;
   className?: string;
   children: ReactNode;
 }
@@ -54,8 +60,9 @@ export function Label({ htmlFor, className, children, ...props }: React.LabelHTM
   );
 }
 
-export function Field({ label, help, error, hideLabel = false, optional = false, className, children }: FieldProps) {
+export function Field({ label, help, error, hideLabel = false, optional = false, info, className, children }: FieldProps) {
   const id = useId();
+  const hint = useInfoHint();
   const helpId = help || error ? `${id}-help` : undefined;
   const labelId = `${id}-label`;
   const value: FieldContextValue = { id, labelId, describedBy: helpId, invalid: Boolean(error) };
@@ -63,14 +70,14 @@ export function Field({ label, help, error, hideLabel = false, optional = false,
   return (
     <FieldContext.Provider value={value}>
       <div className={cn("grid min-w-0 content-start gap-1.5", className)}>
-        <Label
-          id={labelId}
-          htmlFor={id}
-          className={hideLabel ? "sr-only" : undefined}
-        >
-          {label}
-          {optional ? <span className="ml-1 font-normal text-muted-foreground">· optional</span> : null}
-        </Label>
+        <div className={cn("flex min-w-0 items-center gap-1.5", hideLabel && "sr-only")}>
+          <Label id={labelId} htmlFor={id}>
+            {label}
+            {optional ? <span className="ml-1 font-normal text-muted-foreground">· optional</span> : null}
+          </Label>
+          {info ? <InfoHintButton about={typeof label === "string" ? label : "this setting"} open={hint.open} onToggle={hint.toggle} describes={hint.bodyId} /> : null}
+        </div>
+        {info && hint.open ? <InfoHintBody id={hint.bodyId}>{info}</InfoHintBody> : null}
         {children}
         {error ? (
           <p id={helpId} role="alert" className="density-help font-sans text-destructive">
