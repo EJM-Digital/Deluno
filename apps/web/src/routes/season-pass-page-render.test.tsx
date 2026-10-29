@@ -151,3 +151,42 @@ describe("the Season Pass loader", () => {
     spy.mockRestore();
   });
 });
+
+describe("Season Pass page chrome (low rows)", () => {
+  beforeEach(() => {
+    authedFetchMock.mockReset();
+    loaderUnreadable = false;
+  });
+
+  it("the summary strip counts series, seasons, episodes, monitored episodes, fully monitored and unmonitored seasons", () => {
+    loaderSeasons = [
+      season({ seriesId: "a", seriesTitle: "Alpha", seasonNumber: 1, episodeCount: 10, monitoredCount: 10 }),
+      season({ seriesId: "a", seriesTitle: "Alpha", seasonNumber: 2, episodeCount: 8, monitoredCount: 3 }),
+      season({ seriesId: "b", seriesTitle: "Bravo", seasonNumber: 1, episodeCount: 6, monitoredCount: 0 })
+    ];
+    render(<MemoryRouter><SeasonPassPage /></MemoryRouter>);
+
+    const cell = (label: string) => screen.getAllByText(label)[0].parentElement as HTMLElement;
+    expect(cell("Series").textContent).toContain("2");
+    expect(cell("Seasons").textContent).toContain("3");
+    expect(cell("Episodes").textContent).toContain("24");
+    expect(cell("Monitored").textContent).toContain("13");
+    expect(cell("Monitored").textContent).toContain("of 24 episodes");
+    expect(cell("Seasons fully monitored").textContent).toContain("1");
+    expect(cell("Seasons unmonitored").textContent).toContain("1");
+  });
+
+  it("the empty list says a show needs its episode catalogue synced before its seasons appear", () => {
+    loaderSeasons = [];
+    render(<MemoryRouter><SeasonPassPage /></MemoryRouter>);
+
+    expect(screen.getByText("A show needs its episode catalogue synced before its seasons appear here.")).toBeInTheDocument();
+  });
+
+  it("the All TV button links back to /tv", () => {
+    loaderSeasons = [season()];
+    render(<MemoryRouter><SeasonPassPage /></MemoryRouter>);
+
+    expect(screen.getByRole("link", { name: /All TV/ })).toHaveAttribute("href", "/tv");
+  });
+});
