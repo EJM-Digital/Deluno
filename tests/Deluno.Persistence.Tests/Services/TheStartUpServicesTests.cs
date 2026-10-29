@@ -246,6 +246,90 @@ public sealed class TheStartUpServicesTests
         Assert.Empty(trainer.Reasons);
     }
 
+    [Fact]
+    public async Task A_training_run_that_throws_is_recorded_without_ending_the_loop_and_reads_as_skipped_because_the_trainer_catches_it()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var jobs = app.Services.GetRequiredService<IJobQueueRepository>();
+        var trainer = new ScriptedTrainer(success: true) { Throw = () => new InvalidOperationException("the training data could not be read") };
+        var service = Service(trainer, jobs, enabled: true);
+
+        await service.StartAsync(CancellationToken.None);
+        await Wait.UntilAsync(async () => (await StateAsync(jobs)) is { LastResult: "completed" or "skipped" or "failed" or "cancelled" }, "the training run to be recorded");
+        try
+        {
+            Assert.Equal("skipped", (await StateAsync(jobs))!.LastResult);
+            Assert.False(service.ExecuteTask!.IsCompleted, "the loop ended after a failed pass");
+        }
+        finally
+        {
+            await service.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task A_training_run_stopped_by_shutdown_is_recorded_cancelled_not_failed()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var jobs = app.Services.GetRequiredService<IJobQueueRepository>();
+        using var stopping = new CancellationTokenSource();
+        var trainer = new ScriptedTrainer(success: true) { Throw = () => new OperationCanceledException(stopping.Token), OnCall = () => stopping.Cancel() };
+        var service = Service(trainer, jobs, enabled: true);
+
+        await service.StartAsync(stopping.Token);
+        await Wait.UntilAsync(async () => (await StateAsync(jobs)) is { LastResult: "completed" or "skipped" or "failed" or "cancelled" }, "the training run to be recorded");
+        await service.StopAsync(CancellationToken.None);
+
+        Assert.Equal("cancelled", (await StateAsync(jobs))!.LastResult);
+    }
+
+    /// <summary>The real job queue, except that the first outcome written for a pass fails the way a busy database would.</summary>
+    public class FirstOutcomeFails : System.Reflection.DispatchProxy
+    {
+        public IJobQueueRepository Inner { get; set; } = null!;
+
+        private int outcomes;
+
+        protected override object? Invoke(System.Reflection.MethodInfo? targetMethod, object?[]? args)
+        {
+            if (targetMethod!.Name == nameof(IJobQueueRepository.RecordScheduledPassOutcomeAsync) && Interlocked.Increment(ref outcomes) == 1)
+            {
+                return Task.FromException(new InvalidOperationException("database is busy"));
+            }
+
+            try
+            {
+                return targetMethod.Invoke(Inner, args);
+            }
+            catch (System.Reflection.TargetInvocationException exception) when (exception.InnerException is not null)
+            {
+                throw exception.InnerException;
+            }
+        }
+    }
+
+    [Fact]
+    public async Task A_pass_whose_outcome_cannot_be_written_is_recorded_failed_and_the_loop_carries_on()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var real = app.Services.GetRequiredService<IJobQueueRepository>();
+        var jobs = System.Reflection.DispatchProxy.Create<IJobQueueRepository, FirstOutcomeFails>();
+        ((FirstOutcomeFails)(object)jobs).Inner = real;
+        var service = Service(new ScriptedTrainer(success: true), jobs, enabled: true);
+
+        await service.StartAsync(CancellationToken.None);
+        await Wait.UntilAsync(async () => (await StateAsync(real)) is { LastResult: "completed" or "skipped" or "failed" or "cancelled" }, "the training run to be recorded");
+        try
+        {
+            Assert.Equal("failed", (await StateAsync(real))!.LastResult);
+            Assert.False(service.ExecuteTask!.IsCompleted, "the loop ended after a failed pass");
+        }
+        finally
+        {
+            await service.StopAsync(CancellationToken.None);
+        }
+    }
+
     private static RankingModelTrainingHostedService Service(ScriptedTrainer trainer, IJobQueueRepository jobs, bool enabled, bool trainOnStartup = true)
         => new(
             Throwing.Create<IReleaseRankingModelService, RankingModelStatus>(
@@ -321,9 +405,19 @@ public sealed class TheStartUpServicesTests
     {
         public List<string> Reasons { get; } = [];
 
+        public Func<Exception>? Throw { get; init; }
+
+        public Action? OnCall { get; init; }
+
         public Task<RankingModelTrainingResult> TrainAsync(string reason, CancellationToken cancellationToken)
         {
             Reasons.Add(reason);
+            OnCall?.Invoke();
+            if (Throw?.Invoke() is { } failure)
+            {
+                throw failure;
+            }
+
             return Task.FromResult(new RankingModelTrainingResult(success, success ? "Trained." : "Too few samples.", success ? "v1" : null, success ? 200 : 3, null, null, DateTimeOffset.UtcNow));
         }
 
