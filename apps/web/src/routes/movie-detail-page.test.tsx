@@ -812,6 +812,7 @@ describe("the release candidates table and its drawer", () => {
     expect(within(drawer).getByText("40")).toBeInTheDocument();
     expect(within(drawer).getByText("8.5 Mbps")).toBeInTheDocument();
     expect(within(drawer).getByText("GRP")).toBeInTheDocument();
+    expect(within(drawer).getByText("WEB 1080p")).toBeInTheDocument();
   });
 
   it("says a release judged by the older rules was judged by them", async () => {
@@ -1418,5 +1419,27 @@ describe("the film's subtitles, logo and hero (coverage, area movie-detail)", ()
     await renderPage();
     expect(screen.queryByText("Subtitles", { exact: true })).toBeNull();
     expect(screen.queryByText("EN")).toBeNull();
+  });
+});
+
+describe("the film's release candidates table (coverage, area movie-detail)", () => {
+  const CANDIDATES = (candidates: unknown[]): Handler => (url) =>
+    url.startsWith("/api/movies/m1/search?mode=preview") ? { body: { outcome: "held", candidates } } : undefined;
+
+  it("the candidates table lists Release, Quality, Protocol, Age, Seeders/Leechers, Grabs, Size and Decision columns", async () => {
+    setup(CANDIDATES([PREFERRED, ELIGIBLE]));
+    await renderPage();
+    press("Choose a release");
+    await screen.findByText(PREFERRED.releaseName);
+    for (const column of ["Release", "Quality", "Protocol", "Age", "Seeders/Leechers", "Grabs", "Size", "Decision"]) {
+      expect(screen.getAllByText(column).length).toBeGreaterThan(0);
+    }
+  });
+
+  it("Rejected candidates show their plain reason beside the Decision chip", async () => {
+    setup(CANDIDATES([{ ...ELIGIBLE, decisionStatus: "rejected", decisionReasons: ["Smaller than the profile allows."] }]));
+    await renderPage();
+    press("Choose a release");
+    expect(await screen.findByText("Smaller than the profile allows.")).toBeInTheDocument();
   });
 });
