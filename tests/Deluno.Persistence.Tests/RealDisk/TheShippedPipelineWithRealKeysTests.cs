@@ -86,6 +86,12 @@ public sealed class TheShippedPipelineWithRealKeysTests : IAsyncLifetime
     {
         using var request = new HttpRequestMessage(method, url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _session);
+        // Making a key asks the person for their password, as the API keys screen does (#1433).
+        if (method == HttpMethod.Post && url.StartsWith("/api/api-keys", StringComparison.Ordinal))
+        {
+            request.Headers.Add("X-Current-Password", Password);
+        }
+
         if (body is not null) request.Content = JsonContent.Create(body);
         return await _client.SendAsync(request);
     }
