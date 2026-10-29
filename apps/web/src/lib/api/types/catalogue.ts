@@ -216,6 +216,49 @@ export interface MovieCollectionMemberItem {
   updatedUtc: string;
 }
 
+/** #1425: one film of a collection, as the library stands. */
+export interface LibraryCollectionMember {
+  providerId: string;
+  title: string;
+  releaseYear: number | null;
+  posterUrl: string | null;
+  /** held (in the library with a file), wanted (in the library, no file yet) or missing (not in the library). */
+  status: "held" | "wanted" | "missing";
+  localMovieId: string | null;
+  isExcluded: boolean;
+}
+
+/** #1425: a collection a film in the library belongs to, followed or not. */
+export interface LibraryCollectionItem {
+  providerId: string;
+  name: string;
+  overview: string | null;
+  posterUrl: string | null;
+  followedCollectionId: string | null;
+  following: boolean;
+  heldCount: number;
+  wantedCount: number;
+  missingCount: number;
+  members: LibraryCollectionMember[];
+  /** False when the provider's own list of films could not be read; only the films the library holds are listed then. */
+  membersKnown: boolean;
+  /** Why the collection is suggested, on the Recommended list. */
+  why: string | null;
+}
+
+export interface LibraryCollectionsResponse {
+  collections: LibraryCollectionItem[];
+  recommended: LibraryCollectionItem[];
+}
+
+export interface AddMissingCollectionFilmsResult {
+  collectionId: string;
+  collectionName: string;
+  addedCount: number;
+  message: string;
+  searchRequested: boolean;
+}
+
 export interface SeriesListItem {
   id: string;
   title: string;

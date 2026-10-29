@@ -214,7 +214,8 @@ public sealed class MovieCollectionService(
                     library.Id,
                     decision.WantedStatus,
                     decision.WantedReason,
-                    false,
+                    // A film the library holds stays held: the sync used to write "no file" here and turn it back into a download (#1425).
+                    localMovie?.HasFile ?? false,
                     decision.CurrentQuality,
                     decision.TargetQuality,
                     decision.QualityCutoffMet,

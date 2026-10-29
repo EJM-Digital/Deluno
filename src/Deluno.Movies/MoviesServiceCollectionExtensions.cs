@@ -60,6 +60,7 @@ public static class MoviesServiceCollectionExtensions
         services.AddSingleton<IMovieImportRecoveryRetentionRepository>(provider => provider.GetRequiredService<IMovieCatalogRepository>());
         services.AddSingleton<IMovieWorkflowService, MovieWorkflowService>();
         services.AddScoped<IMovieCollectionService, MovieCollectionService>();
+        services.AddScoped<ILibraryCollectionsService, LibraryCollectionsService>();
         services.AddSingleton<IDispatchRecoveryHandlerComponent, MovieDispatchRecoveryHandler>();
         services.AddSingleton<IDispatchTitleUnmonitorComponent, MovieDispatchTitleUnmonitorService>();
         services.AddSingleton<IMigrationCatalogImporter, MovieMigrationCatalogImporter>();

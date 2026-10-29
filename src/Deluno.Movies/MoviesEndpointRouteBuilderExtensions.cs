@@ -44,6 +44,44 @@ public static class MoviesEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
             Results.Ok(await repository.ListAsync(cancellationToken)));
 
+        // #1425: the collections the films in the library belong to, each member held, wanted or missing, and the ones worth completing.
+        collections.MapGet("/from-library", async (
+            ILibraryCollectionsService service,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await service.ListAsync(cancellationToken)));
+
+        // #1425: one action adds every film of the collection the library lacks, and follows the collection.
+        collections.MapPost("/from-library/{providerId}/add-missing", async (
+            string providerId,
+            HttpContext httpContext,
+            [FromBody] AddMissingCollectionFilmsRequest? request,
+            ILibraryCollectionsService service,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (string.IsNullOrWhiteSpace(providerId) || !providerId.All(char.IsAsciiDigit))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["providerId"] = ["Enter a numeric TMDb collection id."] });
+            }
+
+            try
+            {
+                var result = await service.AddMissingAsync(providerId, request?.LibraryId, cancellationToken);
+                return result is null
+                    ? Results.NotFound(new { message = "TMDb did not return that collection." })
+                    : Results.Ok(result);
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["libraryId"] = [ex.Message] });
+            }
+        });
+
         collections.MapGet("/{id}", async (
             string id,
             IMovieCollectionsRepository repository,

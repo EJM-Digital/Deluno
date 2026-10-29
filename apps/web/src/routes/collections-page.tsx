@@ -2,6 +2,7 @@ import { Check, Film, LoaderCircle, Plus, RefreshCcw, Trash2 } from "lucide-reac
 import { ArtworkImage } from "../components/ui/artwork-image";
 import { useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
+import { LibraryCollections } from "../components/app/library-collections";
 import { TagPicker } from "../components/app/tag-picker";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -16,7 +17,7 @@ import { SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { useCoalescedRevalidate } from "../hooks/use-live-interval";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
-import { fetchJson, readErrorText, type LibraryItem, type MovieCollectionItem, type MovieCollectionMemberItem, type QualityProfileItem } from "../lib/api";
+import { fetchJson, readErrorText, type AddMissingCollectionFilmsResult, type LibraryCollectionItem, type LibraryCollectionsResponse, type LibraryItem, type MovieCollectionItem, type MovieCollectionMemberItem, type QualityProfileItem } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { plural } from "../lib/plural";
@@ -26,13 +27,18 @@ interface CollectionsLoaderData {
   libraries: LibraryItem[];
   qualityProfiles: QualityProfileItem[];
   membersByCollection: Record<string, MovieCollectionMemberItem[]>;
+  /** #1425: every collection a film in the library belongs to, and the ones worth completing. */
+  libraryCollections?: LibraryCollectionsResponse;
 }
 
+const NO_LIBRARY_COLLECTIONS: LibraryCollectionsResponse = { collections: [], recommended: [] };
+
 export async function collectionsLoader(): Promise<CollectionsLoaderData> {
-  const [collections, libraries, qualityProfiles] = await Promise.all([
+  const [collections, libraries, qualityProfiles, libraryCollections] = await Promise.all([
     fetchJson<MovieCollectionItem[]>("/api/movie-collections").catch(() => []),
     fetchJson<LibraryItem[]>("/api/libraries").catch(() => []),
-    fetchJson<QualityProfileItem[]>("/api/quality-profiles").catch((): QualityProfileItem[] => [])
+    fetchJson<QualityProfileItem[]>("/api/quality-profiles").catch((): QualityProfileItem[] => []),
+    fetchJson<LibraryCollectionsResponse>("/api/movie-collections/from-library").catch((): LibraryCollectionsResponse => NO_LIBRARY_COLLECTIONS)
   ]);
   const entries = await Promise.all(collections.map(async (collection) => [
     collection.id,
@@ -42,12 +48,13 @@ export async function collectionsLoader(): Promise<CollectionsLoaderData> {
     collections,
     libraries,
     qualityProfiles,
-    membersByCollection: Object.fromEntries(entries)
+    membersByCollection: Object.fromEntries(entries),
+    libraryCollections
   };
 }
 
 export function CollectionsPage() {
-  const { collections, libraries, qualityProfiles, membersByCollection } = useLoaderData() as CollectionsLoaderData;
+  const { collections, libraries, qualityProfiles, membersByCollection, libraryCollections = NO_LIBRARY_COLLECTIONS } = useLoaderData() as CollectionsLoaderData;
   const revalidator = useRevalidator();
   // Which films of a collection are held changes when any film does, and a collection sync reports as a change to films (#1179).
   const readAgain = useCoalescedRevalidate(() => revalidator.revalidate(), 500);
@@ -61,6 +68,7 @@ export function CollectionsPage() {
   const [searchOnAdd, setSearchOnAdd] = useState(true);
   const [tags, setTags] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [addLibraryId, setAddLibraryId] = useState(movieLibraries[0]?.id ?? "");
   const [selected, setSelected] = useState<string[]>([]);
   const [removing, setRemoving] = useState<MovieCollectionItem[] | null>(null);
 
@@ -86,6 +94,27 @@ export function CollectionsPage() {
       revalidator.revalidate();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Collection could not be added.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** #1425: one action adds every film of the collection the library lacks, and follows the collection. */
+  async function addMissingFilms(collection: LibraryCollectionItem) {
+    if (busy) return;
+    setBusy(`missing:${collection.providerId}`);
+    try {
+      const response = await authedFetch(`/api/movie-collections/from-library/${encodeURIComponent(collection.providerId)}/add-missing`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ libraryId: addLibraryId || null })
+      });
+      if (!response.ok) throw new Error(await bulkErrorText(response, `The missing films of ${collection.name} could not be added.`));
+      const result = (await response.json()) as AddMissingCollectionFilmsResult;
+      toast.success(result.message);
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : `The missing films of ${collection.name} could not be added.`);
     } finally {
       setBusy(null);
     }
@@ -218,6 +247,16 @@ export function CollectionsPage() {
         { label: "Held members", value: held, help: "Titles already in a library" }
       ]} />
 
+      <LibraryCollections
+        recommended={libraryCollections.recommended}
+        collections={libraryCollections.collections}
+        libraries={movieLibraries}
+        libraryId={addLibraryId}
+        onLibraryChange={setAddLibraryId}
+        busyProviderId={busy?.startsWith("missing:") ? busy.slice("missing:".length) : null}
+        onAddMissing={addMissingFilms}
+      />
+
       {addOpen ? (
         <Card as="form" onSubmit={addCollection} className="p-5">
           <div className="flex flex-col gap-1">
@@ -274,7 +313,7 @@ export function CollectionsPage() {
         </Card>
       ) : null}
 
-      {collections.length === 0 ? (
+      {collections.length === 0 && libraryCollections.collections.length > 0 ? null : collections.length === 0 ? (
         <Card className="flex flex-col items-center justify-center px-6 py-16 text-center">
           <Film className="h-8 w-8 text-muted-foreground" />
           <h2 className="mt-4 font-display text-lg font-semibold text-foreground">No collections yet</h2>

@@ -153,6 +153,7 @@ GET /api/monitoring/diagnostics
 GET /api/monitoring/export/influx
 GET /api/monitoring/export/prometheus
 GET /api/movie-collections/
+GET /api/movie-collections/from-library
 GET /api/movie-collections/{id}
 GET /api/movie-collections/{id}/members
 GET /api/movies/calendar
@@ -395,6 +396,7 @@ POST /api/metadata/test
 POST /api/migration/apply
 POST /api/migration/preview
 POST /api/movie-collections/
+POST /api/movie-collections/from-library/{providerId}/add-missing
 POST /api/movie-collections/remove
 POST /api/movie-collections/{id}/refresh
 POST /api/movies/

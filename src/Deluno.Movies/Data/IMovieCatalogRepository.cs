@@ -70,6 +70,13 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
     Task<IReadOnlyList<MovieListItem>> ListAsync(CancellationToken cancellationToken);
 
     /// <summary>
+    /// The stored metadata of every film that names a collection (#1425), by film id. <see cref="ListAsync"/> leaves the
+    /// metadata out of the list on purpose, so the Collections tab reads just these.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, string>> ListCollectionMetadataAsync(CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
+
+    /// <summary>
     /// Returns the cache keys used by poster and backdrop URLs still stored in
     /// this catalogue. Artwork maintenance uses this set as its safety fence
     /// before removing old files.

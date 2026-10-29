@@ -1278,6 +1278,30 @@ public sealed class SqliteMovieCatalogRepository(
             Airing: reader.IsDBNull(9) ? 0 : reader.GetInt32(9));
     }
 
+    public async Task<IReadOnlyDictionary<string, string>> ListCollectionMetadataAsync(CancellationToken cancellationToken)
+    {
+        var blobs = new Dictionary<string, string>(StringComparer.Ordinal);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT id, metadata_json
+            FROM movie_entries
+            WHERE metadata_json IS NOT NULL
+              AND (metadata_json LIKE '%ollectionProviderId%' OR metadata_json LIKE '%"collectionId"%');
+            """;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            blobs[reader.GetString(0)] = reader.GetString(1);
+        }
+
+        return blobs;
+    }
+
     public async Task<IReadOnlyList<MovieListItem>> ListAsync(CancellationToken cancellationToken)
     {
         var movies = new List<MovieListItem>();
