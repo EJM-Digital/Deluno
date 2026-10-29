@@ -2,6 +2,7 @@ import { CircleOff, Eye, FolderTree, Redo2, Trash2, Undo2, Zap } from "lucide-re
 import type { BulkWorkflowOperation } from "../../hooks/use-bulk-edit";
 import { cn } from "../../lib/utils";
 import { BulkAction } from "./library-bulk-action";
+import { pluralNoun } from "../../lib/plural";
 
 type LibrarySelectionCommandBarProps = {
   count: number;
@@ -52,7 +53,7 @@ export function LibrarySelectionCommandBar({
             {count}
           </span>
           <span className="whitespace-nowrap text-(length:--library-toolbar-size) font-medium text-[hsl(var(--media-muted-foreground))]">
-            {count === 1 ? "item" : "items"} selected
+            {pluralNoun(count, "item")} selected
           </span>
         </div>
 

@@ -1,3 +1,4 @@
+import { plural } from "../../lib/plural";
 import type { ChipProps } from "../../components/ui/chip";
 import { statusPresentation } from "../../lib/status-tones";
 import { CLIENT_PRESETS, INDEXER_PRESETS } from "./presets";
@@ -62,7 +63,7 @@ export function relative(iso: string | null | undefined) { if (!iso) return "Nev
 export function scopeLabel(scope: string | null | undefined) { return scope === "movies" ? "Movies" : scope === "tv" ? "TV" : "Movies · TV"; }
 export function protocolLabel(protocol: string) { return CLIENT_PRESETS.find((preset) => preset.protocol === protocol)?.label ?? INDEXER_PRESETS.find((preset) => preset.protocol === protocol)?.label ?? protocol; }
 export function indexerHost(baseUrl: string) { try { return new URL(baseUrl).hostname.toLowerCase(); } catch { return null; } }
-export function formatSeconds(seconds: number) { return seconds < 1 ? "less than a second" : `${Math.ceil(seconds)} second${seconds >= 1.01 ? "s" : ""}`; }
+export function formatSeconds(seconds: number) { return seconds < 1 ? "less than a second" : plural(Math.ceil(seconds), "second"); }
 
 /**
  * Plain words for an indexer's query or grab cap once it has been reached

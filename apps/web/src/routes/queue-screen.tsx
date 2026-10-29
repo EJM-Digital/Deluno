@@ -94,6 +94,7 @@ import { applyImportOutcome, TRANSFERS_JOBS_KEY, useCoalescedRefresh, useTransfe
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences, type DisplayPreferences } from "../lib/display-preferences";
 import { useColumnVisibility, type ColumnDefinition } from "../lib/use-column-visibility";
 import { formatProgressPercent } from "../lib/progress-format";
+import { plural } from "../lib/plural";
 
 /**
  * The queue table's optional columns (#796): quality, custom-format score,
@@ -645,7 +646,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         const response = await authedFetch("/api/jobs/retry-failed", { method: "POST" });
         if (!response.ok) throw new Error("The failed jobs could not be requeued.");
       },
-      `${failedImportJobs.length} failed ${failedImportJobs.length === 1 ? "job" : "jobs"} requeued`
+      `${plural(failedImportJobs.length, "failed job")} requeued`
     );
   }
 
@@ -752,7 +753,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
             : failures[0]
         );
       }
-      toast.success(`Removed ${removed} leftover download${removed === 1 ? "" : "s"}.`);
+      toast.success(`Removed ${plural(removed, "leftover download")}.`);
     });
   }
 
@@ -928,8 +929,8 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   /** The header counts every row; Select all covers the ones Dismiss clears, and the rest say how they are cleared from their own row. */
   const otherRowsNote = (() => {
     const parts: string[] = [];
-    if (orphanedDownloads.length) parts.push(`${orphanedDownloads.length} leftover ${orphanedDownloads.length === 1 ? "folder" : "folders"} (Remove or Keep)`);
-    if (queueAttention.length) parts.push(`${queueAttention.length} live ${queueAttention.length === 1 ? "download" : "downloads"} (open one to fix)`);
+    if (orphanedDownloads.length) parts.push(`${plural(orphanedDownloads.length, "leftover folder")} (Remove or Keep)`);
+    if (queueAttention.length) parts.push(`${plural(queueAttention.length, "live download")} (open one to fix)`);
     return parts.length ? `. ${dismissibleRows.length} can be dismissed together; ${parts.join(" and ")} are cleared from their own rows` : "";
   })();
 
@@ -957,7 +958,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       }
       setSelectedDismissKeys(new Set());
       if (firstFailure) throw new Error(dismissed > 0 ? `Dismissed ${dismissed} of ${rows.length}. ${firstFailure}` : firstFailure);
-      toast.success(`Dismissed ${dismissed} ${dismissed === 1 ? "thing" : "things"}.`);
+      toast.success(`Dismissed ${plural(dismissed, "thing")}.`);
     });
   }
 
@@ -1125,7 +1126,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       setFolderScanIssues(response.issues);
       setFolderScanMessage(
         response.items.length
-          ? `Found ${response.items.length} file${response.items.length === 1 ? "" : "s"}. Review each match before importing.`
+          ? `Found ${plural(response.items.length, "file")}. Review each match before importing.`
           : "No supported video files were found in this folder."
       );
     } catch (error) {
@@ -1207,7 +1208,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       const failed = result.results.filter((item) => !item.succeeded);
       setFolderScanMessage(
         failed.length === 0
-          ? `Imported ${result.importedCount} of ${result.requestedCount} file${result.requestedCount === 1 ? "" : "s"}.`
+          ? `Imported ${result.importedCount} of ${plural(result.requestedCount, "file")}.`
           : `Imported ${result.importedCount} of ${result.requestedCount}. ${failed.length} failed: ${failed[0]!.message}`
       );
       // Drop the rows that succeeded; a person reviewing a failure should not
@@ -1240,12 +1241,12 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       <SummaryStrip
         cells={[
           { label: "Downloading", value: String(telemetry.summary.activeCount), help: `${telemetry.summary.totalSpeedMbps.toFixed(1)} MB/s combined` },
-          { label: "Processing", value: String(processing.length + activeProcessorHandoffs.length), help: activeProcessorHandoffs.length ? `${activeProcessorHandoffs.length} with the processor` : processorConnections.length ? `${processorConnections.length} connector${processorConnections.length === 1 ? "" : "s"} configured` : "no processor connected" },
+          { label: "Processing", value: String(processing.length + activeProcessorHandoffs.length), help: activeProcessorHandoffs.length ? `${activeProcessorHandoffs.length} with the processor` : processorConnections.length ? `${plural(processorConnections.length, "connector")} configured` : "no processor connected" },
           { label: "Importing", value: String(activeImportJobs), help: activeImportJobs ? "writing into your library" : "nothing being written" },
           // Automation picks these up on its next pass; "waiting on you" asked
           // for something the user does not need to do (#263).
           { label: "Ready to import", value: String(importReady.length), help: importReady.length ? "Deluno imports these next" : "nothing waiting" },
-          { label: "Needs action", value: String(needsActionCount), help: blockedQueueItems.length ? `${blockedQueueItems.length} release${blockedQueueItems.length === 1 ? "" : "s"} blocked` : needsActionCount ? "see below" : "all clear", tone: needsActionCount ? "warning" : undefined },
+          { label: "Needs action", value: String(needsActionCount), help: blockedQueueItems.length ? `${plural(blockedQueueItems.length, "release")} blocked` : needsActionCount ? "see below" : "all clear", tone: needsActionCount ? "warning" : undefined },
           { label: "Clients", value: `${healthyClients}/${telemetry.clients.length}`, help: healthyClients === telemetry.clients.length ? "all responding" : "one is not responding", tone: healthyClients < telemetry.clients.length ? "danger" : undefined }
         ]}
       />
@@ -1440,7 +1441,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       {needsActionCount > 0 ? (
         <ListCard
           title="Needs attention"
-          count={`${needsActionCount} ${needsActionCount === 1 ? "thing" : "things"} Deluno could not finish on its own${otherRowsNote}`}
+          count={`${plural(needsActionCount, "thing")} Deluno could not finish on its own${otherRowsNote}`}
           actions={
             <>
               {dismissibleRows.length ? (
@@ -2781,7 +2782,7 @@ function attentionEvidence(item: DownloadQueueItem) {
   const blocked = item.healthFindings?.find((finding) => finding.candidateBlocked);
   if (blocked) return `${blocked.strikeCount} strikes · ${blocked.evidence}`;
   if (item.failure) return [integrationFailureShortLabel(item.failure), item.failure.attempts > 0 ? `${item.failure.attempts} attempts` : undefined].filter(Boolean).join(" · ");
-  return item.healthFindings?.length ? `${item.healthFindings.length} health ${item.healthFindings.length === 1 ? "finding" : "findings"}` : undefined;
+  return item.healthFindings?.length ? `${plural(item.healthFindings.length, "health finding")}` : undefined;
 }
 
 function integrationFailureTone(failure: IntegrationFailure): NonNullable<ChipProps["tone"]> {
@@ -3321,7 +3322,7 @@ const HEALTH_RULE_ACTION_LABELS: Record<string, string> = {
  * action, so it only ever shows its own strike count.
  */
 export function healthFindingRuleSummary(finding: DownloadHealthFinding, preferences: DisplayPreferences) {
-  const strikes = `${finding.strikeCount} strike${finding.strikeCount === 1 ? "" : "s"} so far`;
+  const strikes = `${plural(finding.strikeCount, "strike")} so far`;
   if (!finding.ruleId) return strikes;
 
   const rule = HEALTH_RULE_KIND_LABELS[finding.kind] ?? finding.kind;

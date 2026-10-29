@@ -20,6 +20,7 @@ import { SwitchRow } from "../../components/ui/switch";
 import { CATEGORY_OPTIONS, CLIENT_PRESETS, HOST_OPTIONS, PORT_OPTIONS, TV_CATEGORY_OPTIONS } from "./presets";
 import { clientPageOpensFromBrowser, clientWebAddress, type ClientForm } from "./forms";
 import { healthChip, relative } from "./format";
+import { plural } from "../../lib/plural";
 const CONTENT_LAYOUT_OPTIONS = [
   { value: "default", label: "Use qBittorrent's own setting" },
   { value: "original", label: "Keep the torrent's own layout" },
@@ -304,7 +305,7 @@ export function ClientDrawerBody({
       {editing ? (
         <Disclosure
           title="Advanced path mapping"
-          summary={mappings.length ? `${mappings.length} saved path ${mappings.length === 1 ? "mapping" : "mappings"}` : "Only when the client and Deluno see different paths"}
+          summary={mappings.length ? plural(mappings.length, "saved path mapping") : "Only when the client and Deluno see different paths"}
           open={pathMappingOpen}
           onOpenChange={setPathMappingOpen}
         >
@@ -461,7 +462,7 @@ function SharingRulesEditor() {
   return (
     <Disclosure
       title="Seeding rules"
-      summary={loaded && rules.length ? `${rules.length} ${rules.length === 1 ? "rule" : "rules"}` : "Exceptions to the sharing rule, by category, tracker, or tag"}
+      summary={loaded && rules.length ? `${plural(rules.length, "rule")}` : "Exceptions to the sharing rule, by category, tracker, or tag"}
       open={open}
       onOpenChange={setOpen}
     >

@@ -12,6 +12,7 @@
  * (/api/series/search-history) history endpoints are unchanged; this screen
  * reads the same underlying events through a separate, wider aggregation.
  */
+import { plural } from "../lib/plural";
 import { useEffect, useRef, useState } from "react";
 import { Eraser, RefreshCw } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -207,7 +208,7 @@ export function IndexerHistoryPage() {
       />
 
       <ListCard
-        title={`${items.length}${nextPageToken ? "+" : ""} event${items.length === 1 && !nextPageToken ? "" : "s"}`}
+        title={nextPageToken ? `${items.length}+ events` : plural(items.length, "event")}
         titleCase={false}
         filter={{ value: indexerName, onChange: changeIndexerName, placeholder: "Find an indexer" }}
         actions={

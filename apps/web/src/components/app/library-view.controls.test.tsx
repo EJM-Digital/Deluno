@@ -209,7 +209,7 @@ describe("a very large library", () => {
     expect(screen.getByRole("button", { name: "5000 selected" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Monitor" }));
     const box = (await screen.findByText("Bulk workflow")).closest("div.fixed") as HTMLElement;
-    expect(within(box).getByText("5000 selected titles")).toBeInTheDocument();
+    expect(within(box).getByText("5,000 selected titles")).toBeInTheDocument();
     fireEvent.click(within(box).getByRole("button", { name: "Review and continue" }));
     fireEvent.click(await within(box).findByRole("button", { name: "Confirm and run" }));
 

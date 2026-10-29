@@ -1,3 +1,4 @@
+import { plural } from "../../../lib/plural";
 /**
  * Countdown maths for the Live tab (#1096): how long until something runs, and
  * how far through the gap between two runs we are (for a progress ring). Pure
@@ -30,7 +31,7 @@ export function formatCountdown(remainingMs: number): string {
   if (seconds < 86_400) return `${Math.floor(seconds / 3600)}:${two(Math.floor((seconds % 3600) / 60))}:${two(seconds % 60)}`;
   const days = Math.floor(seconds / 86_400);
   const hours = Math.floor((seconds % 86_400) / 3600);
-  return `${days} ${days === 1 ? "day" : "days"}${hours > 0 ? ` ${hours} h` : ""}`;
+  return `${plural(days, "day")}${hours > 0 ? ` ${hours} h` : ""}`;
 }
 
 /** Null when nothing is scheduled. */

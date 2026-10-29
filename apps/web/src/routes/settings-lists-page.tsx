@@ -52,6 +52,7 @@ import { cn } from "../lib/utils";
 import { formatDateTime, formatShortDate, type DisplayPreferences, useDisplayPreferences } from "../lib/display-preferences";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { INTAKE_SYNC_PRESETS } from "../lib/intake-sync-interval";
+import { plural } from "../lib/plural";
 
 const PROVIDERS = [
   { label: "Custom list URL", value: "url-list" },
@@ -417,7 +418,7 @@ export function SettingsListsPage() {
         throw new Error(body?.message ?? "Selected entries could not be added.");
       }
       const result = (await response.json()) as IntakeListApprovalResult;
-      setPreviewNote(`${result.addedCount} title${result.addedCount === 1 ? "" : "s"} added from ${result.selectedCount} approved preview entr${result.selectedCount === 1 ? "y" : "ies"}.${result.searchRequested ? " Deluno will search them using normal automation rules." : ""}`);
+      setPreviewNote(`${plural(result.addedCount, "title")} added from ${plural(result.selectedCount, "approved preview entry")}.${result.searchRequested ? " Deluno will search them using normal automation rules." : ""}`);
       setPreview(null);
       revalidator.revalidate();
     });
@@ -535,7 +536,7 @@ export function SettingsListsPage() {
         </div>
       </ListCard>
 
-      <ListCard title={intakeSources.length ? `${intakeSources.length} ${intakeSources.length === 1 ? "list" : "lists"} · ${intakeSources.filter((item) => item.isEnabled).length} enabled` : "0 lists"} titleCase={false}>
+      <ListCard title={intakeSources.length ? `${plural(intakeSources.length, "list")} · ${intakeSources.filter((item) => item.isEnabled).length} enabled` : "0 lists"} titleCase={false}>
         {intakeSources.length === 0 ? (
           <ListEmpty
             title="No import lists yet"
@@ -590,7 +591,7 @@ export function SettingsListsPage() {
 
       <ListCard
         title="Never add decisions"
-        count={exclusions.length ? `${exclusions.length} active ${exclusions.length === 1 ? "decision" : "decisions"} · all automated sources` : undefined}
+        count={exclusions.length ? `${plural(exclusions.length, "active decision")} · all automated sources` : undefined}
       >
         {exclusions.length === 0 ? (
           <ListEmpty

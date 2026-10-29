@@ -73,6 +73,7 @@ import { LanAccessNotice } from "../components/app/lan-access-notice";
 import { isUsenetProtocol } from "../lib/protocol";
 import { CLIENT_PRESETS } from "./connections/presets";
 import { ConnectInstalledApps } from "../components/app/connect-installed-apps";
+import { plural } from "../lib/plural";
 
 /**
  * #1034: two stages. Stage 1 ("This computer and you") covers the computer
@@ -3253,7 +3254,7 @@ async function rollbackCreatedEntities(createdEntities: CreatedEntity[]) {
     }
   }
   return removed > 0
-    ? `Setup failed, so Deluno cleaned up ${removed} partially created item${removed === 1 ? "" : "s"}.`
+    ? `Setup failed, so Deluno cleaned up ${plural(removed, "partially created item")}.`
     : "Setup failed before Deluno created anything that needed cleanup.";
 }
 

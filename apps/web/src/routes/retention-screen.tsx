@@ -29,6 +29,7 @@ import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
 import type { MediaServerConnection } from "./media-servers-screen";
+import { plural } from "../lib/plural";
 
 type Level = "movie" | "show" | "season" | "episode";
 type RemovalMode = "automatic" | "ask";
@@ -235,7 +236,7 @@ function summarise(steps: RetentionStep[], fields: RetentionField[]) {
   const first = steps[0];
   if (!first) return { primary: "—", secondary: undefined };
   const primary = first.type === "block" ? `Block ${first.name || "1"}` : describeCondition(first.condition, fields);
-  return { primary, secondary: steps.length > 1 ? `and ${steps.length - 1} more ${steps.length === 2 ? "step" : "steps"}` : undefined };
+  return { primary, secondary: steps.length > 1 ? `and ${plural(steps.length - 1, "more step")}` : undefined };
 }
 
 function levelLabel(level: Level) {
@@ -460,7 +461,7 @@ export function RetentionPage() {
       setPostponing(null);
       setPageMessage(
         moved.length > 0
-          ? `${mark.title} is postponed by ${days} ${days === 1 ? "day" : "days"}: ${formatDateTime(moved[0].removeAfterUtc, preferences)}. It is not kept.`
+          ? `${mark.title} is postponed by ${plural(days, "day")}: ${formatDateTime(moved[0].removeAfterUtc, preferences)}. It is not kept.`
           : `${mark.title} has nothing to postpone.`
       );
       revalidator.revalidate();
@@ -514,7 +515,7 @@ export function RetentionPage() {
 
       <ListCard
         title="Leaving soon"
-        count={marks.length ? `${marks.length} ${marks.length === 1 ? "title" : "titles"}${leavingBytes > 0 ? ` · ${formatBytes(leavingBytes)}` : ""}` : undefined}
+        count={marks.length ? `${plural(marks.length, "title")}${leavingBytes > 0 ? ` · ${formatBytes(leavingBytes)}` : ""}` : undefined}
         actions={
           rules.some((rule) => rule.isEnabled) ? (
             <Button type="button" variant="outline" size="sm" onClick={() => setAdding(true)} disabled={busy !== null}>
@@ -611,7 +612,7 @@ export function RetentionPage() {
                     sub={`${levelLabel(rule.level)}${rule.mediaServerIds.length ? ` · ${rule.mediaServerIds.map((id) => serverNames.get(id) ?? "Removed server").join(", ")}` : ""}`}
                   />
                   <ListCell primary={selects.primary} secondary={selects.secondary} />
-                  <ListCell primary={`Waits ${rule.waitDays} ${rule.waitDays === 1 ? "day" : "days"}`} secondary={dayWords(rule)} />
+                  <ListCell primary={`Waits ${plural(rule.waitDays, "day")}`} secondary={dayWords(rule)} />
                   <ListCell primary={rule.isEnabled && rule.nextCheckUtc ? formatDateTime(rule.nextCheckUtc, preferences) : "—"} />
                   <ListCell mobile>
                     <Switch size="sm" aria-label={`${rule.isEnabled ? "Turn off" : "Turn on"} ${rule.name}`} checked={rule.isEnabled} disabled={busy === `toggle:${rule.id}`} onCheckedChange={(checked) => void toggle(rule, checked)} />
@@ -624,7 +625,7 @@ export function RetentionPage() {
       </ListCard>
 
       {keeps.length > 0 ? (
-        <ListCard title="Kept" count={`${keeps.length} ${keeps.length === 1 ? "title" : "titles"}`}>
+        <ListCard title="Kept" count={`${plural(keeps.length, "title")}`}>
           <ListTable
             listId="retention-kept"
             items={keeps}
@@ -703,7 +704,7 @@ export function RetentionPage() {
           ) : null}
           {trial && trial.undecidedCount > 0 ? (
             <p className="text-(length:--type-caption) text-muted-foreground">
-              {trial.undecidedCount} {trial.undecidedCount === 1 ? "title" : "titles"} could not be decided — a server could not answer a step — and would be left alone.
+              {plural(trial.undecidedCount, "title")} could not be decided — a server could not answer a step — and would be left alone.
             </p>
           ) : null}
           {trial && trial.unmanaged.length > 0 ? (

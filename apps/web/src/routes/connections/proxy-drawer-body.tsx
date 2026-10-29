@@ -9,6 +9,7 @@ import { Select } from "../../components/ui/select";
 import { SwitchRow } from "../../components/ui/switch";
 import type { ProxyForm } from "./forms";
 import { PreferencesLink } from "./preferences-link";
+import { plural } from "../../lib/plural";
 
 const PROXY_TYPE_OPTIONS = [
   { value: "http", label: "HTTP" },
@@ -69,7 +70,7 @@ export function ProxyDrawerBody({
         <DrawerSection title="Used by">
           <p className="text-(length:--type-body-sm) text-muted-foreground">
             {editing.assignedIndexerNames.length
-              ? `${editing.assignedIndexerNames.length} indexer${editing.assignedIndexerNames.length === 1 ? "" : "s"}: ${editing.assignedIndexerNames.join(", ")}`
+              ? `${plural(editing.assignedIndexerNames.length, "indexer")}: ${editing.assignedIndexerNames.join(", ")}`
               : "No indexer is assigned to this proxy yet. Assign it from that indexer's own drawer."}
           </p>
         </DrawerSection>

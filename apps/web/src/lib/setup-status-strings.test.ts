@@ -132,3 +132,15 @@ describe("a library is ready only when its folders and naming are set", () => {
     expect(ready([{ ...movies, processorOutputPath: "D:\\Refined" }])).toBe(true);
   });
 });
+
+describe("the library step counts its libraries in words (#1423)", () => {
+  const library = (mediaType: string) => ({ mediaType, rootPath: "/media", autoSearchEnabled: false }) as LibraryItem;
+
+  it.each([
+    ["one of each", [library("movies"), library("tv")], "1 movie library - 1 TV library"],
+    ["two of each", [library("movies"), library("movies"), library("tv"), library("tv")], "2 movie libraries - 2 TV libraries"],
+    ["none of one kind", [library("tv")], "0 movie libraries - 1 TV library"]
+  ] as const)("%s", (_name, libraries, status) => {
+    expect(step(buildSetupStatus(input({ libraries: [...libraries] })), "library").status).toBe(status);
+  });
+});

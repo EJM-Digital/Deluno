@@ -105,6 +105,12 @@ describe("filter conditions", () => {
     expect(describeCondition({ field: "size", operator: "max", values: ["40"] }, undefined))
       .toBe("size at most 40");
   });
+
+  it("reads a relative date with its days in words: 1 day and 30 days", () => {
+    const added = { label: "Added" } as Parameters<typeof describeCondition>[1];
+    expect(describeCondition({ field: "added", operator: "within", values: ["1"] }, added)).toBe("Added in the last 1 day");
+    expect(describeCondition({ field: "added", operator: "within", values: ["30"] }, added)).toBe("Added in the last 30 days");
+  });
 });
 
 describe("reading a saved view", () => {

@@ -3,10 +3,7 @@
  * words: no internal codes, no "undefined", no "NaN".
  */
 import { formatBytes } from "../../lib/utils";
-
-export function plural(count: number, one: string, many = `${one}s`): string {
-  return `${count.toLocaleString("en-AU")} ${count === 1 ? one : many}`;
-}
+import { plural } from "../../lib/plural";
 
 /** "3 min ago", "2 h ago", "4 days ago"; a missing or unreadable time says "never". */
 export function ago(value: string | null | undefined, now = Date.now()): string {
@@ -20,7 +17,7 @@ export function ago(value: string | null | undefined, now = Date.now()): string 
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `${hours} h ago`;
   const days = Math.round(hours / 24);
-  return `${days} ${days === 1 ? "day" : "days"} ago`;
+  return `${plural(days, "day")} ago`;
 }
 
 /** "in 15 h", "in 2 days" for a time still to come. */
@@ -34,7 +31,7 @@ export function until(value: string | null | undefined, now = Date.now()): strin
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `in ${hours} h`;
   const days = Math.round(hours / 24);
-  return `in ${days} ${days === 1 ? "day" : "days"}`;
+  return `in ${plural(days, "day")}`;
 }
 
 export function uptimeText(seconds: number): string {

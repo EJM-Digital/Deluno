@@ -20,6 +20,7 @@ import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { MenuSelect } from "../ui/menu-select";
+import { plural } from "../../lib/plural";
 
 /**
  * Everything that narrows a shelf: your saved filters first, then the questions
@@ -223,7 +224,7 @@ export function LibraryFilterPanel({
           {conditions.length > 0 ? (
             <Button type="button" variant="ghost" size="sm" onClick={onClear} className="ml-auto gap-1.5">
               <X className="h-3.5 w-3.5" />
-              Clear {conditions.length} filter{conditions.length === 1 ? "" : "s"}
+              Clear {plural(conditions.length, "filter")}
             </Button>
           ) : null}
         </div>

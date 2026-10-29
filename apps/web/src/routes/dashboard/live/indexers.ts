@@ -3,6 +3,7 @@
  * while the screen waits), for the Sources scoreboard and the flash when one is asked and answers.
  */
 import type { Tone } from "../../../lib/status-tones";
+import { plural } from "../../../lib/plural";
 
 /** One indexer's row of today's scoreboard (`GET /api/indexers/scoreboard?days=1`). */
 export interface IndexerToday {
@@ -37,6 +38,6 @@ export function pulseOf(event: { phase: "asked" | "answered"; resultCount: numbe
   if (event.phase === "asked") return { phase: "asking", tone: "info", words: "being asked" };
   if (event.failed) return { phase: "answered", tone: "bad", words: event.failure ? `failed: ${event.failure}` : "failed" };
   const slow = (event.elapsedMs ?? 0) > SLOW_ANSWER_MS;
-  const found = event.resultCount === null ? "answered" : `${event.resultCount.toLocaleString("en-AU")} ${event.resultCount === 1 ? "result" : "results"}`;
+  const found = event.resultCount === null ? "answered" : plural(event.resultCount, "result");
   return { phase: "answered", tone: slow ? "warn" : "ok", words: `${found} in ${event.elapsedMs ?? 0} ms` };
 }

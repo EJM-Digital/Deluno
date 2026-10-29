@@ -22,6 +22,7 @@ import { ConnectionVersionBeside } from "./connection-version";
 import { toneSortValue } from "../../lib/status-tones";
 import { ConnectionUpdatePanel } from "./connection-update-panel";
 import { useConnectionVersions, versionKey } from "../../lib/connection-versions";
+import { plural } from "../../lib/plural";
 
 /** Mirrors `Deluno.Connections.Contracts.SeerrConnection`. */
 export interface SeerrServer {
@@ -367,7 +368,7 @@ export function SeerrServersCard({
                   <ListCell primary={server.serverName ?? <span className="text-muted-foreground">Not tested yet</span>} />
                   <ListCell
                     primary={relative(server.lastHealthTestUtc)}
-                    secondary={waiting.length ? `${waiting.length} removed ${waiting.length === 1 ? "title" : "titles"} still to clear: ${waiting[0].problem ?? "waiting"}` : server.lastHealthMessage ?? undefined}
+                    secondary={waiting.length ? `${plural(waiting.length, "removed title")} still to clear: ${waiting[0].problem ?? "waiting"}` : server.lastHealthMessage ?? undefined}
                   />
                   <ListCell mobile>
                     <Chip tone={chip.tone}>{chip.label}</Chip>
@@ -519,14 +520,14 @@ export function SeerrServersCard({
         </DrawerSection>
 
         {editing && owed.length ? (
-          <DrawerSection title="Still to clear" aside={`${owed.length} ${owed.length === 1 ? "title" : "titles"}`}>
+          <DrawerSection title="Still to clear" aside={`${plural(owed.length, "title")}`}>
             <dl className="grid grid-cols-[160px_1fr] gap-x-(--grid-gap) gap-y-2 text-(length:--type-body-sm)">
               {owed.map((cleanup) => (
                 <div key={cleanup.entityId} className="contents">
                   <dt className="text-foreground">{cleanup.title}</dt>
                   <dd className="text-destructive">
                     {cleanup.problem ?? "Waiting"}
-                    <span className="block text-(length:--type-caption) text-muted-foreground">Removed by a retention rule. Tried {cleanup.attempts} {cleanup.attempts === 1 ? "time" : "times"}, last {relative(cleanup.attemptedUtc)}; tried again at the next check.</span>
+                    <span className="block text-(length:--type-caption) text-muted-foreground">Removed by a retention rule. Tried {plural(cleanup.attempts, "time")}, last {relative(cleanup.attemptedUtc)}; tried again at the next check.</span>
                   </dd>
                 </div>
               ))}

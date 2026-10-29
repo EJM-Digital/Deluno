@@ -14,7 +14,7 @@ import { authedFetch } from "../../lib/use-auth";
 import { fetchJson } from "../../lib/api";
 import { describeRequestFailure } from "../../lib/search-reasons";
 import { cn } from "../../lib/utils";
-import { plural } from "../../routes/dashboard/format";
+import { plural } from "../../lib/plural";
 import type { SubtitleSearchCandidateItem } from "../../lib/api";
 
 export function SubtitleManualSearchDialog({

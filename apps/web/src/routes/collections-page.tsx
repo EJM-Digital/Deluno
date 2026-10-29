@@ -19,6 +19,7 @@ import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { fetchJson, readErrorText, type LibraryItem, type MovieCollectionItem, type MovieCollectionMemberItem, type QualityProfileItem } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
+import { plural } from "../lib/plural";
 
 interface CollectionsLoaderData {
   collections: MovieCollectionItem[];
@@ -153,7 +154,7 @@ export function CollectionsPage() {
         if (!response.ok) throw new Error("One or more collections could not be updated.");
       }));
       setSelected([]);
-      toast.success(`${selected.length} collection${selected.length === 1 ? "" : "s"} updated`);
+      toast.success(`${plural(selected.length, "collection")} updated`);
       revalidator.revalidate();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Collections could not be updated.");
@@ -194,7 +195,7 @@ export function CollectionsPage() {
         body: JSON.stringify({ collectionIds: selected, ...changes })
       });
       if (!response.ok) throw new Error(await bulkErrorText(response));
-      toast.success(`${selected.length} collection${selected.length === 1 ? "" : "s"} updated`);
+      toast.success(`${plural(selected.length, "collection")} updated`);
       setSelected([]);
       revalidator.revalidate();
     } catch (error) {
@@ -533,7 +534,7 @@ export function CollectionBulkEditor({ count, qualityProfiles, libraries, disabl
       </div>
       <div className="flex justify-end">
         <Button size="sm" onClick={apply} disabled={disabled || !anything}>
-          Apply to {count} collection{count === 1 ? "" : "s"}
+          Apply to {plural(count, "collection")}
         </Button>
       </div>
     </div>

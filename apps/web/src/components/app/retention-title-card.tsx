@@ -10,6 +10,7 @@ import { ListCard, ListCell, ListNameCell, ListRow, ListTable } from "../ui/list
 import { RetentionKeepDialog, type KeepChoice } from "./retention-keep-dialog";
 import { RetentionPostponeDialog } from "./retention-postpone-dialog";
 import { retentionMarkPresentation, STATUS_PRESENTATION } from "../../lib/status-tones";
+import { plural } from "../../lib/plural";
 
 /** Mirrors `Deluno.Retention.RetentionTitleStatus`. */
 interface RetentionTitleStatus {
@@ -86,7 +87,7 @@ export function RetentionTitleCard({ entityId, onChanged }: { entityId: string; 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ruleId: mark.ruleId, entityIds: [mark.entityId], days })
       });
-      toast[response.ok ? "success" : "error"](response.ok ? `${mark.title} is postponed by ${days} ${days === 1 ? "day" : "days"}. It is not kept.` : `${mark.title} could not be postponed.`);
+      toast[response.ok ? "success" : "error"](response.ok ? `${mark.title} is postponed by ${plural(days, "day")}. It is not kept.` : `${mark.title} could not be postponed.`);
       setPostponing(null);
       await load();
       onChanged?.();
@@ -114,7 +115,7 @@ export function RetentionTitleCard({ entityId, onChanged }: { entityId: string; 
   const rows = status.marks.length + status.keeps.length + status.episodeRemovals.length;
   return (
     <>
-      <ListCard title="Retention" count={`${rows} ${rows === 1 ? "item" : "items"}`}>
+      <ListCard title="Retention" count={`${plural(rows, "item")}`}>
         {/* Held marks, keeps and removed episodes share this table, so the columns move but the rows are not re-sorted. */}
         <ListTable
           chevron={false}

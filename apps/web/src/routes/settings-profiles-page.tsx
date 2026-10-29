@@ -77,6 +77,7 @@ import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { cn } from "../lib/utils";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
+import { plural } from "../lib/plural";
 
 const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")?.items ?? [];
 
@@ -507,7 +508,7 @@ export function SettingsProfilesPage() {
       />
 
 
-      <ListCard title={qualityProfiles.length ? `${qualityProfiles.length} ${qualityProfiles.length === 1 ? "profile" : "profiles"}` : "0 profiles"} titleCase={false} actions={<MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />}>
+      <ListCard title={qualityProfiles.length ? `${plural(qualityProfiles.length, "profile")}` : "0 profiles"} titleCase={false} actions={<MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />}>
         {qualityProfiles.length === 0 ? (
           <ListEmpty
             title="No quality profiles yet"
@@ -531,11 +532,11 @@ export function SettingsProfilesPage() {
               return (
                 <ListRow key={profile.id} onClick={() => openEdit(profile)} selected={mode.kind === "edit" && mode.id === profile.id}>
                   <ListNameCell name={profile.name} sub={profile.mediaType === "tv" ? "TV shows" : "Movies"} />
-                  <ListCell primary={[...allowed].reverse().join(" → ") || <span className="text-muted-foreground">None</span>} secondary={unknownTiers.length ? `${unknownTiers.length} tier${unknownTiers.length === 1 ? "" : "s"} not in the quality model` : `${allowed.length} tier${allowed.length === 1 ? "" : "s"}`} />
+                  <ListCell primary={[...allowed].reverse().join(" → ") || <span className="text-muted-foreground">None</span>} secondary={unknownTiers.length ? `${plural(unknownTiers.length, "tier")} not in the quality model` : `${plural(allowed.length, "tier")}`} />
                   <ListCell primary={profile.cutoffQuality} secondary={profile.upgradeUntilCutoff ? "Upgrades until this tier" : "No upgrades"} />
-                  <ListCell numeric primary={used.length ? `${used.length} ${used.length === 1 ? "library" : "libraries"}` : <span className="text-muted-foreground">Not assigned</span>} secondary={used.map((library) => library.name).join(", ") || "Assigned from a library or plan"} />
+                  <ListCell numeric primary={used.length ? `${plural(used.length, "library")}` : <span className="text-muted-foreground">Not assigned</span>} secondary={used.map((library) => library.name).join(", ") || "Assigned from a library or plan"} />
                   <ListCell mobile>
-                    <Chip tone={unknownTiers.length ? "warn" : formats.length ? "info" : "idle"}>{unknownTiers.length ? "Check tiers" : formats.length ? `${formats.length} format${formats.length === 1 ? "" : "s"}` : "No formats"}</Chip>
+                    <Chip tone={unknownTiers.length ? "warn" : formats.length ? "info" : "idle"}>{unknownTiers.length ? "Check tiers" : formats.length ? `${plural(formats.length, "format")}` : "No formats"}</Chip>
                   </ListCell>
                 </ListRow>
               );
@@ -564,7 +565,7 @@ export function SettingsProfilesPage() {
             {recommendedCount ? (
               <SwitchRow
                 label="Add the recommended formats"
-                description={`${recommendedCount} TRaSH-guide preference rule${recommendedCount === 1 ? "" : "s"} — repack/proper preferences, codec and upscale handling${starterId ? "" : `, the baseline every custom ${form.mediaType === "tv" ? "TV" : "movie"} profile starts with (from "${baselineStarter?.label}")`}. Created on save if they don't exist yet.`}
+                description={`${plural(recommendedCount, "TRaSH-guide preference rule")} — repack/proper preferences, codec and upscale handling${starterId ? "" : `, the baseline every custom ${form.mediaType === "tv" ? "TV" : "movie"} profile starts with (from "${baselineStarter?.label}")`}. Created on save if they don't exist yet.`}
                 checked={addRecommended}
                 onCheckedChange={setAddRecommended}
               />
@@ -890,7 +891,7 @@ export function SettingsProfilesPage() {
                   <p className="text-(length:--type-caption) text-muted-foreground">No typed preference families are active yet. Add formats or start from a guide template.</p>
                 )}
                 {planCompilation.advancedRules.length ? (
-                  <Disclosure title="Advanced review" summary={`${planCompilation.advancedRules.length} compatibility rule${planCompilation.advancedRules.length === 1 ? "" : "s"} retained with provenance`} open={advancedPlanOpen} onOpenChange={setAdvancedPlanOpen}>
+                  <Disclosure title="Advanced review" summary={`${plural(planCompilation.advancedRules.length, "compatibility rule")} retained with provenance`} open={advancedPlanOpen} onOpenChange={setAdvancedPlanOpen}>
                     <div className="grid gap-2">
                       <p className="text-(length:--type-caption) text-muted-foreground">These rules remain available for compatibility and migration review. They are not the normal typed decision value.</p>
                       {planCompilation.advancedRules.map((rule) => (
@@ -927,7 +928,7 @@ export function SettingsProfilesPage() {
                 {planCompilation.plan.sources?.length ? (
                   <Disclosure
                     title="Where these came from"
-                    summary={`${planCompilation.plan.sources.length} source${planCompilation.plan.sources.length === 1 ? "" : "s"} with the value each carried`}
+                    summary={`${plural(planCompilation.plan.sources.length, "source")} with the value each carried`}
                     open={planSourcesOpen}
                     onOpenChange={setPlanSourcesOpen}
                   >
@@ -1004,7 +1005,7 @@ export function SettingsProfilesPage() {
         ) : null}
 
         {editing ? (
-          <DrawerSection title="Used by" aside={usedBy.length ? `${usedBy.length} ${usedBy.length === 1 ? "library" : "libraries"}` : undefined}>
+          <DrawerSection title="Used by" aside={usedBy.length ? `${plural(usedBy.length, "library")}` : undefined}>
             {usedBy.length ? (
               <div className="grid gap-2">
                 {usedBy.map((library) => (
@@ -1039,7 +1040,7 @@ export function SettingsProfilesPage() {
         ) : null}
       </Drawer>
 
-      <ConfirmDialog open={confirmRemove} onOpenChange={setConfirmRemove} title={`Delete “${editing?.name ?? form.name}”?`} description={usedBy.length ? `${usedBy.length} ${usedBy.length === 1 ? "library uses" : "libraries use"} this Quality Profile and will need another one.` : "This Quality Profile is not assigned to any Library Profile."} confirmLabel="Delete Quality Profile" busy={busy} onConfirm={() => void handleRemove()} />
+      <ConfirmDialog open={confirmRemove} onOpenChange={setConfirmRemove} title={`Delete “${editing?.name ?? form.name}”?`} description={usedBy.length ? `${plural(usedBy.length, "library uses", "libraries use")} this Quality Profile and will need another one.` : "This Quality Profile is not assigned to any Library Profile."} confirmLabel="Delete Quality Profile" busy={busy} onConfirm={() => void handleRemove()} />
       <ConfirmDialog
         open={confirmDiscard}
         onOpenChange={(open) => {

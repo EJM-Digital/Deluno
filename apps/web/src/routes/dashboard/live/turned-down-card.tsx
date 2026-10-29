@@ -14,12 +14,13 @@ import "./turned-down.css";
 import { useElementSize } from "./hooks";
 import { activityLink } from "../../../lib/activity-history";
 import { REASON_COLOUR, REASON_LABEL, barFraction, reasonsFit, type TurnedDownView } from "./turned-down";
+import { plural } from "../../../lib/plural";
 
 /** The line under the bars: how many reasons are not shown and what they hold, or that they hold nothing today. */
 export function moreLine(reasons: number, releases: number): string {
-  const head = `and ${reasons.toLocaleString("en-AU")} more ${reasons === 1 ? "reason" : "reasons"}`;
+  const head = `and ${plural(reasons, "more reason")}`;
   if (releases <= 0) return `${head}, none today`;
-  return `${head} · ${releases.toLocaleString("en-AU")} ${releases === 1 ? "release" : "releases"}`;
+  return `${head} · ${plural(releases, "release")}`;
 }
 
 export function TurnedDownCard({ view, lit }: { view: TurnedDownView; lit: ReadonlySet<string> }) {

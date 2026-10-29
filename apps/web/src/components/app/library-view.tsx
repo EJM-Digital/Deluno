@@ -47,6 +47,7 @@ import { BulkRemoveDialog, type BulkRemoveOptions } from "./bulk-remove-dialog";
 import { LibraryBulkToolsDialog } from "./library-bulk-tools-dialog";
 import { LibrarySelectAllToggle } from "./library-select-all-toggle";
 import { LibraryActions } from "./library-actions";
+import { plural } from "../../lib/plural";
 
 type Variant = "movies" | "shows";
 
@@ -1049,10 +1050,10 @@ export function LibraryView({
       setSelectedIds((current) => current.filter((id) => !idsToRemove.includes(id)));
       setIsRemovalConfirmationOpen(false);
       toast.success(
-        `${idsToRemove.length} ${singular}${idsToRemove.length === 1 ? "" : "s"} removed from Deluno. Imported files were left alone. ${removalDownloadToastSentence}`
+        `${plural(idsToRemove.length, singular)} removed from Deluno. Imported files were left alone. ${removalDownloadToastSentence}`
       );
       if (failedCount > 0) {
-        toast.error(`${failedCount} title${failedCount === 1 ? "" : "s"} could not be removed.`);
+        toast.error(`${plural(failedCount, "title")} could not be removed.`);
       }
       // The rows are already gone optimistically; this resyncs the header
       // total and the filter chip counts, which the optimistic edit cannot.
@@ -1098,7 +1099,7 @@ export function LibraryView({
         const failureCount = settled.length - successCount;
 
         if (successCount > 0) {
-          toast.success(`${successCount} ${successCount === 1 ? singular : label} added`);
+          toast.success(`${plural(successCount, singular, label)} added`);
         }
 
         if (failureCount === 0) {
@@ -1113,7 +1114,7 @@ export function LibraryView({
         setSelectedMetadataResults((current) =>
           current.filter((_, index) => settled[index]?.status === "rejected")
         );
-        toast.error(`${failureCount} ${failureCount === 1 ? "title" : "titles"} could not be added.`);
+        toast.error(`${plural(failureCount, "title")} could not be added.`);
         if (successCount > 0) {
           refreshCatalogue();
         }
@@ -1163,7 +1164,7 @@ export function LibraryView({
     if (isSearchingShown || ids.length === 0) return;
 
     setIsSearchingShown(true);
-    const loadingId = toast.loading(`Searching for ${ids.length} ${ids.length === 1 ? singular : label}…`);
+    const loadingId = toast.loading(`Searching for ${plural(ids.length, singular, label)}…`);
     let searchResponse: Response | null = null;
     try {
       const response = await authedFetch(variant === "movies" ? "/api/movies/bulk/search" : "/api/series/bulk/search", {

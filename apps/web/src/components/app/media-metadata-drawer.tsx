@@ -22,6 +22,7 @@ import { Textarea } from "../ui/textarea";
 import { fetchJson, type MetadataLinkPreview, type MetadataSearchResult } from "../../lib/api";
 import { authedFetch } from "../../lib/use-auth";
 import { useUnsavedChanges } from "../../hooks/use-unsaved-changes";
+import { plural } from "../../lib/plural";
 
 export interface MediaMetadataValue {
   originalTitle: string;
@@ -116,7 +117,7 @@ export function MediaMetadataDrawer({
       setLinkPreview(null);
       setPendingMatch(null);
       if (state === "clean") {
-        setMessage(results.length ? `${results.length} match${results.length === 1 ? "" : "es"} found` : "No matches found");
+        setMessage(results.length ? `${plural(results.length, "match")} found` : "No matches found");
       }
     } catch {
       setState("error");

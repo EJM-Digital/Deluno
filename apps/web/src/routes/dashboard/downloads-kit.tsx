@@ -164,10 +164,6 @@ export function ActionButton({
 
 /* ------------------------------------------------------------ wording */
 
-export function plural(count: number, one: string, many = `${one}s`): string {
-  return `${count.toLocaleString("en-AU")} ${count === 1 ? one : many}`;
-}
-
 /** "3.9 MB/s": always a reading, and 0 reads "0 MB/s". */
 export function formatSpeed(mbps: number | null | undefined): string {
   const value = Number.isFinite(mbps) && mbps ? Math.max(0, mbps as number) : 0;

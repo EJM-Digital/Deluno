@@ -5,8 +5,9 @@
  */
 import type { DashboardSummary } from "../../../lib/api";
 import type { SystemOverviewInstance } from "../../../lib/api/types/system-overview";
-import { ago, plural } from "../format";
+import { ago } from "../format";
 import { plainCount, sinceText, sizeText, splitAddress } from "./logic";
+import { plural } from "../../../lib/plural";
 
 export interface Fact {
   label: string;

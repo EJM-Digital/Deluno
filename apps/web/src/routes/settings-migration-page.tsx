@@ -39,6 +39,7 @@ import {
   type MigrationReportOperation
 } from "../lib/api";
 import { formatDateTime, formatShortDate, formatTime, useDisplayPreferences } from "../lib/display-preferences";
+import { plural } from "../lib/plural";
 
 const MIGRATION_FORM_ID = "migration-preview-form";
 
@@ -149,7 +150,7 @@ export function SettingsMigrationPage() {
       setMessage(
         result.report.errors.length > 0
           ? "Migration paused safely. Review the report, then retry — anything already saved is skipped."
-          : `${created} selected ${created === 1 ? "item" : "items"} imported. Anything already present was skipped.`
+          : `${plural(created, "selected item")} imported. Anything already present was skipped.`
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Migration apply failed.");
@@ -342,7 +343,7 @@ export function SettingsMigrationPage() {
               {(rows) => rows.map((operation) => (
                 <ListRow key={operation.id} onClick={() => setOpenOperationId(operation.id)} selected={openOperationId === operation.id}>
                   <ListNameCell name={operation.name} sub={operation.targetType} />
-                  <ListCell primary={operation.reason} secondary={operation.warnings.length ? `${operation.warnings.length} ${operation.warnings.length === 1 ? "warning" : "warnings"}` : undefined} />
+                  <ListCell primary={operation.reason} secondary={operation.warnings.length ? `${plural(operation.warnings.length, "warning")}` : undefined} />
                   <ListCell mobile>
                     <Chip tone={actionTone(operation.action)}>{operation.action}</Chip>
                   </ListCell>

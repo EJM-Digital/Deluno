@@ -11,6 +11,7 @@ import { Field } from "../ui/field";
 import { LIST_TRACK, ListCard, ListCell, ListNameCell, ListRow, ListTable } from "../ui/list-card";
 import { Select } from "../ui/select";
 import { STATUS_PRESENTATION } from "../../lib/status-tones";
+import { plural } from "../../lib/plural";
 
 /** Mirrors `Deluno.Worker.MediaLibraryMembershipItem`. */
 export interface LibraryMembership {
@@ -207,7 +208,7 @@ export function LibraryMembershipCard({
           if (!next) setRemoving(null);
         }}
         title={`Stop wanting it in ${removing?.libraryName ?? "this library"}?`}
-        description={`It holds no file there. It stays in its other ${memberships.length - 1 === 1 ? "library" : "libraries"}.`}
+        description={`It holds no file there. It stays in ${plural(memberships.length - 1, "other library")}.`}
         confirmLabel="Remove from library"
         busy={busy}
         onConfirm={() => {

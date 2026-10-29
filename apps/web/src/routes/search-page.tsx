@@ -40,6 +40,7 @@ import { fetchJson, type IndexerItem, type IntegrationFailure } from "../lib/api
 import { authedFetch } from "../lib/use-auth";
 import { toast } from "../components/shell/toaster";
 import { hasNoSeeders } from "../lib/protocol";
+import { plural } from "../lib/plural";
 
 interface ManualSearchCandidate {
   releaseName: string;
@@ -290,12 +291,12 @@ export function SearchPage() {
       {results !== null ? (
         <ListCard
           title="Results"
-          count={`${visibleResults.length} of ${results.length} release${results.length === 1 ? "" : "s"}`}
+          count={`${visibleResults.length} of ${plural(results.length, "release")}`}
           actions={
             <>
               {namesMatching < results.length ? (
                 <CheckboxRow
-                  label={`Only names with your words (${results.length - namesMatching} other${results.length - namesMatching === 1 ? "" : "s"} hidden)`}
+                  label={`Only names with your words (${plural(results.length - namesMatching, "other")} hidden)`}
                   checked={onlyMatchingNames}
                   onCheckedChange={setOnlyMatchingNames}
                 />

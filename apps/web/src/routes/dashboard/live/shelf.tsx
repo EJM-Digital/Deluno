@@ -30,6 +30,7 @@ import { groupArrivals, type ArrivalGroup } from "./arrival-groups";
 import { useOpenSlots } from "./shelf-slots";
 import { TILE_KEY_ATTRIBUTE, useSlideNeighbours, useTileArrivals } from "./shelf-motion";
 import type { TitleLookup } from "./titles";
+import { plural } from "../../../lib/plural";
 
 /** The header when nothing has come in today and the shelf shows the latest of the last seven days. */
 export const LATEST_ARRIVALS_HEADING = "Nothing yet today · latest arrivals";
@@ -51,7 +52,7 @@ export function arrivedHeading(titles: number): string {
 
 /** "12 titles · 4 upgraded · 54 GB added": what today has brought in. */
 export function arrivedDetail(titles: number, upgraded: number, bytes: number): string {
-  const parts = [`${titles.toLocaleString("en-AU")} ${titles === 1 ? "title" : "titles"}`];
+  const parts = [plural(titles, "title")];
   if (upgraded > 0) parts.push(`${upgraded.toLocaleString("en-AU")} upgraded`);
   if (bytes > 0) parts.push(`${formatBytes(bytes).replace(/.0 /, " ")} added`);
   return parts.join(" · ");

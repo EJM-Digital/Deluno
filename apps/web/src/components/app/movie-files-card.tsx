@@ -20,6 +20,7 @@ import {
   ListRow,
   ListTable
 } from "../ui/list-card";
+import { plural } from "../../lib/plural";
 
 function kindLabel(kind: MovieFileItem["kind"]) {
   return kind === "video" ? "Video" : kind === "subtitle" ? "Subtitle" : "Other";
@@ -115,7 +116,7 @@ export function MovieFilesCard({ movieId }: { movieId: string }) {
 
   // Quality and language edits act on the film's own tracked file, so only that copy offers them.
   const primaryLibraryId = files?.find((file) => file.isPrimary)?.libraryId ?? null;
-  const count = files ? `${files.length} file${files.length === 1 ? "" : "s"}` : undefined;
+  const count = files ? `${plural(files.length, "file")}` : undefined;
 
   return (
     <ListCard title="Files" count={count}>

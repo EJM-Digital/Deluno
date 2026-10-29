@@ -7,6 +7,7 @@ import { ListCard, ListCell, ListNameCell, ListRow, ListTable, ListEmpty, LIST_T
 import { toast } from "../shell/toaster";
 import { fetchJson } from "../../lib/api";
 import { authedFetch } from "../../lib/use-auth";
+import { plural } from "../../lib/plural";
 
 interface LogFileItem {
   name: string;
@@ -95,7 +96,7 @@ export function LogFilesCard() {
   return (
     <ListCard
       title="Log files"
-      count={files ? `${files.length} ${files.length === 1 ? "file" : "files"}, ${formatBytes(files.reduce((sum, file) => sum + file.sizeBytes, 0))} in all` : undefined}
+      count={files ? `${plural(files.length, "file")}, ${formatBytes(files.reduce((sum, file) => sum + file.sizeBytes, 0))} in all` : undefined}
       actions={
         <div className="flex items-center gap-2">
           <Button type="button" variant="outline" size="sm" onClick={() => void load()}>

@@ -1,3 +1,4 @@
+import { pluralWord } from "../../lib/plural";
 import { removalDownloadSentence } from "../../lib/removal-download-words";
 import * as Dialog from "../ui/dialog-primitives";
 import { AlertTriangle, ListMinus } from "lucide-react";
@@ -38,7 +39,7 @@ export function BulkRemoveDialog({
     if (open) setAddImportListExclusion(true);
   }, [open]);
 
-  const noun = `${mediaLabel}${count === 1 ? "" : "s"}`;
+  const noun = count === 1 ? mediaLabel : pluralWord(mediaLabel);
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>

@@ -1,4 +1,5 @@
 import { toast } from "../components/shell/toaster";
+import { plural } from "./plural";
 
 /** What the move/reassign API returns about titles it would not move (#1078). */
 export interface MoveResult {
@@ -25,7 +26,7 @@ export function moveRefusalLines(result: MoveResult): string[] {
 export function toastMoveRefusals(lines: string[]) {
   if (lines.length === 0) return;
   toast.error(
-    `${lines.length} title${lines.length === 1 ? "" : "s"} not moved`,
+    `${plural(lines.length, "title")} not moved`,
     {
       duration: Infinity,
       description: (

@@ -4,6 +4,7 @@
  */
 import type { HealthCheckResultItem } from "../../../lib/api";
 import { formatBytes, NO_SIZE } from "../../../lib/utils";
+import { plural } from "../../../lib/plural";
 
 export type HealthArea = "library" | "downloads" | "connections" | "processing" | "storage" | "security" | "machine";
 
@@ -104,7 +105,7 @@ export function span(ms: number): string {
   if (minutes < 60) return `${minutes} min`;
   if (minutes < 1440) return `${Math.round(minutes / 60)} h`;
   const days = Math.round(minutes / 1440);
-  return `${days} ${days === 1 ? "day" : "days"}`;
+  return `${plural(days, "day")}`;
 }
 
 /** The host and port of an address ("http://192.168.1.10:5099/" gives 192.168.1.10 and 5099). */

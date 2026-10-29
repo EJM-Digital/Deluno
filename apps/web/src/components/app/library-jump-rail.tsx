@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { VirtualItem, Virtualizer } from "@tanstack/react-virtual";
 import type { JumpBucket } from "../../lib/library-buckets";
 import { cn } from "../../lib/utils";
+import { plural } from "../../lib/plural";
 
 /**
  * The rail beside the shelf.
@@ -93,7 +94,7 @@ export function JumpRail({
               inert
                 ? `No titles under ${bucket.label}`
                 : loaded
-                  ? `${bucket.label} — ${bucket.count.toLocaleString()} ${bucket.count === 1 ? "title" : "titles"}`
+                  ? `${bucket.label} — ${plural(bucket.count, "title")}`
                   : `${bucket.label} — still loading`
             }
             onClick={() => {

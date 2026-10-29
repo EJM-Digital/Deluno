@@ -8,6 +8,7 @@ import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
 
 import { SignedApiLink } from "../../components/app/signed-api-link";
+import { plural } from "../../lib/plural";
 export type TrackerKind = "all" | "public" | "semi-private" | "private";
 
 export function privacyWords(privacy: string) {
@@ -70,7 +71,7 @@ export function SiteListPanel({ onDone }: { onDone: () => void }) {
       if (result.status === "failed") {
         setMessage(result.error ?? "Deluno could not reach the public Prowlarr repository. Nothing was changed; try again in a moment.");
       } else {
-        setMessage(result.updatedTrackerIds.length > 0 ? `Got ${result.updatedTrackerIds.length} newer site file${result.updatedTrackerIds.length === 1 ? "" : "s"}.` : "The site files are already up to date.");
+        setMessage(result.updatedTrackerIds.length > 0 ? `Got ${plural(result.updatedTrackerIds.length, "newer site file")}.` : "The site files are already up to date.");
         onDone();
       }
     } catch (error) {

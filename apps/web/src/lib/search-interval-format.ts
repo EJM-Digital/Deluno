@@ -1,3 +1,4 @@
+import { plural } from "./plural";
 /**
  * Plain words for a library search interval (#984). The value on the wire is
  * always minutes — this only decides how to say it: minutes below an hour,
@@ -14,7 +15,7 @@ export function formatSearchInterval(minutes: number): string {
     return "Daily";
   }
   if (minutes < 60 || minutes % 60 !== 0) {
-    return `Every ${minutes} minute${minutes === 1 ? "" : "s"}`;
+    return `Every ${plural(minutes, "minute")}`;
   }
   const hours = minutes / 60;
   return hours === 1 ? "Every hour" : `Every ${hours} hours`;

@@ -28,6 +28,7 @@ import { cn } from "../../lib/utils";
 import { FilterChips, MoreFilters } from "../ui/filter-chips";
 import type { ActivityEventItem } from "../../lib/api";
 import { eventLabel } from "../../lib/activity-format";
+import { plural } from "../../lib/plural";
 
 /* ── Types ───────────────────────────────────────────────────────── */
 type Severity = "info" | "success" | "warning" | "error";
@@ -196,7 +197,7 @@ export function useAuditTimeline(events: ActivityEventItem[], liveEvents: Timeli
     counts,
     liveIds,
     /** The card's count: how many events, and whether a filter is narrowing them. */
-    countLabel: `${filtered.length} event${filtered.length !== 1 ? "s" : ""}${query || catFilter !== "all" || sevFilter !== "all" ? " matching" : ""}`
+    countLabel: `${plural(filtered.length, "event")}${query || catFilter !== "all" || sevFilter !== "all" ? " matching" : ""}`
   };
 }
 

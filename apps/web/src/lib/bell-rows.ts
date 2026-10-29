@@ -30,6 +30,7 @@ import {
   type AlertAction,
   type AlertActions
 } from "./alert-actions";
+import { plural } from "./plural";
 
 export type BellSection = "media" | "deluno" | "updates";
 
@@ -66,10 +67,6 @@ export const OLD_AFTER_MS = 24 * 60 * 60 * 1000;
 export const PILE_FROM = 3;
 
 const HEALTH = "/system";
-
-function plural(count: number, one: string, many = `${one}s`): string {
-  return `${count.toLocaleString("en-AU")} ${count === 1 ? one : many}`;
-}
 
 function link(id: string, label: string, to: string, hint: string): AlertAction {
   return { id, label, hint, to };

@@ -15,6 +15,7 @@
  * first line, and anything genuinely different declared once.
  */
 import { fetchJson } from "./api";
+import { plural } from "./plural";
 
 export type MediaVariant = "movies" | "shows";
 
@@ -231,9 +232,12 @@ export function describeCondition(condition: FilterCondition, field: FilterField
   const label = field?.label ?? condition.field;
   const operator = OPERATOR_LABELS[condition.operator] ?? condition.operator;
   if (!operatorTakesValues(condition.operator)) return `${label} ${operator}`;
+  // "30 days", "1 day": the number and its unit come from the shared plural helper.
+  if (isRelativeOperator(condition.operator) && Number.isFinite(Number(condition.values[0]))) {
+    return `${label} ${operator} ${plural(Number(condition.values[0]), "day")}`;
+  }
   const values = condition.values.join(", ");
-  const unit = isRelativeOperator(condition.operator)
-    ? ` day${condition.values[0] === "1" ? "" : "s"}`
+  const unit = isRelativeOperator(condition.operator) ? " days"
     : field?.valueKind === "gigabytes" ? " GB"
     : field?.valueKind === "minutes" ? " min"
     : "";

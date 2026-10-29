@@ -15,6 +15,7 @@ import { PresetField } from "../components/ui/preset-field";
 import { authedFetch } from "../lib/use-auth";
 import { fetchJson, type ApiKeyItem, type CreatedApiKeyResponse } from "../lib/api";
 import { formatDateTime, type DisplayPreferences, useDisplayPreferences } from "../lib/display-preferences";
+import { plural } from "../lib/plural";
 
 interface ApiKeyScopeTemplate {
   id: string;
@@ -279,7 +280,7 @@ curl -H "Authorization: Bearer deluno_..." http://127.0.0.1:5099/api/integration
         </div>
       </ListCard>
 
-      <ListCard title="Active keys" count={apiKeys.length ? `${apiKeys.length} ${apiKeys.length === 1 ? "key" : "keys"}` : undefined}>
+      <ListCard title="Active keys" count={apiKeys.length ? `${plural(apiKeys.length, "key")}` : undefined}>
         {apiKeys.length === 0 ? (
           <ListEmpty
             title="No API keys yet"

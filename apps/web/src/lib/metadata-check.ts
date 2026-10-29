@@ -1,4 +1,5 @@
 import { ApiRequestError, type IntegrationFailure, type MetadataProviderStatus, type MetadataTestResponse } from "./api";
+import { plural } from "./plural";
 
 /**
  * What the Check now row on Metadata maintenance says (#1090).
@@ -57,7 +58,7 @@ export function describeMetadataCheck(
     }
 
     return {
-      primary: `${test.resultCount} ${test.resultCount === 1 ? "match" : "matches"} for “${sampleTitle}”`,
+      primary: `${plural(test.resultCount, "match")} for “${sampleTitle}”`,
       secondary: "Deluno can match titles and collect their details.",
       tone: "ok",
       chip: "Working"

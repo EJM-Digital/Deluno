@@ -57,6 +57,7 @@ import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
 import { formatSearchInterval } from "../lib/search-interval-format";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
+import { plural } from "../lib/plural";
 
 // #984: minutes are the unit on the wire so the interval can go below an
 // hour (Huntarr-style hunting cadence). The presets stay in plain words;
@@ -546,7 +547,7 @@ export function SearchCyclesPage() {
         </ListCard>
       ) : null}
 
-      {view !== "failed" ? <ListCard title={view === "missing" ? "Missing search schedules" : view === "upgrades" ? "Upgrade search schedules" : "Library schedules"} actions={<MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />} count={scheduleLibraries.length ? `${scheduleLibraries.length} ${scheduleLibraries.length === 1 ? "library" : "libraries"}` : undefined}>
+      {view !== "failed" ? <ListCard title={view === "missing" ? "Missing search schedules" : view === "upgrades" ? "Upgrade search schedules" : "Library schedules"} actions={<MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />} count={scheduleLibraries.length ? `${plural(scheduleLibraries.length, "library")}` : undefined}>
         {scheduleLibraries.length === 0 ? (
           <ListEmpty title={libraries.length === 0 ? "No libraries yet" : view === "missing" ? "No libraries search for missing titles" : "No libraries search for upgrades"} description={libraries.length === 0 ? "Create a library first, then Deluno can search it on a schedule." : "Open a library's automation settings to turn this search on."} />
         ) : (

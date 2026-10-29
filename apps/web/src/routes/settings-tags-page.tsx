@@ -25,6 +25,7 @@ import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { cn } from "../lib/utils";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
+import { plural } from "../lib/plural";
 
 const COLORS = ["slate", "emerald", "teal", "blue", "violet", "amber", "rose"] as const;
 
@@ -156,7 +157,7 @@ export function SettingsTagsPage() {
     try {
       const response = await authedFetch("/api/tags/delete-unused", { method: "POST" });
       if (!response.ok) throw new Error(await readErrorText(response, "Unused tags could not be deleted."));
-      toast.success(`Deleted ${unused.length} unused tag${unused.length === 1 ? "" : "s"}`);
+      toast.success(`Deleted ${plural(unused.length, "unused tag")}`);
       setConfirmRemoveUnused(false);
       revalidator.revalidate();
     } catch (error) {
@@ -184,7 +185,7 @@ export function SettingsTagsPage() {
         }
       />
 
-      <ListCard title={tags.length ? `${tags.length} ${tags.length === 1 ? "tag" : "tags"}` : "0 tags"} titleCase={false}>
+      <ListCard title={tags.length ? `${plural(tags.length, "tag")}` : "0 tags"} titleCase={false}>
         {tags.length === 0 ? (
           <ListEmpty
             title="No tags yet"
@@ -290,7 +291,7 @@ export function SettingsTagsPage() {
       <ConfirmDialog
         open={confirmRemoveUnused}
         onOpenChange={setConfirmRemoveUnused}
-        title={`Delete ${unused.length} unused tag${unused.length === 1 ? "" : "s"}?`}
+        title={`Delete ${plural(unused.length, "unused tag")}?`}
         description="These tags are not on any title, connection or rule. This cannot be undone."
         confirmLabel="Delete unused tags"
         busy={busy}

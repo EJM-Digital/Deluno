@@ -115,6 +115,7 @@ import { readAlternateTitles, readArtworkExtras, readReleaseFactsByCountry, sele
 import { useTitleLive, type TitleEventGroups, type TitleGroups } from "../lib/use-title-live";
 import { protocolGroup } from "../lib/protocol";
 import { parseSearchCandidates, searchCandidateCount } from "../lib/search-history";
+import { plural } from "../lib/plural";
 
 /**
  * What Deluno recorded about the copy it holds: the release it came from, what
@@ -463,7 +464,7 @@ export function MovieDetailPage() {
   const nextStep = importCases.length
     ? {
         eyebrow: "Needs attention",
-        title: `Review ${importCases.length} import issue${importCases.length === 1 ? "" : "s"}`,
+        title: `Review ${plural(importCases.length, "import issue")}`,
         description: "Something Deluno brought in could not be filed. It needs a decision before this movie is settled.",
         action: "Open import issues",
         onAction: () => setSection("history")
@@ -660,8 +661,8 @@ export function MovieDetailPage() {
         const found = payload.candidates?.length ?? 0;
         setSection("destination");
         if (found) {
-          toast.success(`${found} release${found === 1 ? "" : "s"} compared. Choose one below.`, failureNotice ? { description: failureNotice } : undefined);
-          setSearchNote({ state: "done", tone: "success", title: `${found} release${found === 1 ? "" : "s"} compared. Choose one below.`, description: failureNotice ?? undefined });
+          toast.success(`${plural(found, "release")} compared. Choose one below.`, failureNotice ? { description: failureNotice } : undefined);
+          setSearchNote({ state: "done", tone: "success", title: `${plural(found, "release")} compared. Choose one below.`, description: failureNotice ?? undefined });
         } else {
           const explained = describeSearchReason(payload.reason, payload.summary ?? "No releases matched this movie's Library Profile.");
           const action = explained.action;
@@ -957,7 +958,7 @@ export function MovieDetailPage() {
                   item={{ monitored: movie.monitored && !actingLibraryNotWanted, wantedStatus: wantedItem?.wantedStatus }}
                   type="movie"
                 />
-                {importCases.length ? <Badge variant="warning">{importCases.length} import issue{importCases.length === 1 ? "" : "s"}</Badge> : null}
+                {importCases.length ? <Badge variant="warning">{plural(importCases.length, "import issue")}</Badge> : null}
                 {movie.genres?.split(",").map((genre) => <span key={genre} className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">{genre.trim()}</span>)}
               </div>
               <TitleTagsEditor id={movie.id} mediaType="movies" metadataJson={movie.metadataJson} onSaved={() => revalidator.revalidate()} />
@@ -1211,7 +1212,7 @@ export function MovieDetailPage() {
           {releaseCandidates.length ? (
             <ListCard
               title="Choose a release"
-              count={`${visibleCandidates.length} of ${releaseCandidates.length} candidate${releaseCandidates.length === 1 ? "" : "s"}`}
+              count={`${visibleCandidates.length} of ${plural(releaseCandidates.length, "candidate")}`}
               actions={<ReleaseFilterMenus protocols={candidateProtocolOptions} protocol={candidateProtocolFilter} onProtocolChange={setCandidateProtocolFilter} indexers={candidateIndexerOptions} indexer={candidateIndexerFilter} onIndexerChange={setCandidateIndexerFilter} />}
             >
               <ListTable
@@ -1508,7 +1509,7 @@ export function MovieDetailPage() {
           </ListCard>
 
           {origins.length ? (
-            <ListCard title="How this movie was added" count={`${origins.length} import list${origins.length === 1 ? "" : "s"}`}>
+            <ListCard title="How this movie was added" count={`${plural(origins.length, "import list")}`}>
               <ListTable
                 chevron={false}
                 listId="movie-origins"
@@ -1617,7 +1618,7 @@ export function MovieDetailPage() {
 
           <ListCard
             title="Sent to downloads"
-            count={movieDispatches.length ? `${movieDispatches.length} dispatch${movieDispatches.length === 1 ? "" : "es"}` : undefined}
+            count={movieDispatches.length ? `${plural(movieDispatches.length, "dispatch")}` : undefined}
             actions={
               movieDispatches.length ? (
                 <Button asChild type="button" size="sm" variant="outline">

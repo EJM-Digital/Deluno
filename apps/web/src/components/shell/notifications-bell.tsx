@@ -43,6 +43,7 @@ import { activityLinkForEvent, activityLinkForStatus } from "../../lib/activity-
 import { eventLabel, foldRoutineJobEvents, formatEventAge, mattersToTheBell } from "../../lib/activity-format";
 import { Chip } from "../ui/chip";
 import { TOPBAR_ICON, TOPBAR_ICON_BUTTON } from "../../layouts/topbar-tokens";
+import { plural } from "../../lib/plural";
 
 const LIMIT = 10;
 
@@ -208,7 +209,7 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
         onClick={() => setOpen((current) => !current)}
-        aria-label={total > 0 ? `Notifications — ${total} ${total === 1 ? "thing needs" : "things need"} a look` : "Notifications"}
+        aria-label={total > 0 ? `Notifications — ${plural(total, "thing needs", "things need")} a look` : "Notifications"}
       >
         <Bell className={TOPBAR_ICON} strokeWidth={1.75} />
         {total > 0 ? (

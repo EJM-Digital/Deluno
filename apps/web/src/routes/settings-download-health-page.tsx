@@ -59,6 +59,7 @@ import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save
 import { formatEventAge } from "../lib/activity-format";
 import { activityLinkForStatus } from "../lib/activity-history";
 import { useDisplayPreferences } from "../lib/display-preferences";
+import { plural } from "../lib/plural";
 
 const RULE_KIND_COPY: Record<string, { label: string; description: ReactNode; thresholdLabel?: string; thresholdUnit?: string; thresholdHelp?: string }> = {
   "no-progress": {
@@ -448,7 +449,7 @@ function ConnectivityCheckCard({
         <div className="flex flex-wrap items-center justify-between gap-2 text-(length:--type-body-sm) text-muted-foreground">
           <span>
             {lastSkip
-              ? `Last skipped a pass ${formatEventAge(lastSkip.createdUtc, preferences)}, ${recentSkipCount} time${recentSkipCount === 1 ? "" : "s"} in the last 24 hours.`
+              ? `Last skipped a pass ${formatEventAge(lastSkip.createdUtc, preferences)}, ${plural(recentSkipCount, "time")} in the last 24 hours.`
               : "Has not skipped a pass."}
           </span>
           {lastSkip ? (
@@ -739,7 +740,7 @@ export function SettingsDownloadHealthPage() {
       const response = await authedFetch("/api/download-health/purge-strikes", { method: "POST" });
       if (!response.ok) throw new Error(await readErrorText(response, "Could not clear strikes."));
       const result = await response.json() as { purgedCount: number };
-      toast.success(result.purgedCount > 0 ? `Cleared ${result.purgedCount} recorded strike${result.purgedCount === 1 ? "" : "s"}` : "There was nothing to clear");
+      toast.success(result.purgedCount > 0 ? `Cleared ${plural(result.purgedCount, "recorded strike")}` : "There was nothing to clear");
       setConfirmPurge(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not clear strikes.");
@@ -755,7 +756,7 @@ export function SettingsDownloadHealthPage() {
       <PageToolbar tabs={automationNavItems} actions={<PageToolbarAction onClick={() => openRule(null)}>New rule</PageToolbarAction>} />
 
       <ListCard
-        title={rules.length ? `${rules.length} ${rules.length === 1 ? "rule" : "rules"}` : "0 rules"}
+        title={rules.length ? `${plural(rules.length, "rule")}` : "0 rules"}
         titleCase={false}
       >
         {rules.length === 0 ? (
@@ -779,7 +780,7 @@ export function SettingsDownloadHealthPage() {
               <ListRow key={rule.id} onClick={() => openRule(rule)} selected={mode.kind === "edit" && mode.id === rule.id}>
                 <ListNameCell name={kindLabel(rule.kind)} sub={rule.enabled ? "On" : "Off"} />
                 <ListCell primary={scopeLabel(rule)} secondary={`${rule.minCompletionPercent}-${rule.maxCompletionPercent}% complete`} />
-                <ListCell primary={`${rule.strikeLimit} strike${rule.strikeLimit === 1 ? "" : "s"}`} secondary={`Checked every ${settings.downloadHealthDefaultStrikeWindowMinutes} min`} />
+                <ListCell primary={`${plural(rule.strikeLimit, "strike")}`} secondary={`Checked every ${settings.downloadHealthDefaultStrikeWindowMinutes} min`} />
                 <ListCell
                   primary={actionLabel(rule.actionPreset)}
                   secondary={rule.privateAction === "move-and-replace" ? "Private torrents keep seeding instead" : undefined}
@@ -790,7 +791,7 @@ export function SettingsDownloadHealthPage() {
         )}
       </ListCard>
 
-      <ListCard title="Ignored downloads" count={ignoreEntries.length ? `${ignoreEntries.length} entry${ignoreEntries.length === 1 ? "" : "ies"}` : undefined}>
+      <ListCard title="Ignored downloads" count={ignoreEntries.length ? plural(ignoreEntries.length, "entry") : undefined}>
         <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
           <p className="text-(length:--type-body-sm) text-muted-foreground">
             A download matching any of these is exempt from every rule above - never struck, whatever it does. A tracker domain is the host the torrent announces to (a private tracker's own domain, subdomains included) or an indexer's name; a tag is one the client put on the torrent, or one you gave its title or indexer in Deluno.

@@ -10,6 +10,7 @@ import {
   type MetadataTestResponse
 } from "../../lib/api";
 import { describeMetadataCheck } from "../../lib/metadata-check";
+import { plural } from "../../lib/plural";
 
 const REFRESH_JOBS = [
   {
@@ -114,9 +115,9 @@ export function MetadataMaintenanceCard({ onRefresh }: { onRefresh?: () => void 
         results.length === 1
           ? results[0].message
           : remaining > 0
-            ? `Queued ${enqueued.toLocaleString()} ${enqueued === 1 ? "title" : "titles"}. Another ${remaining.toLocaleString()} still to go — Deluno keeps working through them in the background.`
+            ? `Queued ${plural(enqueued, "title")}. Another ${remaining.toLocaleString()} still to go — Deluno keeps working through them in the background.`
             : enqueued
-              ? `Queued ${enqueued.toLocaleString()} ${enqueued === 1 ? "title" : "titles"}. That is everything that needs refreshing.`
+              ? `Queued ${plural(enqueued, "title")}. That is everything that needs refreshing.`
               : "Nothing needs refreshing.";
       setJobResult((current) => ({ ...current, [job.key]: summary }));
       onRefresh?.();
