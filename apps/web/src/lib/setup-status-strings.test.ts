@@ -144,3 +144,22 @@ describe("the library step counts its libraries in words (#1423)", () => {
     expect(step(buildSetupStatus(input({ libraries: [...libraries] })), "library").status).toBe(status);
   });
 });
+
+describe("the Media Management step wording", () => {
+  const movies = { mediaType: "movies", rootPath: "/media/movies" } as LibraryItem;
+  const tv = { mediaType: "tv", rootPath: "/media/tv" } as LibraryItem;
+  const broken = { mediaType: "movies", rootPath: " " } as LibraryItem;
+
+  it("reads Not configured, n/m libraries ready and x movie library - y TV library, each with its own action, link and attention sentence", () => {
+    const cases = [
+      ["no library", [], "Not configured", "not-started", "Configure media management", "Create at least one movie or TV library and choose its final folder."],
+      ["one of two ready", [movies, broken], "1/2 libraries ready", "failed", "Finish media management", "Finish every library's destination, naming, and import workflow before treating media management as ready."],
+      ["every library ready", [movies, tv], "1 movie library - 1 TV library", "complete", "Review media management", undefined]
+    ] as const;
+    for (const [, libraries, status, state, action, attentionText] of cases) {
+      const library = step(buildSetupStatus(input({ libraries: [...libraries] })), "library");
+      expect(library).toMatchObject({ status, state, action, to: "/settings/libraries" });
+      if (attentionText) expect(library.attentionText).toBe(attentionText);
+    }
+  });
+});
