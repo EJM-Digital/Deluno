@@ -130,14 +130,14 @@ either is out of date, so they cannot drift from the baseline. `coverage-areas.j
 
 | Area | Files | At 100% line and branch | Below | Average line | Average branch | Issue |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| apps/web | 412 | 98 | 314 | 73.5% | 62.8% | #1329 |
+| apps/web | 411 | 98 | 313 | 73.5% | 62.8% | #1329 |
 | scripts | 14 | 1 | 13 | 78.9% | 85.9% | #1268 |
 | src | 4 | 1 | 3 | 94.3% | 88.5% | #1268 |
 | src/Deluno.Api | 47 | 23 | 24 | 95.2% | 72.2% | #1297 |
 | src/Deluno.Companions | 10 | 1 | 9 | 68.1% | 50.7% | #1295 |
 | src/Deluno.Connections | 46 | 21 | 25 | 88.7% | 79.8% | #1301 |
 | src/Deluno.Contracts | 98 | 32 | 66 | 90.8% | 84.4% | #1296 |
-| src/Deluno.Filesystem | 37 | 7 | 30 | 76.9% | 65.4% | #1296 |
+| src/Deluno.Filesystem | 37 | 7 | 30 | 76.9% | 64.1% | #1296 |
 | src/Deluno.Host | 1 | 0 | 1 | 0.0% | 0.0% | #1302 |
 | src/Deluno.Infrastructure | 44 | 11 | 33 | 85.9% | 73.8% | #1296 |
 | src/Deluno.Intake | 12 | 7 | 5 | 92.7% | 66.3% | #1296 |
@@ -155,7 +155,7 @@ either is out of date, so they cannot drift from the baseline. `coverage-areas.j
 | src/Deluno.Security | 43 | 15 | 28 | 84.0% | 66.3% | #1302 |
 | src/Deluno.Series | 110 | 92 | 18 | 94.2% | 75.0% | #1296 |
 | src/Deluno.Worker | 135 | 68 | 67 | 88.5% | 65.3% | #1296 |
-| **All** | 1789 | 835 | 954 | 87.2% | 69.8% | |
+| **All** | 1788 | 835 | 953 | 87.1% | 69.8% | |
 
 Averages are per file, from the checked-in baseline (the floor the ratchet holds each file to), not weighted by size.
 

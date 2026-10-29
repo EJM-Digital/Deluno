@@ -98,10 +98,6 @@
       "line": 100,
       "branch": 100
     },
-    "apps/web/src/components/app/how-this-works.tsx": {
-      "line": 93.75,
-      "branch": 75
-    },
     "apps/web/src/components/app/job-drawer.tsx": {
       "line": 83.33,
       "branch": 88.23
@@ -2648,7 +2644,7 @@
     },
     "src/Deluno.Filesystem/SupportedVideoExtensions.cs": {
       "line": 100,
-      "branch": 100
+      "branch": null
     },
     "src/Deluno.Filesystem/UnmatchedImportGiveUpService.cs": {
       "line": 85,

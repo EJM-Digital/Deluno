@@ -170,4 +170,29 @@ public sealed class MovieFilePathSafetyTests
         Assert.False(MovieFilePathSafety.IsSharedFolder(heat, [root], [Path.Combine(root, "Drama", "Ronin.mkv"), heat]));
         Assert.True(MovieFilePathSafety.IsSharedFolder(heat, [root], [], libraryStillExists: false));
     }
+
+    [Fact]
+    public void A_path_the_system_cannot_read_as_a_path_is_refused_not_thrown()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "Dune");
+        Assert.False(MovieFilePathSafety.TryResolveWithinFolder(folder, "bad\u0000name.mkv", out var resolved));
+        Assert.Equal(string.Empty, resolved);
+        Assert.False(MovieFilePathSafety.TryResolveWithinFolder("bad\u0000folder", Path.Combine(folder, "a.mkv"), out _));
+    }
+
+    [Fact]
+    public void A_file_with_no_folder_is_not_filed_flat_and_its_folder_counts_as_shared()
+    {
+        var root = Path.GetPathRoot(Path.GetTempPath())!;
+        Assert.False(MovieFilePathSafety.IsFiledFlat(root, [Path.GetTempPath()]));
+        Assert.True(MovieFilePathSafety.IsSharedFolder(root, [Path.GetTempPath()], []));
+    }
+
+    [Fact]
+    public void A_tracked_path_that_cannot_be_read_is_skipped_when_judging_whether_a_folder_is_shared()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "movies");
+        var heat = Path.Combine(root, "Heat (1995)", "Heat.mkv");
+        Assert.False(MovieFilePathSafety.IsSharedFolder(heat, [root], ["bad\u0000name.mkv", "", Path.Combine(root, "Ronin (1998)", "Ronin.mkv")]));
+    }
 }

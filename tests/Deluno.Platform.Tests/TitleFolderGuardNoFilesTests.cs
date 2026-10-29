@@ -31,4 +31,22 @@ public sealed class TitleFolderGuardNoFilesTests
         Assert.Equal("no-files", target.Code);
         Assert.Equal("There is no file on record for this title yet, so there is no folder to rename.", target.Message);
     }
+
+    [Fact]
+    public async Task A_show_whose_files_share_no_folder_at_all_has_no_folder_of_its_own_to_rename()
+    {
+        var target = await TitleFolderGuard.ForSeriesAsync([@"D:\Shows\Alpha\S01E01.mkv", @"E:\Other\Beta\S01E02.mkv"], Roots, Nobody, default);
+
+        Assert.False(target.IsSafe);
+        Assert.Equal("no-files", target.Code);
+    }
+
+    [Fact]
+    public async Task A_film_filed_straight_in_the_top_folder_of_a_drive_is_refused_and_never_renamed()
+    {
+        var target = await TitleFolderGuard.ForMovieAsync("/Heat.mkv", Roots, Nobody, default);
+
+        Assert.False(target.IsSafe);
+        Assert.NotEqual("no-files", target.Code);
+    }
 }
