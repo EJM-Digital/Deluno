@@ -269,3 +269,53 @@ test('the SDK source compiles under strict tsc, the check typecheck:sdk runs in 
   assert.equal(run.status, 0, `tsc reported:
 ${run.stdout}${run.stderr}`);
 });
+
+test('the client uses the fetch it is given, and globalThis.fetch when none is given', async () => {
+  const realFetch = globalThis.fetch;
+  const seen = [];
+  globalThis.fetch = async (url) => { seen.push(url); return new Response('{"ok":true}', { status: 200 }); };
+  try {
+    const reply = await new DelunoClient({ baseUrl: 'http://deluno.example', apiKey: 'deluno_example_key' }).automationSummary();
+    assert.deepEqual(reply, { ok: true });
+    assert.deepEqual(seen, ['http://deluno.example/api/v1/automation/summary']);
+    const { calls, fetch } = recorder();
+    await clientOn('http://deluno.example', fetch).automationSummary();
+    assert.equal(calls.length, 1);
+    assert.equal(seen.length, 1, 'the injected fetch took the call, globalThis.fetch did not');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('a non-JSON success body is wrapped as {message}, an empty success body returns undefined and a non-JSON error body still throws DelunoApiError', async () => {
+  const wrapped = await clientOn('http://deluno.example', recorder(() => new Response('all good', { status: 200 })).fetch).automationSummary();
+  assert.deepEqual(wrapped, { message: 'all good' });
+  const empty = await clientOn('http://deluno.example', recorder(() => new Response('', { status: 200 })).fetch).automationSummary();
+  assert.equal(empty, undefined);
+  await assert.rejects(
+    clientOn('http://deluno.example', recorder(() => new Response('<html>bad gateway</html>', { status: 502 })).fetch).automationSummary(),
+    (error) => error instanceof DelunoApiError && error.status === 502 && error.body.message === '<html>bad gateway</html>');
+});
+
+test('a network failure propagates unchanged and is not turned into a DelunoApiError', async () => {
+  const failure = new TypeError('fetch failed');
+  await assert.rejects(
+    clientOn('http://deluno.example', async () => { throw failure; }).automationSummary(),
+    (error) => error === failure && !(error instanceof DelunoApiError));
+});
+
+test('listReleasePreferencePlans and getReleasePreferencePlan ask the plan routes with the media type, plan id and version encoded', async () => {
+  const { calls, fetch } = recorder(() => new Response('[]', { status: 200 }));
+  const client = clientOn('http://deluno.example', fetch);
+  await client.listReleasePreferencePlans();
+  await client.listReleasePreferencePlans('tv shows');
+  await client.getReleasePreferencePlan('quality-profile/abc');
+  await client.getReleasePreferencePlan('quality-profile/abc', 'v 1/2');
+  assert.deepEqual(calls.map((call) => call.url), [
+    'http://deluno.example/api/v1/release-preferences/plans',
+    'http://deluno.example/api/v1/release-preferences/plans?mediaType=tv%20shows',
+    'http://deluno.example/api/v1/release-preferences/plans/quality-profile%2Fabc',
+    'http://deluno.example/api/v1/release-preferences/plans/quality-profile%2Fabc?version=v%201%2F2'
+  ]);
+  assert.ok(calls.every((call) => call.method === 'GET'));
+});
