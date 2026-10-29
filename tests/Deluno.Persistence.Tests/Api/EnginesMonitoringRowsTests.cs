@@ -107,4 +107,22 @@ public sealed class EnginesMonitoringRowsTests
         Assert.Single(oneRow);
         Assert.Equal("Searched for Beta", oneRow[0].GetProperty("message").GetString());
     }
+
+    [Fact]
+    public async Task A_severity_filter_finds_the_one_error_among_a_hundred_and_fifty_newer_rows_and_leaves_no_next_page()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var start = DateTimeOffset.UtcNow.AddHours(-1);
+        var rows = new List<string> { $"('old-error', 'grab.failed', 'The one error', NULL, NULL, NULL, '{Iso(start)}')" };
+        for (var i = 1; i <= 150; i++) rows.Add($"('ok{i}', 'search.completed', 'Fine {i}', NULL, NULL, NULL, '{Iso(start.AddSeconds(i))}')");
+        await ExecuteAsync(app, DelunoDatabaseNames.Jobs,
+            "INSERT INTO activity_events (id, category, message, details_json, related_entity_type, related_entity_id, created_utc) VALUES " + string.Join(", ", rows) + ";");
+
+        var page = await app.Client.GetFromJsonAsync<JsonElement>("/api/monitoring/diagnostics?severity=error&pageSize=100");
+
+        var item = Assert.Single(page.GetProperty("items").EnumerateArray());
+        Assert.Equal("The one error", item.GetProperty("message").GetString());
+        Assert.Equal("error", item.GetProperty("severity").GetString());
+        Assert.True(page.GetProperty("nextPageToken").ValueKind is JsonValueKind.Null || string.IsNullOrEmpty(page.GetProperty("nextPageToken").GetString()));
+    }
 }

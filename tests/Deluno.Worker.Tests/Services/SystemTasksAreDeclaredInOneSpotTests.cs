@@ -137,6 +137,35 @@ public sealed class SystemTasksAreDeclaredInOneSpotTests
     }
 
     /// <summary>
+    /// The ten passes that belong to their own services are declared in the one list and claimed by that service, not by the planner.
+    /// </summary>
+    [Theory]
+    [InlineData(SystemTasks.HealthChecks, "src/Deluno.Worker/HealthChecks/HealthCheckHostedService.cs")]
+    [InlineData(SystemTasks.ConnectionsCheck, "src/Deluno.Worker/Connections/RegularConnectionCheckService.cs")]
+    [InlineData(SystemTasks.ProcessorHealth, "src/Deluno.Worker/Services/ProcessorHealthWatcher.cs")]
+    [InlineData(SystemTasks.DownloadDispatchPolling, "src/Deluno.Jobs/Data/DownloadDispatchPollingHostedService.cs")]
+    [InlineData(SystemTasks.Backup, "src/Deluno.Api/Backup/DelunoBackupService.cs")]
+    [InlineData(SystemTasks.RankingModelTraining, "src/Deluno.Integrations/Search/RankingModelTrainingHostedService.cs")]
+    [InlineData(SystemTasks.ImportRecoveryRetention, "src/Deluno.Recovery/Services/ImportRecoveryRetentionService.cs")]
+    [InlineData(SystemTasks.SceneMappingRefresh, "src/Deluno.Series/Services/SceneMappingRefreshHostedService.cs")]
+    [InlineData(SystemTasks.EpisodeGroupRefresh, "src/Deluno.Series/Services/EpisodeGroupRefreshHostedService.cs")]
+    [InlineData(SystemTasks.DatabaseIntegrity, "src/Deluno.Api/System/SystemLogAndDatabasesEndpointRouteBuilderExtensions.cs")]
+    public void A_pass_that_belongs_to_its_own_service_is_declared_and_claimed_there_and_not_by_the_planner(string key, string service)
+    {
+        var root = RepositoryRoot();
+        var constant = key switch
+        {
+            SystemTasks.Backup => nameof(SystemTasks.Backup),
+            SystemTasks.DownloadDispatchPolling => nameof(SystemTasks.DownloadDispatchPolling),
+            _ => ConstantName(key)
+        };
+
+        Assert.Contains(SystemTasks.All, task => task.Key == key);
+        Assert.Contains($"SystemTasks.{constant}", File.ReadAllText(Path.Combine(root, service)), StringComparison.Ordinal);
+        Assert.DoesNotContain($"SystemTasks.{constant}", File.ReadAllText(Path.Combine(root, "src", "Deluno.Worker", "Services", "WorkPlanner.cs")), StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// "Retry failed grabs" was claimed every two minutes and never retried
     /// anything: it waited for a retry window nothing opened (#621). A title
     /// whose grab failed is searched again on its library's schedule, so no

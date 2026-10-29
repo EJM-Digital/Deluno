@@ -1015,6 +1015,26 @@ public sealed class FeedMediaSearchPlannerReasonTests
         Assert.Equal(automaticCandidate.Summary, interactiveCandidate.Summary);
     }
 
+    [Theory]
+    [InlineData(AcquisitionSearchKinds.Automatic, true, false)]
+    [InlineData(AcquisitionSearchKinds.Automatic, false, true)]
+    [InlineData(AcquisitionSearchKinds.Interactive, true, true)]
+    [InlineData(AcquisitionSearchKinds.Interactive, false, false)]
+    public async Task An_indexer_is_asked_only_when_the_kind_of_search_being_run_is_on_for_it(string searchKind, bool automaticOn, bool interactiveOn)
+    {
+        var indexer = CreateIndexer("kind-indexer", "Kind indexer") with { AutomaticSearchEnabled = automaticOn, InteractiveSearchEnabled = interactiveOn };
+        var feed = new FixedFeedHandler(
+            "<rss><channel><item><title>Example.Release.2026.1080p.WEB-DL-GRP</title><link>https://fixture.invalid/x</link></item></channel></rss>");
+        var planner = CreatePlanner(CreateConnections(indexer).Object, feed);
+
+        await planner.BuildPlanAsync(
+            "Example Release", 2026, "movies", "WEB 1080p", "WEB 1080p", [CreateSource(indexer)],
+            cancellationToken: CancellationToken.None, searchKind: searchKind);
+
+        var wanted = searchKind == AcquisitionSearchKinds.Automatic ? automaticOn : interactiveOn;
+        Assert.Equal(wanted, feed.Query.Length > 0);
+    }
+
     [Fact]
     public async Task Runtime_search_compiles_against_the_persisted_active_guide_package()
     {
