@@ -50,7 +50,7 @@ export function KeyboardHintOverlay({
               Keyboard shortcuts
             </Dialog.Title>
             <Dialog.Description className="sr-only">
-              A searchable reference of Deluno keyboard shortcuts grouped by area.
+              A reference of Deluno keyboard shortcuts grouped by area.
             </Dialog.Description>
             <Dialog.Close className="rounded-md p-1 text-muted-foreground transition hover:bg-secondary hover:text-foreground">
               <X className="h-4 w-4" />

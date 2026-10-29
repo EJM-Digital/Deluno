@@ -17,7 +17,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useCoalescedRevalidate } from "../hooks/use-live-interval";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { ArtworkImage } from "../components/ui/artwork-image";
-import { useLoaderData } from "react-router-dom";
+import { Link, useLoaderData } from "react-router-dom";
 import { CircleSlash, Compass, Plus, ShieldCheck } from "lucide-react";
 import {
   fetchJson,
@@ -264,9 +264,13 @@ export function DiscoverPage() {
                             <ShieldCheck className="h-3.5 w-3.5" /> Held
                           </span>
                         ) : entry.excluded ? (
-                          <span className="inline-flex items-center gap-1 text-(length:--type-caption) text-muted-foreground">
-                            <CircleSlash className="h-3.5 w-3.5" /> Excluded
-                          </span>
+                          <Link
+                            to="/settings/lists"
+                            aria-label={`Manage exclusions for ${entry.title}`}
+                            className="text-(length:--type-caption) font-semibold text-primary hover:underline"
+                          >
+                            Manage
+                          </Link>
                         ) : (
                           <Button
                             type="button"

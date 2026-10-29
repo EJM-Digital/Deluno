@@ -326,6 +326,32 @@ describe("Find & Download", () => {
     expect((screen.getByPlaceholderText("Password/API key") as HTMLInputElement).value).toBe("");
   });
 
+  it("offers every download client Connections offers, rTorrent included, and picking one sets its port (#1416)", async () => {
+    const { CLIENT_PRESETS } = await import("./connections/presets");
+    renderStep({ stepId: "services" });
+    await screen.findByPlaceholderText("localhost or docker host");
+    const select = screen.getByRole("combobox", { name: "Download client protocol" }) as HTMLSelectElement;
+    const offered = Array.from(select.options).map((option) => [option.value, option.textContent]);
+    expect(offered).toEqual(CLIENT_PRESETS.map((preset) => [preset.protocol, preset.label]));
+    expect(offered).toContainEqual(["rtorrent", "rTorrent"]);
+    fireEvent.change(select, { target: { value: "rtorrent" } });
+    expect(field("Download client port").value).toBe("8000");
+    const { clientSetupCopy } = await import("./setup-guide-page");
+    for (const [protocol, words] of [
+      ["qbittorrent", "Best default torrent client for most users."],
+      ["sabnzbd", "Best default Usenet downloader."],
+      ["transmission", "Lightweight torrent client for Linux/NAS installs."],
+      ["deluge", "Flexible torrent client with Web UI support."],
+      ["nzbget", "Efficient Usenet downloader for lower-resource systems."],
+      ["utorrent", "Legacy Web UI support for migrations."],
+      ["rtorrent", "Torrent client that runs behind a web server on Linux/NAS installs."]
+    ]) {
+      expect(clientSetupCopy(protocol, "Torrent")).toBe(words);
+      expect(screen.getByText(words)).toBeInTheDocument();
+    }
+    expect(clientSetupCopy("newclient", "Usenet")).toBe("Usenet download client.");
+  });
+
   it("with no client connected the panel offers the Companion Tools install", async () => {
     renderStep({ stepId: "services" });
     await screen.findByPlaceholderText("https://indexer.example/api");
