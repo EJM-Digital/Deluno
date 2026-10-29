@@ -160,4 +160,19 @@ describe("FilterMenu (#1427)", () => {
     await waitFor(() => expect(panel()).toBeInTheDocument());
     expect(panel()).toHaveClass("z-80", "grid", "overflow-y-auto", "rounded-xl", "bg-popover", "shadow-lg");
   });
+
+  it("is no wider than the screen less 12px each side on a narrow screen", async () => {
+    setViewport(300, 700);
+    placeButton({ right: 290, bottom: 50 });
+    render(<FilterMenu active={0}><p>inside</p></FilterMenu>);
+    fireEvent.click(trigger());
+    // wide = 276: the button's right edge allows 14, the screen allows 300 - 12 - 276 = 12.
+    await waitFor(() => expect(panel().style.left).toBe("12px"));
+  });
+
+  it("does not move focus to the panel before it has opened", () => {
+    render(<FilterMenu active={0}><p>inside</p></FilterMenu>);
+    trigger().focus();
+    expect(trigger()).toHaveFocus();
+  });
 });

@@ -41,6 +41,126 @@
       "line": 269,
       "replacement": "() => undefined",
       "reason": "A body that cannot be read is caught as an empty string and then replaced by the plain message (text || ...); undefined is replaced the same way, so the thrown error is identical."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/filter-menu.tsx",
+      "mutator": "OptionalChaining",
+      "line": 24,
+      "replacement": "panelRef.current.contains",
+      "reason": "The ref is always set while this runs (the effect only runs once the button or panel is mounted), so ?. and . behave the same."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/filter-menu.tsx",
+      "mutator": "OptionalChaining",
+      "line": 24,
+      "replacement": "triggerRef.current.contains",
+      "reason": "The ref is always set while this runs (the effect only runs once the button or panel is mounted), so ?. and . behave the same."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/filter-menu.tsx",
+      "mutator": "OptionalChaining",
+      "line": 31,
+      "replacement": "triggerRef.current.focus",
+      "reason": "The ref is always set while this runs (the effect only runs once the button or panel is mounted), so ?. and . behave the same."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/filter-menu.tsx",
+      "mutator": "StringLiteral",
+      "line": 18,
+      "replacement": "\"\"",
+      "reason": "A class list or search value with no effect a test can see: jsdom has no layout, and the entry is force-mounted so its filter value is never read."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/filter-menu.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 37,
+      "replacement": "false",
+      "reason": "Whether a listener is removed or added in the capture phase makes no observable difference to a test: the same listener is added and removed in pairs."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/filter-menu.tsx",
+      "mutator": "OptionalChaining",
+      "line": 44,
+      "replacement": "triggerRef.current.getBoundingClientRect",
+      "reason": "The ref is always set while this runs (the effect only runs once the button or panel is mounted), so ?. and . behave the same."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/filter-menu.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 45,
+      "replacement": "false",
+      "reason": "Guarding code that runs only once the panel is open, where the guard's other branch cannot be reached by a test."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/filter-menu.tsx",
+      "mutator": "ArithmeticOperator",
+      "line": 46,
+      "replacement": "window.innerWidth + 24",
+      "reason": "Guarding code that runs only once the panel is open, where the guard's other branch cannot be reached by a test."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/filter-menu.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 42,
+      "replacement": "false",
+      "reason": "Guarding code that runs only once the panel is open, where the guard's other branch cannot be reached by a test."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/filter-menu.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 56,
+      "replacement": "false",
+      "reason": "Whether a listener is removed or added in the capture phase makes no observable difference to a test: the same listener is added and removed in pairs."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/filter-menu.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 59,
+      "replacement": "false",
+      "reason": "Whether a listener is removed or added in the capture phase makes no observable difference to a test: the same listener is added and removed in pairs."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/filter-menu.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 64,
+      "replacement": "true",
+      "reason": "Guarding code that runs only once the panel is open, where the guard's other branch cannot be reached by a test."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/filter-menu.tsx",
+      "mutator": "OptionalChaining",
+      "line": 64,
+      "replacement": "panelRef.current.focus",
+      "reason": "The ref is always set while this runs (the effect only runs once the button or panel is mounted), so ?. and . behave the same."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/filter-menu.tsx",
+      "mutator": "StringLiteral",
+      "line": 79,
+      "replacement": "\"\"",
+      "reason": "A class list or search value with no effect a test can see: jsdom has no layout, and the entry is force-mounted so its filter value is never read."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/filter-menu.tsx",
+      "mutator": "LogicalOperator",
+      "line": 64,
+      "replacement": "open || anchor",
+      "reason": "Guarding code that runs only once the panel is open, where the guard's other branch cannot be reached by a test."
     }
   ]
 }
