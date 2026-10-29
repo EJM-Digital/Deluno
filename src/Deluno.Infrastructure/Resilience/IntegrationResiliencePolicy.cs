@@ -69,7 +69,13 @@ public sealed record IntegrationResilienceRequest(
     /// name the operation, and a person reading "indexer.search failed" is
     /// not told which of their indexers to go and look at.
     /// </summary>
-    string? ServiceName = null);
+    string? ServiceName = null,
+    /// <summary>
+    /// A 429 from this service is not tried again in the same call: the service is rested until the Retry-After it sent
+    /// (or <see cref="IntegrationResiliencePolicy.DefaultRateLimitPause"/> when it sent none) and skipped meanwhile (#1405).
+    /// Off, a 429 is waited out and retried (the metadata services' way).
+    /// </summary>
+    bool PauseOnRateLimit = false);
 
 public sealed record IntegrationResilienceResult<T>(
     T? Value,
@@ -78,7 +84,9 @@ public sealed record IntegrationResilienceResult<T>(
     int Attempts,
     string? FailureMessage,
     DateTimeOffset? RetryAfterUtc,
-    IntegrationFailure? Failure = null)
+    IntegrationFailure? Failure = null,
+    /// <summary>The service asked to be left alone (HTTP 429) and is rested until <see cref="RetryAfterUtc"/> (#1405).</summary>
+    bool RateLimited = false)
 {
     /// <summary>
     /// Whether the operation actually produced <see cref="Value"/>.
@@ -108,6 +116,12 @@ public sealed class IntegrationResiliencePolicy(
 {
     private static readonly TimeSpan DefaultInitialDelay = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan DefaultMaxDelay = TimeSpan.FromSeconds(2);
+
+    /// <summary>How long a service that answered 429 with no Retry-After is left alone (#1405).</summary>
+    public static readonly TimeSpan DefaultRateLimitPause = TimeSpan.FromMinutes(1);
+
+    /// <summary>The longest rest a Retry-After can ask for, so a date years away cannot park a service for good.</summary>
+    private static readonly TimeSpan MaxRateLimitPause = TimeSpan.FromHours(24);
 
     /// <summary>
     /// How long a circuit stays open on its 1st, 2nd, 3rd... consecutive
@@ -143,9 +157,18 @@ public sealed class IntegrationResiliencePolicy(
 
         await EnsureStateLoadedAsync(cancellationToken);
         var normalized = Normalize(request);
-        if (TryGetOpenCircuit(normalized.Key, out var retryAfterUtc))
+        if (TryGetOpenCircuit(normalized.Key, out var retryAfterUtc, out var restedForRateLimit))
         {
-            var circuitFailure = IntegrationFailureFactory.CircuitOpen(
+            var circuitFailure = restedForRateLimit
+                ? IntegrationFailureFactory.FromHttpStatus(
+                    normalized.ServiceType ?? "integration",
+                    normalized.ServiceId ?? normalized.Key,
+                    normalized.ServiceName ?? normalized.Operation,
+                    normalized.Operation,
+                    HttpStatusCode.TooManyRequests,
+                    FormatRateLimitedMessage(retryAfterUtc),
+                    retryAfterUtc: retryAfterUtc)
+                : IntegrationFailureFactory.CircuitOpen(
                 normalized.ServiceType ?? "integration",
                 normalized.ServiceId ?? normalized.Key,
                 normalized.ServiceName ?? normalized.Operation,
@@ -164,7 +187,8 @@ public sealed class IntegrationResiliencePolicy(
                 Attempts: 0,
                 FailureMessage: circuitFailure.Message,
                 RetryAfterUtc: retryAfterUtc,
-                Failure: circuitFailure);
+                Failure: circuitFailure,
+                RateLimited: restedForRateLimit);
         }
 
         Exception? lastException = null;
@@ -172,6 +196,7 @@ public sealed class IntegrationResiliencePolicy(
         var attemptsMade = 0;
         var retryableFailure = false;
         TimeSpan? retryAfterOverride;
+        DateTimeOffset? rateLimitedUntil = null;
         for (var attempt = 1; attempt <= normalized.MaxAttempts; attempt++)
         {
             attemptsMade = attempt;
@@ -210,6 +235,13 @@ public sealed class IntegrationResiliencePolicy(
                 if (exception is IntegrationRateLimitedException rateLimited)
                 {
                     retryAfterOverride = rateLimited.RetryAfter;
+                    if (normalized.PauseOnRateLimit)
+                    {
+                        // Asked to wait: rest the service for what it said instead of trying again at once (#1405).
+                        var pause = rateLimited.RetryAfter is { } asked && asked > TimeSpan.Zero ? asked : DefaultRateLimitPause;
+                        rateLimitedUntil = RecordRateLimited(normalized, pause > MaxRateLimitPause ? MaxRateLimitPause : pause);
+                        break;
+                    }
                 }
 
                 if (!retryableFailure)
@@ -229,7 +261,7 @@ public sealed class IntegrationResiliencePolicy(
             }
         }
 
-        var openedUntil = retryableFailure ? RecordRetryableFailure(normalized) : null;
+        var openedUntil = rateLimitedUntil ?? (retryableFailure ? RecordRetryableFailure(normalized) : null);
         if (openedUntil is not null)
         {
             DelunoObservability.IntegrationCircuitOpened.Add(1,
@@ -281,11 +313,12 @@ public sealed class IntegrationResiliencePolicy(
             Attempts: attemptsMade,
             FailureMessage: failureMessage,
             RetryAfterUtc: openedUntil,
-            Failure: failure);
+            Failure: failure,
+            RateLimited: rateLimitedUntil is not null);
     }
 
     public bool IsCircuitOpen(string key, out DateTimeOffset retryAfterUtc)
-        => TryGetOpenCircuit(NormalizeKey(key), out retryAfterUtc);
+        => TryGetOpenCircuit(NormalizeKey(key), out retryAfterUtc, out _);
 
     public async Task CloseCircuitsAsync(string serviceType, string serviceId, CancellationToken cancellationToken)
     {
@@ -411,10 +444,11 @@ public sealed class IntegrationResiliencePolicy(
             _ => false
         };
 
-    private bool TryGetOpenCircuit(string key, out DateTimeOffset retryAfterUtc)
+    private bool TryGetOpenCircuit(string key, out DateTimeOffset retryAfterUtc, out bool rateLimited)
     {
         lock (_sync)
         {
+            rateLimited = false;
             if (!_circuits.TryGetValue(key, out var state) || state.OpenUntilUtc is null)
             {
                 retryAfterUtc = default;
@@ -425,10 +459,11 @@ public sealed class IntegrationResiliencePolicy(
             if (state.OpenUntilUtc > now)
             {
                 retryAfterUtc = state.OpenUntilUtc.Value;
+                rateLimited = state.RateLimited;
                 return true;
             }
 
-            _circuits[key] = state with { OpenUntilUtc = null };
+            _circuits[key] = state with { OpenUntilUtc = null, RateLimited = false };
             retryAfterUtc = default;
             return false;
         }
@@ -440,6 +475,27 @@ public sealed class IntegrationResiliencePolicy(
         {
             _circuits.Remove(key);
         }
+    }
+
+    /// <summary>"It asked Deluno to wait" says why it is resting and until when, with no failure count in it (#1405).</summary>
+    public static string FormatRateLimitedMessage(DateTimeOffset retryAfterUtc)
+        => $"It asked Deluno to wait; Deluno will ask again at {retryAfterUtc.UtcDateTime:HH:mm} UTC.";
+
+    /// <summary>Rests a service that said 429 until it can be asked again. The failure ladder does not move: nothing is broken.</summary>
+    private DateTimeOffset RecordRateLimited(IntegrationResilienceRequest request, TimeSpan pause)
+    {
+        var openedUtc = timeProvider.GetUtcNow();
+        var openedUntil = openedUtc.Add(pause);
+        int escalationLevel;
+        lock (_sync)
+        {
+            _circuits.TryGetValue(request.Key, out var current);
+            escalationLevel = current?.EscalationLevel ?? 0;
+            _circuits[request.Key] = new CircuitState(0, openedUntil, escalationLevel, RateLimited: true);
+        }
+
+        _ = PersistCircuitOpenAsync(request.Key, openedUntil, openedUtc, 0, escalationLevel);
+        return openedUntil;
     }
 
     private DateTimeOffset? RecordRetryableFailure(IntegrationResilienceRequest request)
@@ -599,5 +655,5 @@ public sealed class IntegrationResiliencePolicy(
     /// restart resumes the same rung instead of quietly dropping back to a
     /// one-minute break (#732).
     /// </summary>
-    private sealed record CircuitState(int FailureCount, DateTimeOffset? OpenUntilUtc, int EscalationLevel = 0);
+    private sealed record CircuitState(int FailureCount, DateTimeOffset? OpenUntilUtc, int EscalationLevel = 0, bool RateLimited = false);
 }

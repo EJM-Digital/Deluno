@@ -626,7 +626,8 @@ public sealed class FeedMediaSearchPlanner(
                 FailureThreshold: 2,
                 ServiceType: "indexer",
                 ServiceId: indexer.Id,
-                ServiceName: indexer.Name),
+                ServiceName: indexer.Name,
+                PauseOnRateLimit: true),
             async token =>
             {
                 try
@@ -675,6 +676,14 @@ public sealed class FeedMediaSearchPlanner(
                     using var response = await http.GetAsync(uri, token);
                     if (!response.IsSuccessStatusCode)
                     {
+                        if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                        {
+                            // Asked to wait (#1405): not tried again at once; the policy rests the indexer for the Retry-After.
+                            throw new IntegrationRateLimitedException(
+                                RateLimitedMessage(indexer.Name),
+                                IntegrationResiliencePolicy.TryGetRetryAfter(response));
+                        }
+
                         if (IntegrationResiliencePolicy.IsTransientHttpStatusCode(response.StatusCode))
                         {
                             throw new HttpRequestException(
@@ -821,6 +830,16 @@ public sealed class FeedMediaSearchPlanner(
             _ => IntegrationResilienceOutcome.Success,
             cancellationToken);
 
+        if (result.RateLimited && !result.CircuitOpen)
+        {
+            logger.LogInformation(
+                "Indexer {IndexerName} ({IndexerId}) answered 429; resting it until {RetryAfterUtc}.",
+                indexer.Name,
+                indexer.Id,
+                result.RetryAfterUtc);
+            await MarkCircuitOpenHealthAsync(indexer, result.RetryAfterUtc, cancellationToken, rateLimited: true);
+        }
+
         if (result.CircuitOpen)
         {
             logger.LogInformation(
@@ -835,7 +854,7 @@ public sealed class FeedMediaSearchPlanner(
             // while every search silently skipped it (#606). Write the same
             // fact to the indexer's own health so the screen says it in plain
             // words and the existing Reset action can clear it.
-            await MarkCircuitOpenHealthAsync(indexer, result.RetryAfterUtc, cancellationToken);
+            await MarkCircuitOpenHealthAsync(indexer, result.RetryAfterUtc, cancellationToken, result.RateLimited);
         }
 
         // IntegrationResilienceResult<T>.Value is declared `T?`, and
@@ -903,9 +922,12 @@ public sealed class FeedMediaSearchPlanner(
     private async Task MarkCircuitOpenHealthAsync(
         IndexerItem indexer,
         DateTimeOffset? retryAfterUtc,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool rateLimited = false)
     {
-        var message = retryAfterUtc is { } retryAt
+        var message = rateLimited && retryAfterUtc is { } restUntil
+            ? $"{indexer.Name} asked Deluno to wait; Deluno will ask again at {restUntil.UtcDateTime:HH:mm} UTC. Reset to try now."
+            : retryAfterUtc is { } retryAt
             ? $"Deluno stopped asking {indexer.Name} after repeated failures; it will try again at {retryAt.UtcDateTime:HH:mm} UTC. Reset to try now."
             : $"Deluno stopped asking {indexer.Name} after repeated failures. Reset to try now.";
 
@@ -924,7 +946,7 @@ public sealed class FeedMediaSearchPlanner(
                     indexer.Name,
                     "search",
                     retryAfterUtc,
-                    "Deluno paused it after repeated failures."));
+                    rateLimited ? "It asked Deluno to wait." : "Deluno paused it after repeated failures."));
         }
         catch (Exception exception)
         {
@@ -935,6 +957,10 @@ public sealed class FeedMediaSearchPlanner(
                 indexer.Id);
         }
     }
+
+    /// <summary>What an indexer's 429 is called on screen and in the log (#1405).</summary>
+    internal static string RateLimitedMessage(string indexerName)
+        => $"{indexerName} said it is getting too many requests (HTTP 429).";
 
     private readonly record struct IndexerSearchOutcome(
         IReadOnlyList<MediaSearchCandidate> Candidates,

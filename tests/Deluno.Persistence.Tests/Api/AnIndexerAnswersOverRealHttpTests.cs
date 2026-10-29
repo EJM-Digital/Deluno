@@ -192,6 +192,59 @@ public sealed class AnIndexerAnswersOverRealHttpTests
         Assert.Empty(third.GetProperty("candidates").EnumerateArray());
     }
 
+    /// <summary>#1405: the three forms of what a 429 can say about when to come back: seconds, a date, and nothing.</summary>
+    [Theory]
+    [InlineData("30", 29, 90)]
+    [InlineData("date:120", 100, 200)]
+    [InlineData("", 59, 400)]
+    public async Task A_search_answered_429_is_not_asked_again_at_once_and_the_indexer_rests_for_what_it_asked_in_plain_words(string retryAfter, int atLeastSeconds, int atMostSeconds)
+    {
+        var header = retryAfter.StartsWith("date:", StringComparison.Ordinal)
+            ? DateTimeOffset.UtcNow.AddSeconds(int.Parse(retryAfter[5..], System.Globalization.CultureInfo.InvariantCulture)).ToString("R", System.Globalization.CultureInfo.InvariantCulture)
+            : retryAfter.Length == 0 ? null : retryAfter;
+        await using var indexer = await ServeAsync(context => Status(context, 429, header));
+        await using var app = await ApplicationTestHost.StartAsync();
+        var id = await AddAsync(app, indexer.BaseUrl);
+        var before = DateTimeOffset.UtcNow;
+
+        var first = await SearchAsync(app, id);
+        var second = await SearchAsync(app, id);
+
+        Assert.Single(indexer.Requests);
+        var failure = Assert.Single(first.GetProperty("failures").EnumerateArray());
+        Assert.Equal("RateLimit", failure.GetProperty("kind").GetString());
+        Assert.Equal(1, failure.GetProperty("attempts").GetInt32());
+        var until = DateTimeOffset.Parse(failure.GetProperty("retryAfterUtc").GetString()!, System.Globalization.CultureInfo.InvariantCulture);
+        Assert.InRange((until - before).TotalSeconds, atLeastSeconds, atMostSeconds);
+        var skipped = Assert.Single(second.GetProperty("failures").EnumerateArray());
+        Assert.Equal("RateLimit", skipped.GetProperty("kind").GetString());
+        Assert.Contains("asked Deluno to wait", skipped.GetProperty("message").GetString(), StringComparison.Ordinal);
+        var health = (await app.Services.GetRequiredService<IConnectionsRepository>().ListIndexersAsync(CancellationToken.None)).Single(item => item.Id == id);
+        Assert.Contains("asked Deluno to wait", health.LastHealthMessage, StringComparison.Ordinal);
+    }
+
+    /// <summary>#1405: an RSS read answered 429 is not asked again at once, whichever way the Retry-After came, and the next read says why without asking.</summary>
+    [Theory]
+    [InlineData("30")]
+    [InlineData("date")]
+    [InlineData("")]
+    public async Task A_feed_read_answered_429_is_not_asked_again_and_the_next_read_says_the_indexer_asked_to_wait(string retryAfter)
+    {
+        var header = retryAfter == "date" ? DateTimeOffset.UtcNow.AddSeconds(120).ToString("R", System.Globalization.CultureInfo.InvariantCulture) : retryAfter.Length == 0 ? null : retryAfter;
+        await using var indexer = await ServeAsync(context => Status(context, 429, header));
+        await using var app = await ApplicationTestHost.StartAsync();
+        var id = await AddAsync(app, indexer.BaseUrl, name: "Busy");
+
+        var first = await ReadFeedAsync(app, id);
+        var second = await ReadFeedAsync(app, id);
+
+        Assert.Single(indexer.Requests);
+        Assert.False(first.Read);
+        Assert.Contains("429", first.Problem, StringComparison.Ordinal);
+        Assert.False(second.Read);
+        Assert.Contains("Busy asked Deluno to wait", second.Problem, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task A_search_that_never_gets_an_answer_times_out_and_is_tried_again_as_a_transient_failure()
     {
@@ -255,7 +308,7 @@ public sealed class AnIndexerAnswersOverRealHttpTests
         Assert.Empty(down.Releases);
         Assert.False(limited.Read);
         Assert.Contains("429", limited.Problem, StringComparison.Ordinal);
-        Assert.Equal(3, tooMany.Requests.Count);
+        Assert.Single(tooMany.Requests); // #1405: a 429 is not asked again at once
         Assert.False(garbled.Read);
         Assert.False(string.IsNullOrWhiteSpace(garbled.Problem));
         Assert.False(resting.Read);
