@@ -2427,9 +2427,84 @@
     {"id":"activity.activity-page-status-chips.finished-sends-imported-refused-removed-not-needed-closed","area":"activity","behaviour":"Finished sends (Imported / Refused / Removed / Not needed / Closed) appear under All but not under Done or any open chip","kind":"failure-mode","severity":"low","touches":"disk","required":"inproc","proofs":[],"audit":{"id":"F3.1.11","kind":"-","real":"No","gap":"Y"},"needs":{"kind":"unit","test":"activity-page.test: seed an Imported send and a Refused send; assert they show under All, state whether Done lists them, and fix or document the rule"},"issue":1329},
     {"id":"activity.activity-page-status-chips.card-title-names-the-chosen-chip-and-its","area":"activity","behaviour":"Card title names the chosen chip and its count (\"Failed · 1\"), region named after it","kind":"failure-mode","severity":"medium","touches":"none","required":"inproc","proofs":[{"type":"smoke","file":"apps/web/tests/smoke/failed-jobs-stay-reachable.spec.ts","name":"a failed job buried under newer work is listed on Activity and can be dismissed there"}],"audit":{"id":"F3.1.12","kind":"smoke","real":"Partial-smoke","gap":"N"}},
     {"id":"activity.activity-page-status-chips.empty-failed-chip-says-nothing-has-failed-and","area":"activity","behaviour":"Empty Failed chip says \"Nothing has failed\" and what would appear","kind":"failure-mode","severity":"medium","touches":"none","required":"inproc","proofs":[{"type":"vitest","file":"apps/web/src/routes/activity-page.test.tsx","name":"says plainly what would appear on a chip that is empty"}],"audit":{"id":"F3.1.13","kind":"vitest","real":"Unit only","gap":"N"}},
-    {"id":"activity.activity-page-status-chips.empty-in-progress-chip-says-nothing-in-progress","area":"activity","behaviour":"Empty In progress chip says \"Nothing in progress\"","kind":"state","severity":"low","touches":"none","required":"inproc","proofs":[],"audit":{"id":"F3.1.14","kind":"-","real":"No","gap":"Y"},"needs":{"kind":"unit","test":"activity-page.test: render ?status=in-progress with no data; assert 'Nothing in progress' and its description"},"issue":1329},
-    {"id":"activity.activity-page-status-chips.empty-needs-a-decision-chip-says-nothing-needs","area":"activity","behaviour":"Empty Needs a decision chip says \"Nothing needs a decision\"","kind":"state","severity":"low","touches":"none","required":"inproc","proofs":[],"audit":{"id":"F3.1.15","kind":"-","real":"No","gap":"Y"},"needs":{"kind":"unit","test":"activity-page.test: render ?status=needs-decision empty; assert 'Nothing needs a decision'"},"issue":1329},
-    {"id":"activity.activity-page-status-chips.empty-all-and-empty-done-chips-say-nothing","area":"activity","behaviour":"Empty All and empty Done chips say \"Nothing has happened yet\"","kind":"state","severity":"low","touches":"none","required":"inproc","proofs":[],"audit":{"id":"F3.1.16","kind":"-","real":"No","gap":"Y"},"needs":{"kind":"unit","test":"activity-page.test: render All and Done empty (history returns no items); assert 'Nothing has happened yet'"},"issue":1329},
+    {
+      "id": "activity.activity-page-status-chips.empty-in-progress-chip-says-nothing-in-progress",
+      "area": "activity",
+      "behaviour": "Empty In progress chip says \"Nothing in progress\"",
+      "kind": "state",
+      "severity": "low",
+      "touches": "none",
+      "required": "inproc",
+      "proofs": [
+        {
+          "type": "vitest",
+          "file": "apps/web/src/routes/activity-page.test.tsx",
+          "name": "an empty In progress chip says nothing is in progress and names what appears there"
+        }
+      ],
+      "audit": {
+        "id": "F3.1.14",
+        "kind": "-",
+        "real": "No",
+        "gap": "Y"
+      },
+      "needs": {
+        "kind": "unit",
+        "test": "activity-page.test: render ?status=in-progress with no data; assert 'Nothing in progress' and its description"
+      }
+    },
+    {
+      "id": "activity.activity-page-status-chips.empty-needs-a-decision-chip-says-nothing-needs",
+      "area": "activity",
+      "behaviour": "Empty Needs a decision chip says \"Nothing needs a decision\"",
+      "kind": "state",
+      "severity": "low",
+      "touches": "none",
+      "required": "inproc",
+      "proofs": [
+        {
+          "type": "vitest",
+          "file": "apps/web/src/routes/activity-page.test.tsx",
+          "name": "an empty Needs a decision chip says nothing needs a decision and names the cases that land there"
+        }
+      ],
+      "audit": {
+        "id": "F3.1.15",
+        "kind": "-",
+        "real": "No",
+        "gap": "Y"
+      },
+      "needs": {
+        "kind": "unit",
+        "test": "activity-page.test: render ?status=needs-decision empty; assert 'Nothing needs a decision'"
+      }
+    },
+    {
+      "id": "activity.activity-page-status-chips.empty-all-and-empty-done-chips-say-nothing",
+      "area": "activity",
+      "behaviour": "Empty All and empty Done chips say \"Nothing has happened yet\"",
+      "kind": "state",
+      "severity": "low",
+      "touches": "none",
+      "required": "inproc",
+      "proofs": [
+        {
+          "type": "vitest",
+          "file": "apps/web/src/routes/activity-page.test.tsx",
+          "name": "the empty history at %s says nothing has happened yet"
+        }
+      ],
+      "audit": {
+        "id": "F3.1.16",
+        "kind": "-",
+        "real": "No",
+        "gap": "Y"
+      },
+      "needs": {
+        "kind": "unit",
+        "test": "activity-page.test: render All and Done empty (history returns no items); assert 'Nothing has happened yet'"
+      }
+    },
     {"id":"activity.activity-page-status-chips.loading-state-reading-the-history-this-takes-a","area":"activity","behaviour":"Loading state \"Reading the history / This takes a moment\" while the history is pending","kind":"state","severity":"low","touches":"none","required":"inproc","proofs":[],"audit":{"id":"F3.1.17","kind":"-","real":"No","gap":"Y"},"needs":{"kind":"unit","test":"activity-page.test: leave the history request pending; assert 'Reading the history'"},"issue":1329},
     {"id":"activity.activity-page-status-chips.history-or-live-step-read-failed-with-no","area":"activity","behaviour":"History (or live step) read failed with no rows: \"The history could not be read\" with a Try again that refetches","kind":"failure-mode","severity":"medium","touches":"none","required":"inproc","proofs":[{"type":"vitest","file":"apps/web/src/routes/activity-page.live-and-decisions.test.tsx","name":"shows the history failing with nothing to list as 'The history could not be read' and asks the server again on Try again"},{"type":"vitest","file":"apps/web/src/routes/activity-page.live-and-decisions.test.tsx","name":"shows a live step failing the same way and asks for that step's list again on Try again"}],"audit":{"id":"F3.1.18","kind":"-","real":"No","gap":"Y"}},
     {"id":"activity.activity-page-status-chips.history-read-failed-while-rows-are-showing-banner","area":"activity","behaviour":"History read failed while rows are showing: banner under the table with Try again","kind":"failure-mode","severity":"low","touches":"none","required":"inproc","proofs":[],"audit":{"id":"F3.1.19","kind":"-","real":"No","gap":"Y"},"needs":{"kind":"unit","test":"activity-page.test: first page ok then reject the next page; assert the banner and Try again under the rows"},"issue":1329},
@@ -2443,21 +2518,203 @@
     {"id":"activity.activity-page-status-chips.each-job-is-named-by-its-label-and","area":"activity","behaviour":"Each job is named by its label and source in plain words in the failed list, drawer and toast, never the job type","kind":"failure-mode","severity":"medium","touches":"none","required":"inproc","proofs":[{"type":"vitest","file":"apps/web/src/routes/activity-page.test.tsx","name":"shows the label in the failed list, the drawer and the toast text, never the job type"}],"audit":{"id":"F3.1.27","kind":"vitest","real":"Unit only","gap":"N"}},
     {"id":"activity.activity-filters-search-step.find-a-title-search-writes-title-to-the","area":"activity","behaviour":"\"Find a title\" search writes `title=` to the address after a 350 ms pause and narrows the history","kind":"screen action","severity":"medium","touches":"none","required":"inproc","proofs":[{"type":"vitest","file":"apps/web/src/routes/activity-page.test.tsx","name":"writes a typed title to the address after a moment and clears every filter in one press"}],"audit":{"id":"F3.2.1","kind":"vitest","real":"Unit only","gap":"N"}},
     {"id":"activity.activity-filters-search-step.the-title-search-also-narrows-the-open-items","area":"activity","behaviour":"The title search also narrows the open items (matches title and step line)","kind":"screen action","severity":"medium","touches":"none","required":"inproc","proofs":[{"type":"vitest","file":"apps/web/src/routes/activity-page.test.tsx","name":"reads the chip from the address, with the history filters alongside it"}],"audit":{"id":"F3.2.2","kind":"vitest","real":"Unit only","gap":"N"}},
-    {"id":"activity.activity-filters-search-step.escape-in-the-search-box-leaves-it","area":"activity","behaviour":"Escape in the search box leaves it","kind":"screen action","severity":"low","touches":"none","required":"inproc","proofs":[],"audit":{"id":"F3.2.3","kind":"-","real":"No","gap":"Y"},"needs":{"kind":"unit","test":"activity-page.test: focus the search, press Escape, assert blur"},"issue":1329},
+    {
+      "id": "activity.activity-filters-search-step.escape-in-the-search-box-leaves-it",
+      "area": "activity",
+      "behaviour": "Escape in the search box leaves it",
+      "kind": "screen action",
+      "severity": "low",
+      "touches": "none",
+      "required": "inproc",
+      "proofs": [
+        {
+          "type": "vitest",
+          "file": "apps/web/src/routes/activity-page.test.tsx",
+          "name": "Escape in the search box leaves it"
+        }
+      ],
+      "audit": {
+        "id": "F3.2.3",
+        "kind": "-",
+        "real": "No",
+        "gap": "Y"
+      },
+      "needs": {
+        "kind": "unit",
+        "test": "activity-page.test: focus the search, press Escape, assert blur"
+      }
+    },
     {"id":"activity.activity-filters-search-step.header-layout-stages-full-search-magnifier-that-opens","area":"activity","behaviour":"Header layout stages: full search, magnifier that opens on focus or text, compact dropdowns, scrolling chips, and the fallback row under the header; below lg always in the row","kind":"screen action","severity":"low","touches":"none","required":"inproc","proofs":[],"audit":{"id":"F3.2.4","kind":"-","real":"No","gap":"Y"},"needs":{"kind":"smoke","test":"Playwright smoke at 1920, 1366 and 390 on /activity: assert data-placement is header or row as the title line fills, and the search expands on focus"},"issue":1329},
     {"id":"activity.activity-filters-search-step.step-picker-lists-the-server-s-kinds-searched","area":"activity","behaviour":"Step picker lists the server's kinds (Searched, Turned down, Grabbed, Imported ...) plus Processing, Download health, Download client; choosing one writes `type=` and asks the server for exactly that","kind":"screen action","severity":"medium","touches":"other-app","required":"inproc","proofs":[{"type":"vitest","file":"apps/web/src/routes/activity-page.test.tsx","name":"asks the server for the chosen kind of event and keeps the choice in the address"},{"type":"vitest","file":"apps/web/src/routes/activity-page.test.tsx","name":"offers the three steps in the Any step picker"},{"type":"smoke","file":"apps/web/tests/smoke/authenticated.spec.ts","name":"opens the Activity history from a filtered link and keeps the filters in the address"}],"audit":{"id":"F3.2.5","kind":"vitest+smoke","real":"Yes-smoke","gap":"N"}},
     {"id":"activity.activity-filters-search-step.every-kind-of-event-is-found-under-its","area":"activity","behaviour":"Every kind of event is found under its own type by the server","kind":"screen action","severity":"medium","touches":"none","required":"inproc","proofs":[{"type":"backend","file":"tests/Deluno.Persistence.Tests/Api/ActivityHistoryApiTests.cs","name":"Each_kind_of_event_is_found_under_its_own_type"},{"type":"backend","file":"tests/Deluno.Persistence.Tests/Api/ActivityHistoryApiTests.cs","name":"Every_known_event_kind_has_one_type_and_a_source_or_none"}],"audit":{"id":"F3.2.6","kind":"xunit","real":"Backend-inproc","gap":"N"}},
     {"id":"activity.activity-filters-search-step.time-picker-any-time-today-since-yesterday-last","area":"activity","behaviour":"Time picker: Any time / Today / Since yesterday / Last 7 days / Last 30 days; reading `since=today` from a link asks the server for the start of the person's day","kind":"screen action","severity":"medium","touches":"none","required":"inproc","proofs":[{"type":"vitest","file":"apps/web/src/routes/activity-page.test.tsx","name":"reads the filters from the address and asks the server for exactly those"},{"type":"smoke","file":"apps/web/tests/smoke/authenticated.spec.ts","name":"opens the Activity history from a filtered link and keeps the filters in the address"},{"type":"vitest","file":"apps/web/src/lib/activity-history.test.ts","name":"turns the day words into the person's own midnight, and an until day includes the whole day"}],"audit":{"id":"F3.2.7","kind":"vitest+smoke","real":"Yes-smoke","gap":"N"}},
-    {"id":"activity.activity-filters-search-step.clicking-each-time-choice-writes-since-and-clears","area":"activity","behaviour":"Clicking each Time choice writes `since=` and clears `until=`","kind":"screen action","severity":"low","touches":"none","required":"inproc","proofs":[],"audit":{"id":"F3.2.8","kind":"-","real":"No","gap":"Y"},"needs":{"kind":"unit","test":"activity-page.test: open More filters, click Today / Last 7 days / Last 30 days / Any time with until= set; assert since= written and until= removed"},"issue":1329},
-    {"id":"activity.activity-filters-search-step.a-hand-written-since-yyyy-mm-dd-shows","area":"activity","behaviour":"A hand-written `since=YYYY-MM-DD` shows as an extra \"Since <day>\" choice","kind":"screen action","severity":"low","touches":"none","required":"inproc","proofs":[],"audit":{"id":"F3.2.9","kind":"-","real":"No","gap":"Y"},"needs":{"kind":"unit","test":"activity-page.test: render ?since=2026-09-27; assert the extra 'Since 2026-09-27' radio is checked"},"issue":1329},
+    {
+      "id": "activity.activity-filters-search-step.clicking-each-time-choice-writes-since-and-clears",
+      "area": "activity",
+      "behaviour": "Clicking each Time choice writes `since=` and clears `until=`",
+      "kind": "screen action",
+      "severity": "low",
+      "touches": "none",
+      "required": "inproc",
+      "proofs": [
+        {
+          "type": "vitest",
+          "file": "apps/web/src/routes/activity-page.test.tsx",
+          "name": "clicking a Time choice writes since and clears until"
+        }
+      ],
+      "audit": {
+        "id": "F3.2.8",
+        "kind": "-",
+        "real": "No",
+        "gap": "Y"
+      },
+      "needs": {
+        "kind": "unit",
+        "test": "activity-page.test: open More filters, click Today / Last 7 days / Last 30 days / Any time with until= set; assert since= written and until= removed"
+      }
+    },
+    {
+      "id": "activity.activity-filters-search-step.a-hand-written-since-yyyy-mm-dd-shows",
+      "area": "activity",
+      "behaviour": "A hand-written `since=YYYY-MM-DD` shows as an extra \"Since <day>\" choice",
+      "kind": "screen action",
+      "severity": "low",
+      "touches": "none",
+      "required": "inproc",
+      "proofs": [
+        {
+          "type": "vitest",
+          "file": "apps/web/src/routes/activity-page.test.tsx",
+          "name": "a hand-written since day shows as an extra Since choice on the Time control"
+        }
+      ],
+      "audit": {
+        "id": "F3.2.9",
+        "kind": "-",
+        "real": "No",
+        "gap": "Y"
+      },
+      "needs": {
+        "kind": "unit",
+        "test": "activity-page.test: render ?since=2026-09-27; assert the extra 'Since 2026-09-27' radio is checked"
+      }
+    },
     {"id":"activity.activity-filters-search-step.more-filters-shows-how-many-filters-are-on","area":"activity","behaviour":"\"More filters\" shows how many filters are on (\"More filters, 2 on\")","kind":"screen action","severity":"medium","touches":"none","required":"inproc","proofs":[{"type":"smoke","file":"apps/web/tests/smoke/authenticated.spec.ts","name":"opens the Activity history from a filtered link and keeps the filters in the address"}],"audit":{"id":"F3.2.10","kind":"smoke","real":"Yes-smoke","gap":"N"}},
     {"id":"activity.activity-filters-search-step.file-token-file-from-a-link-removable","area":"activity","behaviour":"File token (\"File: ...\") from a link, removable","kind":"screen action","severity":"medium","touches":"disk","required":"inproc","proofs":[{"type":"vitest","file":"apps/web/src/routes/activity-page.test.tsx","name":"shows a link's file filter as a token and clears the filter when it is removed"}],"audit":{"id":"F3.2.11","kind":"vitest","real":"Unit only","gap":"N"}},
-    {"id":"activity.activity-filters-search-step.from-source-token-shows-the-source-in-words","area":"activity","behaviour":"From (source) token shows the source in words; its remove button","kind":"screen action","severity":"low","touches":"disk","required":"inproc","proofs":[],"partial":[{"type":"vitest","file":"apps/web/src/routes/activity-page.test.tsx","name":"writes a typed title to the address after a moment and clears every filter in one press"}],"audit":{"id":"F3.2.12","kind":"vitest","real":"Unit only","gap":"Y"},"needs":{"kind":"unit","test":"activity-page.test: render ?source=indexer, click 'Remove filter From: An indexer', assert source= leaves the address"},"issue":1329},
-    {"id":"activity.activity-filters-search-step.outcome-token-outcome-went-wrong-and-its-remove","area":"activity","behaviour":"Outcome token (\"Outcome: Went wrong\") and its remove button","kind":"screen action","severity":"low","touches":"disk","required":"inproc","proofs":[],"audit":{"id":"F3.2.13","kind":"-","real":"No","gap":"Y"},"needs":{"kind":"unit","test":"activity-page.test: render ?outcome=problem; assert the 'Outcome: Went wrong' token and its removal"},"issue":1329},
+    {
+      "id": "activity.activity-filters-search-step.from-source-token-shows-the-source-in-words",
+      "area": "activity",
+      "behaviour": "From (source) token shows the source in words; its remove button",
+      "kind": "screen action",
+      "severity": "low",
+      "touches": "disk",
+      "required": "inproc",
+      "proofs": [
+        {
+          "type": "vitest",
+          "file": "apps/web/src/routes/activity-page.test.tsx",
+          "name": "the Outcome, Until, Kind of title and From tokens show in words, and each one's remove button clears its own filter"
+        }
+      ],
+      "partial": [
+        {
+          "type": "vitest",
+          "file": "apps/web/src/routes/activity-page.test.tsx",
+          "name": "writes a typed title to the address after a moment and clears every filter in one press"
+        }
+      ],
+      "audit": {
+        "id": "F3.2.12",
+        "kind": "vitest",
+        "real": "Unit only",
+        "gap": "Y"
+      },
+      "needs": {
+        "kind": "unit",
+        "test": "activity-page.test: render ?source=indexer, click 'Remove filter From: An indexer', assert source= leaves the address"
+      }
+    },
+    {
+      "id": "activity.activity-filters-search-step.outcome-token-outcome-went-wrong-and-its-remove",
+      "area": "activity",
+      "behaviour": "Outcome token (\"Outcome: Went wrong\") and its remove button",
+      "kind": "screen action",
+      "severity": "low",
+      "touches": "disk",
+      "required": "inproc",
+      "proofs": [
+        {
+          "type": "vitest",
+          "file": "apps/web/src/routes/activity-page.test.tsx",
+          "name": "the Outcome, Until, Kind of title and From tokens show in words, and each one's remove button clears its own filter"
+        }
+      ],
+      "audit": {
+        "id": "F3.2.13",
+        "kind": "-",
+        "real": "No",
+        "gap": "Y"
+      },
+      "needs": {
+        "kind": "unit",
+        "test": "activity-page.test: render ?outcome=problem; assert the 'Outcome: Went wrong' token and its removal"
+      }
+    },
     {"id":"activity.activity-filters-search-step.reason-token-shows-the-reason-in-plain-words","area":"activity","behaviour":"Reason token shows the reason in plain words","kind":"screen action","severity":"medium","touches":"none","required":"inproc","proofs":[{"type":"vitest","file":"apps/web/src/routes/activity-page.test.tsx","name":"reads the filters from the address and asks the server for exactly those"},{"type":"smoke","file":"apps/web/tests/smoke/authenticated.spec.ts","name":"opens the Activity history from a filtered link and keeps the filters in the address"}],"audit":{"id":"F3.2.14","kind":"vitest+smoke","real":"Yes-smoke","gap":"N"}},
     {"id":"activity.activity-filters-search-step.only-this-title-token-title-page-link-and","area":"activity","behaviour":"\"Only this title\" token (title page link) and stepping out of it","kind":"screen action","severity":"medium","touches":"none","required":"inproc","proofs":[{"type":"vitest","file":"apps/web/src/routes/activity-page.test.tsx","name":"limits to one title from its page link and lets a person step out of it"},{"type":"backend","file":"tests/Deluno.Persistence.Tests/Api/ActivityHistoryApiTests.cs","name":"The_title_page_link_finds_everything_about_that_title_by_its_id"}],"audit":{"id":"F3.2.15","kind":"vitest+xunit","real":"Backend-inproc","gap":"N"}},
-    {"id":"activity.activity-filters-search-step.kind-of-title-movie-series-token-when-only","area":"activity","behaviour":"\"Kind of title: movie/series\" token when only the type is given, and its remove button","kind":"screen action","severity":"low","touches":"disk","required":"inproc","proofs":[],"audit":{"id":"F3.2.16","kind":"-","real":"No","gap":"Y"},"needs":{"kind":"unit","test":"activity-page.test: render ?itemType=movie; assert the 'Kind of title: movie' token and its removal"},"issue":1329},
-    {"id":"activity.activity-filters-search-step.until-day-token-and-its-remove-button","area":"activity","behaviour":"\"Until: <day>\" token and its remove button","kind":"screen action","severity":"low","touches":"disk","required":"inproc","proofs":[],"audit":{"id":"F3.2.17","kind":"-","real":"No","gap":"Y"},"needs":{"kind":"unit","test":"activity-page.test: render ?until=2026-09-30; assert the 'Until: 2026-09-30' token and its removal"},"issue":1329},
+    {
+      "id": "activity.activity-filters-search-step.kind-of-title-movie-series-token-when-only",
+      "area": "activity",
+      "behaviour": "\"Kind of title: movie/series\" token when only the type is given, and its remove button",
+      "kind": "screen action",
+      "severity": "low",
+      "touches": "disk",
+      "required": "inproc",
+      "proofs": [
+        {
+          "type": "vitest",
+          "file": "apps/web/src/routes/activity-page.test.tsx",
+          "name": "the Outcome, Until, Kind of title and From tokens show in words, and each one's remove button clears its own filter"
+        }
+      ],
+      "audit": {
+        "id": "F3.2.16",
+        "kind": "-",
+        "real": "No",
+        "gap": "Y"
+      },
+      "needs": {
+        "kind": "unit",
+        "test": "activity-page.test: render ?itemType=movie; assert the 'Kind of title: movie' token and its removal"
+      }
+    },
+    {
+      "id": "activity.activity-filters-search-step.until-day-token-and-its-remove-button",
+      "area": "activity",
+      "behaviour": "\"Until: <day>\" token and its remove button",
+      "kind": "screen action",
+      "severity": "low",
+      "touches": "disk",
+      "required": "inproc",
+      "proofs": [
+        {
+          "type": "vitest",
+          "file": "apps/web/src/routes/activity-page.test.tsx",
+          "name": "the Outcome, Until, Kind of title and From tokens show in words, and each one's remove button clears its own filter"
+        }
+      ],
+      "audit": {
+        "id": "F3.2.17",
+        "kind": "-",
+        "real": "No",
+        "gap": "Y"
+      },
+      "needs": {
+        "kind": "unit",
+        "test": "activity-page.test: render ?until=2026-09-30; assert the 'Until: 2026-09-30' token and its removal"
+      }
+    },
     {"id":"activity.activity-filters-search-step.clear-filters-in-the-token-strip-clears-every","area":"activity","behaviour":"\"Clear filters\" in the token strip clears every filter at once","kind":"screen action","severity":"medium","touches":"none","required":"inproc","proofs":[{"type":"vitest","file":"apps/web/src/routes/activity-page.test.tsx","name":"writes a typed title to the address after a moment and clears every filter in one press"}],"audit":{"id":"F3.2.18","kind":"vitest","real":"Unit only","gap":"N"}},
     {"id":"activity.activity-filters-search-step.filters-with-no-matches-say-nothing-matches-these","area":"activity","behaviour":"Filters with no matches say \"Nothing matches these filters\" (not \"nothing has happened\") with a Clear filters button","kind":"screen action","severity":"medium","touches":"none","required":"inproc","proofs":[{"type":"vitest","file":"apps/web/src/routes/activity-page.test.tsx","name":"says nothing matches, rather than that nothing has happened, when a filter finds no events"},{"type":"smoke","file":"apps/web/tests/smoke/authenticated.spec.ts","name":"opens the Activity history from a filtered link and keeps the filters in the address"}],"audit":{"id":"F3.2.19","kind":"vitest+smoke","real":"Yes-smoke","gap":"N"}},
     {"id":"activity.activity-filters-search-step.every-filter-type-title-file-source-outcome-reason","area":"activity","behaviour":"Every filter (type, title, file, source, outcome, reason, since, until, item) is sent to the server exactly","kind":"screen action","severity":"medium","touches":"none","required":"inproc","proofs":[{"type":"vitest","file":"apps/web/src/routes/activity-page.test.tsx","name":"reads the filters from the address and asks the server for exactly those"},{"type":"vitest","file":"apps/web/src/lib/activity-history.test.ts","name":"asks the server for exactly the filters, with a page size and the page token"},{"type":"vitest","file":"apps/web/src/lib/activity-history.test.ts","name":"round-trips every filter through the address"}],"audit":{"id":"F3.2.20","kind":"vitest","real":"Unit only","gap":"N"}},
@@ -2627,7 +2884,32 @@
     {"id":"activity.one-story-closing-lines.the-outcome-line-describes-the-file-imported-and","area":"activity","behaviour":"The outcome line describes the file imported and lists skipped files and why","kind":"screen action","severity":"medium","touches":"disk","required":"inproc","proofs":[{"type":"backend","file":"tests/Deluno.Platform.Tests/Processing/ProcessorOutcomeDescribeTests.cs","name":"An_imported_outcome_with_skipped_files_says_which_ones_and_why"},{"type":"backend","file":"tests/Deluno.Platform.Tests/Processing/ProcessorOutcomeDescribeTests.cs","name":"An_imported_outcome_with_nothing_skipped_reads_as_before"}],"audit":{"id":"F3.10.4","kind":"xunit","real":"Unit only","gap":"N"}},
     {"id":"activity.one-story-closing-lines.the-closing-lines-as-a-person-reads-them","area":"activity","behaviour":"The closing lines as a person reads them on the Activity screen (row and drawer wording for outcome-reported / not-reported / superseded)","kind":"screen action","severity":"low","touches":"none","required":"inproc","proofs":[],"audit":{"id":"F3.10.5","kind":"-","real":"No","gap":"Y"},"needs":{"kind":"smoke","test":"smoke: seed outcome-reported, not-reported and superseded events and assert the Activity row and drawer wording and no doubled full stop"},"issue":1329},
     {"id":"activity.notifications-bell-badge-pan.badge-none-at-zero-the-server-s-count","area":"activity","behaviour":"Badge: none at zero, the server's count otherwise, accessible name \"Notifications - N things need a look\"","kind":"state","severity":"medium","touches":"none","required":"inproc","proofs":[{"type":"vitest","file":"apps/web/src/components/shell/notifications-bell.test.tsx","name":"shows no badge at zero, and the real-problem count when there is one"}],"audit":{"id":"F3.11.1","kind":"vitest","real":"Unit only","gap":"N"}},
-    {"id":"activity.notifications-bell-badge-pan.badge-reads-99-above-99","area":"activity","behaviour":"Badge reads \"99+\" above 99","kind":"state","severity":"low","touches":"none","required":"inproc","proofs":[],"audit":{"id":"F3.11.2","kind":"-","real":"No","gap":"Y"},"needs":{"kind":"unit","test":"notifications-bell.test: a total of 120 shows 99+"},"issue":1329},
+    {
+      "id": "activity.notifications-bell-badge-pan.badge-reads-99-above-99",
+      "area": "activity",
+      "behaviour": "Badge reads \"99+\" above 99",
+      "kind": "state",
+      "severity": "low",
+      "touches": "none",
+      "required": "inproc",
+      "proofs": [
+        {
+          "type": "vitest",
+          "file": "apps/web/src/components/shell/notifications-bell.test.tsx",
+          "name": "caps the count at 99+ above 99, and says 1 thing needs in the singular"
+        }
+      ],
+      "audit": {
+        "id": "F3.11.2",
+        "kind": "-",
+        "real": "No",
+        "gap": "Y"
+      },
+      "needs": {
+        "kind": "unit",
+        "test": "notifications-bell.test: a total of 120 shows 99+"
+      }
+    },
     {"id":"activity.notifications-bell-badge-pan.the-count-is-the-server-s-number-never","area":"activity","behaviour":"The count is the server's number (never a sum the page makes), and ready updates, leftovers and suggestions are not in it","kind":"state","severity":"medium","touches":"none","required":"inproc","proofs":[{"type":"vitest","file":"apps/web/src/lib/attention-from-server.test.tsx","name":"is the server's number, whatever the lists the sidebar keeps would add up to"},{"type":"vitest","file":"apps/web/src/lib/attention-total.test.ts","name":"is the one count the bell shows, the server's, not a sum of its own"},{"type":"backend","file":"tests/Deluno.Persistence.Tests/Api/AttentionSummaryApiTests.cs","name":"The_endpoint_and_the_in_process_reading_the_tray_takes_give_the_same_count_and_rows"}],"audit":{"id":"F3.11.3","kind":"vitest+xunit","real":"Backend-inproc","gap":"N"}},
     {"id":"activity.notifications-bell-badge-pan.the-server-builds-one-row-per-failure-whichever","area":"activity","behaviour":"The server builds one row per failure whichever record names it; an imported download needs nobody; snoozed/cleared checks and update notices never count","kind":"failure-mode","severity":"medium","touches":"disk","required":"inproc","proofs":[{"type":"backend","file":"tests/Deluno.Worker.Tests/Dashboard/AttentionSummaryBuilderTests.cs","name":"One_failure_is_one_row_whichever_record_names_it"},{"type":"backend","file":"tests/Deluno.Worker.Tests/Dashboard/AttentionSummaryBuilderTests.cs","name":"A_download_that_was_imported_since_has_nothing_left_to_ask"},{"type":"backend","file":"tests/Deluno.Worker.Tests/Dashboard/AttentionSummaryBuilderTests.cs","name":"A_snoozed_or_cleared_health_problem_is_not_counted"},{"type":"backend","file":"tests/Deluno.Worker.Tests/Dashboard/AttentionSummaryBuilderTests.cs","name":"Update_notices_never_change_the_number"},{"type":"backend","file":"tests/Deluno.Persistence.Tests/Api/AttentionSummaryApiTests.cs","name":"An_empty_install_answers_with_no_rows_and_a_count_of_nothing"}],"audit":{"id":"F3.11.4","kind":"xunit","real":"Backend-inproc","gap":"N"}},
     {"id":"activity.notifications-bell-badge-pan.click-opens-a-dialog-panel-focus-on-the","area":"activity","behaviour":"Click opens a dialog panel (focus on the first row), Escape closes it and returns focus to the bell, an outside click closes it, every control is reachable by keyboard","kind":"screen action","severity":"medium","touches":"none","required":"inproc","proofs":[{"type":"vitest","file":"apps/web/src/components/shell/notifications-bell.test.tsx","name":"closes on Escape and returns focus to the bell"},{"type":"vitest","file":"apps/web/src/components/shell/notifications-bell.test.tsx","name":"closes on a click outside the panel"},{"type":"vitest","file":"apps/web/src/components/shell/notifications-bell.test.tsx","name":"is keyboard reachable: every row and Show all activity are real buttons in the panel"}],"audit":{"id":"F3.11.5","kind":"vitest","real":"Unit only","gap":"N"}},
@@ -2643,7 +2925,44 @@
     {"id":"activity.notifications-bell-badge-pan.import-case-row-retry-search-now-or-review","area":"activity","behaviour":"Import-case row: Retry / Search now or Review, and Dismiss, pressed in the panel","kind":"screen action","severity":"low","touches":"disk","required":"inproc","proofs":[],"partial":[{"type":"vitest","file":"apps/web/src/lib/alert-actions.test.ts","name":"a download the client no longer lists is searched for again, and an import that can be retried is retried"}],"audit":{"id":"F3.11.15","kind":"vitest","real":"Unit only","gap":"Y"},"needs":{"kind":"unit","test":"notifications-bell.test: press Retry, Search now and Dismiss on a recovery row and assert each request"},"issue":1329},
     {"id":"activity.notifications-bell-badge-pan.failed-import-job-row-try-again-that-one","area":"activity","behaviour":"Failed-import-job row: \"Try again\" (that one job) and Dismiss pressed in the panel","kind":"failure-mode","severity":"low","touches":"disk","required":"inproc","proofs":[],"partial":[{"type":"vitest","file":"apps/web/src/lib/alert-actions.test.ts","name":"Try again retries that one job, not every failed job"}],"audit":{"id":"F3.11.16","kind":"vitest","real":"Unit only","gap":"Y"},"needs":{"kind":"unit","test":"notifications-bell.test: press Try again and Dismiss on a failed-import row; assert /api/jobs/{id}/retry and /dismiss"},"issue":1329},
     {"id":"activity.notifications-bell-badge-pan.refused-hand-off-row-retry-find-another-source","area":"activity","behaviour":"Refused hand-off row: Retry / Find another (source gone) and Dismiss pressed in the panel; Retry not offered once the file is processed","kind":"failure-mode","severity":"low","touches":"none","required":"inproc","proofs":[],"partial":[{"type":"vitest","file":"apps/web/src/lib/alert-actions.test.ts","name":"a hand-off that already has its processed file is not offered Retry (#1151)"},{"type":"vitest","file":"apps/web/src/lib/alert-actions.test.ts","name":"a download that was gone is offered another copy and Dismiss, never Retry (#1186)"},{"type":"backend","file":"tests/Deluno.Persistence.Tests/Api/ProcessorHandoffRetryTests.cs","name":"Retrying_a_handoff_that_did_not_finish_hands_it_back_to_the_processor"},{"type":"backend","file":"tests/Deluno.Persistence.Tests/Api/ProcessorHandoffSearchAgainTests.cs","name":"Giving_up_on_a_lost_handoff_ends_it_and_searches_again_without_blocklisting"}],"audit":{"id":"F3.11.17","kind":"vitest+xunit","real":"Backend-inproc","gap":"Y"},"needs":{"kind":"unit","test":"notifications-bell.test: press Retry, Find another and Dismiss on a hand-off row and assert each request"},"issue":1329},
-    {"id":"activity.notifications-bell-badge-pan.no-release-row-search-now-searches-every-indexer","area":"activity","behaviour":"No-release row: \"Search now\" (searches every indexer) and Dismiss pressed in the panel","kind":"screen action","severity":"low","touches":"other-app","required":"inproc","proofs":[],"partial":[{"type":"vitest","file":"apps/web/src/components/shell/notifications-bell.test.tsx","name":"Find another removes that download and searches again, and Dismiss on a title hides it without changing it"}],"audit":{"id":"F3.11.18","kind":"vitest","real":"Unit only","gap":"Y"},"needs":{"kind":"unit","test":"notifications-bell.test: press Search now on a no-release row; assert POST /api/{movies or series}/{id}/search"},"issue":1329},
+    {
+      "id": "activity.notifications-bell-badge-pan.no-release-row-search-now-searches-every-indexer",
+      "area": "activity",
+      "behaviour": "No-release row: \"Search now\" (searches every indexer) and Dismiss pressed in the panel",
+      "kind": "screen action",
+      "severity": "low",
+      "touches": "other-app",
+      "required": "inproc",
+      "proofs": [
+        {
+          "type": "vitest",
+          "file": "apps/web/src/components/shell/notifications-bell.test.tsx",
+          "name": "Search now on a title with no acceptable release searches that film in its own library"
+        },
+        {
+          "type": "vitest",
+          "file": "apps/web/src/components/shell/notifications-bell.test.tsx",
+          "name": "Find another removes that download and searches again, and Dismiss on a title hides it without changing it"
+        }
+      ],
+      "partial": [
+        {
+          "type": "vitest",
+          "file": "apps/web/src/components/shell/notifications-bell.test.tsx",
+          "name": "Find another removes that download and searches again, and Dismiss on a title hides it without changing it"
+        }
+      ],
+      "audit": {
+        "id": "F3.11.18",
+        "kind": "vitest",
+        "real": "Unit only",
+        "gap": "Y"
+      },
+      "needs": {
+        "kind": "unit",
+        "test": "notifications-bell.test: press Search now on a no-release row; assert POST /api/{movies or series}/{id}/search"
+      }
+    },
     {"id":"activity.notifications-bell-badge-pan.connection-down-row-test-again-and-switch-off","area":"activity","behaviour":"Connection-down row: \"Test again\" and \"Switch off\" (indexer/client), Test again for processor/media server/requests pressed in the panel","kind":"screen action","severity":"low","touches":"other-app","required":"inproc","proofs":[],"partial":[{"type":"vitest","file":"apps/web/src/lib/alert-actions.test.ts","name":"a connection problem tests that connection again and, for an indexer or client, can switch it off"}],"audit":{"id":"F3.11.19","kind":"vitest","real":"Unit only","gap":"Y"},"needs":{"kind":"unit","test":"notifications-bell.test: press Test again and Switch off on a connection row; assert the requests"},"issue":1329},
     {"id":"activity.notifications-bell-badge-pan.machine-rows-keep-awake-pressed-back-up-now","area":"activity","behaviour":"Machine rows: Keep awake (pressed), Back up now, Clean up, Snooze 1 day / 1 week","kind":"screen action","severity":"low","touches":"none","required":"inproc","proofs":[],"partial":[{"type":"vitest","file":"apps/web/src/components/shell/notifications-bell.test.tsx","name":"Keep awake turns Deluno's keep-awake on without touching anything else"},{"type":"vitest","file":"apps/web/src/lib/alert-actions.test.ts","name":"the Machine problems have buttons that say what they do"}],"audit":{"id":"F3.11.20","kind":"vitest","real":"Unit only","gap":"Y"},"needs":{"kind":"unit","test":"notifications-bell.test: press Back up now, Snooze 1 day and Snooze 1 week; assert the requests"},"issue":1329},
     {"id":"activity.notifications-bell-badge-pan.jobs-gave-up-row-retry-and-review-system","area":"activity","behaviour":"\"Jobs gave up\" row: Retry and Review (System for background jobs, Activity Failed for title jobs)","kind":"failure-mode","severity":"low","touches":"none","required":"inproc","proofs":[],"partial":[{"type":"vitest","file":"apps/web/src/lib/alert-actions.test.ts","name":"a background job's Review opens System, a job about a title opens Activity's failed list, and both can Retry"}],"audit":{"id":"F3.11.21","kind":"vitest","real":"Unit only","gap":"Y"},"needs":{"kind":"unit","test":"notifications-bell.test: press Retry on a jobs-gave-up row; follow Review for background and title jobs"},"issue":1329},
