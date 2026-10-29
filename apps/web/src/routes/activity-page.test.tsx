@@ -7,6 +7,8 @@ import type { ActivityEventItem, MovieImportRecoverySummary, SeriesImportRecover
 
 const authedFetchMock = vi.fn();
 vi.mock("../lib/use-auth", () => ({ authedFetch: (...args: unknown[]) => authedFetchMock(...args) }));
+const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }));
+vi.mock("../components/shell/toaster", () => ({ toast: toastMock }));
 
 const activityEvents = [
     {
@@ -808,6 +810,23 @@ describe("Activity is one list with status chips (#1114)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Retry failed jobs" }));
     await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/jobs/retry-failed", expect.objectContaining({ method: "POST" })));
   });
+
+  it("Retry failed jobs says how many were requeued, and says so when they could not be", async () => {
+    toastMock.success.mockClear();
+    toastMock.error.mockClear();
+    authedFetchMock.mockImplementation(async (path: string) =>
+      path === "/api/jobs/retry-failed" ? jsonResponse({ retried: 2 }) : answerActivityApi(path));
+    renderActivity("/activity?status=failed");
+    await userEvent.click(screen.getByRole("button", { name: "Retry failed jobs" }));
+    await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith("2 failed jobs requeued"));
+
+    toastMock.success.mockClear();
+    authedFetchMock.mockImplementation(async (path: string) =>
+      path === "/api/jobs/retry-failed" ? ({ ok: false, status: 500, json: () => Promise.resolve({}) } as Response) : answerActivityApi(path));
+    await userEvent.click(screen.getByRole("button", { name: "Retry failed jobs" }));
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith("Failed jobs could not be requeued."));
+    expect(toastMock.success).not.toHaveBeenCalled();
+  });
 });
 
 /**
@@ -880,6 +899,69 @@ describe("Activity steps built from Transfers' sources (#1115)", () => {
 
     expect(await screen.findByText("Nope.Film.2019")).toBeInTheDocument();
     expect(screen.getByText("Not enough disk space.")).toBeInTheDocument();
+  });
+
+  it("opens a Processing row's drawer with What happened, the details and an Open Transfers link", async () => {
+    renderActivity("/activity?type=processing");
+    await userEvent.click(await screen.findByText("Sintel.2010.1080p"));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("What happened")).toBeInTheDocument();
+    expect(within(dialog).getByText("Details")).toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: "Open Transfers" })).toHaveAttribute("href", "/queue");
+  });
+
+  it("opens a Download health row's drawer with What happened, the details and an Open Transfers link", async () => {
+    renderActivity("/activity?type=download-health");
+    await userEvent.click(await screen.findByText("Stalled.Show.S01E01"));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("What happened")).toBeInTheDocument();
+    expect(within(dialog).getByText("Details")).toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: "Open Transfers" })).toHaveAttribute("href", "/queue");
+  });
+
+  it("opens a Download client row's drawer with What happened, the details and an Open Transfers link", async () => {
+    renderActivity("/activity?type=download-client");
+    await userEvent.click(await screen.findByText("Nope.Film.2019"));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("What happened")).toBeInTheDocument();
+    expect(within(dialog).getByText("Details")).toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: "Open Transfers" })).toHaveAttribute("href", "/queue");
+  });
+
+  it("a failed hand-off is dismissed from its drawer: posted to the processor, toast says so, drawer closes", async () => {
+    authedFetchMock.mockImplementation(async (path: string) =>
+      path.startsWith("/api/integrations/processors/handoffs")
+        ? jsonResponse(handoffs.map((handoff) => (handoff.id === "h1" ? { ...handoff, status: "failed", failureMessage: "The processor could not read the file." } : handoff)))
+        : answerLive(path));
+    toastMock.success.mockClear();
+    renderActivity("/activity?type=processing");
+
+    await userEvent.click(await screen.findByText("Sintel.2010.1080p"));
+    const handoffReads = () => authedFetchMock.mock.calls.filter((call) => String(call[0]).startsWith("/api/integrations/processors/handoffs")).length;
+    const readsBefore = handoffReads();
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Dismiss the failed hand-off Sintel.2010.1080p" }));
+
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/integrations/processors/handoffs/h1/dismiss", { method: "POST" }));
+    await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith("Sintel.2010.1080p dismissed"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(handoffReads()).toBeGreaterThan(readsBefore));
+  });
+
+  it("a live row the server refuses to dismiss says so in a toast and keeps the drawer open", async () => {
+    authedFetchMock.mockImplementation(async (path: string) =>
+      path.endsWith("/dismiss")
+        ? ({ ok: false, status: 500, json: () => Promise.resolve({}) } as Response)
+        : path.startsWith("/api/integrations/processors/handoffs")
+          ? jsonResponse(handoffs.map((handoff) => (handoff.id === "h1" ? { ...handoff, status: "failed", failureMessage: "The processor could not read the file." } : handoff)))
+          : answerLive(path));
+    toastMock.error.mockClear();
+    renderActivity("/activity?type=processing");
+
+    await userEvent.click(await screen.findByText("Sintel.2010.1080p"));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Dismiss the failed hand-off Sintel.2010.1080p" }));
+
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith("That could not be dismissed."));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("dismisses a failed hand-off, a stalled download and a failed client download from their drawers (#1218)", async () => {
