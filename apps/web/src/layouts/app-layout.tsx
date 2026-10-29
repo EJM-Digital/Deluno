@@ -888,7 +888,7 @@ function ContentTopbar({
           className={cn(
             TOPBAR_CONTROL,
             "hidden items-center gap-2.5 rounded-xl border border-hairline/70 bg-card/75 px-3.5 text-left text-(length:--shell-nav-size) font-medium text-muted-foreground transition md:flex",
-            "lg:w-[20rem] xl:w-[30rem]",
+            "lg:w-[16rem] xl:w-[20rem] 2xl:w-[30rem]",
             "hover:border-primary/30 hover:bg-muted/40 hover:text-foreground"
           )}
         >
