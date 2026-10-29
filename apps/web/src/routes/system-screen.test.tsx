@@ -6,6 +6,7 @@ import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { outputIssueOf, SystemPage } from "./system-screen";
 
 const authedFetchMock = vi.fn();
+const navigateMock = vi.hoisted(() => vi.fn());
 vi.mock("../lib/use-auth", () => ({ authedFetch: (...args: unknown[]) => authedFetchMock(...args) }));
 
 const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
@@ -53,7 +54,7 @@ vi.mock("../lib/use-signalr", async (importOriginal) => {
 
 vi.mock("react-router-dom", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router-dom")>()),
-  useNavigate: () => vi.fn()
+  useNavigate: () => navigateMock
 }));
 
 vi.mock("../lib/route-cache", async (importOriginal) => {
@@ -789,5 +790,33 @@ describe("System timeline live events (#1329)", () => {
     expect(screen.queryByText("Event e10")).toBeNull();
     // Nothing more waits behind "Load more events": only 50 were ever kept.
     expect(screen.queryByRole("button", { name: /more events/ })).toBeNull();
+  });
+});
+
+/** #1329: while Allowed Hosts is off, Health shows one plain item, and its one button opens the Security page. */
+describe("The Allowed Hosts suggestion on Health (#1329)", () => {
+  afterEach(() => {
+    authedFetchMock.mockReset();
+    navigateMock.mockReset();
+    loaderData.healthChecks = { checks: [], summary: { problemCount: 0 } };
+    loaderData.monitoring = null;
+  });
+
+  it("shows one item saying Deluno answers on any address, not counted as a problem, and Open Security goes to the Security page", () => {
+    loaderData.healthChecks = {
+      checks: [
+        { id: "security:allowed-hosts", category: "system", name: "Allowed Hosts", status: "suggestion", message: "Deluno answers on any address. Choose which ones it should use.", cause: "Allowed Hosts is off.", fix: "Open Security and tick the addresses Deluno should answer on.", detailsJson: null, lastRunUtc: "2026-09-30T00:00:00Z", problemSinceUtc: null, snoozedUntilUtc: null }
+      ],
+      summary: { problemCount: 0 }
+    } as never;
+    loaderData.monitoring = { alerts: [] } as never;
+    authedFetchMock.mockImplementation(() => jsonResponse([]));
+
+    render(<MemoryRouter initialEntries={["/system"]}><SystemPage /></MemoryRouter>);
+
+    expect(screen.getAllByText("Deluno answers on any address. Choose which ones it should use.")).toHaveLength(1);
+    expect(screen.getByText("Switched off")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open Security: Allowed Hosts" }));
+    expect(navigateMock).toHaveBeenCalledWith("/system/security");
   });
 });
