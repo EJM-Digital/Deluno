@@ -48,6 +48,7 @@ vi.mock("./api", async (importOriginal) => ({
   },
   fetchPageItems: (url: string) => {
     mocks.fetchJsonCalls.push(url);
+    if (mocks.answer) return Promise.resolve([]);
     return new Promise(() => {});
   }
 }));
@@ -142,6 +143,42 @@ describe("useAttention", () => {
       expect(mocks.fetchJsonCalls).toEqual(["/api/attention/summary"]);
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it("a job failing, a health check changing, a title or indexer changing and a finished connection test each read the count again, with no timer (#1329)", async () => {
+    const pushes: Array<[string, unknown]> = [
+      ["ActivityEventAdded", { category: "job.failed" }],
+      ["HealthChanged", undefined],
+      ["MovieChanged", undefined],
+      ["SeriesChanged", undefined],
+      ["IndexerChanged", undefined],
+      ["ConnectionChecked", undefined]
+    ];
+    for (const [name, payload] of pushes) {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        queryClient.clear();
+        mocks.fetchJsonCalls = [];
+        mocks.pushHandlers = {};
+        mocks.answer = true;
+        const view = renderHook(() => useAttention());
+        await vi.waitFor(() => expect(mocks.fetchJsonCalls.length).toBeGreaterThan(0));
+        await vi.advanceTimersByTimeAsync(5_000);
+        mocks.fetchJsonCalls = [];
+
+        act(() => { (mocks.pushHandlers[name] ?? []).forEach((handler) => (handler as unknown as (event: unknown) => void)(payload)); });
+        await vi.advanceTimersByTimeAsync(3_000);
+
+        expect(mocks.fetchJsonCalls.length, name).toBeGreaterThan(0);
+        // And nothing more is read on a clock afterwards.
+        const afterPush = mocks.fetchJsonCalls.length;
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(mocks.fetchJsonCalls.length, name).toBe(afterPush);
+        view.unmount();
+      } finally {
+        vi.useRealTimers();
+      }
     }
   });
 });

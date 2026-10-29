@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { queryClient } from "../lib/route-cache";
@@ -744,5 +744,50 @@ describe("Backups made in the same minute (#1373)", () => {
     expect(lines).toHaveLength(4);
     expect(new Set(lines).size).toBe(4);
     expect(lines.filter((line) => / · [12] of 2$/.test(line ?? ""))).toHaveLength(2);
+  });
+});
+
+/** #1329: a new event is put at the head of the System timeline from the push, with no reload. */
+describe("System timeline live events (#1329)", () => {
+  afterEach(() => {
+    authedFetchMock.mockReset();
+    revalidateMock.mockReset();
+  });
+
+  const push = (id: string, message = `Event ${id}`) => act(() => {
+    // The mock keeps a handler per render; the live one is the newest.
+    for (const handler of [[...(pushHandlers.get("ActivityEventAdded") ?? [])].at(-1)!]) {
+      handler({ id, category: "download.dispatched", label: "Sent to the client", message, severity: "info", createdUtc: "2026-10-01T10:00:00Z" });
+    }
+  });
+  const open = () => {
+    authedFetchMock.mockImplementation(() => jsonResponse([]));
+    render(<MemoryRouter initialEntries={["/system/audit"]}><SystemPage /></MemoryRouter>);
+    return () => within(screen.getByRole("list", { name: "Audit timeline" })).queryAllByRole("listitem");
+  };
+
+  it("prepends a pushed event as the newest row, once, however many times the same event is pushed", () => {
+    const rows = open();
+    push("a", "First pushed event");
+    push("b", "Second pushed event");
+    push("b", "Second pushed event");
+
+    const shown = rows().map((row) => row.textContent ?? "");
+    expect(shown).toHaveLength(2);
+    expect(shown[0]).toContain("Second pushed event");
+    expect(shown[1]).toContain("First pushed event");
+  });
+
+  it("keeps at most 50 live events, dropping the oldest", () => {
+    const rows = open();
+    for (let index = 1; index <= 60; index += 1) push(`e${index}`);
+
+    const shown = rows().map((row) => row.textContent ?? "");
+    expect(shown).toHaveLength(50);
+    expect(shown[0]).toContain("Event e60");
+    expect(shown.at(-1)).toContain("Event e11");
+    expect(screen.queryByText("Event e10")).toBeNull();
+    // Nothing more waits behind "Load more events": only 50 were ever kept.
+    expect(screen.queryByRole("button", { name: /more events/ })).toBeNull();
   });
 });
