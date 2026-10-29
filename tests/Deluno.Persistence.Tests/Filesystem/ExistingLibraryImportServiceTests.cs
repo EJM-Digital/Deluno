@@ -7,6 +7,8 @@ using Deluno.Movies.Data;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Data;
 using Deluno.Quality;
+using Deluno.Quality.Data;
+using Deluno.Quality.ReleasePreferences;
 using Deluno.Series.Data;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -736,6 +738,58 @@ public sealed class ExistingLibraryImportServiceTests
         }
 
         return rootPath;
+    }
+
+    [Fact]
+    public async Task Importing_an_existing_library_records_a_baseline_snapshot_per_file_from_the_file_name_alone()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-15T08:00:00Z"));
+        await InitializeAsync(storage, timeProvider);
+
+        var rootPath = Path.Combine(storage.DataRoot, "baseline");
+        var folder = Path.Combine(rootPath, "Silent Harbour (1998)");
+        Directory.CreateDirectory(folder);
+        var file = Path.Combine(folder, "Silent Harbour (1998) (WEBDL-1080p).mp4");
+        await File.WriteAllTextAsync(file, string.Empty);
+
+        var quality = new SqliteQualityRepository(storage.Factory, timeProvider);
+        var profile = await quality.CreateQualityProfileAsync(
+            new Deluno.Quality.Contracts.CreateQualityProfileRequest(
+                "Baseline", "movies", "WEB 1080p", "WEB 720p, WEB 1080p", string.Empty, UpgradeUntilCutoff: true, UpgradeUnknownItems: false),
+            CancellationToken.None);
+        var libraries = new SqliteLibrariesRepository(storage.Factory, timeProvider);
+        var libraryId = (await libraries.CreateLibraryAsync(
+            new CreateLibraryRequest("Movies", "movies", "Main", rootPath, Path.Combine(rootPath, "..", "downloads"), profile.Id,
+                "standard", null, null, null, null, true, true, true, 6, 24, 25),
+            CancellationToken.None)).Id;
+        var mediaState = new Deluno.Media.SqliteMediaStateRepository(storage.Factory, timeProvider);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider, mediaState);
+        var service = new ExistingLibraryImportService(
+            libraries,
+            new SqliteLibraryImportRunsRepository(storage.Factory, timeProvider),
+            movies,
+            new SqliteSeriesCatalogRepository(storage.Factory, timeProvider),
+            new MediaDecisionService(new VersionedMediaPolicyEngine()),
+            new QualityModelService(storage.Factory, timeProvider),
+            timeProvider,
+            NullLogger<ExistingLibraryImportService>.Instance,
+            qualityRepository: quality);
+
+        Assert.Equal(profile.Id, (await libraries.ListLibrariesAsync(CancellationToken.None)).Single().QualityProfileId);
+        var result = await service.ImportSelectedAsync(libraryId, [folder], CancellationToken.None);
+        Assert.Equal(1, result!.ImportedCount);
+
+        var movieId = (await movies.ListAsync(CancellationToken.None)).Single().Id;
+        var snapshot = await mediaState
+            .GetLatestPreferenceEvaluationSnapshotAsync(MediaKind.Movie, movieId, libraryId, null, CancellationToken.None);
+
+        Assert.NotNull(snapshot);
+        Assert.Equal("existing-library-import", snapshot.Source);
+        Assert.Equal(file, snapshot.FilePath);
+        // No release was ever grabbed, so the evidence is the file's own name.
+        Assert.Equal(file, snapshot.ReleaseNameEvidence);
+        Assert.Contains(snapshot.Facts, fact => fact.TraitId == InstalledPreferenceEvaluationFactory.QualityTraitId("WEB 1080p") && fact.State == PreferenceFactState.Present);
     }
 
     private static ExistingLibraryImportService CreateService(

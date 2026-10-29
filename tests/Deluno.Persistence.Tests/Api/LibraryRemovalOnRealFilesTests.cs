@@ -76,4 +76,23 @@ public sealed class LibraryRemovalOnRealFilesTests
         Assert.NotNull(await dispatches.GetDispatchIncludingArchivedAsync(goneDispatch, CancellationToken.None));
         Assert.NotNull(await dispatches.GetDispatchAsync(keptDispatch, CancellationToken.None));
     }
+
+    [Fact]
+    public async Task A_removed_library_leaves_the_titles_wanted_row_and_membership_pointing_at_it_shown_as_Removed_library()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var film = await ApiScenes.FilmOnDiskAsync(app, "Dune", 2021);
+
+        var before = await app.Client.GetFromJsonAsync<JsonElement>($"/api/movies/{film.MovieId}/libraries");
+        Assert.Equal(film.LibraryId, before.EnumerateArray().Single().GetProperty("libraryId").GetString());
+
+        Assert.Equal(HttpStatusCode.NoContent, (await app.Client.DeleteAsync($"/api/libraries/{film.LibraryId}")).StatusCode);
+
+        var after = await app.Client.GetFromJsonAsync<JsonElement>($"/api/movies/{film.MovieId}/libraries");
+        var membership = after.EnumerateArray().Single();
+        Assert.Equal(film.LibraryId, membership.GetProperty("libraryId").GetString());
+        Assert.Equal("Removed library", membership.GetProperty("libraryName").GetString());
+        Assert.Equal("covered", membership.GetProperty("wantedStatus").GetString());
+        Assert.True(File.Exists(film.FilePath));
+    }
 }

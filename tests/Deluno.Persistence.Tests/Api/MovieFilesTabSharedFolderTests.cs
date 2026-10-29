@@ -1,5 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using Deluno.Contracts;
+using Deluno.Media;
 using Deluno.Movies.Data;
 using Deluno.Persistence.Tests.Support;
 using Microsoft.Extensions.DependencyInjection;
@@ -127,6 +129,42 @@ public sealed class MovieFilesTabSharedFolderTests
         Assert.DoesNotContain(listed, item => Same(item, stranger));
         Assert.False((await DeleteAsync(app, movieId, stranger, library)).IsSuccessStatusCode);
         Assert.True(File.Exists(stranger));
+    }
+
+    [Fact]
+    public async Task Deleting_a_subtitle_clears_the_scan_state_and_says_it_was_not_the_primary_file_and_unknown_ones_are_refused()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var root = Directory.CreateDirectory(Path.Combine(app.DataRoot, "Flat")).FullName;
+        var library = await CreateLibraryAsync(app, "Flat", root);
+        var film = Path.Combine(root, "Alien.mkv");
+        var subtitle = Path.Combine(root, "Alien.en.srt");
+        foreach (var path in new[] { film, subtitle })
+        {
+            await File.WriteAllBytesAsync(path, [1, 2, 3]);
+        }
+
+        var movieId = await ImportAsync(app, library, "Alien", 1979, film);
+        var subtitles = app.Services.GetRequiredService<IMediaSubtitleRepository>();
+        await subtitles.RecordScanAsync(
+            MediaKind.Movie, movieId, new MediaSubtitleScan(film, 3, "ok", 1, DateTimeOffset.UtcNow), [], CancellationToken.None);
+
+        var secondary = await DeleteAsync(app, movieId, subtitle, library);
+        Assert.True(secondary.IsSuccessStatusCode, await secondary.Content.ReadAsStringAsync());
+        using (var body = JsonDocument.Parse(await secondary.Content.ReadAsStringAsync()))
+        {
+            Assert.False(body.RootElement.GetProperty("wasPrimary").GetBoolean());
+        }
+
+        Assert.Equal(0, await subtitles.ClearScansAsync(MediaKind.Movie, [movieId], CancellationToken.None));
+        Assert.True(File.Exists(film));
+        Assert.Equal(404, (int)(await DeleteAsync(app, "no-such-film", subtitle, library)).StatusCode);
+        Assert.Equal(400, (int)(await DeleteAsync(app, movieId, Path.Combine(root, "missing.srt"), library)).StatusCode);
+
+        var primary = await DeleteAsync(app, movieId, film, library);
+        Assert.True(primary.IsSuccessStatusCode, await primary.Content.ReadAsStringAsync());
+        using var primaryBody = JsonDocument.Parse(await primary.Content.ReadAsStringAsync());
+        Assert.True(primaryBody.RootElement.GetProperty("wasPrimary").GetBoolean());
     }
 
     private static bool Same(string left, string right) => string.Equals(left, right, StringComparison.OrdinalIgnoreCase);

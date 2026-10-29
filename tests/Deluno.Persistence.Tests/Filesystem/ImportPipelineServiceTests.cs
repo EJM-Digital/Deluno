@@ -3470,6 +3470,13 @@ public sealed partial class ImportPipelineServiceTests
             imported.FilePath,
             imported.FileSizeBytes);
         Assert.NotNull(snapshot);
+        // The plan the evaluation was made under travels with it, and the quality is closed-world:
+        // the imported tier is present and every other tier in the family is recorded absent.
+        Assert.False(string.IsNullOrWhiteSpace(snapshot.PlanId));
+        Assert.False(string.IsNullOrWhiteSpace(snapshot.PlanVersion));
+        Assert.False(string.IsNullOrWhiteSpace(snapshot.PlanHash));
+        Assert.Contains(snapshot.Facts, fact => fact.TraitId == "quality.web-1080p" && fact.State == PreferenceFactState.Present);
+        Assert.DoesNotContain(snapshot.Facts, fact => fact.TraitId.StartsWith("quality.", StringComparison.Ordinal) && fact.TraitId != "quality.web-1080p" && fact.State == PreferenceFactState.Present);
         Assert.Equal(releaseName, snapshot.ReleaseNameEvidence);
         Assert.Equal(
             new[] { netflix.Id, preferredGroup.Id }.Order(StringComparer.Ordinal),
@@ -3496,6 +3503,12 @@ public sealed partial class ImportPipelineServiceTests
     /// guide format of category edition renders in {Edition}; {Release Group} is the text after the last dash.
     /// </summary>
     private static async Task<string> ImportedMovieNameAsync(
+        string releaseName,
+        string movieFileFormat,
+        Func<SqliteQualityRepository, Task<string[]>> rulesInProfile)
+        => (await ImportedMovieAsync(releaseName, movieFileFormat, rulesInProfile)).Name;
+
+    private static async Task<(string Name, IReadOnlyList<string> MatchedRuleIds)> ImportedMovieAsync(
         string releaseName,
         string movieFileFormat,
         Func<SqliteQualityRepository, Task<string[]>> rulesInProfile)
@@ -3545,7 +3558,10 @@ public sealed partial class ImportPipelineServiceTests
             tracked.Add(item);
         }
 
-        return Path.GetFileName(Assert.Single(tracked).FilePath);
+        var only = Assert.Single(tracked);
+        var snapshot = await mediaState.GetLatestPreferenceEvaluationSnapshotAsync(
+            MediaKind.Movie, only.MovieId, library.Id, fileIdentity: null, CancellationToken.None, only.FilePath, only.FileSizeBytes);
+        return (Path.GetFileName(only.FilePath), snapshot?.MatchedRuleIds ?? []);
     }
 
     private static async Task<string> CreateGuideRuleAsync(SqliteQualityRepository quality, string guideFormatName)
@@ -3595,6 +3611,30 @@ public sealed partial class ImportPipelineServiceTests
             });
 
         Assert.Equal("Dune (2021) [DSNP NF].mkv", name);
+    }
+
+    [Fact]
+    public async Task A_guide_format_not_marked_for_renaming_is_left_out_of_the_name_but_still_counted_as_matched_and_a_local_rule_never_appears()
+    {
+        string extendedId = "", ownId = "", nfId = "";
+        var (name, matched) = await ImportedMovieAsync(
+            "Dune.2021.EXTENDED.1080p.NF.WEB-DL.x264-DELUNO",
+            "{Movie Title} ({Release Year}) [{Custom Formats}]",
+            async quality =>
+            {
+                nfId = await CreateGuideRuleAsync(quality, "NF");
+                extendedId = await CreateGuideRuleAsync(quality, "Extended Edition"); // guide format, includeCustomFormatWhenRenaming=false
+                ownId = (await quality.CreateCustomFormatAsync(
+                    new CreateCustomFormatRequest("Preferred DELUNO group", "movies", 100, null,
+                        "[{\"type\":\"releaseGroup\",\"value\":\"DELUNO\",\"negate\":false,\"required\":true}]", true),
+                    CancellationToken.None)).Id; // local rule, no guide id
+                return [nfId, extendedId, ownId];
+            });
+
+        Assert.Equal("Dune (2021) [NF].mkv", name);
+        Assert.Contains(extendedId, matched);
+        Assert.Contains(ownId, matched);
+        Assert.Contains(nfId, matched);
     }
 
     [Fact]

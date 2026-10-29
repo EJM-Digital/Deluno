@@ -72,6 +72,27 @@ public sealed class InstalledPreferenceEvaluationTests
     }
 
     [Fact]
+    public void Strongly_prefer_on_a_rule_with_upgrade_allowed_off_ranks_candidates_but_never_replaces_an_installed_file()
+    {
+        var now = DateTimeOffset.Parse("2026-09-15T00:00:00Z");
+        var format = LocalGroupFormat(now) with { UpgradeAllowed = false };
+        var plan = ReleasePreferencePlanFactory.CreateQualityPlan(
+            LocalRuleProfile(now, format, ProfileFormatIntents.StronglyPrefer, upgradeUntilCutoff: false),
+            [format]);
+        var preferred = ReleasePreferenceFactFactory.FromReleaseName(plan, "Movie.2026.1080p.WEB-DL.x264-DELUNO");
+        var other = ReleasePreferenceFactFactory.FromReleaseName(plan, "Movie.2026.1080p.WEB-DL.x264-OTHER");
+
+        var replace = ReleasePreferenceEvaluator.Compare(plan, other, preferred);
+        Assert.NotEqual(PreferenceCandidateStatus.Upgrade, replace.Status);
+        Assert.False(replace.PersistentImprovement);
+
+        // Still ranked among candidates found in one search.
+        var preferredEvaluation = ReleasePreferenceEvaluator.Evaluate(plan, preferred);
+        var otherEvaluation = ReleasePreferenceEvaluator.Evaluate(plan, other);
+        Assert.NotEqual(0, ReleasePreferenceEvaluator.CompareForSelection(plan, preferredEvaluation, otherEvaluation));
+    }
+
+    [Fact]
     public void Imported_file_snapshot_records_selected_guide_matches_and_typed_facts()
     {
         var now = DateTimeOffset.Parse("2026-09-01T00:00:00Z");

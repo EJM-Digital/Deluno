@@ -332,6 +332,35 @@ public sealed class ReleasePreferencePersistenceTests
     }
 
     [Fact]
+    public void Upgrade_until_cutoff_off_stops_the_quality_family_driving_upgrades_and_an_empty_allowed_list_names_every_catalogue_tier()
+    {
+        var everyTier = MediaPolicyCatalog.Current.QualityRanks.Count;
+        var on = ReleasePreferencePlanFactory.CreateQualityPlan("movies", "WEB 1080p", [], upgradeUntilCutoff: true);
+        var off = ReleasePreferencePlanFactory.CreateQualityPlan("movies", "WEB 1080p", [], upgradeUntilCutoff: false);
+
+        var onFamily = on.OrderedFamilies.Single(family => family.Id == "quality");
+        var offFamily = off.OrderedFamilies.Single(family => family.Id == "quality");
+        Assert.True(onFamily.UpgradeDriving);
+        Assert.False(offFamily.UpgradeDriving);
+        Assert.Equal(everyTier, offFamily.Levels.Count);
+
+        // A 720p file is below the 1080p cutoff: replaced when the switch is on, left alone when it is off.
+        PreferenceFact[] Facts(ReleasePreferencePlan plan) => plan.OrderedFamilies
+            .SelectMany(family => family.OrderedLevels)
+            .SelectMany(level => level.TraitIds)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(traitId => new PreferenceFact(
+                traitId,
+                string.Equals(traitId, InstalledPreferenceEvaluationFactory.QualityTraitId("WEB 720p"), StringComparison.OrdinalIgnoreCase)
+                    ? PreferenceFactState.Present
+                    : PreferenceFactState.Absent))
+            .ToArray();
+
+        Assert.Equal(PreferenceEvaluationStatus.BelowGoal, ReleasePreferenceEvaluator.Evaluate(on, Facts(on)).Status);
+        Assert.NotEqual(PreferenceEvaluationStatus.BelowGoal, ReleasePreferenceEvaluator.Evaluate(off, Facts(off)).Status);
+    }
+
+    [Fact]
     public void Installed_factory_records_typed_quality_and_filename_evidence_without_a_public_score()
     {
         var timestamp = new DateTimeOffset(2026, 8, 31, 3, 0, 0, TimeSpan.Zero);
