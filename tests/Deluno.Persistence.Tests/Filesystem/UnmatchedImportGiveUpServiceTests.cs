@@ -1,5 +1,6 @@
 using Deluno.Contracts;
 using Deluno.Filesystem;
+using Deluno.Movies.Contracts;
 using Deluno.Infrastructure.Storage;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Jobs.Data;
@@ -129,6 +130,110 @@ public sealed class UnmatchedImportGiveUpServiceTests
         Assert.Contains(BlockedReleaseKeys.For(releaseName, "TestIndexer"), await blockedReleases.ListKeysAsync(CancellationToken.None));
         Assert.Equal("client-1", gateway.LastClientId);
         Assert.Empty((await series.GetImportRecoverySummaryAsync(CancellationToken.None)).RecentCases);
+    }
+
+    private sealed class RefusingGateway : IDownloadClientActionGateway
+    {
+        public Task<DownloadClientRemovalResult> RemoveWithDataAsync(string clientId, string queueItemId, CancellationToken cancellationToken)
+            => Task.FromResult(new DownloadClientRemovalResult(false, "The client refused."));
+
+        public Task<DownloadClientRemovalResult> StopSeedingAsync(string clientId, string queueItemId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+    }
+
+    private static async Task<string?> GiveUpMessageAsync(TestStorage storage)
+    {
+        await using var connection = await storage.Factory.OpenConnectionAsync(Deluno.Infrastructure.Storage.DelunoDatabaseNames.Jobs, CancellationToken.None);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT message FROM activity_events WHERE category = 'filesystem.import.unmatched-given-up';";
+        return (string?)await command.ExecuteScalarAsync(CancellationToken.None);
+    }
+
+    [Theory]
+    [InlineData("no-link", "Gave up waiting to match Partial by hand, but nothing was left to clean up.")]
+    [InlineData("missing-row", "Gave up waiting to match Partial by hand, but nothing was left to clean up.")]
+    [InlineData("client-refuses", "Gave up waiting to match Partial by hand: blocklisted the release, started a new search.")]
+    [InlineData("no-hash", "Gave up waiting to match Partial by hand: blocklisted the release, started a new search.")]
+    public async Task A_give_up_with_less_to_work_with_only_does_the_steps_it_can_and_says_which(string variation, string expectedMessage)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var (platform, libraries, series, movies) = await SetUpAsync(storage, timeProvider, UnmatchedImportPolicies.GiveUpAfterDays, giveUpDays: 3);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var blockedReleases = new SqliteBlockedReleaseRepository(storage.Factory, timeProvider);
+
+        string details;
+        if (variation == "no-link")
+        {
+            details = "{}";
+        }
+        else if (variation == "missing-row")
+        {
+            details = """{"DispatchId":"no-such-dispatch"}""";
+        }
+        else
+        {
+            var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+                library.Id, "tv", "series", "series-1", "Partial.Release.2026", "TestIndexer", "client-1", "TestClient", "sent",
+                notesJson: null, cancellationToken: CancellationToken.None);
+            if (variation == "client-refuses")
+            {
+                await dispatches.RecordDetectionAsync(dispatchId, "torrent-hash-1", 1024, completed: true, CancellationToken.None);
+            }
+
+            details = $$"""{"DispatchId":"{{dispatchId}}"}""";
+        }
+
+        await series.AddImportRecoveryCaseAsync(
+            new CreateSeriesImportRecoveryCaseRequest("Partial", ImportFailurePolicy.Unmatched, "Could not match.", "Import by hand.", details),
+            CancellationToken.None);
+        timeProvider.Advance(TimeSpan.FromDays(4));
+        var service = CreateGiveUpService(storage, timeProvider, platform, movies, series, dispatches, blockedReleases, new RefusingGateway(), jobStore: jobStore);
+
+        var handled = await service.RunAsync(CancellationToken.None);
+
+        Assert.Equal(1, handled);
+        Assert.Empty((await series.GetImportRecoverySummaryAsync(CancellationToken.None)).RecentCases);
+        Assert.Equal(expectedMessage, await GiveUpMessageAsync(storage));
+    }
+
+    [Fact]
+    public async Task A_movie_case_is_given_up_on_and_resolved_the_same_way_as_a_show_case()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var (platform, libraries, series, movies) = await SetUpAsync(storage, timeProvider, UnmatchedImportPolicies.GiveUpAfterDays, giveUpDays: 3);
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        await movies.AddImportRecoveryCaseAsync(
+            new CreateMovieImportRecoveryCaseRequest("Lonely Film", ImportFailurePolicy.Unmatched, "Could not match.", "Import by hand.", "{}"),
+            CancellationToken.None);
+        Assert.Single((await movies.GetImportRecoverySummaryAsync(CancellationToken.None)).RecentCases);
+
+        // Not yet overdue: left open.
+        var service = CreateGiveUpService(storage, timeProvider, platform, movies, series, dispatches, new SqliteBlockedReleaseRepository(storage.Factory, timeProvider), new RecordingGateway());
+        Assert.Equal(0, await service.RunAsync(CancellationToken.None));
+        Assert.Single((await movies.GetImportRecoverySummaryAsync(CancellationToken.None)).RecentCases);
+
+        timeProvider.Advance(TimeSpan.FromDays(4));
+        Assert.Equal(1, await service.RunAsync(CancellationToken.None));
+
+        Assert.Empty((await movies.GetImportRecoverySummaryAsync(CancellationToken.None)).RecentCases);
+        Assert.Contains("Lonely Film", await GiveUpMessageAsync(storage));
+    }
+
+    [Fact]
+    public void A_folder_path_that_cannot_be_read_counts_as_inside_a_library_so_nothing_in_it_is_ever_deleted_outright()
+    {
+        var inside = typeof(UnmatchedImportGiveUpService).GetMethod("IsInsideLibrary", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var elsewhere = Path.Combine(Path.GetTempPath(), "deluno-elsewhere", "file.mkv");
+
+        Assert.True((bool)inside.Invoke(null, [elsewhere, "bad folder"])!);
+        Assert.False((bool)inside.Invoke(null, [elsewhere, Path.Combine(Path.GetTempPath(), "deluno-a-library")])!);
+        Assert.False((bool)inside.Invoke(null, [elsewhere, null])!);
     }
 
     private static async Task InitializeAllAsync(TestStorage storage, TimeProvider timeProvider)
