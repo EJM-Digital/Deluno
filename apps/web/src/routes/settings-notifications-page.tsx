@@ -365,8 +365,10 @@ export function SettingsNotificationsPage() {
       const response = await authedFetch(`/api/notification-webhooks/${id}/test`, { method: "POST" });
       if (!response.ok) throw new Error(await readErrorText(response, "Test notification could not be sent."));
       // The endpoint answers 200 with sent:false when notifications are paused, the webhook is off or every attempt failed.
-      const result = (await response.json().catch(() => null)) as { sent?: boolean; message?: string; error?: string } | null;
+      // Only sent:true is a delivered event; any other 2xx answer means nothing was sent (#1403).
+      const result = (await response.json().catch(() => null)) as { sent?: boolean | null; message?: string; error?: string } | null;
       if (result?.sent === false) throw new Error(result.message ?? result.error ?? "Test notification could not be sent.");
+      if (result?.sent !== true) throw new Error("Nothing was sent. The answer did not say the event was delivered.");
     }, `Test event sent to ${editing?.name ?? "the webhook"}`);
   }
 
