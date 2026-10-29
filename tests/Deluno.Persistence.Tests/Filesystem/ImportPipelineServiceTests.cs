@@ -4459,6 +4459,74 @@ public sealed class ImportPipelineServiceTests
     }
 
     /// <summary>
+    /// #1329: a season pack leaves the same kind of record a single file does. The send it came from records one provenance event with
+    /// the pack folder as its source, the series folder as its destination and the transfer used, and Activity names each episode's
+    /// own source and destination.
+    /// </summary>
+    [Fact]
+    public async Task A_season_pack_import_records_file_provenance_on_its_send_with_the_source_the_destination_and_the_transfer()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-12T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Provenance Pack", 2026, null), CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(1, 1, "One", null, timeProvider.GetUtcNow().AddDays(-2)),
+                new CatalogueEpisodeItem(1, 2, "Two", null, timeProvider.GetUtcNow().AddDays(-1))
+            ],
+            "provider",
+            CancellationToken.None);
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new RecordingRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            library.Id, "tv", "series", series.Id, "Provenance.Pack.S01.1080p.WEB-DL-DELUNO", "TestIndexer", "client-1", "TestClient", "sent",
+            notesJson: null, cancellationToken: CancellationToken.None);
+        var service = CreateService(storage, timeProvider, platform, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider), downloadDispatchesRepository: dispatches);
+        var packDirectory = Path.Combine(downloadsPath, "Provenance.Pack.S01");
+        Directory.CreateDirectory(packDirectory);
+        foreach (var episode in new[] { 1, 2 })
+        {
+            var source = Path.Combine(packDirectory, $"Provenance.Pack.S01E{episode:D2}.mkv");
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)(0x20 + episode), 4096).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+        }
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(packDirectory, null, "tv", series.Title, series.StartYear, [], [], null, null,
+                    SeriesId: series.Id, SeriesType: SeriesTypes.Standard, NumberingScheme: SeriesNumberingSchemes.Standard),
+                "copy", false, true, DispatchId: dispatchId),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        var timeline = await dispatches.GetDispatchTimelineAsync(dispatchId, CancellationToken.None);
+        var recorded = Assert.Single(timeline, item => item.EventType == "file_provenance_recorded");
+        using var provenance = JsonDocument.Parse(Assert.IsType<string>(recorded.DetailsJson));
+        Assert.Equal(dispatchId, provenance.RootElement.GetProperty("DispatchId").GetString());
+        Assert.Equal(packDirectory, provenance.RootElement.GetProperty("SourcePath").GetString());
+        Assert.StartsWith(seriesRootPath, provenance.RootElement.GetProperty("DestinationPath").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("TestIndexer", provenance.RootElement.GetProperty("IndexerName").GetString());
+        Assert.Equal("TestClient", provenance.RootElement.GetProperty("DownloadClientName").GetString());
+        Assert.Equal("copy", provenance.RootElement.GetProperty("TransferModeUsed").GetString());
+        Assert.False(provenance.RootElement.GetProperty("UsedFallback").GetBoolean());
+        Assert.True(provenance.RootElement.GetProperty("CatalogUpdated").GetBoolean());
+    }
+
+    /// <summary>
     /// #1189: an older, wrong-named per-episode import was replaced by a newer season-pack import, recorded under the
     /// series with the pack's folder as its path. The pack decides, so the correct file is kept.
     /// </summary>
