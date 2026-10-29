@@ -351,3 +351,41 @@ describe("Transfers: the Media pipeline table", () => {
     expect(rowOf(release).text).toContain("The client refused the file.");
   });
 });
+
+describe("Transfers: the cleanup guardrails card", () => {
+  afterEach(() => {
+    queueLoaderData.settings = emptyPlatformSettingsSnapshot;
+  });
+
+  it("the card header says manual review, safeguards or removal, by which switches are on", () => {
+    showQueue([]);
+    expect(screen.getByText("manual review before removal")).toBeVisible();
+  });
+
+  it("the header says automatic safeguards when only a safeguard is on, and automatic removal when a removal is on", () => {
+    queueLoaderData.settings = { ...emptyPlatformSettingsSnapshot, cleanupBlockReleaseAfterThreshold: true };
+    showQueue([]);
+    expect(screen.getByText("automatic safeguards enabled")).toBeVisible();
+  });
+
+  it("the header says automatic removal when a removal switch is on", () => {
+    queueLoaderData.settings = { ...emptyPlatformSettingsSnapshot, cleanupPurgePayloadAfterThreshold: true };
+    showQueue([]);
+    expect(screen.getByText("automatic removal enabled")).toBeVisible();
+  });
+
+  it("each of the four facts reads Enabled or Off from its own switch", () => {
+    queueLoaderData.settings = { ...emptyPlatformSettingsSnapshot, cleanupBlockReleaseAfterThreshold: true, cleanupRemoveClientEntryAfterThreshold: true };
+    showQueue([]);
+
+    expect(screen.getAllByText("Block release")[0].nextElementSibling).toHaveTextContent("Enabled");
+    expect(screen.getAllByText("Remove client entry")[0].nextElementSibling).toHaveTextContent("Enabled");
+    expect(screen.getAllByText("Queue replacement")[0].nextElementSibling).toHaveTextContent("Off");
+    expect(screen.getAllByText("Purge payload")[0].nextElementSibling).toHaveTextContent("Off");
+  });
+
+  it("Review Automation & Recovery links to the search cycles page", () => {
+    showQueue([]);
+    expect(screen.getByRole("link", { name: "Review Automation & Recovery" })).toHaveAttribute("href", "/search-cycles");
+  });
+});
