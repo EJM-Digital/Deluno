@@ -291,7 +291,7 @@ public sealed class DownloadClientTelemetryProfilesTests
     [InlineData("qbittorrent", "queuedDL", 0.0, null, null, DownloadQueueStatuses.Queued)]
     [InlineData("qbittorrent", "stalledDL", 0.5, null, null, DownloadQueueStatuses.Downloading)]
     [InlineData("qbittorrent", "uploading", 1.0, null, null, DownloadQueueStatuses.ImportReady)]
-    [InlineData("sabnzbd", "Paused", 12.0, null, null, DownloadQueueStatuses.Queued)]
+    [InlineData("sabnzbd", "Paused", 12.0, null, null, DownloadQueueStatuses.Paused)] // a job a person paused reads Paused (#1414)
     [InlineData("sabnzbd", "Downloading", 50.0, null, null, DownloadQueueStatuses.Downloading)]
     [InlineData("sabnzbd", "Completed", 100.0, null, null, DownloadQueueStatuses.ImportReady)]
     [InlineData("nzbget", "ERROR", 33.0, null, null, DownloadQueueStatuses.Stalled)]

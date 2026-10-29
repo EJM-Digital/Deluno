@@ -198,7 +198,7 @@ jobs:
       - name: Every Node test file is run by a CI job
         run: |
           node scripts/check-node-tests-run.mjs
-          node --test scripts/check-node-tests-run.test.mjs scripts/check-persistence-parts.test.mjs scripts/check-component-pins.test.mjs scripts/check-recorded-manifest.test.mjs scripts/check-recording-freshness.test.mjs scripts/report-nightly-issue.test.mjs scripts/mutation/test-filter.test.mjs scripts/mutation/run-changed.test.mjs scripts/verify-ci-for-release.test.mjs scripts/verify-golden-path-for-release.test.mjs scripts/tag-release.test.mjs scripts/check-release-workflow-gates.test.mjs scripts/coverage/testindex.test.mjs scripts/coverage/coverage-docs.test.mjs scripts/check-repository-references.test.mjs scripts/ci-check-runs-every-gateway-file.test.mjs scripts/home-assistant-recipe.test.mjs sdk/typescript/tests/delunoclient.test.mjs
+          node --test scripts/check-node-tests-run.test.mjs scripts/check-persistence-parts.test.mjs scripts/check-component-pins.test.mjs scripts/check-recorded-manifest.test.mjs scripts/check-recording-freshness.test.mjs scripts/report-nightly-issue.test.mjs scripts/mutation/test-filter.test.mjs scripts/mutation/run-changed.test.mjs scripts/verify-ci-for-release.test.mjs scripts/verify-golden-path-for-release.test.mjs scripts/tag-release.test.mjs scripts/check-release-workflow-gates.test.mjs scripts/coverage/testindex.test.mjs scripts/coverage/coverage-docs.test.mjs scripts/check-repository-references.test.mjs scripts/ci-check-runs-every-gateway-file.test.mjs scripts/home-assistant-recipe.test.mjs
 
       - name: Validate agent-readable repository map
         shell: pwsh
@@ -468,6 +468,11 @@ jobs:
 
       - name: Typecheck supported TypeScript SDK
         run: npm run typecheck:sdk
+
+      # The SDK's own tests compile it under strict tsc, so they run where the packages are installed (29 Oct 2026: in the
+      # repository-checks job, which installs none, tsc was missing).
+      - name: The TypeScript SDK's tests
+        run: node --test sdk/typescript/tests/delunoclient.test.mjs
 
       - name: Run frontend unit tests
         if: ${{ needs.changes.outputs.run_coverage != 'true' }}
