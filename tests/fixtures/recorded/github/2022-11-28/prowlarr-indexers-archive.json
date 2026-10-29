@@ -1,0 +1,26 @@
+{
+  "app": "github",
+  "version": "2022-11-28",
+  "state": "prowlarr-indexers-archive",
+  "recordedAt": "2026-10-28T23:56:15Z",
+  "note": "A real unauthenticated GET on 29 Oct 2026 of codeload.github.com/Prowlarr/Indexers/zip/refs/heads/master (the source of Deluno's tracker definition updates). The real archive is 1.3 MB. The zip beside this file holds 10 of its entries, each copied byte for byte with its upstream name: definitions in definitions/v11 (the ones the tests name, and the first 3 others) and the top README, which Deluno must ignore. Every other entry is left out (the upstream repository holds no v10 folder or v11 sub-folder today, so a test of those ignored paths builds its own entries). The entries' file times are set to 1980-01-01.",
+  "exchanges": [
+    {
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/zip"
+        },
+        "bodyFile": "prowlarr-indexers-archive.zip",
+        "bodySha256": "E393E6664F56D8E793E18314FCDA81921EFC250027BCB363E2A79D2F33444F1F",
+        "bodyBytes": 23445
+      },
+      "request": {
+        "method": "GET",
+        "path": "codeload.github.com/Prowlarr/Indexers/zip/refs/heads/master",
+        "body": null
+      }
+    }
+  ]
+}
+
