@@ -26,6 +26,8 @@ public sealed partial class TheEndpointListOnTheApiScreenNamesRealRoutesAndTheir
         var source = File.ReadAllText(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../apps/web/src/routes/system-api-page.tsx")));
         return ListedRow().Matches(source)
             .SelectMany(match => match.Groups["method"].Value.Split('|').Select(method => (match.Groups["scope"].Value, method, match.Groups["path"].Value)))
+            // The integration rows come from the table the request gate reads (#1410), not from the screen's source.
+            .Concat(Deluno.Security.IntegrationRouteScopes.All.Where(route => route.Featured).Select(route => (route.Scope, route.Method, route.Path)))
             .Distinct()
             .ToArray();
     }

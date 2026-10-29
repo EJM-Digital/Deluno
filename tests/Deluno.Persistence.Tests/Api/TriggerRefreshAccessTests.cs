@@ -8,7 +8,7 @@ namespace Deluno.Persistence.Tests.Api;
 
 /// <summary>
 /// <c>POST /api/integrations/external/trigger-refresh</c>: an empty or broken body is a 400, a read-only key is refused
-/// with a 403, and a key that holds queue or imports is let through (a library search is asked for).
+/// with a 403, and only a key that holds queue is let through (#1410: imports is refused) (a library search is asked for).
 /// </summary>
 public sealed class TriggerRefreshAccessTests
 {
@@ -40,7 +40,7 @@ public sealed class TriggerRefreshAccessTests
     [Theory]
     [InlineData("read", HttpStatusCode.Forbidden)]
     [InlineData("queue", HttpStatusCode.OK)]
-    [InlineData("imports", HttpStatusCode.OK)]
+    [InlineData("imports", HttpStatusCode.Forbidden)]
     public async Task The_scope_of_the_key_decides_whether_a_refresh_is_asked_for(string scopes, HttpStatusCode expected)
     {
         await using var app = await ApplicationTestHost.StartAsync();

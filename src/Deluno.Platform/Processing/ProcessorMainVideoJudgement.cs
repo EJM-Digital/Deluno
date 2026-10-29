@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 namespace Deluno.Platform.Processing;
 
 /// <summary>
@@ -8,10 +9,7 @@ namespace Deluno.Platform.Processing;
 /// </summary>
 public static class ProcessorMainVideoJudgement
 {
-    private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".m2ts", ".mpg", ".mpeg", ".webm", ".flv", ".iso"
-    };
+    private static readonly IReadOnlySet<string> VideoExtensions = VideoFileExtensions.Extensions;
 
     /// <summary>A video at least this share of the largest one counts as a main video; smaller ones are extras.</summary>
     private const double MainVideoShare = 0.25;

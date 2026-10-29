@@ -10,10 +10,7 @@ namespace Deluno.Filesystem;
 /// </summary>
 public static class MovieFilePathSafety
 {
-    private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv", ".ts", ".m2ts", ".webm"
-    };
+    private static readonly IReadOnlySet<string> VideoExtensions = SupportedVideoExtensions.Extensions;
 
     private static readonly string[] ArtworkSuffixes =
         ["-poster", "-fanart", "-thumb", "-banner", "-clearlogo", "-logo", "-landscape", "-disc", "-backdrop"];

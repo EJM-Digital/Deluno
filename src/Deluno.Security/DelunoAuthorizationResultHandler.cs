@@ -35,11 +35,14 @@ public sealed class DelunoAuthorizationResultHandler : IAuthorizationMiddlewareR
             return;
         }
 
-        var required = policy.Requirements
-            .OfType<DelunoScopeRequirement>()
-            .SelectMany(requirement => requirement.Scopes)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        // #1410: a route under /api/integrations names the one scope the API screen lists for it, so the refusal says that one.
+        var required = IntegrationRouteScopes.Covers(context.Request.Path) && IntegrationRouteScopes.Required(context.Request.Path, context.Request.Method) is { Length: > 0 } listed
+            ? listed
+            : policy.Requirements
+                .OfType<DelunoScopeRequirement>()
+                .SelectMany(requirement => requirement.Scopes)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
 
         var granted = context.User.Claims
             .Where(claim => claim.Type == DelunoAuthenticationHandler.ScopeClaimType)

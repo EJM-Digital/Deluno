@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using System.Text.RegularExpressions;
 
 namespace Deluno.Quality;
@@ -183,10 +184,7 @@ public static class MediaFileNameFacts
     /// half the name with it. Release names are full of dots; only a real media
     /// extension is an extension.
     /// </summary>
-    private static readonly string[] MediaExtensions =
-    [
-        ".mkv", ".mp4", ".avi", ".mov", ".wmv", ".m4v", ".ts", ".m2ts", ".mpg", ".mpeg", ".flv", ".webm"
-    ];
+    private static readonly string[] MediaExtensions = [.. VideoFileExtensions.Extensions];
 
     /// <summary>
     /// Reads what the name claims. Every field is independently optional: a

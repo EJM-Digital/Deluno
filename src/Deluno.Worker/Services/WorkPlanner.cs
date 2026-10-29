@@ -2873,11 +2873,7 @@ public sealed class WorkPlanner(
             cleaned = cleaned.Replace("..", ".", StringComparison.Ordinal);
         }
 
-        if (cleaned.EndsWith(".mkv", StringComparison.OrdinalIgnoreCase) ||
-            cleaned.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) ||
-            cleaned.EndsWith(".avi", StringComparison.OrdinalIgnoreCase) ||
-            cleaned.EndsWith(".mov", StringComparison.OrdinalIgnoreCase) ||
-            cleaned.EndsWith(".m4v", StringComparison.OrdinalIgnoreCase))
+        if (VideoFileExtensions.TrailingVideoExtension(cleaned) is not null)
         {
             return cleaned;
         }

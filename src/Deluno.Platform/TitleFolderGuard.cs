@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using System.Text.RegularExpressions;
 
 namespace Deluno.Platform;
@@ -38,11 +39,7 @@ public static class TitleFolderGuard
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
         TimeSpan.FromMilliseconds(200));
 
-    private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".mpg", ".mpeg", ".ts", ".m2ts", ".mts",
-        ".webm", ".flv", ".ogm", ".ogv", ".divx", ".iso", ".vob", ".3gp"
-    };
+    private static readonly IReadOnlySet<string> VideoExtensions = VideoFileExtensions.Extensions;
 
     /// <summary>
     /// The folder that belongs to one movie: the folder its file sits in, but

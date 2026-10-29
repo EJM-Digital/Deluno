@@ -57,6 +57,7 @@ GET /api/activity
 GET /api/activity/display-settings
 GET /api/activity/filters
 GET /api/api-keys/
+GET /api/api-keys/integration-routes
 GET /api/api-keys/scope-templates
 GET /api/attention/held-releases
 GET /api/attention/no-release

@@ -24,9 +24,18 @@ interface ApiKeyScopeTemplate {
   capabilities: string[];
 }
 
+/** One /api/integrations route and the one scope a key needs for it. Deluno's request gate reads the same table (#1410). */
+interface IntegrationRoute {
+  scope: string;
+  method: string;
+  path: string;
+  query?: string | null;
+}
+
 interface SystemApiLoaderData {
   apiKeys: ApiKeyItem[];
   scopeTemplates: ApiKeyScopeTemplate[];
+  integrationRoutes?: IntegrationRoute[];
 }
 
 export async function systemApiLoader(): Promise<SystemApiLoaderData> {
@@ -34,11 +43,12 @@ export async function systemApiLoader(): Promise<SystemApiLoaderData> {
   // four options typed out here, beside five templates the API published and
   // nothing read - so the two could disagree, and the screen could offer an
   // access level the server had stopped supporting.
-  const [apiKeys, scopeTemplates] = await Promise.all([
+  const [apiKeys, scopeTemplates, integrationRoutes] = await Promise.all([
     fetchJson<ApiKeyItem[]>("/api/api-keys"),
-    fetchJson<ApiKeyScopeTemplate[]>("/api/api-keys/scope-templates")
+    fetchJson<ApiKeyScopeTemplate[]>("/api/api-keys/scope-templates"),
+    fetchJson<IntegrationRoute[]>("/api/api-keys/integration-routes")
   ]);
-  return { apiKeys, scopeTemplates };
+  return { apiKeys, scopeTemplates, integrationRoutes };
 }
 
 /** What makes this page read its data again (#1179). */
@@ -49,6 +59,7 @@ export function SystemApiPage() {
   const loaderData = useLoaderData() as SystemApiLoaderData;
   const apiKeys = loaderData.apiKeys;
   const scopeTemplates = loaderData.scopeTemplates;
+  const integrationRoutes = loaderData.integrationRoutes ?? [];
   const revalidator = useRevalidator();
   const save = useSaveStatus();
   const { preferences } = useDisplayPreferences();
@@ -210,12 +221,9 @@ export function SystemApiPage() {
                 </p>
                 <div className="mt-3 grid gap-2">
                   {[
+                    ...integrationRoutes.map((route): [string, string, string] => [route.scope, route.method, route.path + (route.query ?? "")]),
                     ["read", "GET", "/api/openapi/v1.json"],
                     ["read", "GET", "/api/docs"],
-                    ["read", "GET", "/api/integrations/external/manifest"],
-                    ["read", "GET", "/api/integrations/external/health"],
-                    ["read", "GET", "/api/integrations/external/queue"],
-                    ["read", "GET", "/api/integrations/external/activity"],
                     ["read", "GET", "/api/monitoring/dashboard"],
                     ["read", "GET", "/api/monitoring/alerts"],
                     ["read", "GET", "/api/monitoring/diagnostics?query=failed&pageSize=100&pageToken=… (maximum 500)"],
@@ -227,10 +235,6 @@ export function SystemApiPage() {
                     ["read", "GET", "/api/intelligent-routing/snapshot"],
                     ["read", "GET", "/api/intelligent-routing/anomalies"],
                     ["write", "POST", "/api/intelligent-routing/recommend-release"],
-                    ["imports", "POST", "/api/integrations/external/import-preview"],
-                    ["imports", "GET", "/api/integrations/processors/handoffs?libraryId={libraryId}"],
-                    ["imports", "POST", "/api/integrations/processors/events"],
-                    ["queue", "POST", "/api/integrations/external/trigger-refresh"],
                     ["queue", "POST", "/api/download-clients/{clientId}/webhook"],
                     ["write", "POST", "/api/intake-sources/{id}/sync"],
                     ["read", "GET", "/api/intake-sources/{id}/diagnostics?pageSize=50&pageToken=… (maximum 500)"],

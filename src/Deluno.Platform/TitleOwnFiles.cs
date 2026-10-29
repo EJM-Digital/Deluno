@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 namespace Deluno.Platform;
 
 /// <summary>One thing that leaves a library for a title: a single file, or a folder that holds nothing else.</summary>
@@ -16,10 +17,8 @@ public static class TitleOwnFiles
     private static readonly bool IgnoreCase = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS();
     private static readonly StringComparer PathComparer = IgnoreCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
-    private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".m2ts", ".mts", ".mpg", ".mpeg", ".iso", ".vob", ".webm", ".flv", ".ogm", ".divx", ".img", ".bdmv"
-    };
+    // The shared video list plus the two disc-structure pieces that belong to a title's folder without being a video file.
+    private static readonly HashSet<string> VideoExtensions = new(VideoFileExtensions.Extensions, StringComparer.OrdinalIgnoreCase) { ".img", ".bdmv" };
 
     private static readonly HashSet<string> SidecarExtensions = new(StringComparer.OrdinalIgnoreCase)
     {

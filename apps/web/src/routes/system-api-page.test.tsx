@@ -21,14 +21,14 @@ const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("../components/shell/toaster", () => ({ toast: toastMock, Toaster: () => null }));
 
 const revalidate = vi.hoisted(() => vi.fn());
-const loader = vi.hoisted(() => ({ data: { apiKeys: [] as unknown[], scopeTemplates: [] as unknown[] } }));
+const loader = vi.hoisted(() => ({ data: { apiKeys: [] as unknown[], scopeTemplates: [] as unknown[] } as { apiKeys: unknown[]; scopeTemplates: unknown[]; integrationRoutes?: unknown[] } }));
 vi.mock("react-router-dom", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router-dom")>()),
   useLoaderData: () => loader.data,
   useRevalidator: () => ({ revalidate })
 }));
 
-const { SystemApiPage } = await import("./system-api-page");
+const { SystemApiPage, systemApiLoader } = await import("./system-api-page");
 
 const templates = [
   { id: "automation", name: "Automation", description: "Read everything and queue downloads.", scopes: ["read", "queue"], capabilities: [] },
@@ -136,7 +136,41 @@ describe("Generate an API key", () => {
     expect(revalidate).not.toHaveBeenCalled();
   });
 
+  it("lists each integration route with the one scope the server's table gives it", () => {
+    loader.data = {
+      apiKeys: [],
+      scopeTemplates: templates,
+      integrationRoutes: [
+        { scope: "queue", method: "POST", path: "/api/integrations/external/trigger-refresh" },
+        { scope: "imports", method: "GET", path: "/api/integrations/processors/handoffs", query: "?libraryId={libraryId}" }
+      ]
+    };
+    renderPage();
+
+    const refresh = screen.getByText("/api/integrations/external/trigger-refresh").closest("div")!;
+    expect(within(refresh).getByText("POST")).toBeInTheDocument();
+    expect(within(refresh).getByText("scope: queue")).toBeInTheDocument();
+    const handoffs = screen.getByText("/api/integrations/processors/handoffs?libraryId={libraryId}").closest("div")!;
+    expect(within(handoffs).getByText("scope: imports")).toBeInTheDocument();
+  });
+
+  it("lists no integration route of its own: with none from the server it shows none", () => {
+    renderPage();
+
+    expect(screen.queryByText("/api/integrations/external/manifest")).toBeNull();
+    expect(screen.queryByText("/api/integrations/processors/events")).toBeNull();
+  });
+
   it("explains how integrations authenticate and lists the integration endpoints with their method and scope", () => {
+    loader.data = {
+      apiKeys: [],
+      scopeTemplates: templates,
+      integrationRoutes: [
+        { scope: "read", method: "GET", path: "/api/integrations/external/manifest" },
+        { scope: "read", method: "GET", path: "/api/integrations/external/queue" },
+        { scope: "imports", method: "POST", path: "/api/integrations/processors/events" }
+      ]
+    };
     renderPage();
 
     expect(screen.getByText("How integrations authenticate")).toBeInTheDocument();
@@ -261,5 +295,25 @@ describe("Revoke", () => {
     fireEvent.click(await within(await screen.findByRole("dialog")).findByRole("button", { name: "Revoke key" }));
 
     await waitFor(() => expect(screen.queryByText("deluno_fresh")).toBeNull());
+  });
+});
+
+describe("The route's loader", () => {
+  it("reads the keys, the access presets and the integration routes with their scopes from the server", async () => {
+    const answers: Record<string, unknown> = {
+      "/api/api-keys": [key(1)],
+      "/api/api-keys/scope-templates": templates,
+      "/api/api-keys/integration-routes": [{ scope: "queue", method: "POST", path: "/api/integrations/external/trigger-refresh" }]
+    };
+    fetchJsonMock.mockImplementation(async (url: string) => answers[url]);
+
+    const data = await systemApiLoader();
+
+    expect(data).toEqual({
+      apiKeys: [key(1)],
+      scopeTemplates: templates,
+      integrationRoutes: [{ scope: "queue", method: "POST", path: "/api/integrations/external/trigger-refresh" }]
+    });
+    expect(fetchJsonMock).toHaveBeenCalledTimes(3);
   });
 });

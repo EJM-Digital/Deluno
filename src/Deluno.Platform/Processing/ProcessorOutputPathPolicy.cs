@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 namespace Deluno.Platform.Processing;
 
 /// <summary>
@@ -132,7 +133,7 @@ public static class ProcessorOutputPathPolicy
         }
     }
 
-    private static readonly string[] VideoExtensions = [".mkv", ".mp4", ".m4v", ".avi", ".mov", ".ts", ".wmv", ".mpg", ".mpeg", ".iso"];
+    private static readonly IReadOnlySet<string> VideoExtensions = VideoFileExtensions.Extensions;
 
     /// <summary>
     /// Deletes a processor's second copy of a download Deluno has already
@@ -183,7 +184,7 @@ public static class ProcessorOutputPathPolicy
             if (!string.Equals(top, output, StringComparison.OrdinalIgnoreCase) &&
                 Directory.Exists(top) &&
                 !Directory.EnumerateFiles(top, "*", SearchOption.AllDirectories)
-                    .Any(file => VideoExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase)))
+                    .Any(file => VideoExtensions.Contains(Path.GetExtension(file))))
             {
                 Directory.Delete(top, recursive: true);
             }

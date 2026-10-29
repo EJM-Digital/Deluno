@@ -215,7 +215,7 @@ The routes: `GET /api/integrations/processors/handoffs[?libraryId=&take=]`, `GET
 | `200`, Weir refuses the secret (Weir `401` on its capabilities): still owed | `reply-send-again-weir-refuses-secret` | same |
 | `200`, Weir cannot be reached: still owed | `reply-send-again-weir-unreachable` | same |
 | `401` (no body) on each of the four routes, with no credential | `reply-no-sign-in` | same |
-| a key with only the `read` scope: `403 { message }` on the two reads (the route's own scope check, "This API key does not include the required scope: imports.") and `403 { error, required, granted }` on the two writes (the authorization policy) | `reply-key-without-imports-scope` | same |
+| a key with only the `read` scope: `403 { error, required, granted }` on all four (the authorization policy, which since #1410 names the one scope the route needs: `required` is `["imports"]`) | `reply-key-without-imports-scope` | same |
 | a key with only the `imports` scope: the two reads answer `200` and the two writes pass the scope check (`404` for an unknown id) | `reply-key-with-imports-scope-only` | same |
 
 **The scopes, per route (#1265).** A `GET` asks the authorization policy for `read`, except the two reads Weir makes, which the policy also opens to `imports`; each route then checks `imports` itself:
