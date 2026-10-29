@@ -123,39 +123,32 @@ public sealed class RankingModelTrainingHostedService(
                 "failed",
                 Math.Max(0, (long)(timeProvider.GetUtcNow() - startedUtc).TotalMilliseconds),
                 null,
-                CancellationToken.None);
+                CancellationToken.None,
+                PlainFailure.Describe(exception, "training the ranking model"));
             logger.LogWarning(exception, "Ranking model scheduled training failed.");
         }
     }
 
+    // A trainer that throws is a failure and reaches the caller, which records it as failed
+    // with the reason; only "nothing to train on" comes back as false and is recorded as skipped.
     private async Task<bool> RunTrainingAsync(string reason, CancellationToken cancellationToken)
     {
-        try
+        var result = await rankingModelAdminService.TrainAsync(reason, cancellationToken);
+        if (result.Success)
         {
-            var result = await rankingModelAdminService.TrainAsync(reason, cancellationToken);
-            if (result.Success)
-            {
-                logger.LogInformation(
-                    "Ranking model training succeeded. Version={Version} Samples={Samples} AUC={Auc:0.###} Accuracy={Accuracy:0.###}",
-                    result.ModelVersion,
-                    result.SampleCount,
-                    result.Auc ?? 0,
-                    result.Accuracy ?? 0);
-                return true;
-            }
-            else
-            {
-                logger.LogInformation(
-                    "Ranking model training skipped/failed: {Message} (Samples={Samples})",
-                    result.Message,
-                    result.SampleCount);
-                return false;
-            }
+            logger.LogInformation(
+                "Ranking model training succeeded. Version={Version} Samples={Samples} AUC={Auc:0.###} Accuracy={Accuracy:0.###}",
+                result.ModelVersion,
+                result.SampleCount,
+                result.Auc ?? 0,
+                result.Accuracy ?? 0);
+            return true;
         }
-        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
-        {
-            logger.LogWarning(ex, "Ranking model scheduled training failed.");
-            return false;
-        }
+
+        logger.LogInformation(
+            "Ranking model training skipped: {Message} (Samples={Samples})",
+            result.Message,
+            result.SampleCount);
+        return false;
     }
 }

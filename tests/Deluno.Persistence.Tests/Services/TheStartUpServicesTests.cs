@@ -247,7 +247,7 @@ public sealed class TheStartUpServicesTests
     }
 
     [Fact]
-    public async Task A_training_run_that_throws_is_recorded_without_ending_the_loop_and_reads_as_skipped_because_the_trainer_catches_it()
+    public async Task A_training_run_that_throws_is_recorded_as_failed_with_the_reason_in_plain_words_and_the_loop_carries_on()
     {
         await using var app = await ApplicationTestHost.StartAsync();
         var jobs = app.Services.GetRequiredService<IJobQueueRepository>();
@@ -258,8 +258,10 @@ public sealed class TheStartUpServicesTests
         await Wait.UntilAsync(async () => (await StateAsync(jobs)) is { LastResult: "completed" or "skipped" or "failed" or "cancelled" }, "the training run to be recorded");
         try
         {
-            Assert.Equal("skipped", (await StateAsync(jobs))!.LastResult);
             Assert.False(service.ExecuteTask!.IsCompleted, "the loop ended after a failed pass");
+            var state = (await StateAsync(jobs))!;
+            Assert.Equal("failed", state.LastResult);
+            Assert.Equal(PlainFailure.Describe(new InvalidOperationException("x"), "training the ranking model"), state.LastError);
         }
         finally
         {
