@@ -56,6 +56,38 @@ public sealed class MovieRungRepairReportServiceTests
         Assert.Equal(0L, Convert.ToInt64(await count.ExecuteScalarAsync()));
     }
 
+    [Fact]
+    public async Task The_start_up_says_once_in_Activity_how_many_movies_were_put_back_and_says_nothing_the_next_start()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-30T00:00:00Z"));
+        await new MoviesSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, time),
+            NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        await using (var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Movies, CancellationToken.None))
+        {
+            // Three repair rows for two movies (one sits in two libraries): the line counts movies, not rows.
+            await using var insert = connection.CreateCommand();
+            insert.CommandText = "INSERT INTO movie_rung_repairs (movie_id, library_id, repaired_utc, reported) VALUES "
+                + "('m1', 'l1', '2026-09-30T00:00:00Z', 0), ('m1', 'l2', '2026-09-30T00:01:00Z', 0), ('m2', 'l1', '2026-09-30T00:00:00Z', 0);";
+            await insert.ExecuteNonQueryAsync();
+        }
+
+        var lines = new List<(string Kind, string Message)>();
+        var activity = RecordingActivityProxy.Create(lines);
+        var service = new MovieRungRepairReportService(storage.Factory, activity, NullLogger<MovieRungRepairReportService>.Instance);
+
+        await service.StartAsync(CancellationToken.None);
+        await service.StartAsync(CancellationToken.None);
+
+        var line = Assert.Single(lines);
+        Assert.Equal("library.movie.status-repaired", line.Kind);
+        Assert.StartsWith("2 movies your quality rules told Deluno to leave alone were put back on Quality met.", line.Message);
+        Assert.EndsWith("Nothing was searched for.", line.Message);
+    }
+
     private sealed class FakeReporter : IBackgroundProblemReporter
     {
         public List<string> Reported { get; } = [];
@@ -89,6 +121,30 @@ public sealed class MovieRungRepairReportServiceTests
                 throw new IOException("database is locked");
             }
 
+            return Task.FromResult<ActivityEventItem>(null!);
+        }
+    }
+
+    /// <summary>Keeps every RecordActivityAsync call (kind, message).</summary>
+    public class RecordingActivityProxy : DispatchProxy
+    {
+        private List<(string Kind, string Message)> _lines = [];
+
+        public static IActivityFeedRepository Create(List<(string Kind, string Message)> lines)
+        {
+            var proxy = Create<IActivityFeedRepository, RecordingActivityProxy>();
+            ((RecordingActivityProxy)(object)proxy)._lines = lines;
+            return proxy;
+        }
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            if (targetMethod!.Name != nameof(IActivityFeedRepository.RecordActivityAsync))
+            {
+                throw new NotSupportedException(targetMethod.Name);
+            }
+
+            _lines.Add(((string)args![0]!, (string)args[1]!));
             return Task.FromResult<ActivityEventItem>(null!);
         }
     }
