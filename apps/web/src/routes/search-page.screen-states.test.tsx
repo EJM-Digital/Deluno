@@ -297,6 +297,27 @@ describe("the Search page's grab drawer", () => {
     expect(await screen.findByText("No one is seeding this release.")).toBeInTheDocument();
   });
 
+  it.each(["newznab", "usenet"])("a %s result with no seeders carries no seeders flag (#1404)", async (indexerProtocol) => {
+    searchReply = { body: { candidates: [row({ releaseName: "Usenet.Only.1080p", seeders: 0, indexerProtocol })], indexersQueried: 2 } };
+    await renderPage();
+    await search("Only");
+
+    fireEvent.click(await screen.findByText("Usenet.Only.1080p"));
+
+    await screen.findByRole("dialog");
+    expect(screen.queryByText("No one is seeding this release.")).toBeNull();
+  });
+
+  it.each(["torznab", "rss"])("a %s result with no seeders still says no one is seeding it (#1404)", async (indexerProtocol) => {
+    searchReply = { body: { candidates: [row({ releaseName: "Torrent.Zero.1080p", seeders: 0, indexerProtocol })], indexersQueried: 2 } };
+    await renderPage();
+    await search("Zero");
+
+    fireEvent.click(await screen.findByText("Torrent.Zero.1080p"));
+
+    expect(await screen.findByText("No one is seeding this release.")).toBeInTheDocument();
+  });
+
 
   it("the drawer lists a release's hard-rule findings in words: the cam rejection and its risk flags", async () => {
     searchReply = { body: { candidates: [row({ releaseName: "Cam.Film.1080p", rejectionGate: "Cam release", riskFlags: ["Never-grab group"] })], indexersQueried: 2 } };

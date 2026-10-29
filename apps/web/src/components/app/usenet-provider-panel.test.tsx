@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const fetchJson = vi.hoisted(() => vi.fn());
 vi.mock("../../lib/api", () => ({ fetchJson }));
 
-const { UsenetProviderPanel, isUsenetProtocol } = await import("./usenet-provider-panel");
+const { UsenetProviderPanel } = await import("./usenet-provider-panel");
+const { isUsenetProtocol } = await import("../../lib/protocol");
 
 describe("Usenet provider (#1142)", () => {
   afterEach(() => fetchJson.mockReset());

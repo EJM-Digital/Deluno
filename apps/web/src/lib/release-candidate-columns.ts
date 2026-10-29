@@ -7,6 +7,8 @@
  * gives for decision-status colouring.
  */
 
+import { isUsenetProtocol } from "./protocol";
+
 export interface CandidateColumnsInput {
   indexerName: string;
   indexerProtocol?: string | null;
@@ -120,9 +122,8 @@ export function formatGrabs(grabs?: number | null): string {
 /** A short, plain-English label for an indexer's protocol code. */
 export function formatProtocol(protocol?: string | null): string {
   if (!protocol) return "—";
+  if (isUsenetProtocol(protocol)) return "Usenet";
   switch (protocol.toLowerCase()) {
-    case "newznab":
-      return "Usenet";
     case "torznab":
     case "tracker":
       return "Torrent";

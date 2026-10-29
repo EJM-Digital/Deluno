@@ -39,6 +39,7 @@ import {
 import { fetchJson, type IndexerItem, type IntegrationFailure } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { toast } from "../components/shell/toaster";
+import { hasNoSeeders } from "../lib/protocol";
 
 interface ManualSearchCandidate {
   releaseName: string;
@@ -83,7 +84,7 @@ function hardRuleFlags(candidate: ManualSearchCandidate): string[] {
   };
   add(candidate.rejectionGate);
   (candidate.riskFlags ?? []).forEach(add);
-  if ((candidate.indexerProtocol ?? "").toLowerCase() !== "usenet" && candidate.seeders === 0) {
+  if (hasNoSeeders(candidate.indexerProtocol, candidate.seeders)) {
     add("No one is seeding this release.");
   }
   return flags;

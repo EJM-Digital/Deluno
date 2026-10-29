@@ -11,11 +11,6 @@ import { SwitchRow } from "../ui/switch";
 type ClientStatus = { clientId: string; clientName: string; hasProvider: boolean; known: boolean };
 type ClientResult = { clientId: string; clientName: string; saved: boolean; message: string };
 
-/** The Usenet clients Deluno writes a provider to (#1142). */
-export function isUsenetProtocol(protocol: string): boolean {
-  return protocol === "sabnzbd" || protocol === "nzbget";
-}
-
 /**
  * "Your Usenet provider" (#1142): SABnzbd and NZBGet download nothing until they have a news server, and the
  * server can only be typed into the client itself. This takes it once and Deluno writes it to every Usenet
