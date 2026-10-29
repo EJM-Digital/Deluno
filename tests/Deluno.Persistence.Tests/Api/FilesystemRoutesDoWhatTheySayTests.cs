@@ -283,6 +283,29 @@ public sealed class FilesystemRoutesDoWhatTheySayTests
     }
 
     [Fact]
+    public async Task The_repair_service_opens_a_series_review_case_for_a_stray_tv_file_and_leaves_the_file_alone()
+    {
+        await using var app = await StartAsync();
+        var libraryId = await ApiScenes.CreateLibraryAsync(app, "tv");
+        var show = await ApiScenes.ShowOnDiskAsync(app, "The Wire", 2002, libraryId);
+        var orphan = Path.Combine(await ApiScenes.LibraryRootAsync(app, libraryId), "Stray Show (2019)", "Season 01", "Stray.Show.S01E01.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(orphan)!);
+        await File.WriteAllBytesAsync(orphan, [7, 7, 7]);
+        var report = await app.Services.GetRequiredService<IFilesystemReconciliationService>().ScanAsync(CancellationToken.None);
+        var issue = Assert.Single(report.Issues, item => item.Kind == "orphanFile");
+
+        var repair = await RepairAsync(app, issue.Id, "queue-import-review");
+
+        Assert.True(repair.Repaired);
+        var cases = await app.Client.GetFromJsonAsync<JsonElement>("/api/series/import-recovery");
+        Assert.Contains("Stray.Show.S01E01", cases.GetRawText(), StringComparison.Ordinal);
+        var movieCases = await app.Client.GetFromJsonAsync<JsonElement>("/api/movies/import-recovery");
+        Assert.DoesNotContain("Stray.Show.S01E01", movieCases.GetRawText(), StringComparison.Ordinal);
+        Assert.True(File.Exists(orphan), "reviewing is a decision for later; the file stays");
+        Assert.True(File.Exists(show.FilePath));
+    }
+
+    [Fact]
     public async Task The_repair_service_moves_a_leftover_staging_file_to_the_recycle_bin_and_refuses_a_repair_that_does_not_apply()
     {
         await using var app = await StartAsync();

@@ -375,6 +375,35 @@ public sealed class ExistingLibraryImportServiceTests
         Assert.Equal(1, finished.Run.DeferredCount);
     }
 
+    [Theory]
+    [InlineData("Northern.Signal.2019-03-05.1080p.WEB-DL.mkv")]
+    [InlineData("Northern Signal - 101 - The Long Night.mkv")]
+    public async Task A_show_whose_files_use_air_date_or_absolute_numbers_is_set_aside_as_alternate_numbering_and_marks_no_episode_present(string fileName)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-29T08:00:00Z"));
+        await InitializeAsync(storage, timeProvider);
+        var rootPath = Path.Combine(storage.DataRoot, "tv");
+        var showFolder = Path.Combine(rootPath, "Northern Signal (2019)");
+        Directory.CreateDirectory(showFolder);
+        await File.WriteAllTextAsync(Path.Combine(showFolder, fileName), string.Empty);
+
+        var libraries = new SqliteLibrariesRepository(storage.Factory, timeProvider);
+        var libraryId = await CreateLibraryAsync(libraries, rootPath, "tv");
+        var series = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider), series: series);
+
+        var run = await service.StartAsync(libraryId, CancellationToken.None);
+        Assert.NotNull(run);
+        await DrainAsync(service, run.Run.Id);
+
+        var issue = Assert.Single(await service.ListIssuesAsync(libraryId, 50, CancellationToken.None));
+        Assert.Equal("alternateEpisode", issue.Kind);
+        var imported = Assert.Single(await series.ListAsync(CancellationToken.None));
+        var detail = await series.GetInventoryDetailAsync(imported.Id, CancellationToken.None);
+        Assert.Equal(0, detail!.ImportedEpisodeCount);
+    }
+
     /// <summary>
     /// Each episode records the quality of its own file.
     ///
