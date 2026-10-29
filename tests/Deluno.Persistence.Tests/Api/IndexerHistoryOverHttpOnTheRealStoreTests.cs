@@ -67,6 +67,19 @@ public sealed class IndexerHistoryOverHttpOnTheRealStoreTests
     }
 
     [Fact]
+    public async Task Each_of_the_four_event_kinds_can_be_asked_for_alone()
+    {
+        await using var app = await StartWithFourEventsAsync();
+
+        foreach (var kind in new[] { "rss-sync", "search", "grab", "auth-failure" })
+        {
+            Assert.Equal([kind], Types(await GetAsync(app, $"?eventType={kind}")));
+        }
+
+        Assert.Equal(["auth-failure"], Types(await GetAsync(app, "?indexerName=1337X")));
+    }
+
+    [Fact]
     public async Task The_whole_feed_is_sorted_before_it_is_paged_and_the_next_page_keeps_the_filters_and_the_sort()
     {
         await using var app = await StartWithFourEventsAsync();
