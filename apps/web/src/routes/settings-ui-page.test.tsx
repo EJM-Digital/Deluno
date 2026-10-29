@@ -45,7 +45,7 @@ describe("interface settings apply the saved theme (#736)", () => {
       </MemoryRouter>
     );
 
-    fireEvent.click(screen.getByRole("radio", { name: "Dark" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Theme" }), { target: { value: "dark" } });
     fireEvent.click(screen.getByRole("button", { name: "Save interface settings" }));
 
     await vi.waitFor(() => expect(mutate).toHaveBeenCalled());

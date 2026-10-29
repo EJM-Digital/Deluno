@@ -55,9 +55,9 @@ test.describe("Interface settings", () => {
     const wanted = original === "impaired" ? "Standard" : "Colour-impaired";
     const wantedValue = original === "impaired" ? "standard" : "impaired";
     const prompt = page.getByRole("dialog", { name: "Unsaved changes" });
-    const group = page.getByRole("radiogroup", { name: "Colour-impaired mode" }).or(page.getByRole("group", { name: "Colour-impaired mode" })).first();
+    const group = page.getByRole("combobox", { name: "Colour-impaired mode" });
     try {
-      await group.getByText(wanted, { exact: true }).click();
+      await group.selectOption({ label: wanted });
       await page.getByRole("link", { name: "Dashboard" }).first().click();
       await expect(prompt).toBeVisible();
       await prompt.getByRole("button", { name: "Cancel", exact: true }).click();
@@ -69,7 +69,7 @@ test.describe("Interface settings", () => {
 
       await openScreen(page, "/settings/ui");
       await untilQuiet(page);
-      await group.getByText(wanted, { exact: true }).click();
+      await group.selectOption({ label: wanted });
       await page.getByRole("link", { name: "Dashboard" }).first().click();
       await prompt.getByRole("button", { name: "Save and continue", exact: true }).click();
       await expect(page).not.toHaveURL(/settings\/ui/);

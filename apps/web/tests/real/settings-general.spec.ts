@@ -56,11 +56,22 @@ test.describe("General settings", () => {
   test("the How Deluno is reached card shows the port the server reports and Yes, No or Unknown for other devices", async ({ page }) => {
     const lan = (await api<{ state: string; port: number | null }>(page, "GET", "/api/system/lan-access")).body;
     const card = page;
-    await expect(card.getByText("Read-only — set outside the app")).toBeVisible();
-    await expect(card.locator("[role=row]:has-text('Port')").first()).toContainText(String(lan.port));
+    const port = card.getByLabel("Port", { exact: true });
+    await expect(port).toHaveValue(String(lan.port));
+    await expect(port).toHaveAttribute("readonly", "");
     const expected = lan.state === "open" ? "Yes" : lan.state === "blocked" ? "No" : "Unknown from here";
-    await expect(card.locator("[role=row]:has-text('Other devices on your network can connect')").first()).toContainText(expected);
+    await expect(card.getByLabel("Other devices on your network can connect")).toHaveValue(expected);
     await expect(card.getByText("Change either there and restart", { exact: false })).toBeVisible();
+  });
+
+  test("every setting on the page is a read-only box, an editable box, a dropdown or a toggle, and nothing else (#1431)", async ({ page }) => {
+    const controls = await page.locator("form").first().evaluate((form) =>
+      Array.from(form.querySelectorAll<HTMLElement>("input, select, textarea, [role=switch], [role=radio], [role=radiogroup], [role=checkbox], [role=slider]"))
+        .filter((node) => !node.closest("nav"))
+        .map((node) => (node.matches("select") ? "dropdown" : node.matches("[role=switch]") ? "toggle" : node instanceof HTMLInputElement && ["text", "number", "url", ""].includes(node.type) ? (node.readOnly ? "read-only box" : "editable box") : `other ${node.tagName} ${node.getAttribute("role")}`)));
+    expect(controls.length).toBeGreaterThan(5);
+    expect(controls.filter((kind) => kind.startsWith("other"))).toEqual([]);
+    for (const kind of ["read-only box", "editable box", "dropdown", "toggle"]) expect(controls).toContain(kind);
   });
 
   test("turning the tracker-definition schedule on sends {isEnabled, intervalHours}, shows Check every, and a new hour count saves when the field is left", async ({ page }) => {

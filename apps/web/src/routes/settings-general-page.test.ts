@@ -22,7 +22,8 @@ describe("general settings page", () => {
 
   it("no longer offers editable bind address, port or URL base fields", () => {
     expect(source).not.toMatch(/label="Bind address"/);
-    expect(source).not.toMatch(/label="Port"/);
+    // Port is shown, but only in a read-only box (#1431).
+    expect(source).toMatch(/label="Port">\s*<Input readOnly/);
     expect(source).not.toMatch(/label="URL base"/);
   });
 

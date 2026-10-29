@@ -15,7 +15,7 @@ import { Field } from "../components/ui/field";
 import { Loader2, RefreshCw, Wifi } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { ListCard, ListCell, ListNameCell, ListRow, ListTable } from "../components/ui/list-card";
+import { ListCard } from "../components/ui/list-card";
 import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { Select } from "../components/ui/select";
@@ -208,16 +208,14 @@ function ReachabilityCard() {
 
   return (
     <ListCard title="How Deluno is reached" count="Read-only — set outside the app">
-      <ListTable columns={[{ label: "Setting" }, { label: "Value", width: "minmax(0,1.4fr)", align: "end" }]} chevron={false}>
-        <ListRow>
-          <ListNameCell name="Port" />
-          <ListCell numeric align="end" primary={status ? String(status.port ?? "—") : loadFailed ? "Unavailable" : "Loading…"} />
-        </ListRow>
-        <ListRow>
-          <ListNameCell name="Other devices on your network can connect" sub={status?.message} />
-          <ListCell numeric align="end" primary={status ? reachabilityLabel : loadFailed ? "Unavailable" : "Loading…"} />
-        </ListRow>
-      </ListTable>
+      <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
+        <Field label="Port">
+          <Input readOnly value={status ? String(status.port ?? "—") : loadFailed ? "Unavailable" : "Loading…"} className="max-w-48 font-mono" />
+        </Field>
+        <Field label="Other devices on your network can connect" help={status?.message || undefined}>
+          <Input readOnly value={status ? reachabilityLabel : loadFailed ? "Unavailable" : "Loading…"} className="max-w-48" />
+        </Field>
+      </div>
       <p className="p-(--card-pad-x) pt-0 text-(length:--type-caption) text-muted-foreground">
         The port and LAN access are set where Deluno starts, not in this page: the <code>Server:Port</code> and{" "}
         <code>Server:AllowLan</code> environment variables (<code>Server__Port</code> / <code>Server__AllowLan</code> in
@@ -316,18 +314,14 @@ function TrackerDefinitionsCard() {
           on request.{" "}
           <SignedApiLink className="font-medium text-primary hover:underline" path="/api/trackers/definitions/notice" mode="open" fallbackName="tracker-definitions-notice.md">Where the definitions come from and under what terms</SignedApiLink>.
         </p>
-        <div className="flex items-center justify-between gap-3">
-          <div className="grid gap-0.5">
-            <span className="text-(length:--type-body-sm) font-medium text-foreground">Update definitions automatically</span>
-            <span className="text-(length:--type-caption) text-muted-foreground">Every change is written to Activity, naming what was updated.</span>
-          </div>
+        <Field label="Update definitions automatically" help="Every change is written to Activity, naming what was updated.">
           <Switch
             checked={state?.isEnabled ?? false}
             disabled={!state || busy}
             onCheckedChange={(checked) => void saveSettings(checked, Number(intervalInput) || 24)}
             aria-label="Update tracker definitions automatically"
           />
-        </div>
+        </Field>
         {state?.isEnabled ? (
           <Field label="Check every" help="How often Deluno checks the remote source for an updated definition.">
             <div className="flex items-center gap-2">
@@ -346,12 +340,9 @@ function TrackerDefinitionsCard() {
             </div>
           </Field>
         ) : null}
-        <ListTable columns={[{ label: "Setting" }, { label: "Value", width: "minmax(0,1.4fr)", align: "end" }]} chevron={false}>
-          <ListRow>
-            <ListNameCell name="Definitions last updated" />
-            <ListCell numeric align="end" primary={state ? lastUpdatedLabel : loadFailed ? "Unavailable" : "Loading…"} />
-          </ListRow>
-        </ListTable>
+        <Field label="Definitions last updated">
+          <Input readOnly value={state ? lastUpdatedLabel : loadFailed ? "Unavailable" : "Loading…"} className="max-w-64" />
+        </Field>
         <div className="flex flex-wrap items-center gap-3">
           <Button type="button" variant="outline" size="sm" onClick={() => void updateNow()} disabled={running || !state}>
             {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
@@ -391,18 +382,14 @@ function KeepAwakeCard({ settings }: { settings: PlatformSettingsSnapshot }) {
   return (
     <ListCard title="Keep awake" count="Stops Windows sleeping while Deluno runs">
       <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
-        <div className="flex items-center justify-between gap-3">
-          <div className="grid gap-0.5">
-            <span className="text-(length:--type-body-sm) font-medium text-foreground">Keep this computer awake</span>
-            <span className="text-(length:--type-caption) text-muted-foreground">While Deluno is running, it asks Windows not to go to sleep, so searches, downloads and imports are not paused. Your Windows power settings are not changed. Off until you switch it on.</span>
-          </div>
+        <Field label="Keep this computer awake" help="While Deluno is running, it asks Windows not to go to sleep, so searches, downloads and imports are not paused. Your Windows power settings are not changed. Off until you switch it on.">
           <Switch
             checked={keepAwake}
             disabled={busy}
             onCheckedChange={(checked) => void save({ keepComputerAwake: checked }, () => setKeepAwake(checked), () => setKeepAwake(!checked), checked ? "Deluno is keeping this computer awake." : "Windows will sleep by its own timers again.")}
             aria-label="Keep this computer awake"
           />
-        </div>
+        </Field>
       </div>
     </ListCard>
   );
@@ -458,22 +445,22 @@ function LogLevelCard() {
 
   return (
     <ListCard title="Log level" count="Changes what Deluno's own log file records, right away">
-      <ListTable columns={[{ label: "Setting" }, { label: "Value", width: "minmax(0,1.4fr)", align: "end" }]} chevron={false}>
-        <ListRow>
-          <ListNameCell name="Current effective level" sub="Takes effect for new log lines immediately, and persists across restarts." />
-          <ListCell numeric align="end" primary={
-            level ? (
-              <Select
-                value={level}
-                onChange={(event) => void changeLevel(event.target.value)}
-                options={LOG_LEVEL_OPTIONS}
-                disabled={busy}
-                aria-label="Log level"
-              />
-            ) : loadFailed ? "Unavailable" : "Loading…"
-          } />
-        </ListRow>
-      </ListTable>
+      <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
+        <Field label="Current effective level" help="Takes effect for new log lines immediately, and persists across restarts.">
+          {level ? (
+            <Select
+              value={level}
+              onChange={(event) => void changeLevel(event.target.value)}
+              options={LOG_LEVEL_OPTIONS}
+              disabled={busy}
+              aria-label="Log level"
+              className="max-w-48"
+            />
+          ) : (
+            <Input readOnly value={loadFailed ? "Unavailable" : "Loading…"} className="max-w-48" />
+          )}
+        </Field>
+      </div>
     </ListCard>
   );
 }

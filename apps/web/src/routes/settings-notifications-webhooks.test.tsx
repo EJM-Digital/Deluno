@@ -269,9 +269,9 @@ describe("webhook drawer", () => {
 });
 
 describe("Delivery master switch and replay", () => {
-  it("shows Sending or Paused and PATCHes enableNotifications when the master switch is flipped", async () => {
+  it("shows the master switch on or off and PATCHes enableNotifications when the master switch is flipped", async () => {
     const first = renderPage();
-    expect(screen.getByText("Sending")).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Send notifications" })).toBeChecked();
     fireEvent.click(screen.getByRole("switch", { name: "Send notifications" }));
     await waitFor(() => expect(vi.mocked(authedFetch).mock.calls.some(([url, o]) => url === "/api/settings" && (o as RequestInit).method === "PATCH")).toBe(true));
     const [, init] = vi.mocked(authedFetch).mock.calls.find(([url, o]) => url === "/api/settings" && (o as RequestInit).method === "PATCH")!;
@@ -279,7 +279,21 @@ describe("Delivery master switch and replay", () => {
     first.unmount();
     loader.settings = { ...emptyPlatformSettingsSnapshot, enableNotifications: false };
     renderPage();
-    expect(screen.getByText("Paused")).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Send notifications" })).not.toBeChecked();
+  });
+
+  it("holds the master switch still while its save is on the way", async () => {
+    let finish: (response: Response) => void = () => undefined;
+    vi.mocked(authedFetch).mockImplementation(((url: RequestInfo | URL) => String(url) === "/api/settings"
+      ? new Promise<Response>((resolve) => { finish = resolve; })
+      : Promise.resolve(json({}))) as typeof authedFetch);
+    renderPage();
+    const toggle = screen.getByRole("switch", { name: "Send notifications" });
+    expect(toggle).toBeEnabled();
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle).toBeDisabled());
+    finish(json({}));
+    await waitFor(() => expect(toggle).toBeEnabled());
   });
 
   it("offers Replay only on dead-letter and retrying deliveries and toasts 'Delivery replayed' or the server's error", async () => {

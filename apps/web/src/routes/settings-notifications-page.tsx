@@ -464,18 +464,11 @@ export function SettingsNotificationsPage() {
       </ListCard>
 
       <ListCard title="Delivery">
-        <ListTable columns={[{ label: "Setting" }, { label: "Applies to" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]} chevron={false}>
-          <ListRow>
-            <ListNameCell name="Send notifications" sub="Master switch. When off, no webhook fires — including tests." />
-            <ListCell primary="All webhooks" secondary={`${webhooks.length} configured`} />
-            <ListCell mobile>
-              <Chip tone={settings.enableNotifications ? "ok" : "idle"}>{settings.enableNotifications ? "Sending" : "Paused"}</Chip>
-            </ListCell>
-            <ListCell mobile>
-              <Switch size="sm" aria-label="Send notifications" checked={settings.enableNotifications} disabled={busy === "global"} onCheckedChange={(checked) => void toggleGlobal(checked)} />
-            </ListCell>
-          </ListRow>
-        </ListTable>
+        <div className="p-(--card-pad-x)">
+          <Field label="Send notifications" help="Master switch. When off, no webhook fires — including tests.">
+            <Switch aria-label="Send notifications" checked={settings.enableNotifications} disabled={busy === "global"} onCheckedChange={(checked) => void toggleGlobal(checked)} />
+          </Field>
+        </div>
       </ListCard>
 
       <ListCard title="Import notifications" count="Independently toggleable · on by default, matching what every install has always done">

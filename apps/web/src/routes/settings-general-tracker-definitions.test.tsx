@@ -80,7 +80,7 @@ describe("scheduled tracker-definition update (#756)", () => {
 
     await waitFor(() => expect(screen.getByRole("switch", { name: "Update tracker definitions automatically" })).toBeTruthy());
     expect(screen.getByRole("switch", { name: "Update tracker definitions automatically" })).toHaveAttribute("aria-checked", "false");
-    expect(screen.getByText("Never")).toBeTruthy();
+    expect(screen.getByLabelText("Definitions last updated")).toHaveValue("Never");
   });
 
   it("turns the schedule on with a PUT", async () => {

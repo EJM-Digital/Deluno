@@ -18,7 +18,7 @@ import { Input } from "../components/ui/input";
 import { ListCard } from "../components/ui/list-card";
 import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar } from "../components/ui/page-toolbar";
-import { SegmentedControl } from "../components/ui/segmented-control";
+import { Select } from "../components/ui/select";
 import { Switch } from "../components/ui/switch";
 import { systemSettingsNavItems } from "../components/app/settings-shell";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
@@ -135,11 +135,12 @@ export function SettingsUiPage() {
 
       <ListCard title="Appearance" count="How Deluno should feel on your display">
         <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
-          <Field label="Theme" help="Follow the device, or pin Deluno to dark or light." className="max-w-[24rem]">
-            <SegmentedControl<string>
+          <Field label="Theme" help="Follow the device, or pin Deluno to dark or light.">
+            <Select
+              className="max-w-80"
               aria-label="Theme"
               value={form.theme}
-              onValueChange={(value) => setForm((current) => ({ ...current, theme: value }))}
+              onChange={(event) => setForm((current) => ({ ...current, theme: event.target.value }))}
               options={[
                 { value: "system", label: "System" },
                 { value: "dark", label: "Dark" },
@@ -148,10 +149,12 @@ export function SettingsUiPage() {
             />
           </Field>
           <Field label="Colour-impaired mode" help="Keeps the mark glyphs and uses a palette with stronger lightness separation. The glyphs remain on in every mode.">
-            <SegmentedControl<string>
+            <Select
+              className="max-w-80"
               aria-label="Colour-impaired mode"
               value={colorModeDraft}
-              onValueChange={(value) => {
+              onChange={(event) => {
+                const value = event.target.value;
                 if (!isColorMode(value)) return;
                 setColorModeDraft(value);
                 setColorMode(value);
@@ -162,11 +165,12 @@ export function SettingsUiPage() {
               ]}
             />
           </Field>
-          <Field label="Interface language" help="Controls Deluno's labels and display formatting. Metadata language is configured separately under Media management." className="max-w-120">
-            <SegmentedControl<string>
+          <Field label="Interface language" help="Controls Deluno's labels and display formatting. Metadata language is configured separately under Media management.">
+            <Select
+              className="max-w-80"
               aria-label="Interface language"
               value={form.uiLanguage}
-              onValueChange={(value) => setForm((current) => ({ ...current, uiLanguage: value }))}
+              onChange={(event) => setForm((current) => ({ ...current, uiLanguage: event.target.value }))}
               options={[
                 { value: "en-AU", label: "English (Australia)" },
                 { value: "en-US", label: "English (United States)" }
@@ -180,10 +184,11 @@ export function SettingsUiPage() {
         <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
           <FieldRow>
             <Field label="First day of week" help="Changes calendar column order and week grouping.">
-              <SegmentedControl<string>
+              <Select
+                className="max-w-80"
                 aria-label="First day of week"
                 value={form.calendarFirstDayOfWeek}
-                onValueChange={(value) => setForm((current) => ({ ...current, calendarFirstDayOfWeek: value }))}
+                onChange={(event) => setForm((current) => ({ ...current, calendarFirstDayOfWeek: event.target.value }))}
                 options={[
                   { value: "monday", label: "Monday" },
                   { value: "sunday", label: "Sunday" }
@@ -191,10 +196,11 @@ export function SettingsUiPage() {
               />
             </Field>
             <Field label="Week column headers" help="The compact date format used above calendar columns.">
-              <SegmentedControl<string>
+              <Select
+                className="max-w-80"
                 aria-label="Week column headers"
                 value={form.calendarWeekHeaderFormat}
-                onValueChange={(value) => setForm((current) => ({ ...current, calendarWeekHeaderFormat: value }))}
+                onChange={(event) => setForm((current) => ({ ...current, calendarWeekHeaderFormat: event.target.value }))}
                 options={[
                   { value: "ddd d/M", label: "Tue 25/03" },
                   { value: "ddd m/d", label: "Tue 03/25" },
@@ -210,10 +216,11 @@ export function SettingsUiPage() {
         <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
           <FieldRow>
             <Field label="Runtime" help="How movie and episode runtimes are written.">
-              <SegmentedControl<string>
+              <Select
+                className="max-w-80"
                 aria-label="Runtime format"
                 value={form.runtimeFormat}
-                onValueChange={(value) => setForm((current) => ({ ...current, runtimeFormat: value }))}
+                onChange={(event) => setForm((current) => ({ ...current, runtimeFormat: event.target.value }))}
                 options={[
                   { value: "hoursMinutes", label: "1h 15m" },
                   { value: "minutes", label: "75 minutes" }
@@ -221,10 +228,11 @@ export function SettingsUiPage() {
               />
             </Field>
             <Field label="Time" help="The clock style used with dates and activity timestamps.">
-              <SegmentedControl<string>
+              <Select
+                className="max-w-80"
                 aria-label="Time format"
                 value={form.timeFormat}
-                onValueChange={(value) => setForm((current) => ({ ...current, timeFormat: value }))}
+                onChange={(event) => setForm((current) => ({ ...current, timeFormat: event.target.value }))}
                 options={[
                   { value: "12", label: "12-hour" },
                   { value: "24", label: "24-hour" }
@@ -234,10 +242,11 @@ export function SettingsUiPage() {
           </FieldRow>
           <FieldRow>
             <Field label="Short date" help="Used for compact list and activity dates.">
-              <SegmentedControl<string>
+              <Select
+                className="max-w-80"
                 aria-label="Short date format"
                 value={form.shortDateFormat}
-                onValueChange={(value) => setForm((current) => ({ ...current, shortDateFormat: value }))}
+                onChange={(event) => setForm((current) => ({ ...current, shortDateFormat: event.target.value }))}
                 options={[
                   { value: "dmy", label: "25/03/2026" },
                   { value: "mdy", label: "03/25/2026" },
@@ -246,10 +255,11 @@ export function SettingsUiPage() {
               />
             </Field>
             <Field label="Long date" help="Used where a date needs more context.">
-              <SegmentedControl<string>
+              <Select
+                className="max-w-80"
                 aria-label="Long date format"
                 value={form.longDateFormat}
-                onValueChange={(value) => setForm((current) => ({ ...current, longDateFormat: value }))}
+                onChange={(event) => setForm((current) => ({ ...current, longDateFormat: event.target.value }))}
                 options={[
                   { value: "full", label: "Wednesday, 25 March" },
                   { value: "mdy", label: "Wednesday, March 25" }
@@ -310,22 +320,24 @@ export function SettingsUiPage() {
 
       <ListCard title="Default views" count="How a library opens before you change its view">
         <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
-          <Field label="Movies" help="Grid leads with poster art; List leads with details." className="max-w-[24rem]">
-            <SegmentedControl<string>
+          <Field label="Movies" help="Grid leads with poster art; List leads with details.">
+            <Select
+              className="max-w-80"
               aria-label="Default movies view"
               value={form.movieView}
-              onValueChange={(value) => setForm((current) => ({ ...current, movieView: value }))}
+              onChange={(event) => setForm((current) => ({ ...current, movieView: event.target.value }))}
               options={[
                 { value: "grid", label: "Grid" },
                 { value: "list", label: "List" }
               ]}
             />
           </Field>
-          <Field label="TV shows" help="Applies to new library views, not ones you have already switched." className="max-w-[24rem]">
-            <SegmentedControl<string>
+          <Field label="TV shows" help="Applies to new library views, not ones you have already switched.">
+            <Select
+              className="max-w-80"
               aria-label="Default TV view"
               value={form.showView}
-              onValueChange={(value) => setForm((current) => ({ ...current, showView: value }))}
+              onChange={(event) => setForm((current) => ({ ...current, showView: event.target.value }))}
               options={[
                 { value: "grid", label: "Grid" },
                 { value: "list", label: "List" }

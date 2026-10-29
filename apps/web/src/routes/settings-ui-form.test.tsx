@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
@@ -36,8 +36,17 @@ const base = {
   runtimeFormat: "hm", timeFormat: "12h", shortDateFormat: "dmy", longDateFormat: "full", showRelativeDates: true, defaultMovieView: "grid", defaultShowView: "grid"
 };
 const renderPage = () => render(<MemoryRouter><SettingsUiPage /></MemoryRouter>);
-const choose = (group: string, label: string) => fireEvent.click(screen.getByRole("radiogroup", { name: group }).querySelector(`[role='radio'][aria-label='${label}'], [role='radio']`) as HTMLElement);
-const pick = (name: string) => fireEvent.click(screen.getByRole("radio", { name }));
+/** Chooses an option of a dropdown by its label (#1431: every choice from a list is a dropdown). */
+const choose = (group: string, label: string) => {
+  const box = screen.getByRole("combobox", { name: group });
+  const option = Array.from(box.querySelectorAll("option")).find((item) => item.textContent === label)!;
+  fireEvent.change(box, { target: { value: option.value } });
+};
+const groupOf: Record<string, string> = {
+  "Colour-impaired": "Colour-impaired mode", "English (United States)": "Interface language", "English (Australia)": "Interface language",
+  Sunday: "First day of week", Monday: "First day of week", "Tue 03/25": "Week column headers"
+};
+const pick = (label: string) => choose(groupOf[label], label);
 
 beforeEach(() => {
   cleanup();
@@ -71,15 +80,15 @@ describe("colour-impaired mode", () => {
 describe("language, calendar, formats and default views", () => {
   it("offers English (Australia) and English (United States)", () => {
     renderPage();
-    expect(screen.getByRole("radio", { name: "English (Australia)" })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "English (United States)" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Interface language" })).toHaveDisplayValue("English (Australia)");
+    expect(within(screen.getByRole("combobox", { name: "Interface language" })).getAllByRole("option").map((item) => item.textContent)).toEqual(["English (Australia)", "English (United States)"]);
   });
 
   it("shows the week header examples Tue 25/03, Tue 03/25 and Tue 25 Mar and the two first days of the week", () => {
     renderPage();
-    for (const name of ["Tue 25/03", "Tue 03/25", "Tue 25 Mar", "Monday", "Sunday"]) {
-      expect(screen.getByRole("radio", { name })).toBeInTheDocument();
-    }
+    const options = (name: string) => within(screen.getByRole("combobox", { name })).getAllByRole("option").map((item) => item.textContent);
+    expect(options("Week column headers")).toEqual(["Tue 25/03", "Tue 03/25", "Tue 25 Mar"]);
+    expect(options("First day of week")).toEqual(["Monday", "Sunday"]);
   });
 
   it("sends every field it shows in one PATCH when saved, with the choices made", async () => {
@@ -88,8 +97,8 @@ describe("language, calendar, formats and default views", () => {
     pick("English (United States)");
     pick("Sunday");
     pick("Tue 03/25");
-    fireEvent.click(within_group("Default movies view", "List"));
-    fireEvent.click(within_group("Default TV view", "List"));
+    choose("Default movies view", "List");
+    choose("Default TV view", "List");
     fireEvent.click(screen.getByRole("button", { name: "Save interface settings" }));
     await waitFor(() => expect(mutate).toHaveBeenCalled());
     expect(mutate.mock.calls[0][0]).toMatchObject({
@@ -100,6 +109,21 @@ describe("language, calendar, formats and default views", () => {
       "calendarFirstDayOfWeek", "calendarWeekHeaderFormat", "defaultMovieView", "defaultShowView", "longDateFormat", "runtimeFormat", "shortDateFormat",
       "showAbsoluteEpisodeNumbers", "showRelativeDates", "timeFormat", "timezone", "uiColorMode", "uiLanguage", "uiTheme"
     ]);
+  });
+});
+
+describe("every dropdown reaches the save (#1431)", () => {
+  it("sends the runtime, time, short date and long date choices as chosen", async () => {
+    mutate.mockResolvedValueOnce({ ...base });
+    renderPage();
+    choose("Runtime format", "75 minutes");
+    choose("Time format", "24-hour");
+    choose("Short date format", "2026-03-25");
+    choose("Long date format", "Wednesday, March 25");
+    choose("Theme", "Dark");
+    fireEvent.click(screen.getByRole("button", { name: "Save interface settings" }));
+    await waitFor(() => expect(mutate).toHaveBeenCalled());
+    expect(mutate.mock.calls[0][0]).toMatchObject({ runtimeFormat: "minutes", timeFormat: "24", shortDateFormat: "iso", longDateFormat: "mdy", uiTheme: "dark" });
   });
 });
 
@@ -132,16 +156,10 @@ describe("staying current", () => {
 
   it("follows a value saved elsewhere into the open form while nothing here is edited, and the colour mode with it", () => {
     const view = renderPage();
-    expect(screen.getByRole("radio", { name: "English (Australia)" })).toBeChecked();
+    expect(screen.getByRole("combobox", { name: "Interface language" })).toHaveDisplayValue("English (Australia)");
     loaderData.settings = { ...base, uiLanguage: "en-US", uiColorMode: "impaired" };
     view.rerender(<MemoryRouter><SettingsUiPage /></MemoryRouter>);
-    expect(screen.getByRole("radio", { name: "English (United States)" })).toBeChecked();
+    expect(screen.getByRole("combobox", { name: "Interface language" })).toHaveDisplayValue("English (United States)");
     expect(setColorMode).toHaveBeenCalledWith("impaired");
   });
 });
-
-function within_group(group: string, label: string): HTMLElement {
-  const container = screen.getByLabelText(group);
-  return Array.from(container.querySelectorAll("[role='radio']")).find((node) => node.textContent?.trim() === label) as HTMLElement;
-}
-void choose;
