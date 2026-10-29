@@ -101,6 +101,26 @@ public sealed class RssSyncTests
         Assert.Contains("\"priorityIndexerIds\":[\"idx-1\"]", request.PayloadJson);
     }
 
+    [Theory]
+    [InlineData("switched off")]
+    [InlineData("feed reading off")]
+    [InlineData("automatic search off")]
+    public async Task An_indexer_that_is_switched_off_or_has_its_feed_or_automatic_search_off_is_not_asked(string how)
+    {
+        var indexer = Blank<IndexerItem>() with
+        {
+            Id = "idx-1", Name = "Soak Torznab", IsEnabled = how != "switched off", RssEnabled = how != "feed reading off",
+            AutomaticSearchEnabled = how != "automatic search off"
+        };
+        _connections.Setup(repo => repo.ListIndexersAsync(It.IsAny<CancellationToken>())).ReturnsAsync([indexer]);
+        Feed("The.General.1926.1080p.BluRay.DTS-HD.MA.5.1.x264-DELUNO");
+
+        await Sync();
+
+        _feed.Verify(reader => reader.ReadRecentAsync(It.IsAny<IndexerItem>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Empty(_queued);
+    }
+
     [Fact]
     public async Task A_new_release_for_a_wanted_episode_searches_for_that_episode_now()
     {

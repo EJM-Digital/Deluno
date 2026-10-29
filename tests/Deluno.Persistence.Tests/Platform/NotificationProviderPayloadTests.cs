@@ -230,6 +230,30 @@ public sealed class NotificationProviderPayloadTests
         Assert.Contains("import.completed", handler.LastRequestBody);
     }
 
+    [Theory]
+    [InlineData("blueprints/automation/deluno_notifications.yaml")]
+    [InlineData("deluno.yaml")]
+    public async Task Every_field_the_Home_Assistant_automation_reads_from_trigger_json_is_in_the_generic_webhook_payload(string file)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Deluno.slnx"))) directory = directory.Parent;
+        Assert.NotNull(directory);
+        var yaml = File.ReadAllText(Path.Combine(directory!.FullName, "integrations", "home-assistant", file));
+        var read = System.Text.RegularExpressions.Regex.Matches(yaml, @"trigger\.json\.(\w+)").Select(match => match.Groups[1].Value).ToHashSet();
+        Assert.Equivalent(new[] { "title", "message", "eventCategory" }, read);
+
+        using var storage = TestStorage.Create();
+        var (service, handler) = await CreateServiceAsync(storage, NotificationProviders.Generic, "https://example.test/hook", null);
+        await service.DispatchAsync("import.completed", "Imported", "The Matrix (1999)", null, CancellationToken.None);
+
+        using var body = System.Text.Json.JsonDocument.Parse(handler.LastRequestBody!);
+        var sent = body.RootElement.EnumerateObject().Select(property => property.Name).ToHashSet();
+        Assert.Empty(read.Except(sent));
+        Assert.Equal("Imported", body.RootElement.GetProperty("title").GetString());
+        Assert.Equal("The Matrix (1999)", body.RootElement.GetProperty("message").GetString());
+        Assert.Equal("import.completed", body.RootElement.GetProperty("eventCategory").GetString());
+    }
+
     [Fact]
     public async Task Every_chat_provider_puts_the_tags_line_in_what_it_sends()
     {
