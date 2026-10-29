@@ -502,7 +502,10 @@ public sealed class DashboardSummaryService : IDashboardSummaryService, IDashboa
     private async Task<DashboardIndexersSection> IndexersAsync(IServiceProvider sp, DateTimeOffset now)
     {
         var indexersTask = sp.GetRequiredService<IConnectionsRepository>().ListIndexersAsync(CancellationToken.None);
-        var statsTask = sp.GetRequiredService<IIndexerQueryStatsRepository>().GetScoreboardAsync(StartOfToday(now), now, CancellationToken.None);
+        var todayStart = StartOfToday(now);
+        var statsRepository = sp.GetRequiredService<IIndexerQueryStatsRepository>();
+        var statsTask = sp.GetRequiredService<Deluno.Integrations.Search.IndexerScoreboardCache>()
+            .GetAsync($"today:{todayStart:O}", () => statsRepository.GetScoreboardAsync(todayStart, now, CancellationToken.None), CancellationToken.None);
         await Task.WhenAll(indexersTask, statsTask);
 
         var indexers = indexersTask.Result;
