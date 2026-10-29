@@ -3400,6 +3400,124 @@ public sealed partial class ImportPipelineServiceTests
     }
 
     /// <summary>
+    /// Which matched formats reach a file name (rows of #1296): only formats in the library's quality profile are
+    /// considered; of those only guide formats marked include-when-renaming reach {Custom Formats}; a matching
+    /// guide format of category edition renders in {Edition}; {Release Group} is the text after the last dash.
+    /// </summary>
+    private static async Task<string> ImportedMovieNameAsync(
+        string releaseName,
+        string movieFileFormat,
+        Func<SqliteQualityRepository, Task<string[]>> rulesInProfile)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-29T04:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "video.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Repeat((byte)0x33, 4096).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, movieFileFormat: movieFileFormat);
+        var quality = new SqliteQualityRepository(storage.Factory, timeProvider);
+        var ruleIds = await rulesInProfile(quality);
+        var profile = await quality.CreateQualityProfileAsync(
+            new CreateQualityProfileRequest("Naming movies", "movies", "WEB 1080p", "WEB 1080p", string.Join(',', ruleIds), UpgradeUntilCutoff: true, UpgradeUnknownItems: false),
+            CancellationToken.None);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath, qualityProfileId: profile.Id);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new RecordingRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            library.Id, "movies", "movie", "movie-dune", releaseName, "TestIndexer", "client-1", "TestClient", "sent",
+            notesJson: null, cancellationToken: CancellationToken.None);
+
+        var mediaState = new SqliteMediaStateRepository(storage.Factory, timeProvider);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider, mediaState);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies, qualityRepository: quality, downloadDispatchesRepository: dispatches);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(sourcePath, null, "movies", "Dune", 2021, [], [], null, "en", ImdbId: "tt1160419"),
+                "copy", Overwrite: false, AllowCopyFallback: true, DispatchId: dispatchId),
+            CancellationToken.None);
+        Assert.True(result.Succeeded, result.Message);
+        var tracked = new List<MovieTrackedFileItem>();
+        await foreach (var item in movies.StreamTrackedFilesAsync(library.Id, CancellationToken.None))
+        {
+            tracked.Add(item);
+        }
+
+        return Path.GetFileName(Assert.Single(tracked).FilePath);
+    }
+
+    private static async Task<string> CreateGuideRuleAsync(SqliteQualityRepository quality, string guideFormatName)
+    {
+        var guide = GuidePackageCatalog.Current.CustomFormats.Single(format =>
+            format.Name.Equals(guideFormatName, StringComparison.Ordinal) && GuideFormatConditions.AppliesTo(format, "movies"));
+        var rule = await quality.CreateCustomFormatAsync(
+            new CreateCustomFormatRequest(guide.Name, "movies", guide.OriginalScore, guide.TrashId, GuideFormatConditions.For(guide), true),
+            CancellationToken.None);
+        return rule.Id;
+    }
+
+    private const string EditionAndGroupFormat = "{Movie Title} ({Release Year}) {Edition} [{Release Group}] [{Custom Formats}]";
+
+    [Fact]
+    public async Task A_matching_guide_format_outside_the_libraries_profile_is_left_out_of_the_name()
+    {
+        var name = await ImportedMovieNameAsync(
+            "Dune.2021.1080p.NF.DSNP.WEB-DL.x264-DELUNO",
+            "{Movie Title} ({Release Year}) [{Custom Formats}]",
+            async quality =>
+            {
+                var inProfile = await CreateGuideRuleAsync(quality, "NF");
+                await CreateGuideRuleAsync(quality, "DSNP"); // matches the release but is not in the profile
+                return [inProfile];
+            });
+
+        Assert.Equal("Dune (2021) [NF].mkv", name);
+    }
+
+    [Fact]
+    public async Task Matched_formats_in_the_profile_join_sorted_and_a_format_not_marked_for_renaming_or_not_from_the_guide_never_does()
+    {
+        var name = await ImportedMovieNameAsync(
+            "Dune.2021.EXTENDED.1080p.NF.DSNP.WEB-DL.x264-DELUNO",
+            "{Movie Title} ({Release Year}) [{Custom Formats}]",
+            async quality =>
+            {
+                var nf = await CreateGuideRuleAsync(quality, "NF");
+                var dsnp = await CreateGuideRuleAsync(quality, "DSNP");
+                var extended = await CreateGuideRuleAsync(quality, "Extended Edition"); // guide format, not marked include-when-renaming
+                var own = (await quality.CreateCustomFormatAsync(
+                    new CreateCustomFormatRequest("Preferred DELUNO group", "movies", 100, null,
+                        "[{\"type\":\"releaseGroup\",\"value\":\"DELUNO\",\"negate\":false,\"required\":true}]", true),
+                    CancellationToken.None)).Id; // own format, not from the guide
+                return [nf, dsnp, extended, own];
+            });
+
+        Assert.Equal("Dune (2021) [DSNP NF].mkv", name);
+    }
+
+    [Fact]
+    public async Task Edition_renders_the_matched_edition_format_and_release_group_is_the_text_after_the_last_dash()
+    {
+        var name = await ImportedMovieNameAsync(
+            "Dune.2021.EXTENDED.1080p.WEB-DL.x264-DELUNO",
+            EditionAndGroupFormat,
+            async quality => [await CreateGuideRuleAsync(quality, "Extended Edition")]);
+
+        Assert.Equal("Dune (2021) Extended Edition [DELUNO].mkv", name);
+    }
+
+    /// <summary>
     /// The name comes from the decision, not from the incoming file name.
     ///
     /// <para>A download client hands over whatever the release put on disk -

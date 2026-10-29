@@ -86,6 +86,22 @@ public sealed class RemovedTitleDownloadTests : IDisposable
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Fact]
+    public async Task A_film_removed_and_added_again_between_grab_and_finish_takes_the_old_download_in_a_standard_library()
+    {
+        var jobs = new List<EnqueueJobRequest>();
+        var scheduler = new Mock<IJobScheduler>();
+        scheduler.Setup(instance => instance.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<EnqueueJobRequest, CancellationToken>((request, _) => jobs.Add(request))
+            .ReturnsAsync((JobQueueItem)RuntimeHelpers.GetUninitializedObject(typeof(JobQueueItem)) with { Id = "import-job" });
+
+        await Run(scheduler, Activity(), movieStillThere: false, grabbedFor: "library-1", reAddedAs: "movie-2");
+
+        var job = Assert.Single(jobs);
+        Assert.Equal("filesystem.import.execute", job.JobType);
+        Assert.Equal("movie-2", job.RelatedEntityId);
+    }
+
     private static Mock<IActivityFeedRepository> Activity()
     {
         var activity = new Mock<IActivityFeedRepository>();
@@ -102,7 +118,7 @@ public sealed class RemovedTitleDownloadTests : IDisposable
         }
     }
 
-    private async Task Run(Mock<IJobScheduler> scheduler, Mock<IActivityFeedRepository> activity, bool movieStillThere, string grabbedFor)
+    private async Task Run(Mock<IJobScheduler> scheduler, Mock<IActivityFeedRepository> activity, bool movieStillThere, string grabbedFor, string? reAddedAs = null)
     {
         var file = Path.Combine(_root, "Downloads", ReleaseName, ReleaseName + ".mkv");
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
@@ -119,6 +135,12 @@ public sealed class RemovedTitleDownloadTests : IDisposable
         var movies = new Mock<IMovieCatalogRepository>();
         movies.Setup(repository => repository.GetByIdAsync("movie-1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(movieStillThere ? (MovieListItem)RuntimeHelpers.GetUninitializedObject(typeof(MovieListItem)) with { Id = "movie-1", Title = "Dementia 13", ReleaseYear = 1963 } : null);
+
+        if (reAddedAs is not null)
+        {
+            movies.Setup(repository => repository.ListAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync([(MovieListItem)RuntimeHelpers.GetUninitializedObject(typeof(MovieListItem)) with { Id = reAddedAs, Title = "Dementia 13", ReleaseYear = 1963 }]);
+        }
 
         var telemetry = new Mock<IDownloadClientTelemetryService> { CallBase = true };
         telemetry.Setup(service => service.GetOverviewAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Overview(new DownloadQueueItem(
