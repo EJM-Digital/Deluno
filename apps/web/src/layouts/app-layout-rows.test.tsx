@@ -144,12 +144,12 @@ describe("the command palette's recents and Preferences entry (#1329)", () => {
 
   it("lists the last 5 distinct destinations first, newest first, and a recent reopens its page", async () => {
     await mount("/");
-    for (const label of ["Movies", "TV", "Activity", "Movies", "Transfers", "Collections", "Schedule"]) await pick(label);
+    for (const label of ["Movies", "TV", "Discover", "Movies", "Transfers", "Collections", "Schedule"]) await pick(label);
 
     const dialog = await openPalette();
     const recents = within(dialog).getByText("Recents").parentElement!;
     const paths = Array.from(recents.querySelectorAll("[cmdk-item]")).map((item) => item.querySelector(".font-mono")?.textContent);
-    expect(paths).toEqual(["/calendar", "/collections", "/queue", "/movies", "/activity"]);
+    expect(paths).toEqual(["/calendar", "/collections", "/queue", "/movies", "/discover"]);
 
     fireEvent.click(within(recents).getByText("/collections").closest("[cmdk-item]")!);
     await waitFor(() => expect(where()).toBe("/collections"));

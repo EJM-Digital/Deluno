@@ -23,7 +23,6 @@ const targets: PrefetchTarget[] = [
   { match: (path) => path === "/movies", load: () => import("../routes/library-page"), startExport: "moviesLoader" },
   { match: (path) => path === "/tv", load: () => import("../routes/library-page"), startExport: "showsLoader" },
   { match: (path) => path === "/queue", load: () => import("../routes/queue-page"), startExport: "queueLoader" },
-  { match: (path) => path === "/activity", load: () => import("../routes/activity-page"), startExport: "activityLoader" },
   { match: (path) => path.startsWith("/indexers") && !path.startsWith("/indexers/history") && !path.startsWith("/indexers/subtitle") && !path.startsWith("/indexers/media-servers") && !path.startsWith("/indexers/companion"), load: () => import("../routes/connections-screen"), startExport: "indexersLoader" },
   { match: (path) => path === "/system" || path.startsWith("/system/") && !/^\/system\/(api|docs|security)/.test(path), load: () => import("../routes/system-page"), startExport: "systemLoader" },
   { match: (path) => path === "/calendar", load: () => import("../routes/calendar-page"), startExport: "calendarLoader" },
@@ -34,13 +33,21 @@ const targets: PrefetchTarget[] = [
   { match: (path) => path.startsWith("/settings"), load: () => import("../routes/settings-overview-page") }
 ];
 
+function requestFor(to: string): { request: Request } | undefined {
+  try {
+    return { request: new Request(new URL(to, window.location.origin)) };
+  } catch {
+    return undefined;
+  }
+}
+
 function targetFor(to: string): PrefetchTarget | undefined {
   const path = to.split(/[?#]/)[0].replace(/\/+$/, "") || "/";
   return targets.find((entry) => entry.match(path));
 }
 
 /** Screens whose chunks are fetched once the app is idle after sign-in. */
-const IDLE_PATHS = ["/", "/movies", "/tv", "/queue", "/activity", "/indexers/indexers", "/system", "/calendar"] as const;
+const IDLE_PATHS = ["/", "/movies", "/tv", "/queue", "/indexers/indexers", "/system", "/calendar"] as const;
 
 /**
  * Fetches the chunk for an address, and with `data` starts the screen's own
@@ -53,7 +60,8 @@ export function prefetchRoute(to: string, options: { data?: boolean } = {}): voi
   void entry.load().then((module) => {
     if (!options.data || !entry.startExport) return;
     const start = module[entry.startExport];
-    if (typeof start === "function") (start as (args?: unknown) => unknown)();
+    // The address goes with the hint: Transfers reads its history from different places than its downloads.
+    if (typeof start === "function") (start as (args?: unknown) => unknown)(requestFor(to));
   }).catch(() => undefined);
 }
 

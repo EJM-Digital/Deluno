@@ -145,12 +145,12 @@ describe("the command palette key", () => {
 describe("g then a letter", () => {
   const destinations: Array<[string, string]> = [
     ["o", "/"], ["m", "/movies"], ["t", "/tv"], ["q", "/queue"], ["i", "/indexers"], ["x", "/search-cycles"],
-    ["a", "/activity"], ["c", "/calendar"], ["d", "/discover"], ["s", "/settings"], ["y", "/system"]
+    ["a", "/queue"], ["c", "/calendar"], ["d", "/discover"], ["s", "/settings"], ["y", "/system"]
   ];
 
   for (const [letter, path] of destinations) {
     it(`g then ${letter} goes to ${path}`, async () => {
-      await mount(path === "/activity" ? "/movies" : "/activity");
+      await mount(path === "/queue" ? "/movies" : "/queue");
       press("g");
       press(letter);
       await waitFor(() => expect(where()).toBe(path));

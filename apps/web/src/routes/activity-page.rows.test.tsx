@@ -92,7 +92,7 @@ function LocationProbe() {
   return <output aria-label="address">{location.pathname + location.search}</output>;
 }
 
-function renderActivity(address = "/activity") {
+function renderActivity(address = "/queue?view=history") {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[address]}>
@@ -133,7 +133,7 @@ describe("Activity's drawers and their failures (#1329)", () => {
   it("Dismiss on a failed job the server cannot dismiss says so in a toast and leaves the drawer open", async () => {
     loaderData.failedJobs = [stopped()];
     override = (path) => (path === "/api/jobs/job-9/dismiss" ? failure(500) : undefined);
-    renderActivity("/activity?status=failed");
+    renderActivity("/queue?view=history&status=failed");
 
     await userEvent.click(await screen.findByText("Import Arrival"));
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Dismiss" }));
@@ -146,7 +146,7 @@ describe("Activity's drawers and their failures (#1329)", () => {
   it("Try again that fails says 'That job could not be tried again.' and keeps the drawer open", async () => {
     loaderData.failedJobs = [stopped()];
     override = (path) => (path === "/api/jobs/job-9/retry" ? failure(500) : undefined);
-    renderActivity("/activity?status=failed");
+    renderActivity("/queue?view=history&status=failed");
 
     await userEvent.click(await screen.findByText("Import Arrival"));
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Try again" }));
@@ -158,7 +158,7 @@ describe("Activity's drawers and their failures (#1329)", () => {
 
   it("Try again on a failed import job posts the retry for that job only, says it is being tried again, closes the drawer and reads again", async () => {
     loaderData.failedJobs = [stopped(), stopped({ id: "job-10", label: "Import Sintel" })];
-    renderActivity("/activity?status=failed");
+    renderActivity("/queue?view=history&status=failed");
 
     await userEvent.click(await screen.findByText("Import Arrival"));
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Try again" }));
@@ -177,7 +177,7 @@ describe("Activity's drawers and their failures (#1329)", () => {
       id: "job-facts", label: "Search for Arrival", status: "queued", attempts: 2, workerId: "worker-7", startedUtc: null, completedUtc: null,
       payloadJson: JSON.stringify({ movieId: "movie-1" })
     })];
-    renderActivity("/activity?status=in-progress");
+    renderActivity("/queue?view=history&status=in-progress");
 
     await userEvent.click(await screen.findByText("Search for Arrival"));
     const dialog = screen.getByRole("dialog");
@@ -205,7 +205,7 @@ describe("Activity's drawers and their failures (#1329)", () => {
     expect(about.textContent).toContain("Not in a language you want");
     for (const name of ["a.mkv", "b.mkv", "c.mkv"]) {
       const link = within(dialog).getByRole("link", { name: `C:/Downloads/Arrival/${name}` });
-      expect(link).toHaveAttribute("href", `/activity?file=${encodeURIComponent(`C:/Downloads/Arrival/${name}`)}`);
+      expect(link).toHaveAttribute("href", `/queue?view=history&file=${encodeURIComponent(`C:/Downloads/Arrival/${name}`)}`);
     }
   });
 
@@ -258,7 +258,7 @@ describe("Activity's history list (#1329)", () => {
 
   it("an event address that is never found, with the history exhausted, opens nothing and does not keep paging", async () => {
     events = [event({ id: "ev-1" })];
-    renderActivity("/activity?event=missing");
+    renderActivity("/queue?view=history&event=missing");
 
     await screen.findByText("Message of ev-1");
     await waitFor(() => expect(activityCalls()).toHaveLength(1));
@@ -270,7 +270,7 @@ describe("Activity's history list (#1329)", () => {
 
   it("a pushed event the view cannot settle, or a view sorted by a heading, is read again once after a burst", async () => {
     events = [event({ id: "ev-1" })];
-    renderActivity("/activity?title=Arrival");
+    renderActivity("/queue?view=history&title=Arrival");
     await screen.findByText("Message of ev-1");
     expect(activityCalls()).toHaveLength(2 - 1);
 
@@ -363,7 +363,7 @@ describe("Activity's open items (#1329)", () => {
   it("a job that will try again reads 'Retrying, attempt 2 of 3' under In progress and is not under Failed", async () => {
     loaderData.jobs = [job({ id: "job-r", label: "Search for Arrival", status: "failed", attempts: 2, maxAttempts: 3, nextAttemptUtc: "2026-09-27T13:00:00Z", lastError: null })];
     loaderData.failedJobs = [job({ id: "job-r", label: "Search for Arrival", status: "failed", attempts: 2, maxAttempts: 3, nextAttemptUtc: "2026-09-27T13:00:00Z", lastError: null })];
-    renderActivity("/activity?status=in-progress");
+    renderActivity("/queue?view=history&status=in-progress");
 
     expect(await screen.findByText("Retrying, attempt 2 of 3")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("radio", { name: /^Failed/ }));
@@ -375,7 +375,7 @@ describe("Activity's open items (#1329)", () => {
       stopped({ id: "job-n3", label: "Import Arrival", lastError: null, attempts: 3 }),
       stopped({ id: "job-n1", label: "Import Sintel", lastError: null, attempts: 1 })
     ];
-    renderActivity("/activity?status=failed");
+    renderActivity("/queue?view=history&status=failed");
 
     expect(await screen.findByText("Gave up after 3 attempts")).toBeInTheDocument();
     expect(screen.getByText("Gave up after 1 attempt")).toBeInTheDocument();
@@ -387,7 +387,7 @@ describe("Activity's open items (#1329)", () => {
       id: "tv-case", title: "Some Show", failureKind: "processedFileIsLess", summary: "The processed file is smaller.", recommendedAction: "Try the import again.",
       detailsJson: JSON.stringify({ DispatchId: "d1" }), detectedUtc: "2026-09-27T08:00:00Z"
     }];
-    renderActivity("/activity?status=needs-decision");
+    renderActivity("/queue?view=history&status=needs-decision");
 
     await userEvent.click(await screen.findByText("Some Show"));
     const dialog = screen.getByRole("dialog");
@@ -426,28 +426,28 @@ describe("Activity's open items (#1329)", () => {
       return view;
     };
 
-    let view = await open("/activity?title=Sintel");
+    let view = await open("/queue?view=history&title=Sintel");
     expect(screen.queryByText("Search for Arrival")).not.toBeInTheDocument();
     expect(screen.getByText("Search for Sintel")).toBeInTheDocument();
     view.unmount();
 
-    view = await open("/activity?item=movie-1&itemType=movie");
+    view = await open("/queue?view=history&item=movie-1&itemType=movie");
     expect(screen.getByText("Search for Arrival")).toBeInTheDocument();
     expect(screen.queryByText("Search for Sintel")).not.toBeInTheDocument();
     view.unmount();
 
-    view = await open("/activity?since=2026-10-01");
+    view = await open("/queue?view=history&since=2026-10-01");
     expect(screen.queryByText("Search for Arrival")).not.toBeInTheDocument();
     expect(screen.getByText("Search for Sintel")).toBeInTheDocument();
     view.unmount();
 
-    view = await open("/activity?until=2026-10-01");
+    view = await open("/queue?view=history&until=2026-10-01");
     expect(screen.getByText("Search for Arrival")).toBeInTheDocument();
     expect(screen.queryByText("Search for Sintel")).not.toBeInTheDocument();
     view.unmount();
 
     for (const query of ["type=search", "file=a.mkv", "source=indexer", "outcome=problem", "reason=language"]) {
-      view = await open(`/activity?${query}`);
+      view = await open(`/queue?view=history&${query}`);
       expect(screen.queryByText("Search for Arrival")).not.toBeInTheDocument();
       expect(screen.queryByText("Search for Sintel")).not.toBeInTheDocument();
       view.unmount();
@@ -465,17 +465,17 @@ describe("Activity's live steps (#1329)", () => {
   it("the title, since and until filters narrow the Processing rows", async () => {
     override = (path) => (path.startsWith("/api/integrations/processors/handoffs") ? jsonResponse(handoffs) : undefined);
 
-    let view = renderActivity("/activity?type=processing&title=Sintel");
+    let view = renderActivity("/queue?view=history&type=processing&title=Sintel");
     expect(await screen.findByText("Sintel.2010.1080p")).toBeInTheDocument();
     expect(screen.queryByText("Arrival.2016.2160p")).not.toBeInTheDocument();
     view.unmount();
 
-    view = renderActivity("/activity?type=processing&since=2026-10-04");
+    view = renderActivity("/queue?view=history&type=processing&since=2026-10-04");
     expect(await screen.findByText("Arrival.2016.2160p")).toBeInTheDocument();
     expect(screen.queryByText("Sintel.2010.1080p")).not.toBeInTheDocument();
     view.unmount();
 
-    view = renderActivity("/activity?type=processing&until=2026-10-03");
+    view = renderActivity("/queue?view=history&type=processing&until=2026-10-03");
     expect(await screen.findByText("Sintel.2010.1080p")).toBeInTheDocument();
     expect(screen.queryByText("Arrival.2016.2160p")).not.toBeInTheDocument();
     view.unmount();
@@ -483,7 +483,7 @@ describe("Activity's live steps (#1329)", () => {
 
   it("a live step shows a Done count on its chip, and the Processing step reads a 404 as an empty list", async () => {
     override = (path) => (path.startsWith("/api/integrations/processors/handoffs") ? jsonResponse(handoffs) : undefined);
-    const view = renderActivity("/activity?type=processing");
+    const view = renderActivity("/queue?view=history&type=processing");
     expect(await screen.findByText("Sintel.2010.1080p")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "Done 1" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "In progress 1" })).toBeInTheDocument();
@@ -491,7 +491,7 @@ describe("Activity's live steps (#1329)", () => {
     queryClient.clear();
 
     override = (path) => (path.startsWith("/api/integrations/processors/handoffs") ? failure(404) : undefined);
-    renderActivity("/activity?type=processing");
+    renderActivity("/queue?view=history&type=processing");
     expect(await screen.findByText("Nothing matches these filters")).toBeInTheDocument();
     expect(screen.queryByText("The history could not be read")).not.toBeInTheDocument();
   });
@@ -516,7 +516,7 @@ describe("Activity decides an import case from its drawer (#1329)", () => {
     }];
   };
   const decide = async (button: string) => {
-    renderActivity("/activity?status=needs-decision");
+    renderActivity("/queue?view=history&status=needs-decision");
     await userEvent.click(await screen.findByText("Tangerine"));
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: button }));
   };
@@ -561,7 +561,7 @@ describe("Activity decides an import case from its drawer (#1329)", () => {
     await userEvent.click(await screen.findByText("Imported the file"));
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("link", { name: "C:/Films/Arrival.mkv" }));
 
-    expect(screen.getByLabelText("address").textContent).toBe(`/activity?file=${encodeURIComponent("C:/Films/Arrival.mkv")}`);
+    expect(screen.getByLabelText("address").textContent).toBe(`/queue?view=history&file=${encodeURIComponent("C:/Films/Arrival.mkv")}`);
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 });

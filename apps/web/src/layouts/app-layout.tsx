@@ -95,8 +95,8 @@ const libraryNav = [
 ] as const;
 
 const operationsNav = [
-  { to: "/queue", label: "Transfers", icon: "transfers", end: false, attention: "transfers" as const },
-  { to: "/activity", label: "Activity", icon: "activity", end: false, attention: "activity" as const }
+  // One page for downloads, hand-offs and the history of what happened (#1426).
+  { to: "/queue", label: "Transfers", icon: "transfers", end: false, attention: "transfers" as const }
 ] as const;
 
 const routeMeta = [
@@ -107,10 +107,9 @@ const routeMeta = [
   { match: (path: string) => path.startsWith("/calendar"), title: "Schedule", subtitle: "Upcoming releases and retry windows" },
   { match: (path: string) => path.startsWith("/discover"), title: "Discover", subtitle: "Browse what TMDb and your lists recommend, and add what you want" },
   { match: (path: string) => path === "/search" || path.startsWith("/search/"), title: "Search", subtitle: "Search every enabled indexer at once, no title required" },
-  { match: (path: string) => path.startsWith("/queue"), title: "Transfers", subtitle: "Follow downloads through processing and safe import" },
+  { match: (path: string) => path.startsWith("/queue"), title: "Transfers", subtitle: "Downloads, hand-offs to the processor, and the record of what happened" },
   { match: (path: string) => path.startsWith("/indexers"), title: "Find & Download", subtitle: "Search sources and download clients Deluno uses" },
   { match: (path: string) => path.startsWith("/search-cycles"), title: "Automation & Recovery", subtitle: "What Deluno searches for on a schedule, and how it recovers when a download fails" },
-  { match: (path: string) => path.startsWith("/activity"), title: "Activity", subtitle: "The permanent record of what happened and why" },
   // The area used to be called "Library Profiles" in the topbar and "Quality
   // Profiles" in the sidebar, while owning tabs of both names — so no name
   // told you whether you were in the parent or one of its parts (#255). It is
@@ -140,7 +139,7 @@ const routeMeta = [
  * mistaken for one, or the topbar yields its heading to a page without one.
  */
 const MEDIA_SUB_ROUTES = new Set(["season-pass", "wanted", "upgrades", "import", "library"]);
-const TOOLBAR_ROUTE_PREFIXES = ["/activity", "/calendar", "/collections", "/discover", "/indexers", "/queue", "/search-cycles", "/settings", "/system"];
+const TOOLBAR_ROUTE_PREFIXES = ["/calendar", "/collections", "/discover", "/indexers", "/queue", "/search-cycles", "/settings", "/system"];
 
 function isDetailRoute(pathname: string) {
   const match = /^\/(?:movies|tv)\/([^/]+)$/.exec(pathname);
@@ -280,7 +279,7 @@ function AppLayoutContent() {
   useEffect(() => {
     let armed = false;
     let timer: number;
-    const go: Record<string, string> = { o: "/", m: "/movies", t: "/tv", q: "/queue", i: "/indexers", x: "/search-cycles", a: "/activity", c: "/calendar", d: "/discover", s: "/settings", y: "/system" };
+    const go: Record<string, string> = { o: "/", m: "/movies", t: "/tv", q: "/queue", i: "/indexers", x: "/search-cycles", a: "/queue?view=history", c: "/calendar", d: "/discover", s: "/settings", y: "/system" };
     function onKeyDown(e: KeyboardEvent) {
       if (e.metaKey || e.ctrlKey || e.altKey || isEditableTarget(e.target)) { armed = false; return; }
       if (armed) {
@@ -947,14 +946,12 @@ function ContentTopbar({
   );
 }
 
-function attentionCount(attention: ReturnType<typeof useAttention>, key: "none" | "movies" | "tv" | "indexers" | "activity" | "transfers") {
+function attentionCount(attention: ReturnType<typeof useAttention>, key: "none" | "movies" | "tv" | "indexers" | "transfers") {
   if (key === "movies") return attention.movieWanted;
-  // What Transfers lists under Needs attention (#556).
-  if (key === "transfers") return attention.downloadsNeedingAction;
+  // What Transfers lists under Needs attention (#556), and the failed jobs about a title its history lists (#1426). A failed background job is cleared on System (#1114).
+  if (key === "transfers") return attention.downloadsNeedingAction + (attention.failedTitleJobs ?? attention.failedJobs);
   if (key === "tv") return attention.tvWanted;
   if (key === "indexers") return attention.indexerAlerts;
-  // Activity's badge counts what Activity can clear: failed jobs about a title. A failed background job is cleared on System (#1114).
-  if (key === "activity") return attention.failedTitleJobs ?? attention.failedJobs;
   return 0;
 }
 

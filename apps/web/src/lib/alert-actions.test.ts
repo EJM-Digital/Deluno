@@ -28,7 +28,7 @@ describe("failed jobs open the screen that clears them (#1114)", () => {
     const title = jobsGaveUpActions("title");
     expect(background.map((action) => action.label)).toEqual(["Retry", "Review"]);
     expect(background[1]!.to).toBe("/system");
-    expect(title[1]!.to).toBe("/activity?status=failed");
+    expect(title[1]!.to).toBe("/queue?view=history&status=failed");
     expect(jobsGaveUpActions()[1]!.to).toBe("/system");
     expect(background[0]!.request).toMatchObject({ method: "POST", path: "/api/jobs/retry-failed" });
   });

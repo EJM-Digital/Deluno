@@ -1,13 +1,16 @@
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DownloadTelemetryOverview } from "../lib/api";
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { queryClient } from "../lib/route-cache";
 import { sharedSources } from "../lib/shared-sources";
 import { applyClientStateToTelemetry, applyDownloadProgress, applyImportOutcome, etaSecondsOf, importOutcomeStatus, TRANSFERS_JOBS_KEY } from "./queue-live";
 import { QueuePage } from "./queue-screen";
+
+/** Which view of Transfers the test opens (#1426): the hand-offs and imports moved off the live downloads. */
+let viewEntry = "/queue";
 
 /** #1179: Transfers follows what the server pushes, with no reload and no Refresh button. */
 const handlers = vi.hoisted(() => new Map<string, Set<(payload: unknown) => void>>());
@@ -92,7 +95,7 @@ beforeEach(() => {
 function showTransfers() {
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter><QueuePage /></MemoryRouter>
+      <MemoryRouter initialEntries={[viewEntry]}><QueuePage /></MemoryRouter>
     </QueryClientProvider>
   );
 }
@@ -155,6 +158,7 @@ describe("Transfers live pushes (low rows)", () => {
   });
 
   it("ProcessorHandoffChanged moves a hand-off to the lane its new state says", async () => {
+    viewEntry = "/queue?view=handoffs";
     lists["/api/integrations/processors/handoffs"] = [{
       id: "h1", libraryId: "l1", mediaType: "movies", clientId: "c1", queueItemId: "gone-1", releaseName: "Handed.Over.Release.2026", sourcePath: "/d/Handed.Over.Release.2026",
       processorName: "Weir", status: "started", outputPath: null, importJobId: null, failureMessage: null, createdUtc: when(), updatedUtc: when()
@@ -165,6 +169,8 @@ describe("Transfers live pushes (low rows)", () => {
 
     send("ProcessorHandoffChanged", { handoffId: "h1", queueItemId: "gone-1", libraryId: "l1", releaseName: "Handed.Over.Release.2026", state: "failed", processorName: "Weir", message: "The processor could not clean it up", at: when() });
 
+    // A hand-off that failed is a thing that needs a person, so it moves off the hand-offs and onto the live downloads' Needs attention.
+    fireEvent.click(screen.getByRole("radio", { name: /^Live downloads/ }));
     await waitFor(() => expect(document.body.textContent).toContain("The processor could not clean it up"));
   });
 });

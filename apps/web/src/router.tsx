@@ -261,8 +261,8 @@ export const router = createBrowserRouter([
       {
         path: "activity",
         lazy: withSkeleton(async () => {
-          const module = await import("./routes/activity-page");
-          return { loader: module.activityLoader, Component: module.ActivityPage };
+          const module = await import("./routes/queue-page");
+          return { Component: module.LegacyActivityRedirect };
         })
       },
       {

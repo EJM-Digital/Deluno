@@ -113,10 +113,10 @@ export const navigationCommands: CommandItem[] = [
   {
     id: "nav.activity",
     label: "Activity",
-    keywords: ["queue", "history", "jobs", "downloads"],
+    keywords: ["queue", "history", "events", "jobs", "downloads"],
     group: "navigation",
     icon: Activity,
-    to: "/activity",
+    to: "/queue?view=history",
     shortcut: ["g", "a"]
   },
   {

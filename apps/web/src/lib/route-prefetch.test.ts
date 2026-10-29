@@ -5,9 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * its sidebar link, and on hover the loader of that screen starts its queries.
  */
 const queueLoader = vi.hoisted(() => vi.fn());
-const activityLoader = vi.hoisted(() => vi.fn());
 vi.mock("../routes/queue-page", () => ({ queueLoader, QueuePage: () => null }));
-vi.mock("../routes/activity-page", () => ({ activityLoader, ActivityPage: () => null }));
 
 const { prefetchRoute, prefetchHandlers } = await import("./route-prefetch");
 
@@ -16,7 +14,7 @@ async function flush() {
 }
 
 describe("route prefetch", () => {
-  beforeEach(() => { queueLoader.mockReset(); activityLoader.mockReset(); });
+  beforeEach(() => { queueLoader.mockReset(); });
 
   it("starts the queries of the screen when asked for data", async () => {
     prefetchRoute("/queue", { data: true });
@@ -25,9 +23,16 @@ describe("route prefetch", () => {
   });
 
   it("fetches only the code, and starts no queries, when not asked for data", async () => {
-    prefetchRoute("/activity");
+    prefetchRoute("/queue");
     await flush();
-    expect(activityLoader).not.toHaveBeenCalled();
+    expect(queueLoader).not.toHaveBeenCalled();
+  });
+
+  it("hands the screen's loader the address asked for, so Transfers reads the history's lists for its history view", async () => {
+    prefetchRoute("/queue?view=history", { data: true });
+    await vi.waitFor(() => expect(queueLoader).toHaveBeenCalledTimes(1));
+    const args = queueLoader.mock.calls[0]![0] as { request: Request };
+    expect(new URL(args.request.url).searchParams.get("view")).toBe("history");
   });
 
   it("ignores an address no screen owns", () => {

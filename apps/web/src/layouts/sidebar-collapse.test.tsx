@@ -119,3 +119,28 @@ describe("the sidebar's links and counts", () => {
     expect(screen.getByRole("link", { name: /^TV Shows/ }).textContent).toContain("2");
   });
 });
+
+describe("one Transfers entry holds what Transfers and Activity were (#1426)", () => {
+  it("has no Activity link, and Transfers counts the downloads needing action together with the failed jobs about a title", () => {
+    const counted = { ...attention, failedTitleJobs: 2, failedJobs: 5 } as typeof attention;
+    render(
+      <MemoryRouter>
+        <DesktopSidebar attention={counted} user={user} onLogout={() => undefined} collapsed={false} onToggleCollapsed={() => undefined} />
+      </MemoryRouter>
+    );
+    expect(screen.queryByRole("link", { name: /^Activity/ })).toBeNull();
+    const link = screen.getByRole("link", { name: /^Transfers/ });
+    expect(link).toHaveAttribute("href", "/queue");
+    expect(link.textContent).toMatch(/9$/);
+  });
+
+  it("counts the failed jobs when the server does not split them by title", () => {
+    const counted = { ...attention, failedTitleJobs: undefined, failedJobs: 3 } as unknown as typeof attention;
+    render(
+      <MemoryRouter>
+        <DesktopSidebar attention={counted} user={user} onLogout={() => undefined} collapsed={false} onToggleCollapsed={() => undefined} />
+      </MemoryRouter>
+    );
+    expect(screen.getByRole("link", { name: /^Transfers/ }).textContent).toMatch(/10$/);
+  });
+});

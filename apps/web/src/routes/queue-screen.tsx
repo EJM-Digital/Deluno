@@ -24,6 +24,9 @@ import { approveHeldRelease, dismissHeldRelease, findAnotherForHeldRelease, held
 import { plainSearchResult } from "../lib/release-candidate-status";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { TransfersViewChips } from "../components/app/transfers-view-chips";
+import { IndexerLink } from "../components/app/indexer-link";
+import { historyPath, transfersViewFromParams } from "../lib/transfers-view";
 import { defineSources, queryClient, sourceLoader, useRouteSources, type RouteSourceData, type RouteSourceState } from "../lib/route-cache";
 import { emptyRecovery, sharedSources } from "../lib/shared-sources";
 import { RouteSourceGate } from "../components/shell/route-source-gate";
@@ -266,6 +269,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   // preview or a queue has to move the state, not just the text.
   const [manualState, setManualState] = useState<"clean" | "saving" | "saved" | "error">("clean");
   const [searchParams, setSearchParams] = useSearchParams();
+  const view = transfersViewFromParams(searchParams);
 
   // System -> Health's Import button for a stray item in a processor output
   // folder (#921) lands here with the path already known, rather than
@@ -1227,6 +1231,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   /* -------------------------------------------------------------- render */
   return (
     <div className="flex flex-col gap-(--page-gap)">
+      <TransfersViewChips counts={{ live: queue.length, handoffs: activeProcessorHandoffs.length + activeImportJobs }} />
       <PageToolbar
         actions={
           <>
@@ -1251,6 +1256,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         ]}
       />
 
+      {view === "live" ? (
       <ListCard
         title="Media pipeline"
         count={queue.length ? `${queue.length} in flight · ${activeImportJobs} importing` : undefined}
@@ -1304,7 +1310,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                 <ListRow key={`${item.clientId}:${item.id}`} onClick={() => setDrawer({ kind: "queue", id: item.id })} selected={openQueueItem?.id === item.id}>
                   <ListNameCell
                     name={item.title || item.releaseName}
-                    sub={<span className="font-mono">{item.releaseName}</span>}
+                    sub={<span className="font-mono"><IndexerLink indexerName={item.indexerName}>{item.releaseName}</IndexerLink></span>}
                   />
                   <ListCell
                     primary={pipelineStage(item)}
@@ -1356,8 +1362,18 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
           </ListTable>
         )}
       </ListCard>
+      ) : null}
 
-      {handoffsWithoutARow.length || processorConnections.length ? (
+      {view === "handoffs" && !(handoffsWithoutARow.length || processorConnections.length) && !importJobsHere.length ? (
+        <ListCard title="Hand-offs" count="nothing with a processor or being imported">
+          <ListEmpty
+            title="Nothing is with a processor or being imported"
+            description="When Deluno hands a finished download to a processor, or names and files it into your library, it appears here with what the processor said."
+          />
+        </ListCard>
+      ) : null}
+
+      {view === "handoffs" && (handoffsWithoutARow.length || processorConnections.length) ? (
         <ListCard
           title="Processing connector"
           count={activeProcessorHandoffs.length ? `${activeProcessorHandoffs.length} active · ${processorConnections.length} configured` : `${processorConnections.length} configured · latest ${processorHandoffs.length}`}
@@ -1402,7 +1418,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         </ListCard>
       ) : null}
 
-      {importJobsHere.length ? (
+      {view === "handoffs" && importJobsHere.length ? (
         <ListCard
           title="Import & naming"
           count={`${activeImportJobs} active · latest ${importJobsHere.length}`}
@@ -1438,7 +1454,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         </ListCard>
       ) : null}
 
-      {needsActionCount > 0 ? (
+      {view === "live" && needsActionCount > 0 ? (
         <ListCard
           title="Needs attention"
           count={`${plural(needsActionCount, "thing")} Deluno could not finish on its own${otherRowsNote}`}
@@ -1677,6 +1693,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         </ListCard>
       ) : null}
 
+      {view === "live" ? (
       <ListCard
         title="Cleanup guardrails"
         count={cleanupPolicyLabel(settings)}
@@ -1698,10 +1715,11 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
           </div>
         </div>
       </ListCard>
+      ) : null}
 
       <p className="px-1 text-sm">
-        <Link to="/activity" className="font-medium text-primary hover:underline">
-          See everything in Activity →
+        <Link to={historyPath()} className="font-medium text-primary hover:underline">
+          See the history and events →
         </Link>
       </p>
 
@@ -2026,7 +2044,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               <DrawerSection title="Queued">
                 <p className="text-(length:--type-caption) text-muted-foreground" role="status">
                   {manualQueued.title} will be filed at <span className="font-mono">{manualQueued.destination}</span>.{" "}
-                  <Link to="/activity" className="font-medium text-primary hover:underline">Follow it in Activity</Link>
+                  <Link to={historyPath()} className="font-medium text-primary hover:underline">Follow it in the history</Link>
                 </p>
               </DrawerSection>
             ) : null}

@@ -29,8 +29,7 @@ const PRIMARY = [
 const DRAWER_LINKS = [
   { to: "/collections", label: "Collections", icon: "library", group: "Your Media" as const },
   { to: "/calendar", label: "Schedule", icon: "schedule", group: "Your Media" as const },
-  { to: "/discover", label: "Discover", icon: "discover", group: "Your Media" as const },
-  { to: "/activity", label: "Activity", icon: "activity", group: "Live operations" as const }
+  { to: "/discover", label: "Discover", icon: "discover", group: "Your Media" as const }
 ] as const;
 
 /** One accent, the brand blue, marking only the active item (#290). */
@@ -46,7 +45,6 @@ function moreTabActive(pathname: string): boolean {
   if (pathname.startsWith("/discover")) return true;
   if (pathname.startsWith("/indexers")) return true;
   if (pathname.startsWith("/search-cycles")) return true;
-  if (pathname.startsWith("/activity")) return true;
   if (pathname.startsWith("/system")) return true;
   if (pathname.startsWith("/setup-guide")) return true;
   if (pathname.startsWith("/settings")) return true;
@@ -189,7 +187,7 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
           aria-label="Additional destinations"
           className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-2 py-2"
         >
-          {(["Your Media", "Live operations", "Setup", "Deluno"] as const).map((group) => (
+          {(["Your Media", "Setup", "Deluno"] as const).map((group) => (
             <div key={group} className="mb-3 last:mb-0">
               <p className="px-3 pb-1.5 pt-2 text-(length:--shell-subtle-size) font-semibold uppercase tracking-wider text-muted-foreground">
                 {group}

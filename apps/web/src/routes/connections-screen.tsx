@@ -615,6 +615,16 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
     setIndexerInitial(next);
     resetDrawerChrome();
   }
+  // A release name elsewhere links here (#1426): `?indexer=<name>` opens that indexer's own page, once.
+  const indexerToOpen = new URLSearchParams(location.search).get("indexer");
+  useEffect(() => {
+    if (!indexerToOpen) return;
+    const match = indexers.find((item) => item.name.toLowerCase() === indexerToOpen.toLowerCase());
+    if (match) openIndexer(match);
+    navigate({ pathname: location.pathname, search: "" }, { replace: true });
+    // Only ever consumed once, when the link brings a name -- not every time the list changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indexerToOpen]);
   function openClient(item: DownloadClientItem | null) {
     const next = item ? clientFormFrom(item) : emptyClientForm();
     setDrawer({ kind: "client", id: item?.id ?? null });

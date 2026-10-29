@@ -6,6 +6,9 @@ import type { DownloadClientTelemetrySnapshot, DownloadQueueItem, JobQueueItem, 
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { QueuePage } from "./queue-screen";
 
+/** Which view of Transfers the test opens (#1426): the hand-offs and imports moved off the live downloads. */
+let viewEntry = "/queue";
+
 /**
  * Transfers: the words a row says. One row per download with its stage, its detail and a status chip, one row per import job
  * with its stage and chip, and the connector's own chips. The words are what a person reads to know where a download is.
@@ -73,7 +76,7 @@ function showQueue(items: DownloadQueueItem[]) {
     }]
   };
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[viewEntry]}>
       <QueuePage />
     </MemoryRouter>
   );
@@ -175,6 +178,8 @@ describe("Transfers: the Status chip", () => {
 });
 
 describe("Transfers: Import & naming rows", () => {
+  beforeEach(() => { viewEntry = "/queue?view=handoffs"; });
+  afterEach(() => { viewEntry = "/queue"; });
   const job = (overrides: Partial<JobQueueItem>) => ({
     id: "job-1", jobType: "filesystem.import.execute", label: "Import", source: "download-client", sourceLabel: "A download", status: "running",
     payloadJson: JSON.stringify({ title: "Arrival (2016)", fileName: "Arrival.2016.mkv", sourcePath: "D:/Downloads/Arrival.2016.mkv" }),
@@ -225,6 +230,8 @@ describe("Transfers: Import & naming rows", () => {
 });
 
 describe("Transfers: the Processing connector card", () => {
+  beforeEach(() => { viewEntry = "/queue?view=handoffs"; });
+  afterEach(() => { viewEntry = "/queue"; });
   const connection = (overrides: Record<string, unknown>) => ({
     id: "conn-1", name: "Weir", provider: "weir", submissionUrl: "http://weir", authHeaderName: null, isEnabled: true,
     healthStatus: "healthy", lastHealthMessage: null, lastHealthCheckUtc: null, createdUtc: "2026-10-01T00:00:00Z", updatedUtc: "2026-10-01T00:00:00Z", ...overrides

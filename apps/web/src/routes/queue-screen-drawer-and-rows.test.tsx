@@ -7,6 +7,9 @@ import type { HeldReleaseRow } from "../lib/held-releases";
 import { QueuePage } from "./queue-screen";
 import { readyRouteSources } from "../test/route-sources";
 
+/** Which view of Transfers the test opens (#1426): the hand-offs and imports moved off the live downloads. */
+let viewEntry = "/queue";
+
 /**
  * Transfers, drawer by drawer and row by row: what an integration failure says, what Preview import sends and shows, the words
  * for a download the processor is working on or has delivered, the processor's own stage line, a failed Manual import, the
@@ -84,8 +87,8 @@ function download(over: Partial<DownloadQueueItem> = {}): DownloadQueueItem {
 
 function openDownload(item: DownloadQueueItem) {
   queueLoaderData.telemetry = { ...queueLoaderData.telemetry, clients: [client([item])] };
-  render(<MemoryRouter><QueuePage /></MemoryRouter>);
-  fireEvent.click(screen.getAllByText(item.releaseName)[0]!);
+  render(<MemoryRouter initialEntries={[viewEntry]}><QueuePage /></MemoryRouter>);
+  fireEvent.click(screen.getAllByText(item.releaseName)[0]!.closest('[role="row"]') ?? screen.getAllByText(item.releaseName)[0]!);
 }
 
 beforeEach(() => {
@@ -185,7 +188,7 @@ describe("a download the processor is working on or has delivered", () => {
       download({ id: "p1", releaseName: "Working.Film.2026.1080p-GROUP", status: "processing", progress: 100 }),
       download({ id: "p2", releaseName: "Done.Film.2026.1080p-GROUP", status: "processed", progress: 100 })
     ])] };
-    render(<MemoryRouter><QueuePage /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={[viewEntry]}><QueuePage /></MemoryRouter>);
   }
 
   it("each row's stage reads Checking media, with the line that says what is being checked", () => {
@@ -198,7 +201,7 @@ describe("a download the processor is working on or has delivered", () => {
   it("the drawer's status reads Processing while the processor works and Processed once it has delivered", () => {
     twoRows();
 
-    fireEvent.click(screen.getAllByText("Working.Film.2026.1080p-GROUP")[0]!);
+    fireEvent.click(screen.getAllByText("Working.Film.2026.1080p-GROUP")[0]!.closest('[role="row"]') ?? screen.getAllByText("Working.Film.2026.1080p-GROUP")[0]!);
     expect(within(screen.getByRole("dialog")).getAllByText("Processing").length).toBeGreaterThan(0);
     expect(within(screen.getByRole("dialog")).queryByText("Processed")).toBeNull();
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
@@ -206,13 +209,15 @@ describe("a download the processor is working on or has delivered", () => {
 
   it("a processed download's drawer reads Processed", () => {
     queueLoaderData.telemetry = { ...queueLoaderData.telemetry, clients: [client([download({ id: "p2", releaseName: "Done.Film.2026.1080p-GROUP", status: "processed", progress: 100 })])] };
-    render(<MemoryRouter><QueuePage /></MemoryRouter>);
-    fireEvent.click(screen.getAllByText("Done.Film.2026.1080p-GROUP")[0]!);
+    render(<MemoryRouter initialEntries={[viewEntry]}><QueuePage /></MemoryRouter>);
+    fireEvent.click(screen.getAllByText("Done.Film.2026.1080p-GROUP")[0]!.closest('[role="row"]') ?? screen.getAllByText("Done.Film.2026.1080p-GROUP")[0]!);
     expect(within(screen.getByRole("dialog")).getAllByText("Processed").length).toBeGreaterThan(0);
   });
 });
 
 describe("the processor's own stage line on a hand-off row", () => {
+  beforeEach(() => { viewEntry = "/queue?view=handoffs"; });
+  afterEach(() => { viewEntry = "/queue"; });
   function handoff(processor: Record<string, unknown> | null, status = "submitted") {
     return {
       id: "h1", libraryId: "l", mediaType: "movies", clientId: "qbit-client", queueItemId: "gone", releaseName: "Staged.Film.2025.1080p-GROUP", sourcePath: "D:/in/a",
@@ -222,7 +227,7 @@ describe("the processor's own stage line on a hand-off row", () => {
 
   function lineFor(processor: Record<string, unknown> | null, status = "submitted") {
     queueLoaderData.processorHandoffs = [handoff(processor, status)];
-    render(<MemoryRouter><QueuePage /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={[viewEntry]}><QueuePage /></MemoryRouter>);
   }
 
   it("says where a queued file stands: its place in the queue", () => {
@@ -265,7 +270,7 @@ describe("Manual import, when the server refuses", () => {
       if (path === "/api/filesystem/import/preview") return jsonResponse({ detail: "That file is not a video Deluno can read." }, false, 400);
       return jsonResponse({});
     });
-    render(<MemoryRouter><QueuePage /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={[viewEntry]}><QueuePage /></MemoryRouter>);
     fireEvent.click(screen.getByRole("button", { name: /Manual import/ }));
     fireEvent.change(screen.getByPlaceholderText("D:/Downloads/Some.Release.2024"), { target: { value: "D:/Downloads/notes.txt" } });
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
@@ -284,7 +289,7 @@ describe("Manual import, when the server refuses", () => {
   });
 
   it("with nothing chosen yet, asks for a source instead of sending anything", async () => {
-    render(<MemoryRouter><QueuePage /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={[viewEntry]}><QueuePage /></MemoryRouter>);
     fireEvent.click(screen.getByRole("button", { name: /Manual import/ }));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByRole("button", { name: "Preview" })).toBeDisabled();
@@ -333,7 +338,7 @@ describe("Transfers when its data cannot be read", () => {
       failed: [{ name: "telemetry", label: "Download activity", message: "Failed to fetch" }],
       refetch: async () => { refetchMock(); }
     };
-    const view = render(<MemoryRouter><QueuePage /></MemoryRouter>);
+    const view = render(<MemoryRouter initialEntries={[viewEntry]}><QueuePage /></MemoryRouter>);
 
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent("Download activity could not be read. Failed to fetch");
@@ -344,7 +349,7 @@ describe("Transfers when its data cannot be read", () => {
     expect(refetchMock).toHaveBeenCalledTimes(1);
 
     sourcesState = readyRouteSources(queueLoaderData, revalidateMock);
-    view.rerender(<MemoryRouter><QueuePage /></MemoryRouter>);
+    view.rerender(<MemoryRouter initialEntries={[viewEntry]}><QueuePage /></MemoryRouter>);
     expect(screen.queryByRole("alert")).toBeNull();
     await act(async () => undefined);
   });
@@ -356,7 +361,7 @@ describe("Transfers when its data cannot be read", () => {
       blocked: true,
       failed: [{ name: "telemetry", label: "Download activity", message: "The server did not answer." }]
     };
-    render(<MemoryRouter><QueuePage /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={[viewEntry]}><QueuePage /></MemoryRouter>);
     expect(screen.getByRole("alert")).toHaveTextContent("This screen could not load everything it needs. Download activity could not be read. The server did not answer.");
     expect(screen.queryByText("Nothing in motion")).toBeNull();
   });
@@ -372,7 +377,7 @@ describe("a release held for approval: Find another", () => {
   it("refuses that release, starts a new search for the film, then drops the held row, and says so", async () => {
     queueLoaderData.heldReleases = [row];
     authedFetchMock.mockImplementation((path: string) => jsonResponse(path === "/api/blocked-releases" ? { id: "b1" } : {}));
-    render(<MemoryRouter><QueuePage /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={[viewEntry]}><QueuePage /></MemoryRouter>);
 
     fireEvent.click(screen.getByRole("button", { name: "Find another for Nosferatu (1922)" }));
 
@@ -388,7 +393,7 @@ describe("a release held for approval: Find another", () => {
   it("an episode is searched for as that episode, not the whole show", async () => {
     queueLoaderData.heldReleases = [{ ...row, mediaType: "series", id: "s1", episodeId: "e1", title: "The Wire", episodeLabel: "S01E04" } as HeldReleaseRow];
     authedFetchMock.mockImplementation((path: string) => jsonResponse(path === "/api/blocked-releases" ? { id: "b1" } : {}));
-    render(<MemoryRouter><QueuePage /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={[viewEntry]}><QueuePage /></MemoryRouter>);
 
     fireEvent.click(screen.getByRole("button", { name: "Find another for The Wire S01E04" }));
 
@@ -401,7 +406,7 @@ describe("a release held for approval: Find another", () => {
   it("when the refusal cannot be saved nothing is searched and the row stays", async () => {
     queueLoaderData.heldReleases = [row];
     authedFetchMock.mockImplementation((path: string) => path === "/api/blocked-releases" ? jsonResponse({ message: "The blocklist is full." }, false, 500) : jsonResponse({}));
-    render(<MemoryRouter><QueuePage /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={[viewEntry]}><QueuePage /></MemoryRouter>);
 
     fireEvent.click(screen.getByRole("button", { name: "Find another for Nosferatu (1922)" }));
 
@@ -412,6 +417,8 @@ describe("a release held for approval: Find another", () => {
 });
 
 describe("Transfers while the processor is not answering", () => {
+  beforeEach(() => { viewEntry = "/queue?view=handoffs"; });
+  afterEach(() => { viewEntry = "/queue"; });
   const handoff = {
     id: "h7", libraryId: "l", mediaType: "movies", clientId: "gone", queueItemId: "gone", releaseName: "Waiting.On.Weir.2026.1080p-GROUP", sourcePath: "D:/in/a",
     processorName: "Weir", status: "failed", outputPath: null, importJobId: null, failureMessage: "Deluno could not reach Weir.",
@@ -422,7 +429,7 @@ describe("Transfers while the processor is not answering", () => {
     queueLoaderData.telemetry = { ...queueLoaderData.telemetry, clients: [client([])] };
     (queueLoaderData as { processorConnections: unknown[] }).processorConnections = [{ id: "w1", name: "Weir", isEnabled: true, healthStatus: "unreachable" }];
     queueLoaderData.processorHandoffs = [handoff];
-    render(<MemoryRouter><QueuePage /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={[viewEntry]}><QueuePage /></MemoryRouter>);
   }
 
   afterEach(() => { (queueLoaderData as { processorConnections: unknown[] }).processorConnections = []; });
@@ -437,6 +444,7 @@ describe("Transfers while the processor is not answering", () => {
   });
 
   it("the hand-off that could not be sent shows as a failed row with Weir's name and the reason, and opens its drawer", () => {
+    viewEntry = "/queue"; // a failed hand-off is something that needs a person: it is on the live downloads, under Needs attention
     renderDuringTheOutage();
 
     const row = screen.getAllByText("Waiting.On.Weir.2026.1080p-GROUP")[0]!;
@@ -448,7 +456,7 @@ describe("Transfers while the processor is not answering", () => {
 
   it("when a download client is the one that stopped answering, the Clients counter says one is not responding", () => {
     queueLoaderData.telemetry = { ...queueLoaderData.telemetry, clients: [{ ...client([]), healthStatus: "unreachable" } as DownloadClientTelemetrySnapshot] };
-    render(<MemoryRouter><QueuePage /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={[viewEntry]}><QueuePage /></MemoryRouter>);
 
     expect(screen.getByText("0/1")).toBeVisible();
     expect(screen.getByText("one is not responding")).toBeVisible();
@@ -469,8 +477,8 @@ describe("a failed hand-off's own drawer: Import original and Search for another
       id: "h1", libraryId: "library-1", mediaType: "movies", clientId: "deluge-client", queueItemId: "deluge-1", releaseName: release, sourcePath: "/downloads/nosferatu",
       processorName: "Weir", status: "failed", outputPath: null, importJobId: null, failureMessage: reason, createdUtc: new Date().toISOString(), updatedUtc: new Date().toISOString()
     }];
-    render(<MemoryRouter><QueuePage /></MemoryRouter>);
-    fireEvent.click(screen.getAllByText(release)[0]!);
+    render(<MemoryRouter initialEntries={[viewEntry]}><QueuePage /></MemoryRouter>);
+    fireEvent.click(screen.getAllByText(release)[0]!.closest('[role="row"]') ?? screen.getAllByText(release)[0]!);
   }
 
   it("Import original posts to the hand-off's import-original and says the release will be imported unprocessed", async () => {

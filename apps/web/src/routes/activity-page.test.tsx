@@ -761,7 +761,7 @@ describe("Activity is one list with status chips (#1114)", () => {
     revalidateMock.mockReset();
     renderActivity("/activity?status=failed");
 
-    await userEvent.click(screen.getByText("Sintel.2010.720p"));
+    await userEvent.click(screen.getByText("Sintel.2010.720p").closest('[role="row"]')!);
     const dismiss = within(screen.getByRole("dialog")).getByRole("button", { name: "Dismiss the failed download Sintel.2010.720p" });
     await userEvent.click(dismiss);
 
@@ -770,7 +770,7 @@ describe("Activity is one list with status chips (#1114)", () => {
 
     // A send still on its way is not failed: nothing to dismiss.
     await userEvent.click(screen.getByRole("radio", { name: "In progress 2" }));
-    await userEvent.click(screen.getByText("Arrival.2016.1080p"));
+    await userEvent.click(screen.getByText("Arrival.2016.1080p").closest('[role="row"]')!);
     expect(within(screen.getByRole("dialog")).queryByRole("button", { name: /Dismiss the failed download/ })).not.toBeInTheDocument();
   });
 
@@ -791,7 +791,7 @@ describe("Activity is one list with status chips (#1114)", () => {
     expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
     await closeDrawer();
 
-    await userEvent.click(screen.getByText("Sintel.2010.720p"));
+    await userEvent.click(screen.getByText("Sintel.2010.720p").closest('[role="row"]')!);
     expect(within(screen.getByRole("dialog")).getAllByText(/Sintel\.2010\.720p/).length).toBeGreaterThan(0);
     await closeDrawer();
 

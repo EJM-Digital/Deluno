@@ -112,7 +112,7 @@ function openDrawerFor(item: DownloadQueueItem) {
       <QueuePage />
     </MemoryRouter>
   );
-  fireEvent.click(screen.getByText(item.releaseName));
+  fireEvent.click(screen.getByText(item.releaseName).closest('[role="row"]') ?? screen.getByText(item.releaseName));
 }
 
 beforeEach(() => {

@@ -72,7 +72,7 @@ describe("the command palette", () => {
     const entry = (await screen.findAllByText(item.label, { selector: "span" }))[0];
     fireEvent.click(entry);
 
-    await waitFor(() => expect(screen.getByTestId("where").textContent).toBe(item.to));
+    await waitFor(() => expect(screen.getByTestId("where").textContent).toBe(item.to!.split("?")[0]));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 

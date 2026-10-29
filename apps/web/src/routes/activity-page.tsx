@@ -21,6 +21,8 @@
  * /api/jobs/{id}/dismiss.
  */
 import { FilterChips } from "../components/ui/filter-chips";
+import { IndexerLink } from "../components/app/indexer-link";
+import { TransfersViewChips } from "../components/app/transfers-view-chips";
 import { JobDrawer } from "../components/app/job-drawer";
 import type { Tone } from "../lib/status-tones";
 import { useMemo, useState } from "react";
@@ -137,6 +139,8 @@ interface ActivityRow {
   status: OpenStatus | "done";
   whenUtc: string;
   title: string;
+  /** The indexer a sent release came from: its name links to that indexer's page (#1426). */
+  indexerName?: string | null;
   step?: string;
   detail?: string;
   /** A quieter second line under the detail. */
@@ -325,7 +329,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
       if (!standing) continue;
       const dispatchStatus = standing.status;
       rows.push({
-        key: `dispatch-${dispatch.id}`, kind: "dispatch", status: dispatchStatus, whenUtc: dispatch.createdUtc, title: dispatch.releaseName,
+        key: `dispatch-${dispatch.id}`, kind: "dispatch", status: dispatchStatus, whenUtc: dispatch.createdUtc, title: dispatch.releaseName, indexerName: dispatch.indexerName,
         step: `Sent to ${dispatch.downloadClientName}`,
         detail: standing.detail ?? (dispatchStatus === "in-progress"
           ? `${formatDispatchStatus(dispatch.status)} · ${dispatch.indexerName}`
@@ -584,12 +588,15 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
         filters={filters}
         setFilters={setFilters}
         chips={
-          <FilterChips<ActivityStatus>
-            label="Show"
-            value={status}
-            onValueChange={setStatus}
-            options={STATUS_CHIPS.map((chip) => ({ ...chip, count: counts[chip.value] }))}
-          />
+          <div className="flex min-w-0 items-center gap-2">
+            <TransfersViewChips bare />
+            <FilterChips<ActivityStatus>
+              label="Show"
+              value={status}
+              onValueChange={setStatus}
+              options={STATUS_CHIPS.map((chip) => ({ ...chip, count: counts[chip.value] }))}
+            />
+          </div>
         }
       />
 
@@ -636,7 +643,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
             <ListTable list={list}>
               {rows.map((row) => (
                 <ListRow key={row.key} onClick={row.open} selected={row.selected}>
-                  <ListNameCell name={row.title} sub={row.step} />
+                  <ListNameCell name={<IndexerLink indexerName={row.indexerName}>{row.title}</IndexerLink>} nameTitle={row.title} sub={row.step} />
                   <ListCell mobile className="max-md:max-w-38">
                     <div className="flex min-w-0 items-center gap-2">
                       <Chip tone={row.pill.tone}>{row.pill.label}</Chip>

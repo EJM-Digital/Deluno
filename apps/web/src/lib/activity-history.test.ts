@@ -61,13 +61,13 @@ describe("the Activity history's filters live in the address (#1100)", () => {
       since: "today",
       reason: "tooBig"
     });
-    expect(activityLink({ type: "turned-down", since: "today", reason: "tooBig" })).toBe("/activity?type=turned-down&since=today&reason=tooBig");
-    expect(activityLink({})).toBe("/activity");
+    expect(activityLink({ type: "turned-down", since: "today", reason: "tooBig" })).toBe("/queue?view=history&type=turned-down&since=today&reason=tooBig");
+    expect(activityLink({})).toBe("/queue?view=history");
   });
 
   it("links from a title and from a file", () => {
-    expect(activityLinkForTitle("Sintel", "movie", "m1")).toBe("/activity?title=Sintel&item=m1&itemType=movie");
-    expect(activityLinkForFile("/movies/Sintel (2010).mkv")).toBe("/activity?file=%2Fmovies%2FSintel+%282010%29.mkv");
+    expect(activityLinkForTitle("Sintel", "movie", "m1")).toBe("/queue?view=history&title=Sintel&item=m1&itemType=movie");
+    expect(activityLinkForFile("/movies/Sintel (2010).mkv")).toBe("/queue?view=history&file=%2Fmovies%2FSintel+%282010%29.mkv");
     const parsed = filtersFromParams(new URLSearchParams(activityLinkForFile("/movies/Sintel (2010).mkv").split("?")[1]));
     expect(parsed.file).toBe("/movies/Sintel (2010).mkv");
   });
@@ -75,7 +75,7 @@ describe("the Activity history's filters live in the address (#1100)", () => {
   it("links to one event on its own day", () => {
     const event = { id: "evt-1", createdUtc: new Date(2026, 8, 30, 23, 59).toISOString() };
 
-    expect(activityLinkForEvent(event)).toBe("/activity?event=evt-1&since=2026-09-30&until=2026-09-30");
+    expect(activityLinkForEvent(event)).toBe("/queue?view=history&event=evt-1&since=2026-09-30&until=2026-09-30");
   });
 
   it("turns the day words into the person's own midnight, and an until day includes the whole day", () => {
@@ -94,11 +94,11 @@ describe("the Activity history's filters live in the address (#1100)", () => {
   });
 
   it("builds the link for a status chip, with the history filters beside it, and All when there is no status (#1114)", () => {
-    expect(activityLinkForStatus()).toBe("/activity");
-    expect(activityLinkForStatus(null)).toBe("/activity");
-    expect(activityLinkForStatus("in-progress")).toBe("/activity?status=in-progress");
-    expect(activityLinkForStatus("failed", { type: "turned-down", since: "today" })).toBe("/activity?status=failed&type=turned-down&since=today");
-    expect(activityLinkForStatus("needs-decision")).toBe("/activity?status=needs-decision");
+    expect(activityLinkForStatus()).toBe("/queue?view=history");
+    expect(activityLinkForStatus(null)).toBe("/queue?view=history");
+    expect(activityLinkForStatus("in-progress")).toBe("/queue?view=history&status=in-progress");
+    expect(activityLinkForStatus("failed", { type: "turned-down", since: "today" })).toBe("/queue?view=history&status=failed&type=turned-down&since=today");
+    expect(activityLinkForStatus("needs-decision")).toBe("/queue?view=history&status=needs-decision");
   });
 
   it("asks the server for exactly the filters, with a page size and the page token", () => {
@@ -157,8 +157,8 @@ describe("Activity's sort (#1119)", () => {
 
 describe("Activity's status chips live in the address (#1114)", () => {
   it("links to a chip, with the history filters beside it", () => {
-    expect(activityLinkForStatus("failed")).toBe("/activity?status=failed");
-    expect(activityLinkForStatus("in-progress", { type: "search", since: "today" })).toBe("/activity?status=in-progress&type=search&since=today");
+    expect(activityLinkForStatus("failed")).toBe("/queue?view=history&status=failed");
+    expect(activityLinkForStatus("in-progress", { type: "search", since: "today" })).toBe("/queue?view=history&status=in-progress&type=search&since=today");
   });
 
   it("reads the chip, and an old section link opens the matching chip", () => {

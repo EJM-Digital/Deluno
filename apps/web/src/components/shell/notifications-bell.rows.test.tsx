@@ -225,8 +225,8 @@ describe("the bell's Deluno rows, pressed in the panel (#1329)", () => {
 
     const reviews = within(dialog).getAllByRole("link", { name: /^Review: / });
     const targets = reviews.map((link) => link.getAttribute("href"));
-    expect(targets).toContain("/activity?status=failed");
-    expect(targets.some((href) => href !== "/activity?status=failed" && href?.startsWith("/system"))).toBe(true);
+    expect(targets).toContain("/queue?view=history&status=failed");
+    expect(targets.some((href) => href !== "/queue?view=history&status=failed" && href?.startsWith("/system"))).toBe(true);
   });
 });
 

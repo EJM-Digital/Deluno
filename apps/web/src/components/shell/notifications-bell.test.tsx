@@ -225,7 +225,7 @@ describe("notifications bell (#907)", () => {
 
     for (const [name, id] of [[/Import failed for The Newest Film/, "evt-3"], [/Sent The Middle Episode/, "evt-2"], [/Imported The Oldest Film/, "evt-1"]] as const) {
       await user.click(await screen.findByRole("button", { name }));
-      expect(String(navigate.mock.lastCall?.[0])).toMatch(new RegExp("^/activity\\?event=" + id + "&since=\\d{4}-\\d{2}-\\d{2}&until=\\d{4}-\\d{2}-\\d{2}$"));
+      expect(String(navigate.mock.lastCall?.[0])).toMatch(new RegExp("^/queue\\?view=history&event=" + id + "&since=\\d{4}-\\d{2}-\\d{2}&until=\\d{4}-\\d{2}-\\d{2}$"));
       await user.click(screen.getByRole("button", { name: /Notifications/i }));
     }
   });
@@ -235,7 +235,7 @@ describe("notifications bell (#907)", () => {
     const user = await openPanel();
 
     await user.click(await screen.findByRole("button", { name: "Show all activity" }));
-    expect(navigate).toHaveBeenLastCalledWith("/activity");
+    expect(navigate).toHaveBeenLastCalledWith("/queue?view=history");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 

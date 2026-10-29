@@ -101,7 +101,7 @@ function openDrawerFor(item: DownloadQueueItem, capabilities: Partial<DownloadCl
       <QueuePage />
     </MemoryRouter>
   );
-  fireEvent.click(screen.getByText(item.releaseName));
+  fireEvent.click(screen.getByText(item.releaseName).closest('[role="row"]') ?? screen.getByText(item.releaseName));
 }
 
 const calls = (path: string) => authedFetchMock.mock.calls.filter(([url]) => String(url) === path);

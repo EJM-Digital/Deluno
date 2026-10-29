@@ -100,7 +100,7 @@ function openDrawerFor(item: DownloadQueueItem, capabilities: Partial<DownloadCl
       <QueuePage />
     </MemoryRouter>
   );
-  fireEvent.click(screen.getByText(item.releaseName));
+  fireEvent.click(screen.getByText(item.releaseName).closest('[role="row"]') ?? screen.getByText(item.releaseName));
 }
 
 const calls = (path: string) => authedFetchMock.mock.calls.filter(([url]) => String(url) === path);
@@ -263,7 +263,7 @@ describe("download drawer: the way out of a hand-off the processor did not finis
         <QueuePage />
       </MemoryRouter>
     );
-    fireEvent.click(screen.getAllByText(release)[0]);
+    fireEvent.click(screen.getAllByText(release)[0]!.closest('[role="row"]') ?? screen.getAllByText(release)[0]!);
   }
 
   it("Import original posts the hand-off's import-original and says the release will be imported unprocessed", async () => {

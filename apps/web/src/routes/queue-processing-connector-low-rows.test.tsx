@@ -6,6 +6,9 @@ import type { DownloadClientTelemetrySnapshot, DownloadHealthFinding, DownloadQu
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { QueuePage } from "./queue-screen";
 
+/** Which view of Transfers the test opens (#1426): the hand-offs and imports moved off the live downloads. */
+const viewEntry = "/queue?view=handoffs";
+
 /**
 
  * Low-severity Transfers rows (#1329). Harness copied from the drawer tests. The download drawer's other buttons on Transfers: the findings in its Health box, the way out of a failed hand-off, the
@@ -97,11 +100,11 @@ function openDrawerFor(item: DownloadQueueItem, capabilities: Partial<DownloadCl
     }]
   };
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[viewEntry]}>
       <QueuePage />
     </MemoryRouter>
   );
-  fireEvent.click(screen.getAllByText(item.releaseName)[0]);
+  fireEvent.click(screen.getAllByText(item.releaseName)[0]!.closest('[role="row"]') ?? screen.getAllByText(item.releaseName)[0]!);
 }
 
 const calls = (path: string) => authedFetchMock.mock.calls.filter(([url]) => String(url) === path);
@@ -137,7 +140,7 @@ afterEach(() => {
   (queueLoaderData as { processorConnections: unknown[] }).processorConnections = [];
 });
 
-const show = () => render(<MemoryRouter><QueuePage /></MemoryRouter>);
+const show = () => render(<MemoryRouter initialEntries={[viewEntry]}><QueuePage /></MemoryRouter>);
 const connectors = (...items: unknown[]) => { (queueLoaderData as { processorConnections: unknown[] }).processorConnections = items; };
 
 describe("Processing connector card (low rows)", () => {

@@ -1,12 +1,14 @@
 /**
  * The Activity history's filters, kept in the address (#1100).
  *
- * A filtered view is a link: `/activity?type=turned-down&since=today&reason=language`. The page reads
+ * A filtered view is a link: `/queue?view=history&type=turned-down&since=today&reason=language`. The page reads
  * the filters from the address and writes every change back to it, so a view can be bookmarked, shared
  * with a person, or opened from Live, a title's page or a file's page. This file is the one place that
  * turns the address into filters, the filters back into an address, and the filters into the question
  * asked of `GET /api/activity` -- the page and the links into it never build either by hand.
  */
+
+import { historyPath } from "./transfers-view";
 
 export interface ActivityFilters {
   /** One kind of event: search, turned-down, grabbed, imported, subtitles, blocklisted, removed, restored, failed, health, other. */
@@ -110,12 +112,12 @@ export type ActivityStatusChip = Exclude<ActivityStatus, "all">;
 
 /**
  * The link into Activity on one status chip, optionally narrowed by the history filters:
- * `/activity?status=failed&since=today`. No status is All. Every link from Live, the bell, alerts and Transfers is
+ * `/queue?view=history&status=failed&since=today`. No status is All. Every link from Live, the bell, alerts and Transfers is
  * built here, so each lands on the matching chip.
  */
 export function activityLinkForStatus(status?: ActivityStatusChip | null, filters?: Partial<ActivityFilters>): string {
   const query = paramsFromFilters({ ...emptyActivityFilters, ...filters }, status ? new URLSearchParams({ status }) : undefined).toString();
-  return query ? `/activity?${query}` : "/activity";
+  return historyPath(query);
 }
 
 /** The link into the Activity history for a title (its own events, and any that name it). */
@@ -130,8 +132,7 @@ export function activityLinkForFile(path: string): string {
 
 /** The link into the Activity history with these filters. */
 export function activityLink(filters: Partial<ActivityFilters>): string {
-  const query = paramsFromFilters({ ...emptyActivityFilters, ...filters }).toString();
-  return query ? `/activity?${query}` : "/activity";
+  return historyPath(paramsFromFilters({ ...emptyActivityFilters, ...filters }));
 }
 
 function localDayText(date: Date): string {
@@ -146,7 +147,7 @@ function localDayText(date: Date): string {
 export function activityLinkForEvent(event: { id: string; createdUtc: string }): string {
   const day = localDayText(new Date(event.createdUtc));
   const params = new URLSearchParams({ event: event.id, since: day, until: day });
-  return `/activity?${params.toString()}`;
+  return historyPath(params);
 }
 
 function startOfLocalDay(date: Date): Date {

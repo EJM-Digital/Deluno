@@ -300,3 +300,25 @@ describe("the Tags button of the indexers list, low rows (#1329)", () => {
     expect((screen.getByRole("checkbox", { name: "Select Bravo" }) as HTMLInputElement).getAttribute("aria-checked")).not.toBe("true");
   });
 });
+
+describe("an indexer link from Transfers (#1426)", () => {
+  it("?indexer=<name> opens that indexer's own page once, whatever the case of the name, and leaves the address clean", async () => {
+    reset({ indexers: [indexer(), indexer({ id: "i2", name: "Beta", baseUrl: "https://beta.example/api" })] });
+    const router = createMemoryRouter([{ path: "*", element: <IndexersPage /> }], { initialEntries: ["/indexers/indexers?indexer=beta"] });
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RouterProvider router={router} /></QueryClientProvider>);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByDisplayValue("Beta")).toBeInTheDocument();
+    await waitFor(() => expect(router.state.location.search).toBe(""));
+    expect(router.state.location.pathname).toBe("/indexers/indexers");
+  });
+
+  it("a name no indexer has opens nothing and still clears the address", async () => {
+    reset({ indexers: [indexer()] });
+    const router = createMemoryRouter([{ path: "*", element: <IndexersPage /> }], { initialEntries: ["/indexers/indexers?indexer=Gone"] });
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RouterProvider router={router} /></QueryClientProvider>);
+
+    await waitFor(() => expect(router.state.location.search).toBe(""));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});

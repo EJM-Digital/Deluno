@@ -45,7 +45,7 @@ describe("the Transfers tab's dot (#1329)", () => {
 
 describe("the More tab (#1329)", () => {
   it.each([
-    "/collections", "/calendar", "/discover", "/indexers/indexers", "/search-cycles", "/activity", "/system", "/system/updates", "/setup-guide", "/settings", "/settings/general"
+    "/collections", "/calendar", "/discover", "/indexers/indexers", "/search-cycles", "/system", "/system/updates", "/setup-guide", "/settings", "/settings/general"
   ])("is marked as the current one on %s", (path) => {
     renderAt(path);
     expect(marked(moreTab())).toBe(true);

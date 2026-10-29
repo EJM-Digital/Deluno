@@ -6,6 +6,9 @@ import type { DownloadClientTelemetrySnapshot, DownloadQueueItem, JobQueueItem, 
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { QueuePage, queueSources } from "./queue-screen";
 
+/** Which view of Transfers the test opens (#1426): the hand-offs and imports moved off the live downloads. */
+let viewEntry = "/queue";
+
 /**
  * Transfers, low rows: the drawers of the rows that have no drawer of their own, the transfer details drawer, the hand-off
  * fixes and the two lists the page reads. The routes behind them are tested on the real host.
@@ -69,7 +72,7 @@ const calls = (path: string) => authedFetchMock.mock.calls.filter(([url]) => Str
 
 function open() {
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[viewEntry]}>
       <QueuePage />
     </MemoryRouter>
   );
@@ -136,7 +139,7 @@ describe("Transfers: the hand-off fixes and the hand-off drawer", () => {
   it("a failed hand-off offers Send again, Import original, Search for another, Keep waiting and Dismiss together, each with a caption", async () => {
     queueLoaderData.processorHandoffs = [handoff()];
     open();
-    fireEvent.click(screen.getAllByText(release)[0]);
+    fireEvent.click(screen.getAllByText(release)[0]!.closest('[role="row"]') ?? screen.getAllByText(release)[0]!);
 
     for (const name of [/Send to Weir again/, "Import original", "Search for another release", "Keep waiting", "Dismiss this hand-off"]) {
       expect(await screen.findByRole("button", { name })).toBeVisible();
@@ -148,7 +151,7 @@ describe("Transfers: the hand-off fixes and the hand-off drawer", () => {
   it("Dismiss this hand-off posts the dismiss, closes the drawer and asks the page to read again", async () => {
     queueLoaderData.processorHandoffs = [handoff()];
     open();
-    fireEvent.click(screen.getAllByText(release)[0]);
+    fireEvent.click(screen.getAllByText(release)[0]!.closest('[role="row"]') ?? screen.getAllByText(release)[0]!);
 
     fireEvent.click(await screen.findByRole("button", { name: "Dismiss this hand-off" }));
 
@@ -164,7 +167,7 @@ describe("Transfers: the hand-off fixes and the hand-off drawer", () => {
     expect(screen.getAllByText(release).length).toBeGreaterThan(0);
     expect(screen.getByRole("switch", { name: /Select Nosferatu/ })).toBeVisible();
     expect(screen.getAllByText("Open to fix").length).toBeGreaterThan(0);
-    fireEvent.click(screen.getAllByText(release)[0]);
+    fireEvent.click(screen.getAllByText(release)[0]!.closest('[role="row"]') ?? screen.getAllByText(release)[0]!);
 
     const drawer = await screen.findByRole("dialog");
     expect(within(drawer).getByText("Outcome")).toBeVisible();
@@ -177,7 +180,7 @@ describe("Transfers: the hand-off fixes and the hand-off drawer", () => {
     queueLoaderData.processorHandoffs = [handoff()];
     open();
 
-    fireEvent.click(screen.getAllByText(release)[0]);
+    fireEvent.click(screen.getAllByText(release)[0]!.closest('[role="row"]') ?? screen.getAllByText(release)[0]!);
 
     expect(await screen.findByRole("button", { name: "Preview import" })).toBeVisible();
     expect(screen.queryByText("The buttons for this row are on the row itself.")).not.toBeInTheDocument();
@@ -244,6 +247,8 @@ describe("Transfers: the attention drawer of a row with no drawer of its own", (
 });
 
 describe("Transfers: an import row opens the import drawer", () => {
+  beforeEach(() => { viewEntry = "/queue?view=handoffs"; });
+  afterEach(() => { viewEntry = "/queue"; });
   it("shows the outcome, detail, when, kind 'Import job', where it came from and where it went", async () => {
     queueLoaderData.jobs = [{
       id: "job-9", jobType: "filesystem.import.execute", label: "Import", source: "download-client", sourceLabel: "A download", status: "completed",
@@ -284,7 +289,7 @@ describe("Transfers: an import with no file location", () => {
   it("Preview import says the client has not reported a completed file location, and sends nothing", async () => {
     withClientItem(queueItem({ status: "completed", sourcePath: null, libraryId: "library-none" }));
     open();
-    fireEvent.click(screen.getByText("Example.Movie.2026.1080p.WEB-DL-GROUP"));
+    fireEvent.click(screen.getByText("Example.Movie.2026.1080p.WEB-DL-GROUP").closest('[role="row"]')!);
 
     fireEvent.click(await screen.findByRole("button", { name: "Preview import" }));
 
@@ -341,7 +346,7 @@ describe("Transfers: the transfer details drawer of a failed send", () => {
       return reply();
     });
     open();
-    fireEvent.click(screen.getAllByText(String(summary.releaseName))[0]);
+    fireEvent.click(screen.getAllByText(String(summary.releaseName))[0]!.closest('[role="row"]') ?? screen.getAllByText(String(summary.releaseName))[0]!);
   }
 
   it("lists the journey: release, indexer, client, grab, detected, import and attempts", async () => {

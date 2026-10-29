@@ -789,7 +789,7 @@ describe("download drawer: a failed processor hand-off (#1151)", () => {
       </MemoryRouter>
     );
     // The Needs attention row opens the download's own drawer.
-    fireEvent.click(screen.getAllByText("Nosferatu.2024.1080p.BluRay-GROUP")[0]);
+    fireEvent.click(screen.getAllByText("Nosferatu.2024.1080p.BluRay-GROUP")[0]!.closest('[role="row"]') ?? screen.getAllByText("Nosferatu.2024.1080p.BluRay-GROUP")[0]!);
   }
 
   it("offers one send-again button, import original, search for another and dismiss in the download's own drawer", async () => {
@@ -867,7 +867,7 @@ describe("hand-off drawer: Try again for a download that has left the client (#1
       createdUtc: new Date().toISOString(), updatedUtc: new Date().toISOString()
     }] as unknown as typeof queueLoaderData.processorHandoffs;
     render(<MemoryRouter><QueuePage /></MemoryRouter>);
-    fireEvent.click(screen.getAllByText("Retry.Film.2020.1080p.WEB-DL.x264-GOLDEN")[0]);
+    fireEvent.click(screen.getAllByText("Retry.Film.2020.1080p.WEB-DL.x264-GOLDEN")[0]!.closest('[role="row"]') ?? screen.getAllByText("Retry.Film.2020.1080p.WEB-DL.x264-GOLDEN")[0]!);
   }
 
   it("says Sending to Weir again on the press, with the old failure out of the drawer", async () => {
@@ -952,7 +952,7 @@ describe("download drawer: availability, last activity and completion (#970)", (
       </MemoryRouter>
     );
 
-    fireEvent.click(screen.getByText(item.releaseName));
+    fireEvent.click(screen.getByText(item.releaseName).closest('[role="row"]') ?? screen.getByText(item.releaseName));
   }
 
   it("shows availability, last activity and completion in the drawer when the client reports them", () => {
@@ -1030,7 +1030,7 @@ describe("Transfers points to Activity for the history (#1115)", () => {
     );
 
     expect(screen.queryByRole("heading", { name: "Recent activity" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /See everything in Activity/ })).toHaveAttribute("href", "/activity");
+    expect(screen.getByRole("link", { name: /See the history and events/ })).toHaveAttribute("href", "/queue?view=history");
   });
 });
 
@@ -1070,8 +1070,12 @@ describe("Transfers: one line per download, help said once", () => {
     const { container } = render(<MemoryRouter><QueuePage /></MemoryRouter>);
 
     expect(screen.getAllByText(kept.releaseName)).toHaveLength(2); // the one row: its name and its release line
-    expect(screen.getAllByText("Left.The.Client.2025.1080p-GROUP").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Weir: /).length).toBeGreaterThan(0);
+    expect(repeatedSentences(container)).toEqual([]);
+
+    // The hand-off whose download left the client is on the Hand-offs view, once.
+    fireEvent.click(screen.getByRole("radio", { name: /^Hand-offs/ }));
+    expect(screen.getAllByText("Left.The.Client.2025.1080p-GROUP").length).toBeGreaterThan(0);
     expect(repeatedSentences(container)).toEqual([]);
   });
 });
@@ -1158,7 +1162,7 @@ describe("Manual import: one file", () => {
     fireEvent.click(screen.getByRole("button", { name: "Queue import" }));
 
     await waitFor(() => expect(screen.getByText(/will be filed at/)).toBeInTheDocument());
-    expect(screen.getByRole("link", { name: /Follow it in Activity/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Follow it in the history/ })).toBeInTheDocument();
     expect(screen.queryByText(/Queued as job/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Queue import" })).toBeDisabled();
   });
