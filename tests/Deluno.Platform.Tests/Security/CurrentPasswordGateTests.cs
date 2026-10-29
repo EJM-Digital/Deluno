@@ -1,8 +1,10 @@
 using Deluno.Security;
 using Deluno.Security.Contracts;
 using Deluno.Security.Data;
+using Deluno.Security.Recovery;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 
 namespace Deluno.Platform.Tests.Security;
@@ -14,7 +16,12 @@ public sealed class CurrentPasswordGateTests
 
     private static DefaultHttpContext Context(string? password)
     {
-        var context = new DefaultHttpContext();
+        var context = new DefaultHttpContext
+        {
+            RequestServices = new ServiceCollection()
+                .AddSingleton(new CurrentPasswordAttempts(TimeProvider.System))
+                .BuildServiceProvider()
+        };
         if (password is not null)
         {
             context.Request.Headers[CurrentPasswordGate.Header] = password;
@@ -71,5 +78,39 @@ public sealed class CurrentPasswordGateTests
         Assert.Equal("Current password is not correct.", errors["currentPassword"][0]);
 
         Assert.Null(await CurrentPasswordGate.RequireAsync(Context("right"), Repository(true).Object, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Five_wrong_passwords_lock_the_gate_and_a_sixth_is_not_even_checked()
+    {
+        var context = Context("nope");
+        var repository = Repository(passwordIsRight: false);
+        for (var i = 0; i < RecoveryAttempts.AllowedFailures; i++)
+        {
+            await CurrentPasswordGate.RequireAsync(context, repository.Object, CancellationToken.None);
+        }
+
+        var locked = await CurrentPasswordGate.RequireAsync(context, repository.Object, CancellationToken.None);
+
+        var errors = Assert.IsType<HttpValidationProblemDetails>(Assert.IsType<ProblemHttpResult>(locked).ProblemDetails).Errors;
+        Assert.Equal("Too many tries. Wait 10 minutes and try again.", errors["currentPassword"][0]);
+        repository.Verify(r => r.VerifyUserPasswordAsync("u1", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(RecoveryAttempts.AllowedFailures));
+    }
+
+    [Fact]
+    public async Task A_right_password_clears_the_count_of_wrong_ones()
+    {
+        var context = Context("x");
+        var wrong = Repository(false);
+        var right = Repository(true);
+        for (var round = 0; round < 3; round++)
+        {
+            for (var i = 0; i < RecoveryAttempts.AllowedFailures - 1; i++)
+            {
+                await CurrentPasswordGate.RequireAsync(context, wrong.Object, CancellationToken.None);
+            }
+
+            Assert.Null(await CurrentPasswordGate.RequireAsync(context, right.Object, CancellationToken.None));
+        }
     }
 }

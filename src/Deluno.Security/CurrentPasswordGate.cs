@@ -1,5 +1,7 @@
 using Deluno.Security.Data;
+using Deluno.Security.Recovery;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Deluno.Security;
 
@@ -37,9 +39,21 @@ public static class CurrentPasswordGate
             return Refuse("Enter your current password to make this change.");
         }
 
-        return await repository.VerifyUserPasswordAsync(user.Id, supplied, cancellationToken)
-            ? null
-            : Refuse("Current password is not correct.");
+        // Wrong passwords count; five in a row lock the check for ten minutes, for everyone (one account to protect).
+        var attempts = httpContext.RequestServices.GetRequiredService<CurrentPasswordAttempts>();
+        if (attempts.IsLocked())
+        {
+            return Refuse(AccountRecovery.LockedMessage);
+        }
+
+        if (await repository.VerifyUserPasswordAsync(user.Id, supplied, cancellationToken))
+        {
+            attempts.Succeeded();
+            return null;
+        }
+
+        attempts.Failed();
+        return Refuse("Current password is not correct.");
     }
 
     private static IResult Refuse(string message)

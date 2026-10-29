@@ -19,6 +19,8 @@ public static class SecurityServiceCollectionExtensions
         services.AddSingleton<ISecurityRepository, SqliteSecurityRepository>();
         // #1392: recovery codes.
         services.AddSingleton<RecoveryAttempts>();
+        // #1433: the same limit on wrong current passwords.
+        services.AddSingleton<CurrentPasswordAttempts>();
         services.AddSingleton<AccountRecovery>();
         // The host that can see Activity and Notifications registers the real one (Deluno.Worker).
         services.TryAddSingleton<IAccountResetReporter, NoOpAccountResetReporter>();

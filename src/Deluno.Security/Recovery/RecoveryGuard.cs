@@ -14,7 +14,7 @@ public sealed class NoOpAccountResetReporter : IAccountResetReporter
 /// <summary>
 /// Five wrong tries in a row lock recovery for ten minutes, for everyone; there is only one account to protect.
 /// </summary>
-public sealed class RecoveryAttempts(TimeProvider timeProvider)
+public class RecoveryAttempts(TimeProvider timeProvider)
 {
     public const int AllowedFailures = 5;
     public static readonly TimeSpan LockLifetime = TimeSpan.FromMinutes(10);
@@ -52,3 +52,9 @@ public sealed class RecoveryAttempts(TimeProvider timeProvider)
         }
     }
 }
+
+/// <summary>
+/// The same limit for the current-password check (#1433), counted on its own so a locked password check does not
+/// lock recovery, and the other way round.
+/// </summary>
+public sealed class CurrentPasswordAttempts(TimeProvider timeProvider) : RecoveryAttempts(timeProvider);

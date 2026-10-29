@@ -89,6 +89,7 @@ describe("the helpers around it", () => {
   it("reads the plain sentence out of a refusal, and falls back when there is none", async () => {
     const reply = (body: unknown, status = 400) => new Response(typeof body === "string" ? body : JSON.stringify(body), { status });
     expect(await refusalSentence(reply({ errors: { currentPassword: ["Current password is not correct."] } }), "x")).toBe("Current password is not correct.");
+    expect(await refusalSentence(reply({ errors: { currentPassword: ["Too many tries. Wait 10 minutes and try again."] } }), "x")).toBe("Too many tries. Wait 10 minutes and try again.");
     expect(await refusalSentence(reply({ message: "Said in words." }), "x")).toBe("Said in words.");
     expect(await refusalSentence(reply({}), "fallback")).toBe("fallback");
     expect(await refusalSentence(reply("not json"), "fallback")).toBe("fallback");
