@@ -49,7 +49,7 @@ public sealed class TheGuideUpdateRoutesAnswerWhatUpstreamSaysTests
                 .ToArray();
     }
 
-    private static Task<ApplicationTestHost> StartAsync(TrashRepository repository)
+    private static Task<ApplicationTestHost> StartAsync(HttpMessageHandler repository)
         => ApplicationTestHost.StartAsync(replaceServices: services =>
             services.AddHttpClient(GuideUpstreamTreeClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => repository));
 
@@ -130,5 +130,24 @@ public sealed class TheGuideUpdateRoutesAnswerWhatUpstreamSaysTests
         }
 
         Assert.Equal(versionsBefore, (await app.Client.GetFromJsonAsync<JsonElement>("/api/v1/guides/trash/versions")).GetArrayLength());
+    }
+
+    private sealed class UnreachableRepository : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => throw new HttpRequestException("No connection could be made because the target machine actively refused it.");
+    }
+
+    [Fact]
+    public async Task An_unreachable_repository_turns_a_sync_preview_into_an_unavailable_one_that_carries_the_message()
+    {
+        await using var offline = await StartAsync(new UnreachableRepository());
+        var integrity = (await offline.Client.GetFromJsonAsync<JsonElement>("/api/v1/guides/trash/versions")).EnumerateArray().Last().GetProperty("integritySha256").GetString();
+        var down = await offline.Client.PostAsJsonAsync("/api/v1/guides/trash/sync/preview", new { expectedCurrentIntegritySha256 = integrity, expectedUpstreamRevision = "remote-guide-revision" });
+        Assert.Equal(HttpStatusCode.OK, down.StatusCode);
+        var unavailable = await down.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(unavailable.GetProperty("canApply").GetBoolean());
+        Assert.Contains("actively refused", unavailable.ToString());
+
     }
 }

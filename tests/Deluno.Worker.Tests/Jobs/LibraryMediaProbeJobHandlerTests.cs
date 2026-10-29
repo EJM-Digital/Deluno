@@ -45,7 +45,24 @@ public sealed class LibraryMediaProbeJobHandlerTests
         Assert.Contains(saved.Facts, fact => fact.TraitId.Equals("audio.channels.2-0", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static async Task<PreferenceEvaluationSnapshot> ProbeAsync(string importWorkflow)
+    [Fact]
+    public async Task A_file_replaced_in_place_with_a_new_size_starts_fresh_while_the_same_file_keeps_its_release_name_evidence()
+    {
+        PreferenceEvaluationSnapshot Earlier(string path, long size) => new(
+            "movie-1", "library-1", "id", path, size, "plan", "1", "hash",
+            [], ReleasePreferenceEvaluator.Evaluate(ReleasePreferencePlanFactory.CreateQualityPlan("movies", "WEB 1080p"), []),
+            ["old-rule"], DateTimeOffset.Parse("2026-08-01T00:00:00Z"), "filesystem.import",
+            ReleaseNameEvidence: "Old.Movie.2020.2160p.NF.WEB-DL.x265-OLD");
+
+        var same = await ProbeAsync("direct", path => Earlier(path, 1_000));
+        Assert.Equal("Old.Movie.2020.2160p.NF.WEB-DL.x265-OLD", same.ReleaseNameEvidence);
+
+        var replaced = await ProbeAsync("direct", path => Earlier(path, 999));
+        Assert.NotEqual("Old.Movie.2020.2160p.NF.WEB-DL.x265-OLD", replaced.ReleaseNameEvidence);
+        Assert.EndsWith("Movie.2020.1080p.WEB-DL.x264.DTS.2.0-GROUP.mkv", replaced.ReleaseNameEvidence);
+    }
+
+    private static async Task<PreferenceEvaluationSnapshot> ProbeAsync(string importWorkflow, Func<string, PreferenceEvaluationSnapshot>? previousFor = null)
     {
         var path = Path.Combine(Path.GetTempPath(), "Media", "Movie.2020.1080p.WEB-DL.x264.DTS.2.0-GROUP.mkv");
         var now = DateTimeOffset.Parse("2026-09-01T00:00:00Z");
@@ -115,7 +132,7 @@ public sealed class LibraryMediaProbeJobHandlerTests
                  It.IsAny<CancellationToken>(),
                  path,
                  1000))
-            .ReturnsAsync((PreferenceEvaluationSnapshot?)null);
+            .ReturnsAsync(previousFor?.Invoke(path));
 
         PreferenceEvaluationSnapshot? saved = null;
         mediaState

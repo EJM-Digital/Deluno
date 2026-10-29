@@ -13,6 +13,7 @@ using Deluno.Platform;
 using Deluno.Platform.Data;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -129,7 +130,40 @@ public sealed class ExternalRedownloadTests
         _jobs.Verify(scheduler => scheduler.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    private ExternalRedownloadService Service()
+    [Fact]
+    public async Task A_failure_while_clearing_what_blocks_the_download_is_logged_and_the_search_still_runs()
+    {
+        var failing = new Mock<IDownloadDispatchesRepository>();
+        failing.Setup(repo => repo.QueryDispatchesAsync(It.IsAny<DispatchQueryFilter>(), It.IsAny<DispatchPaginationOptions>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("the dispatch store is unavailable"));
+        var logger = new Mock<ILogger<ExternalRedownloadService>>();
+        logger.Setup(log => log.IsEnabled(It.IsAny<LogLevel>())).Returns(true);
+
+        var outcome = await Service(failing.Object, logger.Object).RedownloadAsync(new ExternalRedownloadRequest(FilmPath, null, "Weir"), CancellationToken.None);
+
+        var done = Assert.IsType<ExternalRedownloadService.Done>(outcome);
+        Assert.Equal("search-1", done.Result.SearchJobId);
+        _jobs.Verify(scheduler => scheduler.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+        logger.Verify(log => log.Log(
+            LogLevel.Warning, It.IsAny<EventId>(), It.IsAny<It.IsAnyType>(), It.IsAny<InvalidOperationException>(), It.IsAny<Func<It.IsAnyType, Exception?, string>>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_search_that_cannot_be_queued_leaves_the_file_removed_and_says_to_search_from_the_title_page()
+    {
+        _jobs.Setup(scheduler => scheduler.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("the job queue is unavailable"));
+
+        var outcome = await Service().RedownloadAsync(new ExternalRedownloadRequest(FilmPath, null, "Weir"), CancellationToken.None);
+
+        var done = Assert.IsType<ExternalRedownloadService.Done>(outcome);
+        Assert.Null(done.Result.SearchJobId);
+        Assert.True(done.Result.FileRemoved);
+        Assert.Contains("the search could not be queued; search for it from its page", done.Result.Message, StringComparison.Ordinal);
+        _movies.Verify(repo => repo.MarkTrackedFileMissingAsync("movie-1", "movies-lib", FilmPath, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    private ExternalRedownloadService Service(IDownloadDispatchesRepository? dispatchesOverride = null, ILogger<ExternalRedownloadService>? logger = null)
     {
         var dispatches = new Mock<IDownloadDispatchesRepository>();
         dispatches.Setup(repo => repo.QueryDispatchesAsync(It.IsAny<DispatchQueryFilter>(), It.IsAny<DispatchPaginationOptions>(), It.IsAny<CancellationToken>()))
@@ -140,11 +174,11 @@ public sealed class ExternalRedownloadTests
         var blocked = new Mock<IBlockedReleaseRepository>();
         blocked.Setup(repo => repo.ListForAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
         var processors = Mock.Of<IProcessorRepository>();
-        var overrides = new AcquisitionOverrideService(processors, exclusions.Object, Mock.Of<IDownloadClientTelemetryService>(), NullLogger<AcquisitionOverrideService>.Instance, dispatches.Object, blocked.Object);
+        var overrides = new AcquisitionOverrideService(processors, exclusions.Object, Mock.Of<IDownloadClientTelemetryService>(), NullLogger<AcquisitionOverrideService>.Instance, dispatchesOverride ?? dispatches.Object, blocked.Object);
         return new ExternalRedownloadService(
             _libraries.Object, _movies.Object, _series.Object, _recycleBin.Object, overrides,
-            dispatches.Object, processors, exclusions.Object, blocked.Object, _jobs.Object, _activity.Object,
-            NullLogger<ExternalRedownloadService>.Instance);
+            dispatchesOverride ?? dispatches.Object, processors, exclusions.Object, blocked.Object, _jobs.Object, _activity.Object,
+            logger ?? NullLogger<ExternalRedownloadService>.Instance);
     }
 
     private static async IAsyncEnumerable<T> Items<T>(params T[] items)

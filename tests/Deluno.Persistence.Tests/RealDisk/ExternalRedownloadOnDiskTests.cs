@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform;
@@ -89,5 +90,34 @@ public sealed class ExternalRedownloadOnDiskTests
         var movie = (await world.Movies.GetByIdAsync(id, CancellationToken.None))!;
         Assert.True(movie.HasFile, "the catalogue is unchanged");
         Assert.DoesNotContain(await world.App.Services.GetRequiredService<IJobQueueRepository>().ListAsync(100, CancellationToken.None), job => job.Source == "external-redownload");
+    }
+
+    private sealed class RefusesTheRedownloadSearch(IJobScheduler inner) : IJobScheduler
+    {
+        public Task<JobQueueItem> EnqueueAsync(EnqueueJobRequest request, CancellationToken cancellationToken)
+            => request.Source == "external-redownload"
+                ? throw new InvalidOperationException("The job queue is unavailable.")
+                : inner.EnqueueAsync(request, cancellationToken);
+    }
+
+    [Fact]
+    public async Task When_the_search_cannot_be_queued_the_file_is_already_in_the_bin_and_the_answer_is_202_with_no_search_id_and_says_to_search_from_the_title_page()
+    {
+        var app = await ApplicationTestHost.StartAsync(replaceServices: services =>
+            services.AddSingleton<IJobScheduler>(provider => new RefusesTheRedownloadSearch(provider.GetRequiredService<Deluno.Jobs.Data.SqliteJobStore>())));
+        Directory.CreateDirectory(Path.Combine(app.DataRoot, "downloads"));
+        await using var world = await RealDiskLibrary.OpenAsync(app);
+        var (id, file) = await AFilmInTheLibraryAsync(world);
+
+        var response = await world.App.Client.PostAsJsonAsync("/api/integrations/external/redownload", new { path = file, reason = "test", tool = "Weir" });
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Equal(JsonValueKind.Null, body.RootElement.GetProperty("searchJobId").ValueKind);
+        Assert.True(body.RootElement.GetProperty("fileRemoved").GetBoolean());
+        Assert.Contains("search for it from its page", body.RootElement.GetProperty("message").GetString());
+        Assert.False(File.Exists(file));
+        Assert.Single(await world.Bin.ListAsync(CancellationToken.None));
+        Assert.False((await world.Movies.GetByIdAsync(id, CancellationToken.None))!.HasFile);
     }
 }

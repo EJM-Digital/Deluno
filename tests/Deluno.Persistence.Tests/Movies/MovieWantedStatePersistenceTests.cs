@@ -140,6 +140,31 @@ public sealed class MovieWantedStatePersistenceTests
     }
 
     [Fact]
+    public async Task Asking_for_one_kind_returns_only_titles_of_that_kind_up_to_the_limit()
+    {
+        using var storage = TestStorage.Create();
+        var now = DateTimeOffset.Parse("2026-08-13T00:00:00Z");
+        var timeProvider = new FixedTimeProvider(now);
+        await new MoviesSchemaInitializer(storage.Factory, new SqliteDatabaseMigrator(storage.Factory, timeProvider), NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        for (var i = 0; i < 3; i++)
+        {
+            var missing = await repository.AddAsync(new CreateMovieRequest($"Missing {i}", 2024, $"tt1{i:000000}"), CancellationToken.None);
+            await repository.EnsureWantedStateAsync(missing.Id, "movies-main", "missing", "Needs a file.", false, null, "WEB 1080p", false, CancellationToken.None);
+            var upgrade = await repository.AddAsync(new CreateMovieRequest($"Upgrade {i}", 2023, $"tt2{i:000000}"), CancellationToken.None);
+            await repository.EnsureWantedStateAsync(upgrade.Id, "movies-main", "upgrade", "Below the cutoff.", true, "WEB 720p", "WEB 1080p", false, CancellationToken.None);
+        }
+
+        var missingOnly = await repository.ListEligibleWantedAsync("movies-main", 2, now, ignoreRetryWindow: true, CancellationToken.None, wantedStatus: "missing");
+        var upgradeOnly = await repository.ListEligibleWantedAsync("movies-main", 10, now, ignoreRetryWindow: true, CancellationToken.None, wantedStatus: "upgrade");
+
+        Assert.Equal(2, missingOnly.Count);
+        Assert.All(missingOnly, item => Assert.Equal("missing", item.WantedStatus));
+        Assert.Equal(3, upgradeOnly.Count);
+        Assert.All(upgradeOnly, item => Assert.Equal("upgrade", item.WantedStatus));
+    }
+
+    [Fact]
     public async Task Skip_next_movie_search_is_durable_and_is_consumed_exactly_once()
     {
         using var storage = TestStorage.Create();

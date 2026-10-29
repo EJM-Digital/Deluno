@@ -97,6 +97,48 @@ public sealed class MissingAndUpgradeCapsAreEnforcedSeparatelyTests
         Assert.Equal(["Missing One", "Upgrade One"], requests);
     }
 
+    [Theory]
+    [InlineData(true, false, "missing", 2)]
+    [InlineData(false, true, "upgrade", 3)]
+    public async Task A_search_of_one_kind_asks_only_for_that_kind_and_no_more_than_its_own_cap(bool checkMissing, bool checkUpgrades, string expectedKind, int expectedCap)
+    {
+        var movies = new Mock<IMovieCatalogRepository>();
+        movies
+            .Setup(repository => repository.ListEligibleWantedAsync(
+                It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTimeOffset>(), It.IsAny<bool>(),
+                It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<CatalogueFilters?>(), It.IsAny<bool>(), It.IsAny<bool>()))
+            .ReturnsAsync([]);
+        var handler = new MoviesLibrarySearchJobHandler(
+            Libraries("library-movies", "movies").Object,
+            Profile().Object,
+            Mock.Of<IJobQueueRepository>(),
+            movies.Object,
+            Mock.Of<ISeriesCatalogRepository>(),
+            Mock.Of<IAcquisitionDecisionPipeline>(),
+            Mock.Of<IDownloadClientGrabService>(),
+            Mock.Of<IActivityFeedRepository>(),
+            TimeProvider.System);
+        var payload = JsonSerializer.Serialize(new
+        {
+            libraryId = "library-movies",
+            libraryName = "Movies",
+            mediaType = "movies",
+            checkMissing,
+            checkUpgrades,
+            maxItems = 10,
+            maxMissingItems = 2,
+            maxUpgradeItems = 3,
+            retryDelayHours = 1,
+            triggeredBy = "schedule"
+        });
+
+        await handler.HandleAsync(TestJobs.Create(LibrarySearchJobTypes.For("movies"), payloadJson: payload), CancellationToken.None);
+
+        movies.Verify(repository => repository.ListEligibleWantedAsync(
+            "library-movies", expectedCap, It.IsAny<DateTimeOffset>(), It.IsAny<bool>(),
+            It.IsAny<CancellationToken>(), expectedKind, It.IsAny<CatalogueFilters?>(), It.IsAny<bool>(), It.IsAny<bool>()), Times.Once);
+    }
+
     private static MovieWantedItem Movie(string id, string title, string wantedStatus)
         => new(
             id, title, 2020, null, "library-movies", wantedStatus, "not found", false,
