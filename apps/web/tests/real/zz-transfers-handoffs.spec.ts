@@ -113,7 +113,7 @@ test.describe("Transfers, with hand-offs to a processor", () => {
   test("Stop waiting asks the server, which says in words that Weir could not be told, and the hand-off leaves the processor's table", async ({ page }) => {
     await openScreen(page, "/queue");
     await seed(page, { releaseName: "Stop.Waiting.2025.1080p-GRP", status: "accepted" });
-    await openTransfers(page);
+    await openTransfers(page, "/queue?view=handoffs");
 
     await rowOf(page, "Stop.Waiting.2025.1080p-GRP").click();
     const answered = page.waitForResponse((response) => response.url().includes("/stop-waiting") && response.request().method() === "POST");
