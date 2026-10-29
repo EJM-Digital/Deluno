@@ -287,7 +287,7 @@ export function SettingsNotificationsPage() {
     try {
       const nextForm: WebhookForm = {
         // No screen field sets a name, so a webhook keeps the name it has until its app or address changes; then Deluno derives a new one.
-        name: form.url.trim() !== initialForm.url.trim() || form.provider !== initialForm.provider ? "" : form.name.trim(),
+        name: mode.kind === "edit" && (form.url.trim() !== initialForm.url || form.provider !== initialForm.provider) ? "" : form.name.trim(),
         url: form.url.trim(),
         eventFilters: form.eventFilters,
         isEnabled: form.isEnabled,
