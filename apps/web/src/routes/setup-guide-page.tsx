@@ -944,13 +944,12 @@ export function SetupGuidePage() {
 
     // Changing who skips sign-in asks for the password; without it that one answer is not applied and the rest are.
     const changesSkip = form.skipSignInLocalNetwork !== null && form.skipSignInLocalNetwork !== data.localNetworkAuth.enabled;
-    const currentPassword = changesSkip
-      ? await ask("Changing who skips sign-in needs your password, because it decides who can use Deluno without one.")
-      : null;
-
     setBusy(true);
     const createdEntities: CreatedEntity[] = [];
     try {
+      const currentPassword = changesSkip
+        ? await ask("Changing who skips sign-in needs your password, because it decides who can use Deluno without one.")
+        : null;
       const completionResult = await createBaseline({
         data,
         form,

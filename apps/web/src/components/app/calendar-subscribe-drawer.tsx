@@ -54,10 +54,10 @@ export function CalendarSubscribeDrawer({ open, onOpenChange }: { open: boolean;
   }, [open, load]);
 
   async function handleCreate() {
-    const currentPassword = await ask("Making a calendar link creates an API key, which needs your password.");
-    if (!currentPassword) return;
     setBusy(true);
     try {
+      const currentPassword = await ask("Making a calendar link creates an API key, which needs your password.");
+      if (!currentPassword) return;
       // One link at a time: a replacement revokes the old one rather than
       // leaving keys behind that nobody can identify later.
       for (const key of existing ?? []) {

@@ -20,7 +20,7 @@ function Get-NarrowWalkRoutes {
         '/indexers/media-servers', '/indexers/path-mappings', '/indexers/proxies', '/indexers/scoreboard', '/indexers/subtitle-providers',
         '/search-cycles', '/search-cycles/blocklist', '/search-cycles/download-health', '/search-cycles/failed-downloads', '/search-cycles/keep-seeding',
         '/search-cycles/missing', '/search-cycles/retention', '/search-cycles/upgrades',
-        '/settings', '/settings/auto-tagging', '/settings/custom-formats', '/settings/destination-rules', '/settings/general', '/settings/import-policy',
+        '/settings', '/settings/account', '/settings/auto-tagging', '/settings/custom-formats', '/settings/destination-rules', '/settings/general', '/settings/import-policy',
         '/settings/libraries', '/settings/lists', '/settings/media-management', '/settings/metadata', '/settings/migration', '/settings/notifications',
         '/settings/policy-sets', '/settings/processing', '/settings/profiles', '/settings/quality', '/settings/release-rules', '/settings/subtitles',
         '/settings/subtitles-wanted', '/settings/tags', '/settings/ui',

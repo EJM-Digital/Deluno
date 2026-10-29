@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "react-router-dom";
+import { toast } from "../shell/toaster";
 import { Button } from "../ui/button";
 import * as Dialog from "../ui/dialog-primitives";
 import { usePasswordPrompt } from "./password-prompt";
@@ -27,8 +28,12 @@ export function RecoveryCodesPrompt() {
   const { ask, prompt } = usePasswordPrompt();
 
   async function makeWithPassword() {
-    const password = await ask("Making recovery codes needs your password, because they let anyone who holds them take over your account.");
-    if (password) await make(password);
+    try {
+      const password = await ask("Making recovery codes needs your password, because they let anyone who holds them take over your account.");
+      if (password) await make(password);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Recovery codes could not be made.");
+    }
   }
 
   // The guided setup asks for them on its own account step.

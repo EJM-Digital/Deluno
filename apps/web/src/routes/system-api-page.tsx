@@ -76,12 +76,12 @@ export function SystemApiPage() {
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const currentPassword = await ask("Creating an API key needs your password, because a key lets another program act as you.");
-    if (!currentPassword) return;
     setBusy(true);
-    save.markSyncing("Generating...");
 
     try {
+      const currentPassword = await ask("Creating an API key needs your password, because a key lets another program act as you.");
+      if (!currentPassword) return;
+      save.markSyncing("Generating...");
       const created = await fetchJson<CreatedApiKeyResponse>("/api/api-keys", {
         method: "POST",
         headers: withCurrentPassword(currentPassword, { "Content-Type": "application/json" }),
