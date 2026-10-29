@@ -235,6 +235,12 @@ test.describe("Settings > Import lists", () => {
     await expect(page.getByRole("dialog").getByLabel("Monitor")).toHaveValue("recent");
     await expect(page.getByRole("dialog").getByLabel("Series type")).toHaveValue("anime");
     await expect(page.getByRole("dialog").getByLabel("Season folder")).toHaveValue("true");
+
+    // A tag in use is not deleted (#1039), so this test takes its list away and then its tag: the Tags specs that run
+    // later start from an empty tag list and must not find this one still used by a list.
+    await clearLists(page);
+    const left = (await api<Array<{ id: string; name: string }>>(page, "GET", "/api/tags")).body.find((item) => item.name === tag);
+    if (left) expect((await api(page, "DELETE", `/api/tags/${left.id}`)).status).toBeLessThan(300);
   });
 
   test("the origin lookup asks for a title id and a media type of movies or tv in words, and a title no list added has no origins", async ({ page }) => {

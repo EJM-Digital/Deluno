@@ -12,7 +12,7 @@ interface Tag { id: string; name: string; color: string; description: string | n
 
 async function emptyTheTags(page: Page) {
   const tags = await api<Tag[]>(page, "GET", "/api/tags");
-  for (const tag of tags.body) await api(page, "DELETE", `/api/tags/${tag.id}`);
+  for (const tag of tags.body) expect((await api(page, "DELETE", `/api/tags/${tag.id}`)).status, `${tag.name} is deleted (a tag in use is not: the spec that used it must take it away)`).toBeLessThan(300);
 }
 
 const tagsOnServer = async (page: Page) => (await api<Tag[]>(page, "GET", "/api/tags")).body;
