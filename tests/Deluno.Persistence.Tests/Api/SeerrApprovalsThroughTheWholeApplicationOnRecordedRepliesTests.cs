@@ -353,4 +353,18 @@ public sealed class SeerrApprovalsThroughTheWholeApplicationOnRecordedRepliesTes
         var asked = (await AcquisitionsAsync(rig)).EnumerateArray().Select(item => item.GetProperty("requestedBy").GetString()!).Order().ToArray();
         Assert.Equal(["By Display", "by-email@example.com", "by-username"], asked);
     }
+
+    [Fact]
+    public async Task A_servers_acquisition_list_shows_only_its_twenty_most_recent_approvals()
+    {
+        await using var rig = await StartAsync();
+
+        for (var approval = 0; approval < 21; approval++)
+        {
+            Assert.Equal(HttpStatusCode.OK, (await PostAsync(rig, FilmApproval())).StatusCode);
+        }
+
+        Assert.Equal(21, (await ActivityAsync(rig, "seerr.acquired")).Length);
+        Assert.Equal(20, (await AcquisitionsAsync(rig)).GetArrayLength());
+    }
 }

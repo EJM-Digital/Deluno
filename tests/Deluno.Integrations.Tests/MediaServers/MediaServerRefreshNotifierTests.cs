@@ -134,6 +134,40 @@ public sealed class MediaServerRefreshNotifierTests
         Assert.Empty(client.Calls);
     }
 
+    [Fact]
+    public async Task With_no_server_switched_on_nothing_is_asked_and_nothing_is_written()
+    {
+        var off = Server("off", MediaServerKinds.Plex) with { IsEnabled = false };
+        var client = new FakeClient(MediaServerKinds.Plex);
+        var activity = new FakeActivityFeed();
+        var notifier = new MediaServerRefreshNotifier(new FakeRepository([off], []), new FakeRegistry(client), TimeProvider.System, new FakeBacklogRepository(), new FakeJobScheduler(), activity);
+
+        await notifier.NotifyAsync("movies", [new MediaServerPathChange("/media/Movies/Sintel.mkv", MediaServerChangeKind.Created)], CancellationToken.None);
+
+        Assert.Empty(client.Calls);
+        Assert.Empty(activity.Recorded);
+    }
+
+    [Fact]
+    public async Task The_Activity_line_counts_every_change_and_names_at_most_five_distinct_files()
+    {
+        var server = Server("s1", MediaServerKinds.Plex);
+        var activity = new FakeActivityFeed();
+        var notifier = new MediaServerRefreshNotifier(
+            new FakeRepository([server], []), new FakeRegistry(new FakeClient(MediaServerKinds.Plex)), TimeProvider.System,
+            new FakeBacklogRepository(), new FakeJobScheduler(), activity);
+        MediaServerPathChange Change(string name) => new($"/media/Movies/{name}.mkv", MediaServerChangeKind.Created);
+
+        await notifier.NotifyAsync("movies", [Change("A"), Change("B"), Change("B"), Change("C"), Change("D"), Change("E"), Change("F"), Change("G")], CancellationToken.None);
+
+        var logged = Assert.Single(activity.Recorded);
+        Assert.Equal($"Told {server.Name} about 8 new or changed files.", logged.Message);
+        using var details = System.Text.Json.JsonDocument.Parse(logged.DetailsJson!);
+        Assert.Equal(
+            "/media/Movies/A.mkv;/media/Movies/B.mkv;/media/Movies/C.mkv;/media/Movies/D.mkv;/media/Movies/E.mkv",
+            details.RootElement.GetProperty("path").GetString());
+    }
+
     // ---------------------------------------------------------------- #920
 
     [Fact]
