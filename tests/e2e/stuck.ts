@@ -64,8 +64,12 @@ async function recentActivity(stack: Stack): Promise<string[]> {
 
 export interface Seen { maxProgress: number; statuses: Set<string>; line?: string; seconds?: number; lastRow?: any }
 
-/** Waits for each film to be struck (or the time to run out) and records what each looked like on the way. */
-export async function waitAllStruck(stack: Stack, films: Map<string, Sent>, timeoutSec = 420): Promise<Map<string, Seen>> {
+/**
+ * Waits for each film to be struck (or the time to run out) and records what each looked like on the way. The time allows for the
+ * one-minute check pass: two clients started a second apart are struck in the same pass or a minute apart (run 40852317577 struck
+ * SABnzbd 360 s after it was sent and NZBGet just after 420 s), so the wait is two strikes, the slowest start and one more pass.
+ */
+export async function waitAllStruck(stack: Stack, films: Map<string, Sent>, timeoutSec = 540): Promise<Map<string, Seen>> {
   const seen = new Map<string, Seen>();
   for (const key of films.keys()) seen.set(key, { maxProgress: 0, statuses: new Set() });
   const started = Date.now();
