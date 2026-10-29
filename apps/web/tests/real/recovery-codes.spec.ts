@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { fallbackCredentials, givePassword } from "../helpers/auth-helper";
 import { api, expectNoErrorScreen, openScreen, recordRequests } from "../helpers/real";
+import { openTab } from "../helpers/header-tabs";
 import { untilQuiet } from "../helpers/settle";
 
 /**
@@ -35,8 +36,7 @@ test.describe("Settings, Account", () => {
     const requests = recordRequests(page);
     await openScreen(page, "/settings/migration");
     await untilQuiet(page);
-    await page.getByRole("navigation", { name: "Sections" }).getByRole("button", { name: "More" }).click();
-    await page.getByRole("menuitem", { name: "Account", exact: true }).click();
+    await openTab(page, "Account");
     await expect(page).toHaveURL(/\/settings\/account/);
     await untilQuiet(page);
     await expectNoErrorScreen(page);

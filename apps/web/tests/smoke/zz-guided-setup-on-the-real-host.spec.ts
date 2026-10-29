@@ -227,6 +227,8 @@ test.describe("the guided setup on the real host", () => {
     await passTheTests(page);
     await openStep(page, /^(?:\d+ )?Start\b/);
     await page.getByRole("button", { name: "Create baseline" }).click();
+    // The answers turn on skipping sign-in, which asks for the password (#1433).
+    await givePassword(page);
 
     await expect(page.getByText("Setup complete")).toBeVisible({ timeout: 60_000 });
     expect(client.unanswered, "qBittorrent was asked something nobody recorded").toEqual([]);
