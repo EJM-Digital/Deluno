@@ -28,4 +28,10 @@ describe("Live Activity stream: dense rows", () => {
     const when = container.querySelector("li.lact-ev .when")!;
     expect(when.textContent!.startsWith("2 times · ")).toBe(true);
   });
+  it("draws the repeat count on a tinted pill in the page's own text colour, which keeps 4.5:1 on every kind's tint (axe, 390px)", () => {
+    const { container } = render(<MemoryRouter><ActivityStream rows={[event("a"), event("b")]} titles={new Map() as never} /></MemoryRouter>);
+    const pill = Array.from(container.querySelectorAll("li.lact-ev .lact-k span")).find((item) => item.textContent === "2 times")!;
+    expect(pill).toHaveClass("text-foreground");
+    expect(pill.className).not.toMatch(/text-(success|destructive|warning|info|primary|muted-foreground|\[hsl)/);
+  });
 });

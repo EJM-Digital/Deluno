@@ -123,3 +123,13 @@ describe("System timeline rows (#1329)", () => {
     expect(within(failed).queryByText('{"reason":"no video"}')).not.toBeInTheDocument();
   });
 });
+
+describe("an event's time line on a phone (audit timeline)", () => {
+  it("wraps its parts onto a second line and never squeezes the exact time, which would break it into words", () => {
+    render(<Harness events={[event("t1", "search.started", "Searched for Dune")]} />);
+    const row = rowsShown()[0]!;
+    const exact = Array.from(row.querySelectorAll("span")).find((item) => /\d{4}|AM|PM|\d:\d\d/.test(item.textContent ?? "") && item.className.includes("tabular-nums"))!;
+    expect(exact).toHaveClass("whitespace-nowrap");
+    expect(exact.parentElement).toHaveClass("flex-wrap");
+  });
+});

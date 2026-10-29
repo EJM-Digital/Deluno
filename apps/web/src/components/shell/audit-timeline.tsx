@@ -303,13 +303,13 @@ export function AuditTimeline({ timeline }: { timeline: AuditTimelineState }) {
                     </div>
                   </div>
 
-                  <div className="mt-0.5 flex items-center gap-2 text-(length:--type-caption) text-muted-foreground">
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-(length:--type-caption) text-muted-foreground">
                     <span className="rounded-full border border-hairline px-1.5 py-0.5">
                       {event.label ?? eventLabel({ category: event.category })}
                     </span>
                     <span title={absoluteTime(event.createdUtc)}>{relativeTime(event.createdUtc)}</span>
                     <span className="opacity-50">·</span>
-                    <span className="text-(length:--type-micro) tabular-nums">{absoluteTime(event.createdUtc)}</span>
+                    <span className="whitespace-nowrap text-(length:--type-micro) tabular-nums">{absoluteTime(event.createdUtc)}</span>
                   </div>
 
                   {event.detail ? (
