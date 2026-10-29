@@ -1,3 +1,4 @@
+using System.Net;
 using System.Xml.Linq;
 using Deluno.Connections.Contracts;
 using Deluno.Contracts;
@@ -71,7 +72,8 @@ public sealed class IndexerFeedReader(
                 FailureThreshold: 2,
                 ServiceType: "indexer",
                 ServiceId: indexer.Id,
-                ServiceName: indexer.Name),
+                ServiceName: indexer.Name,
+                PauseOnRateLimit: true),
             async token =>
             {
                 if (isTracker)
@@ -96,6 +98,14 @@ public sealed class IndexerFeedReader(
                 using var response = await http.GetAsync(uri, token);
                 if (!response.IsSuccessStatusCode)
                 {
+                    if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                    {
+                        // Asked to wait (#1405): not tried again at once; the policy rests the indexer for the Retry-After.
+                        throw new IntegrationRateLimitedException(
+                            FeedMediaSearchPlanner.RateLimitedMessage(indexer.Name),
+                            IntegrationResiliencePolicy.TryGetRetryAfter(response));
+                    }
+
                     if (IntegrationResiliencePolicy.IsTransientHttpStatusCode(response.StatusCode))
                     {
                         throw new HttpRequestException(
@@ -129,7 +139,9 @@ public sealed class IndexerFeedReader(
         return new IndexerFeedResult(
             false,
             [],
-            result.CircuitOpen
+            result.CircuitOpen && result is { RateLimited: true, RetryAfterUtc: { } restUntil }
+                ? $"{indexer.Name} asked Deluno to wait; it will be asked again at {restUntil.UtcDateTime:HH:mm} UTC."
+                : result.CircuitOpen
                 ? $"{indexer.Name} is resting after repeated failures."
                 : result.FailureMessage ?? $"{indexer.Name} did not answer.");
     }

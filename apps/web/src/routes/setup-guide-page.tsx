@@ -70,6 +70,7 @@ import { Chip } from "../components/ui/chip";
 import { ListCard, ListCell, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { LanAccessNotice } from "../components/app/lan-access-notice";
+import { isUsenetProtocol } from "../lib/protocol";
 import { ConnectInstalledApps } from "../components/app/connect-installed-apps";
 
 /**
@@ -3032,7 +3033,7 @@ async function ensureIndexer(existing: IndexerItem[], form: GuideForm, tested: b
 
 /** A Usenet client that answers and signs in but has no news server yet: connected, and waiting only for the person's provider. */
 export function waitingForUsenetProvider(client: Pick<DownloadClientItem, "protocol" | "healthStatus" | "lastHealthMessage">): boolean {
-  return (client.protocol === "sabnzbd" || client.protocol === "nzbget")
+  return isUsenetProtocol(client.protocol)
     && client.healthStatus === "degraded"
     && (client.lastHealthMessage ?? "").startsWith("No Usenet provider set up");
 }

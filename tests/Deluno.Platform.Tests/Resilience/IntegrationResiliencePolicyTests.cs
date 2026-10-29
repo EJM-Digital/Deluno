@@ -406,6 +406,62 @@ public sealed class IntegrationResiliencePolicyTests
         Assert.Equal(2, calls);
     }
 
+    /// <summary>#1405: a service that must be left alone on a 429 is rested for what it asked, not tried again at once.</summary>
+    [Theory]
+    [InlineData(30, 30)]
+    [InlineData(null, 60)]
+    [InlineData(90000, 86400)]
+    public async Task A_429_on_a_request_that_pauses_rests_the_service_instead_of_retrying_and_skips_it_until_then(int? askedSeconds, int restedSeconds)
+    {
+        var timeProvider = new ManualTimeProvider(DateTimeOffset.Parse("2026-10-29T10:00:00Z"));
+        var policy = CreatePolicy(timeProvider);
+        var request = new IntegrationResilienceRequest("indexer:busy:addr", "search", ServiceType: "indexer", ServiceId: "busy", ServiceName: "Busy", PauseOnRateLimit: true);
+        var calls = 0;
+        var start = timeProvider.GetUtcNow();
+
+        var first = await policy.ExecuteAsync<string>(
+            request,
+            _ =>
+            {
+                calls++;
+                throw new IntegrationRateLimitedException("HTTP 429", askedSeconds is { } seconds ? TimeSpan.FromSeconds(seconds) : null);
+            },
+            _ => IntegrationResilienceOutcome.Success,
+            CancellationToken.None);
+        var skipped = await policy.ExecuteAsync<string>(request, _ => { calls++; return Task.FromResult("x"); }, _ => IntegrationResilienceOutcome.Success, CancellationToken.None);
+        timeProvider.Advance(TimeSpan.FromSeconds(restedSeconds));
+        var after = await policy.ExecuteAsync<string>(request, _ => { calls++; return Task.FromResult("ok"); }, _ => IntegrationResilienceOutcome.Success, CancellationToken.None);
+
+        Assert.Equal(1, first.Attempts);
+        Assert.True(first.RateLimited);
+        Assert.Equal(start.AddSeconds(restedSeconds), first.RetryAfterUtc);
+        Assert.Equal(IntegrationFailureKind.RateLimit, first.Failure!.Kind);
+        Assert.True(skipped.CircuitOpen);
+        Assert.True(skipped.RateLimited);
+        Assert.Equal(0, skipped.Attempts);
+        Assert.Equal(IntegrationFailureKind.RateLimit, skipped.Failure!.Kind);
+        Assert.Contains("asked Deluno to wait", skipped.FailureMessage, StringComparison.Ordinal);
+        Assert.Equal(first.RetryAfterUtc, skipped.RetryAfterUtc);
+        Assert.Equal("ok", after.Value);
+        Assert.Equal(2, calls);
+    }
+
+    [Fact]
+    public async Task A_429_rest_is_exactly_what_the_service_asked_and_the_failure_ladder_does_not_move()
+    {
+        var timeProvider = new ManualTimeProvider(DateTimeOffset.Parse("2026-10-29T10:00:00Z"));
+        var policy = CreatePolicy(timeProvider);
+        var request = new IntegrationResilienceRequest("indexer:ladder:addr", "search", FailureThreshold: 1, PauseOnRateLimit: true);
+
+        var limited = await policy.ExecuteAsync<string>(request, _ => throw new IntegrationRateLimitedException("HTTP 429", TimeSpan.FromSeconds(45)), _ => IntegrationResilienceOutcome.Success, CancellationToken.None);
+        timeProvider.Advance(TimeSpan.FromSeconds(45));
+        var down = await policy.ExecuteAsync(request, _ => Task.FromResult("down"), _ => IntegrationResilienceOutcome.RetryableFailure, CancellationToken.None);
+
+        Assert.Equal(TimeSpan.FromSeconds(45), limited.RetryAfterUtc - DateTimeOffset.Parse("2026-10-29T10:00:00Z"));
+        Assert.False(down.RateLimited);
+        Assert.Equal(TimeSpan.FromMinutes(1), down.RetryAfterUtc - timeProvider.GetUtcNow());
+    }
+
     [Fact]
     public async Task Converts_non_retryable_http_exceptions_to_typed_failures_without_opening_a_circuit()
     {

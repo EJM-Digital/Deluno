@@ -8,6 +8,7 @@ import { ago, formatEta } from "../downloads-kit";
 import { formatBytes } from "../../../lib/utils";
 import type { JourneyCard } from "./journey";
 import { startedLabel } from "./provenance";
+import { isUsenetProtocol } from "../../../lib/protocol";
 import { doneAbout } from "./times";
 
 /** A piece of a line: plain words, or a bold one. */
@@ -61,7 +62,7 @@ export function detailLines(card: JourneyCard, indexers: number, now: number): D
       if (size && have !== undefined) lines.push({ parts: [bold(sizePair(have, size))], right: doneBy });
       else if (doneBy) lines.push({ parts: [], right: doneBy });
       if (card.stuck) break;
-      if (card.peers) lines.push({ parts: [bold(card.peers.toLocaleString("en-AU")), ` ${card.protocol === "usenet" ? (card.peers === 1 ? "connection" : "connections") : card.peers === 1 ? "peer" : "peers"}`] });
+      if (card.peers) lines.push({ parts: [bold(card.peers.toLocaleString("en-AU")), ` ${isUsenetProtocol(card.protocol) ? (card.peers === 1 ? "connection" : "connections") : card.peers === 1 ? "peer" : "peers"}`] });
       if (release) lines.push(release);
       break;
     }

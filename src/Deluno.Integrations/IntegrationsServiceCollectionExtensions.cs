@@ -19,6 +19,7 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddSingleton<IReleaseRankingModelAdminService>(provider => provider.GetRequiredService<MlNetReleaseRankingModelService>());
         services.AddHostedService<RankingModelTrainingHostedService>();
         services.AddSingleton<IIntelligentRoutingService, IntelligentRoutingService>();
+        services.AddSingleton<IndexerScoreboardCache>();
         services.AddScoped<IMediaSearchPlanner, FeedMediaSearchPlanner>();
         services.AddScoped<IIndexerFeedReader, IndexerFeedReader>();
 

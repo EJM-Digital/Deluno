@@ -72,12 +72,13 @@ public static class SearchEndpointRouteBuilderExtensions
             int? days,
             IConnectionsRepository connectionsRepository,
             IIndexerQueryStatsRepository statsRepository,
+            IndexerScoreboardCache scoreboardCache,
             CancellationToken cancellationToken) =>
         {
             var windowDays = Math.Clamp(days ?? 30, 1, 365);
             var toUtc = DateTimeOffset.UtcNow;
             var fromUtc = toUtc.AddDays(-windowDays);
-            var snapshot = await statsRepository.GetScoreboardAsync(fromUtc, toUtc, cancellationToken);
+            var snapshot = await scoreboardCache.GetAsync($"days:{windowDays}", () => statsRepository.GetScoreboardAsync(fromUtc, toUtc, CancellationToken.None), cancellationToken);
             var configuredIndexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
             var statsById = snapshot.QueryStats.ToDictionary(item => item.IndexerId, StringComparer.OrdinalIgnoreCase);
             // Grabs are filed under the indexer's id (#1077), so a renamed indexer

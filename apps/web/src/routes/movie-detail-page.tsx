@@ -112,6 +112,7 @@ import { TitleMarkLabel } from "../components/ui/title-mark";
 import { formatDateTime as formatPreferenceDateTime, formatRuntime, formatShortDate, useDisplayPreferences } from "../lib/display-preferences";
 import { readAlternateTitles, readArtworkExtras, readReleaseFactsByCountry, selectCountryFacts } from "../lib/ui-adapters";
 import { useTitleLive, type TitleEventGroups, type TitleGroups } from "../lib/use-title-live";
+import { protocolGroup } from "../lib/protocol";
 import { parseSearchCandidates, searchCandidateCount } from "../lib/search-history";
 
 /**
@@ -374,7 +375,7 @@ export function MovieDetailPage() {
     const clientGroups = new Map(
       titleRouting.downloadClients.map((item) => [
         item.id,
-        ["sabnzbd", "nzbget", "usenet"].includes(item.protocol?.trim().toLowerCase() ?? "") ? "usenet" : "torrent"
+        protocolGroup(item.protocol)
       ])
     );
     return describeTitleRouting(

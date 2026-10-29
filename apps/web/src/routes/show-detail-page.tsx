@@ -119,6 +119,7 @@ import { formatAirDateTime, formatDateTime as formatPreferenceDateTime, formatRu
 import { readAlternateTitles, readArtworkExtras, readReleaseFactsByCountry, selectCountryFacts } from "../lib/ui-adapters";
 import { seasonMonitorState } from "./season-pass-page";
 import { parseSearchCandidates, searchCandidateCount } from "../lib/search-history";
+import { protocolGroup } from "../lib/protocol";
 import { useTitleLive, type TitleEventGroups, type TitleGroups } from "../lib/use-title-live";
 
 interface ShowDetailLoaderData {
@@ -368,7 +369,7 @@ export function ShowDetailPage() {
     const clientGroups = new Map(
       titleRouting.downloadClients.map((item) => [
         item.id,
-        ["sabnzbd", "nzbget", "usenet"].includes(item.protocol?.trim().toLowerCase() ?? "") ? "usenet" : "torrent"
+        protocolGroup(item.protocol)
       ])
     );
     return describeTitleRouting(
