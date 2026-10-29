@@ -149,4 +149,27 @@ public sealed class ImportListFeedsOnRealHttpTests
         Assert.StartsWith("Provider fetch failed.", result.Summary);
         Assert.Empty(Titles(app));
     }
+    [Theory]
+    [InlineData("<!DOCTYPE html><html><head><title>Sign in</title></head><body><p>Please sign in to see this list.</p></body></html>")]
+    [InlineData("")]
+    [InlineData("   \n ")]
+    public async Task A_list_address_that_answers_with_a_web_page_or_nothing_is_said_so_in_one_plain_sentence_naming_the_list(string body)
+    {
+        await using var server = await ServeAsync(async context => { context.Response.ContentType = "text/html"; await context.Response.WriteAsync(body); });
+        await using var app = await ApplicationTestHost.StartAsync();
+        var libraryId = await ApiScenes.CreateLibraryAsync(app, "movies");
+        var listId = await CreateListAsync(app, libraryId, "rss", server.Url);
+
+        var tested = await TestAsync(app, listId);
+        var synced = await (await ServiceAsync(app)).RunAsync(listId, null, true, CancellationToken.None);
+
+        var name = (await app.Client.GetFromJsonAsync<JsonElement>("/api/intake-sources")).EnumerateArray().Single().GetProperty("name").GetString();
+        var sentence = name + ": the address did not return a list feed. Check the address opens a feed, not a web page.";
+        Assert.False(tested.Ok, tested.Message);
+        Assert.Equal(sentence, tested.Message);
+        Assert.Equal(("error", 0), (synced.Status, synced.AddedCount));
+        Assert.Equal("Provider fetch failed. " + sentence, synced.Summary);
+        Assert.DoesNotContain("root level", tested.Message, StringComparison.Ordinal);
+        Assert.Empty(Titles(app));
+    }
 }

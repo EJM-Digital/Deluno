@@ -1142,7 +1142,7 @@ public sealed class IntakeSyncService(
         var rssUrl = ResolveTraktRssUrl(source.FeedUrl);
         using var client = httpClientFactory.CreateClient(IntakeHttpClientName);
         var xml = await client.GetStringAsync(rssUrl, cancellationToken);
-        return ParseRss(xml, mediaType);
+        return ParseRss(xml, mediaType, source.Name);
     }
 
     /// <summary>
@@ -1252,9 +1252,10 @@ public sealed class IntakeSyncService(
 
             using var client = httpClientFactory.CreateClient(IntakeHttpClientName);
             var body = await client.GetStringAsync(uri, cancellationToken);
-            if (LooksLikeXml(body))
+            var isFeedProvider = source.Provider.Trim().ToLowerInvariant() is "rss" or "letterboxd";
+            if (LooksLikeXml(body) || (isFeedProvider && string.IsNullOrWhiteSpace(body)))
             {
-                return ParseRss(body, mediaType);
+                return ParseRss(body, mediaType, source.Name);
             }
 
             return ParsePlainList(body, mediaType);
@@ -1613,14 +1614,29 @@ public sealed class IntakeSyncService(
         return $"https://trakt.tv/users/{Uri.EscapeDataString(trimmed)}/watchlist.rss";
     }
 
-    private static IReadOnlyList<IntakeEntry> ParseRss(string xml, string mediaType)
+    private static IReadOnlyList<IntakeEntry> ParseRss(string xml, string mediaType, string sourceName)
     {
+        var notAFeed = new PlainFailureException($"{sourceName}: the address did not return a list feed. Check the address opens a feed, not a web page.");
         if (string.IsNullOrWhiteSpace(xml))
         {
-            return [];
+            throw notAFeed;
         }
 
-        var document = XDocument.Parse(xml);
+        XDocument document;
+        try
+        {
+            document = XDocument.Parse(xml);
+        }
+        catch (System.Xml.XmlException)
+        {
+            throw notAFeed;
+        }
+
+        if (document.Root?.Name.LocalName is not ("rss" or "feed" or "RDF"))
+        {
+            throw notAFeed;
+        }
+
         var items = document.Descendants("item").ToArray();
         var result = new List<IntakeEntry>();
         foreach (var item in items)
