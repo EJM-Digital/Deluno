@@ -39,7 +39,15 @@ test.describe("Settings > Media management > Processing", () => {
     fs.mkdirSync(output);
   });
 
-  test.afterAll(() => {
+  // The library is deleted with its folder, so the later specs on the shared server (an indexer's "Used for", a profile's
+  // "Used by") never find a movie library this spec left behind.
+  test.afterAll(async ({ browser }) => {
+    if (libraryId) {
+      const page = await browser.newPage();
+      await openScreen(page, "/system");
+      await api(page, "DELETE", `/api/libraries/${libraryId}`);
+      await page.close();
+    }
     fs.rmSync(folder, { recursive: true, force: true });
   });
 

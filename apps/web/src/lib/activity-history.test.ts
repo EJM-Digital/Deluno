@@ -13,6 +13,7 @@ import {
   activityQueryString,
   emptyActivityFilters,
   filtersFromParams,
+  hasActivityFilterParams,
   hasActivityFilters,
   isQuickSince,
   paramsFromFilters,
@@ -174,5 +175,40 @@ describe("Activity's status chips live in the address (#1114)", () => {
   it("writes a chip into the address, keeping the filters and dropping the old section", () => {
     expect(paramsWithStatus("failed", new URLSearchParams("section=jobs&since=today")).toString()).toBe("since=today&status=failed");
     expect(paramsWithStatus("all", new URLSearchParams("status=failed&since=today")).toString()).toBe("since=today");
+  });
+});
+
+describe("the Activity filters read from an address, and the days they name", () => {
+  it("says whether an address carries any filter, ignoring a blank one", () => {
+    expect(hasActivityFilterParams(new URLSearchParams("view=history&status=failed"))).toBe(false);
+    expect(hasActivityFilterParams(new URLSearchParams("type=failed&title=%20"))).toBe(true);
+    expect(hasActivityFilterParams(new URLSearchParams("title=%20%20"))).toBe(false);
+  });
+
+  it("ends an until day just after that day: today and yesterday by word, a date by its digits, anything else not at all", () => {
+    expect(resolveUntil("today", NOW)).toEqual(new Date(2026, 9, 2));
+    expect(resolveUntil("yesterday", NOW)).toEqual(new Date(2026, 9, 1));
+    expect(resolveUntil("2026-03-04", NOW)).toEqual(new Date(2026, 2, 5));
+    expect(resolveUntil("sometime", NOW)).toBeNull();
+    expect(resolveUntil("", NOW)).toBeNull();
+  });
+
+  it("asks only for the filters that are set, and names the kind of a related item only when it has one", () => {
+    expect(activityQueryString({ ...emptyActivityFilters, item: "abc" }, 10, undefined, NOW)).toBe("pageSize=10&relatedEntityId=abc");
+    expect(activityQueryString({ ...emptyActivityFilters, item: "abc", itemType: "movie" }, 10, undefined, NOW)).toBe("pageSize=10&relatedEntityId=abc&relatedEntityType=movie");
+    const query = new URLSearchParams(activityQueryString({ ...emptyActivityFilters, since: "2026-09-30", until: "2026-10-01", source: "indexer", outcome: "failed", reason: "size", file: "a.mkv" }, 10, undefined, NOW));
+    expect(query.get("since")).toBe(new Date(2026, 8, 30).toISOString());
+    expect(query.get("until")).toBe(new Date(2026, 9, 2).toISOString());
+    expect([query.get("source"), query.get("outcome"), query.get("reason"), query.get("file")]).toEqual(["indexer", "failed", "size", "a.mkv"]);
+  });
+
+  it("sorts rows without a detail as empty text, and equal text newest first", () => {
+    const rows = [
+      { title: "A", whenUtc: "2026-10-01T10:00:00Z" },
+      { title: "B", detail: "x", whenUtc: "2026-10-01T12:00:00Z" },
+      { title: "C", whenUtc: "2026-10-01T11:00:00Z" }
+    ];
+    expect(sortActivityRows(rows, { id: "what", direction: "asc" }).map((row) => row.title)).toEqual(["C", "A", "B"]);
+    expect(sortActivityRows(rows, { id: "what", direction: "desc" }).map((row) => row.title)).toEqual(["B", "C", "A"]);
   });
 });

@@ -104,3 +104,19 @@ describe("describeMetadataSearchError", () => {
     expect(describeMetadataSearchError(new Error("x")).message).toBe("Metadata search failed.");
   });
 });
+
+describe("describeMetadataCheck, the other ways a check can end", () => {
+  it("calls a check that hit a rate limit busy, and one that carries no message falls back to the failure's next step", () => {
+    const view = describeMetadataCheck(status(), test({ failure: failure("QuotaExceeded"), resultCount: 0, message: "" }));
+    expect(view).toMatchObject({ primary: "The service is busy", chip: "Busy", tone: "warn", secondary: "Check the service and network." });
+  });
+
+  it("falls back to the last failure's next step when the status has no message of its own", () => {
+    const view = describeMetadataCheck(status({ lastFailure: failure("Unavailable"), message: "" }), null);
+    expect(view.secondary).toBe("Check the service and network.");
+  });
+
+  it("reads a failure body that is not JSON as an ordinary refusal", () => {
+    expect(describeMetadataSearchError(new ApiRequestError("Bad gateway.", 502, "/api/metadata/search", "<html>"))).toEqual({ message: "Bad gateway.", outage: false });
+  });
+});

@@ -50,5 +50,5 @@ test("the Cloudflare note on a built-in tracker names a page that opens, one cli
   await page.getByRole("button", { name: "Discard and continue" }).click();
   await expect(page).toHaveURL(/\/settings\/general/);
   await expect(page.getByText("Cloudflare helper").first()).toBeVisible();
-  await expect(page.getByLabel(/Helper address/)).toBeVisible();
+  await expect(page.getByRole("textbox", { name: /Helper address/ })).toBeVisible();
 });
