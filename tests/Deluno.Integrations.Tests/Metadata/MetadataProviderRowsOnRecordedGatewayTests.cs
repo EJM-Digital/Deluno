@@ -29,6 +29,8 @@ public sealed class MetadataProviderRowsOnRecordedGatewayTests : IDisposable
 
     public MetadataProviderRowsOnRecordedGatewayTests() => Directory.CreateDirectory(_dataRoot);
 
+    private Mock<IPlatformSettingsRepository>? LastSettings { get; set; }
+
     private static Recording R(string state) => RecordedReplies.Tmdb(state);
 
     private static HttpResponseMessage Reply(string state) => R(state).Single.Reply.ToResponse();
@@ -74,6 +76,8 @@ public sealed class MetadataProviderRowsOnRecordedGatewayTests : IDisposable
     private static HttpResponseMessage DirectRefusal() => RecordedReplies.Tmdbapi("wrong-key").Exchanges[0].Reply.ToResponse();
 
     private static bool IsGateway(HttpRequestMessage request) => request.RequestUri!.Host == "metadata.deluno.test";
+
+    private static bool IsTvdbApi(HttpRequestMessage request) => request.RequestUri!.Host == "api4.thetvdb.com";
 
     private static bool IsTmdbApi(HttpRequestMessage request) => request.RequestUri!.Host == "api.themoviedb.org";
 
@@ -309,14 +313,162 @@ public sealed class MetadataProviderRowsOnRecordedGatewayTests : IDisposable
         Assert.Contains("api_key=local-key", asked.Query, StringComparison.Ordinal);
     }
 
+    // ---- broker mode holds no direct key ----
+
+    [Fact]
+    public async Task Broker_mode_never_reads_a_direct_key_or_the_saved_secret_and_never_calls_TMDb_or_TheTVDB_whatever_the_install_holds()
+    {
+        var direct = new List<Uri>();
+        var rig = await RigAsync(request =>
+        {
+            if (IsTmdbApi(request) || IsTvdbApi(request)) direct.Add(request.RequestUri!);
+            return Gateway(request);
+        }, mode: "broker", tmdbKey: "local-tmdb-key", tvdbKey: "local-tvdb-key");
+
+        var films = await rig.SearchAsync(Lookup("Sintel", "movies", 2010), CancellationToken.None);
+        var shows = await rig.SearchAsync(Lookup("Breaking Bad Broker Only", "tv"), CancellationToken.None);
+        var record = await rig.ResolveProviderRecordAsync(Lookup("Breaking Bad", "tv", 2008, "1396"), CancellationToken.None);
+
+        Assert.Equal("Sintel", Assert.Single(films).Title);
+        Assert.NotEmpty(shows);
+        Assert.Equal(MetadataProviderRecordStatus.Found, record.Status);
+        Assert.Empty(direct);
+        // The saved (legacy) secrets are not even read in broker mode, so a managed install can never end up using one.
+        LastSettings!.Verify(repo => repo.GetMetadataProviderSecretAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ---- the search cache: limit and lifetime ----
+
+    [Fact]
+    public async Task A_broker_answer_with_more_than_12_results_lists_12_and_the_answer_is_kept_for_12_hours_then_asked_again()
+    {
+        var calls = 0;
+        var clock = new FakeTimeProvider(DateTimeOffset.Parse("2026-10-29T00:00:00Z"));
+        // The recorded Sintel search, with its one result copied up to 13 (the only value changed): a gateway answering with more than Deluno shows.
+        var thirteen = R("search-movie").Body("", ("+results", 13));
+        var rig = await RigAsync(request =>
+        {
+            if (!IsGateway(request)) return Gateway(request);
+            calls++;
+            return RecordedReplies.Json(thirteen);
+        }, clock: clock);
+
+        var first = await rig.SearchAsync(Lookup("Sintel Twelve", "movies", 2010), CancellationToken.None);
+        Assert.Equal(12, first.Count);
+        var afterFirst = calls;
+
+        clock.Advance(TimeSpan.FromHours(11));
+        await rig.SearchAsync(Lookup("Sintel Twelve", "movies", 2010), CancellationToken.None);
+        Assert.Equal(afterFirst, calls);
+
+        clock.Advance(TimeSpan.FromHours(2));
+        await rig.SearchAsync(Lookup("Sintel Twelve", "movies", 2010), CancellationToken.None);
+        Assert.True(calls > afterFirst, "after 12 hours the broker is asked again");
+    }
+
+    // ---- TheTVDB beside TMDb ----
+
+    [Theory]
+    [InlineData("unavailable")]
+    [InlineData("timeout")]
+    public async Task A_TheTVDB_failure_during_a_TV_search_or_a_record_lookup_shows_TMDbs_results_and_is_not_a_metadata_outage(string how)
+    {
+        var rig = await RigAsync(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.StartsWith("/metadata/tvdb/", StringComparison.Ordinal))
+            {
+                return how == "unavailable"
+                    ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+                    : throw new HttpRequestException("timed out", new TimeoutException());
+            }
+
+            return Gateway(request);
+        });
+
+        var shows = await rig.SearchAsync(Lookup("Breaking Bad TheTVDB " + how, "tv"), CancellationToken.None);
+        var record = await rig.ResolveProviderRecordAsync(Lookup("Breaking Bad", "tv", 2008, "1396"), CancellationToken.None);
+
+        Assert.Equal(5, shows.Count);
+        Assert.Contains(shows, show => show.ProviderId == "1396" && show.Title == "Breaking Bad");
+        Assert.Equal(MetadataProviderRecordStatus.Found, record.Status);
+        Assert.Equal("Breaking Bad", record.Result!.Title);
+        Assert.Null(rig.LastFailure);
+    }
+
+    [Fact]
+    public async Task The_IMDb_id_TMDb_gave_finds_the_TheTVDB_id_when_TMDb_sent_none_and_the_pair_is_remembered_for_the_next_question()
+    {
+        var asked = new List<string>();
+        var withoutTvdbId = R("search-tv-by-provider-id").Body("", ("results.0.tvDbId", RecordedReplies.JsonNull));
+        var rig = await RigAsync(request =>
+        {
+            asked.Add(request.RequestUri!.AbsolutePath);
+            return request.RequestUri.AbsolutePath == "/metadata/search" ? RecordedReplies.Json(withoutTvdbId) : Gateway(request);
+        });
+
+        var record = await rig.ResolveProviderRecordAsync(Lookup("Breaking Bad", "tv", 2008, "1396"), CancellationToken.None);
+
+        Assert.Equal(MetadataProviderRecordStatus.Found, record.Status);
+        Assert.Contains("/metadata/tvdb/remote/tt0903747", asked);
+        Assert.Equal("81189", record.Result!.TvDbId);
+        Assert.Equal("tvdb", record.Result.DataSource);
+
+        // The TMDb to TheTVDB pair is now remembered: the episode orders of the same show need no second remote-id lookup.
+        asked.Clear();
+        await rig.GetSeriesEpisodeGroupsAsync("1396", CancellationToken.None);
+        Assert.DoesNotContain("/metadata/tvdb/remote/tt0903747", asked);
+        Assert.Contains("/metadata/tvdb/tv/81189/episode-groups", asked);
+    }
+
+    [Fact]
+    public async Task TheTVDB_is_asked_through_the_gateway_first_and_this_installs_key_answers_only_in_hybrid_when_the_gateway_cannot()
+    {
+        var direct = new List<Uri>();
+        var gatewayTvdb = 0;
+
+        // Broker mode, key on the install: the gateway answers; the key is never used.
+        var broker = await RigAsync(request =>
+        {
+            if (IsTvdbApi(request)) direct.Add(request.RequestUri!);
+            if (request.RequestUri!.AbsolutePath.StartsWith("/metadata/tvdb/", StringComparison.Ordinal)) gatewayTvdb++;
+            return Gateway(request);
+        }, mode: "broker", tvdbKey: "local-tvdb-key");
+        var viaGateway = await broker.SearchAsync(Lookup("Breaking Bad Via Gateway", "tv"), CancellationToken.None);
+        Assert.NotEmpty(viaGateway);
+        Assert.True(gatewayTvdb > 0, "TheTVDB is asked through the gateway first");
+        Assert.Empty(direct);
+
+        // Hybrid, the gateway cannot answer TheTVDB (503): this install's key is used, and TheTVDB's real refusal of an unknown key leaves TMDb's results.
+        string? login = null;
+        var hybrid = await RigAsync(async (request, token) =>
+        {
+            if (IsTvdbApi(request))
+            {
+                login = request.Content is null ? "" : await request.Content.ReadAsStringAsync(token);
+                return RecordedReplies.Tvdbapi("wrong-key").Exchanges[0].Reply.ToResponse();
+            }
+
+            return request.RequestUri!.AbsolutePath.StartsWith("/metadata/tvdb/", StringComparison.Ordinal)
+                ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+                : Gateway(request);
+        }, mode: "hybrid", tvdbKey: "local-tvdb-key");
+        var viaKey = await hybrid.SearchAsync(Lookup("Breaking Bad Via Key", "tv"), CancellationToken.None);
+
+        Assert.NotNull(login);
+        Assert.Contains("local-tvdb-key", login, StringComparison.Ordinal);
+        Assert.Equal(5, viaKey.Count);
+        Assert.Null(hybrid.LastFailure);
+    }
+
     // ---- the rig ----
 
-    private Task<TmdbMetadataProvider> RigAsync(Func<HttpRequestMessage, HttpResponseMessage> respond, string language = "en", string mode = "broker", bool broker = true, string? tmdbKey = null)
-        => RigAsync((request, _) => Task.FromResult(respond(request)), language, mode, broker, tmdbKey);
+    private Task<TmdbMetadataProvider> RigAsync(Func<HttpRequestMessage, HttpResponseMessage> respond, string language = "en", string mode = "broker", bool broker = true, string? tmdbKey = null, string? tvdbKey = null, TimeProvider? clock = null)
+        => RigAsync((request, _) => Task.FromResult(respond(request)), language, mode, broker, tmdbKey, tvdbKey, clock);
 
-    private async Task<TmdbMetadataProvider> RigAsync(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond, string language = "en", string mode = "broker", bool broker = true, string? tmdbKey = null)
+    private async Task<TmdbMetadataProvider> RigAsync(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond, string language = "en", string mode = "broker", bool broker = true, string? tmdbKey = null, string? tvdbKey = null, TimeProvider? clock = null)
     {
         var settings = new Mock<IPlatformSettingsRepository>();
+        LastSettings = settings;
         settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PlatformSettingsSnapshot(
                 MovieRootPath: null, SeriesRootPath: null, DownloadsPath: null, IncompleteDownloadsPath: null,
@@ -336,7 +488,7 @@ public sealed class MetadataProviderRowsOnRecordedGatewayTests : IDisposable
 
         var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
         var factory = new SqliteDatabaseConnectionFactory(storageOptions);
-        var clock = TimeProvider.System;
+        clock ??= TimeProvider.System;
         await new CacheSchemaInitializer(
             factory,
             new SqliteDatabaseMigrator(factory, clock),
@@ -345,7 +497,7 @@ public sealed class MetadataProviderRowsOnRecordedGatewayTests : IDisposable
         var policy = new IntegrationResiliencePolicy(clock, factory, NullLogger<IntegrationResiliencePolicy>.Instance);
         return new TmdbMetadataProvider(
             new HttpClient(new StubHandler(respond)),
-            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Deluno:Metadata:ProviderMode"] = mode, ["Deluno:Metadata:TMDbApiKey"] = tmdbKey }).Build(),
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Deluno:Metadata:ProviderMode"] = mode, ["Deluno:Metadata:TMDbApiKey"] = tmdbKey, ["Deluno:Metadata:TvdbApiKey"] = tvdbKey }).Build(),
             settings.Object,
             factory,
             storageOptions,
@@ -354,6 +506,15 @@ public sealed class MetadataProviderRowsOnRecordedGatewayTests : IDisposable
             new OutboundRequestThrottle(clock, NullLogger<OutboundRequestThrottle>.Instance),
             NullLogger<TmdbMetadataProvider>.Instance,
             new MetadataServiceHealth(clock));
+    }
+
+    private sealed class FakeTimeProvider(DateTimeOffset start) : TimeProvider
+    {
+        private DateTimeOffset _now = start;
+
+        public override DateTimeOffset GetUtcNow() => _now;
+
+        public void Advance(TimeSpan by) => _now += by;
     }
 
     private sealed class StubHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond) : HttpMessageHandler

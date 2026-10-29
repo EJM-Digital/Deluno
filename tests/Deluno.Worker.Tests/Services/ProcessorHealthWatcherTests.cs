@@ -19,7 +19,7 @@ public sealed class ProcessorHealthWatcherTests
     private static readonly TimeSpan TargetBack = TimeSpan.FromSeconds(20);   // 15 s cadence + 2 s tick + slack
     private static readonly TimeSpan TargetDown = TimeSpan.FromSeconds(45);   // 30 s cadence + 2 s tick + 12 s hang
 
-    public enum Reply { Answered, Unreachable, Refused, Hang }
+    public enum Reply { Answered, Unreachable, Refused, Hang, Throws }
 
     private sealed class Rig
     {
@@ -31,6 +31,8 @@ public sealed class ProcessorHealthWatcherTests
         public readonly List<Task> Outstanding = [];
         public ProcessorHealthWatcher Watcher = null!;
         public int SettingsReads;
+        public bool RepoThrows;
+        public readonly List<string> Warnings = [];
         private int _ticks;
         private int _parked;
 
@@ -63,7 +65,9 @@ public sealed class ProcessorHealthWatcherTests
         {
             var repo = new Mock<IProcessorRepository>();
             repo.Setup(r => r.ListProcessorConnectionsAsync(It.IsAny<CancellationToken>()))
-                .ReturnsAsync(() => Items.Values.ToArray());
+                .Returns(() => RepoThrows
+                    ? Task.FromException<IReadOnlyList<ProcessorConnectionItem>>(new InvalidOperationException("the processor list could not be read"))
+                    : Task.FromResult<IReadOnlyList<ProcessorConnectionItem>>(Items.Values.ToArray()));
             repo.Setup(r => r.RecordProcessorConnectionHealthAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((string id, string status, string? message, CancellationToken _) =>
                 {
@@ -96,6 +100,8 @@ public sealed class ProcessorHealthWatcherTests
                                 Interlocked.Increment(ref _parked);
                                 try { return await never.Task; } finally { Interlocked.Decrement(ref _parked); }
                             }
+                        case Reply.Throws:
+                            throw new InvalidOperationException("the probe broke");
                         case Reply.Unreachable:
                             return new ProcessorStatusSupport(ProcessorAnswer.Unreachable, false, false, $"Deluno could not reach {item.Name}.");
                         case Reply.Refused:
@@ -111,7 +117,7 @@ public sealed class ProcessorHealthWatcherTests
             var services = new ServiceCollection()
                 .AddSingleton(repo.Object).AddSingleton(service.Object).AddSingleton(settings.Object)
                 .BuildServiceProvider();
-            Watcher = new ProcessorHealthWatcher(NullLogger<ProcessorHealthWatcher>.Instance, services.GetRequiredService<IServiceScopeFactory>(), Clock);
+            Watcher = new ProcessorHealthWatcher(new WarningLog(Warnings), services.GetRequiredService<IServiceScopeFactory>(), Clock);
             return this;
         }
 
@@ -128,6 +134,24 @@ public sealed class ProcessorHealthWatcherTests
 
                 await SettleAsync();
             }
+        }
+
+        /// <summary>Moves the clock two seconds at a time for the hosted loop (started with StartAsync) and waits, in real time and bounded, for each tick to land.</summary>
+        public async Task<TimeSpan?> UntilHostedAsync(Func<bool> condition, TimeSpan limit)
+        {
+            var start = Clock.GetUtcNow();
+            while (Clock.GetUtcNow() - start <= limit)
+            {
+                if (condition()) return Clock.GetUtcNow() - start;
+                Clock.Advance(ProcessorHealthWatcher.TickInterval);
+                var deadline = Environment.TickCount64 + 2_000;
+                while (Environment.TickCount64 < deadline && !condition())
+                {
+                    await Task.Delay(5); // reason: poll interval inside a bounded wait (2 s above)
+                }
+            }
+
+            return condition() ? Clock.GetUtcNow() - start : null;
         }
 
         public async Task<TimeSpan?> UntilAsync(Func<bool> condition, TimeSpan limit)
@@ -274,8 +298,67 @@ public sealed class ProcessorHealthWatcherTests
     }
 
     [Fact]
+    public async Task A_probe_that_throws_is_logged_and_the_processor_is_looked_at_again_on_its_schedule_without_stopping_the_others()
+    {
+        var rig = new Rig();
+        rig.Add("broken", "healthy", Reply.Throws);
+        rig.Add("steady");
+        rig.Build();
+
+        await rig.StepAsync(65);
+
+        // Healthy and broken probes alike are asked every 30 s: three looks in 65 s, each one logged, and every task finished without a fault.
+        Assert.InRange(rig.Probes["broken"], 2, 3);
+        Assert.Equal(rig.Probes["broken"], rig.Warnings.Count(warning => warning.Contains("Could not check processor broken", StringComparison.Ordinal)));
+        Assert.All(rig.Outstanding, task => Assert.False(task.IsFaulted));
+        Assert.InRange(rig.Probes["steady"], 2, 3);
+        Assert.Equal("healthy", rig.Items["steady"].HealthStatus);
+    }
+
+    [Fact]
+    public async Task A_look_that_cannot_read_the_processor_list_is_logged_and_the_next_look_carries_on_and_stopping_the_service_is_clean()
+    {
+        var rig = new Rig();
+        rig.Add("p1", "unreachable", Reply.Answered);
+        rig.Build();
+        rig.RepoThrows = true;
+        using var host = new CancellationTokenSource();
+
+        await rig.Watcher.StartAsync(host.Token);
+        for (var i = 0; i < 6; i++)
+        {
+            rig.Clock.Advance(ProcessorHealthWatcher.TickInterval);
+            await Task.Delay(20); // reason: lets the hosted loop, which runs on its own thread, take its tick from the fake clock
+        }
+
+        Assert.Contains(rig.Warnings, warning => warning.Contains("could not finish a look", StringComparison.Ordinal));
+        Assert.Equal(0, rig.Probes["p1"]);
+
+        rig.RepoThrows = false;
+        var took = await rig.UntilHostedAsync(() => rig.Items["p1"].HealthStatus == "healthy", TimeSpan.FromSeconds(30));
+        Assert.NotNull(took);
+
+        await rig.Watcher.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
     public void The_old_maintenance_pass_no_longer_probes_processors_so_there_is_one_owner()
     {
         Assert.Null(typeof(WorkPlanner).GetMethod("RunProcessorHealthPassAsync"));
+    }
+
+    private sealed class WarningLog(List<string> sink) : Microsoft.Extensions.Logging.ILogger<ProcessorHealthWatcher>
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == Microsoft.Extensions.Logging.LogLevel.Warning)
+            {
+                lock (sink) sink.Add(formatter(state, exception));
+            }
+        }
     }
 }

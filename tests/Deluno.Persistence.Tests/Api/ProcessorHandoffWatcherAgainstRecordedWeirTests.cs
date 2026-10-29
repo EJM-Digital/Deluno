@@ -299,4 +299,49 @@ public sealed class ProcessorHandoffWatcherAgainstRecordedWeirTests
         Assert.True(won);
         Assert.Equal(ProcessorHandoffStatuses.Dismissed, (await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))!.Status);
     }
+
+    private static async Task<IReadOnlyList<Deluno.Contracts.HealthCheckOutcome>> HoldCheckAsync(ApplicationTestHost app)
+    {
+        using var scope = app.Services.CreateScope();
+        var check = scope.ServiceProvider.GetServices<Deluno.Worker.HealthChecks.IHealthCheck>().OfType<Deluno.Worker.HealthChecks.Checks.ProcessorHandoffHoldHealthCheck>().Single();
+        return (await check.RunAsync(CancellationToken.None)).ToArray();
+    }
+
+    [Fact]
+    public async Task A_hand_off_Weir_never_received_is_on_Health_as_lost_with_its_own_three_options_and_stays_off_it_while_Deluno_is_still_waiting()
+    {
+        await using var weir = await WeirAsync(RecordedAppServer.Chain(Status("status-unknown-id"), RecordedAppServer.Answering("POST", "/webhook/deluno", RecordedReplies.Weir("handoff-resend-accepted").Exchanges[0])), "capabilities", "handoff-resend-accepted");
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app, weir);
+        var handoff = await SentAsync(app, scene, "Lost.Film.2020.1080p.WEB-DL-DELUNO");
+
+        await WatchAsync(app, DateTimeOffset.UtcNow.AddMinutes(5));
+        Assert.Empty(await HoldCheckAsync(app));
+        await WatchAsync(app, DateTimeOffset.UtcNow.AddMinutes(20));
+        Assert.Empty(await HoldCheckAsync(app));
+        await WatchAsync(app, DateTimeOffset.UtcNow.AddMinutes(40));
+
+        var lost = Assert.Single(await HoldCheckAsync(app));
+        Assert.Equal($"processor-handoff:{handoff.Id}", lost.Id);
+        Assert.Equal("Lost.Film.2020.1080p.WEB-DL-DELUNO is held with Weir", lost.Name.Replace(scene.ConnectionName, "Weir"));
+        Assert.Contains("Send it again once", lost.Message);
+        Assert.Equal("Import the original, hand it to the processor again, or search for another release.", lost.Fix);
+        Assert.Contains("\"status\":\"lost\"", lost.DetailsJson);
+    }
+
+    [Fact]
+    public async Task A_hand_off_Weir_has_scheduled_for_later_is_waited_for_however_long_and_never_appears_on_Health_as_held()
+    {
+        await using var weir = await WeirAsync(Status("status-scheduled-file-on-hold"), "capabilities");
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app, weir);
+        var handoff = await SentAsync(app, scene, "Held.Film.2020.1080p.WEB-DL-DELUNO");
+
+        await WatchAsync(app, DateTimeOffset.UtcNow.AddDays(3));
+
+        var after = (await Repository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None))!;
+        Assert.Equal(ProcessorHandoffStatuses.Submitted, after.Status);
+        Assert.Equal("scheduled", after.Processor?.State);
+        Assert.Empty(await HoldCheckAsync(app));
+    }
 }

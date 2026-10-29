@@ -1,0 +1,25 @@
+{
+  "app": "tmdb",
+  "version": "2026-10-29",
+  "state": "artwork-backdrop",
+  "recordedAt": "2026-10-29T00:20:29Z",
+  "note": "GET /artwork/w342/{file} on the gateway: the backdrop of Sintel (in a small size), an image/jpeg.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/artwork/w342/msqeiEyIRpPAtrCeRGFNZQ9tkJL.jpg"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "image/jpeg",
+          "cache-control": "public, max-age=2592000, immutable"
+        },
+        "bodyFile": "artwork-backdrop.jpg",
+        "bodyBytes": 19276,
+        "bodySha256": "4c159605230af6891ec9d277f4d0d95d613161104d6fb36e50df4951d0b32e3d"
+      }
+    }
+  ]
+}

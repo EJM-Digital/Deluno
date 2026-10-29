@@ -1,0 +1,25 @@
+{
+  "app": "tmdb",
+  "version": "2026-10-29",
+  "state": "artwork-poster",
+  "recordedAt": "2026-10-29T00:20:29Z",
+  "note": "GET /artwork/w185/{file} on the gateway: the poster of Sintel (the file the search for Sintel names, in the small size), an image/jpeg.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/artwork/w185/l98Zns4oQe1BSvbF4hJ8oL6VSf0.jpg"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "image/jpeg",
+          "cache-control": "public, max-age=2592000, immutable"
+        },
+        "bodyFile": "artwork-poster.jpg",
+        "bodyBytes": 20387,
+        "bodySha256": "b648720bbdb184537489debad2c89a4b153b154cda3b0777344f6df6d987a757"
+      }
+    }
+  ]
+}
