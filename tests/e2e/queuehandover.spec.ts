@@ -74,7 +74,8 @@ for (const kind of CLIENT_KINDS) {
     const sent = films.get(kind)!;
     expect(await handoffOf(stack, sent.film.release), "The hand-off exists").toBeTruthy();
     const status = (await telemetryRows(stack)).find((r) => String(r.releaseName ?? "").includes(sent.film.release))?.status;
-    const page = await openDeluno(browser, stack, "/queue");
+    // A torrent keeps its row in Live downloads; a Usenet job has left the client, so its hand-off is in the Hand-offs view (#1426).
+    const page = await openDeluno(browser, stack, isUsenet(kind) ? "/queue?view=handoffs" : "/queue");
     try {
       // The download (a torrent's row) or its hand-off (a Usenet job's, which has left the client) is on the screen by its title.
       await expect(page.getByText(sent.film.title).first(), `The ${kind} download or its hand-off is on the screen`).toBeVisible({ timeout: 60_000 });
