@@ -29,7 +29,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Deluno.Persistence.Tests.Filesystem;
 
-public sealed class ImportPipelineServiceTests
+public sealed partial class ImportPipelineServiceTests
 {
     [Fact]
     public async Task ExecuteAsync_stages_verifies_places_file_then_updates_catalog()
