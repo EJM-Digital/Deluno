@@ -265,3 +265,76 @@ test("the popular list is cached under popular:v1:{type}:{page} and served over 
   assert.equal((await shows.json()).results[0].name, "Gamma");
   assert.deepEqual([...cache.store.keys()].sort(), ["popular:v1:movies:2", "popular:v1:tv:1"]);
 });
+
+test("release dates are served over HTTP as the earliest of each kind, cached under release-dates:v1:{id} for 6 hours", async () => {
+  const cache = kv();
+  const stub = tmdb({
+    "/3/movie/5/release_dates": {
+      results: [
+        { iso_3166_1: "US", release_dates: [{ type: 3, release_date: "2020-05-01T00:00:00.000Z" }, { type: 4, release_date: "2020-07-01T00:00:00.000Z" }] },
+        { iso_3166_1: "GB", release_dates: [{ type: 3, release_date: "2020-04-01T00:00:00.000Z" }, { type: 5, release_date: "2020-09-01T00:00:00.000Z" }, { type: 1, release_date: "2019-01-01T00:00:00.000Z" }] }
+      ]
+    }
+  });
+
+  const response = await ask("/metadata/movie/5/release-dates", { env: { METADATA_CACHE: cache }, stub });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Cache-Control"), "public, max-age=600");
+  const body = await response.json();
+  assert.deepEqual([body.inCinemas, body.digital, body.physical], ["2020-04-01", "2020-07-01", "2020-09-01"]);
+  assert.equal(cache.puts.find((put) => put.key === "release-dates:v1:5").options.expirationTtl, 60 * 60 * 6);
+  assert.equal((await ask("/metadata/movie/6/release-dates", { stub })).status, 404);
+});
+
+test("a collection is served over HTTP under collection:v1:{id} with its member films, and an unknown one is 404 not_found", async () => {
+  const cache = kv();
+  const stub = tmdb({ "/3/collection/9": { id: 9, name: " Saga ", parts: [{ id: 1, title: "Part One", release_date: "2001-01-01" }, { id: 2 }] } });
+
+  const response = await ask("/metadata/movie/9/collection", { env: { METADATA_CACHE: cache }, stub });
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.name, "Saga");
+  assert.deepEqual(body.movies.map((movie) => [movie.providerId, movie.title, movie.year]), [["1", "Part One", 2001]]);
+  assert.ok(cache.store.has("collection:v1:9"));
+  const missing = await ask("/metadata/movie/10/collection", { stub });
+  assert.equal(missing.status, 404);
+  assert.deepEqual(await missing.json(), { error: "not_found" });
+});
+
+test("translations are served over HTTP and cached under translations:v1:{kind}:{id}, one entry per kind", async () => {
+  const cache = kv();
+  const stub = tmdb({
+    "/3/movie/5/translations": { translations: [{ iso_639_1: "fr", iso_3166_1: "FR", data: { title: "Un film", overview: "" } }, { iso_639_1: "de", data: {} }] },
+    "/3/tv/5/translations": { translations: [{ iso_639_1: "es", data: { name: "Una serie" } }] }
+  });
+
+  const movie = await (await ask("/metadata/movie/5/translations", { env: { METADATA_CACHE: cache }, stub })).json();
+  const show = await (await ask("/metadata/tv/5/translations", { env: { METADATA_CACHE: cache }, stub })).json();
+
+  assert.deepEqual(movie.translations, [{ language: "fr", region: "FR", title: "Un film", overview: null, tagline: null }]);
+  assert.equal(show.translations[0].title, "Una serie");
+  assert.deepEqual([...cache.store.keys()].sort(), ["translations:v1:movie:5", "translations:v1:tv:5"]);
+});
+
+test("the artwork route is answered before the limiter wraps fetch, so it spends no provider call", async () => {
+  let spent = 0;
+  const env = { PROVIDER_CALLS_PER_INSTALL: { limit: async () => { spent++; return { success: true }; } } };
+  const realCaches = globalThis.caches;
+  const realFetch = globalThis.fetch;
+  const stored = new Map();
+  globalThis.caches = { default: { match: async (request) => stored.get(request.url), put: async (request, response) => { stored.set(request.url, response); } } };
+  globalThis.fetch = async () => new Response("image-bytes", { status: 200, headers: { "Content-Type": "image/jpeg" } });
+  try {
+    const response = await gateway.fetch(new Request("https://gateway.example/artwork/w185/poster.jpg"), { TMDB_API_KEY: "key", METADATA_CACHE: kv(), ...env });
+
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), "image-bytes");
+    assert.equal(spent, 0);
+    assert.match(response.headers.get("Cache-Control"), /max-age=2592000/);
+  } finally {
+    globalThis.caches = realCaches;
+    globalThis.fetch = realFetch;
+  }
+});
