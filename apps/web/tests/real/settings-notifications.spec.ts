@@ -134,24 +134,6 @@ test.describe("Settings > Notifications", () => {
     expect((await hooks(page)).find((h) => h.id === hook.id)?.provider).toBe("generic");
   });
 
-  test("a webhook named through the API keeps its name when the drawer saves it, and a new address gives it a derived name again", async ({ page }) => {
-    const name = `Movie night ${stamp}`;
-    const hook = await makeHook(page, name, `http://127.0.0.1:1/keep-${stamp}`);
-    expect(hook.name).toBe(name);
-    await page.reload();
-    await untilQuiet(page);
-    await rowOf(page, name).click();
-    const drawer = page.getByRole("dialog");
-    await drawer.getByRole("switch", { name: /^Enabled/ }).click();
-    await drawer.getByRole("button", { name: "Save webhook", exact: true }).click();
-    await expect(drawer.getByText("Saved just now")).toBeVisible();
-    expect((await hooks(page)).find((h) => h.id === hook.id)?.name).toBe(name);
-    await drawer.getByLabel("URL", { exact: true }).fill(`http://127.0.0.1:2/moved-${stamp}`);
-    await drawer.getByRole("button", { name: "Save webhook", exact: true }).click();
-    await expect(drawer.getByText("Saved just now")).toBeVisible();
-    expect((await hooks(page)).find((h) => h.id === hook.id)?.name).not.toBe(name);
-  });
-
   test("the drawer's Delivery section says never fired and warns while notifications are paused, and the Enabled switch pauses the webhook", async ({ page }) => {
     await api(page, "PATCH" as "POST", "/api/settings", { enableNotifications: false });
     await page.reload();

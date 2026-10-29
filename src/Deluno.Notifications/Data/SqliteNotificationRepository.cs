@@ -62,21 +62,18 @@ public sealed class SqliteNotificationRepository(
         return items;
     }
 
-    /// <summary>A name sent with the request is kept (trimmed). Only a missing one falls back to #1076's "Discord on discord.com": two of one app on one host tell themselves apart by port, then a suffix.</summary>
+    /// <summary>#1076: "Discord on discord.com". Never typed; two of one app on one host tell themselves apart by port, then a suffix.</summary>
     private static async Task<string> NameForAsync(
-        string? sentName,
         System.Data.Common.DbConnection connection,
         string id,
         string provider,
         string? url,
         CancellationToken cancellationToken)
-        => !string.IsNullOrWhiteSpace(sentName)
-            ? sentName.Trim()
-            : ConnectionNames.Unique(
-                ConnectionNames.AppOnHost(NotificationProviders.DisplayName(provider), url),
-                ConnectionNames.PortOf(url),
-                id,
-                await ConnectionNameRows.OtherNamesAsync(connection, "notification_webhooks", id, cancellationToken));
+        => ConnectionNames.Unique(
+            ConnectionNames.AppOnHost(NotificationProviders.DisplayName(provider), url),
+            ConnectionNames.PortOf(url),
+            id,
+            await ConnectionNameRows.OtherNamesAsync(connection, "notification_webhooks", id, cancellationToken));
 
     private static async Task<string> ProviderOfAsync(System.Data.Common.DbConnection connection, string id, CancellationToken cancellationToken)
     {
@@ -109,7 +106,7 @@ public sealed class SqliteNotificationRepository(
             """;
 
         AddParameter(command, "@id", id);
-        AddParameter(command, "@name", await NameForAsync(request.Name, connection, id, NotificationProviders.Normalize(request.Provider), request.Url, cancellationToken));
+        AddParameter(command, "@name", await NameForAsync(connection, id, NotificationProviders.Normalize(request.Provider), request.Url, cancellationToken));
         AddParameter(command, "@url", ProtectUrl(request.Url?.Trim() ?? string.Empty));
         AddParameter(command, "@eventFilters", NormalizeCsv(request.EventFilters));
         AddParameter(command, "@isEnabled", request.IsEnabled ? 1 : 0);
@@ -156,7 +153,7 @@ public sealed class SqliteNotificationRepository(
             """;
 
         AddParameter(command, "@id", id);
-        AddParameter(command, "@name", await NameForAsync(request.Name, connection, id, request.Provider is null ? await ProviderOfAsync(connection, id, cancellationToken) : NotificationProviders.Normalize(request.Provider), url, cancellationToken));
+        AddParameter(command, "@name", await NameForAsync(connection, id, request.Provider is null ? await ProviderOfAsync(connection, id, cancellationToken) : NotificationProviders.Normalize(request.Provider), url, cancellationToken));
         AddParameter(command, "@url", ProtectUrl(url));
         AddParameter(command, "@eventFilters", NormalizeCsv(request.EventFilters));
         AddParameter(command, "@isEnabled", request.IsEnabled ? 1 : 0);

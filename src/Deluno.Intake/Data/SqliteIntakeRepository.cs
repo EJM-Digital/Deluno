@@ -451,13 +451,11 @@ public sealed class SqliteIntakeRepository(
 
         item = item with
         {
-            Name = !string.IsNullOrWhiteSpace(request.Name)
-                ? request.Name.Trim()
-                : ConnectionNames.Unique(
-                    ConnectionNames.ImportList(item.Provider, item.FeedUrl),
-                    null,
-                    item.Id,
-                    await ConnectionNameRows.OtherNamesAsync(connection, "intake_sources", item.Id, cancellationToken))
+            Name = ConnectionNames.Unique(
+                ConnectionNames.ImportList(item.Provider, item.FeedUrl),
+                null,
+                item.Id,
+                await ConnectionNameRows.OtherNamesAsync(connection, "intake_sources", item.Id, cancellationToken))
         };
 
         using var command = connection.CreateCommand();
@@ -560,10 +558,8 @@ public sealed class SqliteIntakeRepository(
         AddParameter(command, "@id", id);
         var updatedProvider = NormalizeName(request.Provider) ?? current.Provider;
         var updatedFeed = NormalizeName(request.FeedUrl) ?? current.FeedUrl;
-        AddParameter(command, "@name", !string.IsNullOrWhiteSpace(request.Name)
-            ? request.Name.Trim()
-            : ConnectionNames.Unique(ConnectionNames.ImportList(updatedProvider, updatedFeed), null, id,
-                await ConnectionNameRows.OtherNamesAsync(connection, "intake_sources", id, cancellationToken)));
+        AddParameter(command, "@name", ConnectionNames.Unique(ConnectionNames.ImportList(updatedProvider, updatedFeed), null, id,
+            await ConnectionNameRows.OtherNamesAsync(connection, "intake_sources", id, cancellationToken)));
         AddParameter(command, "@provider", NormalizeName(request.Provider) ?? current.Provider);
         AddParameter(command, "@feedUrl", NormalizeName(request.FeedUrl) ?? current.FeedUrl);
         AddParameter(command, "@mediaType", mediaType);
