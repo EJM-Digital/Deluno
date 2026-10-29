@@ -4,14 +4,15 @@ namespace Deluno.Contracts;
 /// The one list of file extensions Deluno treats as video. Every code path that judges a file to be video (imports, the
 /// processor's output checks, title folders, file facts, repairs, path safety) reads this set; none keeps its own copy,
 /// so the same file is never imported by one path and ignored by another (#1409).
-/// <c>VideoExtensionListsTests</c> fails if any source file lists its own.
+/// <c>VideoExtensionListsTests</c> fails if any source file lists its own. A disc image (.iso) and a DVD fragment (.vob) are not
+/// a film file and are never imported as one.
 /// </summary>
 public static class VideoFileExtensions
 {
     public static readonly IReadOnlySet<string> Extensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         ".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".m2ts", ".mts",
-        ".mpg", ".mpeg", ".webm", ".flv", ".ogm", ".ogv", ".divx", ".vob", ".3gp", ".iso"
+        ".mpg", ".mpeg", ".webm", ".flv", ".ogm", ".ogv", ".divx", ".3gp"
     };
 
     /// <summary>True when the path (or bare extension, with its dot) names a video file.</summary>

@@ -25,12 +25,14 @@ public sealed class VideoExtensionListsTests
     }
 
     [Fact]
-    public void The_shared_list_holds_every_extension_any_path_used_to_accept()
+    public void The_shared_list_holds_every_extension_any_path_used_to_accept_except_disc_images_and_dvd_fragments()
     {
+        // A disc image (.iso) and a DVD fragment (.vob) are not a film file: imports refused them before the lists were
+        // joined, and still do.
         string[] used =
         [
             ".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".m2ts", ".mts", ".mpg", ".mpeg",
-            ".webm", ".flv", ".ogm", ".ogv", ".divx", ".vob", ".3gp", ".iso"
+            ".webm", ".flv", ".ogm", ".ogv", ".divx", ".3gp"
         ];
 
         Assert.Equal(used.Order(), VideoFileExtensions.Extensions.Order());
