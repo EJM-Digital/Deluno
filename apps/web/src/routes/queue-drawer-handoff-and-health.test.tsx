@@ -320,3 +320,58 @@ describe("download drawer: the way out of a hand-off the processor did not finis
     await waitFor(() => expect(calls("/api/integrations/processors/handoffs/h1/search-again")).toHaveLength(1));
   });
 });
+
+describe("download drawer: the facts and the client's own force-start", () => {
+  it("Force start is offered only when the client can force-start, and posts force-start for that download", async () => {
+    openDrawerFor(queueItem(), { supportsForceStart: true });
+
+    fireEvent.click(screen.getByRole("button", { name: "Force start" }));
+
+    await waitFor(() => expect(calls("/api/download-clients/qbit-client/queue/actions")).toHaveLength(1));
+    expect(bodyOf(calls("/api/download-clients/qbit-client/queue/actions")[0])).toEqual({ action: "force-start", queueItemId: "qbit-1" });
+  });
+
+  it("Force start is not offered to a client that cannot force-start", () => {
+    openDrawerFor(queueItem(), { supportsForceStart: false });
+
+    expect(screen.queryByRole("button", { name: "Force start" })).not.toBeInTheDocument();
+  });
+
+  it("Speed reads the MB/s when the download is moving, and Not moving when it is not; Time left reads Unknown with no estimate", () => {
+    openDrawerFor(queueItem({ speedMbps: 0, etaSeconds: 0 }));
+
+    expect(screen.getByText("Speed").nextElementSibling).toHaveTextContent("Not moving");
+    expect(screen.getByText("Time left").nextElementSibling).toHaveTextContent("Unknown");
+  });
+
+  it("Speed reads the MB/s to one decimal when the download is moving", () => {
+    openDrawerFor(queueItem({ speedMbps: 2.25, etaSeconds: 600 }));
+
+    expect(screen.getByText("Speed").nextElementSibling).toHaveTextContent("2.3 MB/s");
+  });
+
+  it("Done reads the percent, then the downloaded and the full size", () => {
+    openDrawerFor(queueItem({ progress: 40, downloadedBytes: 1_073_741_824, sizeBytes: 4_294_967_296 }));
+
+    expect(screen.getByText("Done").nextElementSibling).toHaveTextContent(/40(\.0)?%.*1(\.0)? GB of 4(\.0)? GB/);
+  });
+
+  it("Completed shows only when the client reports a completion time", () => {
+    openDrawerFor(queueItem({ completionUtc: "2026-10-14T01:00:00Z" } as Partial<DownloadQueueItem>));
+
+    expect(screen.getByText("Completed")).toBeVisible();
+  });
+
+  it("From names the indexer, or Unknown source; Tracker privacy reads Private, Public or Unknown", () => {
+    openDrawerFor(queueItem({ indexerName: "", isPrivate: true } as Partial<DownloadQueueItem>));
+
+    expect(screen.getByText("From").nextElementSibling).toHaveTextContent("Unknown source");
+    expect(screen.getByText("Tracker privacy").nextElementSibling).toHaveTextContent("Private");
+  });
+
+  it("the footer says Deluno asks the client to act and that nothing in the library is touched from here", () => {
+    openDrawerFor(queueItem());
+
+    expect(screen.getByText(/Deluno asks the client to act\. The client owns its own payload/)).toBeVisible();
+  });
+});

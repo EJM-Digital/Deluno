@@ -326,3 +326,28 @@ describe("Transfers: the summary strip cells", () => {
     expect(screen.getByText(/Media appears here from the moment Deluno sends it to a download client/)).toBeVisible();
   });
 });
+
+describe("Transfers: the Media pipeline table", () => {
+  it("the header counts the downloads in flight and the import jobs writing, in one line", () => {
+    queueLoaderData.jobs = [{ id: "job-run", jobType: "filesystem.import.execute", label: "Import", source: "download-client", sourceLabel: "A download", status: "running", payloadJson: "{}", attempts: 1, maxAttempts: 5, nextAttemptUtc: null, createdUtc: "2026-10-14T01:00:00Z", scheduledUtc: "2026-10-14T01:00:00Z", startedUtc: null, completedUtc: null, leasedUntilUtc: null, workerId: null, lastError: null, relatedEntityType: null, relatedEntityId: null, idempotencyKey: null, dedupeKey: null } as unknown as JobQueueItem];
+    showQueue([item("Count.Me.2026.1080p-GROUP")]);
+
+    expect(screen.getByText("1 in flight · 1 importing")).toBeVisible();
+  });
+
+  it("a finished download shows only its size, with no progress figure in the row", () => {
+    const release = "Finished.Row.2026.1080p-GROUP";
+    showQueue([item(release, { status: "completed", progress: 100, downloadedBytes: 1_000_000_000 })]);
+
+    const { text } = rowOf(release);
+    expect(text).not.toContain("%");
+    expect(text).not.toContain("MB/s");
+  });
+
+  it("a download that failed shows the client's failure sentence under its Stage", () => {
+    const release = "Failed.Row.2026.1080p-GROUP";
+    showQueue([item(release, { status: "failed", errorMessage: "The client refused the file." })]);
+
+    expect(rowOf(release).text).toContain("The client refused the file.");
+  });
+});
