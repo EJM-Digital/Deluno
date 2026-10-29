@@ -63,6 +63,7 @@ GET /api/attention/held-releases
 GET /api/attention/no-release
 GET /api/attention/summary
 GET /api/auth/bootstrap-status
+GET /api/auth/recovery-codes
 GET /api/auto-tag-rules/
 GET /api/automation/summary
 GET /api/backups/
@@ -292,6 +293,9 @@ POST /api/attention/no-release/{mediaType}/{id}/dismiss
 POST /api/auth/bootstrap
 POST /api/auth/login
 POST /api/auth/logout
+POST /api/auth/recovery-codes
+POST /api/auth/recovery/check
+POST /api/auth/recovery/reset
 POST /api/auto-tag-rules/
 POST /api/auto-tag-rules/run
 POST /api/automation/catalogue/bulk

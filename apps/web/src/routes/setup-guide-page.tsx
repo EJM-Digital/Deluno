@@ -1,3 +1,5 @@
+import { usePasswordPrompt, withCurrentPassword } from "../components/app/password-prompt";
+import { RecoveryCodesManager } from "../components/app/recovery-codes-manager";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { ArtworkImage } from "../components/ui/artwork-image";
 import { Link, useLoaderData, useNavigate, useSearchParams } from "react-router-dom";
@@ -703,6 +705,7 @@ export function SetupGuidePage() {
   const loaderData = useLoaderData() as SetupGuideLoaderData;
   const data = loaderData;
   const { user } = useAuth();
+  const { ask, prompt } = usePasswordPrompt();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const returnTo = safeReturnAddress(params.get("return"));
@@ -939,6 +942,12 @@ export function SetupGuidePage() {
       return;
     }
 
+    // Changing who skips sign-in asks for the password; without it that one answer is not applied and the rest are.
+    const changesSkip = form.skipSignInLocalNetwork !== null && form.skipSignInLocalNetwork !== data.localNetworkAuth.enabled;
+    const currentPassword = changesSkip
+      ? await ask("Changing who skips sign-in needs your password, because it decides who can use Deluno without one.")
+      : null;
+
     setBusy(true);
     const createdEntities: CreatedEntity[] = [];
     try {
@@ -951,7 +960,8 @@ export function SetupGuidePage() {
         hasMovies,
         hasTv,
         canCreateMovies,
-        canCreateTv
+        canCreateTv,
+        currentPassword
       }, createdEntities);
       setResult(completionResult);
     } catch (err) {
@@ -1033,6 +1043,7 @@ export function SetupGuidePage() {
 
   return (
     <div className="space-y-(--page-gap)">
+      {prompt}
       <section className="relative overflow-hidden rounded-3xl border border-hairline bg-card p-(--tile-pad) shadow-xs">
         <div aria-hidden className="absolute inset-x-0 top-0 h-px bg-linear-to-r/srgb from-transparent via-primary/70 to-transparent" />
         {/*
@@ -1758,6 +1769,9 @@ function AccountStep({ user }: { user: { displayName: string; username: string }
       <div className="rounded-xl border border-hairline bg-background/35 p-3">
         <p className="text-sm font-semibold text-foreground">{user?.displayName ?? "Your account"}</p>
         <p className="mt-1 text-xs text-muted-foreground">{user ? `Signed in as ${user.username}` : "Signed in"}</p>
+      </div>
+      <div className="mt-3">
+        <RecoveryCodesManager />
       </div>
     </FieldShell>
   );
@@ -2677,11 +2691,11 @@ export async function saveAllowedHosts(form: GuideForm, loaded: Pick<AllowedHost
  * frozen on the way #936's automation defaults can, so there is no
  * "only ever turns on" rule to preserve here.
  */
-export async function saveLocalNetworkAuth(form: GuideForm, loaded: Pick<LocalNetworkAuthOverview, "additionalLocalNetworks" | "trustedProxies">) {
+export async function saveLocalNetworkAuth(form: GuideForm, loaded: Pick<LocalNetworkAuthOverview, "additionalLocalNetworks" | "trustedProxies">, currentPassword?: string | null) {
   if (form.skipSignInLocalNetwork === null) return;
   await fetchJson("/api/security/local-network-auth", {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: withCurrentPassword(currentPassword, { "Content-Type": "application/json" }),
     body: JSON.stringify({
       enabled: form.skipSignInLocalNetwork,
       // The Security page's own lists are kept as they were: the guide never asks about them (#1357).
@@ -2807,6 +2821,8 @@ export type CreateBaselineInput = {
   hasTv: boolean;
   canCreateMovies: boolean;
   canCreateTv: boolean;
+  /** The current password, asked for when the answers change who skips sign-in (#1433). */
+  currentPassword?: string | null;
 };
 
 /**
@@ -2864,7 +2880,7 @@ export async function createBaseline(input: CreateBaselineInput, createdEntities
   await saveAllowedHosts(form, data.allowedHosts).catch(() => notApplied.push("which addresses Deluno answers on"));
   // #993: unlike Allowed Hosts, an explicit No here always writes the
   // real (off) setting -- there is no lock-out risk to guard against.
-  await saveLocalNetworkAuth(form, data.localNetworkAuth).catch(() => notApplied.push("skipping sign-in on your home network"));
+  await saveLocalNetworkAuth(form, data.localNetworkAuth, input.currentPassword).catch(() => notApplied.push("skipping sign-in on your home network"));
   // #1034: same as Local Network Auth -- an explicit Yes or No here
   // always writes the real setting.
   await saveUpdatePreferences(form, data.updatePreferences).catch(() => notApplied.push("how Deluno updates"));

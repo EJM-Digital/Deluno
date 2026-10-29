@@ -6,6 +6,7 @@ import { ConfigurationWorkspaceLayout, SettingsWorkspaceLayout, SystemWorkspaceL
 import { MoviesWorkspaceLayout, TvWorkspaceLayout } from "./components/app/media-workspace-shell";
 import { AppLayout } from "./layouts/app-layout";
 import { LoginPage } from "./routes/login-page";
+import { RecoveryPage } from "./routes/recovery-page";
 import { SetupPage } from "./routes/setup-page";
 import { RoutePending, RouteSkeleton } from "./components/shell/skeleton";
 import { readStored } from "./lib/use-auth";
@@ -102,6 +103,14 @@ async function loginLoader() {
   return null;
 }
 
+async function recoverLoader() {
+  if (await requiresSetup()) {
+    throw redirect("/setup");
+  }
+
+  return null;
+}
+
 async function setupLoader({ request }: { request: Request }) {
   if (!(await requiresSetup())) {
     const url = new URL(request.url);
@@ -122,6 +131,13 @@ export const router = createBrowserRouter([
     path: "/login",
     loader: loginLoader,
     element: <LoginPage />,
+    errorElement: <RouteErrorBoundary />,
+    HydrateFallback: RouteSkeleton
+  },
+  {
+    path: "/recover",
+    loader: recoverLoader,
+    element: <RecoveryPage />,
     errorElement: <RouteErrorBoundary />,
     HydrateFallback: RouteSkeleton
   },
@@ -589,6 +605,13 @@ export const router = createBrowserRouter([
             lazy: withSkeleton(async () => {
               const module = await import("./routes/settings-notifications-page");
               return { loader: module.settingsNotificationsLoader, Component: module.SettingsNotificationsPage };
+            })
+          },
+          {
+            path: "account",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-account-page");
+              return { Component: module.SettingsAccountPage };
             })
           },
           {

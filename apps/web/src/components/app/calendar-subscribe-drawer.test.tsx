@@ -2,6 +2,12 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { CalendarSubscribeDrawer } from "./calendar-subscribe-drawer";
 
+// The password question (#1433) is answered at once here; its own tests ask it for real.
+vi.mock("./password-prompt", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./password-prompt")>()),
+  usePasswordPrompt: () => ({ ask: async () => "the-password", prompt: null })
+}));
+
 /**
  * #786: the calendar link now carries the feed's own unmonitored/tag options,
  * so a person does not have to hand-edit the URL Sonarr/Radarr users are used

@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff, Loader2, UserPlus } from "lucide-react";
 import { AppMark } from "../components/shell/app-mark";
@@ -8,6 +8,7 @@ import { Input } from "../components/ui/input";
 import { safeReturnAddress } from "../lib/return-address";
 import { describeAuthRefusal } from "../lib/sign-in-failure";
 import { useAuth } from "../lib/use-auth";
+import { RecoveryCodesPanel } from "../components/app/recovery-codes-panel";
 
 export function SetupPage() {
   const { bootstrap, isAuthenticated } = useAuth();
@@ -21,6 +22,11 @@ export function SetupPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The account's recovery codes, shown once; setup waits here until the person says they are saved (#1392).
+  const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
+  // True from the moment the account is being made: signing in happens a moment before the codes arrive, and that must
+  // not carry the person on to the guided setup.
+  const creating = useRef(false);
 
   const returnTo = safeReturnAddress(params.get("return"));
 
@@ -29,10 +35,10 @@ export function SetupPage() {
   const guidePath = `/setup-guide?return=${encodeURIComponent(returnTo)}`;
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && !creating.current && recoveryCodes === null) {
       navigate(guidePath, { replace: true });
     }
-  }, [isAuthenticated, navigate, guidePath]);
+  }, [isAuthenticated, navigate, guidePath, recoveryCodes]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -49,10 +55,16 @@ export function SetupPage() {
     }
 
     setBusy(true);
+    creating.current = true;
     try {
-      await bootstrap(displayName.trim(), username.trim(), password);
-      navigate(guidePath, { replace: true });
+      const codes = await bootstrap(displayName.trim(), username.trim(), password);
+      if (codes.length > 0) {
+        setRecoveryCodes(codes);
+      } else {
+        navigate(guidePath, { replace: true });
+      }
     } catch (err) {
+      creating.current = false;
       setError(await describeAuthRefusal(err, "create the first account"));
     } finally {
       setBusy(false);
@@ -71,14 +83,28 @@ export function SetupPage() {
           <AppMark size={56} />
           <div className="text-center">
             <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
-              Set up Deluno
+              {recoveryCodes ? "Save your recovery codes" : "Set up Deluno"}
             </h1>
             <p className="mt-1 text-(length:--type-body-sm) text-muted-foreground">
-              Create the first user account for this Deluno install.
+              {recoveryCodes
+                ? "These are the way back into your account if you forget your username or password."
+                : "Create the first user account for this Deluno install."}
             </p>
           </div>
         </div>
 
+        {recoveryCodes ? (
+          <Card className="bg-card/80 p-6 shadow-lg backdrop-blur-sm dark:border-white/6">
+            <RecoveryCodesPanel
+              codes={recoveryCodes}
+              onSaved={() => {
+                creating.current = false;
+                setRecoveryCodes(null);
+                navigate(guidePath, { replace: true });
+              }}
+            />
+          </Card>
+        ) : (
         <Card
           as="form"
           onSubmit={(event) => void handleSubmit(event)}
@@ -191,9 +217,10 @@ export function SetupPage() {
             {busy ? "Creating account…" : "Create account"}
           </Button>
         </Card>
+        )}
 
         <p className="mt-5 text-center text-(length:--type-caption) text-muted-foreground">
-          After this step, Deluno will require sign-in for every session.
+          {recoveryCodes ? "You can make a new set later in Settings, under Account." : "After this step, Deluno will require sign-in for every session."}
         </p>
       </div>
     </div>

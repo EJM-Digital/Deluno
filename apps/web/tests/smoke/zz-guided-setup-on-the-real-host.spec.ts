@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { authenticateAndNavigate } from "../helpers/auth-helper";
+import { authenticateAndNavigate, fallbackCredentials, givePassword } from "../helpers/auth-helper";
 import { loadRecording, startRecordedAppServer, type RecordedAppServer } from "../helpers/recorded-app-server";
 
 // The guided setup, start to finish, on the real host with nothing stubbed. The download client and the search source are the
@@ -33,7 +33,7 @@ const LISTS = {
 
 class Api {
   constructor(private readonly request: APIRequestContext, private readonly token: string) {}
-  private headers() { return { Authorization: `Bearer ${this.token}` }; }
+  private headers() { return { Authorization: `Bearer ${this.token}`, "X-Current-Password": fallbackCredentials.password }; }
   async get<T = Json>(url: string): Promise<T> {
     const response = await this.request.get(url, { headers: this.headers() });
     expect(response.ok(), `${url} answered ${response.status()}`).toBe(true);
@@ -206,6 +206,8 @@ test.describe("the guided setup on the real host", () => {
     await passTheTests(page);
     await openStep(page, /^(?:\d+ )?Start\b/);
     await page.getByRole("button", { name: "Create baseline" }).click();
+    // The answers turn on skipping sign-in, which asks for the password (#1433).
+    await givePassword(page);
 
     await expect(page.getByText(/Setup failed, so Deluno cleaned up \d+ partially created items?\./)).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText(/None of your answers were applied/)).toBeVisible();

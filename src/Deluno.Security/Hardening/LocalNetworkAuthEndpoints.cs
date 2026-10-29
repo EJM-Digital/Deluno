@@ -45,6 +45,7 @@ public static class LocalNetworkAuthEndpoints
         ILocalNetworkAuthRepository repository,
         ILocalNetworkAuthSettingsCache settingsCache,
         ILocalNetworkAuthChangeNotifier changeNotifier,
+        ISecurityRepository securityRepository,
         CancellationToken cancellationToken)
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
@@ -60,6 +61,18 @@ public static class LocalNetworkAuthEndpoints
 
         var previous = await repository.GetAsync(cancellationToken);
         var settings = new LocalNetworkAuthSettings(request.Enabled, additionalNetworks, allowList, trustedProxies);
+
+        // Switching the skip on or off, or changing who it lets in, asks for the current password (#1433); saving what is
+        // already saved does not.
+        if (Changed(previous, settings))
+        {
+            var asked = await CurrentPasswordGate.RequireAsync(httpContext, securityRepository, cancellationToken);
+            if (asked is not null)
+            {
+                return asked;
+            }
+        }
+
         await repository.SaveAsync(settings, cancellationToken);
         settingsCache.Invalidate();
 
@@ -70,6 +83,15 @@ public static class LocalNetworkAuthEndpoints
 
         return Results.Ok(settings);
     }
+
+    private static bool Changed(LocalNetworkAuthSettings before, LocalNetworkAuthSettings after)
+        => before.Enabled != after.Enabled
+           || !SameEntries(before.AdditionalLocalNetworks, after.AdditionalLocalNetworks)
+           || !SameEntries(before.AllowList, after.AllowList)
+           || !SameEntries(before.TrustedProxies, after.TrustedProxies);
+
+    private static bool SameEntries(IReadOnlyList<string> a, IReadOnlyList<string> b)
+        => a.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(b);
 
     private static string[] ValidateEntries(IReadOnlyList<string>? entries, Dictionary<string, string[]> errors, string field)
     {

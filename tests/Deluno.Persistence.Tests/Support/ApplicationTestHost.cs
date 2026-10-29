@@ -72,6 +72,9 @@ internal sealed class ApplicationTestHost : IAsyncDisposable
     /// search endpoint reaches TMDb, which a test must not, and the endpoint's
     /// own behaviour is worth testing regardless of who answered.
     /// </param>
+    /// <summary>The owner's password, which the shared client sends where a change asks for it.</summary>
+    public const string OwnerPassword = "Deluno-Test-2026!";
+
     public static async Task<ApplicationTestHost> StartAsync(
         CancellationToken cancellationToken = default,
         Action<IServiceCollection>? replaceServices = null,
@@ -92,6 +95,9 @@ internal sealed class ApplicationTestHost : IAsyncDisposable
         var client = host.GetTestClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
             "Bearer", await SignInAsOwnerAsync(host, client, cancellationToken));
+        // Changes that ask for the current password (#1433) get it with every request the owner's client makes; the tests
+        // of that rule use clients of their own.
+        client.DefaultRequestHeaders.Add(Deluno.Security.CurrentPasswordGate.Header, OwnerPassword);
 
         return new ApplicationTestHost(storage, host, client);
     }

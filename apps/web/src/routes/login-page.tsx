@@ -6,7 +6,7 @@
  */
 
 import { type FormEvent, useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff, Loader2, LogIn } from "lucide-react";
 import { readSignOutReason, useAuth } from "../lib/use-auth";
 import { AppMark } from "../components/shell/app-mark";
@@ -168,6 +168,11 @@ export function LoginPage() {
         </Card>
 
         <p className="mt-5 text-center text-(length:--type-caption) text-muted-foreground">
+          <Link to="/recover" className="underline underline-offset-2 hover:text-foreground">
+            Forgot your username or password?
+          </Link>
+        </p>
+        <p className="mt-2 text-center text-(length:--type-caption) text-muted-foreground">
           Sign in with the account you created during setup.
         </p>
       </div>

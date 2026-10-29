@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Deluno.Infrastructure.Storage;
 using Deluno.Security.Contracts;
+using Deluno.Security.Recovery;
 using static Deluno.Infrastructure.Storage.SqliteRecordHelpers;
 
 namespace Deluno.Security.Data;
@@ -393,6 +394,172 @@ public sealed class SqliteSecurityRepository(
         return changed;
     }
 
+    public async Task<bool> VerifyUserPasswordAsync(string userId, string password, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT password_hash FROM users WHERE id = @id LIMIT 1;";
+        AddParameter(command, "@id", userId);
+        var stored = await command.ExecuteScalarAsync(cancellationToken) as string;
+        if (string.IsNullOrWhiteSpace(stored))
+        {
+            VerifyPassword(password, DummyPasswordHash);
+            return false;
+        }
+
+        return VerifyPassword(password, stored);
+    }
+
+    public async Task<RecoveryCodesStatus> GetRecoveryCodesStatusAsync(string userId, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT COUNT(*), COALESCE(SUM(CASE WHEN used_utc IS NULL THEN 1 ELSE 0 END), 0)
+            FROM recovery_codes
+            WHERE user_id = @userId;
+            """;
+        AddParameter(command, "@userId", userId);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        await reader.ReadAsync(cancellationToken);
+        return new RecoveryCodesStatus(
+            Remaining: Convert.ToInt32(reader.GetValue(1), CultureInfo.InvariantCulture),
+            Made: Convert.ToInt32(reader.GetValue(0), CultureInfo.InvariantCulture) > 0);
+    }
+
+    public async Task<IReadOnlyList<string>> CreateRecoveryCodesAsync(string userId, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        // A new set voids the old one: every earlier code, used or not, is gone.
+        using (var clear = connection.CreateCommand())
+        {
+            clear.Transaction = transaction;
+            clear.CommandText = "DELETE FROM recovery_codes WHERE user_id = @userId;";
+            AddParameter(clear, "@userId", userId);
+            await clear.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        var now = timeProvider.GetUtcNow().ToString("O");
+        var codes = new List<string>(RecoveryCodeFormat.CodesPerSet);
+        for (var i = 0; i < RecoveryCodeFormat.CodesPerSet; i++)
+        {
+            var code = RecoveryCodeFormat.NewCode();
+            codes.Add(code);
+
+            using var insert = connection.CreateCommand();
+            insert.Transaction = transaction;
+            insert.CommandText =
+                """
+                INSERT INTO recovery_codes (id, user_id, code_hash, created_utc, used_utc)
+                VALUES (@id, @userId, @hash, @createdUtc, NULL);
+                """;
+            AddParameter(insert, "@id", Guid.CreateVersion7().ToString("N"));
+            AddParameter(insert, "@userId", userId);
+            AddParameter(insert, "@hash", HashPassword(RecoveryCodeFormat.Normalize(code)));
+            AddParameter(insert, "@createdUtc", now);
+            await insert.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return codes;
+    }
+
+    public async Task<UserItem?> FindUserByRecoveryCodeAsync(string code, CancellationToken cancellationToken)
+    {
+        var match = await FindUnusedCodeAsync(code, cancellationToken);
+        return match is null ? null : await ReadUserByIdAsync(match.Value.UserId, cancellationToken);
+    }
+
+    public async Task<UserItem?> ResetPasswordWithRecoveryCodeAsync(
+        string code,
+        string newPassword,
+        CancellationToken cancellationToken)
+    {
+        var match = await FindUnusedCodeAsync(code, cancellationToken);
+        if (match is null)
+        {
+            return null;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        // Used up first, and only if it was still unused: two resets with the same code cannot both win.
+        using var use = connection.CreateCommand();
+        use.CommandText = "UPDATE recovery_codes SET used_utc = @usedUtc WHERE id = @id AND used_utc IS NULL;";
+        AddParameter(use, "@id", match.Value.CodeId);
+        AddParameter(use, "@usedUtc", timeProvider.GetUtcNow().ToString("O"));
+        if (await use.ExecuteNonQueryAsync(cancellationToken) == 0)
+        {
+            return null;
+        }
+
+        return await ResetPasswordAsync(match.Value.UserId, newPassword, cancellationToken);
+    }
+
+    private async Task<UserItem?> ResetPasswordAsync(string userId, string newPassword, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var update = connection.CreateCommand();
+        update.CommandText =
+            """
+            UPDATE users
+            SET password_hash = @passwordHash,
+                security_stamp = @securityStamp,
+                updated_utc = @updatedUtc
+            WHERE id = @id;
+            """;
+        AddParameter(update, "@id", userId);
+        AddParameter(update, "@passwordHash", HashPassword(newPassword));
+        AddParameter(update, "@securityStamp", CreateSecurityStamp());
+        AddParameter(update, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
+        var changed = await update.ExecuteNonQueryAsync(cancellationToken) > 0;
+
+        // Every session is signed out: the new stamp makes the old tokens fail, and the cached copy would still pass them.
+        userCache.Clear();
+        return changed ? await ReadUserByIdAsync(userId, cancellationToken) : null;
+    }
+
+    private async Task<(string CodeId, string UserId)?> FindUnusedCodeAsync(string code, CancellationToken cancellationToken)
+    {
+        var normalized = RecoveryCodeFormat.Normalize(code);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, user_id, code_hash FROM recovery_codes WHERE used_utc IS NULL;";
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        // Every unused code is checked even after a match, so the time taken does not tell which one it was.
+        (string, string)? found = null;
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            if (VerifyPassword(normalized, reader.GetString(2)) && found is null)
+            {
+                found = (reader.GetString(0), reader.GetString(1));
+            }
+        }
+
+        return found;
+    }
+
     public async Task<UserItem> BootstrapUserAsync(
         BootstrapUserRequest request,
         CancellationToken cancellationToken)
@@ -492,7 +659,7 @@ public sealed class SqliteSecurityRepository(
         return parts.Length == 0 ? "OP" : new string(parts);
     }
 
-    private static string HashPassword(string password)
+    internal static string HashPassword(string password)
     {
         var salt = RandomNumberGenerator.GetBytes(16);
         const int iterations = 100_000;
@@ -500,7 +667,7 @@ public sealed class SqliteSecurityRepository(
         return $"{iterations}.{Convert.ToBase64String(salt)}.{Convert.ToBase64String(hash)}";
     }
 
-    private static bool VerifyPassword(string password, string stored)
+    internal static bool VerifyPassword(string password, string stored)
     {
         var parts = stored.Split('.', 3);
         if (parts.Length != 3 || !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var iterations))

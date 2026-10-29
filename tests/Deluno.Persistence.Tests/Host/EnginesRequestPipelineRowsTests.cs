@@ -177,6 +177,7 @@ public sealed class EnginesRequestPipelineRowsTests : IAsyncLifetime
     {
         var created = new HttpRequestMessage(HttpMethod.Post, "/api/api-keys/") { Content = JsonContent.Create(new { name = "Limit row", scopes = "read" }) };
         created.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _session);
+        created.Headers.Add(Deluno.Security.CurrentPasswordGate.Header, Password);
         var key = (await (await _client.SendAsync(created)).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("apiKey").GetString()!;
 
         Assert.Equal(HttpStatusCode.OK, (await GetAsync("/api/system/overview", key)).StatusCode);

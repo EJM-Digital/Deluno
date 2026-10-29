@@ -94,6 +94,7 @@ public sealed class TheApiAnswersAsDocumentedTests : IAsyncLifetime
     {
         using var create = new HttpRequestMessage(HttpMethod.Post, "/api/api-keys/") { Content = JsonContent.Create(new { name, scopes = "read" }) };
         create.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _session);
+        create.Headers.Add(Deluno.Security.CurrentPasswordGate.Header, Password);
         return (await (await _client.SendAsync(create)).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("apiKey").GetString()!;
     }
 

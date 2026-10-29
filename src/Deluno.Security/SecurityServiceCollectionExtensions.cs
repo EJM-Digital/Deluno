@@ -1,5 +1,6 @@
 using Deluno.Security.Data;
 using Deluno.Security.Hardening;
+using Deluno.Security.Recovery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Policy;
@@ -16,6 +17,13 @@ public static class SecurityServiceCollectionExtensions
         // UseDelunoBadRequestAnswers can say what was wrong.
         services.Configure<Microsoft.AspNetCore.Routing.RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
         services.AddSingleton<ISecurityRepository, SqliteSecurityRepository>();
+        // #1392: recovery codes.
+        services.AddSingleton<RecoveryAttempts>();
+        // #1433: the same limit on wrong current passwords.
+        services.AddSingleton<CurrentPasswordAttempts>();
+        services.AddSingleton<AccountRecovery>();
+        // The host that can see Activity and Notifications registers the real one (Deluno.Worker).
+        services.TryAddSingleton<IAccountResetReporter, NoOpAccountResetReporter>();
         // #939: Allowed Hosts.
         services.AddSingleton<IAllowedHostsRepository, SqliteAllowedHostsRepository>();
         services.AddSingleton<IAllowedHostsSettingsCache, AllowedHostsSettingsCache>();

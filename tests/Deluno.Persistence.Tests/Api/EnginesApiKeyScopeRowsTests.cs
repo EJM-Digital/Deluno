@@ -90,6 +90,7 @@ public sealed class EnginesApiKeyScopeRowsTests : IAsyncLifetime
     private async Task<KeyClient> KeyClientAsync(string scopes)
     {
         using var create = new HttpRequestMessage(HttpMethod.Post, "/api/api-keys/") { Content = JsonContent.Create(new { name = "Row " + scopes, scopes }) };
+        create.Headers.Add(Deluno.Security.CurrentPasswordGate.Header, "Deluno-Test-2026!");
         create.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _session);
         var created = await _client.SendAsync(create);
         Assert.True(created.IsSuccessStatusCode, await created.Content.ReadAsStringAsync());

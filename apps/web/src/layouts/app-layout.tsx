@@ -1,3 +1,4 @@
+import { RecoveryCodesPrompt } from "../components/app/recovery-codes-prompt";
 import {
   ChevronDown,
   ChevronRight,
@@ -116,7 +117,7 @@ const routeMeta = [
   // named for what it governs, matching the sidebar's other "X & Y" areas.
   { match: (path: string) => path.startsWith("/settings/policy-sets") || path.startsWith("/settings/profiles") || path.startsWith("/settings/quality") || path.startsWith("/settings/custom-formats") || path.startsWith("/settings/release-rules"), title: "Quality & Release", subtitle: "How Deluno judges a release — and the Library Profiles that apply those choices to a library" },
   { match: (path: string) => path.startsWith("/settings/lists"), title: "Discover Media", subtitle: "Bring movies and shows in from watchlists and curated feeds" },
-  { match: (path: string) => path.startsWith("/settings/general") || path.startsWith("/settings/notifications") || path.startsWith("/settings/ui") || path.startsWith("/settings/migration"), title: "Preferences", subtitle: "How you want Deluno to behave, look, and tell you things" },
+  { match: (path: string) => path.startsWith("/settings/general") || path.startsWith("/settings/notifications") || path.startsWith("/settings/ui") || path.startsWith("/settings/migration") || path.startsWith("/settings/account"), title: "Preferences", subtitle: "How you want Deluno to behave, look, and tell you things" },
   // Every /settings route is named by settingsPageMeta, which is the single
   // source of truth for settings page names. This used to be a handful of
   // coarse prefix matches ending in a "Media Management" catch-all, which is
@@ -175,6 +176,7 @@ function AppLayoutInner() {
         <DisplayPreferencesProvider token={token}>
           <UnsavedChangesProvider>
             <AppLayoutContent />
+            <RecoveryCodesPrompt />
           </UnsavedChangesProvider>
         </DisplayPreferencesProvider>
       </SignalRProvider>

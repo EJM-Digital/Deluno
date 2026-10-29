@@ -19,12 +19,14 @@ import { Drawer, DrawerFacts, DrawerFooter, DrawerSection } from "../ui/drawer";
 import { Input } from "../ui/input";
 import { SwitchRow } from "../ui/switch";
 import { authedFetch } from "../../lib/use-auth";
+import { usePasswordPrompt, withCurrentPassword } from "./password-prompt";
 import { fetchJson, type ApiKeyItem, type CreatedApiKeyResponse } from "../../lib/api";
 
 /** The name Deluno gives its own calendar key, so the drawer can find it again. */
 const KEY_NAME = "Calendar subscription";
 
 export function CalendarSubscribeDrawer({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { ask, prompt } = usePasswordPrompt();
   const [existing, setExisting] = useState<ApiKeyItem[] | null>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -52,17 +54,19 @@ export function CalendarSubscribeDrawer({ open, onOpenChange }: { open: boolean;
   }, [open, load]);
 
   async function handleCreate() {
+    const currentPassword = await ask("Making a calendar link creates an API key, which needs your password.");
+    if (!currentPassword) return;
     setBusy(true);
     try {
       // One link at a time: a replacement revokes the old one rather than
       // leaving keys behind that nobody can identify later.
       for (const key of existing ?? []) {
-        await authedFetch(`/api/api-keys/${key.id}`, { method: "DELETE" });
+        await authedFetch(`/api/api-keys/${key.id}`, { method: "DELETE", headers: withCurrentPassword(currentPassword) });
       }
 
       const created = await fetchJson<CreatedApiKeyResponse>("/api/api-keys", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: withCurrentPassword(currentPassword, { "Content-Type": "application/json" }),
         body: JSON.stringify({ name: KEY_NAME, scopes: "read" })
       });
 
@@ -98,6 +102,8 @@ export function CalendarSubscribeDrawer({ open, onOpenChange }: { open: boolean;
   const hasLink = (existing?.length ?? 0) > 0;
 
   return (
+    <>
+    {prompt}
     <Drawer
       open={open}
       onOpenChange={onOpenChange}
@@ -180,5 +186,6 @@ export function CalendarSubscribeDrawer({ open, onOpenChange }: { open: boolean;
         </p>
       </DrawerSection>
     </Drawer>
+    </>
   );
 }

@@ -190,14 +190,17 @@ describe("g then a letter", () => {
   });
 });
 
+const settingsSaves = () => live.authedFetch.mock.calls.filter((call: unknown[]) => call[0] === "/api/settings");
+
 describe("the theme button", () => {
   it("switches the theme, says what pressing it again would do, and saves the choice to settings", async () => {
     await mount("/");
     fireEvent.click(screen.getByRole("button", { name: "Switch to dark mode" }));
 
     expect(live.theme.setTheme).toHaveBeenCalledWith("dark");
-    await waitFor(() => expect(live.authedFetch).toHaveBeenCalled());
-    const [url, init] = live.authedFetch.mock.calls[0];
+    // The shell also asks, on its own, how many recovery codes are left (#1392); this is about the theme save.
+    await waitFor(() => expect(settingsSaves()).toHaveLength(1));
+    const [url, init] = settingsSaves()[0];
     expect(url).toBe("/api/settings");
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(init.body)).toEqual({ uiTheme: "dark" });
@@ -209,7 +212,8 @@ describe("the theme button", () => {
     fireEvent.click(screen.getByRole("button", { name: "Switch to light mode" }));
 
     expect(live.theme.setTheme).toHaveBeenCalledWith("light");
-    await waitFor(() => expect(JSON.parse(live.authedFetch.mock.calls[0][1].body)).toEqual({ uiTheme: "light" }));
+    await waitFor(() => expect(settingsSaves()).toHaveLength(1));
+    expect(JSON.parse(settingsSaves()[0][1].body)).toEqual({ uiTheme: "light" });
   });
 });
 

@@ -107,6 +107,7 @@ public sealed class TheApiPagesIntegrationEndpointsAreTrueTests
         var session = (await login.Content.ReadFromJsonAsync<LoginResponse>())!.AccessToken;
         using var create = new HttpRequestMessage(HttpMethod.Post, "/api/api-keys/") { Content = JsonContent.Create(new { name = "Only " + scope, scopes = scope }) };
         create.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session);
+        create.Headers.Add(Deluno.Security.CurrentPasswordGate.Header, Password);
         using var created = await host.Client.SendAsync(create);
         Assert.True(created.IsSuccessStatusCode, await created.Content.ReadAsStringAsync());
         return (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("apiKey").GetString()!;

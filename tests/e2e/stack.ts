@@ -94,7 +94,7 @@ export class DelunoApi {
     const session = await login.json() as { accessToken: string; user?: unknown; expiresUtc?: string };
     const { accessToken } = session;
     await anonymous.dispose();
-    const context = await request.newContext({ baseURL: URLS.deluno, extraHTTPHeaders: { Authorization: `Bearer ${accessToken}` } });
+    const context = await request.newContext({ baseURL: URLS.deluno, extraHTTPHeaders: { Authorization: `Bearer ${accessToken}`, "X-Current-Password": LOGIN.deluno.password } });
     return new DelunoApi(context, session);
   }
 

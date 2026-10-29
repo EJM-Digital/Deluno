@@ -4,6 +4,13 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AllowedHostsOverview, LocalNetworkAuthOverview } from "../lib/api";
 
+const askMock = vi.hoisted(() => vi.fn(async (_reason: string): Promise<string | null> => "the-password"));
+// The password question (#1433) is answered at once here; its own tests ask it for real.
+vi.mock("../components/app/password-prompt", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/app/password-prompt")>()),
+  usePasswordPrompt: () => ({ ask: askMock, prompt: null })
+}));
+
 /**
  * System > Security (#1294): the Allowed Hosts card and the Skip sign-in card, control by control. The page is
  * handed the two overviews the route reads; saving goes through the shared JSON helper, mocked here so each test
@@ -248,6 +255,27 @@ describe("Skip sign-in on the local network", () => {
       )
     );
     expect(await screen.findByText("Devices on your local network now skip sign-in.")).toBeInTheDocument();
+  });
+
+  it("asks for the password first and sends it, and a cancelled question saves nothing", async () => {
+    askMock.mockClear();
+    renderPage({ localNetworkAuth: { additionalLocalNetworks: [], trustedProxies: [] } });
+    serverNowHolds({ localNetworkAuth: { enabled: true } });
+    fireEvent.click(screen.getByRole("switch", { name: /Skip sign-in on the local network/ }));
+    fetchJsonMock.mockResolvedValueOnce({});
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(fetchJsonMock).toHaveBeenCalled());
+    expect(askMock).toHaveBeenCalledWith("Changing who skips sign-in needs your password, because it decides who can use Deluno without one.");
+    expect(fetchJsonMock.mock.calls[0][1].headers).toEqual({ "Content-Type": "application/json", "X-Current-Password": "the-password" });
+    await screen.findByText("Devices on your local network now skip sign-in.");
+
+    fetchJsonMock.mockClear();
+    askMock.mockResolvedValueOnce(null);
+    fireEvent.click(screen.getByRole("switch", { name: /Skip sign-in on the local network/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(askMock).toHaveBeenCalledTimes(2));
+    expect(fetchJsonMock).not.toHaveBeenCalled();
   });
 
   it("turning it off and saving says every device signs in again", async () => {

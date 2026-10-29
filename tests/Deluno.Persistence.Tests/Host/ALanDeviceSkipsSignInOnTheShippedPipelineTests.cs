@@ -29,6 +29,7 @@ public sealed class ALanDeviceSkipsSignInOnTheShippedPipelineTests
     {
         using var save = new HttpRequestMessage(HttpMethod.Put, "/api/security/local-network-auth") { Content = JsonContent.Create(request) };
         save.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        save.Headers.Add(Deluno.Security.CurrentPasswordGate.Header, Password);
         using var answer = await host.Client.SendAsync(save);
         Assert.Equal(HttpStatusCode.OK, answer.StatusCode);
     }

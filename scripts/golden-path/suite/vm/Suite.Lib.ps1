@@ -211,7 +211,8 @@ function Try-Deluno {
     param([string] $Method = 'GET', [Parameter(Mandatory)] [string] $Path, $Body = $null, [int] $TimeoutSec = 60)
     for ($attempt = 0; $attempt -lt 2; $attempt++) {
         $p = @{ Uri = "$($script:S.DelunoUrl)$Path"; Method = $Method; UseBasicParsing = $true; TimeoutSec = $TimeoutSec }
-        if ($script:S.Token) { $p.Headers = @{ Authorization = "Bearer $($script:S.Token)" } }
+        # The password rides along for the changes that ask for it (#1433); every other call ignores it.
+        if ($script:S.Token) { $p.Headers = @{ Authorization = "Bearer $($script:S.Token)"; 'X-Current-Password' = (Get-SuiteSecret 'deluno-password') } }
         if ($null -ne $Body) { $p.ContentType = 'application/json'; $p.Body = ($Body | ConvertTo-Json -Depth 8) }
         try {
             $r = Invoke-WebRequest @p

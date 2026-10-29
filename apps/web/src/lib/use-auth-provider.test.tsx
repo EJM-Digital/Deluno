@@ -165,6 +165,16 @@ describe("signing in and first-run setup", () => {
     expect(localStorage.getItem("deluno-auth-token")).toBeNull();
   });
 
+  it("setup answers with the first recovery codes the server made, or none when it made none (#1392)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(json({ ...payload, recoveryCodes: ["AAAA-BBBB-CCCC"] })).mockResolvedValueOnce(json(payload));
+    await mount();
+    let codes: string[] = [];
+    await act(async () => { codes = await auth.bootstrap("Owner", "owner", "pw"); });
+    expect(codes).toEqual(["AAAA-BBBB-CCCC"]);
+    await act(async () => { codes = await auth.bootstrap("Owner", "owner", "pw"); });
+    expect(codes).toEqual([]);
+  });
+
   it("setup posts the display name, name and password as JSON and signs the new account in, with no keep choice", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(payload));
     await mount();

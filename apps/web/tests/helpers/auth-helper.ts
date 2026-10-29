@@ -120,3 +120,13 @@ export async function logout(page: Page) {
     }
   }
 }
+
+/**
+ * Answers the question that stands in front of a change that could hand the account to someone else (#1433): creating or
+ * revoking an API key, making recovery codes and changing who skips sign-in ask for the current password.
+ */
+export async function givePassword(page: Page, password: string = fallbackCredentials.password) {
+  const dialog = page.getByRole("dialog", { name: "Enter your password" });
+  await dialog.getByLabel("Current password").fill(password);
+  await dialog.getByRole("button", { name: "Confirm" }).click();
+}

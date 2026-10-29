@@ -7,7 +7,7 @@ const { router } = await import("../router");
 const { settingsCommands } = await import("./command-registry");
 
 describe("the command palette's Settings entries", () => {
-  const wanted = ["/settings/general", "/settings/ui", "/settings/metadata", "/settings/tags", "/settings/auto-tagging", "/settings/lists", "/settings/notifications", "/settings/migration"];
+  const wanted = ["/settings/general", "/settings/ui", "/settings/metadata", "/settings/tags", "/settings/auto-tagging", "/settings/lists", "/settings/notifications", "/settings/migration", "/settings/account"];
 
   it("has an entry for General, Interface, Metadata, Tags, Auto-tagging, Import Lists, Notifications and Migration, each going to its own address", () => {
     const byTarget = new Map(settingsCommands.map((item) => [item.to, item.label]));
@@ -20,6 +20,14 @@ describe("the command palette's Settings entries", () => {
     expect(byTarget.get("/settings/lists")).toMatch(/Lists/);
     expect(byTarget.get("/settings/notifications")).toContain("Notifications");
     expect(byTarget.get("/settings/migration")).toContain("Migration");
+    expect(byTarget.get("/settings/account")).toBe("System & Settings · Account");
+  });
+
+  it("finds the Account entry by what a person would type when they have lost their sign-in (#1392)", () => {
+    const account = settingsCommands.find((item) => item.id === "settings.account")!;
+    expect(account.group).toBe("navigation");
+    expect(account.keywords).toEqual(["recovery", "codes", "password", "username", "sign in", "account", "forgot"]);
+    expect(account.to).toBe("/settings/account");
   });
 
   it("goes to an address the router has a screen for, for every entry", () => {

@@ -23,6 +23,8 @@ public sealed class EveryRouteRefusesAMissingOrWrongCredentialTests
         ["GET /api/auth/bootstrap-status"] = "The sign-in screen asks whether an owner exists yet, before anyone can sign in.",
         ["POST /api/auth/bootstrap"] = "Creates the first owner; it refuses once an owner exists.",
         ["POST /api/auth/login"] = "Is how a person gets a credential in the first place.",
+        ["POST /api/auth/recovery/check"] = "A person who forgot their sign-in proves it with a recovery code or PIN, so cannot be signed in; it is rate limited.",
+        ["POST /api/auth/recovery/reset"] = "Sets a new password for a person who proves it with a recovery code or PIN; it is rate limited.",
         ["GET /api/calendar/feed.ics"] = "A calendar app subscribes to this address and cannot sign in; it carries its own token in the address.",
         ["POST /api/seerr-servers/{id}/webhook"] = "Seerr calls this and cannot sign in; it carries the secret Deluno issued it in its own header.",
         ["GET /api/metadata/artwork/{cacheKey}"] = "An image tag cannot send a header; the address is an unguessable cache key of already public artwork.",

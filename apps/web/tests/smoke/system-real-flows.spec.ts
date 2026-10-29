@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import os from "node:os";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { authenticateAndNavigate } from "../helpers/auth-helper";
+import { authenticateAndNavigate, givePassword } from "../helpers/auth-helper";
 
 // #1294: the System screens that change files, run against the real host with nothing stubbed. Each test clicks
 // the real button and then looks at what really happened: the zip on disk, the file in the recycle bin, the key
@@ -208,6 +208,7 @@ test.describe("System screens on the real host (#1294)", () => {
 
     await page.getByLabel("Key name").fill(name);
     await page.getByRole("button", { name: "Generate API key" }).click();
+    await givePassword(page);
     await expect(page.getByText("one-time secret")).toBeVisible();
     const key = (await page.locator("code").filter({ hasText: /^deluno_/ }).first().textContent())!.trim();
     expect(key).toMatch(/^deluno_/);
@@ -226,6 +227,7 @@ test.describe("System screens on the real host (#1294)", () => {
 
     await row.getByRole("button", { name: "Revoke" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Revoke key" }).click();
+    await givePassword(page);
     await expect(page.getByText("API key revoked").first()).toBeVisible();
     await expect(page.getByRole("row").filter({ hasText: name })).toHaveCount(0);
     await expect(page.getByText("one-time secret")).toHaveCount(0);
