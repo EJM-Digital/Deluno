@@ -350,4 +350,19 @@ describe("the show's Destination tab, header facts and Next step card (low rows)
     expect(screen.queryByText("Collection", { selector: "dt" })).toBeNull();
     expect(screen.queryByText("Import issues", { selector: "dt" })).toBeNull();
   });
+
+  it("the facts grid also reads the collection and the number of import issues when the show has them", async () => {
+    setup((url) => {
+      if (url === "/api/series/s1") return { body: { ...SERIES, metadataJson: JSON.stringify({ Collection: "Prestige TV" }) } };
+      if (url.startsWith("/api/series/import-recovery?")) {
+        return { body: { openCount: 2, recentCases: ["c1", "c2"].map((id) => ({ id, title: SERIES.title, failureKind: "importFailed", summary: `Summary for ${id}.`, recommendedAction: "Do the thing.", detailsJson: null, detectedUtc: "2026-10-01T00:00:00Z" })) } };
+      }
+      return undefined;
+    });
+    await renderPage();
+
+    const facts = (label: string) => screen.getByText(label, { selector: "dt" }).nextElementSibling?.textContent;
+    expect(facts("Collection")).toBe("Prestige TV");
+    expect(facts("Import issues")).toBe("2");
+  });
 });

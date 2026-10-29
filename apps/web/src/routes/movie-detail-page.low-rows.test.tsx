@@ -164,6 +164,40 @@ const withCases = (...cases: ReturnType<typeof importCase>[]): Handler => (url) 
   url.startsWith("/api/movies/import-recovery?") ? { body: { openCount: cases.length, recentCases: cases } } : undefined;
 
 describe("the film header and summary strip (low rows)", () => {
+  it("the facts grid shows only the facts that have a value, each under its own label", async () => {
+    const fact = (label: string) => screen.queryByText(label, { selector: "dt" })?.nextElementSibling?.textContent ?? null;
+    const full = {
+      ...MOVIE,
+      hasFile: true,
+      filePath: "/films/Big Buck Bunny (2008)/Big.Buck.Bunny.2008.mkv",
+      fileSizeBytes: 2_147_483_648,
+      videoCodec: "x265",
+      audioCodec: "EAC3",
+      releaseGroup: "GRP",
+      metadataJson: JSON.stringify({ Studio: "Blender Foundation", OriginalLanguage: "English", Collection: "Open Movies", Director: "Sacha Goedegebure" })
+    };
+    setup((url) => (url === "/api/movies/m1" ? { body: full } : url.startsWith("/api/movies/import-recovery?") ? withCases(importCase("c1"))(url) : undefined));
+    await renderPage();
+
+    expect(fact("Path")).toBe("/films/Big Buck Bunny (2008)/Big.Buck.Bunny.2008.mkv");
+    expect(fact("Size")).toBe("2.0 GB");
+    expect(fact("Studio")).toBe("Blender Foundation");
+    expect(fact("Language")).toBe("English");
+    expect(fact("Collection")).toBe("Open Movies");
+    expect(fact("Director")).toBe("Sacha Goedegebure");
+    expect(fact("Codec")).toBe("x265 · EAC3");
+    expect(fact("Release group")).toBe("GRP");
+    expect(fact("Added")).toBeTruthy();
+    expect(fact("Import issues")).toBe("1");
+    cleanup();
+
+    setup();
+    await renderPage();
+    for (const label of ["Path", "Size", "Studio", "Language", "Collection", "Director", "Codec", "Release group", "Import issues"]) {
+      expect(fact(label), `${label} is left out when the film has no value for it`).toBeNull();
+    }
+  });
+
   it("shows an 'N import issue(s)' warning badge in the header when recovery cases name this film, and none otherwise", async () => {
     setup(withCases(importCase("c1"), importCase("c2")));
     await renderPage();
