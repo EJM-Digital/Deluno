@@ -1355,3 +1355,68 @@ describe("the film's toolbar links (coverage, #1329)", () => {
     expect(await screen.findByText("All the movies")).toBeInTheDocument();
   });
 });
+
+describe("the film's subtitles, logo and hero (coverage, area movie-detail)", () => {
+  const subtitleRows = (rows: unknown[]): Handler => (url) => (url === "/api/movies/m1/subtitles" ? { body: rows } : undefined);
+
+  it("Hero backdrop with adaptive scrim and the transparent logo above the title", async () => {
+    setup((url) =>
+      url === "/api/movies/m1" ? { body: { ...MOVIE, metadataJson: JSON.stringify({ logoUrl: "https://fixture.invalid/film-logo.png" }) } } : undefined
+    );
+    await renderPage();
+    const logo = Array.from(document.querySelectorAll("img")).find((img) => img.getAttribute("src") === "https://fixture.invalid/film-logo.png");
+    expect(logo).toBeDefined();
+    const heading = screen.getByRole("heading", { level: 1, name: "Big Buck Bunny" });
+    expect(logo!.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("Subtitle search history card language provider what happened score label", async () => {
+    setup((url) =>
+      url === "/api/movies/m1/subtitles/history"
+        ? {
+            body: [
+              { language: "fr", attemptedUtc: "2026-10-02T10:00:00Z", provider: "Fixture", outcome: "Downloaded", score: 2 },
+              { language: "de", attemptedUtc: "2026-10-02T11:00:00Z", provider: null, outcome: "No match", score: 0 }
+            ]
+          }
+        : undefined
+    );
+    await renderPage();
+    expect(await screen.findByText("Subtitle Search History")).toBeInTheDocument();
+    expect(screen.getByText("FR")).toBeInTheDocument();
+    expect(screen.getByText("Fixture")).toBeInTheDocument();
+    expect(screen.getByText("Downloaded")).toBeInTheDocument();
+    expect(screen.getByText("Made for this file")).toBeInTheDocument();
+    expect(screen.getByText("No match")).toBeInTheDocument();
+    expect(screen.getByText("Any release")).toBeInTheDocument();
+  });
+
+  it("Forced subtitles offer no manual search resync out-of-sync actions on the film", async () => {
+    setup(subtitleRows([{ language: "en", forced: true, hearingImpaired: false, source: "provider", provider: "Fixture", timingStatus: "ok", timingReason: "In sync." }]));
+    await renderPage();
+    const row = (await screen.findByText("EN")).closest("[role='row']") as HTMLElement;
+    expect(within(row).queryAllByRole("button")).toHaveLength(0);
+    expect(within(row).getByText("Forced")).toBeInTheDocument();
+  });
+
+  it("Subtitles table only when subtitles exist language type plain hearing-impaired forced", async () => {
+    setup(
+      subtitleRows([
+        { language: "en", forced: false, hearingImpaired: false, source: "provider", provider: "Fixture", timingStatus: "ok", timingReason: "In sync." },
+        { language: "fr", forced: false, hearingImpaired: true, source: "provider", provider: "Fixture", timingStatus: "ok", timingReason: "In sync." },
+        { language: "de", forced: true, hearingImpaired: false, source: "provider", provider: "Fixture", timingStatus: "ok", timingReason: "In sync." }
+      ])
+    );
+    await renderPage();
+    expect(await screen.findByText("3 on disk")).toBeInTheDocument();
+    expect(screen.getByText("Plain")).toBeInTheDocument();
+    expect(screen.getByText("Hearing-impaired")).toBeInTheDocument();
+    expect(screen.getByText("Forced")).toBeInTheDocument();
+  });
+
+  it("Subtitles table is absent when the film has no subtitles on disk", async () => {
+    await renderPage();
+    expect(screen.queryByText("Subtitles", { exact: true })).toBeNull();
+    expect(screen.queryByText("EN")).toBeNull();
+  });
+});

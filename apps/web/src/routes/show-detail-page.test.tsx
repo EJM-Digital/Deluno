@@ -23,6 +23,7 @@ vi.mock("../components/shell/toaster", () => ({ toast, realtimeToast: {}, Toaste
 window.matchMedia ??= ((query: string) => ({ matches: false, media: query, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false })) as unknown as typeof window.matchMedia;
 globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
 
+import { activityLinkForTitle } from "../lib/activity-history";
 const { ShowDetailPage, showDetailLoader } = await import("./show-detail-page");
 
 type Reply = { status?: number; body?: unknown };
@@ -167,7 +168,7 @@ function setup(next: Handler = () => undefined) {
 const posts = (suffix: string) => calls.filter((c) => c.method !== "GET" && c.url.split("?")[0].endsWith(suffix));
 const bodies = (suffix: string) => posts(suffix).map((c) => c.body as Record<string, unknown>);
 
-async function renderPage() {
+async function renderPage(heading = "The Wire") {
   const router = createMemoryRouter(
     [
       { path: "/tv/:id", element: <ShowDetailPage />, loader: showDetailLoader },
@@ -177,7 +178,7 @@ async function renderPage() {
     { initialEntries: ["/tv/s1"] }
   );
   render(<RouterProvider router={router} />);
-  await screen.findByRole("heading", { level: 1, name: "The Wire" });
+  await screen.findByRole("heading", { level: 1, name: heading });
   return { router };
 }
 
@@ -1459,5 +1460,157 @@ describe("a processor-output case on the show's History tab", () => {
 
     expect(within(row).queryByRole("button", { name: "Search" })).toBeNull();
     expect(within(row).getByRole("button", { name: "Import manually" })).toBeInTheDocument();
+  });
+});
+
+describe("the show's hero header (coverage, area show-detail)", () => {
+  const imageWithSrc = (src: string) => Array.from(document.querySelectorAll("img")).filter((img) => img.getAttribute("src") === src);
+
+  it("Genre pills from the show's genres", async () => {
+    setup((url) => (url === "/api/series/s1" ? { body: { ...SERIES, genres: "Crime, Drama" } } : undefined));
+    await renderPage();
+    const pills = ["Crime", "Drama"].map((name) => screen.getByText(name));
+    expect(pills.map((pill) => pill.tagName)).toEqual(["SPAN", "SPAN"]);
+    expect(pills[1].className).toContain("text-primary");
+  });
+
+  it("Poster image or No artwork yet placeholder when the show has none", async () => {
+    setup((url) => (url === "/api/series/s1" ? { body: { ...SERIES, posterUrl: "https://fixture.invalid/poster.jpg" } } : undefined));
+    await renderPage();
+    expect(screen.getByRole("img", { name: "The Wire poster" })).toHaveAttribute("src", "https://fixture.invalid/poster.jpg");
+    expect(screen.queryByText("No artwork yet")).toBeNull();
+  });
+
+  it("Poster placeholder reads No artwork yet when the show has no poster", async () => {
+    await renderPage();
+    expect(screen.getByText("No artwork yet")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "The Wire poster" })).toBeNull();
+  });
+
+  it("Hero backdrop and logo wordmark artwork", async () => {
+    setup((url) =>
+      url === "/api/series/s1"
+        ? { body: { ...SERIES, metadataJson: JSON.stringify({ logoUrl: "https://fixture.invalid/logo.png" }) } }
+        : undefined
+    );
+    await renderPage();
+    expect(imageWithSrc("https://fixture.invalid/logo.png")).toHaveLength(1);
+  });
+
+  it("Screenshots strip extra backdrops", async () => {
+    const shots = ["https://fixture.invalid/shot-a.jpg", "https://fixture.invalid/shot-b.jpg"];
+    setup((url) => (url === "/api/series/s1" ? { body: { ...SERIES, metadataJson: JSON.stringify({ screenshots: shots }) } } : undefined));
+    await renderPage();
+    expect(screen.getByText("Screenshots")).toBeInTheDocument();
+    expect(imageWithSrc(shots[0])).toHaveLength(1);
+    expect(imageWithSrc(shots[1])).toHaveLength(1);
+  });
+
+  it("Show with no stored overview reads the No overview has been stored yet text", async () => {
+    setup((url) => (url === "/api/series/s1" ? { body: { ...SERIES, overview: null } } : undefined));
+    await renderPage();
+    expect(screen.getByText(/No overview has been stored yet\. Refresh metadata when you want Deluno to enrich this series\./)).toBeInTheDocument();
+  });
+
+  it("Title h1 localized title when metadata has one and the Original title line", async () => {
+    setup((url) =>
+      url === "/api/series/s1"
+        ? { body: { ...SERIES, originalTitle: "The Wire (orig)", metadataJson: JSON.stringify({ LocalizedTitle: "Der Draht" }) } }
+        : undefined
+    );
+    await renderPage("Der Draht");
+    expect(screen.getByRole("heading", { level: 1, name: "Der Draht" })).toBeInTheDocument();
+    expect(screen.getByText(/Original title The Wire \(orig\) · Deluno name The Wire/)).toBeInTheDocument();
+  });
+
+  it("Certification by country card the chosen country leads and the others stay reachable", async () => {
+    const metadataJson = JSON.stringify({
+      releaseFactsByCountry: [
+        { Country: "GB", Certification: "15" },
+        { Country: "US", Certification: "TV-MA" }
+      ]
+    });
+    setup((url) => (url === "/api/series/s1" ? { body: { ...SERIES, metadataJson } } : undefined));
+    await renderPage();
+    const card = screen.getByText("Certification by country").parentElement as HTMLElement;
+    const text = card.textContent ?? "";
+    expect(text.indexOf("TV-MA")).toBeGreaterThan(-1);
+    expect(text.indexOf("15")).toBeGreaterThan(-1);
+    expect(text.indexOf("TV-MA")).toBeLessThan(text.indexOf("15"));
+  });
+});
+
+describe("the show's episode drawer, numbering and history (coverage, area show-detail)", () => {
+  const openDrawerFor = async (code: string) => {
+    fireEvent.click(episodeRow(code));
+    return await screen.findByRole("dialog", { name: new RegExp(code) });
+  };
+
+  it("Automation section shows the Monitor this episode switch with the wanted reason and its facts", async () => {
+    await renderPage();
+    const drawer = await openDrawerFor("S01E02");
+    expect(within(drawer).getByRole("switch", { name: "Monitor this episode" })).toHaveAttribute("aria-checked", "true");
+    expect(within(drawer).getByText("No file yet.")).toBeInTheDocument();
+    expect(within(drawer).getByText("Never")).toBeInTheDocument();
+    expect(within(drawer).getByText("As soon as a cycle runs")).toBeInTheDocument();
+    expect(within(drawer).getByText("Quality cutoff met")).toBeInTheDocument();
+  });
+
+  it("Forced subtitles offer no manual search resync or out of sync actions", async () => {
+    setup((url) =>
+      url === "/api/series/episodes/e12/subtitles"
+        ? { body: [{ language: "en", forced: true, hearingImpaired: false, source: "provider", provider: "Fixture", timingStatus: "ok", timingReason: "In sync." }] }
+        : undefined
+    );
+    await renderPage();
+    const drawer = await openDrawerFor("S01E02");
+    expect(await within(drawer).findByText("EN")).toBeInTheDocument();
+    expect(within(drawer).queryByRole("button", { name: "Search EN subtitles by hand" })).toBeNull();
+    const subtitleRow = within(drawer).getByText("EN").closest("[role='row']") as HTMLElement;
+    expect(within(subtitleRow).queryAllByRole("button")).toHaveLength(0);
+  });
+
+  it("Subtitle search history table lists language, time, provider, outcome and score words", async () => {
+    setup((url) => {
+      if (url === "/api/series/episodes/e12/subtitles/history") {
+        return {
+          body: [
+            { language: "fr", attemptedUtc: "2026-10-02T10:00:00Z", provider: "Fixture", outcome: "Downloaded", score: 2 },
+            { language: "de", attemptedUtc: "2026-10-02T11:00:00Z", provider: null, outcome: "No match", score: 0 }
+          ]
+        };
+      }
+      return undefined;
+    });
+    await renderPage();
+    const drawer = await openDrawerFor("S01E02");
+    const table = within(drawer).findByText("Subtitle search history");
+    expect(await table).toBeInTheDocument();
+    expect(within(drawer).getByText("FR")).toBeInTheDocument();
+    expect(within(drawer).getByText("Downloaded")).toBeInTheDocument();
+    expect(within(drawer).getByText("Made for this file")).toBeInTheDocument();
+    expect(within(drawer).getByText("No match")).toBeInTheDocument();
+    expect(within(drawer).getByText("Any release")).toBeInTheDocument();
+  });
+
+  it("Numbering scheme dropdown lists only the orderings this title has", async () => {
+    await renderPage();
+    openTab("Destination");
+    fireEvent.click(await screen.findByRole("button", { name: "Edit numbering" }));
+    const drawer = await screen.findByRole("dialog", { name: "TV numbering" });
+    const scheme = within(drawer).getByRole("combobox", { name: "Numbering scheme" }) as HTMLSelectElement;
+    expect([...scheme.options].map((option) => option.value)).toEqual(["standard", "absolute"]);
+  });
+
+  it("List header says how many episodes are shown in the open seasons", async () => {
+    await renderPage();
+    expect(screen.getByText("4 shown")).toBeInTheDocument();
+  });
+
+  it("Everything about this show link in the History tab opens Activity for this show", async () => {
+    await renderPage();
+    openTab("History");
+    const link = await screen.findByRole("link", { name: "Everything about this show" });
+    expect(link.getAttribute("href")).toBe(activityLinkForTitle("The Wire", "series", "s1"));
   });
 });
