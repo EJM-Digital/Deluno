@@ -172,4 +172,20 @@ public sealed class LiveEventsAtTheirChangePointsTests : IDisposable
         Assert.Equal(12, progress.Checked);
         Assert.Equal(12, progress.Planned);
     }
+
+    [Fact]
+    public async Task Recording_a_search_cycle_stores_its_counts_notes_and_kind_and_writes_one_activity_line()
+    {
+        await _jobs.RecordSearchCycleRunAsync(
+            new RecordSearchCycleRunRequest(
+                "lib-films", "Films", "movies", "scheduled", "completed", 12, 3, 9, """{"note":"kept"}""",
+                _time.GetUtcNow().AddMinutes(-1), _time.GetUtcNow(), SearchKind: "missing"),
+            CancellationToken.None);
+
+        var run = Assert.Single(await _jobs.ListSearchCycleRunsAsync(10, "lib-films", CancellationToken.None));
+        Assert.Equal((12, 3, 9, "missing", "scheduled", "completed"), (run.PlannedCount, run.QueuedCount, run.SkippedCount, run.SearchKind, run.TriggerKind, run.Status));
+        Assert.Equal("""{"note":"kept"}""", run.NotesJson);
+        var activity = await _jobs.ListActivityAsync(20, null, null, CancellationToken.None);
+        Assert.Single(activity, item => item.Message.Contains("Films", StringComparison.Ordinal) && item.Category.Contains("search", StringComparison.OrdinalIgnoreCase));
+    }
 }
