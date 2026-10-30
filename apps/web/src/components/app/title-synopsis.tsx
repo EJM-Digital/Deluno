@@ -29,9 +29,9 @@ export function TitleSynopsis({ text }: { text: string }) {
   const [inline, setInline] = useState(false);
 
   const measure = useCallback(() => {
-    const boxEl = box.current;
-    const p = paragraph.current;
-    if (!boxEl || !p) return;
+    // Both elements are always mounted while the component is, which is the only time this runs.
+    const boxEl = box.current!;
+    const p = paragraph.current!;
     if (!window.matchMedia(wide).matches) {
       setLines(null);
       setInline(false);
@@ -105,8 +105,7 @@ export function TitleSynopsis({ text }: { text: string }) {
   }, [open, close]);
 
   const openPanel = () => {
-    const rect = box.current?.getBoundingClientRect();
-    if (!rect) return;
+    const rect = box.current!.getBoundingClientRect();
     setAnchor({ top: rect.top, left: rect.left, width: Math.max(rect.width, 320) });
     setOpen(true);
   };
@@ -121,7 +120,7 @@ export function TitleSynopsis({ text }: { text: string }) {
       <p
         ref={paragraph}
         className="text-sm leading-relaxed text-muted-foreground"
-        style={clamped ? { display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: lines ?? undefined, overflow: "hidden" } : undefined}
+        style={clamped ? { display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: lines, overflow: "hidden" } : undefined}
       >
         {text}
       </p>
