@@ -100,7 +100,7 @@ const operationsNav = [
   { to: "/queue", label: "Transfers", icon: "transfers", end: false, attention: "transfers" as const }
 ] as const;
 
-const routeMeta = [
+export const routeMeta = [
   { match: (path: string) => path === "/", title: "Dashboard", subtitle: "Your movies and shows, in one place" },
   { match: (path: string) => path.startsWith("/movies"), title: "Movies", subtitle: "Manage and grow your movie library" },
   { match: (path: string) => path.startsWith("/tv"), title: "TV Shows", subtitle: "Manage your shows, episodes, and upgrades" },
