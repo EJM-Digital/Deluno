@@ -1227,6 +1227,72 @@ public sealed partial class ImportPipelineServiceTests
     /// triggers only fire together because an upgrade is what removed it.
     /// </summary>
     [Fact]
+    public async Task An_upgrade_stays_silent_about_the_upgrade_and_the_replaced_file_when_both_switches_are_off_but_the_file_is_still_replaced()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-25T06:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var outbound = new RecordingOutboundNotificationService();
+        var enabledPrefs = new FakeNotificationService(new NotificationPreferences { UpgradeEnabled = false, FileDeletedEnabled = false });
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            downloadDispatchesRepository: new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider),
+            outboundNotificationService: outbound,
+            notificationService: enabledPrefs);
+        var catalogued = await movies.AddAsync(new CreateMovieRequest("The Wild Robot", 2024, null), CancellationToken.None);
+
+        var firstSource = Path.Combine(downloadsPath, "The.Wild.Robot.2024.WEB.720p.mkv");
+        await File.WriteAllBytesAsync(firstSource, Enumerable.Repeat((byte)0x11, 4096).ToArray());
+        File.SetLastWriteTimeUtc(firstSource, DateTime.UtcNow.AddMinutes(-1));
+        var firstDispatchId = await jobStore.RecordDownloadDispatchAsync(
+            libraryId: library.Id, mediaType: "movies", entityType: "movie", entityId: catalogued.Id,
+            releaseName: "The Wild Robot 2024 WEB 720p", indexerName: "TestIndexer",
+            downloadClientId: "client-1", downloadClientName: "TestClient",
+            status: "sent", notesJson: null, cancellationToken: CancellationToken.None);
+        var firstResult = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(firstSource, null, "movies", "The Wild Robot", 2024, [], [], null, null),
+                "copy", Overwrite: false, AllowCopyFallback: true, DispatchId: firstDispatchId),
+            CancellationToken.None);
+        Assert.True(firstResult.Succeeded, firstResult.Message);
+        outbound.DispatchedCategories.Clear();
+
+        var secondDispatchId = await jobStore.RecordDownloadDispatchAsync(
+            libraryId: library.Id, mediaType: "movies", entityType: "movie", entityId: catalogued.Id,
+            releaseName: "The Wild Robot 2024 REPACK 1080p BluRay", indexerName: "TestIndexer",
+            downloadClientId: "client-1", downloadClientName: "TestClient",
+            status: "sent", notesJson: null, cancellationToken: CancellationToken.None);
+        var secondSource = Path.Combine(downloadsPath, "The.Wild.Robot.2024.REPACK.1080p.BluRay.mkv");
+        await File.WriteAllBytesAsync(secondSource, Enumerable.Repeat((byte)0x22, 8192).ToArray());
+        File.SetLastWriteTimeUtc(secondSource, DateTime.UtcNow.AddMinutes(-1));
+        var secondResult = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(secondSource, null, "movies", "The Wild Robot", 2024, [], [], null, null),
+                "copy", Overwrite: true, AllowCopyFallback: true, ForceReplacement: true, DispatchId: secondDispatchId),
+            CancellationToken.None);
+        Assert.True(secondResult.Succeeded, secondResult.Message);
+
+        Assert.DoesNotContain("upgrade", outbound.DispatchedCategories);
+        Assert.DoesNotContain("file.deleted", outbound.DispatchedCategories);
+        Assert.False(File.Exists(Path.Combine(movieRootPath, "The Wild Robot (2024)", "The Wild Robot (2024) [WEB 720p].mkv")) && Directory.GetFiles(Path.Combine(movieRootPath, "The Wild Robot (2024)"), "*.mkv").Length > 1,
+            "the upgrade replaced the first file instead of keeping two");
+    }
+
+    [Fact]
     public async Task An_upgrade_dispatches_upgrade_and_file_deleted_outbound_when_enabled()
     {
         using var storage = TestStorage.Create();

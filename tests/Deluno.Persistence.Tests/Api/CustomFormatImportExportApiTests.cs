@@ -72,6 +72,36 @@ public sealed class CustomFormatImportExportApiTests
     }
 
     [Fact]
+    public async Task A_format_saved_from_an_imported_radarr_or_sonarr_array_exports_in_deluno_s_own_condition_shape_and_imports_back_clean()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var name = $"From Radarr {Guid.NewGuid():N}";
+        const string RadarrArray = "[{\"implementation\":\"ReleaseTitleSpecification\",\"negate\":false,\"required\":true,\"fields\":{\"value\":\"\\\\bx264\\\\b\"}},{\"implementation\":\"ReleaseTitleSpecification\",\"negate\":true,\"required\":false,\"fields\":{\"value\":\"\\\\bCAM\\\\b\"}}]";
+        var created = await app.Client.PostAsJsonAsync("/api/custom-formats", new CreateCustomFormatRequest(name, "movies", 25, null, RadarrArray, true));
+        Assert.Equal(HttpStatusCode.OK, created.StatusCode);
+        var saved = await created.Content.ReadFromJsonAsync<CustomFormatItem>();
+        Assert.Contains("implementation", saved!.Conditions, StringComparison.Ordinal);
+
+        var exported = await (await app.Client.GetAsync($"/api/custom-formats/{saved.Id}/export")).Content.ReadFromJsonAsync<JsonElement>();
+
+        var conditions = exported.GetProperty("conditions").EnumerateArray().ToArray();
+        Assert.Equal(2, conditions.Length);
+        Assert.All(conditions, condition =>
+        {
+            Assert.True(condition.TryGetProperty("type", out _), "Deluno's own shape names a type");
+            Assert.False(condition.TryGetProperty("implementation", out _), "the Radarr shape is not passed on");
+            Assert.False(condition.TryGetProperty("fields", out _));
+        });
+        Assert.Contains(conditions, condition => condition.GetProperty("negate").GetBoolean());
+
+        var again = JsonSerializer.SerializeToElement(new { name = name + " (back)", mediaType = "movies", score = 25, upgradeAllowed = true, conditions = exported.GetProperty("conditions") });
+        var imported = await app.Client.PostAsJsonAsync("/api/custom-formats/import", again);
+        var result = Assert.Single((await imported.Content.ReadFromJsonAsync<CustomFormatImportResult[]>())!);
+        Assert.True(result.Imported);
+        Assert.Empty(result.DroppedConditions);
+    }
+
+    [Fact]
     public async Task A_bulk_export_returns_every_saved_format()
     {
         await using var app = await ApplicationTestHost.StartAsync();

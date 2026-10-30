@@ -118,6 +118,31 @@ public sealed class ImportListsOnTheRealHostTests
     }
 
     [Fact]
+    public async Task A_sync_records_when_it_ran_how_it_ended_and_what_it_did_on_the_list_and_writes_its_diagnostics_to_Activity()
+    {
+        await using var feed = new FeedHolder(Feed(Item("Arrival (2016)"), Item("Dune (2021)")));
+        var (server, url) = await ServeAsync(() => feed.Body);
+        await using var _ = server;
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => services.AddSingleton<IMetadataProvider>(
+            Cards(Card("Arrival", 2016, "329865", 7.9, "Drama"), Card("Dune", 2021, "438631", 8.0, "Science Fiction"))));
+        var libraryId = await ApiScenes.CreateLibraryAsync(app, "movies");
+        var listId = await CreateListAsync(app, libraryId, url, new { searchOnAdd = false });
+        var before = (await app.Client.GetFromJsonAsync<JsonElement>("/api/intake-sources")).EnumerateArray().Single();
+        Assert.Equal("never", before.GetProperty("lastSyncStatus").GetString());
+        Assert.Equal(JsonValueKind.Null, before.GetProperty("lastSyncUtc").ValueKind);
+        var started = DateTimeOffset.UtcNow;
+
+        await SyncAsync(app, listId);
+
+        var after = (await app.Client.GetFromJsonAsync<JsonElement>("/api/intake-sources")).EnumerateArray().Single();
+        Assert.Equal("success", after.GetProperty("lastSyncStatus").GetString());
+        Assert.InRange(after.GetProperty("lastSyncUtc").GetDateTimeOffset(), started.AddSeconds(-5), DateTimeOffset.UtcNow.AddSeconds(5));
+        Assert.Contains("added 2", after.GetProperty("lastSyncSummary").GetString());
+        var diagnostics = (await app.Client.GetFromJsonAsync<JsonElement>($"/api/intake-sources/{listId}/diagnostics")).GetProperty("diagnostics").GetProperty("items").EnumerateArray().ToArray();
+        Assert.Contains(diagnostics, item => item.GetProperty("message").GetString()!.Contains("sync completed (success)", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task A_list_with_no_library_of_its_kind_adds_nothing_and_ends_as_a_failure_that_says_why()
     {
         await using var feed = new FeedHolder(Feed(Item("Arrival (2016)")));

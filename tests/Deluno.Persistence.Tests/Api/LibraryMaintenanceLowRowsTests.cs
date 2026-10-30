@@ -161,4 +161,70 @@ public sealed class LibraryMaintenanceLowRowsTests
         var sent = Assert.Single(outbound.Sent, item => item.Category == "file.deleted");
         Assert.Equal(["kids"], sent.Tags);
     }
+
+    [Fact]
+    public async Task Creating_updating_and_deleting_a_library_each_push_a_Library_change_so_open_screens_refresh()
+    {
+        var realtime = new RecordingRealtimeEventPublisher();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => services.Replace(ServiceDescriptor.Singleton<IRealtimeEventPublisher>(realtime)));
+
+        var libraryId = await ApiScenes.CreateLibraryAsync(app, "movies", name: "Pushed Films");
+        Assert.Contains(("Library", libraryId), realtime.Published);
+
+        var held = (await app.Client.GetFromJsonAsync<JsonElement>("/api/libraries")).EnumerateArray().Single(library => library.GetProperty("id").GetString() == libraryId);
+        var edit = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(held.GetRawText())!;
+        var renamed = edit.ToDictionary(pair => pair.Key, pair => pair.Key == "name" ? JsonSerializer.SerializeToElement("Pushed Films Renamed") : pair.Value);
+        var before = realtime.Published.Count(item => item == ("Library", libraryId));
+        var updated = await app.Client.PutAsJsonAsync($"/api/libraries/{libraryId}", renamed);
+        Assert.True(updated.IsSuccessStatusCode, await updated.Content.ReadAsStringAsync());
+        Assert.True(realtime.Published.Count(item => item == ("Library", libraryId)) > before, "the update pushed a Library change");
+
+        before = realtime.Published.Count(item => item == ("Library", libraryId));
+        var deleted = await app.Client.DeleteAsync($"/api/libraries/{libraryId}");
+        Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+        Assert.True(realtime.Published.Count(item => item == ("Library", libraryId)) > before, "the delete pushed a Library change");
+        Assert.DoesNotContain((await app.Client.GetFromJsonAsync<JsonElement>("/api/libraries")).EnumerateArray(), library => library.GetProperty("id").GetString() == libraryId);
+    }
+
+    [Fact]
+    public async Task Removing_a_film_with_its_files_when_it_has_no_imported_files_says_so_and_moves_nothing()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var libraryId = await ApiScenes.CreateLibraryAsync(app, "movies");
+        var root = await ApiScenes.LibraryRootAsync(app, libraryId);
+        var bystander = Path.Combine(Directory.CreateDirectory(Path.Combine(root, "Not Imported (2020)")).FullName, "Not Imported (2020).mkv");
+        await File.WriteAllBytesAsync(bystander, [1, 2, 3]);
+        var added = await app.Client.PostAsJsonAsync("/api/movies/", new { title = "Nothing Imported", releaseYear = 2019, monitored = true, libraryId, searchForMissingNow = false });
+        Assert.True(added.IsSuccessStatusCode, await added.Content.ReadAsStringAsync());
+        var movieId = (await added.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+
+        var removed = await app.Client.DeleteAsync($"/api/movies/{movieId}?deleteFiles=true");
+
+        Assert.Equal(HttpStatusCode.NoContent, removed.StatusCode);
+        Assert.Contains("Nothing Imported was removed from Deluno. It had no imported files to move.", await app.Client.GetStringAsync("/api/activity?take=50"));
+        Assert.True(File.Exists(bystander), "a file Deluno never imported is not touched");
+        Assert.Empty((await app.Client.GetFromJsonAsync<JsonElement>("/api/recycle-bin")).EnumerateArray());
+    }
+
+    [Fact]
+    public async Task The_folder_check_proves_it_can_write_with_a_file_that_is_gone_again_and_never_touches_one_it_did_not_make()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var folder = Directory.CreateDirectory(Path.Combine(app.DataRoot, "checked")).FullName;
+        var decoy = Path.Combine(folder, ".deluno-write-test-decoy.tmp");
+        await File.WriteAllTextAsync(decoy, "someone else's file");
+        var before = Directory.GetFileSystemEntries(folder).Order().ToArray();
+
+        for (var run = 0; run < 3; run++)
+        {
+            var response = await app.Client.PostAsJsonAsync("/api/filesystem/path-diagnostics", new { path = folder });
+            Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.True(body.GetProperty("writable").GetBoolean());
+            Assert.True(body.GetProperty("readable").GetBoolean());
+        }
+
+        Assert.Equal(before, Directory.GetFileSystemEntries(folder).Order().ToArray());
+        Assert.Equal("someone else's file", await File.ReadAllTextAsync(decoy));
+    }
 }

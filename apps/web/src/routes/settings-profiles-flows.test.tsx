@@ -267,6 +267,23 @@ describe("sizes, chips and extras", () => {
     expect(rule?.maxGb).toBeCloseTo(8.1, 5);
   });
 
+  it("removing a tier takes its size answer with it on save, and keeps the answers of the tiers that stay", async () => {
+    const dialog = await openProfile();
+    fireEvent.click(step(dialog, /How big should a file/));
+    fireEvent.keyDown(within(dialog).getByRole("slider", { name: "Mystery 4K largest file this profile accepts" }), { key: "ArrowRight" });
+    fireEvent.keyDown(within(dialog).getByRole("slider", { name: "WEB 1080p largest file this profile accepts" }), { key: "ArrowRight" });
+    fireEvent.click(step(dialog, /How good, and when to stop/));
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove Mystery 4K" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save quality profile" }));
+
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    const qualities = (lastBody().sizeRules as Array<{ quality: string }>).map((rule) => rule.quality);
+    expect(qualities).not.toContain("Mystery 4K");
+    expect(qualities).toContain("WEB 1080p");
+    expect(String(lastBody().allowedQualities)).not.toContain("Mystery 4K");
+  });
+
   it("a format chip toggles a guide rule on and off for the profile, and ticking stores the guide's suggestion as the answer", async () => {
     const dialog = await openProfile();
     fireEvent.click(step(dialog, /What should the sound be/));

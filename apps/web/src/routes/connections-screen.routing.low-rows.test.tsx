@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
@@ -58,7 +58,7 @@ afterEach(() => { cleanup(); fetchJson.mockReset(); fetchJson.mockImplementation
 describe("the library routing drawer, low rows (#1329)", () => {
   it("switching a client off removes its category text and its check result, and switching it back on starts from the client's own default", async () => {
     const routed = { libraryId: "l1", libraryName: "Films", sources: [{ indexerId: "i1", indexerName: "Alpha", priority: 1 }], downloadClients: [{ downloadClientId: "c1", downloadClientName: "My qBittorrent", priority: 1 }] };
-    reset({ libraries: [{ id: "l1", name: "Films", mediaType: "movies", rootPath: "D:\Films" }], indexers: [indexer()], clients: [client()], routing: [routed] });
+    reset({ libraries: [{ id: "l1", name: "Films", mediaType: "movies", rootPath: "/films" }], indexers: [indexer()], clients: [client()], routing: [routed] });
     fetchJson.mockImplementation(async (url: string) => (String(url).endsWith("/folder-chain")
       ? { clients: [{ clientName: "My qBittorrent", links: [{ status: "problem", message: "The movies category is missing." }] }], allMatch: false, steps: [], libraryLinks: [] }
       : []));
