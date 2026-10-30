@@ -28,7 +28,7 @@ const wantedRow = {
     score: number | null;
   } | null
 };
-let loaderData: { wanted: (typeof wantedRow)[] } = { wanted: [wantedRow] };
+let loaderData: { wanted: (typeof wantedRow)[]; nextPageToken?: string | null; totalCount?: number } = { wanted: [wantedRow] };
 
 vi.mock("react-router-dom", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router-dom")>()),
@@ -79,6 +79,25 @@ describe("Subtitle Wanted screen (#840)", () => {
     loaderData = { wanted: [wantedRow] };
   });
 
+  it("says how many are waiting in all and loads the next page on request (#1439)", async () => {
+    const second = { ...wantedRow, mediaId: "movie-2", title: "Arrival" };
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(
+      JSON.stringify({ items: [second], nextPageToken: null, hasMore: false, totalCount: 2 }),
+      { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    loaderData = { wanted: [wantedRow], nextPageToken: "tok", totalCount: 2 } as typeof loaderData;
+    renderPage();
+    expect(screen.getByText("2 short of a language")).toBeInTheDocument();
+    expect(screen.getByText("Showing 1 of 2")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+
+    expect(await screen.findByText("Arrival")).toBeInTheDocument();
+    expect(String(fetchMock.mock.calls[0][0])).toContain("pageToken=tok");
+    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+    loaderData = { wanted: [wantedRow] };
+  });
+
   it("shows the empty state once nothing is missing", () => {
     loaderData = { wanted: [] };
     renderPage();
@@ -86,7 +105,7 @@ describe("Subtitle Wanted screen (#840)", () => {
     loaderData = { wanted: [wantedRow] };
   });
 
-  it("search all posts every listed item to the bulk endpoint", async () => {
+  it("search all asks the server to search the whole list, not only the loaded pages", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ queued: 1 }) });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -96,9 +115,8 @@ describe("Subtitle Wanted screen (#840)", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toContain("/api/subtitles/wanted/search-all");
-    expect(JSON.parse(init.body as string)).toEqual({
-      items: [{ kind: "Movie", mediaId: "movie-1", libraryId: "library-1" }]
-    });
+    // The whole list is searched on the server, not only the pages loaded here (#1439).
+    expect(JSON.parse(init.body as string)).toEqual({ all: true });
   });
 
   it("a single row's own search button posts just that row", async () => {
