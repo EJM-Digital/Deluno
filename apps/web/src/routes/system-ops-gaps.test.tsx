@@ -76,7 +76,7 @@ vi.mock("../lib/route-cache", async (importOriginal) => {
   const { readyRouteSources } = await import("../test/route-sources");
   return {
     ...(await importOriginal<typeof import("../lib/route-cache")>()),
-    useRouteSources: () => readyRouteSources(loaderData, revalidateMock),
+    useRouteSources: () => ({ ...readyRouteSources(loaderData, revalidateMock), failed: loaderData.failedSources ?? [] }),
     refetchSources: async () => { revalidateMock(); }
   };
 });
@@ -132,6 +132,7 @@ function resetAll() {
   socketStatus.value = null;
   loaderData.activity = [];
   loaderData.backups = [];
+  loaderData.failedSources = [];
   loaderData.backupSettings = null;
   loaderData.recycleBin = [];
   loaderData.recycleBinSettings = { retentionDays: 30, maxSizeMb: 102400 };
@@ -399,6 +400,22 @@ describe("Backups (System > Backups)", () => {
     );
     expect(await screen.findByText("Backup created")).toBeInTheDocument();
     expect(await screen.findByText("deluno-backup-1.zip")).toBeInTheDocument();
+  });
+
+  it("a failed read of the backups says it could not read them, not \"No backups yet\" (#1424)", () => {
+    loaderData.backupSettings = settings();
+    loaderData.failedSources = [{ name: "backups", label: "Backups", message: "boom" }];
+    renderAt("/system/backups");
+    expect(screen.getByText(/Could not read the backups\. Check/)).toBeInTheDocument();
+    expect(screen.queryByText("No backups yet.")).toBeNull();
+    expect(screen.queryByText("No backups yet")).toBeNull();
+  });
+
+  it("a read that worked with no backups still says \"No backups yet.\" (#1424)", () => {
+    loaderData.backupSettings = settings();
+    renderAt("/system/backups");
+    expect(screen.getByText("No backups yet.")).toBeInTheDocument();
+    expect(screen.queryByText(/Could not read the backups/)).toBeNull();
   });
 
   it("a failed Create backup shows the error text and no new backup", async () => {

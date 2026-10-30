@@ -178,12 +178,12 @@ export function SystemPage() {
   const state = useRouteSources(systemSources);
   return (
     <RouteSourceGate state={state}>
-      {() => <SystemPageBody data={state.data} revalidator={state.revalidator} />}
+      {() => <SystemPageBody data={state.data} revalidator={state.revalidator} backupsFailed={state.failed.some((source) => source.name === "backups")} />}
     </RouteSourceGate>
   );
 }
 
-function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderData; revalidator: RouteSourceState<typeof systemSources>["revalidator"] }) {
+function SystemPageBody({ data: loaderData, revalidator, backupsFailed = false }: { data: SystemLoaderData; revalidator: RouteSourceState<typeof systemSources>["revalidator"]; backupsFailed?: boolean }) {
   const location = useLocation();
   const { activity, activityDisplaySettings, automation, backupSettings, backups, downloadClients, failedJobs, healthChecks, indexers, jobs, lanAccess, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemInfo, systemTasks, updateStatus } = loaderData;
   // The folders Deluno writes to are its libraries' folders. This used to count
@@ -418,7 +418,7 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
   if (location.pathname.startsWith("/system/backups")) {
     return (
       <SystemShell>
-        <BackupCard initialBackups={backups} initialSettings={backupSettings}>{runtimeCard}</BackupCard>
+        <BackupCard initialBackups={backups} initialSettings={backupSettings} readFailed={backupsFailed}>{runtimeCard}</BackupCard>
       </SystemShell>
     );
   }
@@ -1142,10 +1142,12 @@ function OperationsFlowCard() {
 function BackupCard({
   initialBackups,
   initialSettings,
+  readFailed = false,
   children
 }: {
   initialBackups: BackupItem[];
   initialSettings: BackupSettingsSnapshot;
+  readFailed?: boolean;
   children: ReactNode;
 }) {
   const { preferences } = useDisplayPreferences();
@@ -1291,7 +1293,7 @@ function BackupCard({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ShieldCheck className="h-4 w-4 text-primary" />
-          {backups.length ? `${plural(backups.length, "backup")}` : "No backups yet"}
+          {backups.length ? `${plural(backups.length, "backup")}` : readFailed ? "Could not read the backups" : "No backups yet"}
         </CardTitle>
         <CardDescription>Protect the app database, settings, queues, and integration cache before changes.</CardDescription>
       </CardHeader>
@@ -1472,7 +1474,8 @@ function BackupCard({
             </div>
             );
           })}
-          {backups.length === 0 ? <p className="text-sm text-muted-foreground">No backups yet.</p> : null}
+          {backups.length === 0 && readFailed ? <p role="alert" className="text-sm text-destructive">Could not read the backups. Check that Deluno is running and its backup folder is reachable, then reload the page.</p> : null}
+          {backups.length === 0 && !readFailed ? <p className="text-sm text-muted-foreground">No backups yet.</p> : null}
         </div>
         </CardContent>
       </Card>
