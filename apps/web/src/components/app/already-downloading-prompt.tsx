@@ -36,7 +36,7 @@ export function AlreadyDownloadingDialog({
   return (
     <ConfirmDialog
       open={prompt !== null}
-      onOpenChange={(next) => { if (!next) onCancel(); }}
+      onOpenChange={() => onCancel()}
       title="Already downloading"
       description={prompt?.message ?? ""}
       confirmLabel="Replace it"
