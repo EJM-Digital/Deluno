@@ -17,12 +17,13 @@ namespace Deluno.Api.Monitoring;
 /// check, so a folder that is plainly missing is reported at once and one that is
 /// slow to answer is reported on the next look rather than holding the page.</para>
 /// </summary>
-public sealed class LibraryRootReachability(TimeProvider clock)
+public sealed class LibraryRootReachability(TimeProvider clock, Func<string, bool>? folderExists = null)
 {
     private static readonly TimeSpan RecheckAfter = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan GiveUpAfter = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan FirstLookWait = TimeSpan.FromMilliseconds(250);
 
+    // Only a test passes folderExists, to stand in for a share that never answers; the product asks the file system.
     private readonly ConcurrentDictionary<string, Probe> _probes = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The paths that answered "not there" or did not answer in time, among those asked about.</summary>
@@ -68,7 +69,7 @@ public sealed class LibraryRootReachability(TimeProvider clock)
         {
             try
             {
-                var exists = Task.Run(() => Directory.Exists(path));
+                var exists = Task.Run(() => (folderExists ?? Directory.Exists)(path));
                 var answered = await Task.WhenAny(exists, Task.Delay(GiveUpAfter));
                 return answered == exists && await exists;
             }
