@@ -35,9 +35,6 @@ export function formatBytes(value: number | null | undefined): string {
   return `${text} ${units[index]}`;
 }
 
-export function formatRelative(value: string) {
-  return value;
-}
 
 /** An IPv4 address written the IPv6 way (::ffff:192.168.1.20) shown as people write it (192.168.1.20) (#1141). */
 export function plainAddress(address: string): string {

@@ -22,3 +22,15 @@ describe("the result of the last search", () => {
     expect(screen.getByRole("status")).toHaveTextContent("No indexer had a release that fits the profile.");
   });
 });
+
+describe("the colour of a finished search's note", () => {
+  it("is amber for a warning and red for an error, each keeping its words", () => {
+    const { rerender } = render(<SearchResultNote note={{ state: "done", tone: "warning", title: "Found it, but it is below the cutoff." }} />);
+    expect(screen.getByRole("status")).toHaveClass("bg-warning/10");
+    expect(screen.getByRole("status")).toHaveTextContent("Found it, but it is below the cutoff.");
+
+    rerender(<SearchResultNote note={{ state: "done", tone: "error", title: "The indexer refused the search." }} />);
+    expect(screen.getByRole("status")).toHaveClass("bg-destructive/10");
+    expect(screen.getByRole("status")).not.toHaveClass("bg-warning/10");
+  });
+});

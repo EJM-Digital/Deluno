@@ -39,3 +39,9 @@ describe("latestVersionLabel", () => {
     expect(latestVersionLabel({ state: "error", latestVersion: null })).toBe("Couldn't check");
   });
 });
+
+describe("updateHeadline with no message", () => {
+  it("asks for attention when the check failed and said nothing", () => {
+    expect(updateHeadline({ ...base, state: "error", message: null })).toBe("Update needs attention");
+  });
+});

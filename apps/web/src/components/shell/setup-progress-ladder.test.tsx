@@ -67,4 +67,20 @@ describe("setup progress ladder", () => {
     expect(screen.getByText("Complete your Deluno setup")).toBeVisible();
     expect(screen.getByText("2/5 steps complete")).toBeVisible();
   });
+
+  it("leaves optional steps off the ladder, so only the basics stand between the person and a working install", () => {
+    renderLadder(
+      status({
+        isComplete: false,
+        completedCount: 1,
+        steps: [
+          step(),
+          step({ id: "discovery", number: 2, title: "Subtitles", optional: true, complete: false, state: "not-started", status: "No provider yet" })
+        ]
+      })
+    );
+
+    expect(screen.getByText(/Media Management/)).toBeVisible();
+    expect(screen.queryByText(/Subtitles/)).toBeNull();
+  });
 });

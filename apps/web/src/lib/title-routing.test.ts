@@ -78,3 +78,17 @@ describe("describeTitleRouting", () => {
     expect(entries[1]!.used).toBe(true);
   });
 });
+
+describe("describeTitleRouting with tags that were never set", () => {
+  it("treats a missing or null tags value like no tags", () => {
+    const entries = describeTitleRouting(
+      [
+        { id: "a", name: "Alpha", tags: null },
+        { id: "b", name: "Beta" } as never
+      ],
+      ["anime"]
+    );
+    expect(entries.map((entry) => entry.used)).toEqual([true, true]);
+    expect(entries[0].reason).toContain("any title");
+  });
+});

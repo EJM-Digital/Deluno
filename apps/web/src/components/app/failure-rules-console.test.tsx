@@ -103,6 +103,30 @@ describe("the failure rules", () => {
     expect(screen.getByRole("button", { name: /put no video in the file back/i })).toBeInTheDocument();
   });
 
+  it("puts a changed row back to Deluno's answer with the way-back button", async () => {
+    vi.mocked(authedFetch).mockResolvedValue({ ok: true } as Response);
+    render(
+      <FailureRulesConsole
+        rules={[rule({ decision: "Never", defaultDecision: "Immediately", isOverridden: true })]}
+        onChanged={vi.fn()}
+      />
+    );
+    await userEvent.click(screen.getByRole("button", { name: /put no video in the file back/i }));
+
+    expect(authedFetch).toHaveBeenCalledWith("/api/failure-rules/noVideoStream", { method: "DELETE" });
+  });
+
+  it("repeats an answer it has no words for as it came", () => {
+    render(
+      <FailureRulesConsole
+        rules={[rule({ decision: "Never", defaultDecision: "AfterTwoWeeks" as never, isOverridden: true })]}
+        onChanged={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('Deluno ships with "AfterTwoWeeks"')).toBeInTheDocument();
+  });
+
   it("offers no way back on a row nobody has changed", () => {
     render(<FailureRulesConsole rules={[rule()]} onChanged={vi.fn()} />);
 

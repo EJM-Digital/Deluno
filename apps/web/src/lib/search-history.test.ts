@@ -25,3 +25,12 @@ describe("a stored search's releases", () => {
     expect(searchCandidateCount("{}")).toBe(0);
   });
 });
+
+describe("a stored search whose details are not an object", () => {
+  it("answers nothing for a list, a number or a plan without releases", () => {
+    expect(parseSearchCandidates("[1,2]", name)).toEqual([]);
+    expect(parseSearchCandidates("5", name)).toEqual([]);
+    expect(parseSearchCandidates(JSON.stringify({ searchPlan: { note: "none" } }), name)).toEqual([]);
+    expect(searchCandidateCount("[1]")).toBe(0);
+  });
+});

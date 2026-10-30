@@ -35,3 +35,10 @@ describe("samePath", () => {
     expect(comparablePath(null)).toBe("");
   });
 });
+
+describe("comparablePath runs of separators", () => {
+  it("squeezes a doubled separator inside a path but keeps the two that open a share", () => {
+    expect(comparablePath(String.raw`C:\Media\\Films//Action`)).toBe("c:/media/films/action");
+    expect(comparablePath(String.raw`\\NAS\\Share`)).toBe("//nas/share");
+  });
+});

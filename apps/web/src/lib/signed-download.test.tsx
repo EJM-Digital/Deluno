@@ -80,4 +80,29 @@ describe("SignedApiLink (#1331)", () => {
     fireEvent.click(screen.getByRole("link", { name: "Download" }));
     await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith("Failed to fetch"));
   });
+
+  it("opens a text page as readable text, whatever type the server called it", async () => {
+    const types: string[] = [];
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: (blob: Blob) => { types.push(blob.type); return "blob:view"; }, revokeObjectURL: () => undefined }));
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    authedFetchMock.mockReturnValue(Promise.resolve({
+      ok: true,
+      status: 200,
+      blob: () => Promise.resolve(new Blob(["<b>hi</b>"], { type: "text/html" })),
+      text: () => Promise.resolve(""),
+      headers: new Headers()
+    } as Response));
+    render(<SignedApiLink path="/api/page" mode="open" fallbackName="p.txt">Page</SignedApiLink>);
+    fireEvent.click(screen.getByRole("link", { name: "Page" }));
+    await waitFor(() => expect(open).toHaveBeenCalled());
+    expect(types).toEqual(["text/plain;charset=utf-8"]);
+  });
+
+  it("gives a plain sentence when the request fails without a message", async () => {
+    authedFetchMock.mockRejectedValue("offline");
+    render(<SignedApiLink path="/api/backups/b1/download" mode="save" fallbackName="f.zip">Download</SignedApiLink>);
+    fireEvent.click(screen.getByRole("link", { name: "Download" }));
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith("That could not be downloaded."));
+  });
 });
+

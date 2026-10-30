@@ -52,7 +52,7 @@ export function usePasswordPrompt(): { ask: (reason: string) => Promise<string |
   }
 
   const prompt = (
-    <Dialog.Root open={reason !== null} onOpenChange={(open) => (open ? undefined : close(null))}>
+    <Dialog.Root open={reason !== null} onOpenChange={() => close(null)}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]" />
         <Dialog.Content

@@ -4,6 +4,7 @@ import {
   listColumnLabel,
   listColumnsFor,
   moveListColumn,
+  listColumnStorageKey,
   parseListColumnOrder,
   shiftListColumn
 } from "./library-list-columns";
@@ -98,5 +99,21 @@ describe("library list column order", () => {
       "studio", "originalTitle", "collection", "path", "releaseDate", "runtime", "releaseGroup", "tags", "qualityProfile"
     ]);
     expect(shiftListColumn(order, "quality", -1)).toEqual(order);
+  });
+});
+
+describe("reading saved column orders that are not an order", () => {
+  it("falls back to the default columns for JSON that is not a list, is not JSON, or is empty", () => {
+    const defaults = parseListColumnOrder(null, "movies");
+    expect(parseListColumnOrder('{"a":1}', "movies")).toEqual(defaults);
+    expect(parseListColumnOrder("not json", "movies")).toEqual(defaults);
+    expect(parseListColumnOrder("", "movies")).toEqual(defaults);
+  });
+});
+
+describe("where each library list keeps its column order", () => {
+  it("keeps movies and shows apart", () => {
+    expect(listColumnStorageKey("movies")).toBe("deluno-list-columns-movies");
+    expect(listColumnStorageKey("shows")).toBe("deluno-list-columns-shows");
   });
 });

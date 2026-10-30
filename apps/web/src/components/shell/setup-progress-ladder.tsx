@@ -75,7 +75,7 @@ export function SetupProgressLadder({ status }: { status: SetupStatusModel }) {
                     "mt-0.5 block truncate max-md:whitespace-normal max-md:break-words text-(length:--type-caption) leading-snug",
                     step.state === "failed" ? "text-destructive" : step.state === "complete" ? "text-success" : "text-muted-foreground"
                   )}>
-                    {step.optional && step.state !== "complete" ? "Optional · " : ""}{stepStateLabel(step)}
+                    {stepStateLabel(step)}
                   </span>
                   <span className="mt-1 flex items-center gap-1 truncate text-(length:--type-micro) font-bold uppercase tracking-[0.12em] text-primary">
                     {step.action}

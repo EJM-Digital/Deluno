@@ -88,3 +88,19 @@ describe("reading every connection's version (#1117)", () => {
     expect(container.textContent).toBe("");
   });
 });
+
+describe("a connection's version, edge cases (#1117)", () => {
+  it("shows nothing at all when there is no info or the connection reported no version", () => {
+    expect(render(<ConnectionVersionText info={null} />).container).toBeEmptyDOMElement();
+    expect(render(<ConnectionVersionText info={{ ...upToDate, version: null as unknown as string }} />).container).toBeEmptyDOMElement();
+  });
+
+  it("clicking the release-notes link does not also click the row around it", () => {
+    const onRowClick = vi.fn();
+    render(<div onClick={onRowClick}><ConnectionVersionText info={outOfDate} /></div>);
+    const link = screen.getByRole("link", { name: "5.0.2 available: read the release notes" });
+    link.addEventListener("click", (event) => event.preventDefault());
+    link.click();
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
+});

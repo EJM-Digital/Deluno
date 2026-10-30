@@ -78,3 +78,14 @@ describe("useCoalescedRevalidate (#641)", () => {
     expect(callback).not.toHaveBeenCalled();
   });
 });
+
+describe("useLiveInterval with no timer", () => {
+  it("never calls back when the interval is false", () => {
+    vi.useFakeTimers();
+    const callback = vi.fn();
+    renderHook(() => useLiveInterval(callback, false));
+    act(() => { vi.advanceTimersByTime(10_000); });
+    expect(callback).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+});

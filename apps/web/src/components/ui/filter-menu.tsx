@@ -41,8 +41,7 @@ export function FilterMenu({ active, children, className }: { /** How many filte
   useLayoutEffect(() => {
     if (!open) return undefined;
     const measure = () => {
-      const rect = triggerRef.current?.getBoundingClientRect();
-      if (!rect) return;
+      const rect = triggerRef.current!.getBoundingClientRect();
       const wide = Math.min(576, window.innerWidth - 24);
       const top = rect.bottom + 8;
       setAnchor({

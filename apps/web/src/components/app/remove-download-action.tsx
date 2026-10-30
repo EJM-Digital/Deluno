@@ -57,14 +57,13 @@ export function RemoveDownloadAction({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [identity.releaseName, identity.hash]);
 
-  async function chooseReason(reason: RemovalReason) {
-    if (!match) return;
+  async function chooseReason(reason: RemovalReason, target: QueueMatch) {
     setBusyReason(reason);
     try {
       // The server does the unmonitor itself now when reason is "unwanted"
       // (#924), so there is nothing left to follow up here — the returned
       // message already says so.
-      const result = await submitQueueRemoval(match.clientId, match.queueItemId, reason);
+      const result = await submitQueueRemoval(target.clientId, target.queueItemId, reason);
       toast.success(result.message);
       setOpen(false);
       onRemoved?.();
@@ -97,7 +96,7 @@ export function RemoveDownloadAction({
         onOpenChange={setOpen}
         title={displayTitle}
         busyReason={busyReason}
-        onChoose={(reason) => void chooseReason(reason)}
+        onChoose={(reason) => void chooseReason(reason, match)}
       />
     </>
   );

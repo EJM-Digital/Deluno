@@ -50,6 +50,18 @@ describe("Season Pass bulk-toggle action (#791)", () => {
     expect(screen.getByText("4/9 (partial)")).toBeInTheDocument();
   });
 
+  it("names season zero Specials, in both its row and its switch", () => {
+    loaderSeasons = [season({ seasonNumber: 0, episodeCount: 3, monitoredCount: 3 })];
+    render(
+      <MemoryRouter>
+        <SeasonPassPage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText("Specials")).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Monitor Severance specials" })).toBeChecked();
+  });
+
   it("toggling a season's switch sends a scoped monitoring request for that season only", async () => {
     loaderSeasons = [season({ episodeCount: 9, monitoredCount: 0 })];
     authedFetchMock.mockResolvedValue({ ok: true } as Response);

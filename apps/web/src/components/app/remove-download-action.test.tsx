@@ -7,7 +7,7 @@ import { fetchJson } from "../../lib/api/client";
 import { RemoveDownloadAction } from "./remove-download-action";
 
 vi.mock("../../lib/use-auth", () => ({ authedFetch: vi.fn() }));
-vi.mock("../../lib/api/client", () => ({ fetchJson: vi.fn() }));
+vi.mock("../../lib/api/client", async (importOriginal) => ({ ...(await importOriginal<typeof import("../../lib/api/client")>()), fetchJson: vi.fn() }));
 
 vi.mock("../shell/toaster", () => ({
   toast: { success: vi.fn(), error: vi.fn() }
@@ -163,5 +163,66 @@ describe("removing a download from a title's history", () => {
     );
     expect(toasts.success).toHaveBeenCalled();
     expect(onRemoved).toHaveBeenCalled();
+  });
+
+  async function openDialogFor(props: { title?: string } = { title: "Arrival" }) {
+    vi.mocked(fetchJson).mockResolvedValue(overviewWithQueueItem());
+    render(
+      <RemoveDownloadAction
+        releaseName="Arrival.2016.2160p.UHD.BluRay"
+        indexerName="Nebula"
+        mediaType="movie"
+        entityId="movie-1"
+        title={props.title ?? ""}
+      />
+    );
+    return screen.findByRole("button", { name: /^Remove ".*" from qBittorrent$/ });
+  }
+
+  it("names the release itself when the title is blank", async () => {
+    const trigger = await openDialogFor({ title: "" });
+    expect(trigger).toHaveAccessibleName('Remove "Arrival.2016.2160p.UHD.BluRay" from qBittorrent');
+  });
+
+  it("tells the person the server's reason when it refuses, and keeps the dialog open", async () => {
+    vi.mocked(authedFetch).mockResolvedValue({
+      ok: false,
+      json: async () => ({ succeeded: false, message: "qBittorrent would not let go of it." })
+    } as Response);
+    await userEvent.click(await openDialogFor());
+    await userEvent.click(await screen.findByRole("button", { name: /It's bad/ }));
+    await vi.waitFor(() => expect(toasts.error).toHaveBeenCalledWith("qBittorrent would not let go of it."));
+    expect(toasts.success).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /It's bad/ })).toBeInTheDocument();
+  });
+
+  it("says a plain sentence when the server gave no reason at all", async () => {
+    vi.mocked(authedFetch).mockResolvedValue({
+      ok: false,
+      json: async () => { throw new Error("no body"); },
+      text: async () => ""
+    } as unknown as Response);
+    await userEvent.click(await openDialogFor());
+    await userEvent.click(await screen.findByRole("button", { name: /Just stop tracking it/ }));
+    await vi.waitFor(() => expect(toasts.error).toHaveBeenCalledWith("That removal could not be completed."));
+  });
+
+  it("says the same plain sentence when the request fails with something that is not an error", async () => {
+    vi.mocked(authedFetch).mockRejectedValue("offline");
+    await userEvent.click(await openDialogFor());
+    await userEvent.click(await screen.findByRole("button", { name: /I don't want it/ }));
+    await vi.waitFor(() => expect(toasts.error).toHaveBeenCalledWith("That removal could not be completed."));
+  });
+
+  it("ignores a queue answer that arrives after the button has gone", async () => {
+    let finish: (value: DownloadTelemetryOverview) => void = () => undefined;
+    vi.mocked(fetchJson).mockReturnValue(new Promise((resolve) => { finish = resolve as typeof finish; }));
+    const { unmount, container } = render(
+      <RemoveDownloadAction releaseName="Arrival.2016.2160p.UHD.BluRay" indexerName="Nebula" mediaType="movie" entityId="movie-1" title="Arrival" />
+    );
+    unmount();
+    finish(overviewWithQueueItem());
+    await Promise.resolve();
+    expect(container).toBeEmptyDOMElement();
   });
 });

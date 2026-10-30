@@ -46,3 +46,19 @@ describe("the ErrorState card", () => {
     expect(screen.queryByRole("button", { name: "Report issue" })).toBeNull();
   });
 });
+
+describe("the ErrorState card, other shapes", () => {
+  it("shows the error code under the message only when one is given", () => {
+    const { unmount } = render(<ErrorState code="HTTP 503" />);
+    expect(screen.getByText("HTTP 503")).toBeTruthy();
+    unmount();
+    render(<ErrorState />);
+    expect(screen.queryByText("HTTP 503")).toBeNull();
+  });
+
+  it("draws the offline art at the smaller size in a compact card", () => {
+    const { container } = render(<ErrorState variant="offline" size="compact" />);
+    const { container: small } = render(<OfflineArt size={112} />);
+    expect(container.querySelector(".relative.mb-4")!.innerHTML).toBe(small.innerHTML);
+  });
+});

@@ -103,3 +103,21 @@ describe("episodes nobody wants", () => {
     expect(isEpisodeUpcoming({ airDateUtc: "2999-01-01T00:00:00Z", hasFile: false, monitored: false })).toBe(false);
   });
 });
+
+describe("an episode that has not aired yet", () => {
+  it("is counted as nothing when a file is already held", () => {
+    const summary = summariseEpisodes([{ airDateUtc: "2999-01-01T00:00:00Z", hasFile: true, wantedStatus: "covered" }], NOW);
+    expect(summary).toMatchObject({ total: 1, aired: 0, held: 0, missing: 0, upcoming: 0, upgradable: 0 });
+  });
+
+  it("counts an undated, unheld episode as missing and a future one as upcoming", () => {
+    const summary = summariseEpisodes(
+      [
+        { airDateUtc: null, hasFile: false, wantedStatus: "missing" },
+        { airDateUtc: "2999-01-01T00:00:00Z", hasFile: false, wantedStatus: "missing" }
+      ] as never,
+      NOW
+    );
+    expect(summary).toMatchObject({ missing: 1, upcoming: 1 });
+  });
+});
