@@ -7,7 +7,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type JSX } from "react";
 import { Link } from "react-router-dom";
 import { FilterChips } from "../../../components/ui/filter-chips";
-import { useLiveEvent } from "../../../lib/use-signalr";
 import { ago } from "../format";
 import { useAction, send, type ActionState } from "../downloads-kit";
 import { areaName, plainCount, span, type HealthArea } from "./logic";
@@ -75,7 +74,6 @@ export function HealthCard({ model, hasChecks, jump, now }: { model: HealthModel
   const action = useAction();
   const [filter, setFilter] = useState<HealthArea | null>(null);
   const [flash, setFlash] = useState(false);
-  const [sheen, setSheen] = useState(false);
   const card = useRef<HTMLElement>(null);
   const list = useRef<HTMLUListElement>(null);
 
@@ -90,12 +88,6 @@ export function HealthCard({ model, hasChecks, jump, now }: { model: HealthModel
     const stop = setTimeout(() => setFlash(false), 1300);
     return () => { clearTimeout(start); clearTimeout(stop); };
   }, [jump]);
-
-  // A health check re-ran: every area sheens once.
-  useLiveEvent("HealthChanged", () => {
-    setSheen(true);
-    setTimeout(() => setSheen(false), 1400);
-  });
 
   const rows = model.rows.filter((row) => (filter ? row.area === filter : row.tone === "bad" || row.tone === "warn" || row.id.startsWith("snoozed:")));
   const summary = hasChecks ? `${plainCount(model.pass)} of ${plainCount(model.total)} pass · ${plainCount(model.need)} need you` : "";
