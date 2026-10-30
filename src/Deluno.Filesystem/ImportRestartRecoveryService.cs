@@ -259,26 +259,16 @@ public sealed class ImportRestartRecoveryService(
 
     /// <summary>
     /// The half-written temporary copies (<c>.deluno-copy-*.tmp</c>) a killed copy left next to a staging file. Only called
-    /// when the original they were copied from is still there, so they are never the only copy of anything.
+    /// when the original they were copied from is still there, so they are never the only copy of anything. The folder is
+    /// the one the restart marker was just found in; if it cannot be read now, the recovery's own catch keeps the marker
+    /// and the next pass tries again.
     /// </summary>
-    private void RemoveInterruptedCopies(string stagingPath)
+    private static void RemoveInterruptedCopies(string stagingPath)
     {
-        try
+        var folder = Path.GetDirectoryName(stagingPath)!;
+        foreach (var half in Directory.EnumerateFiles(folder, Path.GetFileName(stagingPath) + ".deluno-copy-*.tmp"))
         {
-            var folder = Path.GetDirectoryName(stagingPath);
-            if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
-            {
-                return;
-            }
-
-            foreach (var half in Directory.EnumerateFiles(folder, Path.GetFileName(stagingPath) + ".deluno-copy-*.tmp"))
-            {
-                TryDelete(half);
-            }
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            logger.LogInformation(exception, "Could not look for half-written copies beside {StagingPath}; they stay for the next recovery.", stagingPath);
+            TryDelete(half);
         }
     }
 
