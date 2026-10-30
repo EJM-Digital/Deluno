@@ -82,6 +82,29 @@ function richShow(body: Record<string, unknown>) {
   return { overview: LONG_SYNOPSIS, genres: "Drama, Fantasy, Science Fiction, Mystery", metadataJson: JSON.stringify(meta) };
 }
 
+/**
+ * #1441: a title page's header (the card round the poster) against its poster. A header may not be taller than the poster plus its
+ * own padding, and a logo is the heading itself, so the title is not written a second time beside it.
+ */
+async function measureTitleHeader(page: Page) {
+  return page.evaluate(() => {
+    const heading = document.querySelector("h1");
+    const card = heading?.closest(".isolate") as HTMLElement | null;
+    const poster = card?.querySelector(".h-96.w-64") as HTMLElement | null;
+    if (!heading || !card || !poster) return null;
+    const padding = Array.from(card.querySelectorAll(":scope > div")).map((el) => parseFloat(getComputedStyle(el).paddingTop) + parseFloat(getComputedStyle(el).paddingBottom));
+    const shield = card.querySelector("button[aria-label^='Monitored'], button[aria-label^='Unmonitored']") as HTMLElement | null;
+    return {
+      card: card.getBoundingClientRect().height,
+      poster: poster.getBoundingClientRect().height,
+      padding: Math.max(0, ...padding),
+      logo: heading.querySelector("img") !== null,
+      headingText: (heading.textContent ?? "").trim(),
+      shield: shield ? shield.querySelector("svg")!.getBoundingClientRect().width : 0
+    };
+  });
+}
+
 const json = (body: unknown) => ({ contentType: "application/json", body: JSON.stringify(body) });
 
 /**
@@ -703,8 +726,20 @@ test.describe("a title page's header, Destination and History tabs read at every
         for (const problem of JSON.parse(previous) as string[]) offenders.push(`${what}: ${problem}`);
       };
 
+      await page.route(new RegExp(`/api/movies/${movie.id}$`), async (route) => {
+        if (route.request().method() !== "GET") return route.continue();
+        const response = await route.fetch();
+        const body = await response.json() as Record<string, unknown>;
+        return route.fulfill({ response, json: { ...body, ...richShow(body) } });
+      });
       await page.goto(`/movies/${movie.id}`);
       await expect(page.getByText("Release taken").first()).toBeVisible();
+      let filmHeader: Awaited<ReturnType<typeof measureTitleHeader>> = null;
+      if (size.width >= 1280) {
+        await expect.poll(async () => (filmHeader = await measureTitleHeader(page))?.logo).toBe(true);
+        expect(filmHeader!.headingText, "the film's logo is its heading, so the title is not written beside it").toBe("");
+        expect(filmHeader!.card, "the film's header is no taller than its poster and padding").toBeLessThanOrEqual(filmHeader!.poster + filmHeader!.padding + 3);
+      }
       await look("film Destination");
       await tab("History").click();
       await expect(page.getByText("failed on attempt").first()).toBeVisible();
@@ -729,6 +764,14 @@ test.describe("a title page's header, Destination and History tabs read at every
         await page.keyboard.press("Escape");
       }
       await look("show header");
+      if (size.width >= 1280) {
+        const showHeader = (await measureTitleHeader(page))!;
+        expect(showHeader.logo, "the show's logo is its heading").toBe(true);
+        expect(showHeader.headingText, "the show's title is not written beside its logo").toBe("");
+        expect(showHeader.card, "the show's header is no taller than its poster and padding").toBeLessThanOrEqual(showHeader.poster + showHeader.padding + 3);
+        expect(showHeader.shield, "the shield is the same size on both pages").toBe(filmHeader!.shield);
+        expect(Math.abs(showHeader.card - filmHeader!.card), "the show's header is the film's height").toBeLessThanOrEqual(1);
+      }
       await tab("Destination").click();
       await expect(page.getByText("Root folder").first()).toBeVisible();
       await look("show Destination");

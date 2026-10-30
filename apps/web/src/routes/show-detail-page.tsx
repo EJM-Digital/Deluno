@@ -12,6 +12,7 @@
  */
 import { importWorkflowLabel } from "../lib/import-workflow";
 import { getDispatchStatusLabel as formatDispatchStatus } from "../lib/job-status-constants";
+import { DetailTitleRow } from "../components/app/detail-title-row";
 import { ArtworkImage } from "../components/ui/artwork-image";
 import { eventLabel } from "../lib/activity-format";
 import { activityLinkForTitle } from "../lib/activity-history";
@@ -1270,11 +1271,12 @@ export function ShowDetailPage() {
               <div className="flex h-96 w-64 justify-self-center items-center justify-center rounded-2xl border border-hairline bg-surface-1 px-3 text-center text-xs text-muted-foreground md:justify-self-start">No artwork yet</div>
             )}
             <div className="min-w-0 self-start xl:flex xl:min-h-96 xl:flex-col">
-              <p className="text-(length:--section-eyebrow-size) font-bold uppercase tracking-[0.18em] text-primary">TV series</p>
-              {/* #864: a transparent logo/wordmark, where TMDb has one, above the title it labels. */}
-              {logoUrl ? <ArtworkImage fallback={null} src={logoUrl} alt="" className="mt-1 h-12 w-auto max-w-[18rem] object-contain object-left" /> : null}
-              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 xl:flex-nowrap">
-                <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl xl:min-w-0 xl:truncate xl:text-3xl" title={metaText("LocalizedTitle") ?? series.title}>{metaText("LocalizedTitle") ?? series.title}</h1>
+              <DetailTitleRow
+                eyebrow="TV series"
+                title={metaText("LocalizedTitle") ?? series.title}
+                logoUrl={logoUrl}
+                shield={(
+                  <>
                 {/* The shield, beside the title — one control, both shelves. */}
                 <button
                   type="button"
@@ -1283,17 +1285,19 @@ export function ShowDetailPage() {
                   aria-label={series.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
                   title={series.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
                   className={cn(
-                    "self-center rounded-lg p-1.5 transition-colors",
+                    "rounded-lg p-1.5 transition-colors",
                     series.monitored
                       ? "text-foreground hover:bg-surface-2"
                       : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"
                   )}
                 >
                   {busyAction === "series-monitor"
-                    ? <LoaderCircle className="h-5 w-5 animate-spin" />
-                    : series.monitored ? <ShieldCheck className="h-5 w-5" /> : <ShieldOff className="h-5 w-5" />}
+                    ? <LoaderCircle className="h-7 w-7 animate-spin" />
+                    : series.monitored ? <ShieldCheck className="h-7 w-7" /> : <ShieldOff className="h-7 w-7" />}
                 </button>
-              </div>
+                  </>
+                )}
+              />
               {metaText("LocalizedTitle") ? (
                 <p className="mt-1 text-sm text-muted-foreground">
                   Original title {series.originalTitle ?? series.title}
@@ -1301,7 +1305,7 @@ export function ShowDetailPage() {
                 </p>
               ) : series.originalTitle && series.originalTitle !== series.title ? <p className="mt-1 text-sm text-muted-foreground">Also known as {series.originalTitle}</p> : null}
               {alternateTitles.length ? (
-                <p className="mt-1 text-sm text-muted-foreground" title="Used to match a release filed under a region-specific spelling">
+                <p className="mt-1 text-sm text-muted-foreground xl:truncate" title={`Used to match a release filed under a region-specific spelling: ${alternateTitles.join(", ")}`}>
                   Alternate titles: {alternateTitles.join(", ")}
                 </p>
               ) : null}
@@ -1344,7 +1348,7 @@ export function ShowDetailPage() {
                 {series.genres?.split(",").map((genre) => <span key={genre} className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">{genre.trim()}</span>)}
               </div>
               <TitleTagsEditor id={series.id} mediaType="series" metadataJson={series.metadataJson} onSaved={() => revalidator.revalidate()} />
-              <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-3 xl:shrink-0 2xl:grid-cols-4">
+              <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-3 xl:shrink-0 xl:grid-cols-5 xl:gap-x-4 2xl:grid-cols-4 2xl:gap-x-6">
                 {[
                   { label: "Episodes", value: progress.aired ? `${progress.held}/${progress.aired} aired held` : null },
                   { label: "Network", value: metaText("Network") },
