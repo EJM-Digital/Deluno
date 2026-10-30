@@ -452,6 +452,7 @@ it, plus `libraryEntryId` when Deluno already holds it.
 | `200` | The film. |
 | `400` | `imdbId` is not an IMDb title id (`tt` and 5 to 10 digits). |
 | `404` | No film has that id (an id that names a show is not a film here). |
+| `503` | The metadata service is not answering (`error: metadata-unavailable`, with a plain `message`). |
 
 The calendar needs no new address: `GET /api/calendar/feed.ics` already
 carries both films and episodes.

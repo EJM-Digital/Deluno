@@ -76,9 +76,27 @@ public static partial class DiskSpaceAndLookupEndpoints
                 });
             }
 
-            var found = await provider.SearchAsync(
-                new MetadataLookupRequest(Query: null, MediaType: "movies", Year: null, ProviderId: id, IdSource: "imdb"),
-                cancellationToken);
+            // A provider that is down (it throws, or answers nothing and says why) is a 503 with a plain sentence, never a 404
+            // that reads as "no such film" and never an unhandled 500.
+            const string OutageMessage = "The metadata service isn't answering; try again in a minute.";
+            IReadOnlyList<MetadataSearchResult> found;
+            using var failureScope = provider.BeginFailureScope();
+            try
+            {
+                found = await provider.SearchAsync(
+                    new MetadataLookupRequest(Query: null, MediaType: "movies", Year: null, ProviderId: id, IdSource: "imdb"),
+                    cancellationToken);
+            }
+            catch (Exception failure) when (failure is not OperationCanceledException)
+            {
+                return Results.Json(new { error = "metadata-unavailable", message = OutageMessage }, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+
+            if (found.Count == 0 && failureScope.Failure is { } outage)
+            {
+                return Results.Json(new { error = "metadata-unavailable", message = MetadataFailureWords.Describe(outage) }, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+
             var film = found.FirstOrDefault(result => string.Equals(result.MediaType, "movies", StringComparison.OrdinalIgnoreCase));
             if (film is null)
             {

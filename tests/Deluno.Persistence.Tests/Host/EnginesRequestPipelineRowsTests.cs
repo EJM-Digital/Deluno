@@ -116,9 +116,8 @@ public sealed class EnginesRequestPipelineRowsTests : IAsyncLifetime
 
         var seen = _recorded.ToArray();
         Assert.Contains(seen, item => item.Path == "/api/system/overview" && item.Status == 200);
-        // Found while proving the row: the tracker reads the status before the exception handler has set 500, so a route that
-        // throws is recorded (path and time) but with the status it had when it threw (200). Reported, not fixed here.
-        Assert.Contains(seen, item => item.Path == "/api/test-row/throws");
+        // The exception handler sits outside the tracker step; the record says what the handler answers (#1400).
+        Assert.Contains(seen, item => item.Path == "/api/test-row/throws" && item.Status == 500);
         Assert.DoesNotContain(seen, item => !item.Path.StartsWith("/api", StringComparison.OrdinalIgnoreCase));
     }
 
