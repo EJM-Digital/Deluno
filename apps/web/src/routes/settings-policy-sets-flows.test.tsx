@@ -347,6 +347,7 @@ describe("Library Profiles: a change made elsewhere", () => {
     reset();
     renderPage();
     expect(liveSpec.current?.events).toEqual(expect.arrayContaining(["PolicySetChanged","LibraryChanged","QualityProfileChanged"]));
+    expect(liveSpec.current?.areas).toEqual(expect.arrayContaining(["custom-formats", "destination-rules"]));
     
   });
 });

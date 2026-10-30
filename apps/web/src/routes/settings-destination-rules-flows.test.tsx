@@ -123,6 +123,27 @@ describe("destination rule drawer", () => {
   beforeEach(reset);
   afterEach(() => { vi.clearAllMocks(); });
 
+  it("takes a tag from the tag picker when the rule matches a tag, and clears the value when the kind changes", async () => {
+    replies["GET /api/tags"] = () => json([{ id: "t1", name: "4k", color: "slate", description: "" }]);
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "New rule" }));
+    const dialog = await screen.findByRole("dialog");
+
+    // Genre is a preset list or a custom value, never the tag picker.
+    expect(within(dialog).queryByRole("textbox", { name: "Tag" })).toBeNull();
+    fireEvent.change(within(dialog).getByRole("combobox", { name: /^Match/ }), { target: { value: "tag" } });
+
+    const picker = await within(dialog).findByRole("textbox", { name: "Tag" });
+    fireEvent.change(picker, { target: { value: "4" } });
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Add 4k to Tag" }));
+    expect(within(dialog).getByRole("list", { name: "Tag chosen" }).textContent).toContain("4k");
+
+    fireEvent.change(within(dialog).getByRole("combobox", { name: /^Match/ }), { target: { value: "genre" } });
+
+    expect(within(dialog).queryByRole("list", { name: "Tag chosen" })).toBeNull();
+    expect((within(dialog).getByRole("combobox", { name: /^Value/ }) as HTMLSelectElement).value).not.toBe("4k");
+  });
+
   it("asks for a name, what the rule matches and the destination folder, and sends nothing until they are given", async () => {
     renderPage();
     fireEvent.click(screen.getByRole("button", { name: "New rule" }));
@@ -270,6 +291,7 @@ describe("Final destinations: a change made elsewhere", () => {
     reset();
     renderPage();
     expect(liveSpec.current?.events).toEqual(expect.arrayContaining(["LibraryChanged","PolicySetChanged"]));
+    expect(liveSpec.current?.areas).toEqual(expect.arrayContaining(["destination-rules", "tags"]));
     
   });
 });
