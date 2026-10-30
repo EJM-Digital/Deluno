@@ -91,6 +91,15 @@ function Open-GuideNetworkStep {
     Start-Sleep -Seconds 1 # reason: the step draws and asks the server whether the firewall lets other devices in; the page has no ready signal
 }
 
+# Presses Copy address and returns what is on the clipboard afterwards ('' when nothing new arrived).
+function Copy-TrayAddress {
+    Add-Type -AssemblyName System.Windows.Forms
+    [System.Windows.Forms.Clipboard]::SetText('golden-suite-before-copy')
+    [void](Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Copy address$')
+    $w = Wait-Until -TimeoutSec 15 -IntervalSec 0.5 -Condition { $c = [System.Windows.Forms.Clipboard]::GetText(); if ($c -match '^http://') { $c } else { $null } }
+    if ($w.Ok) { $w.Value } else { '' }
+}
+
 function Invoke-GroupFirewall {
     Invoke-Scenario -Id 'firewall.first-run-rule' -Title "The first run added Deluno's own Windows Firewall rule for its port on every network, and Deluno reads the port as open to other devices" -Body {
         $port = Get-LanPort
@@ -175,6 +184,9 @@ function Invoke-GroupFirewall {
         $only = Get-TrayMenuItemState -Pattern '^Only allow this PC'
         Add-Check 'Blocked: "Allow other devices on your network..." is on the menu and enabled, "Only allow this PC" is disabled' ($allow -and $allow.Enabled -and $only -and -not $only.Enabled) ("allow: $($allow | ConvertTo-Json -Compress); only: $($only | ConvertTo-Json -Compress)")
 
+        $copied = Copy-TrayAddress
+        Add-Check 'Blocked: Copy address copies the localhost address (other devices cannot use a LAN one)' ($copied -eq "http://localhost:$port") ($copied -replace 'd+.d+.d+.d+', '<address>')
+
         # ---- Allow
         $okTitle = 'Other devices can reach Deluno'
         $before = Get-ToastTextCount -Text $okTitle
@@ -183,6 +195,8 @@ function Invoke-GroupFirewall {
         $open = Wait-LanState -State 'open' -TimeoutSec 60
         Add-Check "Deluno's rule is in Windows Firewall and Deluno reads the port as open" ($null -ne $open -and @(Get-InboundRulesFor -Port $port | Where-Object { $_.Name -eq "Deluno (port $port)" }).Count -eq 1) ($open | ConvertTo-Json -Compress)
         Add-Check 'The balloon "Other devices can reach Deluno" was shown' (Wait-ToastShown -Text $okTitle -Before $before) 'seen in Windows'' notification record'
+        $copied = Copy-TrayAddress
+        Add-Check 'Open: Copy address copies an address other devices can use, not localhost' ($copied -match "^http://(?!localhost)[^/s]+:$port$") ($copied -replace 'd+.d+.d+.d+', '<address>')
         $only = Get-TrayMenuItemState -Pattern '^Only allow this PC'
         Add-Check 'Open: "Only allow this PC" is enabled' ($only -and $only.Enabled) ($only | ConvertTo-Json -Compress)
 

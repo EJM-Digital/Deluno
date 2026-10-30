@@ -71,6 +71,26 @@ function Invoke-GroupService {
             }
             Add-Check 'The "Startup Mode" dialog opens with the three ways to start' ($null -ne $dlg -and (Get-WindowText -Window $dlg) -match 'Start at login' -and (Get-WindowText -Window $dlg) -match 'Local System' -and (Get-WindowText -Window $dlg) -match 'Run as user') $(if ($dlg) { Get-WindowText -Window $dlg } else { Format-DesktopWindows })
             if (-not $dlg) { return }
+            $credLabel = { param($w) @(Get-WindowControls -Window $w | Where-Object { $_.Name -match '^Windows account credentials' -and -not $_.Offscreen }).Count }
+            Add-Check 'The account and password boxes are not shown until "Run as user" is chosen' ((& $credLabel $dlg) -eq 0) ''
+            $asUser = Get-WindowControls -Window $dlg | Where-Object { $_.Type -eq 'RadioButton' -and $_.Name -match 'Run as user' } | Select-Object -First 1
+            $asUser.Element.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+            $shown = Wait-Until -TimeoutSec 5 -IntervalSec 0.3 -Condition { (& $credLabel $dlg) -gt 0 }
+            Add-Check '"Run as user" shows the account and password boxes' $shown.Ok ''
+            # The Enter key (Apply is the dialog's default button), not the button's Invoke: Invoke waits for the click handler, which is held by the message box it opens.
+            $apply = Get-WindowControls -Window $dlg | Where-Object { $_.Type -eq 'Button' -and $_.Name -match '^Apply$' } | Select-Object -First 1
+            $apply.Element.SetFocus()
+            Start-Sleep -Milliseconds 400 # reason: UI settle after input; Windows raises no event for it
+            (New-Object -ComObject WScript.Shell).SendKeys('{ENTER}') # the shell's SendKeys queues the key and returns, where the .NET one waits for the dialog to be idle
+            # The message box belongs to the dialog, so UI Automation lists it under the dialog, not on the desktop.
+            $warnText = Wait-Until -TimeoutSec 10 -IntervalSec 0.5 -Condition { $c = @(Get-WindowControls -Window $dlg | Where-Object { $_.Name -match 'Please enter a Windows username' }); if ($c.Count -gt 0) { $c[0] } else { $null } }
+            Add-Check 'Apply with no account name is refused in words ("Please enter a Windows username.")' $warnText.Ok $(if ($warnText.Ok) { $warnText.Value.Name } else { Get-WindowText -Window $dlg })
+            $ok = Get-WindowControls -Window $dlg | Where-Object { $_.Type -eq 'Button' -and $_.Name -match '^OK$' } | Select-Object -First 1
+            if ($ok) { try { $ok.Element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch { } }
+            $closed = Wait-Until -TimeoutSec 5 -IntervalSec 0.5 -Condition { @(Get-WindowControls -Window $dlg | Where-Object { $_.Name -match 'Please enter a Windows username' }).Count -eq 0 }
+            if (-not $closed.Ok) { (New-Object -ComObject WScript.Shell).SendKeys('{ENTER}'); $closed = Wait-Until -TimeoutSec 10 -IntervalSec 0.5 -Condition { @(Get-WindowControls -Window $dlg | Where-Object { $_.Name -match 'Please enter a Windows username' }).Count -eq 0 } }
+            Add-Check 'The message is closed with OK and the dialog is still there to use' ($closed.Ok -and $null -ne (Wait-DesktopWindow -NamePattern '^Startup Mode$' -Process 'Deluno' -TimeoutSec 5)) ''
+            Add-Check 'The service was not made by that refusal' (-not (Get-DelunoServiceFacts)) ''
             $radio = Get-WindowControls -Window $dlg | Where-Object { $_.Type -eq 'RadioButton' -and $_.Name -match 'Local System' } | Select-Object -First 1
             $radio.Element.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
             Click-WindowButton -Window $dlg -NamePattern '^Apply$' | Out-Null
