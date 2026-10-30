@@ -10,11 +10,47 @@ import { useLiveInterval } from "../../../hooks/use-live-interval";
 import { movedCards, type JourneyCard, type Stage } from "./journey";
 import { fetchByName, fetchMovieTitles, fetchSeriesTitles, NO_TITLES, nameSearchOf, wantedTitles, type Entity, type NameSearch, type TitleInfo, type TitleLookup } from "./titles";
 
-/** The clock, advanced every `intervalMs` from the shared ticker (which keeps running while the tab is hidden). */
+/** A little past the boundary, so a timer that fires a hair early still lands in the new second. */
+export const SECOND_SLACK_MS = 5;
+
+/** Milliseconds until just after the next whole second of the wall clock. */
+export function msToNextSecond(at: number): number {
+  return 1000 - (at % 1000) + SECOND_SLACK_MS;
+}
+
+/**
+ * The clock, advanced every `intervalMs` from the shared ticker (which keeps running while the tab is hidden).
+ * A one-second clock also redraws at each whole-second boundary of the wall clock, re-aligned after every
+ * redraw, so a late tick never makes a countdown skip a second (#1443). The shared ticker stays as the
+ * backstop for a hidden tab, whose own timers the browser slows; the first redraw after a gap catches up
+ * to the real time because every redraw reads Date.now().
+ */
 export function useNow(intervalMs = 1000): number {
   const [now, setNow] = useState(() => Date.now());
   // display-clock: only advances the time shown on screen ("3 min ago"); it fetches nothing.
   useLiveInterval(() => setNow(Date.now()), intervalMs);
+  useEffect(() => {
+    if (intervalMs !== 1000) return undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const align = () => {
+      timer = setTimeout(() => {
+        setNow(Date.now());
+        align();
+      }, msToNextSecond(Date.now()));
+    };
+    const catchUp = () => {
+      if (document.visibilityState !== "visible") return;
+      setNow(Date.now());
+      clearTimeout(timer);
+      align();
+    };
+    align();
+    document.addEventListener("visibilitychange", catchUp);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", catchUp);
+    };
+  }, [intervalMs]);
   return now;
 }
 
