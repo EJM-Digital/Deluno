@@ -3565,7 +3565,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             }
 
             // The show is on the Searching lane, naming the season, until this search ends (#1442).
-            await using var tracked = await searching.EnterAsync("series", id, (await seriesRepository.GetByIdAsync(id, cancellationToken))?.Title ?? "A show", "manual", $"Season {seasonNumber}");
+            await using var tracked = await searching.EnterAsync("series", id, (await seriesRepository.GetByIdAsync(id, cancellationToken))?.Title ?? "A show", "manual", seasonNumber == 0 ? "Specials" : $"Season {seasonNumber}");
             var result = await seasonSearchExecutor.ExecuteAsync(
                 id,
                 seasonNumber,

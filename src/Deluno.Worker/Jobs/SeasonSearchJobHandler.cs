@@ -34,7 +34,7 @@ public sealed class SeasonSearchJobHandler(
         var asked = JobPayloads.ParseSeasonSearchPayload(job.PayloadJson);
         if (asked is not null && !string.IsNullOrWhiteSpace(asked.SeriesId))
         {
-            await searchesInFlight.BeginAsync(job.Id, "series", asked.SeriesId, asked.SeriesTitle, "missing", $"Season {asked.SeasonNumber}");
+            await searchesInFlight.BeginAsync(job.Id, "series", asked.SeriesId, asked.SeriesTitle, "missing", asked.SeasonNumber == 0 ? "Specials" : $"Season {asked.SeasonNumber}");
         }
 
         try

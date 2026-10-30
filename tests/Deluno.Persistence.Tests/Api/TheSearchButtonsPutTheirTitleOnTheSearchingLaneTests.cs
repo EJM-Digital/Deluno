@@ -79,6 +79,19 @@ public sealed class TheSearchButtonsPutTheirTitleOnTheSearchingLaneTests
     }
 
     [Fact]
+    public async Task Searching_season_zero_is_named_Specials_on_the_lane()
+    {
+        var (app, pushes) = await StartAsync();
+        await using var _ = app;
+        var show = await ApiScenes.ShowOnDiskAsync(app, "The Wire", 2002);
+
+        // The scene holds no specials, so the search itself is refused; the lane still names what was asked for while it ran.
+        await app.Client.PostAsync($"/api/series/{show.SeriesId}/seasons/0/search", null);
+
+        AssertOnTheLaneThenGone(pushes, "series", show.SeriesId, "The Wire", "Specials");
+    }
+
+    [Fact]
     public async Task Search_episode_puts_the_show_on_the_lane_as_that_episode_and_takes_it_off_when_the_search_ends()
     {
         var (app, pushes) = await StartAsync();
