@@ -5714,6 +5714,47 @@ public sealed partial class ImportPipelineServiceTests
         Assert.DoesNotContain("Chernobyl (1992)", neither.DestinationPath, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task A_tv_file_whose_season_and_episode_cannot_be_worked_out_keeps_its_incoming_name_and_the_warning_says_why()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-08T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Nameless Show", 2026, null), CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id, [new CatalogueEpisodeItem(1, 1, "One", null, timeProvider.GetUtcNow().AddDays(-1))], "provider", CancellationToken.None);
+        var service = CreateService(storage, timeProvider, platform, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider));
+
+        async Task<ImportPreviewResponse> PreviewOfAsync(string fileName)
+        {
+            var source = Path.Combine(downloadsPath, fileName);
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)0x44, 4096).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+            return await service.PreviewAsync(
+                new ImportPreviewRequest(source, null, "tv", series.Title, series.StartYear, [], [], null, null, SeriesId: series.Id, SeriesType: SeriesTypes.Standard, NumberingScheme: SeriesNumberingSchemes.Standard),
+                CancellationToken.None);
+        }
+
+        var unnumbered = await PreviewOfAsync("Nameless.Show.Behind.The.Scenes.1080p.WEB-DL.mkv");
+        var numbered = await PreviewOfAsync("Nameless.Show.S01E01.1080p.WEB-DL.mkv");
+
+        Assert.Equal("Nameless.Show.Behind.The.Scenes.1080p.WEB-DL.mkv", Path.GetFileName(unnumbered.DestinationPath));
+        Assert.Contains(unnumbered.Warnings, warning => warning == "Rename on import preserved this TV filename because Deluno could not safely determine its season and episode number.");
+        Assert.DoesNotContain(numbered.Warnings, warning => warning.Contains("preserved this TV filename", StringComparison.Ordinal));
+        Assert.NotEqual("Nameless.Show.S01E01.1080p.WEB-DL.mkv", Path.GetFileName(numbered.DestinationPath));
+    }
+
     /// <summary>#762: season 0 (a special) uses SpecialsFolderFormat instead of SeasonFolderFormat.</summary>
     [Fact]
     public async Task Preview_places_a_season_zero_episode_in_the_specials_subfolder()
