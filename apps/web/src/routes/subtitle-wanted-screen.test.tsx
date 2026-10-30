@@ -105,7 +105,7 @@ describe("Subtitle Wanted screen (#840)", () => {
     loaderData = { wanted: [wantedRow] };
   });
 
-  it("search all posts every listed item to the bulk endpoint", async () => {
+  it("search all asks the server to search the whole list, not only the loaded pages", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ queued: 1 }) });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -115,9 +115,8 @@ describe("Subtitle Wanted screen (#840)", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toContain("/api/subtitles/wanted/search-all");
-    expect(JSON.parse(init.body as string)).toEqual({
-      items: [{ kind: "Movie", mediaId: "movie-1", libraryId: "library-1" }]
-    });
+    // The whole list is searched on the server, not only the pages loaded here (#1439).
+    expect(JSON.parse(init.body as string)).toEqual({ all: true });
   });
 
   it("a single row's own search button posts just that row", async () => {

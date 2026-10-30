@@ -48,48 +48,7 @@ public static class SubtitleWantedEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
-            var items = new List<SubtitleWantedRow>();
-
-            foreach (var library in libraries)
-            {
-                if (library.SubtitleLanguages is not { Count: > 0 })
-                {
-                    continue;
-                }
-
-                var kind = string.Equals(library.MediaType, "tv", StringComparison.OrdinalIgnoreCase)
-                    ? MediaKind.Series
-                    : MediaKind.Movie;
-
-                var wanted = await mediaSubtitleRepository.ListWantedAsync(
-                    kind, library.Id, library.SubtitleLanguages, PerLibraryReadLimit, library.SubtitleEmbeddedCounts, library.SubtitlePictureBasedCounts, cancellationToken);
-
-                items.AddRange(wanted.Select(item => new SubtitleWantedRow(
-                    Kind: kind.ToString(),
-                    MediaId: item.MediaId,
-                    LibraryId: library.Id,
-                    LibraryName: library.Name,
-                    Title: item.Title,
-                    Year: item.Year,
-                    SeasonNumber: item.SeasonNumber,
-                    EpisodeNumber: item.EpisodeNumber,
-                    EpisodeTitle: item.EpisodeTitle,
-                    LanguagesMissing: item.LanguagesToFetch,
-                    // #982: the same attempt history row the title's own
-                    // subtitle panel reads, so this screen's status is never
-                    // a second idea of what was actually tried.
-                    LastAttempt: item.LastAttempt)));
-            }
-
-            var ordered = items
-                .OrderBy(row => row.LibraryName, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(row => row.Title, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(row => row.SeasonNumber)
-                .ThenBy(row => row.EpisodeNumber)
-                .ThenBy(row => row.MediaId, StringComparer.Ordinal)
-                .ToArray();
-
+            var ordered = await ListAllOrderedAsync(librariesRepository, mediaSubtitleRepository, cancellationToken);
             var request = new PageRequest(pageSize ?? 50, pageToken);
             var decoded = DelunoPageToken.Decode(pageToken, expectedValues: 1);
             var offset = decoded is [{ } raw] && int.TryParse(raw, out var parsed) && parsed >= 0 ? parsed : 0;
@@ -110,6 +69,8 @@ public static class SubtitleWantedEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] SearchAllWantedRequest request,
             [FromServices] ISeriesCatalogRepository seriesCatalogRepository,
+            [FromServices] ILibrariesRepository librariesRepository,
+            [FromServices] IMediaSubtitleRepository mediaSubtitleRepository,
             [FromServices] IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
@@ -119,7 +80,15 @@ public static class SubtitleWantedEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            if (request.Items is not { Count: > 0 })
+            // "Search all" means every title on the list, not only the pages the
+            // screen has loaded, so the server walks the whole list itself.
+            var requested = request.All == true
+                ? (await ListAllOrderedAsync(librariesRepository, mediaSubtitleRepository, cancellationToken))
+                    .Select(row => new SearchAllWantedRequestItem(row.Kind, row.MediaId, row.LibraryId))
+                    .ToList()
+                : request.Items;
+
+            if (requested is not { Count: > 0 })
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
@@ -128,7 +97,7 @@ public static class SubtitleWantedEndpointRouteBuilderExtensions
             }
 
             var queued = 0;
-            foreach (var row in request.Items)
+            foreach (var row in requested)
             {
                 if (!Enum.TryParse<MediaKind>(row.Kind, ignoreCase: true, out var kind) ||
                     string.IsNullOrWhiteSpace(row.MediaId) || string.IsNullOrWhiteSpace(row.LibraryId))
@@ -173,6 +142,54 @@ public static class SubtitleWantedEndpointRouteBuilderExtensions
         return endpoints;
     }
 
+    private static async Task<SubtitleWantedRow[]> ListAllOrderedAsync(
+        ILibrariesRepository librariesRepository,
+        IMediaSubtitleRepository mediaSubtitleRepository,
+        CancellationToken cancellationToken)
+    {
+        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+        var items = new List<SubtitleWantedRow>();
+
+        foreach (var library in libraries)
+        {
+            if (library.SubtitleLanguages is not { Count: > 0 })
+            {
+                continue;
+            }
+
+            var kind = string.Equals(library.MediaType, "tv", StringComparison.OrdinalIgnoreCase)
+                ? MediaKind.Series
+                : MediaKind.Movie;
+
+            var wanted = await mediaSubtitleRepository.ListWantedAsync(
+                kind, library.Id, library.SubtitleLanguages, PerLibraryReadLimit, library.SubtitleEmbeddedCounts, library.SubtitlePictureBasedCounts, cancellationToken);
+
+            items.AddRange(wanted.Select(item => new SubtitleWantedRow(
+                Kind: kind.ToString(),
+                MediaId: item.MediaId,
+                LibraryId: library.Id,
+                LibraryName: library.Name,
+                Title: item.Title,
+                Year: item.Year,
+                SeasonNumber: item.SeasonNumber,
+                EpisodeNumber: item.EpisodeNumber,
+                EpisodeTitle: item.EpisodeTitle,
+                LanguagesMissing: item.LanguagesToFetch,
+                // #982: the same attempt history row the title's own
+                // subtitle panel reads, so this screen's status is never
+                // a second idea of what was actually tried.
+                LastAttempt: item.LastAttempt)));
+        }
+
+        return items
+            .OrderBy(row => row.LibraryName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(row => row.Title, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(row => row.SeasonNumber)
+            .ThenBy(row => row.EpisodeNumber)
+            .ThenBy(row => row.MediaId, StringComparer.Ordinal)
+            .ToArray();
+    }
+
     private sealed record SubtitleWantedPage(
         IReadOnlyList<SubtitleWantedRow> Items,
         string? NextPageToken,
@@ -194,5 +211,5 @@ public static class SubtitleWantedEndpointRouteBuilderExtensions
 
     private sealed record SearchAllWantedRequestItem(string Kind, string MediaId, string LibraryId);
 
-    private sealed record SearchAllWantedRequest(IReadOnlyList<SearchAllWantedRequestItem>? Items);
+    private sealed record SearchAllWantedRequest(IReadOnlyList<SearchAllWantedRequestItem>? Items, bool? All = null);
 }

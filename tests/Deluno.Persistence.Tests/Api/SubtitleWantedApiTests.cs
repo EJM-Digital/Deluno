@@ -74,6 +74,52 @@ public sealed class SubtitleWantedApiTests
     }
 
     [Fact]
+    public async Task Search_all_queues_a_search_for_every_wanted_title_not_only_the_first_page()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var (libraryId, _) = await CreateLibraryAndMovieAsync(app);
+        await SeedFilmsAsync(app, libraryId, 129);
+
+        var response = await app.Client.PostAsJsonAsync("/api/subtitles/wanted/search-all", new { all = true });
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(130, document.RootElement.GetProperty("queued").GetInt32());
+
+        var jobs = await app.Services.GetRequiredService<IJobQueueRepository>().ListAsync(500, CancellationToken.None);
+        Assert.Equal(130, jobs.Count(job => job.JobType == "subtitle.title.search"));
+    }
+
+    [Fact]
+    public async Task One_page_of_a_library_of_three_thousand_titles_comes_back_quickly()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var (libraryId, _) = await CreateLibraryAndMovieAsync(app);
+        await SeedFilmsAsync(app, libraryId, 2999);
+
+        await app.Client.GetAsync("/api/subtitles/wanted?pageSize=100"); // warm the connection
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var response = await app.Client.GetAsync("/api/subtitles/wanted?pageSize=100");
+        watch.Stop();
+
+        Assert.True(response.IsSuccessStatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(3000, document.RootElement.GetProperty("totalCount").GetInt32());
+        Assert.Equal(100, document.RootElement.GetProperty("items").GetArrayLength());
+        Console.WriteLine($"wanted page of 3000 titles: {watch.ElapsedMilliseconds} ms");
+        Assert.True(watch.ElapsedMilliseconds < 300, $"one page took {watch.ElapsedMilliseconds} ms");
+    }
+
+    private static Task SeedFilmsAsync(ApplicationTestHost app, string libraryId, int count)
+        => app.Services.GetRequiredService<IMovieCatalogRepository>().ImportExistingBatchAsync(
+            libraryId,
+            Enumerable.Range(1, count).Select(index => new ExistingMovieImportRequest(
+                Title: $"Film {index:0000}", ReleaseYear: 2000, WantedStatus: WantedStatuses.Covered,
+                WantedReason: "Imported from your existing library.", CurrentQuality: "WEB 1080p",
+                TargetQuality: "WEB 1080p", QualityCutoffMet: true,
+                FilePath: $"/media/Film{index:0000}/Film{index:0000}.mkv", FileSizeBytes: 1_000_000_000)).ToList(),
+            CancellationToken.None);
+
+    [Fact]
     public async Task A_library_asking_for_no_languages_lists_nothing()
     {
         await using var app = await ApplicationTestHost.StartAsync();

@@ -117,9 +117,11 @@ export function SubtitleWantedPage() {
       response = await authedFetch("/api/subtitles/wanted/search-all", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: items.map((item) => ({ kind: item.kind, mediaId: item.mediaId, libraryId: item.libraryId }))
-        })
+        body: JSON.stringify(
+          busyKey === "all"
+            ? { all: true }
+            : { items: items.map((item) => ({ kind: item.kind, mediaId: item.mediaId, libraryId: item.libraryId })) }
+        )
       });
       const payload = (await response.json().catch(() => null)) as { queued?: number } | null;
       if (!response.ok) throw new Error("subtitle-wanted-search-failed");

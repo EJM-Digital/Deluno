@@ -305,6 +305,14 @@ Current gaps:
 - richer pagination, season filtering, and dedicated upgrade-specific views remain roadmap work
 - bulk rename preview is implemented, but rename-apply remains part of import/organizer workflows instead of an immediate endpoint
 
+## Subtitles wanted (#1439)
+
+`GET /api/subtitles/wanted?pageSize=&pageToken=` pages every title or episode short of a wanted subtitle language,
+ordered by library, title, season, episode. It answers `{ items, nextPageToken, hasMore, totalCount }` (`totalCount` is
+the whole list). It was a bare array capped at 100 per library until #1439; the Wanted screen is its only consumer.
+`POST /api/subtitles/wanted/search-all` takes `{ "all": true }` to queue a search for every title on the list, or
+`{ "items": [{ kind, mediaId, libraryId }] }` for chosen ones, and answers `{ queued }`.
+
 ## Metadata Integrations
 
 Implemented endpoints:
