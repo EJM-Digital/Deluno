@@ -1066,12 +1066,15 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
                     };
                 }
 
-                return Json(held ? "{\"torrents\":[[\"" + QueueItemId + "\",136,\"Some.Movie\"]]}" : "{\"torrents\":[]}");
+                // uTorrent 3.6's recorded list with its torrent (status 136: stopped, set here) or, once removed, the list after the removal.
+                return Json(held
+                    ? RecordedReplies.UtorrentList([QueueItemId], ("torrents.0.1", 136), ("torrents.0.2", "Some.Movie"))
+                    : RecordedReplies.Utorrent("removed-twice").Body("list=1"));
             }
 
             if (path.Contains("token.html", StringComparison.OrdinalIgnoreCase))
             {
-                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("<div id='token'>test-token</div>", Encoding.UTF8, "text/html") };
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(RecordedReplies.UtorrentTokenPage(), Encoding.UTF8, "text/html") };
             }
 
             if (path.Contains("api/v2/", StringComparison.OrdinalIgnoreCase))

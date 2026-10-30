@@ -16,8 +16,7 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// <para>Each test below takes the client's own recorded reply (qBittorrent 5.2.1, Transmission 4.1.3, Deluge 2.2.0,
 /// SABnzbd 5.1.3, NZBGet 26.3) and swaps one value for a path with ".." in it: that is the only change, and a control
 /// shows the unswapped recording still reads. rTorrent's two tests do the same with its recording (0.16.25) in
-/// RtorrentDownloadClientTests. uTorrent has no recording (it is Windows-only: tests/recorded-reply-allow-list.json, kind "pending"), so its
-/// test uses the same hand-built reply its other tests do, with the same single value swapped; it says so where it is.</para>
+/// RtorrentDownloadClientTests, and uTorrent's test does the same with its recorded list (3.6.0.47254).</para>
 /// </summary>
 public sealed class APathAClientReportsThatClimbsOutIsNeverUsedTests
 {
@@ -161,32 +160,19 @@ public sealed class APathAClientReportsThatClimbsOutIsNeverUsedTests
     public async Task Nzbget_a_dest_dir_with_dot_dot_swapped_into_the_recording_is_not_used()
         => Assert.Null(Assert.Single(await NzbgetHistory(Climbing)).SourcePath);
 
-    // ------------------------------------------------------------------ uTorrent (no recording yet: a hand-built list)
+    // ------------------------------------------------------------------ uTorrent
 
     [Fact]
-    public async Task Utorrent_a_save_path_with_dot_dot_is_not_used_hand_built_reply_as_no_recording_exists()
+    public async Task Utorrent_a_save_path_with_dot_dot_swapped_into_the_recording_is_not_used()
     {
-        object?[] Row(string savePath)
-        {
-            var row = new object?[28];
-            Array.Fill(row, 0);
-            row[0] = "0123456789abcdef0123456789abcdef01234567";
-            row[1] = 136;
-            row[2] = "Some.Film.2020";
-            row[3] = 1_000_000;
-            row[4] = 1000;
-            row[11] = "movies";
-            row[21] = string.Empty;
-            row[26] = savePath;
-            return row;
-        }
-
         async Task<string?> Read(string savePath)
         {
-            var list = System.Text.Json.JsonSerializer.Serialize(new { torrents = new[] { Row(savePath) } });
+            // uTorrent 3.6's recorded list with its torrent's save path (index 26, the value under test) and the status and name this test sets.
+            var list = RecordedReplies.UtorrentList(["0123456789abcdef0123456789abcdef01234567"],
+                ("torrents.0.1", 136), ("torrents.0.2", "Some.Film.2020"), ("torrents.0.11", "movies"), ("torrents.0.26", savePath));
             var handler = new Answering((request, _) =>
                 request.RequestUri!.AbsolutePath.EndsWith("token.html", StringComparison.Ordinal)
-                    ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("<html><div id='token'>t</div></html>") }
+                    ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(RecordedReplies.UtorrentTokenPage()) }
                     : request.RequestUri.Query.Contains("list=1", StringComparison.Ordinal)
                         ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(list, Encoding.UTF8, "application/json") }
                         : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}", Encoding.UTF8, "application/json") });

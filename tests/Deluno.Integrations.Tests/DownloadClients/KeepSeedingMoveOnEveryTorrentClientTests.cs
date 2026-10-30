@@ -18,8 +18,8 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 ///
 /// <para>Every qBittorrent, Deluge and Transmission reply below is that client's own recording (#1237): the stand-in keeps what
 /// the client would hold (a category, a label, a list of labels) and answers each call with the recorded reply to the same call, changed
-/// only in the value it keeps. rTorrent's is the same with its own recording (0.16.25); uTorrent is not recorded yet, so its stand-in keeps
-/// the shapes its documentation gives and is marked <c>TODO(#1237)</c>.</para>
+/// only in the value it keeps. rTorrent's is the same with its own recording (0.16.25), and uTorrent's with its own (3.6.0.47254): the stand-in
+/// keeps the label and answers the list and the label call with the recorded replies, changed only in the label.</para>
 /// </summary>
 public sealed class KeepSeedingMoveOnEveryTorrentClientTests
 {
@@ -632,7 +632,7 @@ public sealed class KeepSeedingMoveOnEveryTorrentClientTests
         }
     }
 
-    /// <summary>TODO(#1237): replace with the recorded reply. Documented uTorrent WebUI shapes (list=1 rows are positional, label at index 11).</summary>
+    /// <summary>uTorrent 3.6's own replies (list=1 rows are positional, the label at index 11), changed only in the label the stand-in keeps.</summary>
     private sealed class UTorrentFake : HttpMessageHandler
     {
         public string Label { get; set; } = "";
@@ -646,13 +646,14 @@ public sealed class KeepSeedingMoveOnEveryTorrentClientTests
             Paths.Add(uri);
             if (uri.Contains("token.html", StringComparison.Ordinal))
             {
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("<div id='token'>test-token</div>", Encoding.UTF8, "text/html") });
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(RecordedReplies.UtorrentTokenPage(), Encoding.UTF8, "text/html") });
             }
 
             if (uri.Contains("list=1", StringComparison.Ordinal))
             {
-                var row = $"[\"{Hash}\",201,\"Example.Movie.2026\",1000,0,0,0,0,0,0,0,{JsonSerializer.Serialize(Label)}]";
-                return Task.FromResult(Json($$"""{"build":1,"torrents":[{{(Has ? row : string.Empty)}}]}"""));
+                return Task.FromResult(Json(Has
+                    ? RecordedReplies.UtorrentList([Hash], ("torrents.0.2", "Example.Movie.2026"), ("torrents.0.11", Label))
+                    : RecordedReplies.UtorrentList([])));
             }
 
             if (uri.Contains("action=setprops", StringComparison.Ordinal) && !IgnoreSet)
@@ -660,7 +661,7 @@ public sealed class KeepSeedingMoveOnEveryTorrentClientTests
                 Label = Uri.UnescapeDataString(Regex.Match(uri, "v=([^&]*)").Groups[1].Value);
             }
 
-            return Task.FromResult(Json("""{"build":1}"""));
+            return Task.FromResult(Json(RecordedReplies.Utorrent("label-set").Body("action=setprops")));
         }
     }
 }

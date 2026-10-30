@@ -2,11 +2,6 @@
   "comment": "Tests allowed to build an external app reply inline. \"deliberate\" needs a reason no real app reply would do; \"pending\" is a to-do that scripts/check-recorded-replies.mjs makes you delete (#1237). \"noBehaviour\" lists a recording no test replays because Deluno has no behaviour for the call it shows; scripts/check-recorded-replies.mjs fails for any other recording that no test names.",
   "entries": [
     {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/KeepSeedingMoveOnEveryTorrentClientTests.cs",
-      "kind": "pending",
-      "reason": "The uTorrent part still builds its replies inline (#1237, the owner will have them tested properly later). uTorrent is Windows-only, so it is not recorded from Docker: it needs the Windows CI runner (tests/fixtures/recorded/MISSING.md). To move this file onto recordings, record from the real uTorrent WebUI (/gui/): the token page (token.html); list=1 with a running download, a paused one, a finished (seeding) one, a stalled one, a queued one and no job at all (the positional rows, label at index 11, and the build number); action=add-url and action=add-file for a new torrent and for one it already holds; action=getprops (seed ratio and time) and action=setprops s=label for a known and an unknown hash; action=getfiles for a one-file and a many-file torrent; action=pause, unpause, start, stop, remove and removedata for a known and an unknown hash; the free-space settings call; and a wrong login (HTTP 401)."
-    },
-    {
       "file": "tests/Deluno.Integrations.Tests/MediaServers/LeavingSoonCollectionClientTests.cs",
       "kind": "pending",
       "reason": "The Plex collection calls (list, create, describe, children, delete) are recorded from an unclaimed Plex 1.43.4 and replayed in PlexOnRecordingsTests. FakePlex here still builds Plex's collection replies inline because it also answers the home-screen promotion (/hubs/sections/{id}/manage), which the unclaimed server answers 404; a claimed server's reply is not recorded (tests/fixtures/recorded/MISSING.md, 'Plex, claimed'). The Jellyfin and Emby tests in this file are not Plex and carry no flagged reply."
@@ -62,11 +57,6 @@
       "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the test builds a Torznab or Newznab feed of crafted releases (chosen titles, sizes and seeders) to drive a decision or a screen. Real Torznab and Newznab replies are recorded (tests/fixtures/recorded/jackett and nzbhydra2: caps, feed, text, movie and TV searches, errors); to move this file, take the envelope from RecordedReplies.Jackett(\"search-feed\") and change only the items the test is about."
     },
     {
-      "file": "tests/Deluno.Persistence.Tests/Integrations/ARemovalReasonDoesExactlyWhatItSaysTests.cs",
-      "kind": "pending",
-      "reason": "The uTorrent part still builds its replies inline (#1237, the owner will have them tested properly later). uTorrent is Windows-only, so it is not recorded from Docker: it needs the Windows CI runner (tests/fixtures/recorded/MISSING.md). To move this file onto recordings, record from the real uTorrent WebUI (/gui/): the token page (token.html); list=1 with a running download, a paused one, a finished (seeding) one, a stalled one, a queued one and no job at all (the positional rows, label at index 11, and the build number); action=add-url and action=add-file for a new torrent and for one it already holds; action=getprops (seed ratio and time) and action=setprops s=label for a known and an unknown hash; action=getfiles for a one-file and a many-file torrent; action=pause, unpause, start, stop, remove and removedata for a known and an unknown hash; the free-space settings call; and a wrong login (HTTP 401)."
-    },
-    {
       "file": "tests/Deluno.Persistence.Tests/Platform/ConnectionNamesTests.cs",
       "kind": "pending",
       "reason": "The guard now finds the app's reply shapes (#1237). Not yet moved onto recordings: the test builds a Torznab or Newznab feed of crafted releases (chosen titles, sizes and seeders) to drive a decision or a screen. Real Torznab and Newznab replies are recorded (tests/fixtures/recorded/jackett and nzbhydra2: caps, feed, text, movie and TV searches, errors); to move this file, take the envelope from RecordedReplies.Jackett(\"search-feed\") and change only the items the test is about."
@@ -80,11 +70,6 @@
       "file": "tests/Deluno.Integrations.Tests/Properties/ScoringAndFeedProperties.cs",
       "kind": "deliberate",
       "reason": "Property tests (#1271): the feed is written by Deluno's own TorznabFeed.Write from generated releases and read back, to prove the reader never throws on any text and round-trips title, size and date. Generated input is the point; no recorded reply can stand in for arbitrary text. Real Torznab replies are tested from tests/fixtures/recorded/jackett."
-    },
-    {
-      "file": "tests/Deluno.Integrations.Tests/DownloadClients/APathAClientReportsThatClimbsOutIsNeverUsedTests.cs",
-      "kind": "pending",
-      "reason": "The uTorrent part builds its reply inline because uTorrent is not recorded (it needs the Windows CI runner; #1272). Every other client in the file, rTorrent included, replays its recorded reply with one path swapped. Delete this entry once uTorrent is recorded and this part loads it."
     }
   ],
   "noBehaviour": [
