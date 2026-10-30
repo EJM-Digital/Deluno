@@ -678,7 +678,7 @@ Implemented core operational endpoints:
 
 `GET /api/stats` (#827) aggregates the same facts the Activity feed already
 writes in plain words, over a time window, for an external dashboard widget
-(Homepage, Homarr) as well as the Dashboard's own "Live activity" summary.
+(Homepage, Homarr). The Dashboard's own screens do not read it.
 Single-user, so there is no API key or per-caller scoping — every count is
 everything this instance logged in the window. `window` defaults to `24h`
 when omitted or unrecognised. Response shape:

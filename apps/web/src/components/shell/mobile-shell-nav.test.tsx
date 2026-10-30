@@ -52,3 +52,15 @@ describe("signing out from the phone menu's sheet", () => {
     await waitFor(() => expect(screen.queryByText("Sam Example")).toBeNull());
   });
 });
+
+describe("the phone menu's areas", () => {
+  it("every area keeps its pages as tabs, so the sheet draws no expand or collapse chevron", () => {
+    render(
+      <MemoryRouter>
+        <MobileShellNav attention={attention} user={{ displayName: "Sam Example", username: "sam", avatarInitials: "SE" }} onLogout={vi.fn()} />
+      </MemoryRouter>
+    );
+    fireEvent.click(screen.getByRole("button", { name: /more/i }));
+    expect(screen.queryAllByRole("button", { name: /^(Expand|Collapse) / })).toHaveLength(0);
+  });
+});

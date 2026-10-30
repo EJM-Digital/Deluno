@@ -404,8 +404,7 @@ values. Response:
 }
 ```
 
-`windowHours` is 24, 168 or 720. The Dashboard's own "Live activity" summary reads
-the same endpoint.
+`windowHours` is 24, 168 or 720. Only outside dashboard widgets read this address; the Dashboard's own screens do not.
 
 ### System status (one address for a dashboard)
 
