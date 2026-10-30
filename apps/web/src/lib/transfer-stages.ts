@@ -20,11 +20,11 @@ function fileName(path: string | null | undefined) {
   return path?.split(/[\\/]/).filter(Boolean).at(-1) ?? null;
 }
 
-function tokens(parts: { job?: string | null; download?: [string, string] | null; names?: (string | null | undefined)[]; paths?: (string | null | undefined)[] }) {
+function tokens(parts: { job?: string | null; download?: [string, string] | null; names: (string | null | undefined)[]; paths?: (string | null | undefined)[] }) {
   const result: string[] = [];
   if (parts.job) result.push(`job:${parts.job.toLowerCase()}`);
   if (parts.download) result.push(`dl:${`${parts.download[0]}:${parts.download[1]}`.toLowerCase()}`);
-  for (const name of parts.names ?? []) {
+  for (const name of parts.names) {
     const key = comparable(name);
     if (key) result.push(`name:${key}`);
   }

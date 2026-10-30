@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TagUsageItem } from "./api";
-import { describeTagInUse, tagUserKindLabel } from "./tag-users";
+import { describeTagInUse, describeTagUsage, tagUserKindLabel, unusedTags } from "./tag-users";
 
 const KINDS: Array<[string, string, string, string]> = [
   ["indexer", "Indexer", "indexer", "indexers"],
@@ -36,5 +36,29 @@ describe("what uses a tag, in plain words (low rows)", () => {
     expect(tagUserKindLabel("somethingNew")).toBe("Setting");
     expect(describeTagInUse(usage(["somethingNew"], 3))).toBe("3 titles and 1 setting");
     expect(describeTagInUse(usage(["indexer", "downloadClient"], 1))).toBe("1 title, 1 indexer and 1 download client");
+  });
+});
+
+describe("what a tag is used for, in a short line", () => {
+  const tag = (overrides: Partial<TagUsageItem>): TagUsageItem => ({ ...usage([]), ...overrides }) as TagUsageItem;
+
+  it("says nothing when nothing uses the tag", () => {
+    expect(describeTagInUse(usage([]))).toBe("nothing");
+  });
+
+  it("says Not used for a tag nobody uses, or one with no usage record", () => {
+    expect(describeTagUsage(undefined)).toBe("Not used");
+    expect(describeTagUsage(tag({ isUnused: true }))).toBe("Not used");
+  });
+
+  it("counts titles and settings, leaving out whichever is zero", () => {
+    expect(describeTagUsage(usage(["indexer", "list"], 3))).toBe("3 titles, 2 settings");
+    expect(describeTagUsage(usage([], 1))).toBe("1 title");
+    expect(describeTagUsage(usage(["indexer"], 0))).toBe("1 setting");
+  });
+
+  it("picks out the tags nobody uses", () => {
+    const tags = [{ id: "a" }, { id: "b" }];
+    expect(unusedTags(tags, [tag({ id: "a", isUnused: true }), tag({ id: "b", isUnused: false })])).toEqual([{ id: "a" }]);
   });
 });

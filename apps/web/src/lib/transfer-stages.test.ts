@@ -83,4 +83,21 @@ describe("placeDownloadsOnce (#1168)", () => {
     expect(result.handoffs.map((h) => h.releaseName)).toEqual(["Quiet.One.2019-GRP"]);
     expect(result.importJobs.map((j) => j.id)).toEqual(["j3"]);
   });
+
+  it("keeps a download out of Processing when it failed in the client, by its client id or, with no id, by its name", () => {
+    const byId = handoff("h8", "Some.Film.2020-GRP", { clientId: "qbit", queueItemId: "abc123", outputPath: null });
+    const byName = handoff("h9", "Other.Film.2021-GRP", { clientId: "qbit", queueItemId: "zzz", outputPath: null });
+    const failedDownloads = [
+      { dispatch: { releaseName: "Unrelated", downloadClientId: "qbit", torrentHashOrItemId: "ABC123" } },
+      { dispatch: { releaseName: "Other.Film.2021-GRP", downloadClientId: "qbit", torrentHashOrItemId: null } }
+    ] as unknown as TransferStageInput["failedDownloads"];
+    const result = placeDownloadsOnce({ ...none, handoffs: [byId, byName], failedDownloads });
+    expect(result.handoffs).toEqual([]);
+  });
+
+  it("keeps a download out of Processing when the queue says it needs attention", () => {
+    const stuck = handoff("h10", "Stuck.Film.2022-GRP", { clientId: "qbit", queueItemId: "q-stuck", outputPath: null });
+    const queueAttention = [{ clientId: "qbit", id: "q-stuck", releaseName: "Stuck.Film.2022-GRP" }] as unknown as TransferStageInput["queueAttention"];
+    expect(placeDownloadsOnce({ ...none, handoffs: [stuck], queueAttention }).handoffs).toEqual([]);
+  });
 });

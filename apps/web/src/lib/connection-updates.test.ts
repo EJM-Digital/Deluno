@@ -65,5 +65,6 @@ describe("a newer version of a connected app is a notice in the bell (#1118)", (
     expect(connectionLink("processor", "w1")).toBe("/settings/processing?connection=w1");
     expect(connectionLink("mediaServer", "p1")).toBe("/indexers/media-servers?connection=p1");
     expect(connectionLink("requests", "s1")).toBe("/indexers/media-servers?connection=s1");
+    expect(connectionLink("somethingNew", "x1")).toBe("/system");
   });
 });

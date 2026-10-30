@@ -56,6 +56,12 @@ describe("a Connection health needs review attention item", () => {
     expect(item?.text).toBe("1 search source and 2 download clients not reporting healthy.");
   });
 
+  it("names only the download clients when every search source is healthy", () => {
+    const item = buildSetupStatus(input({ indexers: [indexer("healthy")], downloadClients: [client("healthy"), client("failed")] }))
+      .attentionItems.find((entry) => entry.id === "connection-health");
+    expect(item?.text).toBe("1 download client not reporting healthy.");
+  });
+
   it("is absent when every enabled connection is healthy, and when a disabled one is the unhealthy one", () => {
     expect(buildSetupStatus(input(ready)).attentionItems.map((item) => item.id)).not.toContain("connection-health");
     expect(buildSetupStatus(input({ ...ready, indexers: [indexer("healthy"), indexer("failed", false)] })).attentionItems.map((item) => item.id)).not.toContain("connection-health");

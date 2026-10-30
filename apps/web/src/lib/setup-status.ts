@@ -268,7 +268,7 @@ function formatHealthParts(unhealthyIndexers: number, unhealthyClients: number) 
     unhealthyClients > 0 ? plural(unhealthyClients, "download client") : null
   ].filter((part): part is string => Boolean(part));
 
-  return parts.length === 2 ? `${parts[0]} and ${parts[1]}` : parts[0] ?? "Connections";
+  return parts.join(" and ");
 }
 
 function isHealthy(status: string) {

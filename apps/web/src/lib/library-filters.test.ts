@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultDisplayOptions, parseDisplayOptions } from "./library-filters";
+import { defaultDisplayOptions, isMonitoringFilter, monitoringParam, parseDisplayOptions } from "./library-filters";
 import {
   applyConditions,
   conditionCount,

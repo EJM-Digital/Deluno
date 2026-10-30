@@ -32,6 +32,11 @@ describe("a tab running an older build (#622)", () => {
     expect(isStaleBuildError(new Error("Unable to preload CSS for /assets/index.css"))).toBe(true);
   });
 
+  it("recognises a failure that was thrown as plain text", () => {
+    expect(isStaleBuildError("Failed to fetch dynamically imported module: /assets/a.js")).toBe(true);
+    expect(isStaleBuildError("The network dropped.")).toBe(false);
+  });
+
   it("leaves every other failure alone", () => {
     expect(isStaleBuildError(new Error("The route loader failed."))).toBe(false);
     expect(isStaleBuildError(undefined)).toBe(false);
@@ -95,5 +100,17 @@ describe("a tab running an older build (#622)", () => {
 
     expect(current.reload).toHaveBeenCalledTimes(1);
     expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("lets Vite show its own error when the tab already reloaded a moment ago", () => {
+    const current = tab({ "deluno-stale-build-reloaded-at": String(Date.now()) });
+    const target = Object.assign(new EventTarget(), current.target);
+    installStaleBuildRecovery(target);
+
+    const event = new Event("vite:preloadError", { cancelable: true });
+    target.dispatchEvent(event);
+
+    expect(current.reload).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
   });
 });
