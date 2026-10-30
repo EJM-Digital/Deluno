@@ -15,6 +15,7 @@ public sealed class MetadataLanguageAndRegionAreCheckedTests
     [Theory]
     [InlineData("metadataLanguage", "english", "Details language must be a language code")]
     [InlineData("metadataLanguage", "en-ZZ", "Details language must be a language code")]
+    [InlineData("metadataLanguage", "xx-banana", "Details language must be a language code")]
     [InlineData("metadataLanguage", "xx-yy-zz", "Details language must be a language code")]
     [InlineData("metadataCertificationCountry", "Australia", "Ratings region must be a two-letter country code")]
     [InlineData("metadataCertificationCountry", "ZZ", "Ratings region must be a two-letter country code")]
@@ -38,6 +39,8 @@ public sealed class MetadataLanguageAndRegionAreCheckedTests
     [Theory]
     [InlineData("metadataLanguage", "pt-BR", "pt-BR")]
     [InlineData("metadataLanguage", "de", "de")]
+    [InlineData("metadataLanguage", "de-AT", "de-AT")]
+    [InlineData("metadataCertificationCountry", "GB", "GB")]
     [InlineData("metadataCertificationCountry", "NL", "NL")]
     [InlineData("metadataCertificationCountry", " au ", "au")]
     public async Task A_known_code_saves_and_reads_back(string field, string value, string expected)

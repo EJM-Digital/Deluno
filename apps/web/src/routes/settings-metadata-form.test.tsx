@@ -25,7 +25,7 @@ vi.mock("react-router-dom", async (importOriginal) => ({
 
 const { SettingsMetadataPage } = await import("./settings-metadata-page");
 const renderPage = () => render(<MemoryRouter><SettingsMetadataPage /></MemoryRouter>);
-const respond = (body: unknown = {}, status = 200) => ({ ok: status < 400, status, json: async () => body, text: async () => JSON.stringify(body), headers: new Headers() });
+const respond = (body: unknown = {}, status = 200) => ({ ok: status < 400, status, json: async () => body, text: async () => JSON.stringify(body), headers: new Headers(), clone() { return this; } });
 const optionLabels = (select: HTMLElement) => [...(select as HTMLSelectElement).options].map((option) => option.textContent);
 
 beforeEach(() => {
@@ -96,6 +96,27 @@ describe("Save metadata settings", () => {
     await waitFor(() => expect(screen.queryByText("Saving…")).toBeNull());
     expect(screen.queryByText("Saved just now")).toBeNull();
     expect(screen.getByPlaceholderText("IETF language tag, e.g. pt-BR")).toHaveValue("nonsense!");
+  });
+
+  it("puts the server's sentence for a made-up language under the box (#1438)", async () => {
+    const sentence = "Details language must be a language code such as en, de or pt-BR.";
+    authedFetchMock.mockResolvedValue(respond({ errors: { metadataLanguage: [sentence] } }, 400));
+    renderPage();
+    fireEvent.change(screen.getByLabelText("Details language"), { target: { value: "__custom" } });
+    fireEvent.change(screen.getByPlaceholderText("IETF language tag, e.g. pt-BR"), { target: { value: "xx-banana" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save metadata settings" }));
+    expect((await screen.findAllByText(sentence)).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Saved just now")).toBeNull();
+  });
+
+  it("sends a real code such as pt-BR and shows no refusal (#1438)", async () => {
+    authedFetchMock.mockResolvedValue(respond({ metadataLanguage: "pt-BR", metadataCertificationCountry: "AU" }));
+    renderPage();
+    fireEvent.change(screen.getByLabelText("Details language"), { target: { value: "__custom" } });
+    fireEvent.change(screen.getByPlaceholderText("IETF language tag, e.g. pt-BR"), { target: { value: "pt-BR" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save metadata settings" }));
+    await waitFor(() => expect(screen.queryByText("Saving…")).toBeNull());
+    expect(screen.queryByText(/must be a language code/)).toBeNull();
   });
 });
 
