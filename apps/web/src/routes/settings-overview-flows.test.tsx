@@ -79,7 +79,7 @@ describe("the setup overview page", () => {
 
 describe("the setup overview's readiness and step badges (#1329)", () => {
   const configured = (autoSearchEnabled: boolean) => ({
-    libraries: [{ mediaType: "movies", rootPath: "D:\Media\Movies", autoSearchEnabled }],
+    libraries: [{ mediaType: "movies", rootPath: "/media/movies", autoSearchEnabled }],
     indexers: [{ isEnabled: true, healthStatus: "healthy" }],
     downloadClients: [{ isEnabled: true, healthStatus: "healthy" }],
     policySets: [{ isEnabled: true }],
