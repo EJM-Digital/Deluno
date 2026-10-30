@@ -7,6 +7,17 @@ import { needsAction } from "./needs-action";
 import { isBackgroundJob } from "./background-jobs";
 import { attentionSummarySource, emptyAttentionSummary, type AttentionSummary } from "./attention-summary";
 import { RealtimeGroups, useSignalREvent } from "./use-signalr";
+import { heldReleasesSource, type HeldReleaseRow } from "./held-releases";
+import { ApiRequestError } from "./api/client";
+
+/** Releases a search held for a person's yes. They are Needs action on In progress, so the sidebar counts them too (#1448). An older API without the endpoint holds none. */
+const heldSource: RouteSource<HeldReleaseRow[]> = {
+  ...heldReleasesSource,
+  fetch: () => heldReleasesSource.fetch().catch((error) => {
+    if (error instanceof ApiRequestError && error.status === 404) return [] as HeldReleaseRow[];
+    throw error;
+  })
+};
 
 /** The activity categories that move the failed-job count. */
 const FAILED_JOB_CATEGORIES = new Set(["job.failed", "job.dead-letter", "job.retry", "job.revived", "job.dismissed"]);
@@ -24,6 +35,8 @@ export interface AttentionSnapshot {
    * which are already among the failed jobs (#556).
    */
   downloadsNeedingAction: number;
+  /** Releases held for a person's yes: Needs action on In progress, so counted by its sidebar badge (#1448). */
+  heldReleases?: number;
   /** Failed import jobs, which In progress lists beside the downloads. */
   failedImportJobs: number;
   movieWanted: number;
@@ -111,7 +124,9 @@ function snapshotFromCache(): AttentionSnapshot | null {
     failedBackgroundJobs: stopped.filter(isBackgroundJob).length,
     deadLetteredJobs: stopped.filter((job) => isJobDeadLettered(job.status as JobStatus)).length,
     indexerAlerts: (indexers ?? []).filter((i) => i.isEnabled && i.healthStatus !== "healthy").length,
-    downloadsNeedingAction: needsAction({ movieRecovery, seriesRecovery, telemetry, handoffs, dispatches, orphans }).total,
+    // The same sources, the same function as the page's Needs action tile (#1448), failed imports included.
+    downloadsNeedingAction: needsAction({ movieRecovery, seriesRecovery, telemetry, failedJobs: failed ?? [], handoffs, dispatches, orphans }).total,
+    heldReleases: (readCached(heldSource) ?? []).length,
     failedImportJobs: stopped.filter((job) => job.jobType === "filesystem.import.execute").length,
     movieWanted: readCached(sharedSources.movieWanted)?.totalWanted ?? 0,
     tvWanted: readCached(sharedSources.seriesWanted)?.totalWanted ?? 0,
@@ -125,7 +140,7 @@ function snapshotFromCache(): AttentionSnapshot | null {
 /**
  * The sources a push can have moved, by the words the server names (#1179), or null when everything should be read
  * again (a word this list does not know, or one that can move several lists: a client or a download's journey).
- * Held releases are listed under In progress, not in the bell, so they read nothing here.
+ * Held releases are counted by the In progress badge, so they read the held list.
  */
 export function attentionSourcesForReasons(reasons: readonly string[]): RouteSource<unknown>[] | null {
   const wanted = new Map<string, RouteSource<unknown>>();
@@ -154,6 +169,7 @@ export function attentionSourcesForReasons(reasons: readonly string[]): RouteSou
         add(sharedSources.healthSummary as RouteSource<unknown>, attentionSummarySource as RouteSource<unknown>);
         break;
       case "heldReleases":
+        add(heldSource as RouteSource<unknown>);
         break;
       default:
         return null;
@@ -209,7 +225,8 @@ export function useAttention() {
         // #909: the same summary System -> Health and the Dashboard tile read.
         readFresh(sharedSources.healthSummary, force).catch(() => undefined),
         // What needs a person, worked out once on the server (#1185): the bell's rows and its count.
-        readFresh(attentionSummarySource, force).catch(() => undefined)
+        readFresh(attentionSummarySource, force).catch(() => undefined),
+        readFresh(heldSource, force).catch(() => undefined)
       ]);
 
       // A job Deluno will try again on its own is not one the pill should

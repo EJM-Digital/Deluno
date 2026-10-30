@@ -121,8 +121,8 @@ describe("the sidebar's links and counts", () => {
 });
 
 describe("one In progress entry holds what In progress and Activity were (#1426)", () => {
-  it("has no Activity link, and In progress counts the downloads needing action together with the failed jobs about a title", () => {
-    const counted = { ...attention, failedTitleJobs: 2, failedJobs: 5 } as typeof attention;
+  it("has no Activity link, and In progress counts the page's Needs action: downloads needing action and releases waiting for a yes (#1448)", () => {
+    const counted = { ...attention, failedTitleJobs: 2, failedJobs: 5, heldReleases: 3 } as typeof attention;
     render(
       <MemoryRouter>
         <DesktopSidebar attention={counted} user={user} onLogout={() => undefined} collapsed={false} onToggleCollapsed={() => undefined} />
@@ -131,17 +131,19 @@ describe("one In progress entry holds what In progress and Activity were (#1426)
     expect(screen.queryByRole("link", { name: /^Activity/ })).toBeNull();
     const link = screen.getByRole("link", { name: /^In progress/ });
     expect(link).toHaveAttribute("href", "/queue");
-    expect(link.textContent).toMatch(/9$/);
+    expect(link.textContent).toMatch(/10$/);
+    // The number says what it is on hover.
+    expect(screen.getByTitle(/The same number as Needs action on this page/)).toHaveTextContent("10");
   });
 
-  it("counts the failed jobs when the server does not split them by title", () => {
+  it("does not add the failed jobs of a title again: the page lists them under Needs action already (#1448)", () => {
     const counted = { ...attention, failedTitleJobs: undefined, failedJobs: 3 } as unknown as typeof attention;
     render(
       <MemoryRouter>
         <DesktopSidebar attention={counted} user={user} onLogout={() => undefined} collapsed={false} onToggleCollapsed={() => undefined} />
       </MemoryRouter>
     );
-    expect(screen.getByRole("link", { name: /^In progress/ }).textContent).toMatch(/10$/);
+    expect(screen.getByRole("link", { name: /^In progress/ }).textContent).toMatch(/7$/);
   });
 });
 

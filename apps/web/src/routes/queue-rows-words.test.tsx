@@ -1,5 +1,5 @@
 import type { HeldReleaseRow } from "../lib/held-releases";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DownloadClientTelemetrySnapshot, DownloadQueueItem, JobQueueItem, OrphanedDownloadItem } from "../lib/api";
@@ -116,6 +116,9 @@ describe("In progress: the Stage column says where each download is", () => {
   ])("a download whose state is %s reads %s", (status, stage) => {
     const release = `Row.${status}.2026.1080p-GROUP`;
     showQueue([item(release, { status, progress: status === "downloading" || status === "notTransferring" ? 40 : 100 })]);
+    // A finished download sits in its own folded group (#1448): open it to read its row.
+    const folded = screen.queryByRole("button", { name: "Show finished downloads" });
+    if (folded) fireEvent.click(folded);
 
     expect(rowOf(release).text).toContain(stage);
   });
@@ -339,7 +342,7 @@ describe("In progress: the Media pipeline table", () => {
     queueLoaderData.jobs = [{ id: "job-run", jobType: "filesystem.import.execute", label: "Import", source: "download-client", sourceLabel: "A download", status: "running", payloadJson: "{}", attempts: 1, maxAttempts: 5, nextAttemptUtc: null, createdUtc: "2026-10-14T01:00:00Z", scheduledUtc: "2026-10-14T01:00:00Z", startedUtc: null, completedUtc: null, leasedUntilUtc: null, workerId: null, lastError: null, relatedEntityType: null, relatedEntityId: null, idempotencyKey: null, dedupeKey: null } as unknown as JobQueueItem];
     showQueue([item("Count.Me.2026.1080p-GROUP")]);
 
-    expect(screen.getByText("1 in flight · 1 importing")).toBeVisible();
+    expect(screen.getByText("1 happening now · 1 importing")).toBeVisible();
   });
 
   it("a finished download shows only its size, with no progress figure in the row", () => {

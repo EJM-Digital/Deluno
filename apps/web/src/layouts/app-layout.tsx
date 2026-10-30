@@ -464,6 +464,7 @@ export function DesktopSidebar({
               key={item.to}
               item={item}
               count={attentionCount(attention, item.attention)}
+              countTitle={countMeaning(item.attention, attentionCount(attention, item.attention))}
             />
           ))}
         </nav>
@@ -477,6 +478,7 @@ export function DesktopSidebar({
               key={item.to}
               item={item}
               count={attentionCount(attention, item.attention)}
+              countTitle={countMeaning(item.attention, attentionCount(attention, item.attention))}
             />
           ))}
         </nav>
@@ -751,10 +753,12 @@ function MaintenanceSidebarTree({ pathname }: { pathname: string }) {
 
 function SidebarItem({
   item,
-  count
+  count,
+  countTitle
 }: {
   item: { to: string; label: string; icon: DelunoNavGlyphKind; end: boolean };
   count: number;
+  countTitle?: string;
 }) {
   const rail = useContext(SidebarRailContext);
   return (
@@ -792,7 +796,7 @@ function SidebarItem({
           </span>
           {rail ? null : <span className="min-w-0 flex-1 whitespace-nowrap">{item.label}</span>}
           {count > 0 ? (
-            <span aria-hidden={rail || undefined} className={cn("flex h-[calc(var(--shell-pill-height)*0.42)] min-w-[calc(var(--shell-pill-height)*0.42)] shrink-0 items-center justify-center rounded-full px-1.5 text-(length:--shell-nav-badge-size) font-bold tabular-nums", rail && "absolute right-[8px] top-[2px] h-[15px] min-w-[15px] px-1 text-[length:9px]", isActive ? "bg-(--nav-accent) text-background" : "bg-surface-2 text-muted-foreground")}>
+            <span title={countTitle} aria-hidden={rail || undefined} className={cn("flex h-[calc(var(--shell-pill-height)*0.42)] min-w-[calc(var(--shell-pill-height)*0.42)] shrink-0 items-center justify-center rounded-full px-1.5 text-(length:--shell-nav-badge-size) font-bold tabular-nums", rail && "absolute right-[8px] top-[2px] h-[15px] min-w-[15px] px-1 text-[length:9px]", isActive ? "bg-(--nav-accent) text-background" : "bg-surface-2 text-muted-foreground")}>
               {count}
             </span>
           ) : null}
@@ -948,10 +952,17 @@ function ContentTopbar({
   );
 }
 
+/** What a sidebar number means, said on hover; In progress's number is the page's Needs action tile (#1448). */
+function countMeaning(key: "none" | "movies" | "tv" | "indexers" | "transfers", count: number): string | undefined {
+  if (count <= 0) return undefined;
+  if (key === "transfers") return `${count} ${count === 1 ? "thing needs" : "things need"} your action. The same number as Needs action on this page.`;
+  return undefined;
+}
+
 function attentionCount(attention: ReturnType<typeof useAttention>, key: "none" | "movies" | "tv" | "indexers" | "transfers") {
   if (key === "movies") return attention.movieWanted;
-  // What In progress lists under Needs attention (#556), and the failed jobs about a title its history lists (#1426). A failed background job is cleared on System (#1114).
-  if (key === "transfers") return attention.downloadsNeedingAction + (attention.failedTitleJobs ?? attention.failedJobs);
+  // Exactly the page's Needs action tile (#1448): what In progress lists under Needs attention (#556), and the releases held for a yes (#1159). It is the number the page shows, never another one.
+  if (key === "transfers") return attention.downloadsNeedingAction + (attention.heldReleases ?? 0);
   if (key === "tv") return attention.tvWanted;
   if (key === "indexers") return attention.indexerAlerts;
   return 0;

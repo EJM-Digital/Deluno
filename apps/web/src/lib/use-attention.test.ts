@@ -118,7 +118,7 @@ describe("useAttention", () => {
     expect(keys(["noRelease"])).toEqual(["src/attention-summary"]);
     expect(keys(["update"])).toEqual(["src/attention-summary"]);
     expect(keys(["recovery"])).toContain("src/attention-summary");
-    expect(keys(["heldReleases"])).toEqual([]);
+    expect(keys(["heldReleases"])).toEqual(["src/attention-held-releases"]);
     // A burst names several words: their lists are read once each.
     expect(keys(["jobs", "recovery"])?.filter((key) => key.includes("failed")).length).toBe(1);
     expect(attentionSourcesForReasons(["noRelease", "journey"])).toBeNull();

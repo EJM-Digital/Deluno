@@ -68,6 +68,7 @@ import { resolveImportSourcePath } from "../lib/import-source";
 import { fileProvenanceFromTimeline } from "../lib/dispatch-provenance";
 import { dismissFailedJob } from "../lib/failed-jobs";
 import { JOB_STATUS, isJobActive, isJobDeadLettered, isJobFailed, isJobRetrying, type JobStatus } from "../lib/job-status-constants";
+import { finishedPlan, splitQueue } from "../lib/in-progress";
 import { clientHistoryOutcomeLabel, downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
 import { parseImportJobPayload } from "../lib/import-job-payload";
 import { placeDownloadsOnce } from "../lib/transfer-stages";
@@ -363,6 +364,9 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   const handoffsWithoutARow = placed.handoffs;
   const importJobsHere = placed.importJobs;
   const blockedQueueItems = queue.filter((item) => item.healthFindings?.some((finding) => finding.candidateBlocked));
+  // What is happening now sits at the top; what is finished and only still listed by its client has its own folded group (#1448).
+  const { happeningNow, finished: finishedInClient } = useMemo(() => splitQueue(queue), [queue]);
+  const [finishedOpen, setFinishedOpen] = useState(false);
   const healthyClients = telemetry.clients.filter((client) => isHealthyClient(client.healthStatus)).length;
   const needsActionCount = attention.total + heldReleases.length;
 
@@ -1259,7 +1263,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       {view === "live" ? (
       <ListCard
         title="Media pipeline"
-        count={queue.length ? `${queue.length} in flight · ${activeImportJobs} importing` : undefined}
+        count={happeningNow.length ? `${happeningNow.length} happening now · ${activeImportJobs} importing` : undefined}
         actions={
           <ColumnPicker
             label="Show columns"
@@ -1272,15 +1276,15 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         <p className="border-b border-hairline px-(--card-pad-x) py-2 text-(length:--type-caption) text-muted-foreground">
           Deluno only shows downloads it sent.
         </p>
-        {queue.length === 0 ? (
+        {happeningNow.length === 0 ? (
           <ListEmpty
             title="Nothing in motion"
-            description="Media appears here from the moment Deluno sends it to a download client through processing, naming, and import."
+            description={finishedInClient.length ? "Everything Deluno sent has finished. What is still in a client is listed below." : "Media appears here from the moment Deluno sends it to a download client through processing, naming, and import."}
           />
         ) : (
           <ListTable
             listId="transfers-queue"
-            items={queue}
+            items={happeningNow}
             columns={[
               { id: "media", label: "Media", sort: (item) => (item.title || item.releaseName).toLowerCase() },
               { id: "stage", label: "Stage", width: "minmax(0,1.25fr)", sort: (item) => pipelineStage(item) },
@@ -1693,6 +1697,44 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         </ListCard>
       ) : null}
 
+      {view === "live" && finishedInClient.length > 0 ? (
+        <ListCard
+          title={`Finished, still in the client (${finishedInClient.length})`}
+          titleCase={false}
+          count="Done with. Not counted as in progress."
+          actions={
+            <Button type="button" variant="outline" size="sm" aria-expanded={finishedOpen} aria-label={finishedOpen ? "Hide finished downloads" : "Show finished downloads"} onClick={() => setFinishedOpen((open) => !open)}>
+              {finishedOpen ? "Hide" : "Show"}
+            </Button>
+          }
+        >
+          {finishedOpen ? (
+            <ListTable
+              listId="transfers-finished"
+              items={finishedInClient}
+              columns={[
+                { id: "media", label: "Media", sort: (item) => (item.title || item.releaseName).toLowerCase() },
+                { id: "next", label: "What Deluno will do", width: "minmax(0,2fr)", mobile: true, sort: (item) => finishedPlan(item, settings) },
+                { id: "client", label: "Client", sort: (item) => item.clientName.toLowerCase() },
+                { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (item) => pipelineStage(item) }
+              ]}
+            >
+              {(rows) => rows.map((item) => (
+                <ListRow key={`finished:${item.clientId}:${item.id}`} onClick={() => setDrawer({ kind: "queue", id: item.id })} selected={openQueueItem?.id === item.id}>
+                  <ListNameCell
+                    name={item.title || item.releaseName}
+                    sub={<span className="font-mono"><IndexerLink indexerName={item.indexerName}>{item.releaseName}</IndexerLink></span>}
+                  />
+                  <ListCell mobile primary={finishedPlan(item, settings)} />
+                  <ListCell primary={item.clientName} secondary={item.indexerName || undefined} />
+                  <ListCell mobile><Chip tone="idle">{pipelineStage(item)}</Chip></ListCell>
+                </ListRow>
+              ))}
+            </ListTable>
+          ) : null}
+        </ListCard>
+      ) : null}
+
       {view === "live" ? (
       <ListCard
         title="Cleanup guardrails"
@@ -1700,7 +1742,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       >
         <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
           <p className="max-w-3xl text-(length:--type-body-sm) leading-relaxed text-muted-foreground">
-            In progress records why media failed, was blocked, or was removed. Deluno will not delete a client entry or payload just because a health check failed unless the matching safeguards are enabled.
+            Here Deluno records why media failed, was blocked, or was removed. It will not delete a client entry or payload just because a health check failed unless the matching safeguards are enabled.
           </p>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <PolicyFact label="Block release" enabled={settings.cleanupBlockReleaseAfterThreshold} />

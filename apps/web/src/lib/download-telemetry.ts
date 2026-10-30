@@ -35,6 +35,21 @@ export function isImportReadyStatus(status: string) {
   return status === downloadQueueStatuses.importReady || status === downloadQueueStatuses.completed;
 }
 
+/**
+ * Done with, and still listed by its client: in the library, imported earlier, its files gone, or another copy
+ * handed over (#1448). Nothing is happening to it, so In progress does not count it as in flight, and the Dashboard
+ * draws no station for it. The one definition both read.
+ */
+export function isFinishedInClient(status: string) {
+  const finished: string[] = [
+    downloadQueueStatuses.imported,
+    downloadQueueStatuses.importedFileLeft,
+    downloadQueueStatuses.filesGone,
+    downloadQueueStatuses.handedOverElsewhere
+  ];
+  return finished.includes(status);
+}
+
 export function isProcessingStatus(status: string) {
   const processingStatuses: string[] = [
     downloadQueueStatuses.processing,
