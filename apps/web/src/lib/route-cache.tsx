@@ -110,6 +110,11 @@ export interface RouteSourceState<S extends RouteSources> {
   pending: ReadonlySet<keyof S & string>;
   /** Sources that failed, by name, with a sentence to show. */
   failed: { name: keyof S & string; label: string; message: string }[];
+  /**
+   * Sources whose latest read failed, including ones that still hold an older answer. `failed` only names a source with
+   * nothing to draw; a screen that must not present an old empty answer as the truth reads this one (#1424).
+   */
+  lastReadFailed: ReadonlySet<keyof S & string>;
   /** A required source failed and there is nothing to draw with. */
   blocked: boolean;
   isFetching: boolean;
@@ -137,6 +142,7 @@ export function useRouteSources<S extends RouteSources>(sources: S, section?: st
     const data: Record<string, unknown> = {};
     const pending = new Set<string>();
     const failed: RouteSourceState<S>["failed"] = [];
+    const lastReadFailed = new Set<string>();
     let ready = true;
     let blocked = false;
     let isFetching = false;
@@ -155,6 +161,7 @@ export function useRouteSources<S extends RouteSources>(sources: S, section?: st
         if (!hasFallback && result.status !== "error") ready = false;
       }
 
+      if (result.isError) lastReadFailed.add(name);
       if (result.isError && result.data === undefined) {
         failed.push({ name, label: source.label, message: result.error instanceof Error ? result.error.message : `${source.label} could not be read.` });
         if (!hasFallback) blocked = true;
@@ -175,6 +182,7 @@ export function useRouteSources<S extends RouteSources>(sources: S, section?: st
       ready,
       pending: pending as ReadonlySet<keyof S & string>,
       failed,
+      lastReadFailed: lastReadFailed as ReadonlySet<keyof S & string>,
       blocked,
       isFetching,
       refetch,

@@ -29,7 +29,7 @@ import "./system/system.css";
 const NO_ROWS: never[] = [];
 
 export function SystemTab({ summary }: { summary: DashboardSummary | undefined }): JSX.Element {
-  const { data, failed: failedSources } = useRouteSources({ ...storedLists, ...systemSources });
+  const { data, lastReadFailed } = useRouteSources({ ...storedLists, ...systemSources });
   const attention = useAttentionSummary();
   const overview = useSystemOverview();
   const log = useSystemLog();
@@ -78,7 +78,7 @@ export function SystemTab({ summary }: { summary: DashboardSummary | undefined }
           <TasksCard tasks={summary?.automation?.tasks ?? NO_ROWS} />
           <LogCard log={log} />
         </div>
-        <BackupsCard backups={data.backups ?? NO_ROWS} settings={data.backupSettings} databases={databases} backupsFailed={failedSources.some((source) => source.name === "backups")} databasesFailed={databasesFailed} />
+        <BackupsCard backups={data.backups ?? NO_ROWS} settings={data.backupSettings} databases={databases} backupsFailed={lastReadFailed.has("backups")} databasesFailed={databasesFailed} />
       </div>
     </div>
   );

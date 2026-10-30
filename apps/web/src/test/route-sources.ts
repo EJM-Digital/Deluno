@@ -12,6 +12,7 @@ export function readyRouteSources<T>(data: T, revalidate: () => void = vi.fn()) 
     ready: true,
     pending: new Set<string>(),
     failed: [] as { name: string; label: string; message: string }[],
+    lastReadFailed: new Set<string>(),
     blocked: false,
     isFetching: false,
     refetch: async () => { revalidate(); },

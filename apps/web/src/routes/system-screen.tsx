@@ -178,7 +178,7 @@ export function SystemPage() {
   const state = useRouteSources(systemSources);
   return (
     <RouteSourceGate state={state}>
-      {() => <SystemPageBody data={state.data} revalidator={state.revalidator} backupsFailed={state.failed.some((source) => source.name === "backups")} />}
+      {() => <SystemPageBody data={state.data} revalidator={state.revalidator} backupsFailed={state.lastReadFailed.has("backups")} />}
     </RouteSourceGate>
   );
 }
