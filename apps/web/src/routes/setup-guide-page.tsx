@@ -1054,7 +1054,7 @@ export function SetupGuidePage() {
         <div>
           <div>
             {/* The topbar already names this page; a second h1 made two. */}
-            <p className="mt-2 max-w-5xl font-display text-[clamp(2rem,2.4vw,3.15rem)] font-semibold leading-[0.98] tracking-tight text-foreground">
+            <p className="mt-2 max-w-5xl font-display text-(length:--type-title-lg) font-semibold leading-[0.98] tracking-tight text-foreground">
               Get Deluno working first. Tune it later.
             </p>
             <p className="mt-3 max-w-4xl text-(length:--type-body) leading-relaxed text-muted-foreground">

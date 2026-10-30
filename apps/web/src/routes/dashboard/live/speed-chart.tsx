@@ -86,7 +86,7 @@ export function SpeedCell({ samples, summary }: { samples: DownloadThroughputSam
           {/* Both figures read the same way, an arrow and the speed in the colour of its line, so the chart needs no
               legend: ↓ download blue, ↑ upload green (the owner, 2 Oct 2026). */}
           <span className="lb-down"><span aria-hidden>↓ </span><CountUp value={live.down} format={(value) => speedParts(value).value} /></span>
-          <FigureUnit><span className="lb-down">{unit}</span><span className="sr-only"> download</span></FigureUnit>
+          <FigureUnit>{unit}<span className="sr-only"> download</span></FigureUnit>
           <span className="lb-side">
             <span aria-hidden>↑ </span><CountUp value={live.up} format={formatSpeed} /><span className="sr-only"> upload</span>
           </span>

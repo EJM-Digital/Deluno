@@ -111,7 +111,7 @@ function WorkingNow({ summary, operations, across }: { summary: DashboardSummary
           })}
         </ul>
       ) : (
-        <p className="lb-idle">
+        <p className="lb-idle role-sentence">
           {cycle
             ? `Nothing is running right now. The last search was ${cycle.libraryName}, ${ago(cycle.completedUtc ?? cycle.startedUtc)}: ${cycle.planned.toLocaleString("en-AU")} checked, ${cycle.queued.toLocaleString("en-AU")} sent to a client.`
             : "Nothing is running right now. No search has run yet."}
@@ -155,7 +155,7 @@ function NextCard({ items, now, across }: { items: NextItem[]; now: number; acro
       {first ? (
         <div className="min-w-0">
           <span aria-hidden className="lb-next-bar"><i style={{ width: `${Math.round((figure?.kind === "running" || figure?.kind === "due" ? 1 : fraction ?? 0) * 100)}%` }} /></span>
-          <ul className="lb-then">
+          <ul className="lb-then role-list">
             {rest.slice(0, 3).map((item) => (
               <li key={item.key} data-fit="">
                 <Link to={item.to} className="focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">then {item.label}</Link>
@@ -165,7 +165,7 @@ function NextCard({ items, now, across }: { items: NextItem[]; now: number; acro
           </ul>
         </div>
       ) : (
-        <p className="lb-idle">Searches and tasks that are switched off do not count down.</p>
+        <p className="lb-idle role-sentence">Searches and tasks that are switched off do not count down.</p>
       )}
     </BandCard>
   );
