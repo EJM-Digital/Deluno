@@ -276,6 +276,68 @@ public sealed class ArtworkCacheOnRecordedGatewayTests : IDisposable
         Assert.Null(await provider.GetCachedArtworkAsync(KeyOf(unknownFile), CancellationToken.None));
     }
 
+    [Theory]
+    [InlineData("../../etc/passwd")]
+    [InlineData("abc")]
+    [InlineData("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz")]
+    [InlineData("")]
+    public async Task A_key_that_is_not_64_hex_characters_is_refused_without_asking_the_gateway(string key)
+    {
+        var (provider, _) = await RigAsync();
+        await SearchAsync(provider);
+        var asked = _artworkRequests.Count;
+
+        Assert.Null(await provider.GetCachedArtworkAsync(key, CancellationToken.None));
+        Assert.Equal(asked, _artworkRequests.Count);
+    }
+
+    [Fact]
+    public async Task A_row_whose_address_is_not_its_keys_or_is_on_this_machine_is_never_fetched_from_the_gateway()
+    {
+        var (provider, factory) = await RigAsync();
+        await SearchAsync(provider);
+        var posterKey = KeyOf(PosterUrl);
+        var backdropKey = KeyOf(BackdropUrl);
+        var asked = _artworkRequests.Count;
+
+        // Both files are gone (a restore) and each row now carries an address it must not be healed from:
+        // the poster's row names the backdrop's address, so the address is not the one its key names.
+        File.Delete(Path.Combine(ArtworkRoot, posterKey + ".jpg"));
+        File.Delete(Path.Combine(ArtworkRoot, backdropKey + ".jpg"));
+        await ExecuteAsync(factory, $"UPDATE artwork_cache SET remote_url = '{BackdropUrl}', local_path = NULL WHERE cache_key = '{posterKey}';");
+        var local = KeyOf("http://127.0.0.1/secret.jpg");
+        await ExecuteAsync(factory, $"UPDATE artwork_cache SET remote_url = 'http://127.0.0.1/secret.jpg', local_path = NULL WHERE cache_key = '{backdropKey}';");
+        await ExecuteAsync(factory, $"UPDATE artwork_cache SET cache_key = '{local}' WHERE cache_key = '{backdropKey}';");
+
+        Assert.Null(await provider.GetCachedArtworkAsync(posterKey, CancellationToken.None));
+        Assert.Null(await provider.GetCachedArtworkAsync(local, CancellationToken.None));
+        Assert.Equal(asked, _artworkRequests.Count);
+    }
+
+    [Fact]
+    public async Task A_body_that_is_not_an_image_is_never_cached_even_when_the_gateway_answers_it_with_a_200()
+    {
+        // The nearest recorded reply (the gateway's own not_found JSON) with only its status changed to 200.
+        var (provider, _) = await RigAsync(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path == "/metadata/search")
+            {
+                return RecordedReplies.Json(RecordedReplies.Tmdb("search-movie").Body("", ("results.0.posterUrl", PosterUrl), ("results.0.backdropUrl", BackdropUrl)));
+            }
+
+            var response = RecordedReplies.Tmdb("artwork-not-found").Single.Reply.ToResponse();
+            response.StatusCode = HttpStatusCode.OK;
+            return response;
+        });
+
+        var result = Assert.Single(await provider.SearchAsync(new MetadataLookupRequest("Sintel", "movies", 2010, null), CancellationToken.None));
+
+        Assert.Equal(PosterUrl, result.PosterUrl);
+        Assert.Equal(BackdropUrl, result.BackdropUrl);
+        Assert.Empty(Directory.Exists(ArtworkRoot) ? Directory.GetFiles(ArtworkRoot) : []);
+    }
+
     private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
