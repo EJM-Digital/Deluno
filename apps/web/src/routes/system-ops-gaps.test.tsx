@@ -76,7 +76,7 @@ vi.mock("../lib/route-cache", async (importOriginal) => {
   const { readyRouteSources } = await import("../test/route-sources");
   return {
     ...(await importOriginal<typeof import("../lib/route-cache")>()),
-    useRouteSources: () => ({ ...readyRouteSources(loaderData, revalidateMock), failed: loaderData.failedSources ?? [] }),
+    useRouteSources: () => ({ ...readyRouteSources(loaderData, revalidateMock), failed: loaderData.failedSources ?? [], lastReadFailed: new Set((loaderData.failedSources ?? []).map((source: { name: string }) => source.name)) }),
     refetchSources: async () => { revalidateMock(); }
   };
 });
