@@ -37,7 +37,8 @@ public abstract class LibrarySearchJobHandler(
     IJobScheduler? jobScheduler = null,
     IPlatformSettingsRepository? platformSettingsRepository = null,
     ISearchQueuePauseGate? queuePauseGate = null,
-    IRealtimeEventPublisher? realtimeEventPublisher = null) : IJobHandler
+    IRealtimeEventPublisher? realtimeEventPublisher = null,
+    Deluno.Worker.Dashboard.SearchesInFlight? searchesInFlight = null) : IJobHandler
 {
     /// <summary>
     /// Both catalogues run the same handler; only the lane differs.
@@ -51,6 +52,18 @@ public abstract class LibrarySearchJobHandler(
     /// </summary>
     public abstract string JobType { get; }
 
+    /// <summary>
+    /// The title this job is asking the indexers about right now is on Live's Searching lane (#1442), whoever started
+    /// the search: a person, a newly added title, a Seerr request or a cycle's pass. It leaves when its search ends.
+    /// </summary>
+    private Task BeginSearchingAsync(JobQueueItem job, JobPayloads.LibrarySearchPayload payload, string entityType, string entityId, string title, bool hasFile, int indexers)
+        => searchesInFlight is null
+            ? Task.CompletedTask
+            : searchesInFlight.BeginAsync(job.Id, entityType, entityId, title, DownloadStartedBy.ForSearch(payload.TriggeredBy, IsTargeted(payload), hasFile), indexers);
+
+    private Task EndSearchingAsync(JobQueueItem job)
+        => searchesInFlight is null ? Task.CompletedTask : searchesInFlight.EndAsync(job.Id);
+
     /// <summary>Tells Live which library is being checked and how far along it is, as each title is done (#1097).</summary>
     private Task PublishCycleProgressAsync(JobPayloads.LibrarySearchPayload payload, int checkedSoFar, int planned, DateTimeOffset at)
         => realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishSearchCycleProgressAsync(
@@ -58,6 +71,22 @@ public abstract class LibrarySearchJobHandler(
             CancellationToken.None));
 
     public async Task<string> HandleAsync(JobQueueItem job, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await HandleCoreAsync(job, cancellationToken);
+        }
+        finally
+        {
+            // Whatever way the job ends, it is no longer searching for a title.
+            if (searchesInFlight is not null)
+            {
+                await searchesInFlight.EndAsync(job.Id);
+            }
+        }
+    }
+
+    private async Task<string> HandleCoreAsync(JobQueueItem job, CancellationToken cancellationToken)
     {
         var payload = JobPayloads.ParseLibraryPayload(job.PayloadJson);
         if (payload is null || string.IsNullOrWhiteSpace(payload.LibraryName))
@@ -254,6 +283,7 @@ public abstract class LibrarySearchJobHandler(
                 ? []
                 : (await mediaTagStore.ListAsync(MediaKind.Movie, candidate.MovieId, cancellationToken)).Select(tag => tag.Name).ToArray();
             var profileBundle = await profileBundles.ForTitleAsync(MediaKind.Movie, candidate.MovieId, cancellationToken);
+            await BeginSearchingAsync(job, payload, "movie", candidate.MovieId, candidate.Title, candidate.HasFile, configuredSources);
             var decisionPlan = await acquisitionPipeline.PlanAsync(
                 new AcquisitionDecisionRequest(
                     candidate.Title,
@@ -291,6 +321,7 @@ public abstract class LibrarySearchJobHandler(
                     SearchExecutionSupport.DeferIfIndexersWereBusy(searchPlan);
                 }
 
+                await EndSearchingAsync(job);
                 continue;
             }
             var bestCandidate = searchPlan.BestCandidate;
@@ -470,6 +501,7 @@ public abstract class LibrarySearchJobHandler(
                 now,
                 outcome,
                 cancellationToken);
+            await EndSearchingAsync(job);
         }
 
         await jobQueueRepository.RecordSearchCycleRunAsync(
@@ -958,6 +990,7 @@ public abstract class LibrarySearchJobHandler(
                 ? []
                 : (await mediaTagStore.ListAsync(MediaKind.Series, candidate.SeriesId, cancellationToken)).Select(tag => tag.Name).ToArray();
             var profileBundle = await profileBundles.ForTitleAsync(MediaKind.Series, candidate.SeriesId, cancellationToken);
+            await BeginSearchingAsync(job, payload, "series", candidate.SeriesId, candidate.Title, candidate.HasFile, configuredSources);
             var decisionPlan = await acquisitionPipeline.PlanAsync(
                 new AcquisitionDecisionRequest(
                     candidate.Title,
@@ -995,6 +1028,7 @@ public abstract class LibrarySearchJobHandler(
                     SearchExecutionSupport.DeferIfIndexersWereBusy(searchPlan);
                 }
 
+                await EndSearchingAsync(job);
                 continue;
             }
             var bestCandidate = searchPlan.BestCandidate;
@@ -1132,6 +1166,7 @@ public abstract class LibrarySearchJobHandler(
                 now,
                 outcome,
                 cancellationToken);
+            await EndSearchingAsync(job);
         }
 
         // Both planners de-duplicate against jobs already queued for the same

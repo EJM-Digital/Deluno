@@ -42,7 +42,8 @@ public sealed class MoviesLibrarySearchJobHandler(
     IJobScheduler? jobScheduler = null,
     IPlatformSettingsRepository? platformSettingsRepository = null,
     ISearchQueuePauseGate? queuePauseGate = null,
-    IRealtimeEventPublisher? realtimeEventPublisher = null) : LibrarySearchJobHandler(
+    IRealtimeEventPublisher? realtimeEventPublisher = null,
+    Deluno.Worker.Dashboard.SearchesInFlight? searchesInFlight = null) : LibrarySearchJobHandler(
         librariesRepository,
         qualityRepository,
         jobQueueRepository,
@@ -59,7 +60,8 @@ public sealed class MoviesLibrarySearchJobHandler(
         jobScheduler,
         platformSettingsRepository,
         queuePauseGate,
-        realtimeEventPublisher)
+        realtimeEventPublisher,
+        searchesInFlight)
 {
     public override string JobType => LibrarySearchJobTypes.Movies;
 }
@@ -82,7 +84,8 @@ public sealed class TvLibrarySearchJobHandler(
     IJobScheduler? jobScheduler = null,
     IPlatformSettingsRepository? platformSettingsRepository = null,
     ISearchQueuePauseGate? queuePauseGate = null,
-    IRealtimeEventPublisher? realtimeEventPublisher = null) : LibrarySearchJobHandler(
+    IRealtimeEventPublisher? realtimeEventPublisher = null,
+    Deluno.Worker.Dashboard.SearchesInFlight? searchesInFlight = null) : LibrarySearchJobHandler(
         librariesRepository,
         qualityRepository,
         jobQueueRepository,
@@ -99,7 +102,8 @@ public sealed class TvLibrarySearchJobHandler(
         jobScheduler,
         platformSettingsRepository,
         queuePauseGate,
-        realtimeEventPublisher)
+        realtimeEventPublisher,
+        searchesInFlight)
 {
     public override string JobType => LibrarySearchJobTypes.Tv;
 }

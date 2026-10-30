@@ -97,6 +97,7 @@ public static class WorkerServiceCollectionExtensions
         services.AddSingleton<Deluno.Worker.Dashboard.DashboardVolumeCache>();
         services.AddSingleton<Deluno.Worker.Dashboard.DashboardLiveStore>();
         services.AddSingleton<Deluno.Worker.Dashboard.DashboardLiveService>();
+        services.AddSingleton<Deluno.Worker.Dashboard.SearchesInFlight>();
         services.AddHostedService<Deluno.Worker.Dashboard.DashboardVolumeRefresher>();
         services.AddSingleton<Deluno.Worker.Dashboard.DashboardSummaryService>();
         services.AddSingleton<Deluno.Worker.Dashboard.IDashboardSummaryService>(provider => provider.GetRequiredService<Deluno.Worker.Dashboard.DashboardSummaryService>());
