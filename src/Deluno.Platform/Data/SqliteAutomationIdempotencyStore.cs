@@ -95,6 +95,17 @@ public sealed class SqliteAutomationIdempotencyStore(
         return result;
     }
 
+    public async Task<int> PruneAsync(DateTimeOffset olderThanUtc, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM automation_idempotency WHERE created_utc < @cutoff;";
+        AddParameter(command, "@cutoff", olderThanUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     private static string NormalizeKey(string value)
         => string.IsNullOrWhiteSpace(value)
             ? throw new ArgumentException("An idempotency key is required.", nameof(value))

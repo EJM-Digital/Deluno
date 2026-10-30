@@ -24,4 +24,10 @@ public interface IAutomationIdempotencyStore
         string requestHash,
         string responseJson,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Removes keys stored before the given time. Integration keys are kept
+    /// for 7 days so a repeat inside that window still gets the stored answer.
+    /// </summary>
+    Task<int> PruneAsync(DateTimeOffset olderThanUtc, CancellationToken cancellationToken);
 }
