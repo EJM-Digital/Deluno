@@ -25,6 +25,7 @@ One row is one behaviour a person or another app can rely on:
 | `incomplete` | no | Only `true` (the check refuses `false` and any other value). Says the row's proofs reach its level but do not yet cover its whole claim; the row is then a **gap** until the missing part is proven and the mark is removed. `partial` keeps its meaning: part-proofs that never count toward the level. |
 | `needs` | no | `{ "kind", "test" }`: the test that would close the gap. |
 | `issue` | no | The number (a positive integer) of the open coverage issue that will close the row's gap. Counted in the statistics. A gap (a row below its level, or `incomplete`) must carry it, and a row that is no gap must not (rule 4). |
+| `waived` | no | `{ "by": "owner", "date": "YYYY-MM-DD", "why": "<one sentence>", "until": "an account exists" }`. The owner's word (31 Oct 2026, #1343) that a row waits for an outside account he does not have. Allowed only on a row that has an `account` and an `issue` (the check refuses it on any other row, and on a row that already reaches its level). A waived row keeps its `issue` and `account`, is **not** a gap, does not block `--strict` and is not part of the gap ratchet, but the check prints and the job summary shows how many rows are waived, and each is listed in `docs/testing/account-requests.md`. Remove the field once the row is proven. |
 | `account` | no | Only on a gap that names an `issue`: the outside service (Trakt, Discord, Slack, Telegram, Pushover, a signed-in subtitle provider) whose account the proof needs. The row waits for that account and its issue; it is not counted as work a builder can finish. |
 | `audit` | no | Where the row came from. |
 
@@ -58,7 +59,7 @@ for example `contract.events.completed`, `contract.handoff.accepted`, `contract.
 - **inproc**: any other `vitest`, `smoke` or `backend` test. It runs Deluno's code, but the other side is Deluno's own stand-in.
 - **none**: the row is a gap.
 
-A row is **proven** when its best proof reaches `required` and it is not marked `incomplete`; every other row is a gap.
+A row is **proven** when its best proof reaches `required` and it is not marked `incomplete`; every other row is a gap, except a row the owner has **waived** (see `waived`), which is counted and listed apart and is not a gap. The waived rows are listed in `docs/testing/account-requests.md`.
 
 ## The rules
 

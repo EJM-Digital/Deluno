@@ -87,10 +87,15 @@ export function proofLevel(proof, row, index) {
 }
 export const rowLevel = (row, index) => (row.proofs ?? []).reduce((best, p) => Math.max(best, proofLevel(p, row, index)), 0);
 /** A row is a gap when its best proof is below its required level, or when it is marked `"incomplete": true` (its proofs do not yet cover its whole claim). */
-export const isGap = (row, index) => row.incomplete === true || rowLevel(row, index) < requiredLevel(row);
+const belowLevel = (row, index) => row.incomplete === true || rowLevel(row, index) < requiredLevel(row);
+/** A row the owner waived until an outside account exists (31 Oct 2026, #1343): it keeps its issue and account, but is listed apart and not counted as a gap. */
+export const isWaived = (row) => row.waived != null;
+export const isGap = (row, index) => !isWaived(row) && belowLevel(row, index);
+/** A waiver on a row that already reaches its level is stale: the row is proven, so the waiver is removed. */
+export const staleWaivedRows = (register, index) => register.rows.filter((row) => isWaived(row) && !belowLevel(row, index)).map((row) => row.id);
 
 /** (e) a row that is not a gap but still names an issue is stale; (f) a gap with no issue has no owner. Rows are listed by id. */
-export const staleIssueRows = (register, index) => register.rows.filter((row) => row.issue != null && !isGap(row, index)).map((row) => row.id);
+export const staleIssueRows = (register, index) => register.rows.filter((row) => row.issue != null && !isGap(row, index) && !isWaived(row)).map((row) => row.id);
 export const unownedGapRows = (register, index) => register.rows.filter((row) => row.issue == null && isGap(row, index)).map((row) => row.id);
 
 /** A `gapIncrease` entry says which rise it explains and why: { "from": <gaps on the base>, "to": <gaps now>, "reason": "..." }. */
@@ -125,6 +130,12 @@ export function validateShape(register) {
     if (row.vm === true && !REAL_FS_TOUCHES.has(row.touches)) problems.push(`${where}: vm is for a row that touches disk or install, not ${row.touches}`);
     if (row.account != null && (typeof row.account !== 'string' || !row.account.trim())) problems.push(`${where}: account must name the outside service whose account the proof needs`);
     if (row.account != null && row.issue == null) problems.push(`${where}: account is only for a gap that names an issue (the one that waits for that account)`);
+    if (row.waived != null) {
+      const w = row.waived;
+      const text = (v) => typeof v === 'string' && v.trim();
+      if (!(typeof row.account === 'string' && row.account.trim()) || row.issue == null) problems.push(`${where}: waived is only for a row that needs an outside account: name the service in "account" and keep the "issue"`);
+      if (typeof w !== 'object' || Array.isArray(w) || w.by !== 'owner' || !/^\d{4}-\d{2}-\d{2}$/.test(w.date ?? '') || !text(w.why) || !text(w.until)) problems.push(`${where}: waived must be { "by": "owner", "date": "YYYY-MM-DD", "why": "<one sentence>", "until": "<what ends the waiver>" }`);
+    }
     if (row.incomplete != null && row.incomplete !== true) problems.push(`${where}: incomplete may only be true (leave it out otherwise)`);
     if (row.issue != null && !(Number.isInteger(row.issue) && row.issue > 0)) problems.push(`${where}: issue must be the number of an open coverage issue`);
     if (!Array.isArray(row.proofs)) problems.push(`${where}: proofs must be a list (empty when it is a gap)`);
@@ -233,6 +244,7 @@ export function totals(register, index) {
   const byLevel = { none: 0, inproc: 0, real: 0 };
   const all = blank();
   const gaps = [];
+  const waived = [];
   const highByTouches = Object.fromEntries(TOUCHES.map((t) => [t, { rows: 0, gaps: 0 }]));
   const smoke = { proofs: 0, unstubbed: 0, stubbed: 0, undecided: 0 };
   const realFs = { claims: 0, counted: 0, refused: 0, noEffect: 0, vmRows: 0, vmRowGaps: 0 };
@@ -240,6 +252,17 @@ export function totals(register, index) {
   function blank() { return { rows: 0, proven: 0, gaps: 0 }; }
   for (const row of register.rows) {
     const gap = isGap(row, index);
+    if (isWaived(row)) {
+      // listed apart: counted as a row and by level, never as proven and never as a gap
+      waived.push(row);
+      const wa = (byArea[row.area] ??= { ...blank(), high: 0, highGaps: 0, level: { none: 0, inproc: 0, real: 0 } });
+      for (const t of [wa, bySeverity[row.severity], all]) t.rows++;
+      wa.high += row.severity === 'high' ? 1 : 0;
+      const wl = LEVEL_NAMES[rowLevel(row, index)];
+      wa.level[wl]++;
+      byLevel[wl]++;
+      continue;
+    }
     if (row.severity === 'high' && highByTouches[row.touches]) { highByTouches[row.touches].rows++; if (gap) highByTouches[row.touches].gaps++; }
     for (const pr of row.proofs ?? []) if (pr.type === 'smoke') { const st = smokeState(pr, index); smoke.proofs++; if (!st.stubbed) smoke.unstubbed++; else if (st.decided) smoke.stubbed++; else smoke.undecided++; }
     if (row.vm === true) { realFs.vmRows++; if (gap) realFs.vmRowGaps++; }
@@ -264,7 +287,7 @@ export function totals(register, index) {
     byLevel[lv]++;
     if (gap) gaps.push(row);
   }
-  return { all, byArea, bySeverity, byLevel, highByTouches, smoke, realFs, container, gaps, highGaps: gaps.filter((g) => g.severity === 'high').length };
+  return { all, byArea, bySeverity, byLevel, highByTouches, smoke, realFs, container, gaps, waived, highGaps: gaps.filter((g) => g.severity === 'high').length };
 }
 
 // ------------------------------------------------------------------------------------------------ determinism rules
@@ -416,12 +439,12 @@ export function evaluate({ register, inventory, index, plan, root, baseGaps = nu
   const proofProblems = missingProofs(register, index, planIds);
   const missing = proofProblems.filter((m) => m.kind === 'missing');
   const typeProblems = proofProblems.filter((m) => m.kind === 'type');
-  const t = safe('totals', () => totals(register, index), { all: { rows: 0, proven: 0, gaps: 0 }, byArea: {}, bySeverity: { high: { rows: 0, proven: 0, gaps: 0 }, medium: { rows: 0, proven: 0, gaps: 0 }, low: { rows: 0, proven: 0, gaps: 0 } }, byLevel: { none: 0, inproc: 0, real: 0 }, highByTouches: {}, smoke: { proofs: 0, unstubbed: 0, stubbed: 0, undecided: 0 }, realFs: { claims: 0, counted: 0, refused: 0, noEffect: 0, vmRows: 0, vmRowGaps: 0 }, container: { claims: 0, counted: 0, refused: 0, noEffect: 0 }, gaps: [], highGaps: 0 });
+  const t = safe('totals', () => totals(register, index), { all: { rows: 0, proven: 0, gaps: 0 }, byArea: {}, bySeverity: { high: { rows: 0, proven: 0, gaps: 0 }, medium: { rows: 0, proven: 0, gaps: 0 }, low: { rows: 0, proven: 0, gaps: 0 } }, byLevel: { none: 0, inproc: 0, real: 0 }, highByTouches: {}, smoke: { proofs: 0, unstubbed: 0, stubbed: 0, undecided: 0 }, realFs: { claims: 0, counted: 0, refused: 0, noEffect: 0, vmRows: 0, vmRowGaps: 0 }, container: { claims: 0, counted: 0, refused: 0, noEffect: 0 }, gaps: [], waived: [], highGaps: 0 });
   const sleeps = safe('sleep rule', () => sleepViolations(index), []);
   const waits = safe('wait rule', () => waitViolations(index), []);
   const scenarios = safe('scenario rule', () => (plan.length ? scenarioViolations(plan, index) : []), []);
   const ratchet = safe('gap ratchet', () => gapRatchet(register, gapCountOf(register, index), baseGaps), { problems: [], notes: [] });
-  const staleIssues = safe('stale issue rule', () => staleIssueRows(register, index), []);
+  const staleIssues = safe('stale issue rule', () => [...staleIssueRows(register, index), ...staleWaivedRows(register, index)], []);
   const unownedGaps = safe('unowned gap rule', () => unownedGapRows(register, index), []);
   return { shape, unmapped, stale, missing, typeProblems, totals: t, sleeps, waits, scenarios, internal, staleIssues, unownedGaps, gapProblems: ratchet.problems, gapNotes: ratchet.notes };
 }
@@ -445,7 +468,7 @@ export function statisticsReport(register, inventory, t) {
   const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '-');
   const lines = [];
   lines.push('### Coverage register', '', 'Generated by `node scripts/check-coverage-register.mjs` from `coverage-register.json`; the rules are in docs/testing/COVERAGE.md.', '');
-  lines.push(`**${t.all.rows}** behaviours. **${t.all.proven}** reach their required proof level (${pct(t.all.proven, t.all.rows)}); **${t.all.gaps}** are gaps, **${t.highGaps}** of them high.`, '');
+  lines.push(`**${t.all.rows}** behaviours. **${t.all.proven}** reach their required proof level (${pct(t.all.proven, t.all.rows)}); **${t.all.gaps}** are gaps, **${t.highGaps}** of them high.${t.waived?.length ? ` **${t.waived.length}** rows are waived by the owner until an outside account exists (listed in docs/testing/account-requests.md); they are not counted as gaps.` : ''}`, '');
   lines.push('### By severity', '', '| Severity | Rows | Reach their level | Gaps |', '| --- | ---: | ---: | ---: |');
   for (const s of SEVERITIES) lines.push(`| ${s} | ${t.bySeverity[s].rows} | ${t.bySeverity[s].proven} | ${t.bySeverity[s].gaps} |`);
   lines.push('', '### High rows by what they touch (these need `real`, except `none`, which needs `inproc`)', '', '| Touches | High rows | High gaps |', '| --- | ---: | ---: |');
@@ -596,6 +619,7 @@ async function main() {
   lines.push(`      best proof: ${LEVEL_NAMES.map((l) => `${l} ${t.byLevel[l]}`).join(', ')}. smoke proofs ${t.smoke.proofs}: ${t.smoke.unstubbed} unstubbed, ${t.smoke.stubbed} stubbed, ${t.smoke.undecided} not decidable (counted stubbed).`);
   lines.push(`      real-fs proofs ${t.realFs.claims}: ${t.realFs.counted} counted, ${t.realFs.refused} refused (counted inproc), ${t.realFs.noEffect} without effect. vm rows (need a scenario): ${t.realFs.vmRows}, ${t.realFs.vmRowGaps} still gaps.`);
   lines.push(`      container-smoke proofs ${t.container.claims}: ${t.container.counted} counted, ${t.container.refused} refused (counted inproc), ${t.container.noEffect} without effect.`);
+  if (t.waived.length) lines.push(`  !!  ${t.waived.length} rows waived by the owner, listed in docs/testing/account-requests.md (each keeps its issue and account; not counted as gaps, not blocking --strict).`);
   if (t.gaps.length) warn.push(levelLine);
 
   const failing_rules = new Set();

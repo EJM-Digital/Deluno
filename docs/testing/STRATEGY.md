@@ -44,7 +44,7 @@ replayed on both sides from the same recordings.
 - **Every push (CI):** build; measures 1, 2 and 7's static checks; unit, in-process and property tests; the Playwright real specs;
   recorded-reply replays; mutation on the changed files. A push that changes code always runs both the backend and the web tests,
   so coverage (measure 2) is measured on every code push; a documents-only push runs only the repository checks. The register check
-  runs with `--strict` once the repository variable `DELUNO_REGISTER_STRICT` is `true`, which is set when the last gap issue closes.
+  runs with `--strict` once the repository variable `DELUNO_REGISTER_STRICT` is `true`, which is set when the last gap issue closes. Rows that need an outside account the owner does not have are the one exception (the owner, 31 Oct 2026): they are marked `waived`, are not gaps and do not block `--strict`, but are counted and listed apart and in `docs/testing/account-requests.md`, so they stay visible until an account exists and they are proven.
 - **When an area's coverage issue closes (the owner, 29 Oct 2026):** once every high and medium row of the area reaches its
   required level. Its low rows are carried by the one sweep issue (#1329), rows that need an outside account by #1343, and rows
   that need a golden-VM scenario by #1278. Line and branch coverage and the mutation score are measured app-wide and carried by
