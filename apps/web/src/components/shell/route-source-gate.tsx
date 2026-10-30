@@ -44,7 +44,7 @@ function SourceProblems<S extends RouteSources>({
   intro
 }: {
   state: RouteSourceState<S>;
-  className?: string;
+  className: string;
   intro?: string;
 }) {
   const names = state.failed.map((item) => item.label);
@@ -52,7 +52,7 @@ function SourceProblems<S extends RouteSources>({
   return (
     <div
       role="alert"
-      className={`flex flex-wrap items-center gap-3 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm ${className ?? ""}`}
+      className={`flex flex-wrap items-center gap-3 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm ${className}`}
     >
       <AlertTriangle aria-hidden="true" className="h-4 w-4 shrink-0 text-warning" />
       <p className="min-w-0 flex-1 text-foreground">

@@ -207,3 +207,28 @@ describe("display options", () => {
     expect(parseDisplayOptions(null, POSTER_OPTIONS)).toEqual(defaultDisplayOptions(POSTER_OPTIONS));
   });
 });
+
+describe("display options stored as something other than switches", () => {
+  it("falls back to the defaults for JSON that is null, a list or text", () => {
+    const defaults = defaultDisplayOptions(POSTER_OPTIONS);
+    expect(parseDisplayOptions("null", POSTER_OPTIONS)).toEqual(defaults);
+    expect(parseDisplayOptions("[true]", POSTER_OPTIONS)).toEqual(defaults);
+    expect(parseDisplayOptions('"text"', POSTER_OPTIONS)).toEqual(defaults);
+  });
+});
+
+describe("the monitoring filter", () => {
+  it("accepts only the three values it offers", () => {
+    expect(isMonitoringFilter("any")).toBe(true);
+    expect(isMonitoringFilter("monitored")).toBe(true);
+    expect(isMonitoringFilter("unmonitored")).toBe(true);
+    expect(isMonitoringFilter("paused")).toBe(false);
+    expect(isMonitoringFilter(null)).toBe(false);
+  });
+
+  it("asks the catalogue for either, only monitored, or only unmonitored", () => {
+    expect(monitoringParam("any")).toBeUndefined();
+    expect(monitoringParam("monitored")).toBe(true);
+    expect(monitoringParam("unmonitored")).toBe(false);
+  });
+});

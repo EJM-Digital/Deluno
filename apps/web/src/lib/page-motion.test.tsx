@@ -139,3 +139,17 @@ describe("settling when the page is hidden (#873)", () => {
     remove();
   });
 });
+
+describe("the hidden-page guard when the page is hidden again before it settles (#873)", () => {
+  it("keeps the mark on if the page is hidden again within the two frames", () => {
+    const remove = installHiddenPageMotionGuard();
+    setVisibility("hidden");
+    expect(document.documentElement.hasAttribute("data-page-hidden")).toBe(true);
+    setVisibility("visible");
+    flushFrames(16);
+    setVisibility("hidden");
+    flushFrames(32);
+    expect(document.documentElement.hasAttribute("data-page-hidden")).toBe(true);
+    remove();
+  });
+});

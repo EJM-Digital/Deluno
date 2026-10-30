@@ -126,17 +126,15 @@ export const DECISION_OPTIONS: { value: BlockDecision; label: string }[] = [
   { value: "AskMe", label: "Ask me" }
 ];
 
+const DECISION_WORDS: Record<BlockDecision, string> = {
+  Never: "keeps offering it",
+  AfterOneRetry: "tries once more, then refuses it",
+  Immediately: "refuses it straight away",
+  AskMe: "asks you first"
+};
+
 export function decisionWords(decision: BlockDecision): string {
-  switch (decision) {
-    case "Never":
-      return "keeps offering it";
-    case "AfterOneRetry":
-      return "tries once more, then refuses it";
-    case "Immediately":
-      return "refuses it straight away";
-    case "AskMe":
-      return "asks you first";
-  }
+  return DECISION_WORDS[decision];
 }
 
 /** What an import-recovery case's `failureKind` says on a row, in plain words (the Activity list's second line). */

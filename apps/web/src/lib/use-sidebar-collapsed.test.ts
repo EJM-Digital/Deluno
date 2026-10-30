@@ -99,3 +99,14 @@ describe("whether the sidebar is the narrow icon rail", () => {
     expect(() => unmount()).not.toThrow();
   });
 });
+
+describe("the sidebar on a server render", () => {
+  it("renders full width, because a server cannot know the screen", async () => {
+    const { createElement } = await import("react");
+    const { renderToString } = await import("react-dom/server");
+    function Probe() {
+      return createElement("span", null, useSidebarCollapsed().collapsed ? "icons" : "full");
+    }
+    expect(renderToString(createElement(Probe))).toContain("full");
+  });
+});
