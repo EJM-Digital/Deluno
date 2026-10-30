@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.MediaServers;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.MediaServers;
 
@@ -279,13 +280,20 @@ public sealed class LeavingSoonCollectionClientTests
                 return uri[(uri.LastIndexOf('/') + 1)..];
             }
 
-            if (path == "/") return Json("""{"MediaContainer":{"machineIdentifier":"machine-1","friendlyName":"Rig Plex"}}""");
-            if (path == "/library/sections") return Json("""{"MediaContainer":{"Directory":[{"key":"1","type":"movie"},{"key":"2","type":"show"},{"key":"3","type":"show"}]}}""");
+            // Plex 1.43.4's own replies (tests/fixtures/recorded/plex), unclaimed, changed only in the value the test is about: its machine id,
+            // a third library (a second TV library, copied from the recorded TV one), and the collections and children a test holds.
+            // The home-screen promotion (/hubs/sections/{id}/manage) answers 404 on an unclaimed server and a claimed server's reply is not
+            // recorded (MISSING.md, 'Plex, claimed'), so that one reply below is still written here.
+            if (path == "/") return Json(RecordedReplies.Plex("root").Single.Reply.BodyWith(("MediaContainer.machineIdentifier", "machine-1")));
+            if (path == "/library/sections")
+                return Json(RecordedReplies.Plex("sections").Body("/library/sections",
+                    ("+MediaContainer.Directory", 3), ("MediaContainer.Directory.2.key", "3"), ("MediaContainer.Directory.2.type", "show")));
 
             if (request.Method == HttpMethod.Get && path.StartsWith("/library/sections/", StringComparison.Ordinal) && path.EndsWith("/collections", StringComparison.Ordinal))
             {
                 var section = path.Split('/')[3];
-                return Metadata(Collections.Where(c => c.Value.Section == section).Select(c => new { ratingKey = c.Key, title = c.Value.Title }));
+                return Listing(RecordedReplies.Plex("collection-sync").Find("collections?includeGuids").Reply,
+                    Collections.Where(c => c.Value.Section == section).Select(c => (c.Key, (string?)c.Value.Title)));
             }
 
             if (request.Method == HttpMethod.Post && path == "/library/collections")
@@ -295,7 +303,7 @@ public sealed class LeavingSoonCollectionClientTests
                 var collection = new FakePlexCollection(query["sectionId"]!, int.Parse(query["type"]!), query["title"]!);
                 foreach (var id in Keys(query["uri"]!).Split(',')) collection.Members.Add(id);
                 Collections[key] = collection;
-                return Metadata([new { ratingKey = key }]);
+                return Listing(RecordedReplies.Plex("collection-sync").Find("library/collections?type", "POST").Reply, [(key, (string?)collection.Title)]);
             }
 
             if (request.Method == HttpMethod.Put && path.StartsWith("/library/sections/", StringComparison.Ordinal) && path.EndsWith("/all", StringComparison.Ordinal))
@@ -310,7 +318,7 @@ public sealed class LeavingSoonCollectionClientTests
                 var parts = path.Split('/');
                 var collection = Collections[parts[3]];
                 if (request.Method == HttpMethod.Get && parts.Length == 5 && parts[4] == "children")
-                    return Metadata(collection.Members.Select(id => new { ratingKey = id }));
+                    return Listing(RecordedReplies.Plex("collection-sync").Find("/children").Reply, collection.Members.Select(id => (id, (string?)null)));
                 if (request.Method == HttpMethod.Put && parts.Length == 5 && parts[4] == "items")
                 {
                     foreach (var id in Keys(query["uri"]!).Split(',')) collection.Members.Add(id);
@@ -354,10 +362,26 @@ public sealed class LeavingSoonCollectionClientTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         }
 
-        private static HttpResponseMessage Metadata<T>(IEnumerable<T> items)
+        /// <summary>The recorded reply with as many items as the test holds: the recorded first item copied, then only its key (and title) set.</summary>
+        private static HttpResponseMessage Listing(RecordedReply recorded, IEnumerable<(string Key, string? Title)> items)
         {
             var list = items.ToArray();
-            return Json(JsonSerializer.Serialize(new { MediaContainer = new { size = list.Length, totalSize = list.Length, Metadata = list } }));
+            var edits = new List<(string, object?)> { ("MediaContainer.size", list.Length) };
+            if (list.Length == 0)
+            {
+                edits.Add(("^MediaContainer.Metadata", 0));
+            }
+            else
+            {
+                edits.Add(("+MediaContainer.Metadata", list.Length));
+                for (var i = 0; i < list.Length; i++)
+                {
+                    edits.Add(($"MediaContainer.Metadata.{i}.ratingKey", list[i].Key));
+                    if (list[i].Title is not null) edits.Add(($"MediaContainer.Metadata.{i}.title", list[i].Title));
+                }
+            }
+
+            return Json(recorded.BodyWith(edits.ToArray()));
         }
     }
 
