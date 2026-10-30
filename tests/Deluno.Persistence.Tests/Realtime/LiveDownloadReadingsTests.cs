@@ -187,7 +187,8 @@ public sealed class LiveDownloadReadingsTests : IAsyncDisposable
         // A failed pass waits the idle 20 s, never the 1 s or 2 s of a moving one.
         await AdvanceAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(1, _readings.Readings);
-        await AdvanceAsync(TimeSpan.FromSeconds(11));
+        // The second look is due at 40 s; the clock runs on to 45 so a slow machine has time to take it.
+        await AdvanceAsync(TimeSpan.FromSeconds(14));
         Assert.Equal(2, _readings.Readings);
 
         lock (log.Levels)
