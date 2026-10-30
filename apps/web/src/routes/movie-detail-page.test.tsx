@@ -1295,7 +1295,7 @@ describe("the film's header facts (coverage, #1329)", () => {
     await renderPage();
     const line = screen.getByText(/^Alternate titles:/);
     expect(line).toHaveTextContent("Alternate titles: Big Buck Bunny (UK), Bugs Bunny Movie");
-    expect(line).toHaveAttribute("title", "Used to match a release filed under a region-specific spelling");
+    expect(line).toHaveAttribute("title", "Used to match a release filed under a region-specific spelling: Big Buck Bunny (UK), Bugs Bunny Movie");
     cleanup();
 
     setup();
@@ -1368,7 +1368,10 @@ describe("the film's subtitles, logo and hero (coverage, area movie-detail)", ()
     const logo = Array.from(document.querySelectorAll("img")).find((img) => img.getAttribute("src") === "https://fixture.invalid/film-logo.png");
     expect(logo).toBeDefined();
     const heading = screen.getByRole("heading", { level: 1, name: "Big Buck Bunny" });
-    expect(logo!.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // #1441: the logo IS the heading; the title is not written a second time beside it.
+    expect(heading).toContainElement(logo!);
+    expect(logo).toHaveAttribute("alt", "Big Buck Bunny");
+    expect(heading.textContent?.trim()).toBe("");
   });
 
   it("Subtitle search history card language provider what happened score label", async () => {

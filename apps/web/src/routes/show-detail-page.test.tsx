@@ -1512,6 +1512,10 @@ describe("the show's hero header (coverage, area show-detail)", () => {
     );
     await renderPage();
     expect(imageWithSrc("https://fixture.invalid/logo.png")).toHaveLength(1);
+    // #1441: the logo IS the heading, named for the title, and the title is not written a second time.
+    const heading = screen.getByRole("heading", { level: 1, name: "The Wire" });
+    expect(heading).toContainElement(imageWithSrc("https://fixture.invalid/logo.png")[0]);
+    expect(heading.textContent?.trim()).toBe("");
   });
 
   it("Screenshots strip extra backdrops", async () => {

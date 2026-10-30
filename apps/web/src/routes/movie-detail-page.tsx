@@ -12,6 +12,7 @@
  */
 import { importWorkflowLabel } from "../lib/import-workflow";
 import { getDispatchStatusLabel as formatDispatchStatus } from "../lib/job-status-constants";
+import { DetailTitleRow } from "../components/app/detail-title-row";
 import { ArtworkImage } from "../components/ui/artwork-image";
 import { eventLabel } from "../lib/activity-format";
 import { activityLinkForFile, activityLinkForTitle } from "../lib/activity-history";
@@ -871,9 +872,6 @@ export function MovieDetailPage() {
               <div className="flex h-96 w-64 justify-self-center items-center justify-center rounded-2xl border border-hairline bg-surface-1 px-3 text-center text-xs text-muted-foreground md:justify-self-start">No artwork yet</div>
             )}
             <div className="min-w-0 self-start xl:flex xl:min-h-96 xl:flex-col">
-              <p className="text-(length:--section-eyebrow-size) font-bold uppercase tracking-[0.18em] text-primary">Movie</p>
-              {/* #864: a transparent logo/wordmark, where TMDb has one, above the title it labels. */}
-              {logoUrl ? <ArtworkImage fallback={null} src={logoUrl} alt="" className="mt-1 h-12 w-auto max-w-[18rem] object-contain object-left" /> : null}
               {/*
                 **Centre, not baseline.** A button whose only child is an SVG has
                 its baseline at the BOTTOM of its box, so aligning that to the
@@ -885,8 +883,12 @@ export function MovieDetailPage() {
                 heading and an icon, and two things of different heights line up
                 on their centres.
               */}
-              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 xl:flex-nowrap">
-                <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl xl:min-w-0 xl:truncate xl:text-3xl" title={metaText("LocalizedTitle") ?? movie.title}>{metaText("LocalizedTitle") ?? movie.title}</h1>
+              <DetailTitleRow
+                eyebrow="Movie"
+                title={metaText("LocalizedTitle") ?? movie.title}
+                logoUrl={logoUrl}
+                shield={(
+                  <>
                 {/*
                   Monitoring: the shield, beside the title, and nothing else.
                   the owner: *"instead of having a big button for monitor/unmonitored
@@ -916,7 +918,9 @@ export function MovieDetailPage() {
                     ? <LoaderCircle className="h-7 w-7 animate-spin" />
                     : movie.monitored ? <ShieldCheck className="h-7 w-7" /> : <ShieldOff className="h-7 w-7" />}
                 </button>
-              </div>
+                  </>
+                )}
+              />
               {metaText("LocalizedTitle") ? (
                 <p className="mt-1 text-sm text-muted-foreground">
                   Original title {movie.originalTitle ?? movie.title}
@@ -924,7 +928,7 @@ export function MovieDetailPage() {
                 </p>
               ) : movie.originalTitle && movie.originalTitle !== movie.title ? <p className="mt-1 text-sm text-muted-foreground">Also known as {movie.originalTitle}</p> : null}
               {alternateTitles.length ? (
-                <p className="mt-1 text-sm text-muted-foreground" title="Used to match a release filed under a region-specific spelling">
+                <p className="mt-1 text-sm text-muted-foreground xl:truncate" title={`Used to match a release filed under a region-specific spelling: ${alternateTitles.join(", ")}`}>
                   Alternate titles: {alternateTitles.join(", ")}
                 </p>
               ) : null}
