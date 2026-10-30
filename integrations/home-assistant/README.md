@@ -20,7 +20,7 @@ web UI.
    packages, or merge its five sections (`input_text`, `sensor`, `template`,
    `rest_command`, and `automation`) into `configuration.yaml`.
 4. Set the `input_text.deluno_api_url` helper to the Deluno base URL, then
-   replace `deluno_library_id` in the command examples with library IDs
+   replace `library_id` in the command examples with library IDs
    returned by `GET /api/v1/libraries`.
 5. In Deluno, create an outbound notification webhook pointing to
    `https://<home-assistant-host>/api/webhook/<id>` and choose the event

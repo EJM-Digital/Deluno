@@ -48,6 +48,33 @@ public sealed class TheDocumentedIntegrationsMatchTheShippedServerTests
         Assert.True(states[libraryId].SearchRequested);
     }
 
+    /// <summary>The Home Assistant README tells people to replace a variable the recipe really uses, and names the five sections the recipe really has.</summary>
+    [Fact]
+    public void The_Home_Assistant_readme_names_the_recipes_own_variable_and_its_five_sections()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Deluno.slnx")))
+        {
+            directory = directory.Parent;
+        }
+
+        Assert.NotNull(directory);
+        var folder = Path.Combine(directory!.FullName, "integrations", "home-assistant");
+        var recipe = File.ReadAllText(Path.Combine(folder, "deluno.yaml"));
+        var readme = File.ReadAllText(Path.Combine(folder, "README.md"));
+
+        var replace = Regex.Match(readme, @"replace\s+\x60(?<variable>\w+)\x60\s+in\s+the\s+command\s+examples");
+        Assert.True(replace.Success, "The README no longer says which variable to replace.");
+        Assert.Contains("{{ " + replace.Groups["variable"].Value + " }}", recipe);
+
+        var sections = Regex.Matches(recipe, @"^(?<name>[a-z_]+):", RegexOptions.Multiline).Select(match => match.Groups["name"].Value).ToArray();
+        Assert.Equal(["input_text", "sensor", "template", "rest_command", "automation"], sections);
+        foreach (var section in sections)
+        {
+            Assert.Contains("`" + section + "`", readme);
+        }
+    }
+
     private sealed record RecipeAction(string Name, string Method, string Route);
 
     private static IReadOnlyList<RecipeAction> RecipeActions()
