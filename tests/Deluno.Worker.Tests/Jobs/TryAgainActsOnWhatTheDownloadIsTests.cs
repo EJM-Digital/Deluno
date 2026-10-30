@@ -59,7 +59,7 @@ public sealed class TryAgainActsOnWhatTheDownloadIsTests
         var outcome = await world.RetryAsync("downloadFailed");
 
         Assert.False(outcome.Retried);
-        Assert.Contains("Import it from its row in Transfers", outcome.Message);
+        Assert.Contains("Import it from its row under In progress", outcome.Message);
         world.Scheduler.Verify(scheduler => scheduler.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 

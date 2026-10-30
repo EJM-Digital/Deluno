@@ -28,7 +28,7 @@ Usenet download client.
 
 A dispatch is a live record of work in progress. The moment an import succeeds
 it is archived, and every operational view hides archived rows on purpose — the
-Transfers screen should not list finished work for ever.
+In progress screen should not list finished work for ever.
 
 That makes the dispatch the wrong place to keep provenance. Deluno writes the
 indexer, the download client, the client's own item id, the time of the grab and
@@ -43,7 +43,7 @@ Two consequences follow:
   this was kept, and that query cannot see archived rows.
 - A title's History asks for `includeArchived=true`. It is a history: the rows
   archiving removes are exactly the ones it exists to show. Operational screens
-  (Transfers, Activity) keep the default and stay clean.
+  (In progress, Activity) keep the default and stay clean.
 
 The import also files its own events against the title rather than against
 nothing, so a title's History carries the journey: the release was searched for,

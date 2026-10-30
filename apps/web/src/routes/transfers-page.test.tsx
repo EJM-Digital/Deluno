@@ -26,7 +26,7 @@ function open(address: string) {
   );
 }
 
-describe("Transfers is one page with three views (#1426)", () => {
+describe("In progress is one page with three views (#1426)", () => {
   it.each([
     ["/queue", "the live downloads"],
     ["/queue?view=handoffs", "the live downloads"],

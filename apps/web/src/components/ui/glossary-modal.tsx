@@ -52,7 +52,7 @@ const GLOSSARY: GlossaryItem[] = [
     definition: "Software that Deluno sends releases to for downloading (qBittorrent, Transmission, SABnzbd, etc.). Must be configured before importing."
   },
   {
-    term: "Transfers",
+    term: "In progress",
     definition: "The live handoff from an approved release through downloading, processing, import, and recovery. It combines the practical queue and import work without hiding the history in Activity."
   },
   {

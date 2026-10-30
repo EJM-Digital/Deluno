@@ -12,8 +12,8 @@ import { SYSTEM_BACKGROUND_JOBS_LINK } from "./background-jobs";
 import { connectionLink, dismissPath } from "./connection-updates";
 import { canTryAgain, isProcessorFault, isVanished, plainFailure, type RecoveryCaseRow } from "./needs-action";
 
-/** The longest label that fits the one button width the bell and Health share ("Open Transfers"). */
-export const ALERT_LABEL_MAX = 14;
+/** The longest label that fits the one button width the bell and Health share ("Open In progress"). */
+export const ALERT_LABEL_MAX = 16;
 
 export interface AlertRequest {
   method: "POST" | "PUT" | "PATCH" | "DELETE";
@@ -86,7 +86,7 @@ export function stuckDownloadReason(item: DownloadQueueItem): string {
 /**
  * A stuck download: the stronger fix is offered by name ("Find another" removes it, deletes its files,
  * blocklists that release and searches again); the quiet one is Dismiss, which silences the client's finding
- * for a week. A download with no finding to silence is looked at in Transfers instead.
+ * for a week. A download with no finding to silence is looked at under In progress instead.
  */
 export function stuckDownloadActions(item: DownloadQueueItem): AlertActions {
   const key = `${item.clientId}:${item.id}`;
@@ -104,7 +104,7 @@ export function stuckDownloadActions(item: DownloadQueueItem): AlertActions {
   };
   const finding = item.healthFindings?.find((candidate) => candidate.kind);
   if (!finding) {
-    return [find, open(`open-transfers:${key}`, "Open Transfers", "/queue", "Opens Transfers so you can look at this download. Nothing is changed.")];
+    return [find, open(`open-transfers:${key}`, "Open In progress", "/queue", "Opens In progress so you can look at this download. Nothing is changed.")];
   }
   return [
     find,
@@ -166,7 +166,7 @@ function recoveryButtons(item: RecoveryCaseRow) {
 export function recoveryActions(item: RecoveryCaseRow): AlertActions {
   const { dismissAction, retry } = recoveryButtons(item);
   if (!canTryAgain(item)) {
-    return [open(`recovery-review:${item.id}`, "Review", "/queue", "Opens Transfers where this import can be settled by hand. Nothing is changed."), dismissAction];
+    return [open(`recovery-review:${item.id}`, "Review", "/queue", "Opens In progress where this import can be settled by hand. Nothing is changed."), dismissAction];
   }
   return [retry, dismissAction];
 }
@@ -184,7 +184,7 @@ export function recoveryDecisions(item: RecoveryCaseRow): AlertAction[] {
   if (isVanished(item)) decisions.push(stopWanting);
   if (isProcessorFault(item)) decisions.push(importOriginal, searchAgain);
   // Whatever else it offers, a case always says where it can be put right by hand (#1151).
-  decisions.push(open(`recovery-fix:${item.id}`, "Fix it in Transfers", "/queue", "Opens Transfers, where this download can be looked at, sent again or replaced. Nothing is changed."));
+  decisions.push(open(`recovery-fix:${item.id}`, "Fix under In progress", "/queue", "Opens In progress, where this download can be looked at, sent again or replaced. Nothing is changed."));
   decisions.push({ ...dismissAction, confirm: { title: `Dismiss ${item.title}?`, description: "Deluno stops showing this. Nothing is deleted.", confirmLabel: "Dismiss" } });
   return decisions;
 }
@@ -312,7 +312,7 @@ export interface HealthProblemLike {
 function screenButton(link: string): { label: string; hint: string } {
   if (link.startsWith("/settings")) return { label: "Open Settings", hint: "Opens the settings that clear this. Nothing is changed until you save." };
   if (link.startsWith("/indexers")) return { label: "Open Services", hint: "Opens the screen where this connection is set up. Nothing is changed." };
-  if (link.startsWith("/queue")) return { label: "Open Transfers", hint: "Opens Transfers. Nothing is changed." };
+  if (link.startsWith("/queue")) return { label: "Open In progress", hint: "Opens In progress. Nothing is changed." };
   return { label: "Open System", hint: "Opens System's Health, where this problem is explained. Nothing is changed." };
 }
 
@@ -363,7 +363,7 @@ export function healthProblemActions(problem: HealthProblemLike): AlertActions {
     return [snooze(id, 24), snooze(id, 24 * 7)];
   }
   if (id === "system:disk-space" || id.endsWith(":free-space")) {
-    return [open(`clean-up:${id}`, "Clean up", "/queue", "Opens Transfers where leftover download folders can be cleared. Nothing is deleted until you confirm."), snooze(id, 24)];
+    return [open(`clean-up:${id}`, "Clean up", "/queue", "Opens In progress where leftover download folders can be cleared. Nothing is deleted until you confirm."), snooze(id, 24)];
   }
 
   const colon = id.indexOf(":");

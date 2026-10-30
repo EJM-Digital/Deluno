@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
 
-// #570. Transfers counts any hand-off that is not dismissed and carries a
+// #570. In progress counts any hand-off that is not dismissed and carries a
 // reason. The drawer used to offer Dismiss only for the endings it called
 // failures, so a hand-off that ended "completed" carrying a reason was counted
 // for ever with nothing to click. On the rig that was a film removed while Weir
@@ -26,7 +26,7 @@ const delivered = {
   processor: null
 };
 
-test("a hand-off Transfers is still asking about can be ended, whatever ended it", async ({ page }) => {
+test("a hand-off In progress is still asking about can be ended, whatever ended it", async ({ page }) => {
   await authenticateAndNavigate(page, "/");
   const posted: string[] = [];
   await page.route("**/api/integrations/processors/handoffs?**", async (route) => {

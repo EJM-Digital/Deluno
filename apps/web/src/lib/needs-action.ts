@@ -15,10 +15,10 @@ import { isJobRetrying } from "./job-status-constants";
 /**
  * What needs a person about downloads, defined once (#556, #557).
  *
- * Transfers and the sidebar each worked this out, and differently. On the rig
- * the sidebar said "Nothing needs you" beside twenty rows on Transfers asking
+ * In progress and the sidebar each worked this out, and differently. On the rig
+ * the sidebar said "Nothing needs you" beside twenty rows under In progress asking
  * for Try again or Dismiss, because it read failed jobs and search sources
- * only. And Transfers listed records rather than problems: a download that
+ * only. And In progress listed records rather than problems: a download that
  * timed out appeared as its recovery case and again as the failed download,
  * and a release refused on every search cycle added a row each time.
  */
@@ -35,7 +35,7 @@ export function isWithProcessor(status: string) {
 /** Mirrors `ProcessorHandoffStatuses.SourceGone`: the download was gone before the processor could clean it (#1186). */
 export const SOURCE_GONE = "source-gone";
 
-/** What a hand-off's status says in words, on Transfers and on the Dashboard alike (#1186): one map, never two. */
+/** What a hand-off's status says in words, under In progress and on the Dashboard alike (#1186): one map, never two. */
 export function handoffStatusLabel(status: string) {
   switch (status.toLowerCase()) {
     case "waiting":

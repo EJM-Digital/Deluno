@@ -23,7 +23,7 @@ const PRIMARY = [
   { to: "/", label: "Dashboard", icon: "dashboard", end: true as const },
   { to: "/movies", label: "Movies", icon: "movies", end: false as const },
   { to: "/tv", label: "TV", icon: "shows", end: false as const },
-  { to: "/queue", label: "Transfers", icon: "transfers", end: false as const }
+  { to: "/queue", label: "In progress", icon: "transfers", end: false as const }
 ] as const;
 
 const DRAWER_LINKS = [

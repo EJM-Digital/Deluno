@@ -301,14 +301,14 @@ describe("the phone search sheet", () => {
 });
 
 describe("an import finishing anywhere", () => {
-  it("raises 'is in your library' with an Open Transfers button that goes to Transfers, and the attention counts are read again", async () => {
+  it("raises 'is in your library' with an Open In progress button that goes to In progress, and the attention counts are read again", async () => {
     await mount("/movies");
     sendEvent("DispatchImportCompleted", { dispatchId: "d1", releaseName: "Alien.1979.1080p", succeeded: true });
 
     expect(live.toast.success).toHaveBeenCalledTimes(1);
     const [text, options] = live.toast.success.mock.calls[0];
     expect(text).toBe("Alien.1979.1080p is in your library.");
-    expect(options.action.label).toBe("Open Transfers");
+    expect(options.action.label).toBe("Open In progress");
     expect(live.attentionRefresh).toHaveBeenCalledTimes(1);
 
     act(() => { options.action.onClick(); });

@@ -9,7 +9,7 @@
       - one from "Golden private feed", an indexer the suite adds and marks private; the rule says "Move it to the keep-seeding category
         and look for another copy". Checked: Activity says it was moved, to which category, on which client, and that Deluno is looking
         for another copy; the client still holds it, now in the keep-seeding category (read from the client itself, not from Deluno);
-        its data is still on disk; it is gone from Transfers and stays gone through another check; nothing was removed; no problem
+        its data is still on disk; it is gone from In progress and stays gone through another check; nothing was removed; no problem
         is raised.
       - one from the public "Golden feed", struck by the same rule: removed from the client and replaced, exactly as before.
 
@@ -225,7 +225,7 @@ function Invoke-GroupKeepSeeding {
                 Add-Check 'Its data is still on disk' (@($files | Where-Object { $_.Length -gt 0 }).Count -gt 0) (($files | Select-Object -First 3 | ForEach-Object { '{0} ({1} bytes)' -f $_.FullName, $_.Length }) -join '; ')
 
                 $row = Find-QueueRow -Name $pf.Release
-                Add-Check 'It is gone from Transfers, and stayed gone through another check' (-not $row) $(if ($row) { "still listed as '$($row.status)'" } else { '' })
+                Add-Check 'It is gone from In progress, and stayed gone through another check' (-not $row) $(if ($row) { "still listed as '$($row.status)'" } else { '' })
                 $strikes = @(Get-KsStrikeLines -Film $pf -Lines $lines)
                 Add-Check 'It was not struck again after the move (one strike line, the move)' ($strikes.Count -eq 1) ("{0} strike line(s): {1}" -f $strikes.Count, (($strikes | ForEach-Object { $_.Actions -join '+' }) -join ' | '))
                 $problems = @($afterView.problems | Where-Object { $_.releaseName -like "*$($pf.Title)*" })

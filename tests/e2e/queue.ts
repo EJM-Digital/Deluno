@@ -4,23 +4,23 @@ import { clientHolds, sendFilm, telemetryRows, type Sent } from "./flow.ts";
 import { filesUnder, until, type Stack } from "./stack.ts";
 
 /**
- * What the Transfers (queue) groups share: a download that stays in its client (a torrent stopped just short of the end, a Usenet
- * job whose last article is never answered), the real Transfers screen driven the way a person does it, and each client's OWN
+ * What the In progress (queue) groups share: a download that stays in its client (a torrent stopped just short of the end, a Usenet
+ * job whose last article is never answered), the real In progress screen driven the way a person does it, and each client's OWN
  * word on what a button did (paused, held, gone). Nothing here asks Deluno what another application did.
  */
 
-/** Sends a film that the client keeps downloading but never finishes, so the Transfers row stays in motion (a Usenet job that never gets its last article, or none at all). */
+/** Sends a film that the client keeps downloading but never finishes, so the In progress row stays in motion (a Usenet job that never gets its last article, or none at all). */
 export function sendStalled(stack: Stack, kind: ClientKind, label: string, usenetHang: "all" | "last" = "last"): Promise<Sent> {
   return isUsenet(kind)
     ? sendFilm(stack, kind, label, "folder", { hang: usenetHang })
     : sendFilm(stack, kind, label, "file", { variant: "short" });
 }
 
-/** Waits until the client holds the download and Deluno's Transfers lists it (so the row is on the screen). */
+/** Waits until the client holds the download and Deluno's In progress lists it (so the row is on the screen). */
 export async function waitInTransfers(stack: Stack, sent: Sent, seconds = 180) {
   const { film, kind } = sent;
   await until(`${kind} to hold ${film.release}`, seconds, () => clientHolds(stack, kind, film), 1000);
-  return (await until(`Transfers to list ${film.release}`, seconds, async () =>
+  return (await until(`In progress to list ${film.release}`, seconds, async () =>
     (await telemetryRows(stack)).find((r) => String(r.releaseName ?? "").includes(film.release) || String(r.title ?? "").includes(film.title)), 1000)).value;
 }
 
@@ -54,7 +54,7 @@ export async function clientPaused(stack: Stack, kind: ClientKind, sent: Sent): 
   }
 }
 
-/** Opens the film's download in the Transfers drawer, as a person clicks its row. */
+/** Opens the film's download in the In progress drawer, as a person clicks its row. */
 export async function openDownload(page: Page, sent: Sent) {
   await page.getByRole("row").filter({ hasText: sent.film.title }).first().click({ timeout: 60_000 });
   await page.getByRole("button", { name: "Remove from client" }).waitFor({ timeout: 30_000 });

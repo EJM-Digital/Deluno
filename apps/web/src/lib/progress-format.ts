@@ -1,5 +1,5 @@
 /**
- * How a download's percentage is written everywhere it is shown (#1236): Transfers, the drawer, the Dashboard's cards and
+ * How a download's percentage is written everywhere it is shown (#1236): In progress, the drawer, the Dashboard's cards and
  * the update download. It is floored to the shown precision, never rounded, so a download that is not complete never
  * reads 100%. A client that reports 99.9916 says "99.9%", not "100%"; only a value of 100 or more says "100%".
  */

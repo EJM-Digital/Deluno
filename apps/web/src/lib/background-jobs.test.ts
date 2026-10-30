@@ -12,7 +12,7 @@ describe("background jobs (#1114)", () => {
     expect(isBackgroundJob(job({ relatedEntityId: "m1", relatedEntityType: "movie" }))).toBe(false);
   });
 
-  it("never include an import, which Transfers and Activity own", () => {
+  it("never include an import, which In progress and Activity own", () => {
     expect(isBackgroundJob(job({ jobType: "filesystem.import.execute", relatedEntityId: null }))).toBe(false);
   });
 

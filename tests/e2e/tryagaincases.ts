@@ -72,7 +72,7 @@ export function defineTryAgain(media: Media) {
 
       const page = await openDeluno(browser, stack, "/queue");
       try {
-        // The download opens in Transfers.
+        // The download opens to In progress.
         await page.getByRole("row").filter({ hasText: film.title }).first().click({ timeout: 30_000 });
         const again = page.getByRole("button", { name: /^Send to .* again/ });
         await expect(again, 'The drawer offers "Send to Weir ... again"').toBeVisible({ timeout: 20_000 }).catch(async (error) => {

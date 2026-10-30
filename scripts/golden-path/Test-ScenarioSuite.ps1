@@ -727,7 +727,7 @@ Check 'a removal is not read as a move' ($null -eq (Get-KsMovedMessage -Film $st
 $ksText = Get-Content -Raw (Join-Path $suite 'vm\scenarios\G10-KeepSeeding.ps1')
 Check 'the group sets the rule to move, puts it back, and puts the keep-seeding choices and the private indexer back through Deluno' ($ksText -match "privateAction = 'move-and-replace'" -and $ksText -match 'could not restore rule' -and $ksText -match 'could not restore the keep-seeding choices' -and $ksText -match '-Method DELETE -Path "/api/indexers/')
 Check 'the group reads each client itself for the category and the torrent, never only Deluno' ($ksText -match 'Get-KsClientTorrent' -and $ksText -match 'core\.get_torrent_status' -and $ksText -match 'torrent-get' -and $ksText -match 'torrents/info')
-Check 'the private torrent is checked for its data, for not being deleted, and for staying out of Transfers' ($ksText -match 'Get-KsFilesOnDisk' -and $ksText -match 'still holds the torrent' -and $ksText -match 'gone from Transfers')
+Check 'the private torrent is checked for its data, for not being deleted, and for staying out of In progress' ($ksText -match 'Get-KsFilesOnDisk' -and $ksText -match 'still holds the torrent' -and $ksText -match 'gone from In progress')
 Check 'a password read for a client is masked in everything the suite writes' ((Get-Content -Raw (Join-Path $suite 'vm/Fixtures.Lib.ps1')) -match 'S\.Secrets\["ks-\$Kind-password"\]')
 
 Write-Host 'The four proof lines of #1196 are scenarios (github-limit.messages, github-limit.picker, seasonpack.no-library, layout.390-folder-chain)'

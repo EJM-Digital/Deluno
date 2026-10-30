@@ -4,7 +4,7 @@ import { authenticateAndNavigate } from "../helpers/auth-helper";
 // #558. Try again on a recovery case posted to a route that did not exist, so
 // every press answered 404 and "That import could not be tried again". Nothing
 // pressed it. Now the server acts on the kind of case, or says why it cannot yet,
-// and Transfers shows what it said. A quality problem needs a decision, not
+// and In progress shows what it said. A quality problem needs a decision, not
 // another attempt, so it offers no Try again at all.
 const lostDownload = {
   id: "case-lost-download",

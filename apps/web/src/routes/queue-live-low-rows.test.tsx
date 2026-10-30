@@ -9,10 +9,10 @@ import { sharedSources } from "../lib/shared-sources";
 import { applyClientStateToTelemetry, applyDownloadProgress, applyImportOutcome, etaSecondsOf, importOutcomeStatus, TRANSFERS_JOBS_KEY } from "./queue-live";
 import { QueuePage } from "./queue-screen";
 
-/** Which view of Transfers the test opens (#1426): the hand-offs and imports moved off the live downloads. */
+/** Which view of In progress the test opens (#1426): the hand-offs and imports moved off the live downloads. */
 let viewEntry = "/queue";
 
-/** #1179: Transfers follows what the server pushes, with no reload and no Refresh button. */
+/** #1179: In progress follows what the server pushes, with no reload and no Refresh button. */
 const handlers = vi.hoisted(() => new Map<string, Set<(payload: unknown) => void>>());
 vi.mock("../lib/use-signalr", async (importOriginal) => {
   const { useEffect, useRef } = await import("react");
@@ -102,7 +102,7 @@ function showTransfers() {
 
 const when = () => new Date().toISOString();
 
-describe("Transfers live pushes (low rows)", () => {
+describe("In progress live pushes (low rows)", () => {
   it("holds a burst of progress readings for 250 ms and applies each download's last reading once", async () => {
     showTransfers();
     expect((await screen.findAllByText(/^61%/)).length).toBeGreaterThan(0);

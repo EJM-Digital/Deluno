@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { navigationCommands } from "./command-registry";
 import { TRANSFERS_VIEWS, historyPath, indexerPageLink, legacyActivityTarget, paramsWithView, transfersViewFromParams } from "./transfers-view";
 
-describe("the views of Transfers (#1426)", () => {
+describe("the views of In progress (#1426)", () => {
   it("names the three views the chips show, in the order they are shown", () => {
     expect(TRANSFERS_VIEWS).toEqual([
       { value: "live", label: "Live downloads" },
@@ -48,7 +48,7 @@ describe("the views of Transfers (#1426)", () => {
 });
 
 describe("Activity in the command palette (#1426)", () => {
-  it("opens the history view of Transfers, found by its old words too", () => {
+  it("opens the history view of In progress, found by its old words too", () => {
     const activity = navigationCommands.find((item) => item.id === "nav.activity");
     expect(activity?.to).toBe("/queue?view=history");
     expect(activity?.keywords).toEqual(["queue", "history", "events", "jobs", "downloads"]);

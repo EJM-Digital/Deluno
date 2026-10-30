@@ -616,7 +616,7 @@ function ImportPolicyFields({
           <p className="text-(length:--type-body-sm) font-medium leading-tight text-foreground">Unmatched imports</p>
           <p className="text-(length:--type-caption) leading-snug text-muted-foreground">What Deluno does with a file it downloaded but could not match to a title or episode — the same choice applies when a processor hands back a file that no longer matches.</p>
         </div>
-        <Field label="When a download cannot be matched" help={<>Hold keeps it on <PageLink page="transfers" /> for you to match by hand, for as long as it takes. The other two act on their own.</>}>
+        <Field label="When a download cannot be matched" help={<>Hold keeps it under <PageLink page="transfers" /> for you to match by hand, for as long as it takes. The other two act on their own.</>}>
           <SegmentedControl<"hold" | "give-up-after-days" | "retry-once-then-bad">
             value={form.unmatchedImportPolicy as "hold" | "give-up-after-days" | "retry-once-then-bad"}
             onValueChange={(unmatchedImportPolicy) => onFormChange((current) => ({ ...current, unmatchedImportPolicy }))}
@@ -1134,7 +1134,7 @@ function ProcessingWorkflowPage() {
                   <Field label="No progress for" help="Deluno asks the processor what it is doing. Queued, scheduled or working is waited for however long it takes; this is how long nothing may change before the rule on the right applies.">
                     <Select value={workflow.processorTimeoutMinutes} onChange={(event) => setWorkflow((current) => ({ ...current, processorTimeoutMinutes: event.target.value }))} options={TIMEOUT_OPTIONS} />
                   </Field>
-                  <Field label="If processing stalls or fails" help={<>Import the original file brings the untouched download in. The other two keep it out of the library and ask you in <PageLink page="transfers" />.</>}>
+                  <Field label="If processing stalls or fails" help={<>Import the original file brings the untouched download in. The other two keep it out of the library and ask you under <PageLink page="transfers" />.</>}>
                     <Select value={workflow.processorFailureMode} onChange={(event) => setWorkflow((current) => ({ ...current, processorFailureMode: event.target.value }))} options={FAILURE_OPTIONS} />
                   </Field>
                 </FieldRow>

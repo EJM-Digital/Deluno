@@ -92,7 +92,7 @@ describe("Search these N", () => {
     fireEvent.click(button);
 
     await waitFor(() => expect(bodyOf("/api/movies/bulk/search")).toEqual([{ movieIds: ["m1", "m2", "m3"] }]));
-    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith("Searching for 2 movies. Watch it in Transfers.", { id: "toast-1" }));
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith("Searching for 2 movies. Watch it under In progress.", { id: "toast-1" }));
   });
 
   it("after the shelf is narrowed it searches only the titles still shown", async () => {

@@ -830,10 +830,10 @@ describe("Activity is one list with status chips (#1114)", () => {
 });
 
 /**
- * #1115: what Transfers' Recent activity listed that the history does not, now steps of the "Any step" picker: files
+ * #1115: what In progress' Recent activity listed that the history does not, now steps of the "Any step" picker: files
  * handed to the processor and back, download-health findings, and what a download client reported.
  */
-describe("Activity steps built from Transfers' sources (#1115)", () => {
+describe("Activity steps built from In progress' sources (#1115)", () => {
   const handoffs = [
     {
       id: "h1", libraryId: "l1", mediaType: "movie", clientId: "c1", queueItemId: "q1", releaseName: "Sintel.2010.1080p", sourcePath: "D:/Downloads/Sintel",
@@ -901,31 +901,31 @@ describe("Activity steps built from Transfers' sources (#1115)", () => {
     expect(screen.getByText("Not enough disk space.")).toBeInTheDocument();
   });
 
-  it("opens a Processing row's drawer with What happened, the details and an Open Transfers link", async () => {
+  it("opens a Processing row's drawer with What happened, the details and an Open In progress link", async () => {
     renderActivity("/activity?type=processing");
     await userEvent.click(await screen.findByText("Sintel.2010.1080p"));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText("What happened")).toBeInTheDocument();
     expect(within(dialog).getByText("Details")).toBeInTheDocument();
-    expect(within(dialog).getByRole("link", { name: "Open Transfers" })).toHaveAttribute("href", "/queue");
+    expect(within(dialog).getByRole("link", { name: "Open In progress" })).toHaveAttribute("href", "/queue");
   });
 
-  it("opens a Download health row's drawer with What happened, the details and an Open Transfers link", async () => {
+  it("opens a Download health row's drawer with What happened, the details and an Open In progress link", async () => {
     renderActivity("/activity?type=download-health");
     await userEvent.click(await screen.findByText("Stalled.Show.S01E01"));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText("What happened")).toBeInTheDocument();
     expect(within(dialog).getByText("Details")).toBeInTheDocument();
-    expect(within(dialog).getByRole("link", { name: "Open Transfers" })).toHaveAttribute("href", "/queue");
+    expect(within(dialog).getByRole("link", { name: "Open In progress" })).toHaveAttribute("href", "/queue");
   });
 
-  it("opens a Download client row's drawer with What happened, the details and an Open Transfers link", async () => {
+  it("opens a Download client row's drawer with What happened, the details and an Open In progress link", async () => {
     renderActivity("/activity?type=download-client");
     await userEvent.click(await screen.findByText("Nope.Film.2019"));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText("What happened")).toBeInTheDocument();
     expect(within(dialog).getByText("Details")).toBeInTheDocument();
-    expect(within(dialog).getByRole("link", { name: "Open Transfers" })).toHaveAttribute("href", "/queue");
+    expect(within(dialog).getByRole("link", { name: "Open In progress" })).toHaveAttribute("href", "/queue");
   });
 
   it("a failed hand-off is dismissed from its drawer: posted to the processor, toast says so, drawer closes", async () => {

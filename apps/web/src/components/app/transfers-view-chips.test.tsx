@@ -11,7 +11,7 @@ const { TransfersViewChips } = await import("./transfers-view-chips");
 
 beforeEach(() => { slot = null; });
 
-describe("the view chips of Transfers (#1426)", () => {
+describe("the view chips of In progress (#1426)", () => {
   it("sit in a row of their own when the header has no room for them", () => {
     const { container } = render(<MemoryRouter><TransfersViewChips /></MemoryRouter>);
     const wrapper = container.firstElementChild as HTMLElement;

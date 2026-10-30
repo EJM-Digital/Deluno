@@ -44,7 +44,7 @@ export interface BellRow {
   /** What the buttons name in their accessible labels ("Retry Sintel (2010)"); unique among the rows. */
   subject?: string;
   text: string;
-  /** Where the title links: Transfers for media, System's Health for Deluno. */
+  /** Where the title links: In progress for media, System's Health for Deluno. */
   to: string;
   actions: AlertActions;
   /** When it began, if known; a row without a time is new. */
@@ -128,31 +128,31 @@ function pile(rows: BellRow[], now: number, words: (kind: string) => PileWords |
 const MEDIA_PILES: Record<string, PileWords> = {
   stuck: {
     title: (count) => `${plural(count, "download has", "downloads have")} been stuck for over a day`,
-    text: "Go through them in Transfers.",
+    text: "Go through them under In progress.",
     to: "/queue",
-    label: "Open Transfers",
-    hint: "Opens Transfers, where each one can be replaced or dismissed. Nothing is changed."
+    label: "Open In progress",
+    hint: "Opens In progress, where each one can be replaced or dismissed. Nothing is changed."
   },
   import: {
     title: (count) => `${plural(count, "import")} didn’t finish`,
-    text: "They have been waiting for over a day. Go through them in Transfers.",
+    text: "They have been waiting for over a day. Go through them under In progress.",
     to: "/queue",
-    label: "Open Transfers",
-    hint: "Opens Transfers, where each one can be retried or dismissed. Nothing is changed."
+    label: "Open In progress",
+    hint: "Opens In progress, where each one can be retried or dismissed. Nothing is changed."
   },
   handoff: {
     title: (count) => `${plural(count, "hand-off")} to the processor failed`,
-    text: "They have been waiting for over a day. Go through them in Transfers.",
+    text: "They have been waiting for over a day. Go through them under In progress.",
     to: "/queue",
-    label: "Open Transfers",
-    hint: "Opens Transfers, where each one can be retried or dismissed. Nothing is changed."
+    label: "Open In progress",
+    hint: "Opens In progress, where each one can be retried or dismissed. Nothing is changed."
   },
   recovery: {
     title: (count) => `${plural(count, "import needs", "imports need")} a look`,
-    text: "They have been waiting for over a day. Go through them in Transfers.",
+    text: "They have been waiting for over a day. Go through them under In progress.",
     to: "/queue",
-    label: "Open Transfers",
-    hint: "Opens Transfers, where each one can be retried or dismissed. Nothing is changed."
+    label: "Open In progress",
+    hint: "Opens In progress, where each one can be retried or dismissed. Nothing is changed."
   },
   "no-release": {
     title: (count) => `${plural(count, "title has", "titles have")} no acceptable release`,

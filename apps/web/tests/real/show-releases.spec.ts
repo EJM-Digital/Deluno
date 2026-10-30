@@ -9,7 +9,7 @@ import { loadRecording, startRecordedAppServer, type RecordedAppServer } from ".
 /**
  * A show's page with a download sent for it, against the real server, nothing stubbed (measure 4, issue 1270). The download client
  * answers as qBittorrent 5.2.1 really answered (tests/fixtures/recorded) and the sent download is written by the smoke host's seeding
- * route; the show's History lists it under Sent to downloads, and Open Transfers goes to Transfers.
+ * route; the show's History lists it under Sent to downloads, and Open In progress goes to In progress.
  * Not here: choosing and forcing a release for an episode needs an indexer's recorded answer for the Pirate Bay test call (t=search),
  * which tests/fixtures/recorded/jackett does not hold.
  */
@@ -64,7 +64,7 @@ test.describe("A show's sent downloads", () => {
     fs.rmSync(folder, { recursive: true, force: true });
   });
 
-  test("a download sent for the show lists under Sent to downloads with Open Transfers, which goes to Transfers", async ({ page }) => {
+  test("a download sent for the show lists under Sent to downloads with Open In progress, which goes to In progress", async ({ page }) => {
     await openScreen(page, "/tv");
     const sent = await api(page, "POST", "/api/testing/transfers/handoff", {
       libraryId, mediaType: "tv", entityId: seriesId, releaseName: "Breaking.Bad.S01E02.1080p-LIST", clientId, queueItemId: "69ca35bca234b9cb822abc435ddbababf6147591"
@@ -75,7 +75,7 @@ test.describe("A show's sent downloads", () => {
       await untilQuiet(page);
       await page.getByRole("tab", { name: "History", exact: true }).click();
       await expect(page.getByText("Breaking.Bad.S01E02.1080p-LIST").first()).toBeVisible();
-      await page.getByRole("link", { name: "Open Transfers", exact: true }).first().click();
+      await page.getByRole("link", { name: "Open In progress", exact: true }).first().click();
       await expect(page).toHaveURL(/\/queue/);
     } finally {
       await api(page, "POST", "/api/testing/transfers/clear");

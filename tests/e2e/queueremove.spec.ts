@@ -5,7 +5,7 @@ import { blockedFor, filesOnDisk, openDownload, removeWith, sendStalled, waitInT
 import { setUpStack, until, type Stack } from "./stack.ts";
 
 /**
- * Group `queueremove` (Transfers, "Remove from client"): on a real download in each of the five clients, pressed on the real
+ * Group `queueremove` (In progress, "Remove from client"): on a real download in each of the five clients, pressed on the real
  * screen in a real browser, "It's bad" and "I don't want it" each do exactly what their words say, and each is confirmed from the
  * client's own API and the shared download folders:
  *  - It's bad: the client no longer holds it, its files are gone, the release is on the blocklist and a new search is started.
@@ -54,8 +54,8 @@ for (const choice of ["bad", "unwanted"] as Choice[]) {
       expect(gone, `${kind} itself no longer holds the download`).toBeTruthy();
       const left = await until(`the files of ${film.title} to be gone`, 60, async () => (await filesOnDisk(film.title)) === 0, 1000).catch(() => undefined);
       expect(left, `${kind}'s files are deleted (${await filesOnDisk(film.title)} left)`).toBeTruthy();
-      const unlisted = await until(`Transfers to stop listing ${film.release}`, 60, async () => !(await telemetryRows(stack)).some((r) => String(r.releaseName ?? "").includes(film.release)), 1000).catch(() => undefined);
-      expect(unlisted, "Transfers no longer lists it").toBeTruthy();
+      const unlisted = await until(`In progress to stop listing ${film.release}`, 60, async () => !(await telemetryRows(stack)).some((r) => String(r.releaseName ?? "").includes(film.release)), 1000).catch(() => undefined);
+      expect(unlisted, "In progress no longer lists it").toBeTruthy();
 
       const blocked = await blockedFor(stack, film.release);
       const lines = await activityLines(stack, film.title);

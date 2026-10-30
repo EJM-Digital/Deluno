@@ -7,7 +7,7 @@ import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { QueuePage } from "./queue-screen";
 
 /**
- * Transfers, Needs attention: each kind of row, what it says and the request each of its buttons sends. The routes behind
+ * In progress, Needs attention: each kind of row, what it says and the request each of its buttons sends. The routes behind
  * them are tested on the real host (TvRecoveryCasesOverHttpOnRealFilesTests, HeldReleasesOverHttpTests, the job routes).
  */
 

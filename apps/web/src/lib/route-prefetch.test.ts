@@ -28,7 +28,7 @@ describe("route prefetch", () => {
     expect(queueLoader).not.toHaveBeenCalled();
   });
 
-  it("hands the screen's loader the address asked for, so Transfers reads the history's lists for its history view", async () => {
+  it("hands the screen's loader the address asked for, so In progress reads the history's lists for its history view", async () => {
     prefetchRoute("/queue?view=history", { data: true });
     await vi.waitFor(() => expect(queueLoader).toHaveBeenCalledTimes(1));
     const args = queueLoader.mock.calls[0]![0] as { request: Request };

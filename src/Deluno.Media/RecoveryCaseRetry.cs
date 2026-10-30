@@ -19,7 +19,7 @@ public sealed record RecoveryRetryOutcome(bool Retried, string Message)
 }
 
 /// <summary>
-/// Try again on a Transfers recovery case, one action per kind of case (#558).
+/// Try again on an In progress recovery case, one action per kind of case (#558).
 ///
 /// <para>The button posted to a route that did not exist, so for as long as it
 /// had been on screen it answered every press with a 404. What "again" means
@@ -113,7 +113,7 @@ public static class RecoveryCaseRetry
         var handoff = await FindHandoffAsync(dispatch, processors, cancellationToken);
         if (handoff is null)
         {
-            return RecoveryRetryOutcome.Refused($"Deluno cannot find the hand-off {dispatch.ReleaseName} went through, so there is no original left to import here. Import it from its row in Transfers, or dismiss this.");
+            return RecoveryRetryOutcome.Refused($"Deluno cannot find the hand-off {dispatch.ReleaseName} went through, so there is no original left to import here. Import it from its row under In progress, or dismiss this.");
         }
 
         if (ProcessorHandoffStatuses.IsWithProcessor(handoff.Status))
@@ -352,7 +352,7 @@ public static class RecoveryCaseRetry
 
         return RecoveryRetryOutcome.Refused(string.Equals(dispatch.ImportStatus, "pending", StringComparison.OrdinalIgnoreCase)
             ? $"The import of {dispatch.ReleaseName} is still queued or running, so there is nothing to try again yet."
-            : $"Deluno no longer has a failed import of {dispatch.ReleaseName} to try again. Import it from its row in Transfers, or dismiss this.");
+            : $"Deluno no longer has a failed import of {dispatch.ReleaseName} to try again. Import it from its row under In progress, or dismiss this.");
     }
 
     /// <summary>
@@ -372,7 +372,7 @@ public static class RecoveryCaseRetry
             .FirstOrDefault();
         if (handoff is null)
         {
-            return RecoveryRetryOutcome.Refused($"{dispatch.ReleaseName} never reached an import Deluno can run again. Import it from its row in Transfers, or dismiss this.");
+            return RecoveryRetryOutcome.Refused($"{dispatch.ReleaseName} never reached an import Deluno can run again. Import it from its row under In progress, or dismiss this.");
         }
 
         var processor = handoff.ProcessorName ?? "The processor";

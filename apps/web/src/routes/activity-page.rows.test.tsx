@@ -214,7 +214,7 @@ describe("Activity's drawers and their failures (#1329)", () => {
     renderActivity();
 
     await userEvent.click(await screen.findByText("The hand-off failed"));
-    const link = within(screen.getByRole("dialog")).getByRole("link", { name: /Transfers/ });
+    const link = within(screen.getByRole("dialog")).getByRole("link", { name: /In progress/ });
     expect(link).toHaveAttribute("href", "/queue");
     await userEvent.click(link);
     expect(screen.getByLabelText("address").textContent).toBe("/queue");

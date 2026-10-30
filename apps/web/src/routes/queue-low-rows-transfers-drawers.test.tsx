@@ -6,11 +6,11 @@ import type { DownloadClientTelemetrySnapshot, DownloadQueueItem, JobQueueItem, 
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { QueuePage, queueSources } from "./queue-screen";
 
-/** Which view of Transfers the test opens (#1426): the hand-offs and imports moved off the live downloads. */
+/** Which view of In progress the test opens (#1426): the hand-offs and imports moved off the live downloads. */
 let viewEntry = "/queue";
 
 /**
- * Transfers, low rows: the drawers of the rows that have no drawer of their own, the transfer details drawer, the hand-off
+ * In progress, low rows: the drawers of the rows that have no drawer of their own, the transfer details drawer, the hand-off
  * fixes and the two lists the page reads. The routes behind them are tested on the real host.
  */
 
@@ -135,7 +135,7 @@ afterEach(() => {
   queueLoaderData.telemetry = { ...queueLoaderData.telemetry, clients: [] as DownloadClientTelemetrySnapshot[] };
 });
 
-describe("Transfers: the hand-off fixes and the hand-off drawer", () => {
+describe("In progress: the hand-off fixes and the hand-off drawer", () => {
   it("a failed hand-off offers Send again, Import original, Search for another, Keep waiting and Dismiss together, each with a caption", async () => {
     queueLoaderData.processorHandoffs = [handoff()];
     open();
@@ -187,7 +187,7 @@ describe("Transfers: the hand-off fixes and the hand-off drawer", () => {
   });
 });
 
-describe("Transfers: the attention drawer of a row with no drawer of its own", () => {
+describe("In progress: the attention drawer of a row with no drawer of its own", () => {
   it("a held release lists its release, quality, size, source and why it is held", async () => {
     queueLoaderData.heldReleases = [heldRow()];
     open();
@@ -246,7 +246,7 @@ describe("Transfers: the attention drawer of a row with no drawer of its own", (
   });
 });
 
-describe("Transfers: an import row opens the import drawer", () => {
+describe("In progress: an import row opens the import drawer", () => {
   beforeEach(() => { viewEntry = "/queue?view=handoffs"; });
   afterEach(() => { viewEntry = "/queue"; });
   it("shows the outcome, detail, when, kind 'Import job', where it came from and where it went", async () => {
@@ -273,7 +273,7 @@ describe("Transfers: an import row opens the import drawer", () => {
   });
 });
 
-describe("Transfers: a held release is dismissed", () => {
+describe("In progress: a held release is dismissed", () => {
   it("Dismiss posts the held release's dismiss and asks the page to read again so the row leaves", async () => {
     queueLoaderData.heldReleases = [heldRow()];
     open();
@@ -285,7 +285,7 @@ describe("Transfers: a held release is dismissed", () => {
   });
 });
 
-describe("Transfers: an import with no file location", () => {
+describe("In progress: an import with no file location", () => {
   it("Preview import says the client has not reported a completed file location, and sends nothing", async () => {
     withClientItem(queueItem({ status: "completed", sourcePath: null, libraryId: "library-none" }));
     open();
@@ -298,7 +298,7 @@ describe("Transfers: an import with no file location", () => {
   });
 });
 
-describe("Transfers: the lists the page reads", () => {
+describe("In progress: the lists the page reads", () => {
   it("the download-health list is asked for 30 records and hands them to the page", async () => {
     const record = { clientId: "qbit-client", queueItemId: "q9", kind: "client-stalled", releaseName: "Stalled.Release.2026", evidence: "No bytes for 40 minutes.", severity: "warning", strikeCount: 2, lastObservedUtc: "2026-10-14T01:00:00Z" };
     authedFetchMock.mockImplementation(() => reply({ items: [record], totalCount: 1 }));
@@ -309,7 +309,7 @@ describe("Transfers: the lists the page reads", () => {
     expect(records).toEqual([record]);
   });
 
-  it("a failed job buried under newer work is asked for by name, listed on Transfers and dismissed from its row", async () => {
+  it("a failed job buried under newer work is asked for by name, listed under In progress and dismissed from its row", async () => {
     const buried = { id: "job-old", jobType: "filesystem.import.execute", status: "dead-letter", payloadJson: JSON.stringify({ title: "Buried (2001)" }), attempts: 5, lastError: "The disk was full." };
     authedFetchMock.mockImplementation((url: string) => String(url).startsWith("/api/jobs?")
       ? reply({ items: [buried, { id: "job-ok", jobType: "x", status: "completed" }], totalCount: 2, page: 1, pageSize: 500 })
@@ -327,7 +327,7 @@ describe("Transfers: the lists the page reads", () => {
   });
 });
 
-describe("Transfers: the transfer details drawer of a failed send", () => {
+describe("In progress: the transfer details drawer of a failed send", () => {
   const dispatch = (overrides: Record<string, unknown> = {}) => ({
     id: "d1", releaseName: "Failing.Film.2026.1080p-GRP", mediaType: "movies", entityType: "movie", entityId: "m1", status: "failed",
     grabStatus: "failed", grabMessage: "The indexer refused the download.", importStatus: null, importFailureMessage: null, importFailureCode: null,

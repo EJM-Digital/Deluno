@@ -72,8 +72,8 @@ test("a failed job buried under newer work is listed on Activity and can be dism
 });
 
 // The rig's last uncleared item: a failed download. The API could archive it;
-// no screen offered to, so Transfers counted it as needing a person for a week.
-test("a failed download on Transfers can be dismissed from its details", async ({ page }) => {
+// no screen offered to, so In progress counted it as needing a person for a week.
+test("a failed download under In progress can be dismissed from its details", async ({ page }) => {
   await authenticateAndNavigate(page, "/");
 
   const failedDownload = {

@@ -3,7 +3,7 @@
 Updated: 2026-08-14
 
 This is the working audit for the everyday Deluno experience: Dashboard,
-Movies, TV Shows, Schedule, Transfers, Automation, Activity, and title detail.
+Movies, TV Shows, Schedule, In progress, Automation, Activity, and title detail.
 It records only confirmed gaps. Product/design questions that require a decision
 belong in their own issue rather than being silently treated as defects.
 
@@ -28,9 +28,9 @@ internal automation jargon.
 | Dashboard | At-a-glance information only; no fake activity, duplicate control room, or missing route to the next useful action. |
 | Movies and TV | Status definitions, bulk/title parity, action placement, library/wanted/upgrades/import ownership, and clear empty states. |
 | Schedule | Calendar and release/retry visibility without becoming a second automation configuration page. |
-| Transfers | One understandable lifecycle from client dispatch through processing, import, and recovery; no competing recovery screens. |
+| In progress | One understandable lifecycle from client dispatch through processing, import, and recovery; no competing recovery screens. |
 | Automation | Live operational controls only, with an explicit connection back to its permanent Library setup policy. |
-| Activity | Durable history and rationale, not live controls or a duplicate Transfers view. |
+| Activity | Durable history and rationale, not live controls or a duplicate In progress view. |
 | Detail screens | Consistent title status, decision explanations, recovery, management actions, and safe removal. |
 
 ## Rule for creating follow-up issues

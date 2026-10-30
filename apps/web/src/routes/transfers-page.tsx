@@ -1,5 +1,5 @@
 /**
- * Transfers — one page for what Transfers and Activity showed apart (#1426).
+ * In progress — one page for what In progress and Activity showed apart (#1426).
  *
  * Three views, chosen by the chips in the header and kept in the address (`?view=`):
  *   - Live downloads (the default): what is downloading now, what needs a person, and the cleanup guardrails.

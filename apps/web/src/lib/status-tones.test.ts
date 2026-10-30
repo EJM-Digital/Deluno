@@ -69,7 +69,7 @@ describe("the one status table", () => {
    * of what was happening.
    */
   it("keeps the states the audit found from drifting back", () => {
-    // Was green in Transfers and grey in the pipeline strip. It is neither
+    // Was green under In progress and grey in the pipeline strip. It is neither
     // finished nor idle — it is mid-pipeline.
     expect(STATUS_PRESENTATION["transfer.importReady"].tone).toBe("info");
     // Was amber. #290 names a running job blue by name.

@@ -14,13 +14,13 @@ test("the sidebar does not light System up for the guided setup (#1141)", async 
   test.skip(isMobile, "The sidebar is a drawer on a phone.");
   await authenticateAndNavigate(page, "/system");
   const onSystem = await sidebarColour(page, /^System/);
-  const other = await sidebarColour(page, /^Transfers/);
+  const other = await sidebarColour(page, /^In progress/);
   // Proves the check can tell a lit link from a quiet one.
   expect(onSystem).not.toBe(other);
 
   await page.goto("/setup-guide");
   await expect(page.getByRole("heading", { name: "Guided setup" }).or(page.getByText("Get Deluno working first.")).first()).toBeVisible();
-  expect(await sidebarColour(page, /^System/)).toBe(await sidebarColour(page, /^Transfers/));
+  expect(await sidebarColour(page, /^System/)).toBe(await sidebarColour(page, /^In progress/));
 });
 
 test("the sign-in question names the address plainly and the Other devices step shows its result (#1141)", async ({ page, isMobile }) => {

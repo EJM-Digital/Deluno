@@ -6,7 +6,7 @@ import { api, expectNoErrorScreen, openScreen, recordRequests } from "../helpers
 import { untilQuiet } from "../helpers/settle";
 
 /**
- * Manual import's drawer on Transfers against the real server and real folders, nothing stubbed (measure 4, issue 1270): the
+ * Manual import's drawer under In progress against the real server and real folders, nothing stubbed (measure 4, issue 1270): the
  * folder field browses the server (Advanced, Open, Up, Use this folder), Scan folder lists the video files in it with a guessed
  * title, each row can be left out, corrected and checked again, and nothing is imported until Import selected.
  */

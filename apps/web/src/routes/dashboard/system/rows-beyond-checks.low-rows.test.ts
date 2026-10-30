@@ -11,7 +11,7 @@ describe("System's Health rows beyond the stored checks", () => {
     summary.system = { ...summary.system!, lanes: [{ name: "Searching", state: "failing", activeJobs: 0, lastError: "It crashed." }, { name: "Importing", state: "running", activeJobs: 1, lastError: null }] };
     const attention = summaryOf([
       serverRow({ id: "outage", kind: "outage", tone: "bad", title: "The internet is down", to: "/system", action: "Open System" }),
-      serverRow({ id: "queue-gate", kind: "queue-gate", title: "Downloading is paused", to: "/queue", action: "Open Transfers" }),
+      serverRow({ id: "queue-gate", kind: "queue-gate", title: "Downloading is paused", to: "/queue", action: "Open In progress" }),
       serverRow({ id: "collections", kind: "collections", title: "Collections need a look", to: "/collections", action: "Open Collections" }),
       serverRow({ id: "requests", kind: "requests", title: "Requests are failing", to: "/settings/lists", action: "Open Lists" }),
       serverRow({ id: "failed-title-jobs", kind: "jobs", tone: "bad", title: "3 title jobs gave up", text: "They tried and failed." }),
@@ -22,7 +22,7 @@ describe("System's Health rows beyond the stored checks", () => {
 
     expect(labels(byId["item:outage"])).toEqual(["Open System"]);
     expect(byId["item:outage"].tone).toBe("bad");
-    expect(labels(byId["item:queue-gate"])).toEqual(["Open Transfers"]);
+    expect(labels(byId["item:queue-gate"])).toEqual(["Open In progress"]);
     expect(byId["item:queue-gate"].tone).toBe("warn");
     expect(labels(byId["item:collections"])).toEqual(["Open Collections"]);
     expect(labels(byId["item:requests"])).toEqual(["Open Lists"]);

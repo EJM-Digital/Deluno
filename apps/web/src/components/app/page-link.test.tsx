@@ -8,7 +8,7 @@ vi.mock("../../hooks/use-unsaved-changes", () => ({ useUnsavedChanges: () => und
 
 /** #1138: a sentence that names another page names it as a link to that page. */
 describe("page references are links", () => {
-  it("Transfers goes to the queue and Failed Downloads to its automation tab", () => {
+  it("In progress goes to the queue and Failed Downloads to its automation tab", () => {
     render(
       <MemoryRouter>
         <PageLink page="transfers" />
@@ -16,7 +16,7 @@ describe("page references are links", () => {
         <PageLink page="downloadHealth" />
       </MemoryRouter>
     );
-    expect(screen.getByRole("link", { name: "Transfers" }).getAttribute("href")).toBe("/queue");
+    expect(screen.getByRole("link", { name: "In progress" }).getAttribute("href")).toBe("/queue");
     expect(screen.getByRole("link", { name: /Failed Downloads/ }).getAttribute("href")).toBe("/search-cycles/failed-downloads");
     expect(screen.getByRole("link", { name: /Download Health/ }).getAttribute("href")).toBe("/search-cycles/download-health");
     for (const href of ["/search-cycles/failed-downloads", "/search-cycles/download-health"]) {

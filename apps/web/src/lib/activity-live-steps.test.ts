@@ -40,7 +40,7 @@ describe("Every Failed row on Activity's steps can be dismissed (#1218)", () => 
     expect(closed?.dismissPath).toBeUndefined();
   });
 
-  it("a failed hand-off carries the dismiss that the Transfers screen uses", () => {
+  it("a failed hand-off carries the dismiss that the In progress screen uses", () => {
     const [entry] = processingEntries([{
       id: "h1", releaseName: "Retryfilm", status: "failed", failureMessage: "Weir never picked it up", sourcePath: "D:/x", outputPath: null,
       processorName: "Weir", updatedUtc: "2026-10-10T05:00:00Z"

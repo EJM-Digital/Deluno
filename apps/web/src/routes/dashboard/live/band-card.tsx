@@ -16,7 +16,7 @@ export function BandCard({ label, aside, figure, to, linkName, children, classNa
   /** The big figure: a number with its unit, and a few small words beside it. */
   figure: ReactNode;
   to?: string;
-  /** The accessible name of the label's link: "Transfers: Speed". */
+  /** The accessible name of the label's link: "In progress: Speed". */
   linkName?: string;
   children: ReactNode;
   className?: string;

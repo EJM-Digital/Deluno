@@ -8,7 +8,7 @@ import { QueuePage } from "./queue-screen";
 
 /**
 
- * Low-severity Transfers rows (#1329). Harness copied from the drawer tests. The download drawer's other buttons on Transfers: the findings in its Health box, the way out of a failed hand-off, the
+ * Low-severity In progress rows (#1329). Harness copied from the drawer tests. The download drawer's other buttons under In progress: the findings in its Health box, the way out of a failed hand-off, the
  * client's own re-check and reorder buttons, and the removal dialog. Each press sends the request the server's routes are
  * tested against, and says in words what happened.
  */

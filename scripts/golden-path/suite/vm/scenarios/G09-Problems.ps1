@@ -1,7 +1,7 @@
 <#
     Problems seen in several places, and Activity's closing lines.
 
-    problems.dismiss-everywhere (#1228): a failed hand-off stands in Transfers (needs action), in the bell and, where Deluno
+    problems.dismiss-everywhere (#1228): a failed hand-off stands under In progress (needs action), in the bell and, where Deluno
     raises it, on System. Dismissing it in one place clears every place within seconds, with nothing to reload.
 
     activity.one-story (#1226, #1230): every hand-off the suite made has closing lines that tell one story: never both
@@ -13,7 +13,7 @@ function Get-ProblemPlaces {
     param([Parameter(Mandatory)] [string] $Needle)
     $places = [ordered]@{}
     $has = { param($obj) $t = ($obj | ConvertTo-Json -Depth 8 -Compress); $t -match [regex]::Escape($Needle) }.GetNewClosure()
-    $places['Transfers: needs action (hand-offs that went wrong)'] = [bool](@(Get-Handoffs | Where-Object { $_.releaseName -like "*$Needle*" -and $_.status -in 'failed', 'rejected', 'timed-out', 'stalled', 'lost', 'source-gone' }).Count)
+    $places['In progress: needs action (hand-offs that went wrong)'] = [bool](@(Get-Handoffs | Where-Object { $_.releaseName -like "*$Needle*" -and $_.status -in 'failed', 'rejected', 'timed-out', 'stalled', 'lost', 'source-gone' }).Count)
     foreach ($spec in @(@('The bell (attention summary)', '/api/attention/summary'), @('System: health checks', '/api/system/health/summary'), @('System: health notices', '/api/system/health'))) {
         $r = Try-Deluno -Path $spec[1]
         $places[$spec[0]] = ($r.Status -eq 200 -and $r.Raw -match [regex]::Escape($Needle))
@@ -98,7 +98,7 @@ function Invoke-GroupProblems {
         if ($where.Count -lt 1) { return }
         $t0 = [DateTime]::UtcNow
         $r = Try-Deluno -Method POST -Path "/api/integrations/processors/handoffs/$($failed.Value.id)/dismiss"
-        Add-Check 'Dismiss in Transfers is accepted' ($r.Status -ge 200 -and $r.Status -lt 300) "HTTP $($r.Status)"
+        Add-Check 'Dismiss under In progress is accepted' ($r.Status -ge 200 -and $r.Status -lt 300) "HTTP $($r.Status)"
         $gone = Wait-Until -TimeoutSec 15 -IntervalSec 0.5 -Condition {
             $p = Get-ProblemPlaces -Needle $film.Title
             if (@($p.Values | Where-Object { $_ }).Count -eq 0) { $p } else { $null }

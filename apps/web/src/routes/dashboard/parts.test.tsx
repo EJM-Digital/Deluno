@@ -68,13 +68,13 @@ describe("FitList", () => {
     mockLayout(200);
     render(
       <MemoryRouter>
-        <FitList rows={rows(30)} moreTo="/queue" moreLabel={(n) => `and ${n} more on Transfers`} />
+        <FitList rows={rows(30)} moreTo="/queue" moreLabel={(n) => `and ${n} more under In progress`} />
       </MemoryRouter>
     );
 
     // 200 px, 36 kept for the link: 4 whole rows of 40.
     await waitFor(() => expect(screen.getAllByText(/^Row /)).toHaveLength(4));
-    expect(screen.getByRole("link", { name: /and 26 more on Transfers/ })).toHaveAttribute("href", "/queue");
+    expect(screen.getByRole("link", { name: /and 26 more under In progress/ })).toHaveAttribute("href", "/queue");
   });
 
   it("counts rows the list was never given as more too", async () => {

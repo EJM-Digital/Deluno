@@ -7,7 +7,7 @@ import { untilQuiet } from "../helpers/settle";
 import { loadRecording, startRecordedAppServer, type RecordedAppServer } from "../helpers/recorded-app-server";
 
 /**
- * Transfers with a download client that answers as qBittorrent really answered (tests/fixtures/recorded/qbittorrent),
+ * In progress with a download client that answers as qBittorrent really answered (tests/fixtures/recorded/qbittorrent),
  * against the real server, nothing stubbed (measure 4, issue 1270). The download is one Deluno sent (a dispatch written by the
  * smoke host's seeding route) whose hash the client lists; every button in its drawer sends the call the client receives, and the
  * screen says in words what came of it. The client, library and seeding are taken out again at the end, which is why this file
@@ -30,7 +30,7 @@ const asked = (re: RegExp) => qb.requests.filter((request) => re.test(request));
 const askedOfPaused = (re: RegExp) => qbPaused.requests.filter((request) => re.test(request));
 const rowOf = (page: Page) => page.getByRole("row").filter({ hasText: RELEASE }).first();
 
-test.describe("Transfers with a download client", () => {
+test.describe("In progress with a download client", () => {
   test.describe.configure({ mode: "serial" });
   test.setTimeout(120_000);
 

@@ -191,7 +191,7 @@ describe("the bell's Deluno rows, pressed in the panel (#1329)", () => {
     expect(lastCall()).toMatchObject({ path: "/api/connections/requests/r1/test", method: "POST" });
   });
 
-  it("the machine rows: Back up now, Snooze 1 day and Snooze 1 week send their requests, and Clean up goes to Transfers", async () => {
+  it("the machine rows: Back up now, Snooze 1 day and Snooze 1 week send their requests, and Clean up goes to In progress", async () => {
     const { user, dialog } = await open(snapshot([
       deluno("health:machine:drive", "health:machine", "Drive C is nearly full", { id: "machine:drive:C", category: "machine", name: "Drive C is nearly full", link: "/system" }),
       deluno("health:machine:reboot", "health:machine", "Restart pending", { id: "machine:reboot", category: "machine", name: "Restart pending", link: "/system" }),

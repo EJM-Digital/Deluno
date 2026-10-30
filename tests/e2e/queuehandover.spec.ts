@@ -5,7 +5,7 @@ import { setWeirPause } from "./resend.ts";
 import { clientFinished, setUpStack, until, type Stack } from "./stack.ts";
 
 /**
- * Group `queuehandover` (Transfers, the "Handing over" state): a download the client has finished, with Deluno's automation held
+ * Group `queuehandover` (In progress, the "Handing over" state): a download the client has finished, with Deluno's automation held
  * so no hand-off exists yet, reads "Handing over" on its row, never "Waiting for processor". Once automation runs and Weir is held,
  * the hand-off exists and the row no longer says "Handing over". Weir is then let go and the film is imported. Every client's film
  * goes through it. The client's own API says when the download finished.
@@ -42,13 +42,13 @@ for (const kind of CLIENT_KINDS) {
     const page = await openDeluno(browser, stack, "/queue");
     try {
       if (!isUsenet(kind)) {
-        // A torrent stays in the client (it seeds), so its finished download keeps its row in Transfers until it is handed over.
+        // A torrent stays in the client (it seeds), so its finished download keeps its row under In progress until it is handed over.
         const row = rowOf(page, sent);
         await expect(row, `The ${kind} row says Handing over`).toContainText("Handing over", { timeout: 60_000 });
         expect(await row.innerText(), "The row never says Waiting for processor").not.toMatch(/Waiting for processor/i);
       } else {
         // A finished Usenet job leaves the client's queue for its history, so it has no row until its hand-off exists.
-        await expect.poll(() => pageText(page), { timeout: 60_000, message: "Transfers has loaded" }).toMatch(/in flight|Nothing in motion/i);
+        await expect.poll(() => pageText(page), { timeout: 60_000, message: "In progress has loaded" }).toMatch(/in flight|Nothing in motion/i);
         await sleep(3000);
       }
       expect(await pageText(page), "The page never says Waiting for processor").not.toMatch(/Waiting for processor/i);

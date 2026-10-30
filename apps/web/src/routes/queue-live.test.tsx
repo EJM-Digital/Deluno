@@ -9,7 +9,7 @@ import { sharedSources } from "../lib/shared-sources";
 import { applyClientStateToTelemetry, applyDownloadProgress, applyImportOutcome, etaSecondsOf, importOutcomeStatus, TRANSFERS_JOBS_KEY } from "./queue-live";
 import { QueuePage } from "./queue-screen";
 
-/** #1179: Transfers follows what the server pushes, with no reload and no Refresh button. */
+/** #1179: In progress follows what the server pushes, with no reload and no Refresh button. */
 const handlers = vi.hoisted(() => new Map<string, Set<(payload: unknown) => void>>());
 vi.mock("../lib/use-signalr", async (importOriginal) => {
   const { useEffect, useRef } = await import("react");
@@ -77,7 +77,7 @@ beforeEach(() => {
   for (const key of Object.keys(lists)) delete lists[key];
 });
 
-describe("patching Transfers from events", () => {
+describe("patching In progress from events", () => {
   it("reads the server's time left", () => {
     expect(etaSecondsOf("00:09:00")).toBe(540);
     expect(etaSecondsOf(null)).toBe(0);
@@ -128,7 +128,7 @@ describe("Queue import shows its outcome as the click returns (#1209)", () => {
   });
 });
 
-describe("the Transfers screen is live", () => {
+describe("the In progress screen is live", () => {
   it("changes a bar, a speed and a client count from pushes, and has no Refresh button", async () => {
     lists["/api/download-clients/telemetry"] = overview();
     lists["/api/settings"] = emptyPlatformSettingsSnapshot;
@@ -150,7 +150,7 @@ describe("the Transfers screen is live", () => {
   });
 });
 
-describe("Transfers after a reconnect that replays what it missed", () => {
+describe("In progress after a reconnect that replays what it missed", () => {
   it("applies the replayed events in the order the server sent them, so the last word wins, and shows each change once", async () => {
     lists["/api/download-clients/telemetry"] = overview();
     lists["/api/settings"] = emptyPlatformSettingsSnapshot;

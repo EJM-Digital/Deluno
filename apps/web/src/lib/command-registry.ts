@@ -104,7 +104,7 @@ export const navigationCommands: CommandItem[] = [
   },
   {
     id: "nav.queue",
-    label: "Transfers",
+    label: "In progress",
     keywords: ["downloads", "imports", "clients", "recovery"],
     group: "navigation",
     icon: Download,
@@ -410,7 +410,7 @@ export function getGlobalShortcuts(platform?: string): ShortcutItem[] {
     { keys: ["g", "o"], label: "Go to Dashboard", group: "Navigation" },
     { keys: ["g", "m"], label: "Go to Movies", group: "Navigation" },
     { keys: ["g", "t"], label: "Go to TV", group: "Navigation" },
-    { keys: ["g", "q"], label: "Go to Transfers", group: "Navigation" },
+    { keys: ["g", "q"], label: "Go to In progress", group: "Navigation" },
     { keys: ["g", "i"], label: "Go to Find & Download", group: "Navigation" },
     { keys: ["g", "x"], label: "Go to Automation & Recovery", group: "Navigation" },
     { keys: ["g", "a"], label: "Go to Activity", group: "Navigation" },

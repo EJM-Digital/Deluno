@@ -1,11 +1,11 @@
 /**
- * The three steps Activity lists from what Transfers reads live (#1115): files handed to the external processor
+ * The three steps Activity lists from what In progress reads live (#1115): files handed to the external processor
  * and back, download-health findings, and what the download clients reported. The backend's event history names
  * its own kinds; these three have rows of their own, so they are extra choices in the "Any step" picker and are
- * built here from the same sources Transfers used, not stored a second time.
+ * built here from the same sources In progress used, not stored a second time.
  *
  * Not listed, on purpose: whether a client is online or paused. That is a state, not something that happened, and
- * it stays on Transfers and Connections.
+ * it stays under In progress and Connections.
  */
 import type { DownloadHealthRecord, DownloadTelemetryOverview, ProcessorHandoffItem } from "./api";
 import { clientHistoryOutcomeLabel } from "./download-telemetry";

@@ -192,7 +192,7 @@ export const AUTOMATION_QUESTIONS: { key: AutomationChoiceKey; question: string;
   {
     key: "leftoverDownloadCleanup",
     question: "Automatically delete leftover download files?",
-    help: "A leftover is a download-folder file nothing is using any more (no client, import or hand-off) once it has sat for a while. If off, leftovers stay on the leftovers list in Transfers for you to remove."
+    help: "A leftover is a download-folder file nothing is using any more (no client, import or hand-off) once it has sat for a while. If off, leftovers stay on the leftovers list under In progress for you to remove."
   },
   {
     key: "forceImport",

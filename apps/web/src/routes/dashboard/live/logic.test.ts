@@ -131,7 +131,7 @@ describe("the journey of a title", () => {
     expect(working[0]).toMatchObject({ processor: "Cleaner", state: { label: "Being cleaned", tone: "info" }, title: "Metropolis (1927)" });
     const failed = byStage(buildJourney({ ...base, handoffs: [handoff({ status: "failed", failureMessage: "timed out" })] })).processor;
     expect(failed[0].state).toEqual({ tone: "bad", label: "Processing failed" });
-    // The same words Transfers uses (#1186): a download that was gone is not a processor failure.
+    // The same words In progress uses (#1186): a download that was gone is not a processor failure.
     const gone = byStage(buildJourney({ ...base, handoffs: [handoff({ status: "source-gone", failureMessage: "The download was gone before Cleaner could clean it." })] })).processor;
     expect(gone[0].state).toEqual({ tone: "bad", label: handoffStatusLabel("source-gone") });
     expect(gone[0].state.label).toBe("Download gone");

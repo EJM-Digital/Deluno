@@ -51,7 +51,7 @@ function Invoke-GroupTryAgain {
                 if (-not $h) { return }
                 Open-DelunoPage -Page $page -Path '/queue' -Login $script:S.Login
                 $opened = Wait-Until -TimeoutSec 30 -IntervalSec 1 -Condition { Click-PageText -Page $page -Pattern ([regex]::Escape($f.Title)) -TimeoutSec 0 -RowOnly }
-                Add-Check 'The download opens in Transfers' $opened.Ok ''
+                Add-Check 'The download opens under In progress' $opened.Ok ''
                 if (-not $opened.Ok) { return }
                 $btn = Wait-Until -TimeoutSec 20 -IntervalSec 0.5 -Condition { (Get-DrawerText -Page $page) -match 'Send to .* again' }
                 Add-Check 'The drawer offers "Send to Weir ... again"' $btn.Ok ''

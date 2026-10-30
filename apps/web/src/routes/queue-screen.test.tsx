@@ -229,7 +229,7 @@ describe("MediaInfo detail (#794)", () => {
 });
 
 describe("dispatch identity in the import preview", () => {
-  it("carries the dispatch's series identity into the Transfers preview and job", () => {
+  it("carries the dispatch's series identity into the In progress preview and job", () => {
     const queueItem = {
       id: "torrent-hash",
       clientId: "client-1",
@@ -540,7 +540,7 @@ describe("leftover downloads: select all", () => {
     expect(screen.getByRole("button", { name: "Remove 2 selected" })).toBeVisible();
   });
 
-  it("says in one plain line that Transfers only shows downloads Deluno sent (#1062)", () => {
+  it("says in one plain line that In progress only shows downloads Deluno sent (#1062)", () => {
     render(
       <MemoryRouter>
         <QueuePage />
@@ -1020,8 +1020,8 @@ describe("download drawer: availability, last activity and completion (#970)", (
   });
 });
 
-/** #1115: the history lives on Activity; Transfers keeps only a way there. */
-describe("Transfers points to Activity for the history (#1115)", () => {
+/** #1115: the history lives on Activity; In progress keeps only a way there. */
+describe("In progress points to Activity for the history (#1115)", () => {
   it("has no Recent activity card, and links to the history", () => {
     render(
       <MemoryRouter>
@@ -1035,7 +1035,7 @@ describe("Transfers points to Activity for the history (#1115)", () => {
 });
 
 /** #1162: a download with a processor hand-off is one line, and the page does not repeat its help. */
-describe("Transfers: one line per download, help said once", () => {
+describe("In progress: one line per download, help said once", () => {
   afterEach(() => {
     queueLoaderData.telemetry = { ...queueLoaderData.telemetry, clients: [] as DownloadClientTelemetrySnapshot[] };
     queueLoaderData.processorHandoffs = [];
@@ -1081,7 +1081,7 @@ describe("Transfers: one line per download, help said once", () => {
 });
 
 /** Rig, 8 Oct (#1155): for a few seconds the download has finished and no hand-off exists yet. */
-describe("Transfers: before the hand-off exists", () => {
+describe("In progress: before the hand-off exists", () => {
   afterEach(() => {
     queueLoaderData.telemetry = { ...queueLoaderData.telemetry, clients: [] as DownloadClientTelemetrySnapshot[] };
     queueLoaderData.processorHandoffs = [];
@@ -1259,7 +1259,7 @@ describe("Needs attention: the count matches the rows", () => {
 });
 
 /** #1168: one download is one row, whichever stage it has reached. */
-describe("Transfers: a download is in one table only", () => {
+describe("In progress: a download is in one table only", () => {
   afterEach(() => {
     queueLoaderData.processorHandoffs = [];
     queueLoaderData.jobs = [];
@@ -1292,7 +1292,7 @@ describe("the connector's sub-line (#1168)", () => {
   });
 });
 
-describe("a refused import on the Transfers drawer", () => {
+describe("a refused import on the In progress drawer", () => {
   it("never reads Imported, and a real import does", () => {
     const refused = { id: "d", status: "sent", importStatus: "failed", importCompletedUtc: "2026-10-08T05:00:00Z", importFailureCode: "health-remediation-applied", importFailureMessage: "Replaced." } as never;
     expect(dispatchStageLabel(refused)).not.toBe("Imported");

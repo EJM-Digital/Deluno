@@ -12,7 +12,7 @@
  * one fades in.
  *
  * A station with more titles than the three rows shows three and ends with "and N more"
- * to Transfers; every title of it is in that link's tooltip. On a phone the stations
+ * under In progress; every title of it is in that link's tooltip. On a phone the stations
  * stack and the same cards flow one under another.
  */
 import type { CSSProperties, ReactElement } from "react";
@@ -142,7 +142,7 @@ export function Journey({
 
   return (
     <div ref={boxRef} className={cn("flex min-h-0 min-w-0 flex-col", fill && "h-full")} style={fill || budget === undefined ? undefined : { maxHeight: budget }}>
-      <Panel title="Pipeline" count={journeyHeading(onTheirWay, by)} to="/queue" toLabel="Transfers" className="min-h-0 flex-1">
+      <Panel title="Pipeline" count={journeyHeading(onTheirWay, by)} to="/queue" toLabel="In progress" className="min-h-0 flex-1">
         <div ref={bodyRef} className={cn("lj relative flex min-h-0 flex-1 flex-col", stacked && "lj-stack overflow-y-auto")} style={{ ["--lj-n" as string]: n, ["--lj-card-h" as string]: `${size.card}px`, ["--lj-step" as string]: `${size.step}px`, ["--lj-poster-h" as string]: `${size.poster}px`, ["--lj-title-lines" as string]: size.oneLine ? 1 : 2 } satisfies CSSProperties}>
           {stacked ? (
             <>

@@ -6,7 +6,7 @@ import { Link } from "react-router-dom";
  * rename changes one place.
  */
 export const PAGE_ROUTES = {
-  transfers: { to: "/queue", label: "Transfers" },
+  transfers: { to: "/queue", label: "In progress" },
   failedDownloads: { to: "/search-cycles/failed-downloads", label: "Automation & Recovery, Failed Downloads" },
   failedDownloadsShort: { to: "/search-cycles/failed-downloads", label: "Failed Downloads" },
   downloadHealth: { to: "/search-cycles/download-health", label: "Automation & Recovery, Download Health" },

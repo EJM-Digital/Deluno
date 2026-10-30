@@ -22,7 +22,7 @@ import type { MediaType } from "../../lib/media-types";
  * A half-grey dot means you are not monitoring it, and means nothing else.
  *
  * Nothing else appears on a title. Failures, machinery health and anything
- * genuinely blocked on a person live in Transfers, Activity and Needs You, which
+ * genuinely blocked on a person live under In progress, Activity and Needs You, which
  * is what frees red here for *Missing* and keeps amber meaningful everywhere
  * else.
  */

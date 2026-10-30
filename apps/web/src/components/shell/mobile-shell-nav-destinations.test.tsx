@@ -42,7 +42,7 @@ describe("the phone's four bottom tabs", () => {
     renderAt("/");
     const tabs = screen.getByRole("navigation", { name: "Primary navigation" });
 
-    const destinations: Array<[string, string]> = [["Movies", "/movies"], ["TV", "/tv"], ["Transfers", "/queue"], ["Dashboard", "/"]];
+    const destinations: Array<[string, string]> = [["Movies", "/movies"], ["TV", "/tv"], ["In progress", "/queue"], ["Dashboard", "/"]];
     for (const [name, path] of destinations) {
       fireEvent.click(within(tabs).getByRole("link", { name }));
       expect(where()).toBe(path);

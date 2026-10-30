@@ -6,7 +6,7 @@ import { clientFinished, setUpStack, until, type Stack } from "./stack.ts";
 /**
  * Group `problems` (scripts/golden-path/suite/vm/scenarios/G09-Problems.ps1).
  *
- * problems.dismiss-everywhere (#1228): a failed hand-off stands in Transfers (needs action), in the bell and, where Deluno raises it,
+ * problems.dismiss-everywhere (#1228): a failed hand-off stands under In progress (needs action), in the bell and, where Deluno raises it,
  * on System. Dismissing it in one place clears every place within seconds, with nothing to reload. Each place is read from the API
  * behind its screen.
  *
@@ -25,7 +25,7 @@ const FAILED = ["failed", "rejected", "timed-out", "stalled", "lost", "source-go
 async function problemPlaces(needle: string): Promise<Record<string, boolean>> {
   const all = await stack.deluno.must<any[]>("GET", "/api/integrations/processors/handoffs?take=200");
   const places: Record<string, boolean> = {
-    "Transfers: needs action (hand-offs that went wrong)": all.some((h) => String(h.releaseName).includes(needle) && FAILED.includes(h.status))
+    "In progress: needs action (hand-offs that went wrong)": all.some((h) => String(h.releaseName).includes(needle) && FAILED.includes(h.status))
   };
   for (const [name, path] of [["The bell (attention summary)", "/api/attention/summary"], ["System: health checks", "/api/system/health/summary"], ["System: health notices", "/api/system/health"]] as const) {
     const r = await stack.deluno.call("GET", path);
@@ -86,7 +86,7 @@ test("problems.dismiss-everywhere: A problem shown in several places clears ever
 
   const t0 = Date.now();
   const dismissed = await stack.deluno.call("POST", `/api/integrations/processors/handoffs/${failed.id}/dismiss`);
-  expect(dismissed.status >= 200 && dismissed.status < 300, `Dismiss in Transfers is accepted (HTTP ${dismissed.status})`).toBe(true);
+  expect(dismissed.status >= 200 && dismissed.status < 300, `Dismiss under In progress is accepted (HTTP ${dismissed.status})`).toBe(true);
   const clear = await until("every place to clear", 15, async () => (standing(await problemPlaces(sent.film.title)).length === 0 ? true : undefined), 500).catch(() => undefined);
   const still = standing(await problemPlaces(sent.film.title));
   expect(clear !== undefined, `Every place clears within 15 s, with no reload (${clear ? `all clear after ${((Date.now() - t0) / 1000).toFixed(1)} s` : `still shown in: ${still.join(" | ")}`})`).toBe(true);

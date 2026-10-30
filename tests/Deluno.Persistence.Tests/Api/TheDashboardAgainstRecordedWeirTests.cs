@@ -42,7 +42,7 @@ public sealed class TheDashboardAgainstRecordedWeirTests
         var row = Assert.Single(rows, item => item.GetProperty("id").GetString() == $"handoff:{failed.Id}");
         Assert.Equal("handoff", row.GetProperty("kind").GetString());
         Assert.Equal(release, row.GetProperty("title").GetString());
-        Assert.Equal("Open Transfers", row.GetProperty("action").GetString());
+        Assert.Equal("Open In progress", row.GetProperty("action").GetString());
         Assert.False(string.IsNullOrWhiteSpace(row.GetProperty("text").GetString()));
         Assert.DoesNotContain(rows, item => item.GetProperty("id").GetString()!.Contains(waiting.Id, StringComparison.Ordinal));
         Assert.Equal(rows.Sum(item => item.GetProperty("count").GetInt32()), summary.GetProperty("count").GetInt32());

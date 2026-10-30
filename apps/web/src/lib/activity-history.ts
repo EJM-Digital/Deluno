@@ -112,7 +112,7 @@ export type ActivityStatusChip = Exclude<ActivityStatus, "all">;
 
 /**
  * The link into Activity on one status chip, optionally narrowed by the history filters:
- * `/queue?view=history&status=failed&since=today`. No status is All. Every link from Live, the bell, alerts and Transfers is
+ * `/queue?view=history&status=failed&since=today`. No status is All. Every link from Live, the bell, alerts and In progress is
  * built here, so each lands on the matching chip.
  */
 export function activityLinkForStatus(status?: ActivityStatusChip | null, filters?: Partial<ActivityFilters>): string {

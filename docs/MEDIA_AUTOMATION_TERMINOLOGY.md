@@ -20,7 +20,7 @@ Open **Library setup** to see what is configured and ready. Each card is a real 
 | Radarr/Sonarr root folder or Media Management | **Library & storage** | The folders Deluno imports to, naming, metadata, destination rules, processors, and storage behaviour. |
 | Prowlarr indexer | **Search sources** | A service Deluno asks for releases. The technical term **indexer** remains visible in connection details. |
 | SABnzbd/qBittorrent download client | **Download clients** | The destination for an approved release before Deluno imports it. Health, categories, and routing stay available as detail. |
-| SABnzbd Queue/History | **Transfers** and **Activity** | Transfers shows downloads and imports in progress or needing attention. Activity records the explanation and result. |
+| SABnzbd Queue/History | **In progress** and **Activity** | In progress shows downloads and imports in progress or needing attention. Activity records the explanation and result. |
 | Radarr/Sonarr quality profile, cutoff, size rules, custom formats | **Media plans** | Begin with the outcome: quality, files, upgrades, and destination. Quality profiles, size limits, release preferences, format scores, and overrides remain available within the plan. |
 | Huntarr missing/upgrade searches | **Automation** | What Deluno will check next, why it is waiting, retries, work budgets, and safe pause/defer/skip controls. |
 | CleanUpArr | **Download health & cleanup** | Evidence for unhealthy downloads, a safe preview before cleanup, and a controlled replacement search. It is not a separate cleanup console. |
@@ -60,7 +60,7 @@ column.
 | Final file destinations | Final destinations | `/settings/destination-rules` | `DestinationRuleItem` (already aligned) |
 | List-based auto-add sources | Import lists | `/settings/lists` | `Deluno.Intake`, `IntakeSourceItem`, `intake_*` tables |
 | Library folders | Library folders / Libraries | `/settings/libraries` | (already aligned) |
-| Download/import backlog | Transfers | `/queue` | `job_queue` table, `IJobQueueRepository` |
+| Download/import backlog | In progress | `/queue` | `job_queue` table, `IJobQueueRepository` |
 | Scheduled search + retry behaviour | Automation | `/search-cycles` | `search_cycle_runs` table (already aligned) |
 | Connections (indexers, download clients, routing) | Connections | `/indexers/indexers` | `IndexerItem` (already aligned) |
 | Event timeline (system) | Audit | `/system/audit` | — |
@@ -88,7 +88,7 @@ column.
    session) that nothing external depends on yet, so it is the cheaper side
    to eventually rename — but not in this PR, which is UI/route scoped.
 
-5. **Transfers, not Queue.** The UI already says "Transfers"
+5. **In progress, not Queue.** The UI already says "In progress"
    (`/queue`'s nav label, and this doc's own mapping table). `job_queue`/
    `IJobQueueRepository` are legacy code names, deferred — the job queue also
    backs background automation jobs that are not "transfers" in the user

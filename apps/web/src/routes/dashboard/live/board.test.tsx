@@ -422,7 +422,7 @@ describe("the journey", () => {
     render5(cards);
     const journey = screen.getByRole("region", { name: "Pipeline" });
     expect(within(journey).getByText("4 in progress · all done by about 2:28 pm")).toBeInTheDocument();
-    expect(within(journey).getByRole("link", { name: "Transfers: Pipeline" })).toHaveAttribute("href", "/queue");
+    expect(within(journey).getByRole("link", { name: "In progress: Pipeline" })).toHaveAttribute("href", "/queue");
   });
 
   it("puts each title in its station as a card, a stuck one amber, and says why each is moving", () => {
@@ -491,7 +491,7 @@ describe("the journey", () => {
     expect(screen.getByText(/Nothing moving right now · last arrival Moon \(2009\)/)).toBeInTheDocument();
   });
 
-  it("shows as many cards as fit a station and ends it with an and-N-more link to Transfers that names every title", () => {
+  it("shows as many cards as fit a station and ends it with an and-N-more link to In progress that names every title", () => {
     const rect = HTMLElement.prototype.getBoundingClientRect;
     const observer = globalThis.ResizeObserver;
     globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} } as never;

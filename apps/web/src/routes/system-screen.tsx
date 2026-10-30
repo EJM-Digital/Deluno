@@ -1799,7 +1799,7 @@ export function isHealthNotice(check: Pick<HealthCheckResultItem, "id">): boolea
 /**
  * The import issue a "missing from / unmatched in a processor's output" row mirrors (#1228), or null for any other row.
  * The row is the same problem as that issue (and its hand-off): it is dismissed, not only snoozed, and the dismissal
- * is the issue's own, so Activity, Transfers and the bell stop counting it too.
+ * is the issue's own, so Activity, In progress and the bell stop counting it too.
  */
 export function outputIssueOf(check: Pick<HealthCheckResultItem, "id" | "detailsJson">): { caseId: string; path: string } | null {
   if (!check.id.startsWith("processor-output-issue:") || !check.detailsJson) return null;

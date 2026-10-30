@@ -109,7 +109,7 @@ export async function send(path: string, failure: string, init: { method?: strin
 /**
  * One size for every action button on the Live board and in the bell's list (#1096):
  * the same height, the same width (wide enough for "Search again" and "Open
- * Transfers", never cut), the same outlined box. A quieter action (Give up) keeps the
+ * In progress", never cut), the same outlined box. A quieter action (Give up) keeps the
  * box and only softens its text. Every card and row lines its buttons up in the same
  * columns, and because this is the one class everything shares, they cannot drift.
  */

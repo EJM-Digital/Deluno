@@ -99,9 +99,9 @@ describe("alert buttons (#1098)", () => {
     }
   });
 
-  it("a stuck download offers the stronger fix by name, then Dismiss when the client has a finding to silence, else Open Transfers", () => {
+  it("a stuck download offers the stronger fix by name, then Dismiss when the client has a finding to silence, else Open In progress", () => {
     const plain = stuckDownloadActions(queueItem());
-    expect(labels(plain)).toEqual(["Find another", "Open Transfers"]);
+    expect(labels(plain)).toEqual(["Find another", "Open In progress"]);
     expect(plain[0].request).toMatchObject({ method: "POST", path: "/api/download-clients/qb/queue/t1/remove", body: { reason: "failed" } });
     expect(plain[0].hint).toMatch(/Removes it from qBittorrent, deletes its files, blocklists this release/);
 
@@ -165,10 +165,10 @@ describe("recoveryDecisions (#1114)", () => {
   const labels = (kind: string, details?: string | null) => recoveryDecisions(caseOf(kind, details)).map((action) => action.label);
 
   it("offers each failure kind its own decisions, and Dismiss always", () => {
-    expect(labels("importFailed")).toEqual(["Retry", "Fix it in Transfers", "Dismiss"]);
-    expect(labels("vanished-downloading")).toEqual(["Search now", "Stop wanting", "Fix it in Transfers", "Dismiss"]);
-    expect(labels("processedFileIsLess")).toEqual(["Retry", "Import original", "Search again", "Fix it in Transfers", "Dismiss"]);
-    expect(labels("noVideoStream", null)).toEqual(["Fix it in Transfers", "Dismiss"]);
+    expect(labels("importFailed")).toEqual(["Retry", "Fix under In progress", "Dismiss"]);
+    expect(labels("vanished-downloading")).toEqual(["Search now", "Stop wanting", "Fix under In progress", "Dismiss"]);
+    expect(labels("processedFileIsLess")).toEqual(["Retry", "Import original", "Search again", "Fix under In progress", "Dismiss"]);
+    expect(labels("noVideoStream", null)).toEqual(["Fix under In progress", "Dismiss"]);
   });
 
   // #1151: the grouped "Needs a decision" drawers showed only Dismiss for some kinds.
@@ -176,7 +176,7 @@ describe("recoveryDecisions (#1114)", () => {
     for (const kind of ["processor-failed", "processor-lost", "processor-timeout", "processor-stalled", "processor-held", "importFailed", "downloadFailed", "quality", "unmatched", "corrupt", "vanished-downloading", "processedFileIsLess"]) {
       const decisions = recoveryDecisions(caseOf(kind, null));
       expect(decisions.length, kind).toBeGreaterThan(1);
-      expect(decisions.find((action) => action.to === "/queue")?.label, kind).toBe("Fix it in Transfers");
+      expect(decisions.find((action) => action.to === "/queue")?.label, kind).toBe("Fix under In progress");
     }
   });
 

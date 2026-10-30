@@ -97,7 +97,7 @@ const libraryNav = [
 
 const operationsNav = [
   // One page for downloads, hand-offs and the history of what happened (#1426).
-  { to: "/queue", label: "Transfers", icon: "transfers", end: false, attention: "transfers" as const }
+  { to: "/queue", label: "In progress", icon: "transfers", end: false, attention: "transfers" as const }
 ] as const;
 
 export const routeMeta = [
@@ -108,7 +108,7 @@ export const routeMeta = [
   { match: (path: string) => path.startsWith("/calendar"), title: "Schedule", subtitle: "Upcoming releases and retry windows" },
   { match: (path: string) => path.startsWith("/discover"), title: "Discover", subtitle: "Browse what TMDb and your lists recommend, and add what you want" },
   { match: (path: string) => path === "/search" || path.startsWith("/search/"), title: "Search", subtitle: "Search every enabled indexer at once, no title required" },
-  { match: (path: string) => path.startsWith("/queue"), title: "Transfers", subtitle: "Downloads, hand-offs to the processor, and the record of what happened" },
+  { match: (path: string) => path.startsWith("/queue"), title: "In progress", subtitle: "Downloads, hand-offs to the processor, and the record of what happened" },
   { match: (path: string) => path.startsWith("/indexers"), title: "Find & Download", subtitle: "Search sources and download clients Deluno uses" },
   { match: (path: string) => path.startsWith("/search-cycles"), title: "Automation & Recovery", subtitle: "What Deluno searches for on a schedule, and how it recovers when a download fails" },
   // The area used to be called "Library Profiles" in the topbar and "Quality
@@ -233,10 +233,10 @@ function AppLayoutContent() {
   /*
     An import finishing is the end of the workflow the user started, and until
     now nothing announced it: a download completed, an import succeeded or
-    failed, and the only way to find out was to go and look at Transfers
+    failed, and the only way to find out was to go and look at In progress
     (#264). The server has always published this; it just had no listener.
 
-    Announced app-wide rather than on Transfers, because the point is to reach
+    Announced app-wide rather than under In progress, because the point is to reach
     the user wherever they are — and it refreshes the attention counts so the
     sidebar agrees with what the toast just said.
   */
@@ -244,7 +244,7 @@ function AppLayoutContent() {
     const title = event.releaseName || "A download";
     if (event.succeeded) {
       realtimeToast.success(`${title} is in your library.`, {
-        action: { label: "Open Transfers", onClick: () => navigate("/queue") }
+        action: { label: "Open In progress", onClick: () => navigate("/queue") }
       });
     } else {
       realtimeToast.error(`Import failed for ${title}.${event.failureReason ? ` ${event.failureReason}` : ""}`, {
@@ -950,7 +950,7 @@ function ContentTopbar({
 
 function attentionCount(attention: ReturnType<typeof useAttention>, key: "none" | "movies" | "tv" | "indexers" | "transfers") {
   if (key === "movies") return attention.movieWanted;
-  // What Transfers lists under Needs attention (#556), and the failed jobs about a title its history lists (#1426). A failed background job is cleared on System (#1114).
+  // What In progress lists under Needs attention (#556), and the failed jobs about a title its history lists (#1426). A failed background job is cleared on System (#1114).
   if (key === "transfers") return attention.downloadsNeedingAction + (attention.failedTitleJobs ?? attention.failedJobs);
   if (key === "tv") return attention.tvWanted;
   if (key === "indexers") return attention.indexerAlerts;

@@ -20,7 +20,7 @@ import { untilQuiet, untilStill } from "../helpers/settle";
 // that overlap. The screens that failed are visited with long names (the data below): the Dashboard, the blocklist,
 // the calendar, a show's episodes, the setup guide and the download clients.
 // The last walk (8 Oct, issue 1168) added what a phone and a laptop still lost on real data, and each is checked on every
-// screen above: a row whose name has no room (Transfers' Needs attention rows under their buttons), a value cut short
+// screen above: a row whose name has no room (In progress' Needs attention rows under their buttons), a value cut short
 // that a phone cannot read (a tooltip is not enough with no hover: the row must open its drawer, or the value must wrap),
 // and a column heading or label cut with nothing to say the rest.
 // The closing walk (8 Oct, issue 1168 line 2) added text squeezed into a sliver (a sentence of more than 3 words in a box
@@ -185,7 +185,7 @@ async function seedLongData(page: Page, seriesId: string, movieId: string) {
       queue: [], history: [], capturedUtc: now, historyTruncated: false, clientWarnings: ["Disk is nearly full, downloads may stop."]
     }]
   })));
-  // Transfers (#1162): hand-offs whose Source / Output are long, so a cell that outgrows its row shows.
+  // In progress (#1162): hand-offs whose Source / Output are long, so a cell that outgrows its row shows.
   await page.route("**/api/integrations/processors/handoffs**", (route) => route.fulfill(json(Array.from({ length: 7 }, (_, index) => ({
     id: `fit-handoff-${index}`, libraryId: "fit-library", mediaType: "tv", clientId: client.id, queueItemId: `fit-queue-${index}`, releaseName: LONG_RELEASE.replace("S01E01", `S01E0${index + 2}`),
     sourcePath: `C:\\Downloads\\Completed\\TV\\${LONG_RELEASE}.${index}\\${LONG_RELEASE}.${index}\\${LONG_RELEASE}.${index}.mkv`, processorName: "A Very Long Processor Connector Name", status: index >= 5 ? "failed" : "completed",
@@ -338,7 +338,7 @@ function measure({ checkRepeats, phone }: { checkRepeats: boolean; phone: boolea
     }
   }
 
-  // A row's name has room: the first cell a row shows is not squeezed to nothing by the buttons beside it (Transfers' Needs
+  // A row's name has room: the first cell a row shows is not squeezed to nothing by the buttons beside it (In progress' Needs
   // attention on a phone showed three rows with no name at all, only their switch and buttons).
   for (const row of Array.from(document.querySelectorAll<HTMLElement>("[role=row]"))) {
     if (isHiddenOrTiny(row)) continue;
@@ -614,7 +614,7 @@ test.describe("every screen fits three widths", () => {
 
   // #1162 line 1: at 1920 a Source / Output value that runs to three lines grew its cell but not its row, and the next
   // row's text printed over it. Long Source and Output values (seeded above) must leave every row clear of the next.
-  test("Transfers rows with long Source and Output values grow with them at 1920", async ({ page }) => {
+  test("In progress rows with long Source and Output values grow with them at 1920", async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await authenticateAndNavigate(page, "/movies");
     const { seriesId } = await seedTitles(page);
@@ -858,7 +858,7 @@ test.describe("a title page's History heading and synopsis are readable", () => 
   }
 });
 
-// #1162 line 1 on a phone (F2 and F4): every row of Transfers' Needs attention shows its name and opens its drawer, and a
+// #1162 line 1 on a phone (F2 and F4): every row of In progress' Needs attention shows its name and opens its drawer, and a
 // drawer says its whole description instead of cutting it to one line.
 test.describe("Needs attention rows open on a phone", () => {
   test.skip(({ isMobile }) => isMobile, "Sizes are set in the test itself.");

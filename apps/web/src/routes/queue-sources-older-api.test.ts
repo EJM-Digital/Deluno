@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * Transfers' own data sources, read against an older API. An API that does not have an endpoint answers 404, and the page
+ * In progress' own data sources, read against an older API. An API that does not have an endpoint answers 404, and the page
  * must show that source as empty rather than as an error screen. Any other failure still reaches the page.
  */
 
@@ -14,7 +14,7 @@ beforeEach(() => {
   authedFetchMock.mockReset();
 });
 
-describe("Transfers sources against an older API", () => {
+describe("In progress sources against an older API", () => {
   it("the processor connections source lists no connectors when the API answers 404", async () => {
     authedFetchMock.mockResolvedValue(new Response("not found", { status: 404 }));
 

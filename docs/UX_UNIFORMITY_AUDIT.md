@@ -50,7 +50,7 @@ What Deluno is doing. No page owns its own settings menu.
 | --- | --- | --- |
 | Library setup, Connections, Automation, System | Shared configuration navigation now persists across family changes. | Keep every future configuration route in this shell. |
 | Dashboard, Movies, TV, Schedule | Media-management pages. Persistent app navigation selects the domain. | Audit duplicated in-page headings and consolidate page-level actions in a dedicated pass. |
-| Transfers and Activity | Operational pages. Persistent app navigation selects the domain; the page explains live state. | Standardise filters, empty states, and action placement. |
+| In progress and Activity | Operational pages. Persistent app navigation selects the domain; the page explains live state. | Standardise filters, empty states, and action placement. |
 | Detail pages | Media-management drill-downs. | Standardise back navigation, title action bars, and status summaries. |
 
 ## Page-level rules

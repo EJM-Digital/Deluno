@@ -9,7 +9,7 @@
  * neither seen nor cleared from any screen.
  *
  * One reader, asked for failures by name, is what the sidebar, Activity and
- * Transfers now share, so they cannot disagree about the number.
+ * In progress now share, so they cannot disagree about the number.
  */
 import { fetchAllPages, type JobQueueItem } from "./api";
 import { isJobFailed, type JobStatus } from "./job-status-constants";

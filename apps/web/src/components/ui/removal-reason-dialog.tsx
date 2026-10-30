@@ -66,7 +66,7 @@ export function RemovalReasonDialog({ open, onOpenChange, title, busyReason, onC
               Why remove “{title}”?
             </Dialog.Title>
             <p id="removal-reason-description" className="mt-1 max-w-prose text-(length:--type-body) text-muted-foreground leading-relaxed">
-              Every choice removes it from Transfers. What Deluno does next depends on why.
+              Every choice removes it from In progress. What Deluno does next depends on why.
             </p>
 
             <div className="mt-6 flex flex-col gap-3">

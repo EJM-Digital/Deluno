@@ -219,7 +219,7 @@ export interface PlatformSettingsSnapshot {
   downloadHealthDangerousFileEnabled: boolean;
   /**
    * #888/#949: what Deluno does with a file it downloaded but could not
-   * match to a title or episode -- "hold" (default, kept on Transfers for
+   * match to a title or episode -- "hold" (default, kept under In progress for
    * manual import), "give-up-after-days" (after unmatchedImportGiveUpDays,
    * Deluno removes the download, deletes the file, blocklists the release
    * and searches again), or "retry-once-then-bad" (retry the match once,
