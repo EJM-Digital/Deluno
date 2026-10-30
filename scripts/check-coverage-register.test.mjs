@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import {
-  baseGapCount, evaluate, gapIncreaseShape, gapRatchet, jobSummary, statisticsReport, isGap, mapInventory, missingProofs, requiredFor, rowLevel, scenarioViolations, sleepViolations, waitViolations, callArguments, staleIssueRows, totals, unownedGapRows, validateShape
+  baseGapCount, evaluate, gapIncreaseShape, gapRatchet, jobSummary, statisticsReport, isGap, mapInventory, missingProofs, requiredFor, rowLevel, scenarioViolations, sleepViolations, waitViolations, callArguments, isWaived, staleIssueRows, staleWaivedRows, totals, unownedGapRows, validateShape
 } from './check-coverage-register.mjs';
 import { TestIndex } from './coverage/testindex.mjs';
 import { migrationItems, routeItems, trayItems, uiItems, webRouteItems } from './coverage/inventory.mjs';
@@ -603,6 +603,34 @@ test('account names the outside service a gap waits for, and only on a gap that 
   assert.deepEqual(validateShape(register([row({ issue: 1343, account: 'Trakt' })])), []);
   assert.match(validateShape(register([row({ issue: 1343, account: '' })])).join(' '), /account must name the outside service/);
   assert.match(validateShape(register([row({ account: 'Trakt' })])).join(' '), /account is only for a gap that names an issue/);
+});
+
+const WAIVED = { by: 'owner', date: '2026-10-31', why: 'The owner has no account and will not make one.', until: 'an account exists' };
+test('waived is the owner\x27s word that a row waits for an outside account: it is not a gap, and is counted apart', () => {
+  const waived = row({ issue: 1343, account: 'Trakt', waived: WAIVED });
+  const plain = row({ id: 'api.other', issue: 1343, account: 'Trakt' });
+  assert.equal(isWaived(waived), true);
+  assert.equal(isGap(waived), false, 'a waived row is not counted as a gap');
+  assert.equal(isGap(plain), true, 'the same row without the waiver is a gap');
+  assert.deepEqual(staleIssueRows(register([waived])), [], 'a waived row keeps its issue');
+  const t = totals(register([waived, plain]));
+  assert.deepEqual([t.all.rows, t.all.gaps, t.all.proven, t.waived.length], [2, 1, 0, 1]);
+  assert.match(statisticsReport(register([waived]), [], totals(register([waived]))), /\*\*1\*\* rows are waived by the owner/);
+  assert.deepEqual(validateShape(register([waived])), []);
+});
+
+test('waived is refused on a row that needs no outside account, or without the owner\x27s full word', () => {
+  assert.match(validateShape(register([row({ issue: 1284, waived: WAIVED })])).join(' '), /waived is only for a row that needs an outside account/);
+  assert.match(validateShape(register([row({ waived: WAIVED })])).join(' '), /waived is only for a row that needs an outside account/);
+  for (const bad of [{ ...WAIVED, by: 'builder' }, { ...WAIVED, date: 'yesterday' }, { ...WAIVED, why: ' ' }, { ...WAIVED, until: undefined }, 'yes']) {
+    assert.match(validateShape(register([row({ issue: 1343, account: 'Trakt', waived: bad })])).join(' '), /waived must be/);
+  }
+});
+
+test('a waiver on a row that already reaches its level is stale', () => {
+  const proven = row({ id: 'a.proven', issue: 1343, account: 'Trakt', waived: WAIVED, proofs: [{ type: 'vitest', file: 'a.test.ts', name: 'x' }] });
+  assert.deepEqual(staleWaivedRows(register([proven])), ['a.proven']);
+  assert.deepEqual(staleWaivedRows(register([row({ issue: 1343, account: 'Trakt', waived: WAIVED })])), []);
 });
 
 test('the statistics report reports the real-fs proofs and the vm rows', () => {
