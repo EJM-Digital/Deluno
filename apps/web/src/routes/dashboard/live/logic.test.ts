@@ -185,7 +185,7 @@ describe("the journey of a title", () => {
     for (const step of steps) {
       const grouped = byStage(buildJourney({ ...base, ...step, summary }));
       const counts = laneCounts(grouped, summary);
-      for (const stage of ["requested", "grabbed", "downloading", "processor", "importing"] as const) expect(counts[stage]).toBe(grouped[stage].length);
+      for (const stage of ["searching", "grabbed", "downloading", "processor", "importing"] as const) expect(counts[stage]).toBe(grouped[stage].length);
     }
   });
 

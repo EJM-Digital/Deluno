@@ -94,7 +94,7 @@ describe("Live", () => {
 
   it("shows the journey with a stuck download amber, a Seerr title tagged, the time left, and no button to settle anything", async () => {
     seedBusy();
-    lists["/api/dashboard/live-extras"] = { asOfUtc: new Date().toISOString(), sinceUtc: "", arrivals: [], importsToday: 0, importedBytesToday: 0, upgrades: [], protected: { refusedToday: 0, unsafeToday: 0, latest: [] }, retentionReclaimBytes: 0, requests: [{ mediaType: "movie", entityId: "m7", title: "Shogun", status: "added", requestedBy: "Sam", createdUtc: "2026-09-30T00:00:00Z", updatedUtc: "2026-09-30T00:00:00Z" }] };
+    lists["/api/dashboard/live-extras"] = { asOfUtc: new Date().toISOString(), sinceUtc: "", arrivals: [], importsToday: 0, importedBytesToday: 0, upgrades: [], protected: { refusedToday: 0, unsafeToday: 0, latest: [] }, retentionReclaimBytes: 0, requests: [{ mediaType: "movie", entityId: "m7", title: "Shogun", status: "added", requestedBy: "Sam", createdUtc: "2026-09-30T00:00:00Z", updatedUtc: "2026-09-30T00:00:00Z" }, { mediaType: "movie", entityId: "m8", title: "Waiting Film", status: "added", requestedBy: "Sam", createdUtc: "2026-09-30T00:00:00Z", updatedUtc: "2026-09-30T00:00:00Z" }], searching: [{ entityType: "movie", entityId: "m7", title: "Shogun", startedBy: "manual", label: "Checking 3 indexers", startedUtc: "2026-09-30T00:00:00Z" }] };
     const summary = { ...fullSummary, activity: { ...fullSummary.activity!, recent: [{ ...fullSummary.activity!.recent[0], relatedEntityType: "movie", relatedEntityId: "m9" }] } };
     renderTab(summary);
 
@@ -108,8 +108,9 @@ describe("Live", () => {
     // Hand-offs, import cases and failed jobs are the bell's, not cards here.
     expect(within(journey).queryByText("An import did not finish")).toBeNull();
     expect(within(journey).queryByText("Say Yes to the Dress")).toBeNull();
-    // The request that is still being searched for is the first station, tagged as Seerr's.
-    expect(await within(journey).findByRole("link", { name: "Shogun: Asked for in Seerr · looking" })).toBeInTheDocument();
+    // The title being searched for is the first station, tagged as Seerr's; a requested title only waiting its turn is not on the board (#1442).
+    expect(await within(journey).findByRole("link", { name: "Shogun: Asked for in Seerr · checking" })).toBeInTheDocument();
+    expect(within(journey).queryByText("Waiting Film")).toBeNull();
 
     const activity = screen.getByRole("region", { name: /^activity/i });
     expect(within(activity).getByText(/Imported into the library/)).toBeInTheDocument();

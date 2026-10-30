@@ -3,7 +3,7 @@
  * colour. One place, so the stations, the cards in them and the activity all say the
  * same thing about each stage.
  */
-import { Download, FolderInput, HardDriveDownload, Inbox, Library, ShieldCheck, type LucideIcon } from "lucide-react";
+import { Download, FolderInput, HardDriveDownload, Library, Search, ShieldCheck, type LucideIcon } from "lucide-react";
 import type { Tone } from "../../../lib/status-tones";
 import type { Stage } from "./journey";
 import { activityLinkForStatus } from "../../../lib/activity-history";
@@ -18,7 +18,7 @@ export interface LaneStyle {
 }
 
 export const LANES: Record<Stage, LaneStyle> = {
-  requested: { label: "Requested", icon: Inbox, accent: "--stage-search", text: "text-[hsl(var(--stage-search))]", to: "/indexers/media-servers" },
+  searching: { label: "Searching", icon: Search, accent: "--stage-search", text: "text-[hsl(var(--stage-search))]", to: "/search-cycles" },
   grabbed: { label: "Grabbed", icon: HardDriveDownload, accent: "--journey-grab", text: "text-[hsl(var(--journey-grab))]", to: "/queue" },
   downloading: { label: "Downloading", icon: Download, accent: "--info", text: "text-info", to: "/queue" },
   processor: { label: "Processing", icon: ShieldCheck, accent: "--journey-process", text: "text-[hsl(var(--journey-process))]", to: "/queue" },

@@ -5,9 +5,26 @@ import { sharedSources } from "../../../lib/shared-sources";
 import { liveSources } from "../sources";
 import { fullSummary } from "../downloads-fixtures";
 import { pulseOf } from "./indexers";
-import { applyClientState, applyDriveSpace, applyHandoffChanged, applyIndexerAnswer, applyJourneyStage, applyQueueRemoved, applyQueueStatus, applyRecoveryCase, applySpeedSample, handoffStatusOf } from "./realtime";
+import { applyClientState, applyDriveSpace, applyHandoffChanged, applyIndexerAnswer, applyJourneyStage, applyQueueRemoved, applyQueueStatus, applyRecoveryCase, applySearchesInFlight, applySpeedSample, handoffStatusOf } from "./realtime";
 
 const at = "2026-10-01T10:00:00.000Z";
+
+describe("the searches in flight, pushed (#1442)", () => {
+  it("replaces the Searching list with the one pushed, so a title that is no longer searched leaves", () => {
+    const qc = new QueryClient();
+    qc.setQueryData(liveSources.liveExtras.key, { searching: [{ entityType: "movie", entityId: "m1", title: "Tenet", startedBy: "manual", label: "Looking for it", startedUtc: at }] });
+    applySearchesInFlight(qc, { searches: [{ entityType: "movie", entityId: "m2", title: "Dunkirk", startedBy: "missing", label: "Checking 3 indexers", startedUtc: at }], at });
+    expect(qc.getQueryData<{ searching: Array<{ title: string }> }>(liveSources.liveExtras.key)!.searching.map((item) => item.title)).toEqual(["Dunkirk"]);
+    applySearchesInFlight(qc, { searches: [], at });
+    expect(qc.getQueryData<{ searching: unknown[] }>(liveSources.liveExtras.key)!.searching).toEqual([]);
+  });
+
+  it("is dropped when the first load has not filled the extras yet", () => {
+    const qc = new QueryClient();
+    applySearchesInFlight(qc, { searches: [], at });
+    expect(qc.getQueryData(liveSources.liveExtras.key)).toBeUndefined();
+  });
+});
 
 describe("pushed Live events, applied to the lists the board reads", () => {
   it("puts a hand-off in the lane its new state says, in the words the list uses", () => {

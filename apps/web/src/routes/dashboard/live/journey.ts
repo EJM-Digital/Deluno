@@ -1,5 +1,5 @@
 /**
- * The journey of every title in flight (#1098): requested, grabbed, downloading,
+ * The journey of every title in flight (#1098): searching, grabbed, downloading,
  * with the processor, importing, and in the library. Each stage is worked out
  * from the stored lists the other screens already keep (the download queue, the
  * sent downloads, the processor hand-offs) and the summary; the pushed
@@ -22,9 +22,9 @@ import type { LiveProgress, WorkItem } from "../live-events";
 import { plainReason } from "./plain";
 import { startedByOfDispatch, type StartedBy } from "./provenance";
 
-export type Stage = "requested" | "grabbed" | "downloading" | "processor" | "importing" | "imported";
+export type Stage = "searching" | "grabbed" | "downloading" | "processor" | "importing" | "imported";
 
-export const STAGES: Stage[] = ["requested", "grabbed", "downloading", "processor", "importing", "imported"];
+export const STAGES: Stage[] = ["searching", "grabbed", "downloading", "processor", "importing", "imported"];
 
 /** What a card is about in the library: a film, a show (a season pack or a whole show) or one episode. */
 export type EntityKind = "movie" | "series" | "episode";
@@ -476,7 +476,7 @@ export function laneCounts(grouped: Record<Stage, JourneyCard[]>, summary: Dashb
   // hand-off, can still count a title the board has dropped (import ended, hand-off dismissed). Only "In the library"
   // reads the day's import count, because those titles live in the day's rows and the shelf, not in the lane's cards.
   return {
-    requested: grouped.requested.length,
+    searching: grouped.searching.length,
     grabbed: grouped.grabbed.length,
     downloading: grouped.downloading.length,
     processor: grouped.processor.length,

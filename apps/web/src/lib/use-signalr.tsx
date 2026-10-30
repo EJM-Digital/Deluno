@@ -61,7 +61,7 @@
  *   DashboardSummaryChanged { asOfUtc } (no longer sent; kept so old subscribers still compile)
  *   Live events on the "live" subject (#1097), each carrying its own data -- see api/types/live-events.ts and
  *   docs/deluno-ui-api-contract.md: JourneyStageChanged, ProcessorHandoffChanged, RecoveryCaseChanged, JobChanged,
- *   SearchCycleProgress, IndexerQueryRecorded, ClientStateChanged, DriveSpaceChanged, DownloadSpeedSample, ReleasesTurnedDown, ConnectionUsed
+ *   SearchCycleProgress, SearchesInFlightChanged, IndexerQueryRecorded, ClientStateChanged, DriveSpaceChanged, DownloadSpeedSample, ReleasesTurnedDown, ConnectionUsed
  *   *Changed                { id } (identity-only state-change family)
  */
 
@@ -92,7 +92,8 @@ import type {
   ProcessorHandoffChangedEvent,
   RecoveryCaseChangedEvent,
   ReleasesTurnedDownEvent,
-  SearchCycleProgressEvent
+  SearchCycleProgressEvent,
+  SearchesInFlightChangedEvent
 } from "./api/types/live-events";
 import type { ConnectionCheckedEvent, SystemOverviewChangedEvent } from "./api/types/system-overview";
 import type { SystemLogEntry } from "./api/types/system-log";
@@ -284,6 +285,7 @@ type EventMap = {
   RecoveryCaseChanged: RecoveryCaseChangedEvent;
   JobChanged: JobChangedEvent;
   SearchCycleProgress: SearchCycleProgressEvent;
+  SearchesInFlightChanged: SearchesInFlightChangedEvent;
   IndexerQueryRecorded: IndexerQueryRecordedEvent;
   ClientStateChanged: ClientStateChangedEvent;
   DriveSpaceChanged: DriveSpaceChangedEvent;
@@ -804,6 +806,7 @@ const LIVE_EVENT_SUBJECTS = {
   RecoveryCaseChanged: RealtimeGroups.Live,
   JobChanged: RealtimeGroups.Live,
   SearchCycleProgress: RealtimeGroups.Live,
+  SearchesInFlightChanged: RealtimeGroups.Live,
   IndexerQueryRecorded: RealtimeGroups.Live,
   ClientStateChanged: RealtimeGroups.Live,
   DriveSpaceChanged: RealtimeGroups.Live,

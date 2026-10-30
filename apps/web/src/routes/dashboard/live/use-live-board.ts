@@ -19,6 +19,7 @@ import {
   applyQueueRemoved,
   applyQueueStatus,
   applyRecoveryCase,
+  applySearchesInFlight,
   applySpeedSample
 } from "./realtime";
 
@@ -52,6 +53,7 @@ export function useLiveBoardEvents(): LiveBoardState {
   useLiveEvent("ClientStateChanged", (event) => applyClientState(queryClient, event));
   useLiveEvent("DriveSpaceChanged", (event) => applyDriveSpace(queryClient, event));
   useLiveEvent("DownloadSpeedSample", (event) => applySpeedSample(queryClient, event));
+  useLiveEvent("SearchesInFlightChanged", (event) => applySearchesInFlight(queryClient, event));
   useLiveEvent("IndexerQueryRecorded", (event) => applyIndexerAnswer(queryClient, event));
   useLiveEvent("QueueItemStatusChanged", (event) => applyQueueStatus(queryClient, event));
   useLiveEvent("QueueItemRemoved", (event) => applyQueueRemoved(queryClient, event.id));

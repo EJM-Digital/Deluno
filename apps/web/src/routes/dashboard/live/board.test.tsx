@@ -311,10 +311,10 @@ describe("speed", () => {
 
 describe("what a journey card says", () => {
   it("looks on the indexers, or says Seerr asked", () => {
-    expect(statusOf(card({ stage: "requested" }), 5).text).toBe("Looking on 5 indexers");
-    expect(statusOf(card({ stage: "requested" }), 1).text).toBe("Looking on 1 indexer");
-    expect(statusOf(card({ stage: "requested", startedBy: "seerr" }), 5).text).toBe("Asked for in Seerr · looking");
-    expect(statusOf(card({ stage: "requested" }), 0).text).toBe("Looking for it");
+    expect(statusOf(card({ stage: "searching" }), 5).text).toBe("Checking 5 indexers");
+    expect(statusOf(card({ stage: "searching" }), 1).text).toBe("Checking 1 indexer");
+    expect(statusOf(card({ stage: "searching", startedBy: "seerr" }), 5).text).toBe("Asked for in Seerr · checking");
+    expect(statusOf(card({ stage: "searching" }), 0).text).toBe("Looking for it");
   });
 
   it("says the quality and where it came from, the progress and speed, and who is working on it", () => {
@@ -404,7 +404,7 @@ describe("the journey", () => {
     return withRouter(<Journey grouped={grouped} counts={laneCounts(grouped, undefined)} context={context} hasProcessor={hasProcessor} usual={{}} by={new Date("2026-10-01T14:28:00").getTime()} lastArrival={null} />);
   };
   const cards = [
-    card({ key: "r", stage: "requested", title: "Shogun", startedBy: "seerr", state: { tone: "info", label: "Requested" } }),
+    card({ key: "r", stage: "searching", title: "Shogun", startedBy: "seerr", state: { tone: "info", label: "Searching" } }),
     card({ key: "d1", title: "Dune (2024)", startedBy: "you", finishAtMs: new Date("2026-10-01T14:14:00").getTime() }),
     card({ key: "d2", title: "Stuck One (2001)", stuck: true, state: { tone: "warn", label: "Stuck" }, progress: 43, speedMbps: 0 }),
     card({ key: "p", stage: "processor", title: "Sintel (2010)", processor: "Weir", state: { tone: "info", label: "Being cleaned" } })
@@ -432,8 +432,8 @@ describe("the journey", () => {
     expect(screen.getByText("done about 2:14 pm")).toBeInTheDocument();
     expect(screen.getByText("You asked for it")).toBeInTheDocument();
     // A card that came from Seerr says so; a request card says it in its line and not twice.
-    const requested = document.querySelector<HTMLElement>('[data-glide-stage="requested"]')!;
-    expect(requested).toHaveAccessibleName("Shogun: Asked for in Seerr · looking");
+    const requested = document.querySelector<HTMLElement>('[data-glide-stage="searching"]')!;
+    expect(requested).toHaveAccessibleName("Shogun: Asked for in Seerr · checking");
     expect(within(requested).queryByText("Asked for in Seerr")).toBeNull();
     // A card with no recorded reason has no tag rather than a guess.
     expect(within(document.querySelector<HTMLElement>('[data-glide-stage="processor"]')!).queryByText(/You asked for it|Asked for in Seerr|On one of your lists|Looking for an upgrade|A missing (film|episode|season|title)|Missing episodes/)).toBeNull();
@@ -467,9 +467,9 @@ describe("the journey", () => {
 
   it("draws the ribbon: one segment per station with its icon, name and count, the busy ones lit and the empty ones dimmed", () => {
     render5(cards);
-    const requested = screen.getByRole("group", { name: "Requested" });
+    const requested = screen.getByRole("group", { name: "Searching" });
     expect(requested).toHaveClass("lj-station", "lj-active");
-    expect(requested.textContent).toContain("Requested");
+    expect(requested.textContent).toContain("Searching");
     expect(requested.textContent).toContain("1 here");
     render5([]);
     expect(screen.getAllByRole("group", { name: "Importing" }).at(-1)).toHaveClass("lj-empty");
@@ -529,7 +529,7 @@ describe("the journey", () => {
       render5(cards);
       // Each station's heading is followed by its own cards, and a station with nothing is left out.
       const stacked = Array.from(document.querySelectorAll('[data-station]'));
-      expect(stacked.map((element) => element.getAttribute("data-station"))).toEqual(["requested", "downloading", "processor"]);
+      expect(stacked.map((element) => element.getAttribute("data-station"))).toEqual(["searching", "downloading", "processor"]);
       expect(within(stacked[1] as HTMLElement).getByRole("group", { name: "Downloading" })).toBeInTheDocument();
     } finally {
       HTMLElement.prototype.getBoundingClientRect = rect;
