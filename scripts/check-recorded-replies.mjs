@@ -29,7 +29,7 @@ export const signatures = [
   { app: 'qBittorrent', all: ['hash', 'state'] },
   { app: 'Transmission', any: ['percentDone', 'hashString', 'rateDownload', 'peersConnected', 'downloadedEver'] },
   { app: 'Deluge', any: ['total_done', 'move_completed_path', 'num_seeds', 'download_payload_rate', 'is_finished'] },
-  // uTorrent and rTorrent are not installed in the golden VM, so nothing of theirs is recorded yet: their tests are listed "pending".
+  // uTorrent (3.6.0.47254) and rTorrent are recorded; a test of theirs replays the recording.
   { app: 'uTorrent', any: ['build'], text: ["id='token'", 'id=\\"token\\"'] },
   { app: 'rTorrent', text: ['<methodResponse>', '<methodResponse'] },
   // Indexers: a Torznab or Newznab answer carries the feed's own attribute elements, or a caps document (Jackett and NZBHydra2 are recorded).
