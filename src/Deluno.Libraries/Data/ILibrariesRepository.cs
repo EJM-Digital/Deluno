@@ -90,6 +90,12 @@ public interface ILibrariesRepository : ILibrarySubtitlePreferences
 
     Task<bool> DeleteLibraryAsync(string id, CancellationToken cancellationToken);
 
+    /// <summary>#1411: links libraries made together by "Both" under one pair id.</summary>
+    Task LinkLibraryPairAsync(string pairId, IReadOnlyList<string> libraryIds, CancellationToken cancellationToken);
+
+    /// <summary>#1411: each linked library's pair id, by library id.</summary>
+    Task<IReadOnlyDictionary<string, string>> ListLibraryPairsAsync(CancellationToken cancellationToken);
+
     Task<bool> DeleteDestinationRuleAsync(string id, CancellationToken cancellationToken);
 
     Task<bool> DeleteLibraryViewAsync(string userId, string id, CancellationToken cancellationToken);

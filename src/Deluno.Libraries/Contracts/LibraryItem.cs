@@ -134,4 +134,9 @@ public sealed record LibraryItem(
     /// </summary>
     bool SubtitlePictureBasedCounts = true,
     /// <summary>The processor connection's id (#1077). <see cref="ProcessorName"/> is its current name, for display; renaming the connection changes nothing about the link.</summary>
-    string? ProcessorConnectionId = null);
+    string? ProcessorConnectionId = null,
+    /// <summary>#1411: the id the two libraries made together by "Both" share; null for a library on its own.</summary>
+    string? PairId = null,
+    /// <summary>#1411: the other library of the pair (a Movies library's TV partner, or the reverse); null when it has none.</summary>
+    string? PairedLibraryId = null,
+    string? PairedLibraryName = null);

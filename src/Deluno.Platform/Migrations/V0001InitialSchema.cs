@@ -146,7 +146,8 @@ public static class PlatformDatabaseMigrations
         new V0138ProcessorHandoffSupersededIds(),
         new V0139IntakeImdbListsRetired(),
         new V0140ConnectionChecksAlwaysOn(),
-        new V0141RecoveryCodes()
+        new V0141RecoveryCodes(),
+        new V0142LibraryPairs()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

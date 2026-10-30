@@ -243,9 +243,79 @@ public static class LibrariesEndpointRouteBuilderExtensions
         {
             var items = await repository.ListLibrariesAsync(cancellationToken);
             var automation = await jobs.ListLibraryAutomationStatesAsync(cancellationToken);
-            var merged = items.Select(item => MergeLibraryState(item, automation)).ToArray();
+            var pairs = await repository.ListLibraryPairsAsync(cancellationToken);
+            var merged = WithPairs(items.Select(item => MergeLibraryState(item, automation)).ToArray(), pairs);
 
             return Results.Ok(merged);
+        });
+
+        // #1411: "Both". One name and one root make a Movies library and a TV library, linked.
+        libraries.MapPost("pair", async (
+            HttpContext httpContext,
+            [FromBody] CreateLibraryPairRequest request,
+            [FromServices] ILibrariesRepository repository,
+            [FromServices] Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory connectionFactory,
+            [FromServices] IJobQueueRepository jobs,
+            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var movies = PairMember(request, "movies", "Movies", request.MoviesQualityProfileId);
+            var tv = PairMember(request, "tv", "TV", request.TvQualityProfileId);
+            // The shared root is what must already exist; its two subfolders are made below.
+            var errors = ValidateLibrary(movies with { RootPath = request.RootPath });
+            foreach (var member in new[] { movies, tv })
+            {
+                await Deluno.Infrastructure.Storage.ReferenceChecks.AddProblemAsync(
+                    connectionFactory, errors, "qualityProfileId", Deluno.Infrastructure.Storage.ReferenceKind.QualityProfile,
+                    member.QualityProfileId, member.MediaType, cancellationToken);
+            }
+
+            if (errors.Count == 0)
+            {
+                var existing = (await repository.ListLibrariesAsync(cancellationToken)).Select(LibraryFolders.From).ToList();
+                foreach (var member in new[] { movies, tv })
+                {
+                    var folders = new LibraryFolders(Guid.NewGuid().ToString("N"), member.Name!, member.RootPath, member.DownloadsPath, null);
+                    var refusal = LibraryFolderLayout.RefuseSave(existing, folders);
+                    if (refusal is not null)
+                    {
+                        errors["folders"] = [refusal];
+                        break;
+                    }
+
+                    existing.Add(folders);
+                }
+            }
+
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            Directory.CreateDirectory(movies.RootPath!);
+            Directory.CreateDirectory(tv.RootPath!);
+            var made = new List<LibraryItem>();
+            foreach (var member in new[] { movies, tv })
+            {
+                var item = await repository.CreateLibraryAsync(member, cancellationToken);
+                await jobs.EnsureLibraryAutomationStateAsync(ToAutomationPlan(item), cancellationToken);
+                made.Add(item);
+            }
+
+            await repository.LinkLibraryPairAsync(Guid.NewGuid().ToString("N"), made.Select(item => item.Id).ToArray(), cancellationToken);
+            foreach (var item in made)
+            {
+                await realtimeEventPublisher.PublishEntityChangedAsync("AutomationState", item.Id, cancellationToken);
+                await realtimeEventPublisher.PublishEntityChangedAsync("Library", item.Id, cancellationToken);
+            }
+
+            return Results.Ok(WithPairs(made, await repository.ListLibraryPairsAsync(cancellationToken)));
         });
 
         libraries.MapPost(string.Empty, async (
@@ -638,7 +708,8 @@ public static class LibrariesEndpointRouteBuilderExtensions
             [FromServices] IJobQueueRepository jobs,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             [FromServices] IDeletedThingCleanup cleanup,
-            CancellationToken cancellationToken) =>
+            CancellationToken cancellationToken,
+            [FromQuery] bool pair = false) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null)
@@ -647,18 +718,39 @@ public static class LibrariesEndpointRouteBuilderExtensions
             }
 
             // Read before it goes, so what is said names the library.
-            var library = (await repository.ListLibrariesAsync(cancellationToken))
-                .FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
-            var removed = await repository.DeleteLibraryAsync(id, cancellationToken);
-            if (!removed)
+            var all = await repository.ListLibrariesAsync(cancellationToken);
+            var library = all.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (library is null)
             {
                 return Results.NotFound();
             }
 
-            await cleanup.LibraryDeletedAsync(id, library?.Name ?? string.Empty, cancellationToken);
-            await jobs.RemoveLibraryAutomationStateAsync(id, cancellationToken);
-            await realtimeEventPublisher.PublishEntityChangedAsync("AutomationState", id, cancellationToken);
-            await realtimeEventPublisher.PublishEntityChangedAsync("Library", id, cancellationToken);
+            // #1411: "the pair" is this library and its partner; a library with no partner is only itself.
+            var doomed = new List<LibraryItem> { library };
+            if (pair)
+            {
+                var pairs = await repository.ListLibraryPairsAsync(cancellationToken);
+                if (pairs.TryGetValue(library.Id, out var pairId))
+                {
+                    doomed.AddRange(all.Where(item => item.Id != library.Id
+                        && pairs.TryGetValue(item.Id, out var other)
+                        && string.Equals(other, pairId, StringComparison.OrdinalIgnoreCase)));
+                }
+            }
+
+            foreach (var gone in doomed)
+            {
+                if (!await repository.DeleteLibraryAsync(gone.Id, cancellationToken))
+                {
+                    continue;
+                }
+
+                await cleanup.LibraryDeletedAsync(gone.Id, gone.Name, cancellationToken);
+                await jobs.RemoveLibraryAutomationStateAsync(gone.Id, cancellationToken);
+                await realtimeEventPublisher.PublishEntityChangedAsync("AutomationState", gone.Id, cancellationToken);
+                await realtimeEventPublisher.PublishEntityChangedAsync("Library", gone.Id, cancellationToken);
+            }
+
             return Results.NoContent();
         });
 
@@ -951,6 +1043,49 @@ public static class LibrariesEndpointRouteBuilderExtensions
     /// trigger -- not related to indexer/download-client media scope,
     /// which is Deluno.Connections' own copy of the same small switch.
     /// </summary>
+
+    /// <summary>One half of a "Both" pair, as the ordinary create request it is (#1411).</summary>
+    private static CreateLibraryRequest PairMember(CreateLibraryPairRequest request, string mediaType, string folder, string? qualityProfileId)
+    {
+        var root = request.RootPath?.Trim().TrimEnd('/', '\\');
+        var separator = root is not null && root.Contains('\\') && !root.Contains('/') ? '\\' : '/';
+        var name = request.Name?.Trim();
+        return new CreateLibraryRequest(
+            Name: string.IsNullOrEmpty(name) ? null : $"{name} {folder}",
+            MediaType: mediaType,
+            Purpose: request.Purpose,
+            RootPath: string.IsNullOrEmpty(root) ? null : root + separator + folder,
+            DownloadsPath: request.DownloadsPath,
+            QualityProfileId: qualityProfileId,
+            ImportWorkflow: null,
+            ProcessorName: null,
+            ProcessorOutputPath: null,
+            ProcessorTimeoutMinutes: null,
+            ProcessorFailureMode: null,
+            AutoSearchEnabled: request.AutoSearchEnabled,
+            MissingSearchEnabled: request.MissingSearchEnabled,
+            UpgradeSearchEnabled: request.UpgradeSearchEnabled,
+            SearchIntervalMinutes: null,
+            RetryDelayHours: null,
+            MaxItemsPerRun: null);
+    }
+
+    /// <summary>Names each linked library's partner (#1411).</summary>
+    private static LibraryItem[] WithPairs(IReadOnlyList<LibraryItem> items, IReadOnlyDictionary<string, string> pairs)
+        => items.Select(item =>
+        {
+            if (!pairs.TryGetValue(item.Id, out var pairId))
+            {
+                return item;
+            }
+
+            var partner = items.FirstOrDefault(other => other.Id != item.Id
+                && pairs.TryGetValue(other.Id, out var otherPair)
+                && string.Equals(otherPair, pairId, StringComparison.OrdinalIgnoreCase));
+            return partner is null
+                ? item
+                : item with { PairId = pairId, PairedLibraryId = partner.Id, PairedLibraryName = partner.Name };
+        }).ToArray();
 
     private static LibraryItem MergeLibraryState(
         LibraryItem item,
