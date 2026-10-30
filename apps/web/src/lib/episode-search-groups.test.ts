@@ -30,3 +30,26 @@ describe("groupEpisodeSearches", () => {
     expect(rest).toHaveLength(2);
   });
 });
+
+describe("groupEpisodeSearches, other shapes", () => {
+  it("ignores a search that names no show, and other kinds of job", () => {
+    const orphan = { ...job("a", "queued", 1), showId: null, showTitle: null } as unknown as JobQueueItem;
+    const other = { ...job("b", "queued", 1), jobType: "movie.search" } as JobQueueItem;
+    const { groups, rest } = groupEpisodeSearches([orphan, other, job("c", "queued", 2)], []);
+    expect(groups).toHaveLength(0);
+    expect(rest).toHaveLength(3);
+  });
+
+  it("orders searches with no episode label without failing", () => {
+    const unnamed = (id: string) => ({ ...job(id, "queued", 1), target: null }) as unknown as JobQueueItem;
+    const { groups } = groupEpisodeSearches([unnamed("a"), unnamed("b"), job("c", "queued", 3)], []);
+    expect(groups[0].jobs).toHaveLength(3);
+  });
+
+  it("says only the parts that are not zero", () => {
+    const { groups } = groupEpisodeSearches([job("a", "queued", 1), job("b", "queued", 2)], []);
+    expect(describeEpisodeSearchGroup(groups[0])).toBe("2 episodes · 2 waiting");
+    const running = groupEpisodeSearches([job("a", "running", 1), job("b", "running", 2)], []).groups[0];
+    expect(describeEpisodeSearchGroup(running)).toBe("2 episodes · 2 running");
+  });
+});

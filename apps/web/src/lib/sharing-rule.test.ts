@@ -124,3 +124,17 @@ describe("reading a source's sharing answer back", () => {
     ).toBe("strict");
   });
 });
+
+describe("the season-pack seed time said back, in each size of wait", () => {
+  it("says days, a single day, a single hour, or hours, whichever fits", () => {
+    expect(describeSeasonPackSeedTime(72, null)).toContain("3 days");
+    expect(describeSeasonPackSeedTime(30, null)).toContain("1 day");
+    expect(describeSeasonPackSeedTime(1, null)).toContain("1 hour instead");
+    expect(describeSeasonPackSeedTime(6, null)).toContain("6 hours");
+  });
+
+  it("names the normal seed time when there is one, and leaves it out when there is not", () => {
+    expect(describeSeasonPackSeedTime(null, 48)).toBe("Season packs from this source use the same seed time as everything else: 2 days.");
+    expect(describeSeasonPackSeedTime(0, null)).toBe("Season packs from this source use the same seed time as everything else.");
+  });
+});

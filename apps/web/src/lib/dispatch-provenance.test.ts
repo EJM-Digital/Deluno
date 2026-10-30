@@ -49,3 +49,26 @@ describe("fileProvenanceFromTimeline", () => {
     }])).toBeNull();
   });
 });
+
+describe("fileProvenanceFromTimeline, other recordings", () => {
+  const recorded = (detailsJson: string) => [{
+    id: "e", dispatchId: "d", eventType: "FILE_PROVENANCE_RECORDED", timestamp: "2026-09-15T02:00:00Z", createdUtc: "2026-09-15T02:00:00Z", detailsJson
+  }];
+
+  it("gives nothing for details that are not an object", () => {
+    expect(fileProvenanceFromTimeline(recorded("null"))).toBeNull();
+    expect(fileProvenanceFromTimeline(recorded("[1]"))).toBeNull();
+    expect(fileProvenanceFromTimeline(recorded('"text"'))).toBeNull();
+  });
+
+  it("reads the event type in any case, and keeps a flag only when it is a real yes or no", () => {
+    const result = fileProvenanceFromTimeline(recorded(JSON.stringify({ releaseNameEvidence: "Film.2026-GRP", usedFallback: "yes", rename: "  Film (2026).mkv  " })));
+    expect(result).toMatchObject({ releaseNameEvidence: "Film.2026-GRP", usedFallback: null, rename: "Film (2026).mkv" });
+    expect(fileProvenanceFromTimeline(recorded(JSON.stringify({ sourcePath: "E:/in/a.mkv", usedFallback: true })))?.usedFallback).toBe(true);
+  });
+
+  it("is enough to know either path, but not neither the title nor a path", () => {
+    expect(fileProvenanceFromTimeline(recorded(JSON.stringify({ destinationPath: "Z:/Films/a.mkv" })))?.destinationPath).toBe("Z:/Films/a.mkv");
+    expect(fileProvenanceFromTimeline(recorded(JSON.stringify({ indexerName: "Nebula" })))).toBeNull();
+  });
+});
