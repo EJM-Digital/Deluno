@@ -20,9 +20,12 @@ namespace Deluno.Worker.HealthChecks.Checks;
 /// an arbitrary third-party address, which would make the result depend on
 /// that address's own uptime as much as the proxy's.</para>
 /// </summary>
-public sealed class HttpProxyReachabilityTester(IHttpClientFactory httpClientFactory) : IProxyReachabilityTester
+public sealed class HttpProxyReachabilityTester(IHttpClientFactory httpClientFactory, TimeSpan? connectTimeout = null) : IProxyReachabilityTester
 {
-    private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(10);
+    /// <summary>How long a forward proxy has to accept the connection before it is reported as not answering.</summary>
+    public static readonly TimeSpan DefaultConnectTimeout = TimeSpan.FromSeconds(10);
+
+    private readonly TimeSpan ConnectTimeout = connectTimeout ?? DefaultConnectTimeout;
 
     public async Task<ProxyReachabilityResult> TestAsync(ProxyItem proxy, CancellationToken cancellationToken)
     {
@@ -61,7 +64,7 @@ public sealed class HttpProxyReachabilityTester(IHttpClientFactory httpClientFac
         }
     }
 
-    private static async Task<ProxyReachabilityResult> TestForwardProxyAsync(ProxyItem proxy, CancellationToken cancellationToken)
+    private async Task<ProxyReachabilityResult> TestForwardProxyAsync(ProxyItem proxy, CancellationToken cancellationToken)
     {
         if (!TryParseHostAndPort(proxy, out var host, out var port))
         {

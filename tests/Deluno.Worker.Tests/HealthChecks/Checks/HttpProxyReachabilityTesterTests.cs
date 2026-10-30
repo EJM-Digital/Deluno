@@ -60,6 +60,38 @@ public sealed class HttpProxyReachabilityTesterTests
     }
 
     [Fact]
+    public void A_forward_proxy_has_ten_seconds_to_accept_the_connection()
+        => Assert.Equal(TimeSpan.FromSeconds(10), HttpProxyReachabilityTester.DefaultConnectTimeout);
+
+    [Fact]
+    public async Task A_forward_proxy_that_does_not_accept_in_time_is_reported_as_timed_out_not_as_refused()
+    {
+        // A zero allowance has already run out before the connect starts: the same branch a proxy that never answers takes after the ten seconds.
+        var services = new ServiceCollection();
+        services.AddHttpClient(HealthCheckHttpClients.Proxy);
+        var tester = new HttpProxyReachabilityTester(services.BuildServiceProvider().GetRequiredService<IHttpClientFactory>(), TimeSpan.Zero);
+
+        var result = await tester.TestAsync(Proxy(ProxyTypes.Http, "http://127.0.0.1:8123"), CancellationToken.None);
+
+        Assert.False(result.Reachable);
+        Assert.Contains("did not accept a connection at 127.0.0.1:8123 within 0 seconds", result.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(ProxyTypes.Http, "127.0.0.1", ":8080")]
+    [InlineData(ProxyTypes.Http, "http://127.0.0.1", ":8080")]
+    [InlineData(ProxyTypes.Socks5, "127.0.0.1", ":1080")]
+    [InlineData(ProxyTypes.Socks4, "127.0.0.1", ":1080")]
+    [InlineData(ProxyTypes.Socks5, "socks5://127.0.0.1", ":1080")]
+    public async Task A_forward_proxy_address_with_no_port_is_tested_on_the_usual_port_for_its_kind(string type, string address, string expectedPort)
+    {
+        var result = await CreateTester().TestAsync(Proxy(type, address), CancellationToken.None);
+
+        // Whether or not something happens to listen there, the test names the host and port it actually tried.
+        Assert.Contains("127.0.0.1" + expectedPort, result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_flaresolverr_proxy_with_a_blank_address_is_not_reachable()
     {
         var tester = CreateTester();
