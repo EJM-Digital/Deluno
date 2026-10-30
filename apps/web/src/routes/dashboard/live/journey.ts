@@ -173,6 +173,17 @@ export interface JourneyInput {
   work?: WorkItem[];
 }
 
+/** How long a sent release may wait for its client to list it before the board stops drawing it from the record alone. */
+export const JUST_SENT_MS = 5 * 60_000;
+
+/** The release was sent to a client a moment ago (and not refused), so the title is on its way even before the client says so. */
+function isJustSent(dispatch: DownloadDispatchItem, now: number): boolean {
+  if ((dispatch.grabStatus ?? "").toLowerCase() === "failed" || dispatch.failure || dispatch.importStatus) return false;
+  if ((dispatch.grabStatus ?? "").toLowerCase() !== "succeeded" && (dispatch.status ?? "").toLowerCase() !== "sent") return false;
+  const sentAt = Date.parse(dispatch.grabAttemptedUtc ?? dispatch.createdUtc);
+  return Number.isFinite(sentAt) && now - sentAt >= 0 && now - sentAt < JUST_SENT_MS;
+}
+
 function sameLocalDay(a: number, b: number): boolean {
   const first = new Date(a);
   const second = new Date(b);
@@ -380,6 +391,34 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
       destination: destinationOf(entity, handoff.mediaType),
       at: handoff.updatedUtc,
       to: "/queue"
+    });
+  }
+
+  // A release Deluno has just sent, before the client lists it (#1442): the title goes straight from Searching to Grabbed
+  // from the sent-download record, and becomes the client's card (same key) once the client lists it. Never a gap, never two.
+  for (const dispatch of dispatches) {
+    if (!isJustSent(dispatch, now) || dispatchImportEnded(dispatch)) continue;
+    const release = releaseKey(dispatch.releaseName);
+    if (seenReleases.has(release) || endedReleases.has(release)) continue;
+    if (dispatchByRelease.get(release) !== dispatch) continue;
+    seenReleases.add(release);
+    const entity = entityOf(dispatch);
+    const client = short(dispatch.downloadClientName);
+    cards.push({
+      key: dispatch.downloadClientId && dispatch.torrentHashOrItemId ? `${dispatch.downloadClientId}:${dispatch.torrentHashOrItemId}` : `sent:${dispatch.id}`,
+      stage: "grabbed",
+      title: titleFromRelease(dispatch.releaseName),
+      release: dispatch.releaseName,
+      entity,
+      state: { tone: "info", label: `${client ? `Sent to ${client}` : "Sent to the download client"} · waiting for it to start` },
+      dispatchId: dispatch.id,
+      startedBy: startedByOfDispatch(dispatch),
+      quality: dispatch.decisionQuality ?? null,
+      indexer: dispatch.indexerName || null,
+      client,
+      destination: destinationOf(entity, dispatch.mediaType),
+      at: dispatch.grabAttemptedUtc ?? dispatch.createdUtc,
+      to: cardLink(entity)
     });
   }
 
