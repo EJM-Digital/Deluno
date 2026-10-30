@@ -384,6 +384,7 @@ POST /api/jobs/retry-failed
 POST /api/jobs/{id}/dismiss
 POST /api/jobs/{id}/retry
 POST /api/libraries/
+POST /api/libraries/pair
 POST /api/libraries/{id}/import-existing
 POST /api/libraries/{id}/import-existing/pause
 POST /api/libraries/{id}/import-existing/resume

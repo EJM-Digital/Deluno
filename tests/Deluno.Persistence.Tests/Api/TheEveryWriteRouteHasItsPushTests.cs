@@ -157,6 +157,7 @@ public sealed class TheEveryWriteRouteHasItsPushTests
         "/api/jobs/retry-failed",
         // publishes the Library and AutomationState events itself
         "/api/libraries/",
+        "/api/libraries/pair",
         "/api/libraries/{id}",
         "/api/libraries/{id}/automation",
         "/api/libraries/{id}/import-existing",
