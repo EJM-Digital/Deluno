@@ -41,6 +41,7 @@ const SHOWS = [title("s1", "Severance"), title("s2", "Silo"), title("s3", "Andor
 const page = (items: unknown[]) => ({ items, totalCount: items.length, nextPageToken: null, facets: { all: items.length, unmonitored: 0, covered: 0 } });
 
 let calls: Array<{ url: string; method: string; body: any }>;
+let gate: Promise<void> | null;
 let writeReply: (url: string) => { ok: boolean; status?: number; body: unknown };
 
 let restoreLayout: () => void;
@@ -49,6 +50,7 @@ beforeEach(() => {
   restoreLayout = stubVirtualLayout();
   window.localStorage.clear();
   calls = [];
+  gate = null;
   shown = [...SHOWS];
   writeReply = (url) => ({ ok: true, body: url.endsWith("/bulk") ? { results: [], failureCount: 0 } : { updated: 2, searchesTriggered: 2, libraryCount: 1 } });
   mocks.fetchJson.mockImplementation(async (path: string) => {
@@ -62,6 +64,7 @@ beforeEach(() => {
   mocks.authedFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    if (gate) await gate;
     const reply = writeReply(url);
     if (url === "/api/series/bulk" && reply.ok) {
       const gone = new Set(((reply.body as { results: Array<{ seriesId: string; succeeded: boolean }> }).results ?? []).filter((r) => r.succeeded).map((r) => r.seriesId));
@@ -204,6 +207,28 @@ describe("Search now and Bulk edit from the bar", () => {
 
     await waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith("Bulk operation failed", expect.anything()));
     expect(screen.getByText("Bulk workflow")).toBeInTheDocument();
+  });
+
+  it("while the change is being sent the dialog says Running and the command bar's buttons are off, and a refusal turns both back on with the dialog still open", async () => {
+    let release!: () => void;
+    gate = new Promise<void>((resolve) => { release = resolve; });
+    writeReply = () => ({ ok: false, status: 503, body: { message: "no" } });
+    await renderShelf();
+    await select("Alien");
+
+    fireEvent.click(screen.getByRole("button", { name: "Search now" }));
+    const box = await dialog();
+    fireEvent.click(within(box).getByRole("button", { name: "Review and continue" }));
+    fireEvent.click(await within(box).findByRole("button", { name: "Confirm and run" }));
+
+    expect(await within(box).findByRole("button", { name: "Running..." })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Unmonitor" })).toBeDisabled();
+    release();
+
+    await waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith("Bulk operation failed", expect.anything()));
+    await waitFor(() => expect(within(box).queryByRole("button", { name: "Running..." })).toBeNull());
+    expect(screen.getByText("Bulk workflow")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Unmonitor" })).toBeEnabled();
   });
 
   it("Bulk edit opens the dialog on Set quality profile with this shelf's profiles", async () => {

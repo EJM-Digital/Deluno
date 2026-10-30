@@ -1,4 +1,4 @@
-import { configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { stubVirtualLayout } from "../../test/virtual-layout";
@@ -279,5 +279,45 @@ describe("a very large library", () => {
     await chooseLayout("Overview");
     await waitFor(() => expect(screen.queryAllByRole("button", { name: /^Open Title/ }).length).toBeGreaterThan(0));
     expect(screen.getAllByRole("button", { name: /^Open Title/ }).length).toBeLessThan(200);
+  });
+});
+
+describe("what the shelf remembers between visits", () => {
+  it("does not remember the sort: a fresh visit opens on Title A to Z even after another sort was chosen", async () => {
+    await renderShelf();
+    await waitFor(() => expect(rowButtons()).toHaveLength(3));
+    fireEvent.click(screen.getByRole("combobox", { name: "Sort" }));
+    fireEvent.click(await screen.findByRole("option", { name: /^Year/ }));
+    await waitFor(() => expect(lastPage().get("sort")).toBe("year"));
+    cleanup();
+
+    paged = [];
+    await renderShelf();
+    await waitFor(() => expect(paged.length).toBeGreaterThan(0));
+    expect(paged.every((params) => params.get("sort") === "title" && params.get("direction") === "asc")).toBe(true);
+    expect(window.localStorage.getItem("deluno-sort-movies")).toBeNull();
+  });
+
+  it("remembers the poster size for each shelf on its own and lays the grid out with it on the next visit", async () => {
+    await renderShelf();
+    await waitFor(() => expect(rowButtons()).toHaveLength(3));
+    const sizeButton = (label: string) => within(screen.getByRole("dialog")).getByText(label).closest("button")!;
+    fireEvent.click(screen.getByText("View"));
+    fireEvent.click(sizeButton("Large"));
+    expect(window.localStorage.getItem("deluno-card-size-movies")).toBe("lg");
+    expect(window.localStorage.getItem("deluno-card-size-shows")).toBeNull();
+    expect(sizeButton("Large").className).toContain("border-primary/35");
+    expect(sizeButton("Medium").className).not.toContain("border-primary/35");
+    cleanup();
+
+    await renderShelf();
+    fireEvent.click(screen.getByText("View"));
+    expect(sizeButton("Large").className).toContain("border-primary/35");
+    cleanup();
+
+    await renderShelf("shows");
+    fireEvent.click(screen.getByText("View"));
+    expect(sizeButton("Medium").className).toContain("border-primary/35");
+    expect(sizeButton("Large").className).not.toContain("border-primary/35");
   });
 });

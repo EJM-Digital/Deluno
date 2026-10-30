@@ -288,3 +288,22 @@ describe("closing the Add dialog (#1329)", () => {
     expect(within(reopened).queryByRole("button", { name: /^Add \d+ movies$/ })).toBeNull();
   });
 });
+
+describe("a result already in the library (#1329)", () => {
+  it("opening it goes to that title's page and closes the dialog, and adds nothing", async () => {
+    metadataReply = () => [{ ...match("1", "Arrival"), libraryEntryId: "entry-1" }];
+    const router = createMemoryRouter([{ path: "/", element: <LibraryView variant="movies" /> }, { path: "*", element: <p>elsewhere</p> }], { initialEntries: ["/"] });
+    render(<RouterProvider router={router} />);
+    await screen.findByRole("button", { name: /^Search these \d+$/ });
+    fireEvent.click(screen.getAllByRole("button", { name: "Add movie" })[0]);
+    const dialog = await screen.findByRole("dialog", { name: /Add movie/ });
+    fireEvent.change(titleBox(dialog), { target: { value: "Arrival" } });
+    fireEvent.submit(titleBox(dialog).closest("form")!);
+
+    fireEvent.click(await within(dialog).findByTitle("Open Arrival — already in your library"));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/movies/entry-1"));
+    expect(screen.queryByRole("dialog", { name: /Add movie/ })).toBeNull();
+    expect(calls.filter((c) => c.url === "/api/movies" || c.url === "/api/movies/")).toHaveLength(0);
+  });
+});

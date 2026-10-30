@@ -43,6 +43,8 @@ const SAVED: Record<string, unknown> & { automationAction: string | null; id: st
 };
 
 let views: Array<typeof SAVED>;
+let viewsFail: boolean;
+let viewRequests: string[];
 let pages: URLSearchParams[];
 let saved: Array<{ url: string; method: string; body: any }>;
 let restoreLayout: () => void;
@@ -52,6 +54,8 @@ beforeEach(() => {
   window.localStorage.clear();
   window.sessionStorage.clear();
   views = [];
+  viewsFail = false;
+  viewRequests = [];
   pages = [];
   saved = [];
   mocks.fetchJson.mockImplementation(async (path: string, init?: RequestInit) => {
@@ -61,7 +65,11 @@ beforeEach(() => {
     }
     if (path === "/api/movies/controls") return CONTROLS;
     if (path === "/api/libraries") return [{ id: "lib-a", name: "4K films", mediaType: "movies", rootPath: "/a", qualityProfileId: "p1" }, { id: "lib-b", name: "Kids films", mediaType: "movies", rootPath: "/b", qualityProfileId: "p1" }];
-    if (path.startsWith("/api/library-views?")) return views;
+    if (path.startsWith("/api/library-views?")) {
+      viewRequests.push(path);
+      if (viewsFail) throw new Error("the list could not be read");
+      return views;
+    }
     if (path === "/api/library-views" && init?.method === "POST") {
       const body = JSON.parse(String(init.body));
       saved.push({ url: path, method: "POST", body });
@@ -173,6 +181,19 @@ describe("applying a saved filter", () => {
 
     expect(await within(drawer).findByText(/Kids films · Year at least 2015/)).toBeInTheDocument();
     expect(within(drawer).getByText(/All libraries · no narrowing/)).toBeInTheDocument();
+  });
+});
+
+describe("loading the saved filters", () => {
+  it("asks for this shelf's own variant, and a list that cannot be read leaves the saved list empty instead of breaking the drawer", async () => {
+    viewsFail = true;
+    const drawer = await openFilterDrawer();
+
+    await waitFor(() => expect(viewRequests.length).toBeGreaterThan(0));
+    expect(viewRequests[0]).toContain("variant=movies");
+    expect(within(drawer).queryByText(/narrowing/)).toBeNull();
+    expect(within(drawer).getByPlaceholderText("Name this filter")).toBeInTheDocument();
+    expect(within(drawer).getByRole("button", { name: "Add a field" })).toBeInTheDocument();
   });
 });
 
