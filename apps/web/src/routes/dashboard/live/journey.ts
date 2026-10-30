@@ -16,6 +16,7 @@
 import type { DownloadDispatchItem, DownloadQueueItem, ProcessorHandoffItem } from "../../../lib/api";
 import type { DashboardSummary } from "../../../lib/api/types/operations";
 import { dispatchImportEnded } from "../../../lib/dispatch-final-state";
+import { stuckNextStep, waitingWords } from "../../../lib/download-wait";
 import { handoffStatusLabel, isProcessorFailure, isWithProcessor, queueItemNeedsAttention } from "../../../lib/needs-action";
 import type { Tone } from "../../../lib/status-tones";
 import type { LiveProgress, WorkItem } from "../live-events";
@@ -61,6 +62,10 @@ export interface JourneyCard {
   queueRef?: { clientId: string; itemId: string };
   /** The download has stopped moving: amber, "not moving", with the reason in its tooltip. */
   stuck?: boolean;
+  /** What follows "Stuck": what the stall rule will do next (#1449). */
+  stuckNext?: string;
+  /** The download has started but is not moving yet (getting details, looking for peers, a first strike): not stuck, not moving. */
+  waiting?: boolean;
   /** When the download should be done, from the client's own time-left reading (ms since 1970). Absent when it gives none. */
   finishAtMs?: number;
   /** Why Deluno is fetching it, when that can be told from what was recorded. */
@@ -283,6 +288,8 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
     let state: JourneyCard["state"] = { tone: "info", label: "Working" };
     let reason: string | null = null;
     let stuck = false;
+    let stuckNext: string | undefined;
+    let waiting = false;
 
     // A finished download that has nobody to share with is reported "stalled" by some clients: it is downloaded, not stuck.
     const downloaded = (item.progress ?? 0) >= 99.95 && DOWNLOADING.includes(item.status);
@@ -296,6 +303,12 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
       state = { tone: "warn", label: "Stuck" };
       reason = stuckReason(item);
       stuck = true;
+      stuckNext = stuckNextStep(item, now);
+    } else if (beforeTheProcessor && item.status !== "queued" && waitingWords(item, now)) {
+      // Not stuck until the stall rule says so (#1449): a new download says what it is waiting for.
+      stage = "downloading";
+      state = { tone: "info", label: waitingWords(item, now) as string };
+      waiting = true;
     } else if (item.status === "queued") {
       stage = "grabbed";
       state = { tone: "info", label: "Waiting in the client" };
@@ -333,6 +346,8 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
       reasonFull: reason,
       dispatchId: dispatch?.id,
       stuck,
+      stuckNext,
+      waiting: waiting || undefined,
       startedBy: startedByOfDispatch(dispatch),
       quality: dispatch?.decisionQuality ?? null,
       sizeBytes: item.sizeBytes,
@@ -505,6 +520,20 @@ export function byStage(cards: JourneyCard[]): Record<Stage, JourneyCard[]> {
   grouped.downloading.sort((a, b) => Number(a.stuck ?? false) - Number(b.stuck ?? false) || (b.progress ?? 0) - (a.progress ?? 0));
   for (const stage of ["processor", "importing"] as const) grouped[stage].sort((a, b) => toneRank[a.state.tone] - toneRank[b.state.tone]);
   return grouped;
+}
+
+/**
+ * What a station calls the titles on it (#1449): "moving" only when every card there is moving, "waiting" or "stuck"
+ * when none is, "here" for a mix. One rule with the cards, so "1 moving" never sits over a stuck card.
+ */
+export function stationNoun(stage: Stage, cards: readonly JourneyCard[]): "moving" | "waiting" | "stuck" | "here" {
+  if (stage !== "downloading" || cards.length === 0) return "here";
+  const stuck = cards.filter((card) => card.stuck).length;
+  const waiting = cards.filter((card) => card.waiting).length;
+  const moving = cards.length - stuck - waiting;
+  if (moving === cards.length) return "moving";
+  if (moving > 0) return "here";
+  return stuck === cards.length ? "stuck" : "waiting";
 }
 
 /**

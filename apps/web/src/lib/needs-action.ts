@@ -10,6 +10,7 @@ import type {
 } from "./api";
 import { isChosenOnSearch } from "./dispatch-target";
 import { downloadQueueStatuses } from "./download-telemetry";
+import { isStuck } from "./download-wait";
 import { isJobRetrying } from "./job-status-constants";
 
 /**
@@ -104,7 +105,8 @@ export function isDispatchFailure(dispatch: DownloadDispatchItem) {
 export function queueItemNeedsAttention(item: DownloadQueueItem) {
   // A download that is in the library has nothing left to ask of anyone, whatever its client said on the way.
   if (item.status === downloadQueueStatuses.imported) return false;
-  return item.status === downloadQueueStatuses.stalled || Boolean(item.errorMessage) || Boolean(item.healthFindings?.length);
+  // A first strike, or a download still getting its details, is waiting, not a problem (#1449): only the stall rule's decision counts.
+  return Boolean(item.errorMessage) || isStuck(item);
 }
 
 type RecoveryCase = MovieImportRecoverySummary["recentCases"][number];

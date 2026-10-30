@@ -25,7 +25,7 @@ import { Count, JourneyToken, type CardContext } from "./card";
 import { fitDetails } from "./detail-fit";
 import { cardsBudget, journeyMode, journeySize, JOURNEY_ROWS, MORE_PX } from "./layout";
 import { useElementSize, useRemPx } from "./hooks";
-import type { JourneyCard, Stage } from "./journey";
+import { stationNoun, type JourneyCard, type Stage } from "./journey";
 import { LANES } from "./lanes";
 import { useStillWhileResizing } from "./motion";
 import { faceOf } from "./titles";
@@ -41,7 +41,7 @@ export function stationsFor(hasProcessor: boolean): Stage[] {
 const LANES_BOTTOM_PX = 10;
 
 /** One segment of the ribbon: the stage's icon, its name and how many titles are there. */
-function Station({ stage, count, usual }: { stage: Stage; count: number; usual?: string }) {
+function Station({ stage, count, usual, noun = "here" }: { stage: Stage; count: number; usual?: string; noun?: string }) {
   const lane = LANES[stage];
   return (
     <div role="group" aria-label={lane.label} className={cn("lj-station", count > 0 ? "lj-active" : "lj-empty")} style={{ ["--lj-st" as string]: `hsl(var(${lane.accent}))` } satisfies CSSProperties}>
@@ -49,7 +49,7 @@ function Station({ stage, count, usual }: { stage: Stage; count: number; usual?:
         <span aria-hidden className="lj-dot"><lane.icon /></span>
         <span className="lj-text">
           <span className="lj-nm">{lane.label}</span>
-          <span className="lj-ct">{count === 0 ? "none" : <><Count value={count} /> {stage === "downloading" ? "moving" : "here"}</>}</span>
+          <span className="lj-ct">{count === 0 ? "none" : <><Count value={count} /> {noun}</>}</span>
         </span>
       </Link>
     </div>
@@ -151,7 +151,7 @@ export function Journey({
                 if (grouped[stage].length === 0 && counts[stage] === 0) return null;
                 return (
                   <div key={`stacked-${stage}`} data-station={stage}>
-                    <Station stage={stage} count={counts[stage]} usual={usual[stage]} />
+                    <Station stage={stage} count={counts[stage]} usual={usual[stage]} noun={stationNoun(stage, grouped[stage])} />
                     {grouped[stage].map((card) => <JourneyToken key={card.key} card={card} {...context} />)}
                   </div>
                 );
@@ -160,7 +160,7 @@ export function Journey({
           ) : (
             <>
               <div className="lj-stations">
-                {stations.map((stage) => <Station key={stage} stage={stage} count={counts[stage]} usual={usual[stage]} />)}
+                {stations.map((stage) => <Station key={stage} stage={stage} count={counts[stage]} usual={usual[stage]} noun={stationNoun(stage, grouped[stage])} />)}
               </div>
               <div ref={lanesRef} className="lj-lanes" style={{ height: lanesHeight, flex: lanesHeight === undefined ? undefined : "none", marginBottom: LANES_BOTTOM_PX }}>
                 {stations.slice(1).map((stage, index) => <div key={`bg-${stage}`} aria-hidden className="lj-lane-bg" style={{ left: `${((index + 1) * 100) / n}%` }} />)}

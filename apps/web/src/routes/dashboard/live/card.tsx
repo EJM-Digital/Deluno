@@ -91,7 +91,10 @@ export function statusOf(card: JourneyCard, indexers: number): CardStatus {
   // Only what is known: the download has stopped moving. Why is in its tooltip; Deluno is not claimed to be doing anything it may not be.
   // The import has finished: full and green for a moment, before the poster flies to the library.
   if (card.landed) return { text: "✓ Imported · in your library", tone: "ok", pulse: false, lead: "✓ Imported" };
-  if (card.stuck) return { text: floorProgress(card.progress) > 0 ? `Stuck at ${percent} · not moving` : "Stuck · not moving", tone: "warn", pulse: true };
+  if (card.stuck) {
+    const next = card.stuckNext ?? "not moving";
+    return { text: floorProgress(card.progress) > 0 ? `Stuck at ${percent} · ${next}` : `Stuck · ${next}`, tone: "warn", pulse: true };
+  }
   if (card.stage === "grabbed") {
     const parts = [card.quality, card.indexer ? `from ${card.indexer}` : null].filter(Boolean);
     return { text: parts.length > 0 ? parts.join(" · ") : card.state.label, tone: card.state.tone, pulse: false };

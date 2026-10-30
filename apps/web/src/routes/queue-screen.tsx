@@ -69,6 +69,7 @@ import { fileProvenanceFromTimeline } from "../lib/dispatch-provenance";
 import { dismissFailedJob } from "../lib/failed-jobs";
 import { JOB_STATUS, isJobActive, isJobDeadLettered, isJobFailed, isJobRetrying, type JobStatus } from "../lib/job-status-constants";
 import { finishedPlan, splitQueue } from "../lib/in-progress";
+import { waitingWords } from "../lib/download-wait";
 import { clientHistoryOutcomeLabel, downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
 import { parseImportJobPayload } from "../lib/import-job-payload";
 import { placeDownloadsOnce } from "../lib/transfer-stages";
@@ -2765,6 +2766,9 @@ function isFinishing(item: DownloadQueueItem) {
 function queueChip(item: DownloadQueueItem): { tone: NonNullable<ChipProps["tone"]>; label: string } {
   if (item.failure) return { tone: integrationFailureTone(item.failure), label: integrationFailureShortLabel(item.failure) };
   if (item.errorMessage || item.status === downloadQueueStatuses.stalled) return { tone: statusTone("transfer.stalled"), label: queueStatusLabel(item.status) };
+  // Same words as the Live board (#1449): a new download says what it is waiting for, and Stuck is only the stall rule's decision.
+  const waiting = waitingWords(item);
+  if (waiting) return { tone: "info", label: waiting };
   if (visibleFindings(item).length) return statusPresentation("transfer.needsALook");
   // Was green here and grey in the pipeline strip. Green is the colour for
   // done, and a release waiting to be imported is mid-pipeline.

@@ -171,12 +171,26 @@ describe("In progress: the Status chip", () => {
       status: "downloading",
       healthFindings: [{
         severity: "warning", kind: "low-peers", summary: "Very few peers.", evidence: "1 peer.", recommendedAction: "Wait.", canSafelyRetry: true,
-        canSafelyRemove: false, strikeCount: 1, candidateBlocked: false, ignoredUntilUtc: null, ruleId: null, ruleActionPreset: null, ruleStrikeLimit: null, nextStrikeUtc: null
+        canSafelyRemove: false, strikeCount: 3, candidateBlocked: false, ignoredUntilUtc: null, ruleId: null, ruleActionPreset: null, ruleStrikeLimit: null, nextStrikeUtc: null
       }]
     })]);
 
     const { text } = rowOf("Needs.A.Look.2026.1080p-GROUP");
     expect(text).toContain("Needs a look");
+  });
+
+  it("a first strike is waiting, in the Live board's words, not a problem (#1449)", () => {
+    showQueue([item("First.Strike.2026.1080p-GROUP", {
+      status: "downloading",
+      healthFindings: [{
+        severity: "warning", kind: "no-progress", summary: "No throughput.", evidence: "", recommendedAction: "Wait.", canSafelyRetry: true,
+        canSafelyRemove: true, strikeCount: 1, candidateBlocked: false, ignoredUntilUtc: null, ruleId: "default-no-progress", ruleActionPreset: "replace", ruleStrikeLimit: 3, nextStrikeUtc: null
+      }]
+    })]);
+
+    const { text } = rowOf("First.Strike.2026.1080p-GROUP");
+    expect(text).toContain("checking again soon (strike 1 of 3)");
+    expect(text).not.toContain("Needs a look");
   });
 });
 
