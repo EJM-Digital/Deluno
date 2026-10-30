@@ -9,7 +9,8 @@ import { emptyPlatformSettingsSnapshot, type GuidePackage } from "../lib/api";
  */
 
 vi.setConfig({ testTimeout: 30_000 });
-vi.mock("../hooks/use-unsaved-changes", () => ({ useUnsavedChanges: () => undefined }));
+const unsaved = vi.hoisted(() => ({ dirty: false }));
+vi.mock("../hooks/use-unsaved-changes", () => ({ useUnsavedChanges: (dirty: boolean) => { unsaved.dirty = dirty; } }));
 const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("../components/shell/toaster", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../components/shell/toaster")>()),
@@ -145,6 +146,22 @@ describe("safeguards", () => {
     await waitFor(() => expect(sent("PATCH", "/api/settings")).toHaveLength(1));
     expect(sent("PATCH", "/api/settings")[0].body).toEqual({ searchScoringMode: "rules-only", releaseNeverGrabPatterns: "CAM\nTS" });
     expect(await screen.findByText("Saved just now")).toBeTruthy();
+  });
+
+  it("guards leaving the page while the safeguards have an unsaved edit, and not before or after the save", async () => {
+    replies["PATCH /api/settings"] = (init) => { loaderData.settings = { ...(loaderData.settings as object), ...JSON.parse(init.body!) }; return json(loaderData.settings); };
+    load([]);
+    renderPage();
+    expect(unsaved.dirty).toBe(false);
+
+    const box = screen.getByRole("textbox", { name: "Add a never-grab word" });
+    fireEvent.change(box, { target: { value: "NOGROUP" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(unsaved.dirty).toBe(true));
+
+    fireEvent.click(screen.getByRole("button", { name: "Save safeguards" }));
+    await waitFor(() => expect(sent("PATCH", "/api/settings")).toHaveLength(1));
+    await waitFor(() => expect(unsaved.dirty).toBe(false));
   });
 
   it("adds a never-grab word with Enter or Add, ignores a repeat in any letter case, removes a word and restores the defaults", async () => {

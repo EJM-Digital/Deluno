@@ -11,7 +11,8 @@ import { emptyPlatformSettingsSnapshot, type GuidePackage } from "../lib/api";
 
 const authedFetchMock = vi.fn();
 vi.mock("../lib/use-auth", () => ({ authedFetch: (...args: unknown[]) => authedFetchMock(...args) }));
-vi.mock("../hooks/use-unsaved-changes", () => ({ useUnsavedChanges: () => undefined }));
+const unsaved = vi.hoisted(() => ({ dirty: false }));
+vi.mock("../hooks/use-unsaved-changes", () => ({ useUnsavedChanges: (dirty: boolean) => { unsaved.dirty = dirty; } }));
 
 const toastSuccess = vi.fn();
 const toastError = vi.fn();
@@ -247,7 +248,10 @@ describe("an existing custom rule", () => {
 
     fireEvent.click(screen.getByText("Good groups"));
     const again = within(await screen.findByRole("dialog"));
+    expect(unsaved.dirty).toBe(false);
     fireEvent.change(again.getByDisplayValue("Good groups"), { target: { value: "Better groups" } });
+    // The same edit is what makes leaving the page ask first.
+    await waitFor(() => expect(unsaved.dirty).toBe(true));
     fireEvent.click(again.getByRole("button", { name: "Cancel" }));
     const ask = within(await screen.findByRole("dialog", { name: "Discard unsaved changes?" }));
     expect(ask.getByText("Discard unsaved changes?")).toBeVisible();
@@ -260,6 +264,7 @@ describe("an existing custom rule", () => {
     fireEvent.click(askAgain.getByRole("button", { name: "Discard" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(calls("PUT", "/api/custom-formats/cf-1")).toHaveLength(0);
+    expect(unsaved.dirty).toBe(false);
   });
 
   it("Save puts the changed rule at its own id with the criteria that remain", async () => {

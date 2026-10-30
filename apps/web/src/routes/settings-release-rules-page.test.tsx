@@ -162,6 +162,35 @@ describe("release rules apply to several tags, in an order, with patterns (#994 
     expect(screen.getByText("Rule for every title")).toBeTruthy();
   });
 
+  it("in first-match mode a tagged row dragged onto another takes its place and saves the order, while the default rule cannot be dragged", async () => {
+    loaderData.ruleMode = "first-match";
+    loaderData.profiles = [defaultRule, scopedProfile, secondRule];
+    authedFetchMock.mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
+    renderPage();
+    const rowOf = (name: string) => screen.getAllByRole("row").find((candidate) => candidate.textContent?.includes(name))!;
+
+    expect(rowOf("Kids rule").getAttribute("draggable")).toBe("true");
+    expect(rowOf("Anime rule").getAttribute("draggable")).toBe("true");
+    expect(rowOf("Default rule").getAttribute("draggable")).not.toBe("true");
+
+    fireEvent.dragStart(rowOf("Anime rule"));
+    fireEvent.dragOver(rowOf("Kids rule"));
+    fireEvent.drop(rowOf("Kids rule"));
+
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith(
+      "/api/release-profiles/order",
+      expect.objectContaining({ method: "PUT", body: JSON.stringify({ ids: ["profile-3", "profile-1"] }) })
+    ));
+  });
+
+  it("outside first-match mode no row can be dragged", () => {
+    loaderData.ruleMode = "combine";
+    loaderData.profiles = [defaultRule, scopedProfile, secondRule];
+    renderPage();
+
+    for (const row of screen.getAllByRole("row")) expect(row.getAttribute("draggable")).not.toBe("true");
+  });
+
   it("in first-match mode lists the default rule last and saves a new order from the move buttons", async () => {
     loaderData.ruleMode = "first-match";
     loaderData.profiles = [defaultRule, scopedProfile, secondRule];
