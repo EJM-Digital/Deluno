@@ -46,6 +46,6 @@ public sealed class AShowWithNoMonitoredEpisodeSaysNothingIsWantedTests
 
         var stored = await ReasonAfterRefreshAsync(app, show, monitored: 1);
 
-        Assert.Equal("covered|All 1 aired episode are here at the quality you asked for.", stored);
+        Assert.Equal("covered|The 1 aired episode is here at the quality you asked for.", stored);
     }
 }

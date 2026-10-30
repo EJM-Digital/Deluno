@@ -106,8 +106,12 @@ public static class SeriesRungWriter
     {
         WantedStatuses.Covered when nothingWanted => "None of this show's episodes are monitored, so nothing is wanted.",
         WantedStatuses.Upcoming => "Nothing has aired yet.",
-        WantedStatuses.Covered => $"All {aired} aired episode{(aired == 1 ? "" : "s")} are here at the quality you asked for.",
-        WantedStatuses.Upgrade => $"All {aired} aired episode{(aired == 1 ? "" : "s")} are here, and some could be better.",
+        WantedStatuses.Covered => aired == 1
+            ? "The 1 aired episode is here at the quality you asked for."
+            : $"All {aired} aired episodes are here at the quality you asked for.",
+        WantedStatuses.Upgrade => aired == 1
+            ? "The 1 aired episode is here, and could be better."
+            : $"All {aired} aired episodes are here, and some could be better.",
         _ => aired == 0
             ? "Deluno has not catalogued this show's episodes yet."
             : $"{airedWithFile} of {aired} aired episodes are here."
