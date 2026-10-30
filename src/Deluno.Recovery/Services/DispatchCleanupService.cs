@@ -1,6 +1,7 @@
 using Deluno.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Jobs.Contracts;
+using Deluno.Platform.Data;
 using Deluno.Recovery.Contracts;
 using Microsoft.Extensions.Logging;
 
@@ -11,7 +12,8 @@ public sealed class DispatchCleanupService(
     TimeProvider timeProvider,
     ILogger<DispatchCleanupService> logger,
     IIndexerQueryStatsRepository? indexerQueryStatsRepository = null,
-    IJobQueueRepository? jobQueueRepository = null)
+    IJobQueueRepository? jobQueueRepository = null,
+    IAutomationIdempotencyStore? automationIdempotencyStore = null)
     : IDispatchCleanupService
 {
     private static readonly TimeSpan StaleFailedAge = TimeSpan.FromDays(7);
@@ -23,6 +25,8 @@ public sealed class DispatchCleanupService(
     /// one: the media read alone adds about 35,000 rows a year.
     /// </summary>
     private static readonly TimeSpan CompletedJobRetention = TimeSpan.FromDays(365);
+    /// <summary>Integration API repeat keys: a repeat inside 7 days gets the stored answer; older keys are removed.</summary>
+    private static readonly TimeSpan AutomationIdempotencyRetention = TimeSpan.FromDays(7);
     private const int BatchLimit = 50;
 
     public async Task<DispatchCleanupResult> RunCleanupPassAsync(CancellationToken cancellationToken)
@@ -115,6 +119,27 @@ public sealed class DispatchCleanupService(
             {
                 // Job retention must not prevent dispatch recovery.
                 logger.LogWarning(ex, "Completed job housekeeping failed.");
+            }
+        }
+
+        if (automationIdempotencyStore is not null)
+        {
+            try
+            {
+                var prunedKeys = await automationIdempotencyStore.PruneAsync(
+                    timeProvider.GetUtcNow() - AutomationIdempotencyRetention,
+                    cancellationToken);
+                if (prunedKeys > 0)
+                {
+                    logger.LogInformation(
+                        "Integration housekeeping removed {PrunedCount} saved repeat key(s) older than {RetentionDays} days.",
+                        prunedKeys,
+                        AutomationIdempotencyRetention.TotalDays);
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Integration repeat key housekeeping failed.");
             }
         }
 
