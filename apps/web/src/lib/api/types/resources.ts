@@ -16,6 +16,11 @@ export interface LibraryItem {
   processorName: string | null;
   /** The processor connection this library hands downloads to; renaming the connection does not change it. */
   processorConnectionId?: string | null;
+  /** The id the two libraries made together by "Both" share (#1411); absent for a library on its own. */
+  pairId?: string | null;
+  /** The other library of the pair, and its name (#1411). */
+  pairedLibraryId?: string | null;
+  pairedLibraryName?: string | null;
   processorOutputPath: string | null;
   processorTimeoutMinutes: number;
   processorFailureMode: "block" | "import-original" | "manual-review" | string;

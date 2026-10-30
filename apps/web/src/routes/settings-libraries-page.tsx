@@ -38,6 +38,7 @@ import { downloadsPathProblem } from "../lib/library-paths";
 import { FolderChainSection } from "./connections/folder-chain-section";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { plural } from "../lib/plural";
+import { libraryPairPlan } from "../lib/library-pair";
 
 interface LoaderData {
   libraries: LibraryItem[];
@@ -47,7 +48,8 @@ interface LoaderData {
 
 interface LibraryForm {
   name: string;
-  mediaType: "movies" | "tv";
+  /** "both" (#1411) is only for adding: it makes a Movies library and a TV library, linked. */
+  mediaType: "movies" | "tv" | "both";
   rootPath: string;
   /** Where finished downloads for this library arrive. Empty means "use the download client's own folder". */
   downloadsPath: string;
@@ -98,6 +100,7 @@ export function SettingsLibrariesPage() {
   const [errors, setErrors] = useState<{ name?: string; rootPath?: string; downloadsPath?: string }>({});
   const [folderCheckKey, setFolderCheckKey] = useState(0);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const pairedWith = (library: LibraryItem | null) => (library?.pairedLibraryId ? library.pairedLibraryName ?? "its partner library" : null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [busy, setBusy] = useState(false);
   const [existingImportLibraryId, setExistingImportLibraryId] = useState<string | null>(null);
@@ -155,7 +158,7 @@ export function SettingsLibrariesPage() {
     else closeDrawer();
   }
 
-  function chooseType(mediaType: "movies" | "tv") {
+  function chooseType(mediaType: "movies" | "tv" | "both") {
     if (mode.kind !== "create" || mediaType === form.mediaType) return;
     setForm((current) => ({
       ...current,
@@ -184,7 +187,24 @@ export function SettingsLibrariesPage() {
     const submitted = form;
     try {
       let library: LibraryItem;
-      if (creating) {
+      if (creating && form.mediaType === "both") {
+        // "Both" (#1411): the server makes the Movies library and the TV library together and links them.
+        const response = await authedFetch("/api/libraries/pair", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: form.name.trim(),
+            purpose: "Main library",
+            rootPath: form.rootPath.trim(),
+            downloadsPath: form.downloadsPath.trim() || null,
+            autoSearchEnabled: false,
+            missingSearchEnabled: false,
+            upgradeSearchEnabled: false
+          })
+        });
+        if (!response.ok) throw new Error(await readErrorText(response, "The libraries could not be created."));
+        library = ((await response.json()) as LibraryItem[])[0];
+      } else if (creating) {
         const response = await authedFetch("/api/libraries", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -237,7 +257,10 @@ export function SettingsLibrariesPage() {
       // A field the person kept typing in while this save ran keeps what they typed; it stays a change to save.
       setForm((current) => settleFormAfterSave(current, submitted, settled));
       setInitialForm(settled);
-      if (creating) {
+      if (creating && submitted.mediaType === "both") {
+        toast.success(`${submitted.name.trim()} Movies and ${submitted.name.trim()} TV libraries created`);
+        closeDrawer();
+      } else if (creating) {
         toast.success(`${settled.name} library created`);
         closeDrawer();
       } else {
@@ -255,13 +278,13 @@ export function SettingsLibrariesPage() {
     }
   }
 
-  async function handleRemove() {
+  async function handleRemove(withPartner = false) {
     if (mode.kind !== "edit") return;
     setBusy(true);
     try {
-      const response = await authedFetch(`/api/libraries/${mode.id}`, { method: "DELETE" });
+      const response = await authedFetch(`/api/libraries/${mode.id}${withPartner ? "?pair=true" : ""}`, { method: "DELETE" });
       if (!response.ok && response.status !== 204) throw new Error(await readErrorText(response, "Library could not be removed."));
-      toast.success(`${editing?.name ?? "Library"} removed`);
+      toast.success(withPartner ? `${editing?.name ?? "Library"} and ${pairedWith(editing) ?? "its partner"} removed` : `${editing?.name ?? "Library"} removed`);
       setConfirmRemove(false);
       setInitialForm(form);
       closeDrawer();
@@ -286,10 +309,11 @@ export function SettingsLibrariesPage() {
   }
 
   /* ---------------------------------------------------------- render */
-  const typeLabel = form.mediaType === "tv" ? "TV" : "Movies";
+  const typeLabel = form.mediaType === "tv" ? "TV" : form.mediaType === "both" ? "Movies and TV" : "Movies";
+  const pairPlan = form.mediaType === "both" ? libraryPairPlan(form.name, form.rootPath) : null;
   const drawerTitle = mode.kind === "create" ? "New library" : editing?.name ?? form.name;
   const drawerDescription =
-    mode.kind === "create" ? "Where the files live and how Deluno should look after them." : `Library · ${editing?.mediaType === "tv" ? "TV" : "Movies"} · ${editing?.rootPath ?? ""}`;
+    mode.kind === "create" ? "Where the files live and how Deluno should look after them." : `Library · ${editing?.mediaType === "tv" ? "TV" : "Movies"} · ${editing?.rootPath ?? ""}${pairedWith(editing) ? ` · Paired with ${pairedWith(editing)}` : ""}`;
 
   return (
     <div className="grid gap-(--page-gap)">
@@ -334,7 +358,7 @@ export function SettingsLibrariesPage() {
               const status = !hasSearchSelection ? "Not configured" : running ? "Searching" : library.autoSearchEnabled ? "Scheduled" : "Paused";
               return (
                 <ListRow key={library.id} onClick={() => openEdit(library)} selected={mode.kind === "edit" && mode.id === library.id}>
-                  <ListNameCell name={library.name} sub={library.mediaType === "tv" ? "TV shows" : "Movies"} />
+                  <ListNameCell name={library.name} sub={`${library.mediaType === "tv" ? "TV shows" : "Movies"}${pairedWith(library) ? ` · Paired with ${pairedWith(library)}` : ""}`} />
                   <ListCell mono primary={library.rootPath} secondary={library.downloadsPath ? <>Advanced source: <span className="font-mono">{library.downloadsPath}</span></> : "Uses the download client's reported folder"} />
                   <ListCell
                     primary={library.defaultPolicySetName ?? (profile ? <span>Direct quality profile: {profile.name}</span> : <span className="text-muted-foreground">No profile assigned</span>)}
@@ -409,13 +433,14 @@ export function SettingsLibrariesPage() {
                 />
               </Field>
               <Field label="Media type">
-                <SegmentedControl<"movies" | "tv">
+                <SegmentedControl<"movies" | "tv" | "both">
                   value={form.mediaType}
                   onValueChange={chooseType}
                   disabled={mode.kind === "edit"}
                   options={[
                     { value: "movies", label: "Movies" },
-                    { value: "tv", label: "TV shows" }
+                    { value: "tv", label: "TV shows" },
+                    ...(mode.kind === "create" ? [{ value: "both" as const, label: "Both" }] : [])
                   ]}
                 />
               </Field>
@@ -428,7 +453,7 @@ export function SettingsLibrariesPage() {
               <p className="text-(length:--type-caption) leading-relaxed text-muted-foreground">Choose where Deluno puts the clean, imported files people see in this library.</p>
             </div>
             <div className="mt-4 grid gap-(--grid-gap)">
-              <Field label="Library folder" help="This is where imported files end up." error={errors.rootPath}>
+              <Field label={pairPlan ? "Folder for both" : "Library folder"} help={pairPlan ? "Deluno makes a Movies folder and a TV folder inside it." : "This is where imported files end up."} error={errors.rootPath}>
                 <PathInput
                   value={form.rootPath}
                   onChange={(rootPath) => {
@@ -456,6 +481,18 @@ export function SettingsLibrariesPage() {
                   stacked
                 />
               </Field>
+              {pairPlan ? (
+                <div className="grid gap-1 rounded-xl border border-hairline bg-surface-1 p-3 text-(length:--type-caption)" aria-label="The two libraries this makes">
+                  <p className="font-semibold text-foreground">This makes two linked libraries</p>
+                  {pairPlan.map((part) => (
+                    <p key={part.mediaType} className="text-muted-foreground">
+                      <span className="text-foreground">{part.name || (part.mediaType === "tv" ? "TV library" : "Movies library")}</span>
+                      {" · "}
+                      <span className="font-mono">{part.folder || "choose a folder"}</span>
+                    </p>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </section>
 
@@ -467,9 +504,10 @@ export function SettingsLibrariesPage() {
             <FieldRow>
               <Field
                 label="Quality profile"
-                help={mode.kind === "edit" ? "Changing it rechecks every title here that follows the library's profile. A title with a profile of its own keeps it." : "You can change this later."}
+                help={pairPlan ? "Each library starts with the standard profile for its own type. Change either one later." : mode.kind === "edit" ? "Changing it rechecks every title here that follows the library's profile. A title with a profile of its own keeps it." : "You can change this later."}
               >
                 <Select
+                  disabled={Boolean(pairPlan)}
                   aria-label="Quality profile"
                   value={form.qualityProfileId}
                   onChange={(event) => setForm((current) => ({ ...current, qualityProfileId: event.target.value }))}
@@ -535,10 +573,16 @@ export function SettingsLibrariesPage() {
         open={confirmRemove}
         onOpenChange={setConfirmRemove}
         title={`Remove “${editing?.name ?? form.name}”?`}
-        description="Deluno stops managing this library. Nothing is deleted from disk, and downloads already in your client are left alone."
-        confirmLabel="Remove library"
+        description={
+          pairedWith(editing)
+            ? `This library is paired with ${pairedWith(editing)}. Remove both, or only this one and keep ${pairedWith(editing)}. Nothing is deleted from disk, and downloads already in your client are left alone.`
+            : "Deluno stops managing this library. Nothing is deleted from disk, and downloads already in your client are left alone."
+        }
+        confirmLabel={pairedWith(editing) ? "Remove both libraries" : "Remove library"}
+        secondaryLabel={pairedWith(editing) ? "Remove only this one" : undefined}
         busy={busy}
-        onConfirm={() => void handleRemove()}
+        onConfirm={() => void handleRemove(Boolean(pairedWith(editing)))}
+        onSecondary={pairedWith(editing) ? () => void handleRemove(false) : undefined}
       />
 
       <ConfirmDialog
@@ -570,11 +614,12 @@ export function SettingsLibrariesPage() {
 
 /* ---------------------------------------------------------------- utils */
 
-function defaultRoot(mediaType: "movies" | "tv", settings: PlatformSettingsSnapshot) {
+function defaultRoot(mediaType: "movies" | "tv" | "both", settings: PlatformSettingsSnapshot) {
+  if (mediaType === "both") return "";
   return (mediaType === "movies" ? settings.movieRootPath : settings.seriesRootPath) ?? "";
 }
 
-function emptyForm(mediaType: "movies" | "tv", settings: PlatformSettingsSnapshot): LibraryForm {
+function emptyForm(mediaType: "movies" | "tv" | "both", settings: PlatformSettingsSnapshot): LibraryForm {
   return {
     name: "",
     mediaType,

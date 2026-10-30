@@ -1063,9 +1063,48 @@ public sealed class SqliteLibrariesRepository(
             cancellationToken);
 
         using var command = connection.CreateCommand();
-        command.CommandText = "DELETE FROM libraries WHERE id = @id;";
+        command.CommandText =
+            """
+            DELETE FROM library_pairs
+            WHERE pair_id IN (SELECT pair_id FROM library_pairs WHERE library_id = @id);
+            DELETE FROM libraries WHERE id = @id;
+            """;
         AddParameter(command, "@id", id);
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+    public async Task LinkLibraryPairAsync(string pairId, IReadOnlyList<string> libraryIds, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        foreach (var libraryId in libraryIds)
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = "INSERT OR REPLACE INTO library_pairs (library_id, pair_id) VALUES (@libraryId, @pairId);";
+            AddParameter(command, "@libraryId", libraryId);
+            AddParameter(command, "@pairId", pairId);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+    }
+
+    public async Task<IReadOnlyDictionary<string, string>> ListLibraryPairsAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        var pairs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT library_id, pair_id FROM library_pairs;";
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            pairs[reader.GetString(0)] = reader.GetString(1);
+        }
+
+        return pairs;
     }
 
 
