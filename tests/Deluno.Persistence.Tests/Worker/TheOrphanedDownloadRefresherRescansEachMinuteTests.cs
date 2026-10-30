@@ -1,6 +1,7 @@
 using Deluno.Integrations.DownloadClients;
 using Deluno.Persistence.Tests.Support;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Deluno.Persistence.Tests.Worker;
@@ -23,6 +24,30 @@ public sealed class TheOrphanedDownloadRefresherRescansEachMinuteTests
             }
 
             return base.CreateTimer(callback, state, TimeSpan.Zero, Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    private sealed class FailingScopes(IServiceScopeFactory inner) : IServiceScopeFactory
+    {
+        public bool Fail { get; set; }
+
+        public IServiceScope CreateScope() => Fail ? throw new IOException("The download folder cannot be read.") : inner.CreateScope();
+    }
+
+    private sealed class RefresherLog : ILogger<OrphanedDownloadRefreshService>
+    {
+        public List<LogLevel> Levels { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            lock (Levels)
+            {
+                Levels.Add(logLevel);
+            }
         }
     }
 
@@ -73,5 +98,48 @@ public sealed class TheOrphanedDownloadRefresherRescansEachMinuteTests
             Assert.Equal(TimeSpan.FromSeconds(6), clock.Delays[0]);
             Assert.All(clock.Delays.Skip(1), delay => Assert.Equal(TimeSpan.FromSeconds(60), delay));
         }
+    }
+
+    [Fact]
+    public async Task A_scan_that_fails_is_kept_to_debug_and_the_last_list_stays()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var disk = await RealDiskLibrary.OpenAsync(app);
+        var movie = await disk.AddMovieAsync("Kept Film", 2020);
+        await disk.RecordDispatchAsync(movie.Id, "Kept.Leftover.2020.1080p-GRP");
+        var leftover = Leftover(disk.Downloads, "Kept.Leftover.2020.1080p-GRP");
+        var scopes = new FailingScopes(app.Services.GetRequiredService<IServiceScopeFactory>());
+        var cache = new OrphanedDownloadCache(scopes, TimeProvider.System, NullLogger<OrphanedDownloadCache>.Instance);
+        await cache.RefreshAsync(CancellationToken.None);
+        var held = Assert.IsAssignableFrom<IReadOnlyList<OrphanedDownloadItem>>(cache.Current!.Value);
+        Assert.Contains(held, item => string.Equals(item.Path, leftover, StringComparison.OrdinalIgnoreCase));
+        var log = new RefresherLog();
+        var refresher = new OrphanedDownloadRefreshService(cache, new QuickClock(), log);
+        scopes.Fail = true;
+
+        await refresher.StartAsync(CancellationToken.None);
+        try
+        {
+            await Wait.UntilAsync(
+                () =>
+                {
+                    lock (log.Levels)
+                    {
+                        return log.Levels.Count >= 2;
+                    }
+                },
+                "the refresher to meet the failing scan twice");
+        }
+        finally
+        {
+            await refresher.StopAsync(CancellationToken.None);
+        }
+
+        lock (log.Levels)
+        {
+            Assert.All(log.Levels, level => Assert.Equal(LogLevel.Debug, level));
+        }
+
+        Assert.Same(held, cache.Current!.Value);
     }
 }

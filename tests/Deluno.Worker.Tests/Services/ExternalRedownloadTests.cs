@@ -79,6 +79,22 @@ public sealed class ExternalRedownloadTests
         _activity.Verify(feed => feed.RecordActivityAsync("external.redownload", done.Result.Message, It.IsAny<string?>(), "search-1", "movie", "movie-1", It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Fact]
+    public async Task A_film_the_bin_took_but_that_could_not_be_marked_missing_is_logged_and_still_searched_for()
+    {
+        _movies.Setup(repo => repo.MarkTrackedFileMissingAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        var logger = new Mock<ILogger<ExternalRedownloadService>>();
+        logger.Setup(log => log.IsEnabled(It.IsAny<LogLevel>())).Returns(true);
+
+        var outcome = await Service(null, logger.Object).RedownloadAsync(new ExternalRedownloadRequest(FilmPath, null, "Weir"), CancellationToken.None);
+
+        var done = Assert.IsType<ExternalRedownloadService.Done>(outcome);
+        Assert.Equal("search-1", done.Result.SearchJobId);
+        _jobs.Verify(scheduler => scheduler.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+        logger.Verify(log => log.Log(
+            LogLevel.Warning, It.IsAny<EventId>(), It.IsAny<It.IsAnyType>(), It.IsAny<Exception?>(), It.IsAny<Func<It.IsAnyType, Exception?, string>>()), Times.Once);
+    }
+
     /// <summary>Seen on the rig: the film was alone in its folder, the bin took the folder, and "0 files moved" was read as a failure.</summary>
     [Fact]
     public async Task A_film_moved_to_the_bin_with_its_folder_counts_as_removed()

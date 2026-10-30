@@ -130,6 +130,27 @@ public sealed class ManualImportExecuteBatchApiTests
         Assert.True(Directory.Exists(Path.Combine(movieRootPath, "Arrival (2016)")));
     }
 
+    [Fact]
+    public async Task A_row_with_no_preview_is_reported_as_its_own_failure_and_the_counts_say_nothing_was_imported()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+
+        var response = await app.Client.PostAsJsonAsync("/api/filesystem/import/execute-batch", new { items = new object?[] { new { transferMode = "copy", overwrite = false }, null } });
+
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(2, body.GetProperty("requestedCount").GetInt32());
+        Assert.Equal(0, body.GetProperty("importedCount").GetInt32());
+        var results = body.GetProperty("results").EnumerateArray().ToArray();
+        Assert.Equal(2, results.Length);
+        Assert.All(results, result =>
+        {
+            Assert.Equal("unknown", result.GetProperty("sourcePath").GetString());
+            Assert.False(result.GetProperty("succeeded").GetBoolean());
+            Assert.Equal("This row has no preview to import.", result.GetProperty("message").GetString());
+        });
+    }
+
     /// <summary>Every file reads as a two-hour 1080p H.264 film, the way a real download would.</summary>
     private sealed class ReadableVideoProbe : IMediaProbeService
     {

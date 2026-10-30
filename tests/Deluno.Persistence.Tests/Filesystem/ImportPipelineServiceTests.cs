@@ -3753,6 +3753,48 @@ public sealed partial class ImportPipelineServiceTests
     /// download folders above it. A download folder called "library-2160p-remux" made a file named nothing
     /// look like a 2160p remux to the installed-file record.
     /// </summary>
+    /// <summary>A multi-file torrent arrives as Title.1080p.WEB/movie.mkv: the file says nothing, the release folder says WEB 1080p.</summary>
+    [Fact]
+    public async Task A_file_named_movie_in_a_release_folder_with_no_grab_is_filed_with_the_quality_its_folder_names()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-16T04:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(movieRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        async Task<ImportPipelineResult> ImportAsync(string folderName, string title, int year)
+        {
+            var folder = Directory.CreateDirectory(Path.Combine(downloadsPath, folderName)).FullName;
+            var source = Path.Combine(folder, "movie.mkv");
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)0x21, 4096).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+            return await service.ExecuteAsync(
+                new ImportExecuteRequest(
+                    new ImportPreviewRequest(source, null, "movies", title, year, [], [], null, "en"),
+                    "copy", Overwrite: false, AllowCopyFallback: true),
+                CancellationToken.None);
+        }
+
+        var named = await ImportAsync("Sintel.2010.1080p.WEB-DL-GRP", "Sintel", 2010);
+        var bare = await ImportAsync("Dune Copy", "Dune", 2021);
+
+        Assert.True(named.Succeeded, named.Message);
+        var namedFile = Assert.Single(Directory.GetFiles(Path.Combine(movieRootPath, "Sintel (2010)"), "*.mkv"));
+        Assert.Contains("1080p", Path.GetFileName(namedFile), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("WEB", Path.GetFileName(namedFile), StringComparison.OrdinalIgnoreCase);
+        Assert.True(bare.Succeeded, bare.Message);
+        var bareFile = Assert.Single(Directory.GetFiles(Path.Combine(movieRootPath, "Dune (2021)"), "*.mkv"));
+        Assert.DoesNotContain("1080p", Path.GetFileName(bareFile), StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task A_file_with_no_grab_is_evaluated_on_its_own_name_not_its_download_folders()
     {
@@ -5557,6 +5599,55 @@ public sealed partial class ImportPipelineServiceTests
         Assert.Null(preview.MatchedTitle);
     }
 
+    /// <summary>#1171: two shows of one name are told apart by the year the person typed; a year that fits neither is no match.</summary>
+    [Fact]
+    public async Task A_manual_tv_import_picks_between_two_shows_of_one_name_by_the_typed_year_and_a_year_that_fits_neither_matches_none()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-08T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var releaseFolder = Path.Combine(downloadsPath, "Chernobyl.S01E05.Vichnaya.Pamyat.1080p.WEB-DL-NTb");
+        Directory.CreateDirectory(releaseFolder);
+        var sourcePath = Path.Combine(releaseFolder, "Chernobyl.S01E05.Vichnaya.Pamyat.1080p.WEB-DL-NTb.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath, episodeFileFormat: "{Series Title} - S{season:00}E{episode:00} - {Episode Title}");
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        foreach (var year in new[] { 2019, 1992 })
+        {
+            var series = await seriesRepository.AddAsync(new CreateSeriesRequest("Chernobyl", year, $"tt{year}"), CancellationToken.None);
+            await seriesRepository.SyncEpisodeCatalogueAsync(
+                series.Id, [new CatalogueEpisodeItem(1, 5, "Vichnaya Pamyat", null, timeProvider.GetUtcNow())], "provider", CancellationToken.None);
+        }
+
+        var service = CreateService(storage, timeProvider, platform, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider));
+        ImportPreviewRequest Request(int? year) => new(
+            SourcePath: releaseFolder, FileName: null, MediaType: "tv", Title: "Chernobyl", Year: year, Genres: null, Tags: null,
+            Studio: null, OriginalLanguage: null);
+
+        var modern = await service.PreviewAsync(Request(2019), CancellationToken.None);
+        var old = await service.PreviewAsync(Request(1992), CancellationToken.None);
+        var neither = await service.PreviewAsync(Request(2005), CancellationToken.None);
+
+        Assert.Equal("Chernobyl (2019)", modern.MatchedTitle);
+        Assert.EndsWith(Path.Combine("Chernobyl (2019)", "Chernobyl - S01E05 - Vichnaya Pamyat.mkv"), modern.DestinationPath, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Chernobyl (1992)", old.MatchedTitle);
+        Assert.EndsWith(Path.Combine("Chernobyl (1992)", "Chernobyl - S01E05 - Vichnaya Pamyat.mkv"), old.DestinationPath, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(neither.MatchedTitle);
+        Assert.DoesNotContain("Chernobyl (2019)", neither.DestinationPath, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Chernobyl (1992)", neither.DestinationPath, StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>#762: season 0 (a special) uses SpecialsFolderFormat instead of SeasonFolderFormat.</summary>
     [Fact]
     public async Task Preview_places_a_season_zero_episode_in_the_specials_subfolder()
@@ -7242,12 +7333,86 @@ public sealed partial class ImportPipelineServiceTests
         var preview = await service.PreviewAsync(request.Preview, CancellationToken.None);
         Assert.False(preview.Pack!.CanExecute);
         Assert.Contains(preview.Pack.BlockReasons, reason => reason.Contains("more than one file", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(preview.Pack.BlockReasons, reason => reason.StartsWith("More than one source resolves to destination '", StringComparison.Ordinal));
         var result = await service.ExecuteAsync(request, CancellationToken.None);
         Assert.False(result.Succeeded);
         Assert.Equal(409, result.StatusCode);
         Assert.Equal(2, Directory.GetFiles(packDirectory, "*.mkv").Length);
         Assert.False(Directory.Exists(Path.Combine(seriesRootPath, "Duplicate Pack (2026)")));
         Assert.DoesNotContain((await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None))!.Episodes, episode => episode.HasFile);
+    }
+
+    [Fact]
+    public async Task A_pack_whose_episode_already_owns_a_different_file_is_blocked_with_the_words_to_use_an_episode_review_and_nothing_is_overwritten()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Owned Pack", 2026, null), CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(1, 1, "One", null, timeProvider.GetUtcNow().AddDays(-2)),
+                new CatalogueEpisodeItem(1, 2, "Two", null, timeProvider.GetUtcNow().AddDays(-1))
+            ],
+            "provider",
+            CancellationToken.None);
+        var service = CreateService(storage, timeProvider, platform, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider));
+
+        async Task<string> PackAsync(string folder, byte fill)
+        {
+            var directory = Path.Combine(downloadsPath, folder, "Owned.Pack.S01");
+            Directory.CreateDirectory(directory);
+            foreach (var episode in new[] { 1, 2 })
+            {
+                var source = Path.Combine(directory, $"Owned.Pack.S01E{episode:D2}.mkv");
+                await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)(fill + episode), 4096).ToArray());
+                File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+            }
+
+            return directory;
+        }
+
+        ImportExecuteRequest RequestFor(string directory) => new(
+            new ImportPreviewRequest(
+                directory, null, "tv", series.Title, series.StartYear, [], [], null, null,
+                SeriesId: series.Id, SeriesType: SeriesTypes.Standard, NumberingScheme: SeriesNumberingSchemes.Standard),
+            "copy", false, true);
+
+        Assert.True((await service.ExecuteAsync(RequestFor(await PackAsync("first", 0x20)), CancellationToken.None)).Succeeded);
+        var held = (await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None))!.Episodes.OrderBy(episode => episode.EpisodeNumber).ToArray();
+        var heldPaths = new List<string>();
+        foreach (var episode in held)
+        {
+            heldPaths.Add((await repository.GetEpisodeFilePathAsync(episode.EpisodeId, CancellationToken.None))!);
+        }
+
+        var heldBytes = heldPaths.ToDictionary(path => path, path => File.ReadAllBytes(path));
+
+        // The person changes the naming format, so the same episodes now map to different file names.
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath, episodeFileFormat: "{Series Title} S{season:00}E{episode:00} again {Episode Title}");
+        var second = RequestFor(await PackAsync("second", 0x70));
+
+        var preview = await service.PreviewAsync(second.Preview, CancellationToken.None);
+        Assert.False(preview.Pack!.CanExecute);
+        Assert.Contains(preview.Pack.BlockReasons, reason => reason.Contains("Episode S01E01 already owns a different file. Replace it through an episode-scoped review instead of a season-pack import.", StringComparison.Ordinal));
+        Assert.Contains(preview.Pack.BlockReasons, reason => reason.Contains("Episode S01E02 already owns a different file.", StringComparison.Ordinal));
+        var result = await service.ExecuteAsync(second, CancellationToken.None);
+        Assert.False(result.Succeeded);
+        Assert.Equal(409, result.StatusCode);
+        Assert.All(heldBytes, item => Assert.Equal(item.Value, File.ReadAllBytes(item.Key)));
+        Assert.Equal(2, Directory.GetFiles(seriesRootPath, "*.mkv", SearchOption.AllDirectories).Length);
     }
 
     [Theory]
@@ -8906,6 +9071,18 @@ public sealed partial class ImportPipelineServiceTests
     }
 
     [Fact]
+    public async Task An_original_that_cannot_be_probed_is_not_evidence_of_a_problem_and_the_processed_copy_is_imported()
+    {
+        // 180 s against a two-hour original is refused when the original can be read (see above); with no reading of it there is nothing to compare.
+        var scene = await ProcessedSceneAsync(processedSeconds: 180, sourceCanBeProbed: false);
+
+        var result = await scene.ImportAsync();
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Single(Directory.GetFiles(Path.GetDirectoryName(scene.DestinationPath)!, "*.mkv"));
+    }
+
+    [Fact]
     public async Task A_processed_file_with_no_audio_at_all_is_not_imported()
     {
         var scene = await ProcessedSceneAsync(processedSeconds: 7200, processedAudioTracks: 0, sourceAudioTracks: 2);
@@ -9717,7 +9894,8 @@ public sealed partial class ImportPipelineServiceTests
         string sourceAudioLanguage = "eng",
         string processedAudioLanguage = "eng",
         // A #769 code ("ja", "en", ...) the library's profile requires, or null for no language opinion.
-        string? requireLanguage = null)
+        string? requireLanguage = null,
+        bool sourceCanBeProbed = true)
     {
         var storage = TestStorage.Create();
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-23T08:00:00Z"));
@@ -9760,7 +9938,7 @@ public sealed partial class ImportPipelineServiceTests
         // The processor's own folder, so the broken copy can go to the recycle bin from it (#1342).
         await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath, qualityProfileId: qualityProfileId, processorOutputPath: refinedPath);
 
-        var probe = new ProcessedProbeService(sourceFile, processed, processedSeconds, processedAudioTracks, sourceAudioTracks, processedHasVideo, processedWidth, processedHeight, sourceAudioLanguage, processedAudioLanguage);
+        var probe = new ProcessedProbeService(sourceFile, processed, processedSeconds, processedAudioTracks, sourceAudioTracks, processedHasVideo, processedWidth, processedHeight, sourceAudioLanguage, processedAudioLanguage, sourceCanBeProbed);
         var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
         var service = new ImportPipelineService(
             platform, libraries,
@@ -9806,13 +9984,14 @@ public sealed partial class ImportPipelineServiceTests
         int processedWidth = 1920,
         int processedHeight = 1080,
         string sourceAudioLanguage = "eng",
-        string processedAudioLanguage = "eng") : IMediaProbeService
+        string processedAudioLanguage = "eng",
+        bool sourceCanBeProbed = true) : IMediaProbeService
     {
         public Task<MediaProbeInfo> ProbeAsync(string path, CancellationToken cancellationToken)
         {
             var isProcessed = string.Equals(Path.GetFullPath(path), Path.GetFullPath(processedFile), StringComparison.OrdinalIgnoreCase);
             var isSource = string.Equals(Path.GetFullPath(path), Path.GetFullPath(sourceFile), StringComparison.OrdinalIgnoreCase);
-            if (!isProcessed && !isSource)
+            if ((!isProcessed && !isSource) || (isSource && !sourceCanBeProbed))
             {
                 return Task.FromResult(new MediaProbeInfo("unavailable", "test", "Not one of the two files.", null, null, null, [], [], []));
             }
