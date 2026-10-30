@@ -800,6 +800,58 @@ public sealed class TmdbMetadataProviderTests : IDisposable
         Assert.Equal(IntegrationRetryState.ManualAction, status.LastFailure.RetryState);
     }
 
+    /// <summary>#1301: which key TMDb is asked with. Host configuration comes first, the legacy per-install secret only when the host gives none; TMDb's own recorded refusal answers both.</summary>
+    [Theory]
+    [InlineData("host-managed-key", "legacy-install-secret", "host-managed-key")]
+    [InlineData(null, "legacy-install-secret", "legacy-install-secret")]
+    public async Task The_key_TMDb_is_asked_with_is_the_host_configuration_before_the_legacy_install_secret(string? hostKey, string legacySecret, string expectedKey)
+    {
+        var refusal = Deluno.Tests.Recorded.RecordedReplies.Tmdbapi("wrong-key").Exchanges[0];
+        var sentKeys = new List<string?>();
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSettingsSnapshot("direct", string.Empty));
+        settings.Setup(repo => repo.GetMetadataProviderSecretAsync("tmdb", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(legacySecret);
+        settings.Setup(repo => repo.GetMetadataProviderSecretAsync("omdb", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, TimeProvider.System),
+            NullLogger<CacheSchemaInitializer>.Instance)
+            .StartAsync(CancellationToken.None);
+
+        var host = new Dictionary<string, string?>();
+        if (hostKey is not null)
+        {
+            host["Deluno:Metadata:TMDbApiKey"] = hostKey;
+        }
+
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(request =>
+            {
+                sentKeys.Add(System.Web.HttpUtility.ParseQueryString(request.RequestUri!.Query)["api_key"]);
+                return refusal.Reply.ToResponse();
+            })),
+            new ConfigurationBuilder().AddInMemoryCollection(host).Build(),
+            settings.Object,
+            factory,
+            storageOptions,
+            TimeProvider.System,
+            new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(TimeProvider.System, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var direct = await provider.GetDirectStatusAsync(CancellationToken.None);
+        Assert.True(direct.IsConfigured);
+        Assert.Empty(await provider.SearchAsync(new MetadataLookupRequest("The Matrix", "movies", 1999, null), CancellationToken.None));
+
+        Assert.Equal(expectedKey, Assert.Single(sentKeys));
+    }
+
     [Fact]
     public async Task ResolveProviderRecordAsync_reports_confirmed_404_without_fuzzy_search()
     {

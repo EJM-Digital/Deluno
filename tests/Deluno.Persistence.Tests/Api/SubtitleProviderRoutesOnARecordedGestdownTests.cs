@@ -102,4 +102,50 @@ public sealed class SubtitleProviderRoutesOnARecordedGestdownTests
         Assert.NotEqual("healthy", stored.GetProperty("healthStatus").GetString());
         Assert.False(string.IsNullOrWhiteSpace(stored.GetProperty("lastHealthMessage").GetString()));
     }
+
+    [Fact]
+    public async Task A_provider_that_needs_an_account_is_not_tested_without_one_and_says_so_without_asking_anybody()
+    {
+        var replay = new Replay("breaking-bad-s01e01-english");
+        await using var app = await StartAsync(replay);
+
+        var response = await app.Client.PostAsJsonAsync("/api/subtitle-providers/opensubtitles/test", new { providerKey = "opensubtitles", isEnabled = true });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(result.GetProperty("ok").GetBoolean());
+        Assert.Equal("untested", result.GetProperty("status").GetString());
+        Assert.Contains("needs its account details before it can be tested", result.GetProperty("message").GetString());
+        Assert.Empty(replay.Asked);
+    }
+
+    [Fact]
+    public async Task A_providers_password_and_key_are_stored_protected_and_a_saved_key_that_cannot_be_read_back_is_not_used_and_says_why()
+    {
+        var replay = new Replay("breaking-bad-s01e01-english");
+        await using var app = await StartAsync(replay);
+        const string password = "plain-password-7c1e";
+        const string key = "plain-key-93ab";
+
+        var saved = await app.Client.PutAsJsonAsync("/api/subtitle-providers/opensubtitles", new { providerKey = "opensubtitles", username = "someone", secret = password, apiKey = key, priority = 10, isEnabled = true });
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+
+        var storedPassword = await ApiScenes.TextAsync(app, "platform", "SELECT secret FROM subtitle_providers WHERE provider_key = 'opensubtitles'");
+        var storedKey = await ApiScenes.TextAsync(app, "platform", "SELECT api_key FROM subtitle_providers WHERE provider_key = 'opensubtitles'");
+        Assert.False(string.IsNullOrWhiteSpace(storedPassword));
+        Assert.False(string.IsNullOrWhiteSpace(storedKey));
+        Assert.DoesNotContain(password, storedPassword);
+        Assert.DoesNotContain(key, storedKey);
+
+        // A key that was protected on another machine cannot be read back here: it is not used, and the person is told to enter it again.
+        var damaged = storedKey![..^6] + "AAAAAA";
+        await ApiScenes.ExecuteAsync(app, "platform", $"UPDATE subtitle_providers SET api_key = '{damaged}' WHERE provider_key = 'opensubtitles'");
+        var response = await app.Client.PostAsJsonAsync("/api/subtitle-providers/opensubtitles/test", new { providerKey = "opensubtitles", isEnabled = true });
+
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(result.GetProperty("ok").GetBoolean());
+        Assert.Equal("degraded", result.GetProperty("status").GetString());
+        Assert.Contains("can't be read here. Enter it again.", result.GetProperty("message").GetString());
+        Assert.Empty(replay.Asked);
+    }
 }
