@@ -55,4 +55,22 @@ public sealed class ReleaseScoringModePolicyTests
         Assert.Equal(1200, result.FinalScore);
         Assert.False(result.UsesModelSignal);
     }
+
+    [Fact]
+    public void MlOnly_falls_back_to_rules_and_says_so_when_ML_ranking_is_switched_off()
+    {
+        var disabled = ReleaseScoringModePolicy.Compute(
+            ruleScore: 1200,
+            boost: new ReleaseRankingBoostResult(false, false, 0, "off"),
+            mode: SearchScoringModes.MlOnly);
+        var noSignal = ReleaseScoringModePolicy.Compute(
+            ruleScore: 1200,
+            boost: new ReleaseRankingBoostResult(true, false, 0, "offline"),
+            mode: SearchScoringModes.MlOnly);
+
+        Assert.Equal(1200, disabled.FinalScore);
+        Assert.False(disabled.UsesModelSignal);
+        Assert.Contains("ML ranking is disabled", disabled.Explanation);
+        Assert.Contains("no ML boost was available", noSignal.Explanation);
+    }
 }

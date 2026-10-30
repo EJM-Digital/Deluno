@@ -176,6 +176,36 @@ public sealed class GuidePackageTests
     }
 
     [Fact]
+    public void An_unknown_guide_profile_is_not_found_and_a_profile_with_no_usable_quality_level_is_refused()
+    {
+        Assert.Throws<KeyNotFoundException>(() => GuidePlanCompiler.Compile("no-such-profile"));
+
+        var package = GuidePackageCatalog.Current;
+        var emptied = package.QualityProfiles.First() with { QualityOrder = ["missing-quality-tier"], CutoffQualityId = "missing-cutoff" };
+        var emptiedPackage = package with { QualityProfiles = [emptied] };
+
+        Assert.Throws<InvalidOperationException>(() => GuidePlanCompiler.Compile(emptied.Id, emptied.MediaType, emptiedPackage));
+    }
+
+    [Fact]
+    public void A_cutoff_the_package_cannot_use_and_a_recommended_format_it_does_not_hold_each_make_the_compilation_need_review()
+    {
+        var package = GuidePackageCatalog.Current;
+        var profile = package.QualityProfiles.First();
+
+        var noCutoff = package with { QualityProfiles = [profile with { CutoffQualityId = "missing-cutoff" }] };
+        var noCutoffCompilation = GuidePlanCompiler.Compile(profile.Id, profile.MediaType, noCutoff);
+        Assert.Contains(noCutoffCompilation.Warnings, warning => warning.Contains("no usable cutoff quality", StringComparison.OrdinalIgnoreCase));
+        Assert.True(noCutoffCompilation.RequiresReview);
+
+        var missingFormat = package with { QualityProfiles = [profile with { RecommendedFormats = [.. profile.RecommendedFormats, new GuideRecommendedFormat("not-a-shipped-format", 100)] }] };
+        var missingFormatCompilation = GuidePlanCompiler.Compile(profile.Id, profile.MediaType, missingFormat);
+        Assert.Contains(missingFormatCompilation.Warnings, warning => warning.Contains("missing custom format 'not-a-shipped-format'", StringComparison.Ordinal));
+        Assert.Contains(missingFormatCompilation.AdvancedRules, rule => rule.RuleId == "not-a-shipped-format");
+        Assert.True(missingFormatCompilation.RequiresReview);
+    }
+
+    [Fact]
     public void Reviewed_audio_mappings_use_relationships_and_tie_breaks_do_not_create_upgrades()
     {
         var compilation = GuidePlanCompiler.Compile("remux-2160p");

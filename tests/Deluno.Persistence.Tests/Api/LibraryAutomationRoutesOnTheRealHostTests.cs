@@ -129,6 +129,32 @@ public sealed class LibraryAutomationRoutesOnTheRealHostTests
         Assert.True((await resumed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("autoSearchEnabled").GetBoolean());
     }
 
+    [Fact]
+    public async Task The_library_list_shows_each_librarys_live_search_state_beside_its_settings()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var films = await CreateLibraryAsync(app, "Films");
+        var shows = await CreateLibraryAsync(app, "Shows", mediaType: "tv");
+        await SaveAsync(app, films, autoSearch: true, interval: 90);
+        await SaveAsync(app, shows, autoSearch: true, interval: 20);
+
+        var before = await ReadAsync(app, films);
+        Assert.False(before.GetProperty("searchRequested").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, before.GetProperty("lastSearchedUtc").ValueKind);
+
+        // A film refresh asks for a search in the film library only.
+        using var asked = await app.Client.PostAsJsonAsync("/api/integrations/external/trigger-refresh", new { mediaType = "movies", reason = "test" });
+        Assert.Equal(HttpStatusCode.OK, asked.StatusCode);
+
+        var filmsAfter = await ReadAsync(app, films);
+        var showsAfter = await ReadAsync(app, shows);
+        Assert.True(filmsAfter.GetProperty("searchRequested").GetBoolean());
+        Assert.False(showsAfter.GetProperty("searchRequested").GetBoolean());
+        Assert.False(string.IsNullOrWhiteSpace(filmsAfter.GetProperty("automationStatus").GetString()));
+        Assert.True(filmsAfter.TryGetProperty("nextSearchUtc", out _));
+        Assert.Equal(90, filmsAfter.GetProperty("searchIntervalMinutes").GetInt32());
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private static async Task<JsonElement> ReadAsync(ApplicationTestHost app, string libraryId)

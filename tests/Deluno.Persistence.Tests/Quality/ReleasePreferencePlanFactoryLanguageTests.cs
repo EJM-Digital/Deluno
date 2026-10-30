@@ -1,3 +1,4 @@
+using Deluno.Quality.Contracts;
 using Deluno.Quality;
 using Deluno.Quality.ReleasePreferences;
 
@@ -88,5 +89,29 @@ public sealed class ReleasePreferencePlanFactoryLanguageTests
         var french = Evaluate(plan, "Movie.2026.1080p.WEB-DL.FRENCH-GRP");
 
         Assert.NotEqual(PreferenceEvaluationStatus.Missing, french.Status);
+    }
+
+    [Fact]
+    public void A_language_a_chosen_custom_format_already_maps_stays_with_that_format_and_the_preference_orders_only_the_rest()
+    {
+        var now = DateTimeOffset.Parse("2026-09-15T00:00:00Z");
+        // The shipped "Dual Audio" format is reviewed to the typed trait audio.language.multi.
+        const string trashId = "4a3b087eea2ce012fcc1ce319259a3be";
+        var format = new CustomFormatItem(
+            "dual-audio", "Dual Audio", "movies", 0, trashId,
+            "[{\"implementation\":\"ReleaseTitleSpecification\",\"negate\":false,\"required\":true,\"fields\":{\"value\":\"\\bdual\\b\"}}]",
+            true, now, now);
+
+        var plan = ReleasePreferencePlanFactory.CreateQualityPlan(
+            "movies", "WEB 1080p", ["WEB 1080p"],
+            customFormats: [format],
+            formatIntents: new Dictionary<string, string> { [format.Id] = ProfileFormatIntents.Prefer },
+            languagePreference: new ProfileLanguagePreference(["multi", "fr"]));
+
+        var language = Assert.Single(plan.Families, family => family.Id == "language-preference");
+        var levelTraits = language.Levels.SelectMany(level => level.TraitIds).ToArray();
+        Assert.DoesNotContain("audio.language.multi", levelTraits);
+        Assert.Contains("audio.language.fr", levelTraits);
+        Assert.Empty(ReleasePreferencePlanValidator.Validate(plan));
     }
 }
