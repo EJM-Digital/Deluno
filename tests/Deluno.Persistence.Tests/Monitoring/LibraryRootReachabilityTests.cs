@@ -36,7 +36,11 @@ public sealed class LibraryRootReachabilityTests : IDisposable
     {
         var clock = new FakeTimeProvider();
         using var neverAnswers = new ManualResetEventSlim(false);
-        var reach = new LibraryRootReachability(clock, _ => { neverAnswers.Wait(); return true; });
+        var reach = new LibraryRootReachability(clock, _ =>
+        {
+            neverAnswers.Wait(TimeSpan.FromSeconds(30)); // reason: stands in for a share that never answers; the limit only frees the thread if the test dies
+            return true;
+        });
         var watch = System.Diagnostics.Stopwatch.StartNew();
 
         var first = await reach.UnreachableAsync(["//dead-nas/media"], CancellationToken.None);
