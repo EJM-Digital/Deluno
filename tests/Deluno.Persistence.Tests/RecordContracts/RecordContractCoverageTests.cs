@@ -40,6 +40,7 @@ public sealed class RecordContractCoverageTests
             typeof(ReleasePreferencePreviewRequest),
             typeof(ReleasePreferencePreview),
             typeof(ChangePasswordRequest),
+            typeof(Deluno.Recovery.Contracts.DispatchCleanupResult),
             typeof(BulkSeriesRequest),
             typeof(BulkSeriesResponse),
             typeof(BulkSeriesItemResult),
