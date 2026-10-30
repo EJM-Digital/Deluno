@@ -6,13 +6,14 @@
  *
  * Contracts: GET /api/subtitles/wanted, POST /api/subtitles/wanted/search-all.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { ConfigAreas } from "../lib/config-areas";
-import { Search } from "lucide-react";
+import { RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
-import { fetchJson } from "../lib/api";
+import { fetchPage } from "../lib/api/client";
+import type { ApiPage } from "../lib/api/types/catalogue";
 import type { MediaSubtitleAttemptHistoryEntry } from "../lib/api/types/resources";
 import { authedFetch } from "../lib/use-auth";
 import { describeRequestFailure } from "../lib/search-reasons";
@@ -51,9 +52,14 @@ function lastTryLabel(row: SubtitleWantedRow): string {
   return `${row.lastAttempt.outcome}${provider} — ${when}`;
 }
 
+/** The wanted list loads 100 titles at a time; the server also says how many are waiting in all. */
+type WantedPage = ApiPage<SubtitleWantedRow> & { totalCount?: number };
+
+const PAGE_SIZE = 100;
+
 export async function subtitleWantedLoader() {
-  const wanted = await fetchJson<SubtitleWantedRow[]>("/api/subtitles/wanted");
-  return { wanted };
+  const page = await fetchPage<SubtitleWantedRow>(`/api/subtitles/wanted?pageSize=${PAGE_SIZE}`) as WantedPage;
+  return { wanted: page.items, nextPageToken: page.nextPageToken, totalCount: page.totalCount ?? page.items.length };
 }
 
 function rowLabel(row: SubtitleWantedRow): string {
@@ -68,8 +74,40 @@ const SETTINGS_REFRESH: LiveRefreshSpec = { events: ["MovieChanged", "EpisodeCha
 
 export function SubtitleWantedPage() {
   useLiveRefresh(SETTINGS_REFRESH);
-  const { wanted } = useLoaderData() as { wanted: SubtitleWantedRow[] };
+  const loaded = useLoaderData() as { wanted: SubtitleWantedRow[]; nextPageToken?: string | null; totalCount?: number };
   const revalidator = useRevalidator();
+  const [wanted, setWanted] = useState(loaded.wanted);
+  const [nextPageToken, setNextPageToken] = useState(loaded.nextPageToken ?? null);
+  const [totalCount, setTotalCount] = useState(loaded.totalCount ?? loaded.wanted.length);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  // The router reads the loader again when the server says something changed, and the new first page replaces
+  // the pages loaded so far.
+  const seenLoaded = useRef(loaded);
+  useEffect(() => {
+    if (seenLoaded.current === loaded) return;
+    seenLoaded.current = loaded;
+    setWanted(loaded.wanted);
+    setNextPageToken(loaded.nextPageToken ?? null);
+    setTotalCount(loaded.totalCount ?? loaded.wanted.length);
+  }, [loaded]);
+
+  async function loadMore() {
+    if (!nextPageToken) return;
+    setLoadingMore(true);
+    try {
+      const page = await fetchPage<SubtitleWantedRow>(
+        `/api/subtitles/wanted?pageSize=${PAGE_SIZE}&pageToken=${encodeURIComponent(nextPageToken)}`
+      ) as WantedPage;
+      setWanted((current) => [...current, ...page.items]);
+      setNextPageToken(page.nextPageToken);
+      setTotalCount(page.totalCount ?? totalCount);
+    } catch {
+      toast.error("More titles could not be loaded.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
   const [searching, setSearching] = useState<"all" | string | null>(null);
 
   async function searchItems(items: SubtitleWantedRow[], busyKey: "all" | string) {
@@ -101,7 +139,7 @@ export function SubtitleWantedPage() {
       <PageToolbar tabs={TABS} />
 
       <ListCard
-        title={wanted.length ? `${wanted.length} short of a language` : "Nothing waiting"}
+        title={totalCount ? `${totalCount} short of a language` : "Nothing waiting"}
         titleCase={false}
         actions={
           wanted.length > 0 ? (
@@ -157,6 +195,18 @@ export function SubtitleWantedPage() {
             ))}
           </ListTable>
         )}
+
+        {nextPageToken ? (
+          <div className="flex flex-wrap items-center justify-center gap-3 p-(--card-pad-x)">
+            <span className="text-(length:--type-caption) text-muted-foreground">
+              Showing {wanted.length} of {totalCount}
+            </span>
+            <Button type="button" variant="outline" size="sm" onClick={() => void loadMore()} disabled={loadingMore}>
+              <RefreshCw aria-hidden className={`h-3.5 w-3.5 ${loadingMore ? "animate-spin" : ""}`} />
+              {loadingMore ? "Loading…" : "Load more"}
+            </Button>
+          </div>
+        ) : null}
       </ListCard>
     </div>
   );

@@ -95,7 +95,7 @@ public sealed class SubtitleSettingsRoutesTests
 
         var wanted = await app.Client.GetFromJsonAsync<JsonElement>("/api/subtitles/wanted");
 
-        var row = Assert.Single(wanted.EnumerateArray());
+        var row = Assert.Single(wanted.GetProperty("items").EnumerateArray());
         Assert.Equal("Series", row.GetProperty("kind").GetString());
         Assert.Equal("The Wire", row.GetProperty("title").GetString());
         Assert.Equal(1, row.GetProperty("seasonNumber").GetInt32());

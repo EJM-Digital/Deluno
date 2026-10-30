@@ -28,11 +28,49 @@ public sealed class SubtitleWantedApiTests
         Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
 
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        var row = document.RootElement.EnumerateArray()
+        var row = document.RootElement.GetProperty("items").EnumerateArray()
             .Single(item => item.GetProperty("mediaId").GetString() == movieId);
         Assert.Equal("Movie", row.GetProperty("kind").GetString());
         Assert.Equal(libraryId, row.GetProperty("libraryId").GetString());
         Assert.Contains("en", row.GetProperty("languagesMissing").EnumerateArray().Select(item => item.GetString()));
+    }
+
+    [Fact]
+    public async Task Every_title_missing_subtitles_is_reachable_page_by_page_with_the_total()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var (libraryId, _) = await CreateLibraryAndMovieAsync(app);
+        var movies = app.Services.GetRequiredService<IMovieCatalogRepository>();
+        await movies.ImportExistingBatchAsync(
+            libraryId,
+            Enumerable.Range(1, 129).Select(index => new ExistingMovieImportRequest(
+                Title: $"Film {index:000}", ReleaseYear: 2000, WantedStatus: WantedStatuses.Covered,
+                WantedReason: "Imported from your existing library.", CurrentQuality: "WEB 1080p",
+                TargetQuality: "WEB 1080p", QualityCutoffMet: true,
+                FilePath: $"/media/Film{index:000}/Film{index:000}.mkv", FileSizeBytes: 1_000_000_000)).ToList(),
+            CancellationToken.None);
+
+        var seen = new List<string>();
+        string? token = null;
+        var pages = 0;
+        do
+        {
+            var url = "/api/subtitles/wanted?pageSize=50" + (token is null ? "" : $"&pageToken={Uri.EscapeDataString(token)}");
+            var response = await app.Client.GetAsync(url);
+            Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var root = document.RootElement;
+            Assert.Equal(130, root.GetProperty("totalCount").GetInt32());
+            seen.AddRange(root.GetProperty("items").EnumerateArray().Select(item => item.GetProperty("mediaId").GetString()!));
+            token = root.GetProperty("nextPageToken").GetString();
+            Assert.Equal(token is not null, root.GetProperty("hasMore").GetBoolean());
+            pages++;
+        }
+        while (token is not null && pages < 10);
+
+        Assert.Equal(3, pages);
+        Assert.Equal(130, seen.Count);
+        Assert.Equal(130, seen.Distinct().Count());
     }
 
     [Fact]
@@ -55,7 +93,7 @@ public sealed class SubtitleWantedApiTests
         Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
 
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Empty(document.RootElement.EnumerateArray());
+        Assert.Empty(document.RootElement.GetProperty("items").EnumerateArray());
     }
 
     [Fact]
