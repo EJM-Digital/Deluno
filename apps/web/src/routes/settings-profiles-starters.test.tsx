@@ -172,6 +172,21 @@ describe("switching the media type of a new profile", () => {
     expect(tierNames(drawer)).toEqual(["Bluray 1080p"]);
   });
 
+  it("drops the movie formats the profile started with when it becomes a TV profile", async () => {
+    load();
+    (loaderData.customFormats as unknown[]) = [{ id: "cf-existing", name: "Repack Proper", mediaType: "movies", trashId: "x1" }];
+    const drawer = await openNew();
+    fireEvent.change(drawer.getByLabelText("Profile name"), { target: { value: "Shows" } });
+    fireEvent.click(drawer.getByRole("radio", { name: "TV shows" }));
+
+    fireEvent.click(drawer.getByRole("button", { name: "Create quality profile" }));
+
+    await waitFor(() => expect(calls("POST", "/api/quality-profiles")).toHaveLength(1));
+    const body = bodyOf(calls("POST", "/api/quality-profiles")[0]);
+    expect(body.mediaType).toBe("tv");
+    expect(body.customFormatIds).toBe("");
+  });
+
   it("keeps the tiers a person chose themselves when the type is switched", async () => {
     const drawer = await openNew();
     fireEvent.change(drawer.getByLabelText("Add a tier"), { target: { value: "Bluray 1080p" } });
