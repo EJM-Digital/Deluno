@@ -82,16 +82,16 @@ export function useSystemLog(): SystemLogResponse | null {
   return query.data ?? null;
 }
 
-/** Each database's size and when it was last checked and compacted (GET /api/system/databases); null until read. */
-export function useSystemDatabases(): SystemDatabasesResponse | null {
+/** Each database's size and when it was last checked and compacted (GET /api/system/databases); null until read, and `failed` when the read itself did not go through (#1424). */
+export function useSystemDatabases(): { databases: SystemDatabasesResponse | null; failed: boolean } {
   const query = useQuery({
     queryKey: DATABASES_KEY,
-    queryFn: async (): Promise<SystemDatabasesResponse | null> => {
+    queryFn: async (): Promise<{ body: SystemDatabasesResponse | null; failed: boolean }> => {
       try {
         const body = await fetchJson<SystemDatabasesResponse>("/api/system/databases");
-        return body && Array.isArray(body.databases) ? body : null;
+        return { body: body && Array.isArray(body.databases) ? body : null, failed: false };
       } catch {
-        return null;
+        return { body: null, failed: true };
       }
     },
     staleTime: 30_000
@@ -100,5 +100,5 @@ export function useSystemDatabases(): SystemDatabasesResponse | null {
   useSignalREvent("SystemDatabasesChanged", RealtimeGroups.Dashboard, useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: DATABASES_KEY, exact: true });
   }, []));
-  return query.data ?? null;
+  return { databases: query.data?.body ?? null, failed: query.data?.failed ?? false };
 }

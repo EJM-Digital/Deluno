@@ -37,3 +37,22 @@ describe("System: Backups card", () => {
     expect(container.querySelector(".sy-bk-list")!.textContent).not.toContain(sizeText(900_000));
   });
 });
+
+describe("System: Backups card when a read fails (#1424)", () => {
+  it("says it could not read the backups, and not \"No backup has been made yet.\"", () => {
+    render(<MemoryRouter><BackupsCard backups={[]} settings={settings()} databases={null} backupsFailed /></MemoryRouter>);
+    expect(screen.getByText(/Could not read the backups/)).toBeInTheDocument();
+    expect(screen.queryByText("No backup has been made yet.")).toBeNull();
+  });
+
+  it("says it could not read the databases", () => {
+    render(<MemoryRouter><BackupsCard backups={[]} settings={settings()} databases={null} databasesFailed /></MemoryRouter>);
+    expect(screen.getByText(/Could not read the databases/)).toBeInTheDocument();
+  });
+
+  it("keeps the plain empty message when the read worked and there are none", () => {
+    render(<MemoryRouter><BackupsCard backups={[]} settings={settings()} databases={null} /></MemoryRouter>);
+    expect(screen.getByText("No backup has been made yet.")).toBeInTheDocument();
+    expect(screen.queryByText(/Could not read/)).toBeNull();
+  });
+});
