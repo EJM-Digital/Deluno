@@ -66,14 +66,28 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
         {
             // A .torrent Deluno fetched with a tracker's sign-in (#606).
             using var upload = new MultipartFormDataContent { { new ByteArrayContent(file), "torrent_file", "release.torrent" } };
+            // #1434: uTorrent 3.6 cannot read a quoted boundary (what .NET writes): it answers 200 "torrent file content not
+            // supplied" and adds nothing. The boundary is plain text, so it is sent without the quotes.
+            var boundary = upload.Headers.ContentType!.Parameters.First(parameter => parameter.Name == "boundary");
+            boundary.Value = boundary.Value!.Trim('"');
             using var uploaded = await http.PostAsync($"gui/?token={Uri.EscapeDataString(token)}&action=add-file", upload, cancellationToken);
             uploaded.EnsureSuccessStatusCode();
+            if (await ReadAddErrorAsync(uploaded, cancellationToken) is { } refusal)
+            {
+                return DownloadClientHelpers.GrabFailure(client, request, $"uTorrent did not take the torrent file: {refusal}");
+            }
+
             successMessage = "Torrent file sent to uTorrent.";
         }
         else
         {
             using var response = await http.GetAsync($"gui/?token={Uri.EscapeDataString(token)}&action=add-url&s={Uri.EscapeDataString(request.DownloadUrl)}", cancellationToken);
             response.EnsureSuccessStatusCode();
+            if (await ReadAddErrorAsync(response, cancellationToken) is { } refusal)
+            {
+                return DownloadClientHelpers.GrabFailure(client, request, $"uTorrent did not take the release: {refusal}");
+            }
+
             successMessage = "Release URL sent to uTorrent.";
         }
 
@@ -117,6 +131,30 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
 
         await TryLabelAsync(http, token, added, DownloadClientHelpers.ResolveCategory(client, request), cancellationToken);
         return DownloadClientHelpers.GrabSuccess(client, request, successMessage) with { ExternalId = added.ToLowerInvariant() };
+    }
+
+    /// <summary>
+    /// uTorrent answers a refused add with HTTP 200 and an <c>error</c> in the JSON body (#1434), for example "Can't add torrent: ".
+    /// Returns that text, or null when the reply carries none (an accepted add is just the build number).
+    /// </summary>
+    private static async Task<string?> ReadAddErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            if (document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("error", out var error)
+                && error.ValueKind == JsonValueKind.String)
+            {
+                var text = error.GetString()?.Trim();
+                return string.IsNullOrEmpty(text) ? "it gave no reason" : text;
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        return null;
     }
 
     /// <summary>

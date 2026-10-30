@@ -1,0 +1,81 @@
+{
+  "app": "utorrent",
+  "version": "3.6.0.47254",
+  "state": "label-set",
+  "recordedAt": "2026-10-30T10:52:48Z",
+  "note": "A label put on a finished torrent (setprops s=label), then the list showing it (label is at index 11).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&action=setprops&hash=BFDD716DCAD5A4338BCE788D8BA60C6E91AFD266&s=label&v=recorded-movies"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&list=1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254,
+          "torrents": [
+            [
+              "BFDD716DCAD5A4338BCE788D8BA60C6E91AFD266",
+              201,
+              "Recorded.utorrent.A.mkv",
+              6291456,
+              1000,
+              0,
+              0,
+              0,
+              0,
+              0,
+              -1,
+              "recorded-movies",
+              0,
+              0,
+              0,
+              0,
+              65536,
+              -1,
+              0,
+              "",
+              "",
+              "Seeding 100.0 %",
+              "5",
+              1793357566,
+              1793357566,
+              "",
+              "C:\\golden\\recorded\\utorrent",
+              0,
+              "6674A9AF"
+            ]
+          ],
+          "label": [
+            [
+              "recorded-movies",
+              1
+            ]
+          ],
+          "torrentc": "2138849309",
+          "rssfeeds": [],
+          "rssfilters": []
+        }
+      }
+    }
+  ]
+}

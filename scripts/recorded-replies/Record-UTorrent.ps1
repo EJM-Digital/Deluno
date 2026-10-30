@@ -136,6 +136,26 @@ function Invoke-RecordUTorrent($p) {
     if (-not $a) { return }
     Save-State utorrent $version 'token' ('uTorrent''s token page (gui/token.html): the HTML that holds the token every later call sends. The token and the Web UI login are removed from the recording. Installed from the vendor''s download address.' + (Get-DownloadNote)) @($a.Token)
     Save-State utorrent $version 'login-refused' 'The token page with a wrong password, and with no login at all: HTTP 401.' @($refused, $noLogin)
+    # Uploads (#1434) and a stopped torrent (#1421), before the scenario: uTorrent refuses a multipart upload whose boundary is quoted (what .NET
+    # writes by default) with a 200 whose body carries an error; an unquoted boundary is accepted. Then a stopped torrent beside a running one.
+    try {
+        $upDir = Join-Path $dir 'uploads'; New-Item -ItemType Directory -Force -Path $upDir | Out-Null
+        & $a.Queue $false
+        $u1 = Add-FeedRelease -Title "Recorded.Upload.One.utorrent" -DummyMb 700
+        $u2 = Add-FeedRelease -Title "Recorded.Upload.Two.utorrent" -DummyMb 700
+        $null = & $global:UtCall "action=setsetting&s=dir_active_download&v=$([Uri]::EscapeDataString($upDir))"
+        $quoted = Send-Recorded -Client $global:UtClient -Method POST -Path "/gui/?token=$($global:UtToken)&action=add-file" -Multipart @{ torrent_file = $u1.Bytes }
+        Start-Sleep -Seconds 2
+        $afterQuoted = & $global:UtCall 'list=1'
+        Save-State utorrent $version 'add-file-quoted-boundary' 'A torrent file uploaded as multipart/form-data with a quoted boundary (the .NET default): uTorrent answers HTTP 200 with an error in the body and adds nothing; the list after shows it.' @($quoted, $afterQuoted)
+        $accepted = Send-Recorded -Client $global:UtClient -Method POST -Path "/gui/?token=$($global:UtToken)&action=add-file" -Multipart @{ torrent_file = $u2.Bytes } -UnquotedBoundary
+        Start-Sleep -Seconds 3
+        Save-State utorrent $version 'add-file-accepted' 'The same upload with an unquoted boundary: HTTP 200 and no error, and the torrent is in the list.' @($accepted, (& $global:UtCall 'list=1'))
+        $stop = & $global:UtCall "action=stop&hash=$($u2.InfoHash.ToUpperInvariant())"
+        Start-Sleep -Seconds 3
+        Save-State utorrent $version 'stopped' 'A torrent stopped by its hash (action=stop), then the list: neither the started nor the queued bit is set.' @($stop, (& $global:UtCall 'list=1'))
+        $null = & $a.Remove $u2.InfoHash $true
+    } catch { Add-Missing "utorrent uploads/stopped stopped: $($_.Exception.Message)" }
     try { Invoke-TorrentScenario -App 'utorrent' -A $a -MediaFile $p.VmMediaFile } catch { Add-Missing "utorrent stopped: $($_.Exception.Message)" }
     Remove-Item 'C:\golden\recorded\utorrent' -Recurse -Force -ErrorAction SilentlyContinue
     Stop-AppByName 'uTorrent'

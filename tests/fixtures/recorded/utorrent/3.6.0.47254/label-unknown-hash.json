@@ -1,0 +1,39 @@
+{
+  "app": "utorrent",
+  "version": "3.6.0.47254",
+  "state": "label-unknown-hash",
+  "recordedAt": "2026-10-30T10:52:48Z",
+  "note": "setprops s=label for a hash uTorrent never had.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&action=setprops&hash=0000000000000000000000000000000000000000&s=label&v=recorded-movies"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&action=getprops&hash=0000000000000000000000000000000000000000"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254
+        }
+      }
+    }
+  ]
+}

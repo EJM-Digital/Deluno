@@ -1,0 +1,111 @@
+{
+  "app": "utorrent",
+  "version": "3.6.0.47254",
+  "state": "finished-single-file",
+  "recordedAt": "2026-10-30T10:52:48Z",
+  "note": "A torrent over one film already in its save folder: the client finds it complete.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/gui/?token=<scrubbed>&action=add-file",
+        "bodyText": "torrent_file=<574 bytes>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&list=1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254,
+          "torrents": [
+            [
+              "BFDD716DCAD5A4338BCE788D8BA60C6E91AFD266",
+              201,
+              "Recorded.utorrent.A.mkv",
+              6291456,
+              1000,
+              0,
+              0,
+              0,
+              0,
+              0,
+              -1,
+              "",
+              0,
+              0,
+              0,
+              0,
+              65536,
+              -1,
+              0,
+              "",
+              "",
+              "Seeding 100.0 %",
+              "5",
+              1793357566,
+              1793357566,
+              "",
+              "C:\\golden\\recorded\\utorrent",
+              0,
+              "6674A9AF"
+            ]
+          ],
+          "label": [],
+          "torrentc": "857389845",
+          "rssfeeds": [],
+          "rssfilters": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&action=getfiles&hash=bfdd716dcad5a4338bce788d8ba60c6e91afd266"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254,
+          "files": [
+            "BFDD716DCAD5A4338BCE788D8BA60C6E91AFD266",
+            [
+              [
+                "Recorded.utorrent.A.mkv",
+                6291456,
+                6291456,
+                2,
+                0,
+                24,
+                true,
+                0,
+                0,
+                0,
+                0,
+                5
+              ]
+            ]
+          ]
+        }
+      }
+    }
+  ]
+}

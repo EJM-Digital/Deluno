@@ -1,0 +1,49 @@
+{
+  "app": "utorrent",
+  "version": "3.6.0.47254",
+  "state": "props",
+  "recordedAt": "2026-10-30T10:52:48Z",
+  "note": "getprops on a finished torrent: seed ratio, seed time, trackers and the per-torrent limits.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&action=getprops&hash=BFDD716DCAD5A4338BCE788D8BA60C6E91AFD266"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254,
+          "props": [
+            {
+              "hash": "BFDD716DCAD5A4338BCE788D8BA60C6E91AFD266",
+              "trackers": "",
+              "ulrate": 0,
+              "dlrate": 0,
+              "superseed": 0,
+              "dht": 1,
+              "pex": 0,
+              "seed_override": 0,
+              "seed_ratio": 2000,
+              "seed_time": 0,
+              "ulslots": 0,
+              "seed_num": 0,
+              "autoexec": 0,
+              "autoexec_hide_ui": 0,
+              "perf": {
+                "w": 0,
+                "W": 0,
+                "h": 0,
+                "c": 82339344,
+                "j": 2
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -2,7 +2,7 @@
   "app": "utorrent",
   "version": "3.6.0.47254",
   "state": "version",
-  "recordedAt": "2026-10-30T10:45:57Z",
+  "recordedAt": "2026-10-30T10:52:26Z",
   "note": "The client's own version call.",
   "exchanges": [
     {
@@ -19,7 +19,7 @@
           "build": 47254,
           "torrents": [],
           "label": [],
-          "torrentc": "1804766787",
+          "torrentc": "884720977",
           "rssfeeds": [],
           "rssfilters": []
         }

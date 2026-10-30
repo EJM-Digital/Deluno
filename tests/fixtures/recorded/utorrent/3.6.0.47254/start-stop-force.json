@@ -1,0 +1,225 @@
+{
+  "app": "utorrent",
+  "version": "3.6.0.47254",
+  "state": "start-stop-force",
+  "recordedAt": "2026-10-30T10:52:48Z",
+  "note": "stop, start and forcestart of a finished torrent, each followed by the list.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&action=stop&hash=BFDD716DCAD5A4338BCE788D8BA60C6E91AFD266"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&list=1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254,
+          "torrents": [
+            [
+              "BFDD716DCAD5A4338BCE788D8BA60C6E91AFD266",
+              136,
+              "Recorded.utorrent.A.mkv",
+              6291456,
+              1000,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              "recorded-movies",
+              0,
+              0,
+              0,
+              0,
+              65536,
+              -1,
+              0,
+              "",
+              "",
+              "Finished 100.0 %",
+              "5",
+              1793357566,
+              1793357566,
+              "",
+              "C:\\golden\\recorded\\utorrent",
+              0,
+              "6674A9AF"
+            ]
+          ],
+          "label": [
+            [
+              "recorded-movies",
+              1
+            ]
+          ],
+          "torrentc": "1841789139",
+          "rssfeeds": [],
+          "rssfilters": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&action=start&hash=BFDD716DCAD5A4338BCE788D8BA60C6E91AFD266"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&list=1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254,
+          "torrents": [
+            [
+              "BFDD716DCAD5A4338BCE788D8BA60C6E91AFD266",
+              200,
+              "Recorded.utorrent.A.mkv",
+              6291456,
+              1000,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              "recorded-movies",
+              0,
+              0,
+              0,
+              0,
+              65536,
+              -1,
+              0,
+              "",
+              "",
+              "Queued Seed 100.0 %",
+              "5",
+              1793357566,
+              1793357566,
+              "",
+              "C:\\golden\\recorded\\utorrent",
+              0,
+              "6674A9AF"
+            ]
+          ],
+          "label": [
+            [
+              "recorded-movies",
+              1
+            ]
+          ],
+          "torrentc": "941537590",
+          "rssfeeds": [],
+          "rssfilters": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&action=forcestart&hash=BFDD716DCAD5A4338BCE788D8BA60C6E91AFD266"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&list=1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254,
+          "torrents": [
+            [
+              "BFDD716DCAD5A4338BCE788D8BA60C6E91AFD266",
+              137,
+              "Recorded.utorrent.A.mkv",
+              6291456,
+              1000,
+              0,
+              0,
+              0,
+              0,
+              0,
+              -1,
+              "recorded-movies",
+              0,
+              0,
+              0,
+              0,
+              65536,
+              -1,
+              0,
+              "",
+              "",
+              "[F] Seeding 100.0 %",
+              "5",
+              1793357566,
+              1793357566,
+              "",
+              "C:\\golden\\recorded\\utorrent",
+              0,
+              "6674A9AF"
+            ]
+          ],
+          "label": [
+            [
+              "recorded-movies",
+              1
+            ]
+          ],
+          "torrentc": "1986922834",
+          "rssfeeds": [],
+          "rssfilters": []
+        }
+      }
+    }
+  ]
+}

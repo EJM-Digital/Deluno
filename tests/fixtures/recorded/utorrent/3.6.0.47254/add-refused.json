@@ -1,0 +1,26 @@
+{
+  "app": "utorrent",
+  "version": "3.6.0.47254",
+  "state": "add-refused",
+  "recordedAt": "2026-10-30T10:52:48Z",
+  "note": "A file that is not a torrent sent to the client to add: it refuses it.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/gui/?token=<scrubbed>&action=add-file",
+        "bodyText": "torrent_file=<21 bytes>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254,
+          "error": "Can't add torrent: "
+        }
+      }
+    }
+  ]
+}

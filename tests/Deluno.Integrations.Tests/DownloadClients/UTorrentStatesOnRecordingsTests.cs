@@ -14,9 +14,15 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// </summary>
 public sealed class UTorrentStatesOnRecordingsTests
 {
-    // The two torrents of the recording: "Recorded.Stalled.One" (first added) and "Recorded.Stalled.Two".
-    private const string One = "AD75B0674EDE482D905547AF476320D8BE05FA7A";
-    private const string Two = "86693FF52E864909897DF8D6743E84024B86F995";
+    // The two torrents of the recording: "Recorded.Stalled.One" (first added) and "Recorded.Stalled.Two"; their hashes are read from it.
+    private static readonly string One = HashOf("Recorded.Stalled.One.utorrent");
+    private static readonly string Two = HashOf("Recorded.Stalled.Two.utorrent");
+
+    private static string HashOf(string name)
+    {
+        using var rows = System.Text.Json.JsonDocument.Parse(RecordedReplies.Utorrent("queued").Exchanges.Last(e => e.Request.Path.Contains("list=1", StringComparison.Ordinal)).Reply.Body!);
+        return rows.RootElement.GetProperty("torrents").EnumerateArray().First(row => row[2].GetString() == name)[0].GetString()!;
+    }
 
     [Fact]
     public async Task A_torrent_waiting_behind_the_active_limit_reads_Queued()

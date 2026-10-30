@@ -2,13 +2,13 @@
   "app": "utorrent",
   "version": "3.6.0.47254",
   "state": "removed-twice",
-  "recordedAt": "2026-10-30T10:46:09Z",
+  "recordedAt": "2026-10-30T10:52:37Z",
   "note": "The same removal sent a second time.",
   "exchanges": [
     {
       "request": {
         "method": "GET",
-        "path": "/gui/?token=<scrubbed>&action=remove&hash=ad75b0674ede482d905547af476320d8be05fa7a"
+        "path": "/gui/?token=<scrubbed>&action=remove&hash=c0ee8c1247c116cdb477eb03bb8a7673f3d20731"
       },
       "reply": {
         "status": 200,
@@ -34,7 +34,7 @@
           "build": 47254,
           "torrents": [
             [
-              "86693FF52E864909897DF8D6743E84024B86F995",
+              "D5D18B22E7CC33E818A07877A4BF30AB45C106BC",
               201,
               "Recorded.Stalled.Two.utorrent",
               734003200,
@@ -56,17 +56,17 @@
               "",
               "",
               "Finding peers 0.0 %",
-              "2",
-              1793357157,
+              "3",
+              1793357546,
               0,
               "",
-              "C:\\golden\\recorded-apps\\utorrent\\save",
+              "C:\\golden\\recorded\\utorrent\\save",
               0,
-              "3768F13F"
+              "1FFB77C0"
             ]
           ],
           "label": [],
-          "torrentc": "694462684",
+          "torrentc": "2039500132",
           "rssfeeds": [],
           "rssfilters": []
         }

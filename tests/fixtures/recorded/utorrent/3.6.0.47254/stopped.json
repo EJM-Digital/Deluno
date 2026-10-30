@@ -1,0 +1,76 @@
+{
+  "app": "utorrent",
+  "version": "3.6.0.47254",
+  "state": "stopped",
+  "recordedAt": "2026-10-30T10:52:26Z",
+  "note": "A torrent stopped by its hash (action=stop), then the list: neither the started nor the queued bit is set.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&action=stop&hash=3277C8BF76E6D7DDDAD8189417DD8D63B01E6AE2"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&list=1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254,
+          "torrents": [
+            [
+              "3277C8BF76E6D7DDDAD8189417DD8D63B01E6AE2",
+              136,
+              "Recorded.Upload.Two.utorrent",
+              734003200,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              "",
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              734003200,
+              "",
+              "",
+              "Stopped 0.0 %",
+              "1",
+              1793357540,
+              0,
+              "",
+              "C:\\golden\\recorded-apps\\utorrent\\uploads",
+              0,
+              "D5F97415"
+            ]
+          ],
+          "label": [],
+          "torrentc": "1478967222",
+          "rssfeeds": [],
+          "rssfilters": []
+        }
+      }
+    }
+  ]
+}

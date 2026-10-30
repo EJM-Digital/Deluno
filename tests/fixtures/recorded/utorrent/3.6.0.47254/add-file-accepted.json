@@ -1,0 +1,77 @@
+{
+  "app": "utorrent",
+  "version": "3.6.0.47254",
+  "state": "add-file-accepted",
+  "recordedAt": "2026-10-30T10:52:23Z",
+  "note": "The same upload with an unquoted boundary: HTTP 200 and no error, and the torrent is in the list.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/gui/?token=<scrubbed>&action=add-file",
+        "bodyText": "torrent_file=<56143 bytes>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&list=1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254,
+          "torrents": [
+            [
+              "3277C8BF76E6D7DDDAD8189417DD8D63B01E6AE2",
+              201,
+              "Recorded.Upload.Two.utorrent",
+              734003200,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              -1,
+              "",
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              734003200,
+              "",
+              "",
+              "Finding peers 0.0 %",
+              "1",
+              1793357540,
+              0,
+              "",
+              "C:\\golden\\recorded-apps\\utorrent\\uploads",
+              0,
+              "D5F97415"
+            ]
+          ],
+          "label": [],
+          "torrentc": "137710786",
+          "rssfeeds": [],
+          "rssfilters": []
+        }
+      }
+    }
+  ]
+}

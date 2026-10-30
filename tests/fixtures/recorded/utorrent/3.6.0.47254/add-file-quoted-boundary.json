@@ -1,0 +1,46 @@
+{
+  "app": "utorrent",
+  "version": "3.6.0.47254",
+  "state": "add-file-quoted-boundary",
+  "recordedAt": "2026-10-30T10:52:20Z",
+  "note": "A torrent file uploaded as multipart/form-data with a quoted boundary (the .NET default): uTorrent answers HTTP 200 with an error in the body and adds nothing; the list after shows it.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/gui/?token=<scrubbed>&action=add-file",
+        "bodyText": "torrent_file=<56143 bytes>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254,
+          "error": "Error - torrent file content not supplied in form parameter"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&list=1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254,
+          "torrents": [],
+          "label": [],
+          "torrentc": "1762416168",
+          "rssfeeds": [],
+          "rssfilters": []
+        }
+      }
+    }
+  ]
+}

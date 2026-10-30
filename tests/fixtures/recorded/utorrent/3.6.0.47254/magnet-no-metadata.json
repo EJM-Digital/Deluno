@@ -2,13 +2,13 @@
   "app": "utorrent",
   "version": "3.6.0.47254",
   "state": "magnet-no-metadata",
-  "recordedAt": "2026-10-30T10:46:17Z",
+  "recordedAt": "2026-10-30T10:52:45Z",
   "note": "A magnet link for a torrent nobody has: the client cannot fetch its metadata and waits.",
   "exchanges": [
     {
       "request": {
         "method": "GET",
-        "path": "/gui/?token=<scrubbed>&action=add-url&s=magnet%3A%3Fxt%3Durn%3Abtih%3Ada95069ab8f2d101fc7adf3c540d6242c56ce8c1%26dn%3DRecorded.Magnet"
+        "path": "/gui/?token=<scrubbed>&action=add-url&s=magnet%3A%3Fxt%3Durn%3Abtih%3A497891bbd14f5850b06b426aa5a2945725bea7bd%26dn%3DRecorded.Magnet"
       },
       "reply": {
         "status": 200,
@@ -34,7 +34,7 @@
           "build": 47254,
           "torrents": [
             [
-              "DA95069AB8F2D101FC7ADF3C540D6242C56CE8C1",
+              "497891BBD14F5850B06B426AA5A2945725BEA7BD",
               201,
               "Recorded.Magnet",
               0,
@@ -56,17 +56,17 @@
               "",
               "",
               "Finding peers 0.0 %",
-              "3",
-              1793357168,
+              "4",
+              1793357558,
               0,
               "",
               "C:\\golden\\recorded\\utorrent\\save",
               0,
-              "1D2ECF03"
+              "F4F99A2A"
             ]
           ],
           "label": [],
-          "torrentc": "969009588",
+          "torrentc": "1743920116",
           "rssfeeds": [],
           "rssfilters": []
         }
@@ -86,7 +86,7 @@
           "build": 47254,
           "torrents": [
             [
-              "DA95069AB8F2D101FC7ADF3C540D6242C56CE8C1",
+              "497891BBD14F5850B06B426AA5A2945725BEA7BD",
               201,
               "Recorded.Magnet",
               0,
@@ -108,17 +108,17 @@
               "",
               "",
               "Finding peers 0.0 %",
-              "3",
-              1793357168,
+              "4",
+              1793357558,
               0,
               "",
               "C:\\golden\\recorded\\utorrent\\save",
               0,
-              "1D2ECF03"
+              "F4F99A2A"
             ]
           ],
           "label": [],
-          "torrentc": "576381477",
+          "torrentc": "442599731",
           "rssfeeds": [],
           "rssfilters": []
         }

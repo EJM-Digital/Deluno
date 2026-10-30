@@ -2,7 +2,7 @@
   "app": "utorrent",
   "version": "3.6.0.47254",
   "state": "idle",
-  "recordedAt": "2026-10-30T10:45:57Z",
+  "recordedAt": "2026-10-30T10:52:26Z",
   "note": "Nothing added: the list of torrents when empty.",
   "exchanges": [
     {
@@ -19,7 +19,7 @@
           "build": 47254,
           "torrents": [],
           "label": [],
-          "torrentc": "1998657002",
+          "torrentc": "1712697230",
           "rssfeeds": [],
           "rssfilters": []
         }

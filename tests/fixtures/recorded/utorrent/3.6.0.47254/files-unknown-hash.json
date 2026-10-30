@@ -1,0 +1,24 @@
+{
+  "app": "utorrent",
+  "version": "3.6.0.47254",
+  "state": "files-unknown-hash",
+  "recordedAt": "2026-10-30T10:52:48Z",
+  "note": "getfiles for a hash uTorrent never had.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&action=getfiles&hash=0000000000000000000000000000000000000000"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254
+        }
+      }
+    }
+  ]
+}
