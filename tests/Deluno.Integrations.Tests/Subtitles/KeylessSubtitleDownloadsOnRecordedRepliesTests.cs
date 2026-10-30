@@ -13,7 +13,7 @@ namespace Deluno.Integrations.Tests.Subtitles;
 /// </summary>
 public sealed class KeylessSubtitleDownloadsOnRecordedRepliesTests
 {
-    private sealed class Factory(HttpMessageHandler handler) : IHttpClientFactory
+    internal sealed class Factory(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
     }
@@ -22,7 +22,7 @@ public sealed class KeylessSubtitleDownloadsOnRecordedRepliesTests
     /// Answers each call with the recorded reply to the same host (when the recording names one) and path, and follows a recorded redirect the way
     /// the shipped HTTP client does: the redirect is the service's own recorded reply, the second ask is answered by its own recording.
     /// </summary>
-    private sealed class Recorded(params Recording[] recordings) : HttpMessageHandler
+    internal sealed class Recorded(params Recording[] recordings) : HttpMessageHandler
     {
         public List<string> Calls { get; } = [];
 
