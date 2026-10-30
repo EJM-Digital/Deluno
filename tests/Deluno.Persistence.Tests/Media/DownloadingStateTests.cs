@@ -105,6 +105,35 @@ public sealed class DownloadingStateTests
         Assert.False(WantedStatuses.IsSearchable(WantedStatuses.Upcoming));
     }
 
+    /// <summary>A random search order can be asked for and reaches the query: the same titles come back, in an order that is not the oldest-first one.</summary>
+    [Fact]
+    public async Task A_random_search_order_returns_the_same_titles_in_a_different_order_than_oldest_first()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(Monday);
+        var (movies, state, _) = await SeedAsync(storage, clock);
+        for (var index = 0; index < 40; index++)
+        {
+            await movies.AddAsync(new CreateMovieRequest($"Film {index:00}", 2000 + (index % 20), null), CancellationToken.None);
+        }
+
+        foreach (var item in (await movies.ListPageAsync(new CatalogueQuery { PageSize = 100 }, CancellationToken.None)).Items.Where(item => item.Title.StartsWith("Film ")))
+        {
+            await state.EnsureWantedStateAsync(MediaKind.Movie, item.Id, "library-movies", WantedStatuses.Missing, "Not here yet.", hasFile: false, null, "WEB 1080p", qualityCutoffMet: false, CancellationToken.None);
+        }
+
+        Task<IReadOnlyList<MediaWantedItem>> List(bool random) => state.ListEligibleWantedAsync(
+            MediaKind.Movie, "library-movies", 100, clock.GetUtcNow(), ignoreRetryWindow: true, CancellationToken.None, randomOrder: random);
+
+        var ordered = (await List(false)).Select(item => item.Id).ToArray();
+        var again = (await List(false)).Select(item => item.Id).ToArray();
+        var shuffled = (await List(true)).Select(item => item.Id).ToArray();
+
+        Assert.Equal(ordered, again);
+        Assert.Equal(ordered.Order(StringComparer.Ordinal), shuffled.Order(StringComparer.Ordinal));
+        Assert.NotEqual(ordered, shuffled);
+    }
+
     /* ------------------------------------------------------------ helpers */
 
     private static async Task<IReadOnlyList<MediaWantedItem>> EligibleAsync(

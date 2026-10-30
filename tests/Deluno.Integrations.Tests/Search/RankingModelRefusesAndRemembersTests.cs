@@ -233,6 +233,22 @@ public sealed class RankingModelRefusesAndRemembersTests : IDisposable
         Assert.False(service.GetStatus().ModelLoaded);
     }
 
+    [Fact]
+    public void A_rollback_to_a_stored_version_whose_files_cannot_be_read_is_refused_as_could_not_be_loaded_and_changes_nothing()
+    {
+        var service = Service(new RecordingSource(Rows(0)), ("Enabled", "true"));
+        var version = Path.Combine(_dataRoot, "models", "release-ranking", "versions", "rm-broken");
+        Directory.CreateDirectory(version);
+        File.WriteAllText(Path.Combine(version, "model.zip"), "not a model");
+        File.WriteAllText(Path.Combine(version, "metadata.json"), "{ not json");
+
+        var accepted = service.TryRollback("rm-broken", out var said);
+
+        Assert.False(accepted);
+        Assert.Equal("Model version 'rm-broken' could not be loaded.", said);
+        Assert.False(service.GetStatus().ModelLoaded);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dataRoot))

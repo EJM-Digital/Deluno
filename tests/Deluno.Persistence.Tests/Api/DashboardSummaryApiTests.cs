@@ -291,6 +291,24 @@ public sealed class DashboardSummaryApiTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task The_sections_built_for_a_push_equal_the_same_sections_of_the_summary_the_screen_fetches()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var source = app.Services.GetRequiredService<IDashboardSectionSource>();
+
+        using var fetched = System.Text.Json.JsonDocument.Parse(await app.Client.GetStringAsync("/api/dashboard/summary"));
+        var built = await source.BuildSectionsAsync(["downloads", "health"], CancellationToken.None);
+
+        foreach (var name in new[] { "downloads", "health" })
+        {
+            var pushed = System.Text.Json.JsonSerializer.SerializeToElement(built.Sections[name], new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+            // The moment each reading was taken differs between two builds; everything else must be the same.
+            static string WithoutMoments(string json) => System.Text.RegularExpressions.Regex.Replace(json, @"""[0-9]{4}-[0-9]{2}-[0-9]{2}T[^""]*""", @"""moment""");
+            Assert.Equal(WithoutMoments(fetched.RootElement.GetProperty(name).GetRawText()), WithoutMoments(pushed.GetRawText()));
+        }
+    }
+
+    [Fact]
     public async Task The_summary_carries_the_quality_mix_collections_lists_added_and_recent_activity()
     {
         await using var app = await ApplicationTestHost.StartAsync();
