@@ -254,6 +254,30 @@ public sealed class APausedLibraryTests
     }
 
     /// <summary>
+    /// When the settings cannot be read the thresholds are the defaults, warn at 10% and pause at 5%, and the library is still
+    /// judged rather than the pass failing. A real disk's free space decides which side of them it lands on, so the test
+    /// derives what the defaults must say from the free space the service itself reports.
+    /// </summary>
+    [Fact]
+    public async Task Settings_that_cannot_be_read_leave_the_default_thresholds_of_ten_and_five_percent()
+    {
+        var unreadable = new Mock<IPlatformSettingsRepository>();
+        unreadable.Setup(repository => repository.GetAsync(It.IsAny<CancellationToken>())).ThrowsAsync(new InvalidOperationException("the settings database is busy"));
+
+        foreach (var settings in new IPlatformSettingsRepository?[] { unreadable.Object, null })
+        {
+            var availability = await Availability(settings: settings).ReadAsync(
+                [Library("library-1", Path.GetTempPath())],
+                CancellationToken.None);
+
+            var status = availability.Statuses["library-1"];
+            var free = Assert.IsType<double>(status.FreePercent);
+            Assert.Equal(free <= 5 ? LibraryRootProblem.LowFreeSpace : LibraryRootProblem.None, status.Problem);
+            Assert.Equal(free > 5 && free <= 10, status.WarnLowFreeSpace);
+        }
+    }
+
+    /// <summary>
     /// The wiring, not just the answer. Import automation reads the library
     /// list and then does everything else; if the pause is not applied there,
     /// an unmounted drive still gets every finished download moved into it.

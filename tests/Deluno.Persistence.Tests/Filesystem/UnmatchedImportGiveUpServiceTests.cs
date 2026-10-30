@@ -132,6 +132,45 @@ public sealed class UnmatchedImportGiveUpServiceTests
         Assert.Empty((await series.GetImportRecoverySummaryAsync(CancellationToken.None)).RecentCases);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-5)]
+    public async Task A_configured_number_of_days_below_one_is_read_as_one_day(int configuredDays)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var (platform, libraries, series, movies) = await SetUpAsync(storage, timeProvider, UnmatchedImportPolicies.GiveUpAfterDays, giveUpDays: configuredDays);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var blockedReleases = new SqliteBlockedReleaseRepository(storage.Factory, timeProvider);
+
+        var sourcePath = Path.Combine(storage.DataRoot, "downloads", "clamped.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
+        await File.WriteAllTextAsync(sourcePath, "unmatched content");
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            library.Id, "tv", "series", "series-1", "Clamped.Days.2026", "TestIndexer", "client-1", "TestClient", "sent",
+            notesJson: null, cancellationToken: CancellationToken.None);
+        await dispatches.RecordDetectionAsync(dispatchId, "torrent-hash-2", 1024, completed: true, CancellationToken.None);
+        await series.AddImportRecoveryCaseAsync(
+            new CreateSeriesImportRecoveryCaseRequest(
+                "Clamped", ImportFailurePolicy.Unmatched, "Could not match.", "Import by hand.",
+                $$"""{"DispatchId":"{{dispatchId}}","SourcePath":"{{sourcePath.Replace("\\", "\\\\")}}"}"""),
+            CancellationToken.None);
+        var service = CreateGiveUpService(storage, timeProvider, platform, movies, series, dispatches, blockedReleases, new RecordingGateway());
+
+        // Half a day is less than the one day the setting is read as, so nothing is given up yet, not even with 0 or a negative.
+        timeProvider.Advance(TimeSpan.FromHours(12));
+        Assert.Equal(0, await service.RunAsync(CancellationToken.None));
+        Assert.True(File.Exists(sourcePath));
+
+        // Past one day it is, so the setting is not read as "give up at once".
+        timeProvider.Advance(TimeSpan.FromHours(13));
+        Assert.Equal(1, await service.RunAsync(CancellationToken.None));
+        Assert.False(File.Exists(sourcePath));
+    }
+
     private sealed class RefusingGateway : IDownloadClientActionGateway
     {
         public Task<DownloadClientRemovalResult> RemoveWithDataAsync(string clientId, string queueItemId, CancellationToken cancellationToken)
