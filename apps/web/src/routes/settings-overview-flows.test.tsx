@@ -76,3 +76,40 @@ describe("the setup overview page", () => {
     expect(liveSpec.current?.events).toEqual(expect.arrayContaining(["LibraryChanged", "IndexerChanged", "QualityProfileChanged"]));
   });
 });
+
+describe("the setup overview's readiness and step badges (#1329)", () => {
+  const configured = (autoSearchEnabled: boolean) => ({
+    libraries: [{ mediaType: "movies", rootPath: "D:\Media\Movies", autoSearchEnabled }],
+    indexers: [{ isEnabled: true, healthStatus: "healthy" }],
+    downloadClients: [{ isEnabled: true, healthStatus: "healthy" }],
+    policySets: [{ isEnabled: true }],
+    qualityProfiles: [{}],
+    settings: { ...emptyPlatformSettingsSnapshot, autoStartJobs: true, workflowVerified: true }
+  });
+
+  it("an empty install is Not ready, marks only the first required step Next, and calls the import-list step Optional", () => {
+    render(<MemoryRouter><SettingsOverviewPage /></MemoryRouter>);
+
+    expect(screen.getByText("Readiness: Not ready")).toBeTruthy();
+    expect(screen.getAllByText("Next")).toHaveLength(1);
+    expect(screen.queryByText("Done")).toBeNull();
+    expect(screen.getAllByText("Optional").length).toBeGreaterThan(0);
+  });
+
+  it("with the basics and connections done but nothing automatic on it reads Acquisition ready", () => {
+    Object.assign(loaderData, configured(false));
+    render(<MemoryRouter><SettingsOverviewPage /></MemoryRouter>);
+
+    expect(screen.getByText("Readiness: Acquisition ready")).toBeTruthy();
+    expect(screen.getAllByText("Done").length).toBeGreaterThan(0);
+  });
+
+  it("with everything required done it reads Operationally ready and no step is Next", () => {
+    Object.assign(loaderData, configured(true));
+    render(<MemoryRouter><SettingsOverviewPage /></MemoryRouter>);
+
+    expect(screen.getByText("Readiness: Operationally ready")).toBeTruthy();
+    expect(screen.queryByText("Next")).toBeNull();
+    expect(screen.queryByText("Readiness: Not ready")).toBeNull();
+  });
+});
