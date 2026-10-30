@@ -373,7 +373,12 @@ public sealed class EventsDeliveredToRecordedReceiversOnRealFilesTests
         Assert.True(broken.Attempts >= 3, $"the broken service was asked {broken.Attempts} times");
         Assert.Empty(world.Ntfy.Requests);
         await RunRefreshesAsync(world.App);
-        Assert.Contains("Created", jellyfin.UpdateBodies.SelectMany(body => JsonDocument.Parse(body).RootElement.GetProperty("Updates").EnumerateArray().Select(update => update.GetProperty("UpdateType").GetString())));
+        // Says what the server was sent and what the queue held, so a night that differs from the others shows which call went missing (#1396).
+        var told = jellyfin.UpdateBodies.SelectMany(body => JsonDocument.Parse(body).RootElement.GetProperty("Updates").EnumerateArray().Select(update => update.GetProperty("UpdateType").GetString())).ToArray();
+        var queued = (await world.App.Services.GetRequiredService<Deluno.Jobs.Data.IJobQueueRepository>().ListAsync(200, CancellationToken.None))
+            .Where(job => job.JobType == Deluno.Contracts.MediaServerJobTypes.Refresh)
+            .Select(job => $"{job.Source}:{job.Status}:{job.Attempts}:{job.LastError}");
+        Assert.True(told.Contains("Created"), $"told {string.Join(",", told)}; calls {string.Join(" | ", jellyfin.Requests)}; refresh jobs {string.Join(" | ", queued)}");
     }
 
     private static async Task RunRefreshesAsync(ApplicationTestHost app)
