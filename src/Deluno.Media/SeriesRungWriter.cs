@@ -91,7 +91,7 @@ public static class SeriesRungWriter
         AddParameter(update, "@seriesId", seriesId);
         AddParameter(update, "@libraryId", libraryId);
         AddParameter(update, "@wantedStatus", status);
-        AddParameter(update, "@wantedReason", Reason(status, aired, airedWithFile));
+        AddParameter(update, "@wantedReason", Reason(status, aired, airedWithFile, nothingWanted));
         AddParameter(update, "@qualityCutoffMet", status == WantedStatuses.Covered ? 1 : 0);
         AddParameter(update, "@updatedUtc", now.ToString("O"));
         await update.ExecuteNonQueryAsync(cancellationToken);
@@ -102,8 +102,9 @@ public static class SeriesRungWriter
     /// page print. Counts, because "missing" on a show is only useful with the
     /// number beside it.
     /// </summary>
-    private static string Reason(string status, int aired, int airedWithFile) => status switch
+    private static string Reason(string status, int aired, int airedWithFile, bool nothingWanted) => status switch
     {
+        WantedStatuses.Covered when nothingWanted => "None of this show's episodes are monitored, so nothing is wanted.",
         WantedStatuses.Upcoming => "Nothing has aired yet.",
         WantedStatuses.Covered => $"All {aired} aired episode{(aired == 1 ? "" : "s")} are here at the quality you asked for.",
         WantedStatuses.Upgrade => $"All {aired} aired episode{(aired == 1 ? "" : "s")} are here, and some could be better.",
