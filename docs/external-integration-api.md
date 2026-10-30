@@ -166,7 +166,7 @@ Response shape:
   "recommendedCategories": {
     "movies": "deluno-movies",
     "tv": "deluno-tv",
-    "family-movies": "deluno-family-movies",
+    "anime": "deluno-anime",
     "movies4k": "deluno-movies-4k",
     "tv4k": "deluno-tv-4k"
   },

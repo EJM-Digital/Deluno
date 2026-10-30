@@ -64,6 +64,27 @@ public sealed class ExternalFileChangedTests
         Assert.True(againBody.RootElement.GetProperty("coalesced").GetBoolean());
     }
 
+    /// <summary>A call that names no tool and no reason is worded "Another tool changed ..." with no reason clause.</summary>
+    [Fact]
+    public async Task A_change_that_names_no_tool_and_no_reason_is_worded_as_another_tool_with_no_reason_clause()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var libraryId = await CreateLibraryAsync(app);
+        var movieId = await AddMovieAsync(app);
+        var path = Path.Combine(app.DataRoot, "movies", "Blade Runner 2049 (2017)", "Blade Runner 2049.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await File.WriteAllBytesAsync(path, new byte[64]);
+        var state = app.Services.GetRequiredService<IMediaStateRepository>();
+        await state.EnsureWantedStateAsync(MediaKind.Movie, movieId, libraryId, WantedStatuses.Covered, "Imported.", hasFile: true, currentQuality: "WEBDL-1080p", targetQuality: "WEBDL-1080p", qualityCutoffMet: true, CancellationToken.None);
+        await ExecuteAsync(app, DelunoDatabaseNames.Movies, "UPDATE movie_wanted_state SET file_path = @path WHERE movie_id = @id;", ("@path", path), ("@id", movieId));
+
+        var response = await app.Client.PostAsJsonAsync("/api/integrations/external/file-changed", new { path, tool = " ", reason = "  " });
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var activity = await app.Services.GetRequiredService<IActivityFeedRepository>().ListActivityAsync(50, null, null, CancellationToken.None);
+        Assert.Contains(activity, item => item.Message == "Another tool changed Blade Runner 2049.mkv. Deluno is re-reading it.");
+    }
+
     [Fact]
     public async Task A_file_Deluno_does_not_track_is_not_found()
     {

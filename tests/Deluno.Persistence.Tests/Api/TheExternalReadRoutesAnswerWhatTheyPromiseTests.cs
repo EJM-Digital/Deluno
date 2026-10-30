@@ -60,6 +60,10 @@ public sealed class TheExternalReadRoutesAnswerWhatTheyPromiseTests
         var categories = manifest.GetProperty("recommendedCategories");
         Assert.Equal("deluno-movies", categories.GetProperty("movies").GetString());
         Assert.Equal("deluno-tv", categories.GetProperty("tv").GetString());
+        Assert.Equal("deluno-anime", categories.GetProperty("anime").GetString());
+        Assert.Equal("deluno-movies-4k", categories.GetProperty("movies4k").GetString());
+        Assert.Equal("deluno-tv-4k", categories.GetProperty("tv4k").GetString());
+        Assert.Equal(5, categories.EnumerateObject().Count());
         var library = Assert.Single(manifest.GetProperty("libraries").EnumerateArray());
         Assert.Equal(libraryId, library.GetProperty("id").GetString());
         Assert.Equal("movies", library.GetProperty("mediaType").GetString());

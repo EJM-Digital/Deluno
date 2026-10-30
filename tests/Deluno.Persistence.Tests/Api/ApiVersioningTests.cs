@@ -35,6 +35,10 @@ public sealed class ApiVersioningTests : IAsyncDisposable
                         app.UseDelunoApiUnmatchedPathGuard();
                         app.UseEndpoints(endpoints =>
                         {
+                        endpoints.MapGet("/api/refused/401", () => Results.StatusCode(401));
+                        endpoints.MapGet("/api/refused/403", () => Results.StatusCode(403));
+                        endpoints.MapGet("/api/refused/429", () => Results.StatusCode(429));
+                        endpoints.MapGet("/api/refused/500", () => Results.StatusCode(500));
                         endpoints.MapGet("/api/health/live", () => Results.Ok(new { status = "ok" }));
                         endpoints.MapGet("/api/v1/release-preferences/registry", () => Results.Ok(new { version = "v1" }));
                         endpoints.MapGet("/api/v1/guides/trash/package", () => Results.Ok(new { id = "trash-guides" }));
@@ -69,6 +73,22 @@ public sealed class ApiVersioningTests : IAsyncDisposable
     {
         var response = await _client.GetAsync("/api/health/live");
 
+        Assert.True(response.Headers.TryGetValues("X-Deluno-Api-Version", out var values));
+        Assert.Equal("v1", Assert.Single(values!));
+    }
+
+    [Theory]
+    [InlineData("/api/refused/401", 401)]
+    [InlineData("/api/refused/403", 403)]
+    [InlineData("/api/refused/429", 429)]
+    [InlineData("/api/refused/500", 500)]
+    [InlineData("/api/no-such-route", 404)]
+    [InlineData("/api/v9/health/live", 400)]
+    public async Task Error_responses_carry_the_version_header_too(string path, int status)
+    {
+        var response = await _client.GetAsync(path);
+
+        Assert.Equal(status, (int)response.StatusCode);
         Assert.True(response.Headers.TryGetValues("X-Deluno-Api-Version", out var values));
         Assert.Equal("v1", Assert.Single(values!));
     }

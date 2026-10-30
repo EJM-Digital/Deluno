@@ -23,6 +23,7 @@ public static class ApiVersioning
         return app.Use(async (context, next) =>
         {
             var path = context.Request.Path;
+            context.Response.Headers["X-Deluno-Api-Version"] = DelunoApiVersion.Current;
             if (path.StartsWithSegments("/api", out var rest) &&
                 rest.StartsWithSegments($"/{DelunoApiVersion.Current}", out var withoutVersion) &&
                 !HasDedicatedVersionedRoute(rest))
@@ -40,7 +41,6 @@ public static class ApiVersioning
                 return;
             }
 
-            context.Response.Headers["X-Deluno-Api-Version"] = DelunoApiVersion.Current;
             await next();
         });
     }
