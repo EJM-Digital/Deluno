@@ -472,7 +472,7 @@ jobs:
       # The SDK's own tests compile it under strict tsc, so they run where the packages are installed (29 Oct 2026: in the
       # repository-checks job, which installs none, tsc was missing).
       - name: The TypeScript SDK's tests
-        run: node --test sdk/typescript/tests/delunoclient.test.mjs
+        run: node --test sdk/typescript/tests/delunoclient.test.mjs sdk/typescript/tests/docs-samples.test.mjs
 
       - name: Run frontend unit tests
         if: ${{ needs.changes.outputs.run_coverage != 'true' }}

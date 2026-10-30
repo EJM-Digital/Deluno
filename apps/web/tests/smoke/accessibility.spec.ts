@@ -6,6 +6,18 @@ import { CLIENT_PRESETS } from "../../src/routes/connections/presets";
 const ruleIds = ["label", "aria-required-attr", "aria-allowed-role", "th-has-data-cells"] as const;
 const screens = [
   "/movies",
+  // The other library screens, and the Library & Storage settings screens (#1329): a control with no name is as unusable
+  // there as anywhere.
+  "/tv",
+  "/collections",
+  "/calendar",
+  "/discover",
+  "/settings/libraries",
+  "/settings/media-management",
+  "/settings/import-policy",
+  "/settings/processing",
+  "/settings/destination-rules",
+  "/settings/quality",
   "/setup-guide",
   "/system",
   "/system/audit",

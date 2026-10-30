@@ -122,6 +122,39 @@ describe("LibraryTable Radarr-parity columns (#790)", () => {
   });
 });
 
+describe("LibraryTable list cells: quality, episodes and subtitles", () => {
+  const cell = (column: Parameters<typeof renderListCell>[0], media: MediaItem, variant: "movies" | "shows" = "movies") =>
+    render(<>{renderListCell(column, media, variant, DEFAULT_DISPLAY_PREFERENCES)}</>);
+
+  it("shows the quality of the file held, and a dash for a film with no file", () => {
+    const held = cell("quality", item({ id: "1", title: "Held", hasFile: true, currentQuality: "Bluray 1080p" }));
+    expect(held.container.textContent).toMatch(/1080p/);
+    held.unmount();
+
+    const none = cell("quality", item({ id: "2", title: "None", hasFile: false, currentQuality: "Bluray 1080p" }));
+    expect(none.container.textContent).toBe("—");
+  });
+
+  it("shows a show's held episodes as a bar, and a dash when none have aired", () => {
+    const bar = cell("episodes", item({ id: "3", title: "Show", type: "show", airedEpisodeCount: 10, airedWithFileCount: 4 }), "shows");
+    expect(bar.container.querySelector("[role='progressbar'], [style*='width'], [aria-label]")).not.toBeNull();
+    bar.unmount();
+
+    const none = cell("episodes", item({ id: "4", title: "Show", type: "show", airedEpisodeCount: 0 }), "shows");
+    expect(none.container.textContent).toBe("—");
+  });
+
+  it("shows the subtitle languages held of those wanted, and a dash when none are wanted", () => {
+    const some = cell("subtitles", item({ id: "5", title: "Film", hasFile: true, subtitleLanguagesWanted: 2, subtitleLanguagesHeld: 1, subtitleLanguagesSettled: 1 }));
+    expect(screen.getByText("1 of 2")).toBeInTheDocument();
+    expect(some.container.querySelector("[title]")?.getAttribute("title")).toMatch(/1 of 2/);
+    some.unmount();
+
+    const none = cell("subtitles", item({ id: "6", title: "Film", hasFile: true, subtitleLanguagesWanted: 0 }));
+    expect(none.container.textContent).toBe("—");
+  });
+});
+
 describe("LibraryTable click-to-sort headers (#790)", () => {
   it("starts an ascending sort on a column with no prior sort", () => {
     const { onSortChange } = renderTable({ sortField: "added", sortDirection: "desc" });

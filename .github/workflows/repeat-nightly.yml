@@ -125,7 +125,7 @@ jobs:
             echo "::group::Run $run of $REPEATS"
             node --test $(find scripts -name '*.test.mjs' ! -name platform-docker.test.mjs | sort)
             (cd services/metadata-gateway && node --test)
-            node --test sdk/typescript/tests/delunoclient.test.mjs
+            node --test sdk/typescript/tests/delunoclient.test.mjs sdk/typescript/tests/docs-samples.test.mjs
             echo "::endgroup::"
           done
 
