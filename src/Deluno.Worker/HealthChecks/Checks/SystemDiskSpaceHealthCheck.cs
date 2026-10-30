@@ -10,8 +10,18 @@ namespace Deluno.Worker.HealthChecks.Checks;
 /// shows on Health, the Dashboard tile and the bell rather than only in
 /// Monitoring's own alert list.
 /// </summary>
-public sealed class SystemDiskSpaceHealthCheck(IOptions<StoragePathOptions> storageOptions) : IHealthCheck
+public sealed class SystemDiskSpaceHealthCheck(IOptions<StoragePathOptions> storageOptions, SystemDiskSpaceHealthCheck.DriveReader? readDrive = null) : IHealthCheck
 {
+    /// <summary>What the drive under a path reports. Replaceable so a test can give a drive that is nearly full or not ready.</summary>
+    public delegate (bool IsReady, long TotalSize, long AvailableFreeSpace) DriveReader(string fullPath);
+
+    private static (bool IsReady, long TotalSize, long AvailableFreeSpace) ReadRealDrive(string fullPath)
+    {
+        var drive = new DriveInfo(fullPath);
+        // A drive that is not ready makes TotalSize throw an IOException, which RunAsync reports as "could not read".
+        return (drive.IsReady, drive.TotalSize, drive.AvailableFreeSpace);
+    }
+
     private const double LowStorageThresholdPercent = 12d;
 
     public string Category => HealthCheckCategories.System;
@@ -25,7 +35,7 @@ public sealed class SystemDiskSpaceHealthCheck(IOptions<StoragePathOptions> stor
         try
         {
             var fullPath = Path.GetFullPath(dataRoot);
-            var drive = new DriveInfo(fullPath);
+            var drive = (readDrive ?? ReadRealDrive)(fullPath);
             if (!drive.IsReady || drive.TotalSize <= 0)
             {
                 return Task.FromResult<IReadOnlyList<HealthCheckOutcome>>(
