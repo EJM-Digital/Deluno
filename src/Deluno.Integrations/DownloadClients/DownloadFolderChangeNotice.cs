@@ -22,7 +22,8 @@ namespace Deluno.Integrations.DownloadClients;
 public sealed class DownloadFolderChangeNoticeService(
     IServiceScopeFactory scopes,
     IOptions<StoragePathOptions> storage,
-    ILogger<DownloadFolderChangeNoticeService> logger) : BackgroundService
+    ILogger<DownloadFolderChangeNoticeService> logger,
+    TimeProvider? timeProvider = null) : BackgroundService
 {
     public const string HealthId = "notice:download-folders";
 
@@ -60,7 +61,7 @@ public sealed class DownloadFolderChangeNoticeService(
         try
         {
             // After the schema initializers have run.
-            await Task.Delay(TimeSpan.FromSeconds(20), stoppingToken);
+            await Task.Delay(TimeSpan.FromSeconds(20), timeProvider ?? TimeProvider.System, stoppingToken);
             await using var scope = scopes.CreateAsyncScope();
             var provider = scope.ServiceProvider;
             await RunOnceAsync(
