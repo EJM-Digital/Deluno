@@ -181,3 +181,37 @@ describe("applied history", () => {
     expect(screen.queryByText(/Applied history/i)).toBeNull();
   });
 });
+
+describe("the change report table's columns (#1329)", () => {
+  const itemOrder = () => screen.getAllByRole("row").slice(1).map((row) => ["Migrated UHD", "Migrated Torrent", "Migrated qBittorrent"].find((name) => row.textContent?.includes(name))).filter(Boolean);
+
+  it("sorts by a header, reverses on the next press, and Reset columns brings the report's own order back", async () => {
+    await preview();
+    expect(itemOrder()).toEqual(["Migrated UHD", "Migrated Torrent", "Migrated qBittorrent"]);
+    const header = screen.getByRole("columnheader", { name: /^Item/ });
+
+    fireEvent.click(within(header).getByRole("button"));
+    expect(header).toHaveAttribute("aria-sort", "ascending");
+    expect(itemOrder()).toEqual(["Migrated qBittorrent", "Migrated Torrent", "Migrated UHD"]);
+
+    fireEvent.click(within(header).getByRole("button"));
+    expect(header).toHaveAttribute("aria-sort", "descending");
+    expect(itemOrder()).toEqual(["Migrated UHD", "Migrated Torrent", "Migrated qBittorrent"]);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Columns" })[0]);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Reset columns" }));
+    expect(header).not.toHaveAttribute("aria-sort");
+    expect(itemOrder()).toEqual(["Migrated UHD", "Migrated Torrent", "Migrated qBittorrent"]);
+  });
+
+  it("sorts the Apply column by what is ticked, so the ticked rows gather together", async () => {
+    await preview();
+    fireEvent.click(screen.getByRole("switch", { name: "Apply Migrated Torrent" }));
+    const header = screen.getByRole("columnheader", { name: /^Apply/ });
+
+    fireEvent.click(within(header).getByRole("button"));
+
+    expect(header).toHaveAttribute("aria-sort", "ascending");
+    expect(itemOrder()[0]).toBe("Migrated Torrent");
+  });
+});
