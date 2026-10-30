@@ -179,3 +179,37 @@ describe("the Add button on the toolbar", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: dialogName })).toBeNull());
   });
 });
+
+describe("opening a title from its poster", () => {
+  async function renderWithRouter(variant: "movies" | "shows") {
+    const router = createMemoryRouter([{ path: "/", element: <LibraryView variant={variant} /> }, { path: "*", element: <p>elsewhere</p> }], { initialEntries: ["/"] });
+    render(<RouterProvider router={router} />);
+    await screen.findByRole("button", { name: /^Search these \d+$/ });
+    return router;
+  }
+
+  it("clicking the body of a TV poster opens that show's page", async () => {
+    const router = await renderWithRouter("shows");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open Severance" }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/tv/s1"));
+  });
+
+  it("clicking the body of a film poster opens that film's page", async () => {
+    const router = await renderWithRouter("movies");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open Silo" }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/movies/s2"));
+  });
+
+  it("the hover Open icon is a real link to the title, so a middle-click opens a tab", async () => {
+    const router = await renderWithRouter("shows");
+
+    const links = await screen.findAllByRole("link", { name: "Open" });
+    expect(links.map((link) => link.getAttribute("href"))).toEqual(["/tv/s1", "/tv/s2"]);
+    fireEvent.click(links[0]);
+    await waitFor(() => expect(router.state.location.pathname).toBe("/tv/s1"));
+  });
+});
