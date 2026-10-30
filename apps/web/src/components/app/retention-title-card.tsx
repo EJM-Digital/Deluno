@@ -189,9 +189,7 @@ export function RetentionTitleCard({ entityId, onChanged }: { entityId: string; 
 
       <RetentionPostponeDialog
         open={postponing !== null}
-        onOpenChange={(next) => {
-          if (!next) setPostponing(null);
-        }}
+        onOpenChange={() => setPostponing(null)}
         title={postponing?.title ?? "title"}
         removeAfterUtc={postponing?.removeAfterUtc ?? null}
         busy={busy === "postpone"}
@@ -199,9 +197,7 @@ export function RetentionTitleCard({ entityId, onChanged }: { entityId: string; 
       />
       <RetentionKeepDialog
         open={keeping !== null}
-        onOpenChange={(next) => {
-          if (!next) setKeeping(null);
-        }}
+        onOpenChange={() => setKeeping(null)}
         title={keeping?.title ?? "title"}
         ruleName={keeping?.ruleName ?? "this rule"}
         busy={busy === "keep"}

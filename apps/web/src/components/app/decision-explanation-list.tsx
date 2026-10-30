@@ -60,9 +60,7 @@ export function DecisionExplanationList({ decisions }: { decisions: DecisionExpl
 
       <Drawer
         open={open !== null}
-        onOpenChange={(next) => {
-          if (!next) setOpenId(null);
-        }}
+        onOpenChange={() => setOpenId(null)}
         title={open?.reason ?? "Decision"}
         description={open ? `${open.scopeLabel} · ${formatDateTime(open.occurredUtc, preferences)}` : undefined}
         footer={

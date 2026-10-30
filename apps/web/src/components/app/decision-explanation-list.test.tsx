@@ -81,6 +81,18 @@ describe("the decision trail card", () => {
     expect(within(drawer).queryByText("What it weighed")).toBeNull();
     expect(within(drawer).queryByText("Alternatives")).toBeNull();
   });
+
+  it("closes the drawer with its Close button and with Escape", () => {
+    render(<DecisionExplanationList decisions={[decision(1)]} />);
+
+    fireEvent.click(screen.getByText("Picked release 1"));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Picked release 1" })).getAllByRole("button", { name: "Close" }).at(-1)!);
+    expect(screen.queryByRole("dialog", { name: "Picked release 1" })).toBeNull();
+
+    fireEvent.click(screen.getByText("Picked release 1"));
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Picked release 1" }), { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Picked release 1" })).toBeNull();
+  });
 });
 
 describe("the decision trail status chip tones", () => {

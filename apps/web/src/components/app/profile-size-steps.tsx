@@ -171,9 +171,6 @@ export function describe(
     return `Refuses ${quality} ${thing} over ${max} ${unit}, which the largest normally exceed.`;
   }
 
-  if (tighterBelow) {
-    return `Refuses ${quality} ${thing} under ${min} ${unit}, which rules out the smallest encodes.`;
-  }
-
-  return `Wider than ${quality} ${thing} normally need.`;
+  // Not within the usual range and not tighter above, so it is tighter below.
+  return `Refuses ${quality} ${thing} under ${min} ${unit}, which rules out the smallest encodes.`;
 }

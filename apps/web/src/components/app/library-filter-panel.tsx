@@ -15,7 +15,7 @@ import {
   type FilterOperator,
   type MediaVariant
 } from "../../lib/library-controls";
-import { isMonitoringFilter, type MonitoringFilter } from "../../lib/library-filters";
+import type { MonitoringFilter } from "../../lib/library-filters";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -121,7 +121,7 @@ export function LibraryFilterPanel({
         <MenuSelect
           label="Monitoring"
           value={monitoring}
-          onChange={(value) => onMonitoringChange(isMonitoringFilter(value) ? value : "any")}
+          onChange={(value) => onMonitoringChange(value as MonitoringFilter)}
           options={[
             { value: "any", label: "Any monitoring" },
             { value: "monitored", label: `Monitored (${monitoredCount})` },

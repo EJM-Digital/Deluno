@@ -19,7 +19,7 @@ export function useCutValueTitles() {
       for (let depth = 0; element && depth < 4; depth += 1, element = element.parentElement) {
         if (element.hasAttribute("title")) return;
         if (isCut(element)) {
-          const text = (element.textContent ?? "").replace(/\s+/g, " ").trim();
+          const text = element.textContent.replace(/\s+/g, " ").trim();
           if (text) element.setAttribute("title", text);
           return;
         }

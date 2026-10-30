@@ -2,8 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import {
   UnsavedChangesContext,
+  type NavigationBlocker,
   type UnsavedChangesRegistration
 } from "../../hooks/use-unsaved-changes";
+
+type BlockedBlocker = Extract<NavigationBlocker, { state: "blocked" }>;
 
 interface UnsavedChangesProviderProps {
   children: ReactNode;
@@ -50,7 +53,8 @@ export function UnsavedChangesProvider({ children }: UnsavedChangesProviderProps
 
   function visibleForm() {
     const forms = Array.from(document.forms).filter((form) => {
-      if (form.closest('[aria-hidden="true"]')) return false;
+      // Radix hides the page behind the prompt with aria-hidden and data-aria-hidden; only a hiding the page chose itself counts.
+      if (form.closest('[aria-hidden="true"]:not([data-aria-hidden])')) return false;
       return form.getClientRects().length > 0;
     });
 
@@ -60,8 +64,8 @@ export function UnsavedChangesProvider({ children }: UnsavedChangesProviderProps
   }
 
   async function saveAndContinue() {
-    const current = registrationRef.current;
-    if (!current || current.blocker.state !== "blocked" || !current.dirty) return;
+    // The prompt only offers this while an editor is registered, blocked and dirty.
+    const current = registrationRef.current!;
 
     setSaving(true);
     try {
@@ -94,13 +98,11 @@ export function UnsavedChangesProvider({ children }: UnsavedChangesProviderProps
     }
 
     setSaving(false);
-    const latest = registrationRef.current;
-    if (latest?.blocker.state === "blocked" && !latest.dirty) latest.blocker.proceed();
   }
 
   function discardAndContinue() {
     const current = registrationRef.current;
-    if (current?.blocker.state === "blocked") current.blocker.proceed();
+    (current?.blocker as BlockedBlocker | undefined)?.proceed();
   }
 
   const contextValue = useMemo(() => ({ register, unregister }), [register, unregister]);
@@ -110,8 +112,8 @@ export function UnsavedChangesProvider({ children }: UnsavedChangesProviderProps
       {children}
       <ConfirmDialog
         open={active !== null}
-        onOpenChange={(open) => {
-          if (!open && active?.blocker.state === "blocked") active.blocker.reset();
+        onOpenChange={() => {
+          (active?.blocker as BlockedBlocker | undefined)?.reset();
         }}
         title="Unsaved changes"
         description={active?.description ?? "You have unsaved changes. Choose how to handle them before leaving."}

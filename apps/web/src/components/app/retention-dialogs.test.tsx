@@ -241,3 +241,23 @@ describe("Add a title by hand", () => {
     expect(mocks.fetchJson).toHaveBeenCalledWith("/api/retention/rules/r2/titles?query=old");
   });
 });
+
+describe("Postpone a title, with an odd or missing day", () => {
+  it("counts from today when the day on file cannot be read, and shows no new day when there is none", () => {
+    vi.useFakeTimers({ now: new Date("2026-10-19T10:00:00Z") });
+    const { rerender } = render(<RetentionPostponeDialog open onOpenChange={vi.fn()} title="Dune" removeAfterUtc="not a date" onConfirm={vi.fn()} />);
+    expect(screen.getByText(/Its new day is/).textContent).toMatch(/Nov|2 Nov|11/);
+
+    rerender(<RetentionPostponeDialog open onOpenChange={vi.fn()} title="Dune" removeAfterUtc={null} onConfirm={vi.fn()} />);
+    expect(screen.queryByText(/Its new day is/)).toBeNull();
+  });
+
+  it("starts at 14 days again each time it opens", () => {
+    const { rerender } = render(<RetentionPostponeDialog open onOpenChange={vi.fn()} title="Dune" removeAfterUtc={null} onConfirm={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Days to postpone"), { target: { value: "30" } });
+    rerender(<RetentionPostponeDialog open={false} onOpenChange={vi.fn()} title="Dune" removeAfterUtc={null} onConfirm={vi.fn()} />);
+    rerender(<RetentionPostponeDialog open onOpenChange={vi.fn()} title="Dune" removeAfterUtc={null} busy onConfirm={vi.fn()} />);
+    expect(screen.getByLabelText("Days to postpone")).toHaveValue(14);
+    expect(screen.getByRole("button", { name: "Postpone" })).toBeDisabled();
+  });
+});
