@@ -64,6 +64,43 @@ public sealed class ExternalFileChangedTests
         Assert.True(againBody.RootElement.GetProperty("coalesced").GetBoolean());
     }
 
+    /// <summary>The one-minute window is the product's, so a minute and a second later the same file is a new change.</summary>
+    [Fact]
+    public async Task After_the_one_minute_window_the_same_file_is_a_new_change_and_is_read_again()
+    {
+        var clock = new MovedClock(DateTimeOffset.UtcNow);
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => services.AddSingleton<TimeProvider>(clock));
+        var libraryId = await CreateLibraryAsync(app);
+        var movieId = await AddMovieAsync(app);
+        var path = Path.Combine(app.DataRoot, "movies", "Window Film (2020)", "Window Film.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await File.WriteAllBytesAsync(path, new byte[64]);
+        var state = app.Services.GetRequiredService<IMediaStateRepository>();
+        await state.EnsureWantedStateAsync(MediaKind.Movie, movieId, libraryId, WantedStatuses.Covered, "Imported.", hasFile: true, currentQuality: "WEBDL-1080p", targetQuality: "WEBDL-1080p", qualityCutoffMet: true, CancellationToken.None);
+        await ExecuteAsync(app, DelunoDatabaseNames.Movies, "UPDATE movie_wanted_state SET file_path = @path WHERE movie_id = @id;", ("@path", path), ("@id", movieId));
+
+        async Task<bool> CoalescedAsync()
+        {
+            var response = await app.Client.PostAsJsonAsync("/api/integrations/external/file-changed", new { path, tool = "Weir" });
+            Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            return body.RootElement.GetProperty("coalesced").GetBoolean();
+        }
+
+        Assert.False(await CoalescedAsync());
+        clock.Advance(TimeSpan.FromSeconds(30));
+        Assert.True(await CoalescedAsync());
+        clock.Advance(TimeSpan.FromSeconds(31));
+        Assert.False(await CoalescedAsync());
+    }
+
+    private sealed class MovedClock(DateTimeOffset start) : TimeProvider
+    {
+        private DateTimeOffset _now = start;
+        public void Advance(TimeSpan by) => _now += by;
+        public override DateTimeOffset GetUtcNow() => _now;
+    }
+
     /// <summary>A call that names no tool and no reason is worded "Another tool changed ..." with no reason clause.</summary>
     [Fact]
     public async Task A_change_that_names_no_tool_and_no_reason_is_worded_as_another_tool_with_no_reason_clause()
