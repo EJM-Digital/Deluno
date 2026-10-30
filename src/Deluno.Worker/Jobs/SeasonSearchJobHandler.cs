@@ -19,7 +19,7 @@ namespace Deluno.Worker.Jobs;
 public sealed class SeasonSearchJobHandler(
     ISeasonSearchExecutor seasonSearchExecutor,
     IJobQueueRepository jobQueueRepository,
-    Deluno.Worker.Dashboard.SearchesInFlight? searchesInFlight = null) : IJobHandler
+    Deluno.Contracts.SearchesInFlight? searchesInFlight = null) : IJobHandler
 {
     public string JobType => "series.search.season";
 

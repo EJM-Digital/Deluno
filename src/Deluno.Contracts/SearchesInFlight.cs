@@ -1,6 +1,5 @@
-using Deluno.Contracts;
 
-namespace Deluno.Worker.Dashboard;
+namespace Deluno.Contracts;
 
 /// <summary>
 /// The titles Deluno is searching for at this moment (#1442): a search a person started, a title just added, the
@@ -47,6 +46,22 @@ public sealed class SearchesInFlight(TimeProvider timeProvider, IRealtimeEventPu
             _byJob[jobId] = new SearchingTitle(entityType, entityId, title, startedBy, label, timeProvider.GetUtcNow().ToString("O"));
             return true;
         });
+
+    /// <summary>
+    /// A search that runs straight from a button (Search season, Search episode, a title's Search) is on the lane from
+    /// here until the returned scope is disposed, however the search ends: await using var tracked = await EnterAsync(...).
+    /// </summary>
+    public async Task<IAsyncDisposable> EnterAsync(string entityType, string entityId, string title, string startedBy, string label)
+    {
+        var key = "direct:" + Guid.NewGuid().ToString("N");
+        await BeginAsync(key, entityType, entityId, title, startedBy, label);
+        return new Scope(this, key);
+    }
+
+    private sealed class Scope(SearchesInFlight owner, string key) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync() => await owner.EndAsync(key);
+    }
 
     /// <summary>The job's current title is done (a release was sent, or nothing good was found).</summary>
     public Task EndAsync(string jobId) => ChangeAsync(() => _byJob.Remove(jobId));

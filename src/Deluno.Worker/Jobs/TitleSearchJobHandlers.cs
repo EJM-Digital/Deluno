@@ -33,7 +33,7 @@ public abstract class TitleSearchJobHandler(
     IMediaTagStore? mediaTagStore,
     IReleasePreferencePlanRepository? releasePreferencePlanRepository,
     IPlatformSettingsRepository? platformSettingsRepository,
-    Deluno.Worker.Dashboard.SearchesInFlight? searchesInFlight = null) : IJobHandler
+    Deluno.Contracts.SearchesInFlight? searchesInFlight = null) : IJobHandler
 {
     public abstract string JobType { get; }
 
@@ -158,7 +158,7 @@ public sealed class MovieTitleSearchJobHandler(
     IMediaTagStore? mediaTagStore = null,
     IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
     IPlatformSettingsRepository? platformSettingsRepository = null,
-    Deluno.Worker.Dashboard.SearchesInFlight? searchesInFlight = null) : TitleSearchJobHandler(
+    Deluno.Contracts.SearchesInFlight? searchesInFlight = null) : TitleSearchJobHandler(
         MediaKind.Movie,
         mediaStateRepository,
         librariesRepository,
@@ -193,7 +193,7 @@ public sealed class SeriesTitleSearchJobHandler(
     IMediaTagStore? mediaTagStore = null,
     IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
     IPlatformSettingsRepository? platformSettingsRepository = null,
-    Deluno.Worker.Dashboard.SearchesInFlight? searchesInFlight = null) : TitleSearchJobHandler(
+    Deluno.Contracts.SearchesInFlight? searchesInFlight = null) : TitleSearchJobHandler(
         MediaKind.Series,
         mediaStateRepository,
         librariesRepository,

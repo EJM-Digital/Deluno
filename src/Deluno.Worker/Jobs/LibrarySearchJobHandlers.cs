@@ -43,7 +43,7 @@ public sealed class MoviesLibrarySearchJobHandler(
     IPlatformSettingsRepository? platformSettingsRepository = null,
     ISearchQueuePauseGate? queuePauseGate = null,
     IRealtimeEventPublisher? realtimeEventPublisher = null,
-    Deluno.Worker.Dashboard.SearchesInFlight? searchesInFlight = null) : LibrarySearchJobHandler(
+    Deluno.Contracts.SearchesInFlight? searchesInFlight = null) : LibrarySearchJobHandler(
         librariesRepository,
         qualityRepository,
         jobQueueRepository,
@@ -85,7 +85,7 @@ public sealed class TvLibrarySearchJobHandler(
     IPlatformSettingsRepository? platformSettingsRepository = null,
     ISearchQueuePauseGate? queuePauseGate = null,
     IRealtimeEventPublisher? realtimeEventPublisher = null,
-    Deluno.Worker.Dashboard.SearchesInFlight? searchesInFlight = null) : LibrarySearchJobHandler(
+    Deluno.Contracts.SearchesInFlight? searchesInFlight = null) : LibrarySearchJobHandler(
         librariesRepository,
         qualityRepository,
         jobQueueRepository,

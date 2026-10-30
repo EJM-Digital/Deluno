@@ -38,7 +38,7 @@ public abstract class LibrarySearchJobHandler(
     IPlatformSettingsRepository? platformSettingsRepository = null,
     ISearchQueuePauseGate? queuePauseGate = null,
     IRealtimeEventPublisher? realtimeEventPublisher = null,
-    Deluno.Worker.Dashboard.SearchesInFlight? searchesInFlight = null) : IJobHandler
+    Deluno.Contracts.SearchesInFlight? searchesInFlight = null) : IJobHandler
 {
     /// <summary>
     /// Both catalogues run the same handler; only the lane differs.

@@ -30,7 +30,7 @@ public sealed class EpisodeSearchJobHandler(
     IBlockedReleaseRepository? blockedReleases = null,
     IJobScheduler? jobScheduler = null,
     IPlatformSettingsRepository? platformSettingsRepository = null,
-    Deluno.Worker.Dashboard.SearchesInFlight? searchesInFlight = null) : IJobHandler
+    Deluno.Contracts.SearchesInFlight? searchesInFlight = null) : IJobHandler
 {
     public string JobType => "episode.search";
 

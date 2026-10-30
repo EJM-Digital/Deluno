@@ -1163,6 +1163,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             IMediaTagStore tagStore,
             IReleasePreferencePlanRepository releasePreferencePlanRepository,
             IPlatformSettingsRepository platformSettings,
+            SearchesInFlight searching,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1171,6 +1172,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                 return denied;
             }
 
+            // The title is on the Searching lane while its indexers are asked (#1442).
+            await using var tracked = await searching.EnterAsync("series", id, (await mediaStateRepository.GetByIdAsync(MediaKind.Series, id, cancellationToken))?.Title ?? "A show", "manual", "The whole show");
             var result = await RunSearchAsync(
                 id,
                 mode,
@@ -1683,6 +1686,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             IActivityFeedRepository activityFeedRepository,
             TimeProvider timeProvider,
             IMediaTagStore tagStore,
+            SearchesInFlight searching,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1728,6 +1732,10 @@ public static class SeriesEndpointRouteBuilderExtensions
                 });
             }
 
+            // The show is on the Searching lane, naming the episode, until this search ends (#1442).
+            await using var tracked = await searching.EnterAsync(
+                "series", id, seriesItem.Title, "manual",
+                targetEpisodes.Count == 1 ? $"S{targetEpisodes[0].SeasonNumber:D2}E{targetEpisodes[0].EpisodeNumber:D2}" : $"{targetEpisodes.Count} episodes");
             var wantedItem = (await mediaStateRepository.ListWantedByIdsAsync(
                     MediaKind.Series,
                     [id],
@@ -3546,6 +3554,8 @@ public static class SeriesEndpointRouteBuilderExtensions
             int seasonNumber,
             HttpContext httpContext,
             ISeasonSearchExecutor seasonSearchExecutor,
+            ISeriesCatalogRepository seriesRepository,
+            SearchesInFlight searching,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -3554,6 +3564,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                 return denied;
             }
 
+            // The show is on the Searching lane, naming the season, until this search ends (#1442).
+            await using var tracked = await searching.EnterAsync("series", id, (await seriesRepository.GetByIdAsync(id, cancellationToken))?.Title ?? "A show", "manual", $"Season {seasonNumber}");
             var result = await seasonSearchExecutor.ExecuteAsync(
                 id,
                 seasonNumber,
