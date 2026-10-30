@@ -106,7 +106,7 @@ public sealed class RecordContractCoverageTests
         Assert.Equal(200, AutomationBatchLimits.MaxIdempotencyKeyLength);
     }
 
-    private static object? Sample(Type type, int seed)
+    internal static object? Sample(Type type, int seed)
     {
         var underlying = Nullable.GetUnderlyingType(type) ?? type;
         if (underlying == typeof(string)) return "value" + seed;
