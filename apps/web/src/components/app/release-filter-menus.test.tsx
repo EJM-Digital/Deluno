@@ -36,3 +36,20 @@ describe("the indexer filter above a list of releases", () => {
     expect(filterCandidates(releases, { protocol: "", indexerName: "" }).map((item) => item.releaseName)).toEqual(["A", "B"]);
   });
 });
+
+describe("the protocol filter above a list of releases", () => {
+  it("is drawn only when there is more than one protocol, offers Any protocol and each protocol, and tells the page the pick", () => {
+    const picked = vi.fn();
+    const { rerender } = render(<ReleaseFilterMenus {...base} protocols={["torznab", "newznab"]} indexers={[]} onProtocolChange={picked} />);
+    expect(screen.queryByRole("combobox", { name: "Filter by indexer" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Filter by protocol" }));
+    expect(screen.getAllByRole("option")[0]!.textContent).toBe("Any protocol");
+    expect(screen.getAllByRole("option")).toHaveLength(3);
+    fireEvent.click(screen.getAllByRole("option")[1]!);
+    expect(picked).toHaveBeenCalledWith("torznab");
+
+    rerender(<ReleaseFilterMenus {...base} protocols={["torznab"]} indexers={["A", "B"]} />);
+    expect(screen.queryByRole("combobox", { name: "Filter by protocol" })).toBeNull();
+  });
+});
