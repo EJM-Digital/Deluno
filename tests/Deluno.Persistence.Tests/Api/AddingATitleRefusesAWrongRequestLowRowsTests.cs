@@ -47,4 +47,24 @@ public sealed class AddingATitleRefusesAWrongRequestLowRowsTests
         Assert.Equal(["A title is required."], await ProblemsAsync(refused, "title"));
         Assert.Empty(await app.Services.GetRequiredService<IMovieCatalogRepository>().ListAsync(CancellationToken.None));
     }
+
+    [Fact]
+    public async Task A_film_or_show_or_discover_title_over_200_characters_is_refused_in_a_sentence_naming_the_title_and_nothing_is_added()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var movieLibrary = await ApiScenes.CreateLibraryAsync(app, "movies");
+        var longTitle = new string('A', 201);
+
+        var film = await app.Client.PostAsJsonAsync("/api/movies", new { title = longTitle, releaseYear = 2021, monitored = true, libraryId = movieLibrary });
+        var show = await app.Client.PostAsJsonAsync("/api/series", new { title = longTitle, startYear = 2021, monitored = true });
+        var discover = await app.Client.PostAsJsonAsync("/api/discover/add", new { mediaType = "movie", title = longTitle, year = 1999, provider = "tmdb", providerId = "603", libraryId = movieLibrary, monitored = true });
+
+        foreach (var refused in new[] { film, show, discover })
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+            var body = await refused.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("The title is too long. It can be at most 200 characters.", body.GetProperty("message").GetString());
+        }
+        Assert.Empty(await app.Services.GetRequiredService<IMovieCatalogRepository>().ListAsync(CancellationToken.None));
+    }
 }

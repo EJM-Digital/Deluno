@@ -1,5 +1,7 @@
 export interface ValidationProblem {
   title?: string;
+  /** The plain sentence the request limits answer with (an over-long value). */
+  message?: string;
   errors?: Record<string, string[]>;
 }
 

@@ -315,13 +315,6 @@ public static class ImportFailurePolicy
     public static bool CountsAsClientStrike(string reasonCode) => reasonCode is MissingSource;
 
     /// <summary>
-    /// Whether a person has to look at it. Raised where Deluno has a usable
-    /// file and cannot decide alone what to do with it.
-    /// </summary>
-    public static bool RaisesRecoveryCase(string reasonCode)
-        => reasonCode is Unmatched or ImportFailed or Conflict or ReplacementOwnershipMismatch;
-
-    /// <summary>
     /// Whether to stop searching this library for now.
     ///
     /// <para>A missing root, a permission error or a broken hardlink setup will
