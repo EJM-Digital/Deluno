@@ -53,7 +53,7 @@ test.describe("Settings > Notifications", () => {
   test.afterAll(async ({ browser }) => {
     const page = await browser.newPage();
     await openScreen(page, "/settings/notifications");
-    for (const hook of await hooks(page)) if (hook.name.includes(String(stamp))) await api(page, "DELETE", `/api/notification-webhooks/${hook.id}`);
+    for (const hook of await hooks(page)) if (hook.id === lounge.id || hook.name.includes(String(stamp)) || (hook.tags ?? "").includes(`lounge-${stamp}`)) await api(page, "DELETE", `/api/notification-webhooks/${hook.id}`);
     // The tag the webhook used is taken away once the webhook is gone, so the Tags specs that follow start from an empty list.
     const tags = await api<Array<{ id: string; name: string }>>(page, "GET", "/api/tags");
     for (const tag of tags.body) if (tag.name === `lounge-${stamp}`) await api(page, "DELETE", `/api/tags/${tag.id}`);
