@@ -315,6 +315,9 @@ describe("what a journey card says", () => {
     expect(statusOf(card({ stage: "searching" }), 1).text).toBe("Checking 1 indexer");
     expect(statusOf(card({ stage: "searching", startedBy: "seerr" }), 5).text).toBe("Asked for in Seerr · checking");
     expect(statusOf(card({ stage: "searching" }), 0).text).toBe("Looking for it");
+    // A season or an episode search on a show says which (#1442).
+    expect(statusOf(card({ stage: "searching", state: { tone: "info", label: "Season 2" } }), 3).text).toBe("Season 2 · checking 3 indexers");
+    expect(statusOf(card({ stage: "searching", state: { tone: "info", label: "Season 2, S03E01" } }), 0).text).toBe("Season 2, S03E01 · looking for it");
   });
 
   it("says the quality and where it came from, the progress and speed, and who is working on it", () => {

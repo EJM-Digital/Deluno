@@ -20,18 +20,31 @@ public sealed class SearchesInFlight(TimeProvider timeProvider, IRealtimeEventPu
     {
         lock (_lock)
         {
-            return _byJob.Values.OrderBy(item => item.StartedUtc, StringComparer.Ordinal).ToArray();
+            return OneCardPerTitle();
         }
     }
+
+    /// <summary>A show can have several searches at once (a season, an episode, the whole show): one card for it, naming what is being searched.</summary>
+    private IReadOnlyList<SearchingTitle> OneCardPerTitle()
+        => _byJob.Values
+            .GroupBy(item => (item.EntityType, item.EntityId))
+            .Select(group => group.OrderBy(item => item.StartedUtc, StringComparer.Ordinal).ToArray())
+            .Select(group => group.Length == 1 ? group[0] : group[0] with { Label = string.Join(", ", group.Select(item => item.Label).Distinct(StringComparer.Ordinal)) })
+            .OrderBy(item => item.StartedUtc, StringComparer.Ordinal)
+            .ToArray();
 
     /// <summary>"Checking 5 indexers" while the indexers are asked.</summary>
     public static string CheckingLabel(int indexers)
         => indexers <= 0 ? "Looking for it" : indexers == 1 ? "Checking 1 indexer" : $"Checking {indexers} indexers";
 
     public Task BeginAsync(string jobId, string entityType, string entityId, string title, string startedBy, int indexers)
+        => BeginAsync(jobId, entityType, entityId, title, startedBy, CheckingLabel(indexers));
+
+    /// <summary>A search with its own words for what it is looking for ("Season 2", "S02E05").</summary>
+    public Task BeginAsync(string jobId, string entityType, string entityId, string title, string startedBy, string label)
         => ChangeAsync(() =>
         {
-            _byJob[jobId] = new SearchingTitle(entityType, entityId, title, startedBy, CheckingLabel(indexers), timeProvider.GetUtcNow().ToString("O"));
+            _byJob[jobId] = new SearchingTitle(entityType, entityId, title, startedBy, label, timeProvider.GetUtcNow().ToString("O"));
             return true;
         });
 
@@ -55,7 +68,7 @@ public sealed class SearchesInFlight(TimeProvider timeProvider, IRealtimeEventPu
             lock (_lock)
             {
                 changed = change();
-                list = _byJob.Values.OrderBy(item => item.StartedUtc, StringComparer.Ordinal).ToArray();
+                list = OneCardPerTitle();
             }
 
             if (changed)

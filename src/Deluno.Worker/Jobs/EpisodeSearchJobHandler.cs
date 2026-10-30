@@ -29,11 +29,37 @@ public sealed class EpisodeSearchJobHandler(
     IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
     IBlockedReleaseRepository? blockedReleases = null,
     IJobScheduler? jobScheduler = null,
-    IPlatformSettingsRepository? platformSettingsRepository = null) : IJobHandler
+    IPlatformSettingsRepository? platformSettingsRepository = null,
+    Deluno.Worker.Dashboard.SearchesInFlight? searchesInFlight = null) : IJobHandler
 {
     public string JobType => "episode.search";
 
+    /// <summary>The show is on Live's Searching lane, naming the episode, for as long as this job runs (#1442).</summary>
     public async Task<string> HandleAsync(JobQueueItem job, CancellationToken cancellationToken)
+    {
+        if (searchesInFlight is null)
+        {
+            return await HandleCoreAsync(job, cancellationToken);
+        }
+
+        var asked = JobPayloads.ParseEpisodeSearchPayload(job.PayloadJson);
+        if (asked is not null && !string.IsNullOrWhiteSpace(asked.EpisodeId))
+        {
+            var show = (await seriesCatalogRepository.GetByIdAsync(asked.SeriesId, cancellationToken))?.Title ?? "A show";
+            await searchesInFlight.BeginAsync(job.Id, "series", asked.SeriesId, show, "missing", $"S{asked.SeasonNumber:D2}E{asked.EpisodeNumber:D2}");
+        }
+
+        try
+        {
+            return await HandleCoreAsync(job, cancellationToken);
+        }
+        finally
+        {
+            await searchesInFlight.EndAsync(job.Id);
+        }
+    }
+
+    private async Task<string> HandleCoreAsync(JobQueueItem job, CancellationToken cancellationToken)
     {
         var payload = JobPayloads.ParseEpisodeSearchPayload(job.PayloadJson);
         if (payload is null || string.IsNullOrWhiteSpace(payload.EpisodeId))

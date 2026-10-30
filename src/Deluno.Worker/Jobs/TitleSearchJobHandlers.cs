@@ -32,11 +32,37 @@ public abstract class TitleSearchJobHandler(
     Func<string, CancellationToken, Task<IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>>?>>? episodeTitles,
     IMediaTagStore? mediaTagStore,
     IReleasePreferencePlanRepository? releasePreferencePlanRepository,
-    IPlatformSettingsRepository? platformSettingsRepository) : IJobHandler
+    IPlatformSettingsRepository? platformSettingsRepository,
+    Deluno.Worker.Dashboard.SearchesInFlight? searchesInFlight = null) : IJobHandler
 {
     public abstract string JobType { get; }
 
+    /// <summary>The title is on Live's Searching lane for as long as its search runs (#1442).</summary>
     public async Task<string> HandleAsync(JobQueueItem job, CancellationToken cancellationToken)
+    {
+        if (searchesInFlight is null)
+        {
+            return await HandleCoreAsync(job, cancellationToken);
+        }
+
+        var (askedId, _, _) = Read(job.PayloadJson, job.RelatedEntityId);
+        if (!string.IsNullOrWhiteSpace(askedId))
+        {
+            var name = (await mediaStateRepository.GetByIdAsync(kind, askedId, cancellationToken))?.Title ?? "A title";
+            await searchesInFlight.BeginAsync(job.Id, kind == MediaKind.Movie ? "movie" : "series", askedId, name, "manual", kind == MediaKind.Movie ? "Looking for it" : "The whole show");
+        }
+
+        try
+        {
+            return await HandleCoreAsync(job, cancellationToken);
+        }
+        finally
+        {
+            await searchesInFlight.EndAsync(job.Id);
+        }
+    }
+
+    private async Task<string> HandleCoreAsync(JobQueueItem job, CancellationToken cancellationToken)
     {
         var (id, libraryId, startedBy) = Read(job.PayloadJson, job.RelatedEntityId);
         if (string.IsNullOrWhiteSpace(id))
@@ -131,7 +157,8 @@ public sealed class MovieTitleSearchJobHandler(
     IMovieCatalogRepository movieCatalogRepository,
     IMediaTagStore? mediaTagStore = null,
     IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
-    IPlatformSettingsRepository? platformSettingsRepository = null) : TitleSearchJobHandler(
+    IPlatformSettingsRepository? platformSettingsRepository = null,
+    Deluno.Worker.Dashboard.SearchesInFlight? searchesInFlight = null) : TitleSearchJobHandler(
         MediaKind.Movie,
         mediaStateRepository,
         librariesRepository,
@@ -147,7 +174,8 @@ public sealed class MovieTitleSearchJobHandler(
         episodeTitles: null,
         mediaTagStore,
         releasePreferencePlanRepository,
-        platformSettingsRepository)
+        platformSettingsRepository,
+        searchesInFlight)
 {
     public override string JobType => TitleSearchJobs.Movie;
 }
@@ -164,7 +192,8 @@ public sealed class SeriesTitleSearchJobHandler(
     ISeriesCatalogRepository seriesCatalogRepository,
     IMediaTagStore? mediaTagStore = null,
     IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
-    IPlatformSettingsRepository? platformSettingsRepository = null) : TitleSearchJobHandler(
+    IPlatformSettingsRepository? platformSettingsRepository = null,
+    Deluno.Worker.Dashboard.SearchesInFlight? searchesInFlight = null) : TitleSearchJobHandler(
         MediaKind.Series,
         mediaStateRepository,
         librariesRepository,
@@ -180,7 +209,8 @@ public sealed class SeriesTitleSearchJobHandler(
         async (seriesId, token) => (await seriesCatalogRepository.GetInventoryDetailAsync(seriesId, token))?.EpisodeTitlesBySeason(),
         mediaTagStore,
         releasePreferencePlanRepository,
-        platformSettingsRepository)
+        platformSettingsRepository,
+        searchesInFlight)
 {
     public override string JobType => TitleSearchJobs.Series;
 }
