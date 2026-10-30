@@ -9,6 +9,64 @@ developer: say what changed in everyday words, not internal file or class
 names. `npm run ci:check` warns (does not fail) when the version currently
 being built has no section here yet.
 
+## 1.0.0-rc.30.37
+
+Deluno is early. It is still being tested hard and it is not finished. Expect
+some rough edges, and please do not point it at the only copy of anything you
+cannot replace. Nothing runs on its own until you switch it on, and everything
+Deluno does is written to Activity. If something looks wrong, confusing or
+just ugly, tell us at https://github.com/EJM-Digital/Deluno/issues: every
+report gets read. This notice is at the top of every release.
+
+Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
+your PC" the first time you run the installer. Choose More info, then Run
+anyway.
+
+Everything in 1.0.0-rc.30.36, plus:
+
+New:
+- Transfers is one page: live downloads, hand-offs to the processor and the
+  history, each a view with its own filters. A release name links to the
+  indexer it came from. The old Activity address opens the history view.
+- Search lives in a bigger search bar with a Filter menu (type, indexers,
+  categories); the separate Search tab is gone.
+- Discover opens on popular, trending, top rated, upcoming and in-cinema lists
+  and filters films and shows by release, years, genre, rating, language and
+  order.
+- Collections lists every collection a film you hold belongs to, marks each
+  film held or missing, recommends collections worth completing and adds the
+  missing films in one action.
+- Adding a library with media type Both makes a linked Movies library and TV
+  library inside one folder. Removing one asks whether to remove both.
+- Recovery codes: a forgotten username or password can be recovered with one
+  of your recovery codes. Make a set under Preferences, Account.
+- Creating or deleting an API key, making recovery codes, changing the
+  password and changing who may skip sign-in now ask for your current
+  password. Five wrong tries in a row pause the check for ten minutes.
+- Preferences: every setting uses the same few controls, the "How this works"
+  sections are replaced by an (i) button beside the settings that need one,
+  and connection checks always run.
+
+Fixes:
+- uTorrent: sending a .torrent file now works (uTorrent had been refusing
+  Deluno's upload while answering as if it worked), a paused or stopped
+  torrent reads Paused, and a running one reads Downloading, not Queued.
+- A SABnzbd or NZBGet job you paused reads Paused, not Queued.
+- The dashboard and System, Backups say they could not read the backups or
+  the databases, instead of saying no backup has been made.
+- Import lists offer only the check intervals that save, a feed address that
+  is a web page says so plainly, and Discover says Excluded once.
+- Send a test event says it worked only when the event was delivered.
+- The metadata language and region are refused unless they are real codes.
+- Closing a release rule with an unsaved edit asks first.
+- Adding a title as unmonitored from Discover no longer searches for it.
+- Usenet results are no longer flagged as having no seeders.
+- A new search opens in Deluno's own ranking, not the last sort you chose.
+- Counts read "1 library" and "2 libraries" everywhere.
+- The setup guide lists every download client, rTorrent included, and its
+  Start step shows what is missing on Start itself.
+- An update applied on Windows names the version it came from correctly.
+
 ## 1.0.0-rc.30.36
 
 Deluno is early. It is still being tested hard and it is not finished. Expect
