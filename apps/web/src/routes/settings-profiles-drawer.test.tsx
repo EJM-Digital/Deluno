@@ -11,7 +11,8 @@ import type { GuidePackage, QualityModelSnapshot } from "../lib/api";
 
 const authedFetchMock = vi.fn();
 vi.mock("../lib/use-auth", () => ({ authedFetch: (...args: unknown[]) => authedFetchMock(...args) }));
-vi.mock("../hooks/use-unsaved-changes", () => ({ useUnsavedChanges: () => undefined }));
+const unsaved = vi.hoisted(() => ({ dirty: false }));
+vi.mock("../hooks/use-unsaved-changes", () => ({ useUnsavedChanges: (dirty: boolean) => { unsaved.dirty = dirty; } }));
 // What the saved profile's preferences compile to is read for the drawer's "Try a release" box; its own tests are elsewhere.
 vi.mock("../lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/api")>()),
@@ -243,7 +244,10 @@ describe("a new quality profile", () => {
 
   it("asks before throwing away what was typed", async () => {
     const drawer = await openNew();
+    expect(unsaved.dirty).toBe(false);
     fireEvent.change(drawer.getByLabelText("Profile name"), { target: { value: "Half done" } });
+    // The same flag is what makes leaving the page ask before dropping the edits.
+    await waitFor(() => expect(unsaved.dirty).toBe(true));
 
     fireEvent.click(drawer.getByRole("button", { name: "Cancel" }));
 
@@ -251,6 +255,7 @@ describe("a new quality profile", () => {
     expect(confirm.getByText("Discard unsaved changes?")).toBeVisible();
     fireEvent.click(confirm.getByRole("button", { name: "Discard" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(unsaved.dirty).toBe(false);
   });
 });
 

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -11,7 +11,8 @@ import { emptyPlatformSettingsSnapshot } from "../lib/api/types/settings";
  * release's own indexer, is skipped entirely rather than matched.
  */
 
-vi.mock("../hooks/use-unsaved-changes", () => ({ useUnsavedChanges: () => undefined }));
+const unsaved = vi.hoisted(() => ({ dirty: false }));
+vi.mock("../hooks/use-unsaved-changes", () => ({ useUnsavedChanges: (dirty: boolean) => { unsaved.dirty = dirty; } }));
 
 const indexers: IndexerItem[] = [
   { id: "idx-1", name: "NZBgeek", protocol: "usenet" } as IndexerItem,
@@ -79,6 +80,31 @@ describe("release profile enable/disable and indexer scoping (#770)", () => {
     expect(screen.getByRole("switch", { name: /^Rule enabled/ }).getAttribute("aria-checked")).toBe("true");
     expect(screen.getByRole("checkbox", { name: "NZBgeek" })).toBeTruthy();
     expect(screen.getByRole("checkbox", { name: "TorrentLeech" })).toBeTruthy();
+  });
+
+  it("asks before throwing away what was typed, and the page's leave-guard is on only while the drawer is edited", async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "New acquisition rule" }));
+    const drawer = within(await screen.findByRole("dialog"));
+    expect(unsaved.dirty).toBe(false);
+    fireEvent.change(drawer.getByRole("textbox", { name: /^Name/ }), { target: { value: "Half done" } });
+    await waitFor(() => expect(unsaved.dirty).toBe(true));
+
+    fireEvent.click(drawer.getByRole("button", { name: "Cancel" }));
+
+    const top = async () => {
+      await waitFor(() => expect(screen.getAllByRole("dialog").length).toBeGreaterThan(1));
+      return within(screen.getAllByRole("dialog").at(-1)!);
+    };
+    const confirm = await top();
+    expect(confirm.getByText("Discard unsaved changes?")).toBeTruthy();
+    fireEvent.click(confirm.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.getAllByRole("dialog")).toHaveLength(1));
+    expect((drawer.getByRole("textbox", { name: /^Name/ }) as HTMLInputElement).value).toBe("Half done");
+    fireEvent.click(drawer.getByRole("button", { name: "Cancel" }));
+    fireEvent.click((await top()).getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(unsaved.dirty).toBe(false);
   });
 
   it("loads an existing scoped, disabled rule with its switch off and its indexer checked", async () => {
