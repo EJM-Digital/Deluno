@@ -150,6 +150,13 @@ public sealed class ImportRestartRecoveryService(
         var marker = read.Marker! with { StagingPath = stagingPath };
         try
         {
+            // A kill in the middle of a copy leaves the copy's own temporary file beside the staging name. While the
+            // original is still there it is only a redundant partial of it, and it can be tens of gigabytes.
+            if (File.Exists(marker.SourcePath))
+            {
+                RemoveInterruptedCopies(stagingPath);
+            }
+
             if (File.Exists(marker.DestinationPath))
             {
                 if (!File.Exists(stagingPath))
@@ -247,6 +254,31 @@ public sealed class ImportRestartRecoveryService(
             await RecordAsync(marker, finished: false, exception.Message, cancellationToken);
             await RaiseNoticeAsync(library, stagingPath, marker.Title, recycled: false, "Deluno could not finish it", cancellationToken);
             return Outcome.Abandoned;
+        }
+    }
+
+    /// <summary>
+    /// The half-written temporary copies (<c>.deluno-copy-*.tmp</c>) a killed copy left next to a staging file. Only called
+    /// when the original they were copied from is still there, so they are never the only copy of anything.
+    /// </summary>
+    private void RemoveInterruptedCopies(string stagingPath)
+    {
+        try
+        {
+            var folder = Path.GetDirectoryName(stagingPath);
+            if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
+            {
+                return;
+            }
+
+            foreach (var half in Directory.EnumerateFiles(folder, Path.GetFileName(stagingPath) + ".deluno-copy-*.tmp"))
+            {
+                TryDelete(half);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogInformation(exception, "Could not look for half-written copies beside {StagingPath}; they stay for the next recovery.", stagingPath);
         }
     }
 
