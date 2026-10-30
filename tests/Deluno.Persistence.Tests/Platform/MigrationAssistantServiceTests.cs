@@ -896,23 +896,22 @@ public sealed class MigrationAssistantServiceTests
                 }
               ],
               "movies": [
-                {
-                  "title": "Dune Part Two",
-                  "monitored": true,
-                  "hasFile": true,
-                  "qualityProfileId": 80,
-                  "rootFolderPath": "/mnt/media/migrated-movies",
-                  "movieFile": {
-                    "mediaInfo": { "videoCodec": "HEVC", "audioCodec": "TrueHD" },
-                    "customFormats": [{ "id": 17, "name": "TrueHD Atmos" }]
-                  }
-                },
                 { "title": "Anora", "monitored": false, "hasFile": false }
               ]
             }
             """;
 
-        return new MigrationImportRequest("radarr", "Radarr test", payload);
+        // The first film is the real one recorded from Radarr holding its file (#1272): GET /api/v3/movie gives the film and its file's codecs, and
+        // GET /api/v3/moviefile the same file with the custom format its name matches. It is filed under this test's profile and root folder.
+        var export = System.Text.Json.Nodes.JsonNode.Parse(payload)!.AsObject();
+        var film = System.Text.Json.Nodes.JsonNode.Parse(Deluno.Tests.Recorded.RecordedReplies.Radarr("movies-with-file").Exchanges[^1].Reply.Body!)!.AsArray()[0]!.AsObject();
+        film["movieFile"] = System.Text.Json.Nodes.JsonNode.Parse(Deluno.Tests.Recorded.RecordedReplies.Radarr("movie-files").Exchanges[^1].Reply.Body!)!.AsArray()[0]!.DeepClone();
+        film["monitored"] = true;
+        film["qualityProfileId"] = 80;
+        film["rootFolderPath"] = "/mnt/media/migrated-movies";
+        export["movies"]!.AsArray().Insert(0, film.DeepClone());
+
+        return new MigrationImportRequest("radarr", "Radarr test", export.ToJsonString());
     }
 
     private static async Task<MigrationAssistantService> CreateServiceAsync(

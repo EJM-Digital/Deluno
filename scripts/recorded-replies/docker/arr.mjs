@@ -8,6 +8,7 @@
 // format, qBittorrent as its download client and the stack's Torznab feed as its indexer. Their API keys are read from each app's
 // config.xml inside its container and are removed from the recordings.
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { Client, addSecret, local, replyJson, save, until } from './lib.mjs';
 
 const project = process.env.REC_PROJECT ?? 'recdocker';
@@ -123,7 +124,43 @@ async function prowlarr() {
   save('prowlarr', v, 'download-clients', `GET /api/v1/downloadclient (${v}): none are set up.`, [await a.get('downloadclient')]);
 }
 
-const jobs = { sonarr, radarr, prowlarr };
+/**
+ * Radarr holding the film's file: the replies a person copies out when the library already has the film on disk (#1272).
+ *
+ *   REC_FILM=<a small real video file named like a release, on this machine's disk> node scripts/recorded-replies/docker/arr.mjs radarrFile
+ *
+ * The file is copied into the film's own folder under Radarr's root folder, Radarr rescans, and GET /api/v3/movie then carries a `movieFile`
+ * with its `mediaInfo` (the codecs Radarr read with ffprobe) and the custom formats the file's name matches. Needs only the radarr service;
+ * no download client or indexer is set up, so the other Radarr states are not touched by this job.
+ */
+async function radarrFile() {
+  const film = process.env.REC_FILM;
+  if (!film) throw new Error('Set REC_FILM to the path of a small real video file whose name carries x265, e.g. "Big Buck Bunny (2008) x265.mkv".');
+  const a = await connect('radarr', 'v3');
+  docker('exec', '--user', 'root', `${project}-radarr-1`, 'sh', '-c', 'mkdir -p "/movies/Big Buck Bunny (2008)" && chown -R 1654:1654 /movies');
+  const root = await a.once('rootfolder', (r) => r.path === '/movies', { path: '/movies' });
+  const profiles = replyJson(await a.get('qualityprofile'));
+  await a.once('customformat', (c) => c.name === 'Recorded x265', {
+    name: 'Recorded x265', includeCustomFormatWhenRenaming: false,
+    specifications: [{ name: 'x265', implementation: 'ReleaseTitleSpecification', negate: false, required: true, fields: [{ name: 'value', value: '(x|h)\\.?265' }] }]
+  });
+  const found = replyJson(await a.get('movie/lookup/tmdb?tmdbId=10378'));
+  await a.once('movie', (x) => x.tmdbId === 10378, { ...found, qualityProfileId: profiles[0].id, rootFolderPath: '/movies', monitored: false, minimumAvailability: 'released', tags: [], addOptions: { monitor: 'none', searchForMovie: false } });
+  const id = replyJson(await a.get('movie')).find((x) => x.tmdbId === 10378).id;
+  const name = film.split(/[\\/]/).pop();
+  // Streamed through stdin: docker cp does not take a path across wsl.exe.
+  const parts = (process.env.REC_DOCKER ?? 'wsl -e docker').split(' ').filter(Boolean);
+  execFileSync(parts[0], [...parts.slice(1), 'exec', '-i', '--user', 'root', `${project}-radarr-1`, 'sh', '-c', 'cat > "/movies/Big Buck Bunny (2008)/$1"', 'sh', name], { input: readFileSync(film) });
+  docker('exec', '--user', 'root', `${project}-radarr-1`, 'sh', '-c', 'chown -R 1654:1654 /movies');
+  const rescan = await a.post('command', { name: 'RescanMovie', movieId: id });
+  await until('Radarr to find the file', 120, async () => replyJson(await a.get(`movie/${id}`))?.hasFile === true, 2000);
+  const v = a.version;
+  const what = `${v}, a fresh container set up through its own API with a public title and a small real video file copied into the film's folder, then rescanned`;
+  save('radarr', v, 'movies-with-file', `GET /api/v3/movie (${what}): the film with its file, \`movieFile\` carrying \`mediaInfo\` and the custom format its name matches.`, [rescan, await a.get('movie')]);
+  save('radarr', v, 'movie-files', `GET /api/v3/moviefile?movieId (${what}).`, [await a.get(`moviefile?movieId=${id}`)]);
+}
+
+const jobs = { sonarr, radarr, prowlarr, radarrFile };
 for (const name of process.argv.slice(2)) {
   if (!jobs[name]) { console.error('unknown: ' + name); process.exit(2); }
   await jobs[name]();

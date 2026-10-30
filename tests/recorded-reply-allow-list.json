@@ -7,11 +7,6 @@
       "reason": "Emby 4.10.1.0, Jellyfin 12.4.0 and an unclaimed Plex 1.43.4 are recorded (tests/fixtures/recorded/emby, jellyfin, plex), and the same operations are replayed from them in EmbyOnRecordingsTests, PlexOnRecordingsTests, RecordedJellyfinTests and JellyfinOperationsOnRecordingsTests. This file's tests still build their replies inline for what the recordings do not hold: Plex's 'is the account everyone' tests, ratings, favourites and watchlist, which need plex.tv's user, friend, shared-server and home lists and a token that names an owner (only plex.tv's own 401 with no token is recorded: it needs a claimed server, tests/fixtures/recorded/MISSING.md), and the synthetic Jellyfin and Emby cases that need several users, a second page of 500 films or a grouped listing. Move each onto a recording by changing one value of the Emby or Jellyfin catalogue reply as they are taken up."
     },
     {
-      "file": "tests/Deluno.Persistence.Tests/Platform/MigrationAssistantServiceTests.cs",
-      "kind": "pending",
-      "reason": "The guard finds one key it takes for a Seerr reply (#1237): the pasted Radarr export carries a movie file with \"mediaInfo\" (video and audio codec) and custom formats. That is a Radarr movie-file reply, not Seerr's. The recorded Radarr 6.4.4 (tests/fixtures/recorded/radarr) holds a film but no file, so no recorded reply has a movieFile. To move this test onto a recording, record Radarr holding the film file (put a film in its root folder, rescan, then GET /api/v3/movie): see tests/fixtures/recorded/MISSING.md."
-    },
-    {
       "file": "tests/Deluno.Integrations.Tests/Properties/ScoringAndFeedProperties.cs",
       "kind": "deliberate",
       "reason": "Property tests (#1271): the feed is written by Deluno's own TorznabFeed.Write from generated releases and read back, to prove the reader never throws on any text and round-trips title, size and date. Generated input is the point; no recorded reply can stand in for arbitrary text. Real Torznab replies are tested from tests/fixtures/recorded/jackett."

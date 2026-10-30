@@ -2,7 +2,7 @@
 
 Written by scripts/recorded-replies/Invoke-RecordReplies.ps1 on 2026-10-11. Each line says what is needed to record it.
 
-- tests not yet moved onto recordings: see tests/recorded-reply-allow-list.json (kind "pending"): MediaServerClientTests (Plex's plex.tv account replies need a claimed server) and MigrationAssistantServiceTests (a Radarr movie file), each entry saying what to record
+- tests not yet moved onto recordings: see tests/recorded-reply-allow-list.json (kind "pending"): MediaServerClientTests (Plex's plex.tv account replies need a claimed server) (the entry says what to record)
 - found while moving the tests onto recordings (#1237), replies a test needed that are not recorded; each was answered with the nearest recorded reply changed in the one value the test is about, and says so:
   - weir: the outcome and status replies that the recordings hold for one hand-off only
   - plex, jellyfin, emby and seerr: the identity and status replies that carry their version (ConnectionVersionParserTests still holds those shapes)
@@ -102,7 +102,7 @@ Not recorded, and how to produce each (every one is one command, run with the VM
 - **Torznab `tracker-failing`**: a public tracker that fails Jackett's own test only exists on a day one is blocked; the run found all configured trackers answered.
 - **FlareSolverr "Challenge solved!"**: needs a page that actually shows a Cloudflare challenge to the VM; the public pages tried did not (`challenge-not-seen` is recorded instead).
 - **Jellyfin delete by id**: Jellyfin 12.2.0 answered `DELETE /Items/{id}` of a scanned throwaway film with 500 "Error processing request." (recorded as `item-deleted`, with 400 for an unknown id). Whether the 500 is a permissions problem of the service account or Jellyfin's real answer was not investigated; record it again as a user with delete rights before treating it as Jellyfin's behaviour. The setup wizard's `RemoteAccess` call also answered 500 and the wizard still completed.
-- **Tests still building these apps' replies inline** (listed "pending" in tests/recorded-reply-allow-list.json with the reason): MediaServerClientTests (the plex.tv account lists, ratings, favourites and watchlist, and the synthetic Jellyfin and Emby catalogues), the Plex home-screen promotion in LeavingSoonCollectionClientTests (a claimed server's reply), and MigrationAssistantServiceTests (a Radarr movie file). The Torznab and Newznab feed tests build their feeds from the recorded Jackett and NZBHydra2 replies with `RecordedReplies.TorznabFeed`, and the uTorrent tests replay the recorded uTorrent 3.6 (`RecordedReplies.UtorrentList`).
+- **Tests still building these apps' replies inline** (listed "pending" in tests/recorded-reply-allow-list.json with the reason): MediaServerClientTests (the plex.tv account lists, ratings, favourites and watchlist, and the synthetic Jellyfin and Emby catalogues), the Plex home-screen promotion in LeavingSoonCollectionClientTests (a claimed server's reply). The Torznab and Newznab feed tests build their feeds from the recorded Jackett and NZBHydra2 replies with `RecordedReplies.TorznabFeed`, and the uTorrent tests replay the recorded uTorrent 3.6 (`RecordedReplies.UtorrentList`).
 
 ## Needed to close the integration coverage gaps (#1301)
 
@@ -265,7 +265,7 @@ Still missing, and why:
 - **Seerr**: linked to Radarr or Sonarr (a request sent on, "processing", declined by a rule); a 4K request; a Plex- or Emby-linked Seerr (it was set up through Jellyfin); an expired session; a media record a series has per season.
 - **SABnzbd**: an add of a real NZB (it needs a news server with the articles); `get_files` (s21) and the other lines in this file are unchanged.
 - **The gateway**: the 429 with `Retry-After` (it would use the shared hourly allowance of the address), the artwork route, the gateway down; and the replies of `api.themoviedb.org` itself (Deluno's direct mode with an install's own key; no key was used).
-- **Radarr holding a film file**: the migration import payload (`MigrationAssistantServiceTests`) carries a movie file with media info and custom formats, which the recorded Radarr (no file) does not give. To record: put the generated film in Radarr's root folder, rescan, `GET /api/v3/movie`.
+- **Radarr holding a film file**: recorded on 31 Oct 2026 (`radarr/6.4.4.10685/movies-with-file`, `movie-files`; `arr.mjs radarrFile`): a small real video in the film's folder, rescanned; `MigrationAssistantServiceTests` replays it.
 
 ## Jellyfin 12.2.0 recorded again in Docker, one user for every state (coverage area automation, #1293)
 
