@@ -1,23 +1,36 @@
 import { describe, expect, it } from "vitest";
 import { clientLights, clientMeta, clientsSummary } from "./clients";
-import { arrivalItems, requestCards, withSeerr } from "./extras";
+import { arrivalItems, searchingCards, withSeerr } from "./extras";
 import type { JourneyCard } from "./journey";
 import { qualityShare } from "./standing";
 
 const request = (entityId: string, status: string, title = "Shogun", mediaType = "series") => ({ mediaType, entityId, title, status, requestedBy: "Sam", createdUtc: "2026-10-01T00:00:00Z", updatedUtc: "2026-10-01T01:00:00Z" });
 const card = (extra: Partial<JourneyCard>): JourneyCard => ({ key: "k", stage: "downloading", title: "x", state: { tone: "info", label: "Downloading" }, to: "/queue", ...extra });
 
-describe("requests in the flow", () => {
-  it("makes the first stage of a request that is still being searched for, and leaves out one already further along", () => {
-    const cards = requestCards([request("s5", "added"), request("m1", "added", "Dune Part Two", "movie")], [card({ release: "Dune.Part.Two.2024.1080p", entity: { kind: "movie", id: "m1" } })]);
-    expect(cards.map((item) => item.title)).toEqual(["Shogun"]);
-    expect(cards[0]).toMatchObject({ stage: "requested", state: { label: "Requested · searching" }, routeNote: "Asked by Sam" });
+const search = (entityId: string, title: string, startedBy = "manual", entityType = "movie", label = "Checking 5 indexers") => ({ entityType, entityId, title, startedBy, label, startedUtc: "2026-10-01T02:00:00Z" });
+
+describe("the titles being searched for, in the flow (#1442)", () => {
+  it("makes a card for each title being searched for, and leaves out one already further along", () => {
+    const cards = searchingCards([search("m1", "Dune Part Two"), search("m2", "Tenet")], [], [card({ release: "Dune.Part.Two.2024.1080p", entity: { kind: "movie", id: "m1" } })]);
+    expect(cards.map((item) => item.title)).toEqual(["Tenet"]);
+    expect(cards[0]).toMatchObject({ stage: "searching", state: { label: "Checking 5 indexers" }, startedBy: "you", entity: { kind: "movie", id: "m2" } });
   });
 
-  it("says Seerr on a request, leaves out one whose search failed (the bell has it) and one that is in the library", () => {
-    const cards = requestCards([request("s6", "search-failed"), request("s7", "available"), request("s8", "added")], []);
+  it("names why each search began: you, a missing title, an upgrade hunt, and nothing for a re-grab", () => {
+    const cards = searchingCards([search("a", "A", "manual"), search("b", "B", "missing"), search("c", "C", "upgrade"), search("d", "D", "inherit")], [], []);
+    expect(cards.map((item) => item.startedBy)).toEqual(["you", "missing", "upgrade", undefined]);
+  });
+
+  it("lists a show as a show, and an empty list as no cards", () => {
+    expect(searchingCards([search("s1", "Shogun", "missing", "series")], [], [])[0]!.entity).toEqual({ kind: "series", id: "s1" });
+    expect(searchingCards([], [], [])).toEqual([]);
+    expect(searchingCards(undefined, undefined, [])).toEqual([]);
+  });
+
+  it("says Seerr and who asked on a search for a requested title, and puts no card for a wanted title that is only waiting", () => {
+    const cards = searchingCards([search("s5", "Shogun", "manual", "series")], [request("s5", "added"), request("s9", "added", "Waiting Show")], []);
     expect(cards).toHaveLength(1);
-    expect(cards[0]).toMatchObject({ stage: "requested", startedBy: "seerr" });
+    expect(cards[0]).toMatchObject({ title: "Shogun", startedBy: "seerr", routeNote: "Asked by Sam" });
   });
 
   it("tags a card that came from a Seerr request wherever it is on its way, and no other", () => {

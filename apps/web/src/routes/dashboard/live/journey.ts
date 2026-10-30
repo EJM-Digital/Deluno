@@ -1,5 +1,5 @@
 /**
- * The journey of every title in flight (#1098): requested, grabbed, downloading,
+ * The journey of every title in flight (#1098): searching, grabbed, downloading,
  * with the processor, importing, and in the library. Each stage is worked out
  * from the stored lists the other screens already keep (the download queue, the
  * sent downloads, the processor hand-offs) and the summary; the pushed
@@ -22,9 +22,9 @@ import type { LiveProgress, WorkItem } from "../live-events";
 import { plainReason } from "./plain";
 import { startedByOfDispatch, type StartedBy } from "./provenance";
 
-export type Stage = "requested" | "grabbed" | "downloading" | "processor" | "importing" | "imported";
+export type Stage = "searching" | "grabbed" | "downloading" | "processor" | "importing" | "imported";
 
-export const STAGES: Stage[] = ["requested", "grabbed", "downloading", "processor", "importing", "imported"];
+export const STAGES: Stage[] = ["searching", "grabbed", "downloading", "processor", "importing", "imported"];
 
 /** What a card is about in the library: a film, a show (a season pack or a whole show) or one episode. */
 export type EntityKind = "movie" | "series" | "episode";
@@ -469,19 +469,19 @@ export function byStage(cards: JourneyCard[]): Record<Stage, JourneyCard[]> {
 }
 
 /**
- * The count at each station. The summary counts the whole queue while the lists the cards come from can be shorter, so a
- * station says the larger of the two. A stuck download is still on its station.
+ * The count at each station: the cards it draws. A stuck download is still on its station.
  */
 export function laneCounts(grouped: Record<Stage, JourneyCard[]>, summary: DashboardSummary | undefined): Record<Stage, number> {
-  const downloads = summary?.downloads;
-  const pick = (cards: JourneyCard[], fromSummary: number | undefined) => Math.max(cards.length, fromSummary ?? 0);
+  // #1446: a station never shows a number its lane does not show. The summary counts the whole queue and, around a
+  // hand-off, can still count a title the board has dropped (import ended, hand-off dismissed). Only "In the library"
+  // reads the day's import count, because those titles live in the day's rows and the shelf, not in the lane's cards.
   return {
-    requested: grouped.requested.length,
-    grabbed: pick(grouped.grabbed, downloads?.queued),
-    downloading: pick(grouped.downloading, downloads?.active),
-    processor: pick(grouped.processor, downloads ? downloads.processing + downloads.waitingForProcessor : undefined),
-    importing: pick(grouped.importing, downloads?.importReady),
-    imported: pick(grouped.imported, summary?.pipeline?.today.imported)
+    searching: grouped.searching.length,
+    grabbed: grouped.grabbed.length,
+    downloading: grouped.downloading.length,
+    processor: grouped.processor.length,
+    importing: grouped.importing.length,
+    imported: Math.max(grouped.imported.length, summary?.pipeline?.today.imported ?? 0)
   };
 }
 

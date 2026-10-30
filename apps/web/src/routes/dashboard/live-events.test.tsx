@@ -126,14 +126,14 @@ describe("Live follows real changes", () => {
     await waitFor(() => expect(within(board).queryByText("Big Buck Bunny (2008)")).toBeNull());
   });
 
-  it("says a running search in Working on now, and the stations' counts from the summary while they are true", () => {
+  it("says a running search in Working on now, and a station never counts what its lane does not show (#1446)", () => {
     const summary = structuredClone(fullSummary);
     summary.automation!.libraries = [{ libraryId: "l1", name: "Movies", mediaType: "movies", status: "running", nextSearchUtc: null, nextMissingSearchUtc: null, nextUpgradeSearchUtc: null, lastCompletedUtc: null, lastError: null }];
     summary.downloads!.processing = 2;
     renderTab(summary);
     const board = screen.getByRole("region", { name: /^pipeline/i });
     expect(within(screen.getByRole("region", { name: "Working on now" })).getByText(/Searching Movies/)).toBeInTheDocument();
-    expect(within(board).getByRole("link", { name: "Processing: 3" })).toBeInTheDocument();
+    expect(within(board).getByRole("link", { name: "Processing: 0" })).toBeInTheDocument();
   });
 
   it("does not animate anything by itself: the page has no looping animation of its own", () => {

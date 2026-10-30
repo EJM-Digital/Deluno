@@ -7,16 +7,16 @@ import { NO_TITLES } from "./titles";
 import { Journey } from "./track";
 
 
-describe("Live journey: the Requested station", () => {
-  it("opens Find and Download's media servers page from the Requested station", () => {
+describe("Live journey: the Searching station", () => {
+  it("opens the Automation page from the Searching station", () => {
     const grouped = byStage([]);
     render(
       <MemoryRouter>
         <Journey grouped={grouped} counts={laneCounts(grouped, undefined)} context={{ titles: NO_TITLES, arrivals: new Set(), indexers: 4 }} hasProcessor={false} usual={{}} by={Date.now()} lastArrival={null} />
       </MemoryRouter>
     );
-    const station = screen.getByRole("link", { name: "Requested: 0" });
-    expect(station).toHaveAttribute("href", "/indexers/media-servers");
+    const station = screen.getByRole("link", { name: "Searching: 0" });
+    expect(station).toHaveAttribute("href", "/search-cycles");
   });
 });
 

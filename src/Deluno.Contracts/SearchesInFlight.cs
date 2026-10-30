@@ -1,0 +1,102 @@
+
+namespace Deluno.Contracts;
+
+/// <summary>
+/// The titles Deluno is searching for at this moment (#1442): a search a person started, a title just added, the
+/// title a search cycle is on in its current pass, a Seerr request's search. A title is here from the moment its
+/// indexers are asked until its search ends, with a release sent (the Grabbed card takes over) or with nothing.
+/// Wanted titles that are only waiting for their turn are not here. Each change is pushed as
+/// <c>SearchesInFlightChanged</c> with the whole list, and the Live extras carry the same list for a first load.
+/// </summary>
+public sealed class SearchesInFlight(TimeProvider timeProvider, IRealtimeEventPublisher? realtime = null)
+{
+    private readonly object _lock = new();
+    private readonly SemaphoreSlim _pushOrder = new(1, 1);
+    // One running job works on one title at a time, so a job has at most one entry: the next title replaces it.
+    private readonly Dictionary<string, SearchingTitle> _byJob = new(StringComparer.Ordinal);
+
+    public IReadOnlyList<SearchingTitle> Snapshot()
+    {
+        lock (_lock)
+        {
+            return OneCardPerTitle();
+        }
+    }
+
+    /// <summary>A show can have several searches at once (a season, an episode, the whole show): one card for it, naming what is being searched.</summary>
+    private IReadOnlyList<SearchingTitle> OneCardPerTitle()
+        => _byJob.Values
+            .GroupBy(item => (item.EntityType, item.EntityId))
+            .Select(group => group.OrderBy(item => item.StartedUtc, StringComparer.Ordinal).ToArray())
+            .Select(group => group.Length == 1 ? group[0] : group[0] with { Label = string.Join(", ", group.Select(item => item.Label).Distinct(StringComparer.Ordinal)) })
+            .OrderBy(item => item.StartedUtc, StringComparer.Ordinal)
+            .ToArray();
+
+    /// <summary>"Checking 5 indexers" while the indexers are asked.</summary>
+    public static string CheckingLabel(int indexers)
+        => indexers <= 0 ? "Looking for it" : indexers == 1 ? "Checking 1 indexer" : $"Checking {indexers} indexers";
+
+    public Task BeginAsync(string jobId, string entityType, string entityId, string title, string startedBy, int indexers)
+        => BeginAsync(jobId, entityType, entityId, title, startedBy, CheckingLabel(indexers));
+
+    /// <summary>A search with its own words for what it is looking for ("Season 2", "S02E05").</summary>
+    public Task BeginAsync(string jobId, string entityType, string entityId, string title, string startedBy, string label)
+        => ChangeAsync(() =>
+        {
+            _byJob[jobId] = new SearchingTitle(entityType, entityId, title, startedBy, label, timeProvider.GetUtcNow().ToString("O"));
+            return true;
+        });
+
+    /// <summary>
+    /// A search that runs straight from a button (Search season, Search episode, a title's Search) is on the lane from
+    /// here until the returned scope is disposed, however the search ends: await using var tracked = await EnterAsync(...).
+    /// </summary>
+    public async Task<IAsyncDisposable> EnterAsync(string entityType, string entityId, string title, string startedBy, string label)
+    {
+        var key = "direct:" + Guid.NewGuid().ToString("N");
+        await BeginAsync(key, entityType, entityId, title, startedBy, label);
+        return new Scope(this, key);
+    }
+
+    private sealed class Scope(SearchesInFlight owner, string key) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync() => await owner.EndAsync(key);
+    }
+
+    /// <summary>The job's current title is done (a release was sent, or nothing good was found).</summary>
+    public Task EndAsync(string jobId) => ChangeAsync(() => _byJob.Remove(jobId));
+
+    private async Task ChangeAsync(Func<bool> change)
+    {
+        if (realtime is null)
+        {
+            lock (_lock) { change(); }
+            return;
+        }
+
+        // Changes are pushed in the order they were made, so a screen never ends on an older list.
+        await _pushOrder.WaitAsync();
+        try
+        {
+            bool changed;
+            IReadOnlyList<SearchingTitle> list;
+            lock (_lock)
+            {
+                changed = change();
+                list = OneCardPerTitle();
+            }
+
+            if (changed)
+            {
+                await realtime.PublishSafelyAsync(
+                    publisher => publisher.PublishSearchesInFlightChangedAsync(
+                        new SearchesInFlightChangedEvent(list, timeProvider.GetUtcNow().ToString("O")),
+                        CancellationToken.None));
+            }
+        }
+        finally
+        {
+            _pushOrder.Release();
+        }
+    }
+}

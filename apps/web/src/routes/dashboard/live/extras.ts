@@ -1,10 +1,11 @@
 /**
- * What the Live board reads from the day's stored rows (#1096): Seerr requests
- * as the first stage of the journey, and today's arrivals (with the upgrades
+ * What the Live board reads from the day's stored rows (#1096): the titles being
+ * searched for as the first stage of the journey, and today's arrivals (with the upgrades
  * among them) as its last. Pure functions of the lists, so the board is only
  * ever drawing what is true.
  */
 import type { DashboardLiveExtras, LiveArrivalItem, LiveRequestItem } from "../../../lib/api/types/operations";
+import type { StartedBy } from "./provenance";
 import { cardLink, releaseKey, titleFromRelease, type JourneyCard } from "./journey";
 import { entityFromRelated, type Entity } from "./titles";
 
@@ -12,36 +13,51 @@ function entityOfRequest(request: LiveRequestItem): Entity {
   return { kind: request.mediaType.toLowerCase().startsWith("movie") ? "movie" : "series", id: request.entityId };
 }
 
-/** True when a card further along already carries this request's title, so the request is not said twice. */
-function isOnTheBoard(request: LiveRequestItem, cards: JourneyCard[]): boolean {
-  const entity = entityOfRequest(request);
-  const name = releaseKey(request.title);
+type SearchingItem = NonNullable<DashboardLiveExtras["searching"]>[number];
+
+function entityOfSearch(search: SearchingItem): Entity {
+  return { kind: search.entityType.toLowerCase() === "movie" ? "movie" : "series", id: search.entityId };
+}
+
+/** True when a card further along already carries this title, so the search is not said twice. */
+function isFurtherAlong(entity: Entity, title: string, cards: JourneyCard[]): boolean {
+  const name = releaseKey(title);
   return cards.some((card) => {
-    if (card.stage === "imported" || card.stage === "requested") return false;
+    if (card.stage === "imported" || card.stage === "searching") return false;
     if (card.entity?.id === entity.id && (card.entity.kind === entity.kind || entity.kind === "series")) return true;
     return Boolean(name) && releaseKey(card.release ?? card.title).startsWith(name);
   });
 }
 
+/** Why a search began, as the board names it. A re-grab after trouble (inherit) has no tag of its own. */
+function startedByOfSearch(word: string): StartedBy | undefined {
+  if (word === "manual") return "you";
+  if (word === "missing" || word === "upgrade") return word;
+  return undefined;
+}
+
 /**
- * A request Deluno has turned into a title and is searching for is the first station of its journey. Once a card for the
- * same title is further along it is that card, not a second one. A request whose search failed is a problem for the bell,
- * not a card.
+ * Every title Deluno is searching for at this moment is the first station of its journey (#1442): a search the person
+ * started, a title they just added, the title a search cycle is on, a Seerr request's search. The server lists them and
+ * pushes each change, so a card is here exactly while its search runs. Once a card for the same title is further along
+ * (a release was sent) it is that card, not a second one. A wanted title waiting for its turn is not in the list, so it
+ * is not on the board. A Seerr request says who asked.
  */
-export function requestCards(requests: LiveRequestItem[] | undefined, cards: JourneyCard[]): JourneyCard[] {
+export function searchingCards(searching: DashboardLiveExtras["searching"], requests: LiveRequestItem[] | undefined, cards: JourneyCard[]): JourneyCard[] {
   const out: JourneyCard[] = [];
-  for (const request of requests ?? []) {
-    if (request.status.toLowerCase() !== "added" || isOnTheBoard(request, cards)) continue;
-    const entity = entityOfRequest(request);
+  for (const search of searching ?? []) {
+    const entity = entityOfSearch(search);
+    if (isFurtherAlong(entity, search.title, cards)) continue;
+    const asked = (requests ?? []).find((request) => request.entityId === search.entityId);
     out.push({
-      key: `request:${request.entityId}`,
-      stage: "requested",
-      title: request.title,
+      key: `search:${search.entityId}`,
+      stage: "searching",
+      title: search.title,
       entity,
-      state: { tone: "info", label: "Requested · searching" },
-      startedBy: "seerr",
-      routeNote: request.requestedBy ? `Asked by ${request.requestedBy}` : "Asked for in Seerr",
-      at: request.createdUtc,
+      state: { tone: "info", label: search.label },
+      startedBy: asked ? "seerr" : startedByOfSearch(search.startedBy),
+      routeNote: asked ? (asked.requestedBy ? `Asked by ${asked.requestedBy}` : "Asked for in Seerr") : undefined,
+      at: asked?.createdUtc ?? search.startedUtc,
       to: cardLink(entity)
     });
   }

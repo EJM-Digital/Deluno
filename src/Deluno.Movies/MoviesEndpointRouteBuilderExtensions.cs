@@ -1217,6 +1217,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IMediaTagStore tagStore,
             IReleasePreferencePlanRepository releasePreferencePlanRepository,
             IPlatformSettingsRepository platformSettings,
+            SearchesInFlight searching,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1225,6 +1226,8 @@ public static class MoviesEndpointRouteBuilderExtensions
                 return denied;
             }
 
+            // The title is on the Searching lane while its indexers are asked (#1442).
+            await using var tracked = await searching.EnterAsync("movie", id, (await mediaStateRepository.GetByIdAsync(MediaKind.Movie, id, cancellationToken))?.Title ?? "A film", "manual", "Looking for it");
             var result = await RunSearchAsync(
                 id,
                 mode,

@@ -69,7 +69,9 @@ public sealed record DashboardLiveExtras(
     LiveTurnedDown? TurnedDown = null,
     int CleanedUpToday = 0,
     IReadOnlyList<LiveConnection>? Connections = null,
-    IReadOnlyList<LiveArrival>? RecentArrivals = null);
+    IReadOnlyList<LiveArrival>? RecentArrivals = null,
+    /// <summary>The titles Deluno is searching for right now (#1442). Read live from the searches in flight, never from the remembered copy.</summary>
+    IReadOnlyList<SearchingTitle>? Searching = null);
 
 /// <summary>
 /// The stored rows behind <see cref="DashboardLiveExtras"/>. Each is one small

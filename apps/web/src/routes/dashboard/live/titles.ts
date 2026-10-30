@@ -126,7 +126,7 @@ export interface NameSearch {
 }
 
 export function nameSearchOf(card: JourneyCard): NameSearch | null {
-  if (card.entity || card.stage === "requested") return null;
+  if (card.entity || card.stage === "searching") return null;
   const title = card.title.trim();
   const episode = /^(.*?)\s+S\d{1,2}E\d{1,3}$/i.exec(title);
   if (episode?.[1].trim()) return { kind: "series", name: episode[1].trim() };

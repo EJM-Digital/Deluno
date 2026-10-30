@@ -1,6 +1,6 @@
 /**
  * The journey (#1098): the titles that are on their way to the library, as stations
- * left to right (requested, grabbed, downloading, with the processor when one is
+ * left to right (searching, grabbed, downloading, with the processor when one is
  * connected, importing). It is the approved mockup's journey ported rule for rule (see
  * journey.css): the stations are one arrow-shaped ribbon, each segment tinted in its
  * stage colour with its icon, name and count (busy ones stronger with a moving sheen,
@@ -34,7 +34,7 @@ import "./journey.css";
 
 /** The stations a title passes through, in order. The processor's is left out when none is connected. */
 export function stationsFor(hasProcessor: boolean): Stage[] {
-  return hasProcessor ? ["requested", "grabbed", "downloading", "processor", "importing"] : ["requested", "grabbed", "downloading", "importing"];
+  return hasProcessor ? ["searching", "grabbed", "downloading", "processor", "importing"] : ["searching", "grabbed", "downloading", "importing"];
 }
 
 /** The space under the lanes inside the card, in px. */

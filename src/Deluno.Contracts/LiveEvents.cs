@@ -15,6 +15,8 @@ public static class LiveEventNames
     public const string RecoveryCaseChanged = "RecoveryCaseChanged";
     public const string JobChanged = "JobChanged";
     public const string SearchCycleProgress = "SearchCycleProgress";
+    /// <summary>The titles Deluno is searching for right now changed (a search began, moved on or ended): the whole list, so a screen replaces its own.</summary>
+    public const string SearchesInFlightChanged = "SearchesInFlightChanged";
     public const string IndexerQueryRecorded = "IndexerQueryRecorded";
     public const string ClientStateChanged = "ClientStateChanged";
     public const string DriveSpaceChanged = "DriveSpaceChanged";
@@ -127,6 +129,12 @@ public sealed record JobChangedEvent(
     string? LibraryId,
     string? Message,
     string At);
+
+/// <summary>One title Deluno is searching for right now (#1442): who started it and what it is doing, in plain words.</summary>
+public sealed record SearchingTitle(string EntityType, string EntityId, string Title, string StartedBy, string Label, string StartedUtc);
+
+/// <summary>Payload of <c>SearchesInFlightChanged</c>: every title being searched for now. A title missing from the list is no longer being searched.</summary>
+public sealed record SearchesInFlightChangedEvent(IReadOnlyList<SearchingTitle> Searches, string At);
 
 /// <summary>Payload of <c>SearchCycleProgress</c>. State: running or finished.</summary>
 public sealed record SearchCycleProgressEvent(
@@ -261,6 +269,9 @@ public static class LiveEventPublisherExtensions
 
     public static Task PublishSearchCycleProgressAsync(this IRealtimeEventPublisher publisher, SearchCycleProgressEvent payload, CancellationToken cancellationToken)
         => publisher.PublishLiveEventAsync(LiveEventNames.SearchCycleProgress, payload, cancellationToken);
+
+    public static Task PublishSearchesInFlightChangedAsync(this IRealtimeEventPublisher publisher, SearchesInFlightChangedEvent payload, CancellationToken cancellationToken)
+        => publisher.PublishLiveEventAsync(LiveEventNames.SearchesInFlightChanged, payload, cancellationToken);
 
     public static Task PublishIndexerQueryRecordedAsync(this IRealtimeEventPublisher publisher, IndexerQueryRecordedEvent payload, CancellationToken cancellationToken)
         => publisher.PublishLiveEventAsync(LiveEventNames.IndexerQueryRecorded, payload, cancellationToken);

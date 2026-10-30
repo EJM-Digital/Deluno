@@ -45,7 +45,7 @@ export function detailLines(card: JourneyCard, indexers: number, now: number): D
   const size = card.sizeBytes && card.sizeBytes > 0 ? card.sizeBytes : undefined;
   const release = card.release ? ({ parts: [card.release], mono: true } satisfies DetailLine) : undefined;
   switch (card.stage) {
-    case "requested": {
+    case "searching": {
       const asked = card.routeNote?.startsWith("Asked by ") ? ["Asked by ", bold(card.routeNote.slice("Asked by ".length))] : card.routeNote ? [card.routeNote] : [];
       if (asked.length > 0) lines.push({ parts: asked, right: card.at ? ago(card.at, now) || undefined : undefined });
       // The status line says how many indexers a plain search is looking on; a request says it here.
@@ -85,7 +85,7 @@ export function detailLines(card: JourneyCard, indexers: number, now: number): D
       break;
   }
   // Why Deluno is fetching it, when what it recorded says (a request already says so in its own line).
-  if (card.startedBy && !(card.stage === "requested" && card.startedBy === "seerr")) lines.push({ parts: [bold(startedLabel(card.startedBy, card.entity, card.release))] });
+  if (card.startedBy && !(card.stage === "searching" && card.startedBy === "seerr")) lines.push({ parts: [bold(startedLabel(card.startedBy, card.entity, card.release))] });
   return lines.slice(0, 4);
 }
 

@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -32,6 +33,7 @@ public static class DashboardSummaryEndpoints
             string? sinceUtc,
             bool? fresh,
             DashboardLiveService live,
+            SearchesInFlight searching,
             TimeProvider timeProvider,
             CancellationToken cancellationToken) =>
         {
@@ -43,7 +45,8 @@ public static class DashboardSummaryEndpoints
             if (since < now.AddHours(-48)) since = now.AddHours(-48);
             // Seconds only, so the same day is one cache entry however the caller spells it.
             since = new DateTimeOffset(since.UtcTicks - (since.UtcTicks % TimeSpan.TicksPerSecond), TimeSpan.Zero);
-            return Results.Ok(await live.GetAsync(since, cancellationToken, fresh == true));
+            // The searches under way are read as they are now, not from the five-second copy of the stored rows.
+            return Results.Ok((await live.GetAsync(since, cancellationToken, fresh == true)) with { Searching = searching.Snapshot() });
         }).WithName("Get Dashboard Live Extras");
 
         return endpoints;

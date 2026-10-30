@@ -18,11 +18,36 @@ namespace Deluno.Worker.Jobs;
 /// </summary>
 public sealed class SeasonSearchJobHandler(
     ISeasonSearchExecutor seasonSearchExecutor,
-    IJobQueueRepository jobQueueRepository) : IJobHandler
+    IJobQueueRepository jobQueueRepository,
+    Deluno.Contracts.SearchesInFlight? searchesInFlight = null) : IJobHandler
 {
     public string JobType => "series.search.season";
 
+    /// <summary>The show is on Live's Searching lane, naming the season, for as long as this job runs (#1442).</summary>
     public async Task<string> HandleAsync(JobQueueItem job, CancellationToken cancellationToken)
+    {
+        if (searchesInFlight is null)
+        {
+            return await HandleCoreAsync(job, cancellationToken);
+        }
+
+        var asked = JobPayloads.ParseSeasonSearchPayload(job.PayloadJson);
+        if (asked is not null && !string.IsNullOrWhiteSpace(asked.SeriesId))
+        {
+            await searchesInFlight.BeginAsync(job.Id, "series", asked.SeriesId, asked.SeriesTitle, "missing", $"Season {asked.SeasonNumber}");
+        }
+
+        try
+        {
+            return await HandleCoreAsync(job, cancellationToken);
+        }
+        finally
+        {
+            await searchesInFlight.EndAsync(job.Id);
+        }
+    }
+
+    private async Task<string> HandleCoreAsync(JobQueueItem job, CancellationToken cancellationToken)
     {
         var payload = JobPayloads.ParseSeasonSearchPayload(job.PayloadJson);
         if (payload is null || string.IsNullOrWhiteSpace(payload.SeriesId) || payload.Episodes.Count == 0)

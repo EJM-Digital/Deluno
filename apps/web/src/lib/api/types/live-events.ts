@@ -66,6 +66,22 @@ export interface JobChangedEvent {
   at: string;
 }
 
+/** One title Deluno is searching for right now (#1442). `startedBy` is manual, missing, upgrade or inherit; `label` says what it is doing. */
+export interface SearchingTitleItem {
+  entityType: string;
+  entityId: string;
+  title: string;
+  startedBy: string;
+  label: string;
+  startedUtc: string;
+}
+
+/** Every title Deluno is searching for now. A title missing from the list is no longer being searched. */
+export interface SearchesInFlightChangedEvent {
+  searches: SearchingTitleItem[];
+  at: string;
+}
+
 /** Progress of one library search: `checked` of `planned` titles done while `running`, and `finished` at the end. */
 export interface SearchCycleProgressEvent {
   libraryId: string;

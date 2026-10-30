@@ -161,12 +161,32 @@ describe("the journey of a title", () => {
     expect(grouped.imported[0]).toMatchObject({ to: "/movies/m-2", quality: "Bluray 1080p", state: { tone: "ok" } });
   });
 
-  it("says each lane's count from the larger of the lists and the summary", () => {
+  it("says each lane's count from the cards it draws, never from the summary (#1446)", () => {
     const grouped = byStage(buildJourney({ ...base, queue: [queue({ id: "a", status: "queued" })] }));
     const counts = laneCounts(grouped, fullSummary);
     expect(counts.grabbed).toBe(1);
-    expect(counts.downloading).toBe(fullSummary.downloads!.active);
+    expect(counts.downloading).toBe(0);
+    expect(counts.processor).toBe(0);
+    expect(counts.importing).toBe(0);
     expect(counts.imported).toBe(4);
+  });
+
+  it("agrees with the lane at every step of a hand-off: processing, dismissed, import ended (#1446)", () => {
+    const handoff = (overrides: Record<string, unknown>) => ({ id: "h", libraryId: "l", mediaType: "movie", clientId: "c1", queueItemId: "q", releaseName: "Top.Gun.1986.1080p", sourcePath: "", processorName: "Cleaner", status: "started", outputPath: null, importJobId: null, failureMessage: null, createdUtc: iso(-3_600_000), updatedUtc: iso(-60_000), ...overrides }) as never;
+    // The summary still counts one in every station at every step, as it did on the rig.
+    const summary = { ...fullSummary, downloads: { ...fullSummary.downloads!, queued: 1, active: 1, processing: 1, waitingForProcessor: 1, importReady: 1 } };
+    const steps: Array<Record<string, unknown>> = [
+      { queue: [queue({ id: "q", status: "processing", releaseName: "Top.Gun.1986.1080p" })], handoffs: [handoff({})] },
+      { queue: [queue({ id: "q", status: "waitingForProcessor", releaseName: "Top.Gun.1986.1080p" })], handoffs: [handoff({ status: "waiting" })] },
+      { queue: [], handoffs: [handoff({ status: "completed", outcome: { outcome: "imported" } })] },
+      { queue: [], handoffs: [handoff({ status: "dismissed" })] },
+      { queue: [queue({ id: "q", status: "imported", releaseName: "Top.Gun.1986.1080p" })], handoffs: [] }
+    ];
+    for (const step of steps) {
+      const grouped = byStage(buildJourney({ ...base, ...step, summary }));
+      const counts = laneCounts(grouped, summary);
+      for (const stage of ["searching", "grabbed", "downloading", "processor", "importing"] as const) expect(counts[stage]).toBe(grouped[stage].length);
+    }
   });
 
   it("finds the cards that changed stage since the last look", () => {

@@ -15,7 +15,7 @@
   --lj-primary: hsl(var(--primary));
   --lj-warning: hsl(var(--warning));
   --lj-success: hsl(var(--success));
-  --lj-s-requested: hsl(var(--stage-search));
+  --lj-s-searching: hsl(var(--stage-search));
   --lj-s-grabbed: hsl(var(--journey-grab));
   --lj-s-downloading: hsl(var(--info));
   --lj-s-processing: hsl(var(--journey-process));

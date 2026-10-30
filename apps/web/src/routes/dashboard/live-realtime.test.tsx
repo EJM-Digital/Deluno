@@ -144,6 +144,25 @@ describe("Live applies each pushed change with no fetch after it", () => {
     expect(asked.paths.length).toBe(before);
   });
 
+  it("puts a title on the Searching station the moment its search begins and takes it off when the search ends, with no request (#1442)", async () => {
+    seed();
+    lists["/api/dashboard/live-extras"] = liveExtras();
+    renderTab();
+    const board = screen.getByRole("region", { name: /^pipeline/i });
+    await within(board).findByText("Metropolis (1927)");
+    await waitFor(() => expect(asked.paths.some((path) => path.includes("/api/dashboard/live-extras"))).toBe(true));
+    const before = asked.paths.length;
+
+    send("SearchesInFlightChanged", { searches: [{ entityType: "movie", entityId: "m77", title: "Heat", startedBy: "manual", label: "Checking 3 indexers", startedUtc: at() }], at: at() });
+    expect(await within(board).findByText("Heat")).toBeInTheDocument();
+    expect(within(board).getByRole("link", { name: /^Heat: / })).toBeInTheDocument();
+
+    send("SearchesInFlightChanged", { searches: [], at: at() });
+    await waitFor(() => expect(within(board).queryByText("Heat")).toBeNull());
+    // Only the poster lookup for the new title is asked; no list is read again.
+    expect(asked.paths.slice(before).filter((path) => !path.includes("/titles?ids="))).toEqual([]);
+  });
+
   it("names a job as it starts and stops naming it as it ends", async () => {
     seed();
     renderTab();

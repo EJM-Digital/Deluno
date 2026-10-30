@@ -27,6 +27,7 @@ import type {
   ProcessorHandoffChangedEvent,
   ProcessorHandoffItem,
   RecoveryCaseChangedEvent,
+  SearchesInFlightChangedEvent,
   SeriesImportRecoverySummary
 } from "../../../lib/api";
 import { DASHBOARD_SUMMARY_KEY } from "../../../lib/realtime-cache";
@@ -138,6 +139,13 @@ export function applyJourneyStage(client: Cache, event: JourneyStageChangedEvent
       return { ...extras, arrivals: [row, ...extras.arrivals], importsToday: extras.importsToday + 1 };
     });
   }
+}
+
+/* ------------------------------------------------- searches */
+
+/** The titles being searched for changed: the Searching lane is the new list, whole, so nothing is left over from before. */
+export function applySearchesInFlight(client: Cache, event: SearchesInFlightChangedEvent): void {
+  patch<DashboardLiveExtras | null>(client, liveSources.liveExtras.key, (extras) => (extras ? { ...extras, searching: event.searches } : undefined));
 }
 
 /* ------------------------------------------------- import cases */

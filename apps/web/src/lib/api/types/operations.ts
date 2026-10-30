@@ -818,6 +818,8 @@ export interface DashboardLiveExtras {
   connections?: LiveConnection[] | null;
   /** The newest imports of the last seven days (at most thirty, newest first), for the shelf when nothing has arrived today (#1098). */
   recentArrivals?: LiveArrivalItem[] | null;
+  /** Every title Deluno is searching for right now (#1442). */
+  searching?: Array<{ entityType: string; entityId: string; title: string; startedBy: string; label: string; startedUtc: string }> | null;
 }
 
 export interface DashboardSummary {
