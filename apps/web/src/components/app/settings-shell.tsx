@@ -323,49 +323,6 @@ export const settingsPageMeta = [
   }
 ] as const;
 
-const systemPageMeta = [
-  {
-    match: (path: string) => path === "/system",
-    title: "System Health",
-    description: "Provider health, background jobs, and current system state."
-  },
-  {
-    match: (path: string) => path.startsWith("/system/audit"),
-    title: "Audit Timeline",
-    description: "Searchable activity, live events, errors, imports, searches, and notifications."
-  },
-  {
-    match: (path: string) => path.startsWith("/system/api"),
-    title: "API Access",
-    description: "Generate keys for trusted integrations, local scripts, dashboards, and external control-plane access."
-  },
-  {
-    match: (path: string) => path.startsWith("/system/docs"),
-    title: "Workflow Guide",
-    description: "How Deluno should be configured, routed, scored, integrated, and recovered in plain English."
-  },
-  {
-    match: (path: string) => path.startsWith("/system/security"),
-    title: "Security",
-    description: "Allowed Hosts, sign-in, and API keys -- every security setting in one place."
-  },
-  {
-    match: (path: string) => path.startsWith("/system/backups"),
-    title: "Backups",
-    description: "Manual backups, automatic schedules, restore previews, and backup downloads."
-  },
-  {
-    match: (path: string) => path.startsWith("/system/recycle-bin"),
-    title: "Recycle Bin",
-    description: "Recover removed library files and control how long replaced or deleted media remains recoverable."
-  },
-  {
-    match: (path: string) => path.startsWith("/system/updates"),
-    title: "Updates",
-    description: "Version status, update channel, behaviour mode, download progress, and restart guidance."
-  }
-] as const;
-
 export function SettingsWorkspaceLayout() {
   const location = useLocation();
   const meta = settingsPageMeta.find((item) => item.match(location.pathname)) ?? settingsPageMeta[0];

@@ -986,7 +986,8 @@ export function LibraryView({
     if (response.ok) rememberAddTags(addIntoLibraryId, draft.tags);
     if (!response.ok) {
       const problem = await readValidationProblem(response);
-      throw new AddRefusedError(problem?.title ?? `Could not add ${singular}.`);
+      const sentence = Object.values(problem?.errors ?? {}).flat()[0] ?? problem?.message ?? problem?.title;
+      throw new AddRefusedError(sentence ?? `Could not add ${singular}.`);
     }
   }
 

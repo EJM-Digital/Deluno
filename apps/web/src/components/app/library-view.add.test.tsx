@@ -174,6 +174,26 @@ describe("tags on add", () => {
     expect(window.localStorage.getItem("deluno:add-tags:lib-a")).toBe("kids");
   });
 
+  it("an over-long title is refused in the server's own sentence, not a generic one", async () => {
+    mocks.authedFetch.mockImplementation(async () => new Response(JSON.stringify({ message: "The title is too long. It can be at most 200 characters.", member: "title" }), { status: 400 }));
+    const dialog = await openDialog();
+
+    fireEvent.change(titleBox(dialog), { target: { value: "A".repeat(201) } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add movie manually" }));
+
+    await waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith("The title is too long. It can be at most 200 characters."));
+  });
+
+  it("a validation refusal shows its first sentence", async () => {
+    mocks.authedFetch.mockImplementation(async () => new Response(JSON.stringify({ title: "One or more validation errors occurred.", errors: { releaseYear: ["Release year must be between 1888 and 2100."] } }), { status: 400 }));
+    const dialog = await openDialog();
+
+    fireEvent.change(titleBox(dialog), { target: { value: "Home Movie" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add movie manually" }));
+
+    await waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith("Release year must be between 1888 and 2100."));
+  });
+
   it("with no tags remembered the picker starts empty and the title is added with none", async () => {
     const dialog = await openDialog();
     fireEvent.change(titleBox(dialog), { target: { value: "Home Movie" } });
