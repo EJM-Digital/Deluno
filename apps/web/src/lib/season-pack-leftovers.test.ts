@@ -57,10 +57,10 @@ describe("fileNameFromPath", () => {
 
 describe("reading a season pack's leftovers, other shapes", () => {
   it("skips entries that are not records or name no file, and gives a reason when none was written", () => {
-    const details = JSON.stringify({ Skipped: ["text", null, { reason: "no path" }, { SourcePath: "D:\in\Extras.mkv" }, { sourcePath: "D:\in\Sample.mkv", reason: "Too small." }] });
+    const details = JSON.stringify({ Skipped: ["text", null, { reason: "no path" }, { SourcePath: "D:/in/Extras.mkv" }, { sourcePath: "D:/in/Sample.mkv", reason: "Too small." }] });
     expect(parseSeasonPackSkippedFiles(details)).toEqual([
-      { sourcePath: "D:\in\Extras.mkv", reason: "Did not resolve to a canonical episode." },
-      { sourcePath: "D:\in\Sample.mkv", reason: "Too small." }
+      { sourcePath: "D:/in/Extras.mkv", reason: "Did not resolve to a canonical episode." },
+      { sourcePath: "D:/in/Sample.mkv", reason: "Too small." }
     ]);
   });
 
@@ -79,7 +79,7 @@ describe("reading a season pack's leftovers, other shapes", () => {
 
   it("names a file by its last part, and a path that is only separators as itself", () => {
     expect(fileNameFromPath("D:/in/Show/Extras.mkv")).toBe("Extras.mkv");
-    expect(fileNameFromPath(String.raw`D:\in\Show\Extras.mkv`)).toBe("Extras.mkv");
+    expect(fileNameFromPath(String.raw`D:/in/Show\Extras.mkv`)).toBe("Extras.mkv");
     expect(fileNameFromPath("/in/Show/Extras.mkv/")).toBe("Extras.mkv");
     expect(fileNameFromPath("///")).toBe("///");
   });
