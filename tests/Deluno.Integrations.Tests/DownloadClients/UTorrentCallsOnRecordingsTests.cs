@@ -44,6 +44,36 @@ public sealed class UTorrentCallsOnRecordingsTests
         Assert.Contains(sent, query => query.Contains("action=start&", StringComparison.Ordinal) && query.Contains("hash=" + hash, StringComparison.Ordinal));
     }
 
+    // #1421: after "start" uTorrent lists the torrent as 200 (queued to run, not Paused): that is resumed, not "not running".
+    [Fact]
+    public async Task A_stopped_torrent_that_uTorrent_then_queues_to_run_counts_as_resumed()
+    {
+        var recording = RecordedReplies.Utorrent("start-stop-force");
+        using var rows = System.Text.Json.JsonDocument.Parse(recording.Exchanges.First(e => e.Request.Path.Contains("list=1", StringComparison.Ordinal)).Reply.Body!);
+        var hash = rows.RootElement.GetProperty("torrents")[0][0].GetString()!;
+        var lists = recording.Exchanges.Where(e => e.Request.Path.Contains("list=1", StringComparison.Ordinal)).Select(e => e.Reply.Body!).ToArray();
+        var started = false;
+        var handler = RecordedReplies.Handler("utorrent", [RecordedReplies.Utorrent("token")], (request, _) =>
+        {
+            var uri = request.RequestUri!.ToString();
+            if (uri.Contains("action=start", StringComparison.Ordinal)) { started = true; return new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(recording.Exchanges.First(e => e.Request.Path.Contains("action=start&", StringComparison.Ordinal)).Reply.Body!) }; }
+            // stopped (136) until the start is sent, then queued to run (200), as the recording shows
+            return uri.Contains("list=1", StringComparison.Ordinal) ? new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(lists[started ? 1 : 0]) } : null;
+        });
+
+        var result = await new UTorrentDownloadClient(() => handler).ExecuteActionAsync(Client(), DownloadClientActions.Resume, hash, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+    }
+
+    [Theory]
+    [InlineData(136, true)]   // stopped
+    [InlineData(233, true)]   // paused
+    [InlineData(200, false)]  // queued to run
+    [InlineData(201, false)]  // downloading
+    public void Only_a_stopped_or_paused_torrent_is_not_running(int bits, bool notRunning)
+        => Assert.Equal(notRunning, UTorrentDownloadClient.IsPaused(bits));
+
     private static DownloadClientItem Client()
         => new("utorrent-1", "uTorrent", "utorrent", "localhost", 8081, null, null, "http://localhost:8081/", false, null, "movies", "tv", null, 1, true,
             "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);

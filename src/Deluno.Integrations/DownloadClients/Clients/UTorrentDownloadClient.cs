@@ -255,10 +255,10 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
 
     /// <summary>
     /// Whether a torrent's WebUI status bitfield (<c>list</c> index 1) says it is not running (#1251): the paused bit is set, or
-    /// the started bit is not. A stopped torrent is told to start by a resume, so it counts as not running.
+    /// neither the started nor the queued bit is (queued to run, 200, counts as running). A stopped torrent is told to start by a resume, so it counts as not running.
     /// </summary>
     internal static bool IsPaused(int statusBits)
-        => (statusBits & UTorrentStatus.Paused) != 0 || (statusBits & UTorrentStatus.Started) == 0;
+        => (statusBits & UTorrentStatus.Paused) != 0 || (statusBits & (UTorrentStatus.Started | UTorrentStatus.Queued)) == 0;
 
     private async Task<DownloadClientActionResult> ExecuteActionCoreAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
     {
