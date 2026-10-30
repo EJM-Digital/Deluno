@@ -27,6 +27,34 @@ public static class RecordedReplies
     public static Recording Deluge(string state) => RecordedReplies.LoadLatest("deluge", state);
     /// <summary>uTorrent Classic's Web UI (`/gui/`), recorded from the real app.</summary>
     public static Recording Utorrent(string state) => RecordedReplies.LoadLatest("utorrent", state);
+    /// <summary>uTorrent's recorded token page (gui/token.html) with the scrubbed token given a value, as the client reads it.</summary>
+    public static string UtorrentTokenPage() => Utorrent("token").Single.Reply.Body!.Replace("<scrubbed>", "recorded-token", StringComparison.Ordinal);
+    /// <summary>
+    /// uTorrent's recorded torrent list (list=1): nothing added (the idle recording), or its finished torrent with only the hash of
+    /// each row set (the hashes are the test's own; every other value is what the client sent). More edits change other values of the rows.
+    /// </summary>
+    public static string UtorrentList(string[] hashes, params (string Path, object? Value)[] edits)
+    {
+        if (hashes.Length == 0)
+        {
+            return Utorrent("idle").Body("list=1", edits);
+        }
+
+        var all = new List<(string Path, object? Value)>();
+        if (hashes.Length > 1)
+        {
+            all.Add(("+torrents", hashes.Length));
+        }
+
+        for (var i = 0; i < hashes.Length; i++)
+        {
+            all.Add(($"torrents.{i}.0", hashes[i]));
+        }
+
+        all.AddRange(edits);
+        return Utorrent("finished-single-file").Body("list=1", all.ToArray());
+    }
+
     /// <summary>rTorrent's XML-RPC mount, recorded from the real app (the `methodName` of the call is the operation).</summary>
     public static Recording Rtorrent(string state) => RecordedReplies.LoadLatest("rtorrent", state);
     /// <summary>Jackett's Torznab endpoint over public trackers.</summary>

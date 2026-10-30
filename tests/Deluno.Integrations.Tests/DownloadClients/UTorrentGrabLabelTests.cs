@@ -3,6 +3,7 @@ using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -20,7 +21,7 @@ public sealed class UTorrentGrabLabelTests
     [Fact]
     public async Task A_tv_grab_labels_the_new_torrent_tv()
     {
-        var handler = new SequencedHandler(beforeHashes: """{"torrents":[]}""", afterHashes: """{"torrents":[["aaaa1111"]]}""");
+        var handler = new SequencedHandler(beforeHashes: Torrents(), afterHashes: Torrents("aaaa1111"));
 
         var result = await Grab(handler, mediaType: "tv");
 
@@ -34,7 +35,7 @@ public sealed class UTorrentGrabLabelTests
     [Fact]
     public async Task A_movie_grab_labels_the_new_torrent_movies()
     {
-        var handler = new SequencedHandler(beforeHashes: """{"torrents":[]}""", afterHashes: """{"torrents":[["aaaa1111"]]}""");
+        var handler = new SequencedHandler(beforeHashes: Torrents(), afterHashes: Torrents("aaaa1111"));
 
         var result = await Grab(handler, mediaType: "movies");
 
@@ -50,7 +51,7 @@ public sealed class UTorrentGrabLabelTests
         // whose hash Deluno never learned and that never surfaces in the list
         // names nothing. It used to come back as a success with a null id that
         // could never be followed; it is now a plain failure.
-        var handler = new SequencedHandler(beforeHashes: """{"torrents":[]}""", afterHashes: """{"torrents":[]}""");
+        var handler = new SequencedHandler(beforeHashes: Torrents(), afterHashes: Torrents());
 
         var result = await Grab(handler, mediaType: "tv");
 
@@ -63,7 +64,7 @@ public sealed class UTorrentGrabLabelTests
     public async Task A_grab_whose_hash_is_known_is_followed_by_it_even_when_uTorrent_is_slow_to_list_it()
     {
         const string hash = "abcdef0123456789abcdef0123456789abcdef01";
-        var handler = new SequencedHandler(beforeHashes: """{"torrents":[]}""", afterHashes: """{"torrents":[]}""");
+        var handler = new SequencedHandler(beforeHashes: Torrents(), afterHashes: Torrents());
 
         var result = await Grab(handler, mediaType: "tv", knownHash: hash);
 
@@ -79,8 +80,8 @@ public sealed class UTorrentGrabLabelTests
         // mistaken for this grab.
         const string hash = "abcdef0123456789abcdef0123456789abcdef01";
         var handler = new SequencedHandler(
-            beforeHashes: """{"torrents":[]}""",
-            afterHashes: $$"""{"torrents":[["9999999999999999999999999999999999999999"],["{{hash.ToUpperInvariant()}}"]]}""");
+            beforeHashes: Torrents(),
+            afterHashes: Torrents("9999999999999999999999999999999999999999", hash.ToUpperInvariant()));
 
         var result = await Grab(handler, mediaType: "tv", knownHash: hash);
 
@@ -93,8 +94,8 @@ public sealed class UTorrentGrabLabelTests
     public async Task Two_torrents_appearing_at_once_with_no_known_hash_name_nothing()
     {
         var handler = new SequencedHandler(
-            beforeHashes: """{"torrents":[]}""",
-            afterHashes: """{"torrents":[["aaaa1111"],["bbbb2222"]]}""");
+            beforeHashes: Torrents(),
+            afterHashes: Torrents("aaaa1111", "bbbb2222"));
 
         var result = await Grab(handler, mediaType: "tv");
 
@@ -113,8 +114,8 @@ public sealed class UTorrentGrabLabelTests
     {
         const string hash = "ABCDEF0123456789ABCDEF0123456789ABCDEF01";
         var handler = new SequencedHandler(
-            beforeHashes: $$"""{"torrents":[["{{hash}}"]]}""",
-            afterHashes: $$"""{"torrents":[["{{hash}}"]]}""");
+            beforeHashes: Torrents(hash),
+            afterHashes: Torrents(hash));
 
         var result = await new UTorrentDownloadClient(() => handler).GrabAsync(
             CreateClient(),
@@ -126,6 +127,8 @@ public sealed class UTorrentGrabLabelTests
         Assert.Equal(hash, result.ExternalId, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("already holds this release", result.Message, StringComparison.Ordinal);
     }
+
+    private static string Torrents(params string[] hashes) => RecordedReplies.UtorrentList(hashes);
 
     private static Task<DownloadClientGrabResult> Grab(HttpMessageHandler handler, string mediaType, string? knownHash = null)
         => new UTorrentDownloadClient(() => handler).GrabAsync(
@@ -165,14 +168,14 @@ public sealed class UTorrentGrabLabelTests
             {
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                 {
-                    Content = new StringContent("<div id='token'>test-token</div>", Encoding.UTF8, "text/html")
+                    Content = new StringContent(RecordedReplies.UtorrentTokenPage(), Encoding.UTF8, "text/html")
                 });
             }
 
             if (uri.Contains("action=add-url", StringComparison.Ordinal))
             {
                 _added = true;
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") });
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(RecordedReplies.Utorrent("magnet-no-metadata").Body("action=add-url")) });
             }
 
             if (uri.Contains("list=1", StringComparison.Ordinal))
@@ -186,7 +189,7 @@ public sealed class UTorrentGrabLabelTests
 
             if (uri.Contains("action=setprops", StringComparison.Ordinal))
             {
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") });
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(RecordedReplies.Utorrent("label-set").Body("action=setprops")) });
             }
 
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") });

@@ -4,6 +4,7 @@ using Deluno.Connections.Contracts;
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -216,20 +217,15 @@ public sealed class UTorrentSnapshotTests
         int peers = 3,
         int seeds = 0)
     {
-        var hash = "AAAA1111BBBB2222CCCC3333DDDD4444EEEE5555";
-        // uTorrent's list array is positional. Index: 0 hash, 1 status, 2 name,
-        // 3 size, 4 percent*10, 7 ratio (per mille), 8 upload rate, 9 download
-        // rate, 10 eta, 11 label, 12 peers, 21 status message, 23 added date,
-        // 26 save path.
-        var list = $$"""
-        {"torrents":[[
-            "{{hash}}", {{statusBits}}, "The.Show.S01E01.2023.720p.WEB-DL", 1000000, {{(progress * 10).ToString(System.Globalization.CultureInfo.InvariantCulture)}},
-            0, 0, {{ratioPerMille}}, 1000000, {{speed.ToString(System.Globalization.CultureInfo.InvariantCulture)}}, 60, "{{label}}", {{peers}},
-            0, {{seeds}}, 0, 0, 0, 0, 0, 0,
-            "{{statusMessage}}", 0, 1700000000, 0, 0, "{{savePath.Replace("\\", "\\\\")}}"
-        ]]}
-        """;
-        var getprops = $$"""{"props":[{"hash":"{{hash}}","seed_time":{{seedTimeSeconds}}}]}""";
+        // The list row of uTorrent 3.6.0.47254's finished torrent, with only the values this test is about set (a torrent in each
+        // state cannot be put there on demand): status bits at 1, progress (per mille) at 4, ratio (per mille) at 7, download rate
+        // at 9, label at 11, peers at 12, seeds at 14, status message at 21 and save path at 26.
+        var list = RecordedReplies.Utorrent("finished-single-file").Body("list=1",
+            ("torrents.0.1", statusBits), ("torrents.0.4", (int)Math.Round(progress * 10)), ("torrents.0.7", ratioPerMille),
+            ("torrents.0.9", (long)speed), ("torrents.0.11", label), ("torrents.0.12", peers), ("torrents.0.14", seeds),
+            ("torrents.0.21", statusMessage), ("torrents.0.26", savePath));
+        // getprops of the same torrent, with only the seed time set.
+        var getprops = RecordedReplies.Utorrent("props").Body("getprops", ("props.0.seed_time", seedTimeSeconds));
 
         var handler = new UTorrentHandler(list, getprops);
         var client = new UTorrentDownloadClient(() => handler);
@@ -247,7 +243,7 @@ public sealed class UTorrentSnapshotTests
         {
             var uri = request.RequestUri?.ToString() ?? string.Empty;
             var reply = uri.Contains("token.html", StringComparison.Ordinal)
-                ? "<div id='token'>test-token</div>"
+                ? RecordedReplies.UtorrentTokenPage()
                 : uri.Contains("action=getprops", StringComparison.Ordinal)
                     ? getPropsResponse
                     : uri.Contains("list=1", StringComparison.Ordinal)

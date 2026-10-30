@@ -451,9 +451,10 @@ public sealed class EveryVerbMeansSomethingDifferentTests
                 }
                 else
                 {
+                    // uTorrent 3.6's recorded list with its torrent (status 136: stopped, which the test sets) or, once removed, the list after the removal.
                     content = held
-                        ? "{\"torrents\":[[\"" + infoHash + "\",136,\"Some.Film\"]]}"
-                        : "{\"torrents\":[]}";
+                        ? RecordedReplies.UtorrentList([infoHash], ("torrents.0.1", 136), ("torrents.0.2", "Some.Film"))
+                        : RecordedReplies.Utorrent("removed-twice").Body("list=1");
                 }
 
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(content, System.Text.Encoding.UTF8, "application/json") };
@@ -498,7 +499,7 @@ public sealed class EveryVerbMeansSomethingDifferentTests
             {
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
-                    Content = new StringContent("<div id='token'>test-token</div>", System.Text.Encoding.UTF8, "text/html")
+                    Content = new StringContent(RecordedReplies.UtorrentTokenPage(), System.Text.Encoding.UTF8, "text/html")
                 };
             }
 

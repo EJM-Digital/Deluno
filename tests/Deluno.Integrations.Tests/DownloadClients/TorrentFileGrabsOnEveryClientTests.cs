@@ -333,7 +333,7 @@ public sealed class TorrentFileGrabsOnEveryClientTests
             var uri = request.RequestUri?.ToString() ?? string.Empty;
             if (uri.Contains("token.html", StringComparison.Ordinal))
             {
-                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("<div id='token'>t</div>", Encoding.UTF8, "text/html") };
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(RecordedReplies.UtorrentTokenPage(), Encoding.UTF8, "text/html") };
             }
 
             if (uri.Contains("action=add-", StringComparison.Ordinal))
@@ -341,13 +341,12 @@ public sealed class TorrentFileGrabsOnEveryClientTests
                 added = true;
                 AddUri = uri;
                 AddBody = request.Content is null ? string.Empty : Encoding.Latin1.GetString(await request.Content.ReadAsByteArrayAsync(cancellationToken));
-                return Text("{}");
+                return Text(RecordedReplies.Utorrent("add-file-accepted").Body("action=add-file"));
             }
 
             if (uri.Contains("list=1", StringComparison.Ordinal))
             {
-                var rows = string.Join(",", (added ? after : before).Select(hash => $"[\"{hash}\"]"));
-                return Json($$"""{"torrents":[{{rows}}]}""");
+                return Json(RecordedReplies.UtorrentList((added ? after : before).ToArray()));
             }
 
             return Text("{}");

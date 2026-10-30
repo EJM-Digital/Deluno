@@ -158,7 +158,7 @@ public sealed class GrabAppearanceLookupPerClientTests
     {
         var hash = "AAAA1111BBBB2222CCCC3333DDDD4444EEEE5555";
         var list = UTorrentList(hash, "Example.Movie.2024.1080p", "movies");
-        var registry = RegistryFor("utorrent", new UTorrentDownloadClient(() => new UTorrentHandler(list, """{"props":[]}""")));
+        var registry = RegistryFor("utorrent", new UTorrentDownloadClient(() => new UTorrentHandler(list, RecordedReplies.Utorrent("props").Body("getprops", ("^props", 0)))));
 
         var result = await new GrabAppearanceLookupService(Connections("utorrent"), registry, TimeProvider.System)
             .LookupAsync(ClientId, "movies", "movies", hash, "Example.Movie.2024.1080p", CancellationToken.None);
@@ -169,7 +169,7 @@ public sealed class GrabAppearanceLookupPerClientTests
     [Fact]
     public async Task UTorrent_nothing_in_the_queue_is_reported_as_not_there()
     {
-        var registry = RegistryFor("utorrent", new UTorrentDownloadClient(() => new UTorrentHandler("""{"torrents":[]}""", """{"props":[]}""")));
+        var registry = RegistryFor("utorrent", new UTorrentDownloadClient(() => new UTorrentHandler(RecordedReplies.Utorrent("idle").Body("list=1"), RecordedReplies.Utorrent("props").Body("getprops", ("^props", 0)))));
 
         var result = await new GrabAppearanceLookupService(Connections("utorrent"), registry, TimeProvider.System)
             .LookupAsync(ClientId, "movies", "movies", "AAAA1111BBBB2222CCCC3333DDDD4444EEEE5555", "Example.Movie.2024.1080p", CancellationToken.None);
@@ -188,17 +188,9 @@ public sealed class GrabAppearanceLookupPerClientTests
         Assert.Equal(GrabAppearanceOutcome.Unreachable, result.Outcome);
     }
 
+    // uTorrent 3.6's recorded finished torrent with the name and label (index 11, what Deluno reads as the category) the test is about.
     private static string UTorrentList(string hash, string name, string label)
-        // uTorrent's list array is positional -- see UTorrentSnapshotTests for
-        // the full field map. Index 11 is the label Deluno reads as category.
-        => $$"""
-        {"torrents":[[
-            "{{hash}}", 1, "{{name}}", 1000000, 400,
-            0, 0, 0, 1000000, 500000, 60, "{{label}}", 3,
-            0, 0, 0, 0, 0, 0, 0, 0,
-            "", 0, 1700000000, 0, 0, "D:\\Downloads\\release"
-        ]]}
-        """;
+        => RecordedReplies.UtorrentList([hash], ("torrents.0.2", name), ("torrents.0.11", label));
 
     private sealed class UTorrentHandler(string listResponse, string getPropsResponse) : HttpMessageHandler
     {
@@ -206,7 +198,7 @@ public sealed class GrabAppearanceLookupPerClientTests
         {
             var uri = request.RequestUri?.ToString() ?? string.Empty;
             var reply = uri.Contains("token.html", StringComparison.Ordinal)
-                ? "<div id='token'>test-token</div>"
+                ? RecordedReplies.UtorrentTokenPage()
                 : uri.Contains("action=getprops", StringComparison.Ordinal)
                     ? getPropsResponse
                     : uri.Contains("list=1", StringComparison.Ordinal)

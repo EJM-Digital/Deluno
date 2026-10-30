@@ -3,6 +3,7 @@ using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
 
@@ -126,7 +127,7 @@ public sealed class FreeSpaceReportingTests
     [Fact]
     public async Task Utorrent_never_reports_free_space()
     {
-        var handler = new UTorrentHandler("""{"torrents":[]}""");
+        var handler = new UTorrentHandler(RecordedReplies.Utorrent("idle").Body("list=1"));
 
         var snapshot = await new UTorrentDownloadClient(() => handler)
             .GetSnapshotAsync(UTorrentClient(), DateTimeOffset.UtcNow, CancellationToken.None);
@@ -237,7 +238,7 @@ public sealed class FreeSpaceReportingTests
             {
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                 {
-                    Content = new StringContent("<div id='token'>test-token</div>", Encoding.UTF8, "text/html")
+                    Content = new StringContent(RecordedReplies.UtorrentTokenPage(), Encoding.UTF8, "text/html")
                 });
             }
 

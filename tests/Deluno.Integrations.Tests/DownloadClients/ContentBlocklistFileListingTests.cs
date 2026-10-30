@@ -79,7 +79,8 @@ public sealed class ContentBlocklistFileListingTests
     public async Task Utorrent_lists_files_from_getfiles()
     {
         var handler = new UTorrentFilesHandler(
-            """{"files":["abc123",[["Example.Movie.2026.mkv",123,123,1],["Setup.exe",456,456,1]]]}""");
+            // uTorrent 3.6's recorded getfiles of a torrent over a folder (a film and a small extra file), with the two names the test is about.
+            RecordedReplies.Utorrent("finished-folder").Body("action=getfiles", ("files.1.0.0", "Example.Movie.2026.mkv"), ("files.1.1.0", "Setup.exe")));
 
         var files = await new UTorrentDownloadClient(() => handler)
             .GetFilesAsync(UTorrentClient(), "abc123", CancellationToken.None);
@@ -91,7 +92,7 @@ public sealed class ContentBlocklistFileListingTests
     [Fact]
     public async Task Utorrent_reports_no_files_when_the_client_will_not_say()
     {
-        var handler = new UTorrentFilesHandler(body: null);
+        var handler = new UTorrentFilesHandler(body: RecordedReplies.Utorrent("files-unknown-hash").Body("action=getfiles"));
 
         var files = await new UTorrentDownloadClient(() => handler)
             .GetFilesAsync(UTorrentClient(), "abc123", CancellationToken.None);
@@ -297,7 +298,7 @@ public sealed class ContentBlocklistFileListingTests
             {
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                 {
-                    Content = new StringContent("<html><div id='token'>test-token</div></html>", Encoding.UTF8, "text/html")
+                    Content = new StringContent(RecordedReplies.UtorrentTokenPage(), Encoding.UTF8, "text/html")
                 });
             }
 
