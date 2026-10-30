@@ -1,4 +1,5 @@
 using System.Net;
+using Deluno.Tests.Recorded;
 using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
@@ -111,7 +112,9 @@ public sealed class ClientVersionReadingTests
     [Fact]
     public async Task Utorrent_has_no_version_to_show()
     {
-        var snapshot = await new UTorrentDownloadClient(() => new RoutedHandler(("list=1", """{"torrents":[]}"""), ("token.html", "<div id='token'>t</div>")))
+        var snapshot = await new UTorrentDownloadClient(() => new RoutedHandler(
+                ("list=1", RecordedReplies.Utorrent("idle").Single.Reply.Body!),
+                ("token.html", RecordedReplies.Utorrent("token").Single.Reply.Body!.Replace("<scrubbed>", "recorded-token"))))
             .GetSnapshotAsync(Client("utorrent"), DateTimeOffset.UtcNow, CancellationToken.None);
 
         Assert.Null(snapshot!.ClientVersion);

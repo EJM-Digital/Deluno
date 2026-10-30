@@ -47,7 +47,7 @@ function New-RecordedClient {
 function Send-Recorded {
     param(
         $Client, [string] $Method = 'GET', [string] $Path, [string] $Body, [hashtable] $Form, $Json, [hashtable] $Multipart,
-        [hashtable] $Headers = @{}, [string] $ContentType, [string[]] $KeepHeaders
+        [hashtable] $Headers = @{}, [string] $ContentType, [string[]] $KeepHeaders, [switch] $UnquotedBoundary
     )
     $relative = $Path.TrimStart('/')
     $request = New-Object System.Net.Http.HttpRequestMessage([System.Net.Http.HttpMethod]::new($Method), $relative)
@@ -67,6 +67,8 @@ function Send-Recorded {
                 $mp.Add($part, $k, 'file.torrent'); $shown += "$k=<$($v.Length) bytes>"
             } else { $mp.Add((New-Object System.Net.Http.StringContent([string]$v)), $k); $shown += "$k=$v" }
         }
+        # uTorrent's Web UI cannot read a quoted boundary (what .NET writes): it answers 200 "torrent file content not supplied".
+        if ($UnquotedBoundary) { $b = $mp.Headers.ContentType.Parameters | Where-Object Name -eq 'boundary'; $b.Value = $b.Value.Trim('"') }
         $request.Content = $mp
         $recordedBody = $shown -join '&'
     } elseif ($PSBoundParameters.ContainsKey('Json')) {

@@ -353,7 +353,10 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
         // was still hashing.
         if ((bits & UTorrentStatus.Checking) != 0) return DownloadQueueStatuses.Downloading;
         if (Deluno.Platform.Contracts.DownloadHealthStrikes.IsFinishedPercent(progress)) return DownloadQueueStatuses.ImportReady;
-        if ((bits & (UTorrentStatus.Paused | UTorrentStatus.Queued)) != 0) return DownloadQueueStatuses.Queued;
+        // Read from the real uTorrent 3.6 (#1421): the Queued bit is set on every torrent uTorrent's queue manages, running or
+        // not (downloading 201, waiting 200, paused 233), so it only means "waiting" when the torrent has not started.
+        // A paused torrent has the Paused, Queued and Started bits all set, so Paused is read first.
+        if ((bits & UTorrentStatus.Paused) != 0) return DownloadQueueStatuses.Paused;
         if ((bits & UTorrentStatus.Started) != 0) return DownloadQueueStatuses.Downloading;
         return DownloadQueueStatuses.Queued;
     }

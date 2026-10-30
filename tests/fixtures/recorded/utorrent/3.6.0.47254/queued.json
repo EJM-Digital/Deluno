@@ -1,0 +1,191 @@
+{
+  "app": "utorrent",
+  "version": "3.6.0.47254",
+  "state": "queued",
+  "recordedAt": "2026-10-30T10:46:06Z",
+  "note": "The client limited to one active download, two torrents added: the second waits in the queue.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/gui/?token=<scrubbed>&action=add-file",
+        "bodyText": "torrent_file=<56144 bytes>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&list=1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254,
+          "torrents": [
+            [
+              "86693FF52E864909897DF8D6743E84024B86F995",
+              200,
+              "Recorded.Stalled.Two.utorrent",
+              734003200,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              "",
+              0,
+              0,
+              0,
+              0,
+              0,
+              2,
+              734003200,
+              "",
+              "",
+              "Queued 0.0 %",
+              "2",
+              1793357157,
+              0,
+              "",
+              "C:\\golden\\recorded-apps\\utorrent\\save",
+              0,
+              "3768F13F"
+            ],
+            [
+              "AD75B0674EDE482D905547AF476320D8BE05FA7A",
+              201,
+              "Recorded.Stalled.One.utorrent",
+              734003200,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              -1,
+              "",
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              734003200,
+              "",
+              "",
+              "Finding peers 0.0 %",
+              "1",
+              1793357157,
+              0,
+              "",
+              "C:\\golden\\recorded-apps\\utorrent\\save",
+              0,
+              "DC0C34A7"
+            ]
+          ],
+          "label": [],
+          "torrentc": "2010807559",
+          "rssfeeds": [],
+          "rssfilters": []
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&list=1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254,
+          "torrents": [
+            [
+              "86693FF52E864909897DF8D6743E84024B86F995",
+              200,
+              "Recorded.Stalled.Two.utorrent",
+              734003200,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              "",
+              0,
+              0,
+              0,
+              0,
+              0,
+              2,
+              734003200,
+              "",
+              "",
+              "Queued 0.0 %",
+              "2",
+              1793357157,
+              0,
+              "",
+              "C:\\golden\\recorded-apps\\utorrent\\save",
+              0,
+              "3768F13F"
+            ],
+            [
+              "AD75B0674EDE482D905547AF476320D8BE05FA7A",
+              201,
+              "Recorded.Stalled.One.utorrent",
+              734003200,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              -1,
+              "",
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              734003200,
+              "",
+              "",
+              "Finding peers 0.0 %",
+              "1",
+              1793357157,
+              0,
+              "",
+              "C:\\golden\\recorded-apps\\utorrent\\save",
+              0,
+              "DC0C34A7"
+            ]
+          ],
+          "label": [],
+          "torrentc": "1756046858",
+          "rssfeeds": [],
+          "rssfilters": []
+        }
+      }
+    }
+  ]
+}

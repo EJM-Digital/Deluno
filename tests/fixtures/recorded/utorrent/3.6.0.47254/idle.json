@@ -1,0 +1,29 @@
+{
+  "app": "utorrent",
+  "version": "3.6.0.47254",
+  "state": "idle",
+  "recordedAt": "2026-10-30T10:45:57Z",
+  "note": "Nothing added: the list of torrents when empty.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&list=1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254,
+          "torrents": [],
+          "label": [],
+          "torrentc": "1998657002",
+          "rssfeeds": [],
+          "rssfilters": []
+        }
+      }
+    }
+  ]
+}

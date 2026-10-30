@@ -110,11 +110,11 @@ public sealed class UTorrentSnapshotTests
     }
 
     [Fact]
-    public async Task Paused_torrent_reads_as_queued()
+    public async Task Paused_torrent_reads_as_paused()
     {
         var item = await Snapshot(statusBits: Paused, progress: 40, speed: 0, statusMessage: string.Empty);
 
-        Assert.Equal(DownloadQueueStatuses.Queued, item.Status);
+        Assert.Equal(DownloadQueueStatuses.Paused, item.Status);
     }
 
     [Fact]

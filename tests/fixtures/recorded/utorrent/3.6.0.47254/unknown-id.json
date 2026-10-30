@@ -1,0 +1,76 @@
+{
+  "app": "utorrent",
+  "version": "3.6.0.47254",
+  "state": "unknown-id",
+  "recordedAt": "2026-10-30T10:46:09Z",
+  "note": "A removal of a hash the client never had.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&action=remove&hash=0000000000000000000000000000000000000000"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&list=1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254,
+          "torrents": [
+            [
+              "86693FF52E864909897DF8D6743E84024B86F995",
+              201,
+              "Recorded.Stalled.Two.utorrent",
+              734003200,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              -1,
+              "",
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              734003200,
+              "",
+              "",
+              "Finding peers 0.0 %",
+              "2",
+              1793357157,
+              0,
+              "",
+              "C:\\golden\\recorded-apps\\utorrent\\save",
+              0,
+              "3768F13F"
+            ]
+          ],
+          "label": [],
+          "torrentc": "2043436575",
+          "rssfeeds": [],
+          "rssfilters": []
+        }
+      }
+    }
+  ]
+}

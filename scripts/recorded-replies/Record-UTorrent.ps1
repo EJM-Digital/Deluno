@@ -15,13 +15,14 @@ function ConvertTo-Bencode($Value) {
     throw "Cannot bencode $($Value.GetType())"
 }
 
+# uTorrent 3.6 serves its Web UI on the BitTorrent port (webui.port alone is ignored), so bind_port is set to the same port.
 # uTorrent reads settings.dat when it starts: a bencoded dictionary with its keys in order. The Web UI is off until this says otherwise.
 # The .fileguard entry is left out on purpose (uTorrent accepts a file without it and writes its own on exit).
 function New-UTorrentSettings([string] $Path, [int] $Port, [string] $User, [string] $Password, [string] $DownloadDir) {
     $pairs = [ordered]@{
         'bind_ip' = '127.0.0.1'; 'check_update' = 0; 'dir_active_download' = $DownloadDir; 'dir_active_download_flag' = 1
         'gui.show_notifications' = 0; 'webui.enable' = 1; 'webui.enable_guest' = 0; 'webui.password' = $Password; 'webui.port' = $Port
-        'webui.restrict' = '127.0.0.1'; 'webui.username' = $User; 'dht' = 0; 'lsd' = 0; 'pex' = 0; 'upnp' = 0; 'natpmp' = 0
+        'webui.restrict' = '127.0.0.1'; 'webui.username' = $User; 'bind_port' = $Port; 'dht' = 0; 'lsd' = 0; 'pex' = 0; 'upnp' = 0; 'natpmp' = 0
     }
     $sb = New-Object Text.StringBuilder
     [void]$sb.Append('d')
@@ -52,7 +53,7 @@ function New-UTorrentAdapter($p, [string] $Version, $Login) {
     $global:UtTokenReply = $tokenReply
     $global:UtCall = { param($query, $method = 'GET', $multipart = $null)
         $path = "/gui/?token=$($global:UtToken)&$query"
-        if ($multipart) { Send-Recorded -Client $global:UtClient -Method POST -Path $path -Multipart $multipart } else { Send-Recorded -Client $global:UtClient -Method $method -Path $path }
+        if ($multipart) { Send-Recorded -Client $global:UtClient -Method POST -Path $path -Multipart $multipart -UnquotedBoundary } else { Send-Recorded -Client $global:UtClient -Method $method -Path $path }
     }
     $set = { param($name, $value) $null = & $global:UtCall "action=setsetting&s=$name&v=$([Uri]::EscapeDataString([string]$value))" }
     @{
