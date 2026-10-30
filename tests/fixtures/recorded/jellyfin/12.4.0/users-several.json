@@ -1,0 +1,521 @@
+{
+  "app": "jellyfin",
+  "version": "12.4.0",
+  "state": "users-several",
+  "recordedAt": "2026-10-30T17:18:08Z",
+  "note": "Three users (the administrator, Ben, and Old who is turned off): the user list, then for each in that order the played, favourite and resumable listings (jellyfin 12.4.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Users"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "Name": "Ben",
+            "ServerId": "b19d5fa68d6447ca923efe11bcb442d2",
+            "Id": "3da98f9536874e5db4e49dd8d12811fc",
+            "HasPassword": true,
+            "HasConfiguredPassword": true,
+            "HasConfiguredEasyPassword": false,
+            "EnableAutoLogin": false,
+            "Configuration": {
+              "PlayDefaultAudioTrack": true,
+              "SubtitleLanguagePreference": "",
+              "DisplayMissingEpisodes": false,
+              "GroupedFolders": [],
+              "SubtitleMode": "Default",
+              "DisplayCollectionsView": false,
+              "EnableLocalPassword": false,
+              "OrderedViews": [],
+              "LatestItemsExcludes": [],
+              "MyMediaExcludes": [],
+              "HidePlayedInLatest": true,
+              "RememberAudioSelections": true,
+              "RememberSubtitleSelections": true,
+              "EnableNextEpisodeAutoPlay": true,
+              "CastReceiverId": "F007D354"
+            },
+            "Policy": {
+              "IsAdministrator": false,
+              "IsHidden": true,
+              "EnableCollectionManagement": false,
+              "EnableSubtitleManagement": false,
+              "EnableLyricManagement": false,
+              "IsDisabled": false,
+              "BlockedTags": [],
+              "AllowedTags": [],
+              "EnableUserPreferenceAccess": true,
+              "AccessSchedules": [],
+              "BlockUnratedItems": [],
+              "EnableRemoteControlOfOtherUsers": false,
+              "EnableSharedDeviceControl": true,
+              "EnableRemoteAccess": true,
+              "EnableLiveTvManagement": false,
+              "EnableLiveTvAccess": true,
+              "EnableMediaPlayback": true,
+              "EnableAudioPlaybackTranscoding": true,
+              "EnableVideoPlaybackTranscoding": true,
+              "EnablePlaybackRemuxing": true,
+              "ForceRemoteSourceTranscoding": false,
+              "EnableContentDeletion": false,
+              "EnableContentDeletionFromFolders": [],
+              "EnableContentDownloading": true,
+              "EnableSyncTranscoding": true,
+              "EnableMediaConversion": true,
+              "EnabledDevices": [],
+              "EnableAllDevices": true,
+              "EnabledChannels": [],
+              "EnableAllChannels": true,
+              "EnabledFolders": [],
+              "EnableAllFolders": true,
+              "InvalidLoginAttemptCount": 0,
+              "LoginAttemptsBeforeLockout": -1,
+              "MaxActiveSessions": 0,
+              "EnablePublicSharing": true,
+              "BlockedMediaFolders": [],
+              "BlockedChannels": [],
+              "RemoteClientBitrateLimit": 0,
+              "AuthenticationProviderId": "Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider",
+              "PasswordResetProviderId": "<scrubbed>",
+              "SyncPlayAccess": "CreateAndJoinGroups"
+            }
+          },
+          {
+            "Name": "Old",
+            "ServerId": "b19d5fa68d6447ca923efe11bcb442d2",
+            "Id": "a205a4c2d6b34c14912ac975811c92b2",
+            "HasPassword": true,
+            "HasConfiguredPassword": true,
+            "HasConfiguredEasyPassword": false,
+            "EnableAutoLogin": false,
+            "LastActivityDate": "2026-10-30T17:18:07.841048Z",
+            "Configuration": {
+              "PlayDefaultAudioTrack": true,
+              "SubtitleLanguagePreference": "",
+              "DisplayMissingEpisodes": false,
+              "GroupedFolders": [],
+              "SubtitleMode": "Default",
+              "DisplayCollectionsView": false,
+              "EnableLocalPassword": false,
+              "OrderedViews": [],
+              "LatestItemsExcludes": [],
+              "MyMediaExcludes": [],
+              "HidePlayedInLatest": true,
+              "RememberAudioSelections": true,
+              "RememberSubtitleSelections": true,
+              "EnableNextEpisodeAutoPlay": true,
+              "CastReceiverId": "F007D354"
+            },
+            "Policy": {
+              "IsAdministrator": false,
+              "IsHidden": true,
+              "EnableCollectionManagement": false,
+              "EnableSubtitleManagement": false,
+              "EnableLyricManagement": false,
+              "IsDisabled": true,
+              "BlockedTags": [],
+              "AllowedTags": [],
+              "EnableUserPreferenceAccess": true,
+              "AccessSchedules": [],
+              "BlockUnratedItems": [],
+              "EnableRemoteControlOfOtherUsers": false,
+              "EnableSharedDeviceControl": true,
+              "EnableRemoteAccess": true,
+              "EnableLiveTvManagement": false,
+              "EnableLiveTvAccess": true,
+              "EnableMediaPlayback": true,
+              "EnableAudioPlaybackTranscoding": true,
+              "EnableVideoPlaybackTranscoding": true,
+              "EnablePlaybackRemuxing": true,
+              "ForceRemoteSourceTranscoding": false,
+              "EnableContentDeletion": false,
+              "EnableContentDeletionFromFolders": [],
+              "EnableContentDownloading": true,
+              "EnableSyncTranscoding": true,
+              "EnableMediaConversion": true,
+              "EnabledDevices": [],
+              "EnableAllDevices": true,
+              "EnabledChannels": [],
+              "EnableAllChannels": true,
+              "EnabledFolders": [],
+              "EnableAllFolders": true,
+              "InvalidLoginAttemptCount": 0,
+              "LoginAttemptsBeforeLockout": -1,
+              "MaxActiveSessions": 0,
+              "EnablePublicSharing": true,
+              "BlockedMediaFolders": [],
+              "BlockedChannels": [],
+              "RemoteClientBitrateLimit": 0,
+              "AuthenticationProviderId": "Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider",
+              "PasswordResetProviderId": "<scrubbed>",
+              "SyncPlayAccess": "CreateAndJoinGroups"
+            }
+          },
+          {
+            "Name": "<scrubbed>",
+            "ServerId": "b19d5fa68d6447ca923efe11bcb442d2",
+            "Id": "6dbbffb6d3b84a7eb4578650dcbb5f77",
+            "HasPassword": true,
+            "HasConfiguredPassword": true,
+            "HasConfiguredEasyPassword": false,
+            "EnableAutoLogin": false,
+            "LastLoginDate": "2026-10-30T17:15:58.8122459Z",
+            "LastActivityDate": "2026-10-30T17:18:07.8253043Z",
+            "Configuration": {
+              "PlayDefaultAudioTrack": true,
+              "SubtitleLanguagePreference": "",
+              "DisplayMissingEpisodes": false,
+              "GroupedFolders": [],
+              "SubtitleMode": "Default",
+              "DisplayCollectionsView": false,
+              "EnableLocalPassword": false,
+              "OrderedViews": [],
+              "LatestItemsExcludes": [],
+              "MyMediaExcludes": [],
+              "HidePlayedInLatest": true,
+              "RememberAudioSelections": true,
+              "RememberSubtitleSelections": true,
+              "EnableNextEpisodeAutoPlay": true,
+              "CastReceiverId": "F007D354"
+            },
+            "Policy": {
+              "IsAdministrator": true,
+              "IsHidden": true,
+              "EnableCollectionManagement": false,
+              "EnableSubtitleManagement": false,
+              "EnableLyricManagement": false,
+              "IsDisabled": false,
+              "BlockedTags": [],
+              "AllowedTags": [],
+              "EnableUserPreferenceAccess": true,
+              "AccessSchedules": [],
+              "BlockUnratedItems": [],
+              "EnableRemoteControlOfOtherUsers": true,
+              "EnableSharedDeviceControl": true,
+              "EnableRemoteAccess": true,
+              "EnableLiveTvManagement": false,
+              "EnableLiveTvAccess": true,
+              "EnableMediaPlayback": true,
+              "EnableAudioPlaybackTranscoding": true,
+              "EnableVideoPlaybackTranscoding": true,
+              "EnablePlaybackRemuxing": true,
+              "ForceRemoteSourceTranscoding": false,
+              "EnableContentDeletion": true,
+              "EnableContentDeletionFromFolders": [],
+              "EnableContentDownloading": true,
+              "EnableSyncTranscoding": true,
+              "EnableMediaConversion": true,
+              "EnabledDevices": [],
+              "EnableAllDevices": true,
+              "EnabledChannels": [],
+              "EnableAllChannels": true,
+              "EnabledFolders": [],
+              "EnableAllFolders": true,
+              "InvalidLoginAttemptCount": 0,
+              "LoginAttemptsBeforeLockout": -1,
+              "MaxActiveSessions": 0,
+              "EnablePublicSharing": true,
+              "BlockedMediaFolders": [],
+              "BlockedChannels": [],
+              "RemoteClientBitrateLimit": 0,
+              "AuthenticationProviderId": "Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider",
+              "PasswordResetProviderId": "<scrubbed>",
+              "SyncPlayAccess": "CreateAndJoinGroups"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Users/6dbbffb6d3b84a7eb4578650dcbb5f77/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&IsPlayed=true&Fields=UserData&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [
+            {
+              "Name": "Recorded Locked (2022)",
+              "ServerId": "b19d5fa68d6447ca923efe11bcb442d2",
+              "Id": "f71bd97fe09e80314ef10331220e40ae",
+              "Container": "mkv",
+              "ChannelId": null,
+              "RunTimeTicks": 200230000,
+              "ProductionYear": 2022,
+              "IsFolder": false,
+              "Type": "Movie",
+              "UserData": {
+                "PlaybackPositionTicks": 0,
+                "PlayCount": 1,
+                "IsFavorite": false,
+                "LastPlayedDate": "2026-10-30T17:16:01.0113796Z",
+                "Played": true,
+                "Key": "<scrubbed>",
+                "ItemId": "f71bd97fe09e80314ef10331220e40ae"
+              },
+              "VideoType": "VideoFile",
+              "ImageTags": {
+                "Primary": "35d362d8461a193450f633facb6a1a8c"
+              },
+              "BackdropImageTags": [],
+              "ImageBlurHashes": {
+                "Primary": {
+                  "35d362d8461a193450f633facb6a1a8c": "W~K_I9D[OqKoXLMRtQadrvSvayVvsonOodjbf6Xls;WFX5n$fikB"
+                }
+              },
+              "LocationType": "FileSystem",
+              "MediaType": "Video"
+            }
+          ],
+          "TotalRecordCount": 1,
+          "StartIndex": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Users/6dbbffb6d3b84a7eb4578650dcbb5f77/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&IsFavorite=true&Fields=UserData&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [],
+          "TotalRecordCount": 0,
+          "StartIndex": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Users/6dbbffb6d3b84a7eb4578650dcbb5f77/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Filters=IsResumable&Fields=UserData&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [],
+          "TotalRecordCount": 0,
+          "StartIndex": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Users/3da98f9536874e5db4e49dd8d12811fc/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&IsPlayed=true&Fields=UserData&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [],
+          "TotalRecordCount": 0,
+          "StartIndex": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Users/3da98f9536874e5db4e49dd8d12811fc/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&IsFavorite=true&Fields=UserData&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [
+            {
+              "Name": "Recorded Locked (2022)",
+              "ServerId": "b19d5fa68d6447ca923efe11bcb442d2",
+              "Id": "f71bd97fe09e80314ef10331220e40ae",
+              "Container": "mkv",
+              "ChannelId": null,
+              "RunTimeTicks": 200230000,
+              "ProductionYear": 2022,
+              "IsFolder": false,
+              "Type": "Movie",
+              "UserData": {
+                "PlayedPercentage": 29.965539629426157,
+                "PlaybackPositionTicks": 60000000,
+                "PlayCount": 0,
+                "IsFavorite": true,
+                "Played": false,
+                "Key": "<scrubbed>",
+                "ItemId": "f71bd97fe09e80314ef10331220e40ae"
+              },
+              "VideoType": "VideoFile",
+              "ImageTags": {
+                "Primary": "35d362d8461a193450f633facb6a1a8c"
+              },
+              "BackdropImageTags": [],
+              "ImageBlurHashes": {
+                "Primary": {
+                  "35d362d8461a193450f633facb6a1a8c": "W~K_I9D[OqKoXLMRtQadrvSvayVvsonOodjbf6Xls;WFX5n$fikB"
+                }
+              },
+              "LocationType": "FileSystem",
+              "MediaType": "Video"
+            }
+          ],
+          "TotalRecordCount": 1,
+          "StartIndex": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Users/3da98f9536874e5db4e49dd8d12811fc/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Filters=IsResumable&Fields=UserData&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [
+            {
+              "Name": "Recorded Locked (2022)",
+              "ServerId": "b19d5fa68d6447ca923efe11bcb442d2",
+              "Id": "f71bd97fe09e80314ef10331220e40ae",
+              "Container": "mkv",
+              "ChannelId": null,
+              "RunTimeTicks": 200230000,
+              "ProductionYear": 2022,
+              "IsFolder": false,
+              "Type": "Movie",
+              "UserData": {
+                "PlayedPercentage": 29.965539629426157,
+                "PlaybackPositionTicks": 60000000,
+                "PlayCount": 0,
+                "IsFavorite": true,
+                "Played": false,
+                "Key": "<scrubbed>",
+                "ItemId": "f71bd97fe09e80314ef10331220e40ae"
+              },
+              "VideoType": "VideoFile",
+              "ImageTags": {
+                "Primary": "35d362d8461a193450f633facb6a1a8c"
+              },
+              "BackdropImageTags": [],
+              "ImageBlurHashes": {
+                "Primary": {
+                  "35d362d8461a193450f633facb6a1a8c": "W~K_I9D[OqKoXLMRtQadrvSvayVvsonOodjbf6Xls;WFX5n$fikB"
+                }
+              },
+              "LocationType": "FileSystem",
+              "MediaType": "Video"
+            }
+          ],
+          "TotalRecordCount": 1,
+          "StartIndex": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Users/a205a4c2d6b34c14912ac975811c92b2/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&IsPlayed=true&Fields=UserData&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [
+            {
+              "Name": "Recorded Locked (2022)",
+              "ServerId": "b19d5fa68d6447ca923efe11bcb442d2",
+              "Id": "f71bd97fe09e80314ef10331220e40ae",
+              "Container": "mkv",
+              "ChannelId": null,
+              "RunTimeTicks": 200230000,
+              "ProductionYear": 2022,
+              "IsFolder": false,
+              "Type": "Movie",
+              "UserData": {
+                "PlaybackPositionTicks": 0,
+                "PlayCount": 1,
+                "IsFavorite": false,
+                "LastPlayedDate": "2026-10-30T17:18:07.8444239Z",
+                "Played": true,
+                "Key": "<scrubbed>",
+                "ItemId": "f71bd97fe09e80314ef10331220e40ae"
+              },
+              "VideoType": "VideoFile",
+              "ImageTags": {
+                "Primary": "35d362d8461a193450f633facb6a1a8c"
+              },
+              "BackdropImageTags": [],
+              "ImageBlurHashes": {
+                "Primary": {
+                  "35d362d8461a193450f633facb6a1a8c": "W~K_I9D[OqKoXLMRtQadrvSvayVvsonOodjbf6Xls;WFX5n$fikB"
+                }
+              },
+              "LocationType": "FileSystem",
+              "MediaType": "Video"
+            }
+          ],
+          "TotalRecordCount": 1,
+          "StartIndex": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Users/a205a4c2d6b34c14912ac975811c92b2/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&IsFavorite=true&Fields=UserData&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [],
+          "TotalRecordCount": 0,
+          "StartIndex": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/Users/a205a4c2d6b34c14912ac975811c92b2/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Filters=IsResumable&Fields=UserData&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [],
+          "TotalRecordCount": 0,
+          "StartIndex": 0
+        }
+      }
+    }
+  ]
+}

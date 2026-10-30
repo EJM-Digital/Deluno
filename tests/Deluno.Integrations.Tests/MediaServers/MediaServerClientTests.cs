@@ -3,6 +3,7 @@ using System.Text;
 using Deluno.Connections.Contracts;
 using Deluno.Contracts;
 using Deluno.Integrations.MediaServers;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.MediaServers;
 
@@ -15,9 +16,19 @@ public sealed class MediaServerClientTests
     private static MediaServerConnection Server(string kind, string baseUrl = "http://192.168.1.51:8096")
         => new("server-1", kind, "Rig " + kind, baseUrl, "token-123", true, "untested", null, null, null, null, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
 
+    /// <summary>
+    /// Jellyfin 12.4.0's own replies for three people (the administrator, Ben, and Old who is turned off), recorded after the administrator and Old
+    /// played the first film in the list, Ben favourited it and stopped partway (tests/fixtures/recorded/jellyfin/users-several, #1272).
+    /// </summary>
     [Fact]
     public async Task Jellyfin_combines_what_every_user_has_watched()
     {
+        var users = RecordedReplies.Jellyfin("users-several");
+        var people = users.Exchanges[0].Reply.Json().AsArray();
+        string IdOf(string name) => people.Single(person => person!["Name"]!.GetValue<string>() == name)!["Id"]!.GetValue<string>();
+        var benId = IdOf("Ben");
+        var oldId = IdOf("Old");
+        var ownerName = Assert.Single(people, person => person!["Name"]!.GetValue<string>() is not ("Ben" or "Old"))!["Name"]!.GetValue<string>();
         var requests = new List<string>();
         var client = new JellyfinMediaServerClient(Factory(request =>
         {
@@ -27,59 +38,37 @@ public sealed class MediaServerClientTests
             Assert.False(request.Headers.Contains("X-Emby-Token"));
             var path = request.RequestUri!.AbsolutePath;
             var query = Uri.UnescapeDataString(request.RequestUri.Query);
-            if (path == "/Users") return Json("""[{"Id":"u1","Name":"Owner"},{"Id":"u2","Name":"Ben"},{"Id":"u3","Name":"Old","Policy":{"IsDisabled":true}}]""");
-            if (path == "/Items") return Json(
-                """
-                {"Items":[
-                {"Id":"m1","Type":"Movie","Name":"Sintel","ProductionYear":2010,"ProviderIds":{"Tmdb":"45745","Imdb":"tt1727587"},"Path":"\\\\nas\\media\\Deluno-E2E\\Movies\\Sintel (2010)\\Sintel.mkv","DateCreated":"2026-09-01T00:00:00Z",
-                 "PremiereDate":"2010-09-27T00:00:00Z","Genres":["Animation","Fantasy"],"People":[{"Name":"Halina Reijn"}],"Tags":["open movie"],"CommunityRating":7.1,"CriticRating":88,
-                 "MediaSources":[{"Bitrate":4200000,"MediaStreams":[{"Type":"Video","Width":1920,"Height":818,"Codec":"h264"},{"Type":"Audio"}]}]},
-                {"Id":"m2","Type":"Movie","Name":"Big Buck Bunny","ProductionYear":2008,"ProviderIds":{"tmdb":"10378"},"Path":"/media/bbb.mkv"}],"TotalRecordCount":2}
-                """);
-            if (query.Contains("IncludeItemTypes=BoxSet", StringComparison.Ordinal)) return Json("""{"Items":[{"Id":"bs1","Name":"Blender films"}],"TotalRecordCount":1}""");
-            if (query.Contains("ParentId=bs1", StringComparison.Ordinal)) return Json("""{"Items":[{"Id":"m1"}],"TotalRecordCount":1}""");
-            if (query.Contains("IncludeItemTypes=Playlist", StringComparison.Ordinal)) return Json("""{"Items":[],"TotalRecordCount":0}""");
-            return (path, query) switch
+            if (path == "/Users") return users.Exchanges[0].Reply.ToResponse();
+            // The film listing comes from the same server's second page, where the film sits among the others.
+            if (path == "/Items") return RecordedReplies.Jellyfin("catalogue-paged").Exchanges[1].Reply.ToResponse();
+            if (path.StartsWith("/Users/", StringComparison.Ordinal))
             {
-                ("/Users/u1/Items", var q) when q.Contains("IsPlayed=true") => Json("""{"Items":[{"Id":"m1","UserData":{"Played":true,"PlayCount":2,"LastPlayedDate":"2026-09-10T20:00:00Z"}}],"TotalRecordCount":1}"""),
-                ("/Users/u2/Items", var q) when q.Contains("IsPlayed=true") => Json("""{"Items":[{"Id":"m1","UserData":{"Played":true,"PlayCount":1,"LastPlayedDate":"2026-09-12T21:00:00Z"}}],"TotalRecordCount":1}"""),
-                ("/Users/u2/Items", var q) when q.Contains("IsFavorite=true") => Json("""{"Items":[{"Id":"m2","UserData":{"Played":false,"IsFavorite":true}}],"TotalRecordCount":1}"""),
-                ("/Users/u1/Items", var q) when q.Contains("IsResumable") => Json("""{"Items":[{"Id":"m2","UserData":{"Played":false,"PlaybackPositionTicks":1200000000}}],"TotalRecordCount":1}"""),
-                (_, _) when path.StartsWith("/Users/", StringComparison.Ordinal) => Json("""{"Items":[],"TotalRecordCount":0}"""),
-                _ => new HttpResponseMessage(HttpStatusCode.NotFound)
-            };
+                var filter = query.Contains("IsPlayed", StringComparison.Ordinal) ? "IsPlayed" : query.Contains("IsFavorite", StringComparison.Ordinal) ? "IsFavorite" : query.Contains("IsResumable", StringComparison.Ordinal) ? "IsResumable" : null;
+                // No collections or playlists exist on this server: the recorded empty listing.
+                if (filter is null) return users.Exchanges[2].Reply.ToResponse();
+                var recorded = users.Exchanges.Skip(1).Single(exchange => exchange.Request.Path.StartsWith(path, StringComparison.Ordinal) && exchange.Request.Path.Contains(filter, StringComparison.Ordinal));
+                return recorded.Reply.ToResponse();
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
         }));
 
         var answer = await client.ListItemsAsync(Server(MediaServerKinds.Jellyfin), "movies", CancellationToken.None);
 
         var library = Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(answer).Value;
-        Assert.Equal(["Owner", "Ben"], library.Users);
-        var items = library.Items;
-        var sintel = Assert.Single(items, item => item.ServerItemId == "m1");
+        Assert.Equal(2, library.Users.Count);
+        Assert.Contains("Ben", library.Users);
+        Assert.Contains(ownerName, library.Users);
+        Assert.DoesNotContain("Old", library.Users);
+        var sintel = Assert.Single(library.Items, item => item.Title == "Recorded Locked (2022)");
         Assert.Equal(MediaServerItemLevels.Movie, sintel.Level);
-        Assert.Equal("45745", sintel.TmdbId);
-        Assert.Equal("tt1727587", sintel.ImdbId);
         Assert.True(sintel.Watch.PlayedByAnyone);
         Assert.True(sintel.Watch.PerUserKnown);
-        Assert.Equal(["Owner", "Ben"], sintel.Watch.PlayedBy);
-        Assert.Equal(DateTimeOffset.Parse("2026-09-12T21:00:00Z"), sintel.Watch.LastPlayedUtc);
-        Assert.Equal(3, sintel.Viewers.Sum(viewer => viewer.PlayCount));
-        Assert.Equal(["Animation", "Fantasy"], sintel.Genres);
-        Assert.Equal(["Halina Reijn"], sintel.People);
-        Assert.Equal(["open movie"], sintel.Labels);
-        Assert.Equal(["Blender films"], sintel.Collections);
-        Assert.Equal(8.8, sintel.Ratings.Critic);
-        Assert.Equal(7.1, sintel.Ratings.Audience);
-        Assert.Null(sintel.Ratings.Imdb);
-        Assert.Equal(new MediaServerVideo("1080p", 4200, "h264"), sintel.Video);
-        Assert.Equal(DateTimeOffset.Parse("2010-09-27T00:00:00Z"), sintel.ReleaseDate);
-
-        var bunny = Assert.Single(items, item => item.ServerItemId == "m2");
-        Assert.Equal("10378", bunny.TmdbId);
-        Assert.False(bunny.Watch.PlayedByAnyone);
-        Assert.Contains(bunny.Viewers, viewer => viewer is { User: "Ben", Favourite: true });
-        Assert.Contains(bunny.Viewers, viewer => viewer is { User: "Owner", InProgress: true });
-        Assert.DoesNotContain(requests, request => request.StartsWith("/Users/u3/", StringComparison.Ordinal));
+        // The administrator played it; Old did too, but a user who is turned off is not asked.
+        Assert.Equal([ownerName], sintel.Watch.PlayedBy);
+        Assert.Contains(sintel.Viewers, viewer => viewer is { User: "Ben", Favourite: true, InProgress: true });
+        Assert.DoesNotContain(requests, request => request.StartsWith($"/Users/{oldId}/", StringComparison.Ordinal));
+        Assert.Contains(requests, request => request.StartsWith($"/Users/{benId}/", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -152,23 +141,50 @@ public sealed class MediaServerClientTests
         Assert.Contains("could not reach", unreachable.Reason, StringComparison.Ordinal);
     }
 
-    /// <summary>A second page that fails must fail the whole answer, not hand back the first page as if it were everything.</summary>
+    /// <summary>A second page that fails must fail the whole answer, not hand back the first page as if it were everything. The first page is the real 500 of 503.</summary>
     [Fact]
     public async Task A_listing_that_breaks_part_way_could_not_be_asked()
     {
         var calls = 0;
         var client = new JellyfinMediaServerClient(Factory(request =>
         {
-            if (request.RequestUri!.AbsolutePath == "/Users") return Json("""[{"Id":"u1","Name":"Owner"}]""");
-            if (request.RequestUri.AbsolutePath != "/Items") return Json("""{"Items":[],"TotalRecordCount":0}""");
+            if (request.RequestUri!.AbsolutePath == "/Users") return RecordedReplies.Jellyfin("users-several").Exchanges[0].Reply.ToResponse();
+            if (request.RequestUri.AbsolutePath != "/Items") return RecordedReplies.Jellyfin("users-several").Exchanges[2].Reply.ToResponse();
             if (calls++ > 0) return new HttpResponseMessage(HttpStatusCode.BadGateway);
-            var page = string.Join(",", Enumerable.Range(0, 500).Select(i => $$"""{"Id":"m{{i}}","Name":"Film {{i}}"}"""));
-            return Json($$"""{"Items":[{{page}}],"TotalRecordCount":900}""");
+            return RecordedReplies.Jellyfin("catalogue-paged").Exchanges[0].Reply.ToResponse();
         }));
 
         var answer = await client.ListItemsAsync(Server(MediaServerKinds.Jellyfin), "movies", CancellationToken.None);
 
         Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Unreachable>(answer);
+    }
+
+    /// <summary>A library over one page of 500 is read whole: 503 films from the two recorded pages, on Jellyfin 12.4.0 and Emby 4.10.1.0.</summary>
+    [Theory]
+    [InlineData(MediaServerKinds.Jellyfin)]
+    [InlineData(MediaServerKinds.Emby)]
+    public async Task A_library_over_one_page_is_read_whole(string kind)
+    {
+        Recording Recorded(string state) => kind == MediaServerKinds.Emby ? RecordedReplies.Emby(state) : RecordedReplies.Jellyfin(state);
+        var pages = Recorded("catalogue-paged");
+        var starts = new List<string>();
+        IHttpClientFactory factory = Factory(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/Users", StringComparison.Ordinal)) return Recorded("users-several").Exchanges[0].Reply.ToResponse();
+            if (!path.EndsWith("/Items", StringComparison.Ordinal) || path.StartsWith("/Users/", StringComparison.Ordinal) || path.StartsWith("/emby/Users/", StringComparison.Ordinal)) return Recorded("users-several").Exchanges[2].Reply.ToResponse();
+            var start = Uri.UnescapeDataString(request.RequestUri.Query).Split('&').Single(part => part.StartsWith("StartIndex=", StringComparison.Ordinal));
+            starts.Add(start);
+            return pages.Exchanges[start == "StartIndex=0" ? 0 : 1].Reply.ToResponse();
+        });
+        EmbyFamilyMediaServerClient client = kind == MediaServerKinds.Emby ? new EmbyMediaServerClient(factory) : new JellyfinMediaServerClient(factory);
+
+        var answer = await client.ListItemsAsync(Server(kind), "movies", CancellationToken.None);
+
+        var library = Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(answer).Value;
+        Assert.Equal(["StartIndex=0", "StartIndex=500"], starts);
+        Assert.Equal(503, library.Items.Count);
+        Assert.Equal(503, library.Items.Select(item => item.ServerItemId).Distinct().Count());
     }
 
     [Fact]
@@ -486,17 +502,18 @@ public sealed class MediaServerClientTests
         {
             var path = request.RequestUri!.AbsolutePath;
             var query = Uri.UnescapeDataString(request.RequestUri.Query);
-            if (path == "/Users") return Json("""[{"Id":"u1","Name":"Owner"}]""");
+            if (path == "/Users") return RecordedReplies.Jellyfin("users-several").Exchanges[0].Reply.ToResponse();
             if (query.Contains("IncludeItemTypes=Movie", StringComparison.Ordinal)) queries.Add(query);
+            // Jellyfin 12.4.0's listing when it does group: the collection stands in for its film (recorded with CollapseBoxSetItems=true).
             if (path == "/Items" && query.Contains("IncludeItemTypes=Movie", StringComparison.Ordinal))
-                return Json("""{"Items":[{"Id":"m1","Type":"Movie","Name":"Night of the Living Dead"},{"Id":"bs1","Type":"BoxSet","Name":"Leaving soon"}],"TotalRecordCount":2}""");
-            return Json("""{"Items":[],"TotalRecordCount":0}""");
+                return RecordedReplies.Jellyfin("catalogue-grouped").Exchanges[0].Reply.ToResponse();
+            return RecordedReplies.Jellyfin("users-several").Exchanges[2].Reply.ToResponse();
         }));
 
         var answer = await client.ListItemsAsync(Server(MediaServerKinds.Jellyfin), "movies", CancellationToken.None);
 
         var unreachable = Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Unreachable>(answer);
-        Assert.Contains("Leaving soon", unreachable.Reason, StringComparison.Ordinal);
+        Assert.Contains("Recorded collection", unreachable.Reason, StringComparison.Ordinal);
         Assert.NotEmpty(queries);
         Assert.All(queries, query => Assert.Contains("CollapseBoxSetItems=false", query, StringComparison.Ordinal));
     }

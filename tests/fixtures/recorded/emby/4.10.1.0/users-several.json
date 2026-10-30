@@ -1,0 +1,377 @@
+{
+  "app": "emby",
+  "version": "4.10.1.0",
+  "state": "users-several",
+  "recordedAt": "2026-10-30T17:25:23Z",
+  "note": "Three users (the administrator, Ben, and Old who is turned off): the user list, then for each in that order the played, favourite and resumable listings (emby 4.10.1.0 in Docker, a library of one film and a two-episode series made from one generated video, found by name).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Users"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": [
+          {
+            "Name": "Ben",
+            "ServerId": "abee943affdb4f8d9cf2d9fd90d5c1b1",
+            "Prefix": "B",
+            "DateCreated": "2026-10-30T17:25:23.5358093Z",
+            "Id": "697e5d0d089a4a73a7786ff8e3284d1a",
+            "HasPassword": false,
+            "HasConfiguredPassword": false,
+            "Configuration": {
+              "PlayDefaultAudioTrack": true,
+              "DisplayMissingEpisodes": false,
+              "SubtitleMode": "Smart",
+              "OrderedViews": [],
+              "LatestItemsExcludes": [],
+              "MyMediaExcludes": [],
+              "HidePlayedInLatest": true,
+              "HidePlayedInMoreLikeThis": false,
+              "HidePlayedInSuggestions": false,
+              "RememberAudioSelections": true,
+              "RememberSubtitleSelections": true,
+              "EnableNextEpisodeAutoPlay": true,
+              "ResumeRewindSeconds": 0,
+              "IntroSkipMode": "ShowButton",
+              "EnableLocalPassword": false
+            },
+            "Policy": {
+              "IsAdministrator": false,
+              "IsHidden": false,
+              "IsHiddenRemotely": true,
+              "IsHiddenFromUnusedDevices": false,
+              "IsDisabled": false,
+              "LockedOutDate": 0,
+              "AllowTagOrRating": false,
+              "BlockedTags": [],
+              "IsTagBlockingModeInclusive": false,
+              "IncludeTags": [],
+              "EnableUserPreferenceAccess": true,
+              "AccessSchedules": [],
+              "BlockUnratedItems": [],
+              "EnableRemoteControlOfOtherUsers": false,
+              "EnableSharedDeviceControl": true,
+              "EnableRemoteAccess": true,
+              "EnableLiveTvManagement": true,
+              "EnableLiveTvAccess": true,
+              "EnableMediaPlayback": true,
+              "EnableAudioPlaybackTranscoding": true,
+              "EnableVideoPlaybackTranscoding": true,
+              "EnableTranscodingQuality": true,
+              "AutoRemoteQuality": 0,
+              "EnablePlaybackRemuxing": true,
+              "EnableContentDeletion": false,
+              "RestrictedFeatures": [],
+              "EnableContentDeletionFromFolders": [],
+              "EnableContentDownloading": true,
+              "EnableSubtitleDownloading": true,
+              "EnableSubtitleManagement": false,
+              "EnableSyncTranscoding": true,
+              "EnableMediaConversion": true,
+              "EnabledChannels": [],
+              "EnableAllChannels": true,
+              "EnabledFolders": [],
+              "EnableAllFolders": true,
+              "InvalidLoginAttemptCount": 0,
+              "EnablePublicSharing": true,
+              "RemoteClientBitrateLimit": 0,
+              "ExcludedSubFolders": [],
+              "SimultaneousStreamLimit": 0,
+              "EnabledDevices": [],
+              "EnableAllDevices": true,
+              "AllowCameraUpload": true,
+              "AllowSharingPersonalItems": false
+            }
+          },
+          {
+            "Name": "Old",
+            "ServerId": "abee943affdb4f8d9cf2d9fd90d5c1b1",
+            "Prefix": "O",
+            "DateCreated": "2026-10-30T17:25:23.5514296Z",
+            "Id": "3c9de07b8afd4a7a9c21f4f83bec9741",
+            "HasPassword": false,
+            "HasConfiguredPassword": false,
+            "Configuration": {
+              "PlayDefaultAudioTrack": true,
+              "DisplayMissingEpisodes": false,
+              "SubtitleMode": "Smart",
+              "OrderedViews": [],
+              "LatestItemsExcludes": [],
+              "MyMediaExcludes": [],
+              "HidePlayedInLatest": true,
+              "HidePlayedInMoreLikeThis": false,
+              "HidePlayedInSuggestions": false,
+              "RememberAudioSelections": true,
+              "RememberSubtitleSelections": true,
+              "EnableNextEpisodeAutoPlay": true,
+              "ResumeRewindSeconds": 0,
+              "IntroSkipMode": "ShowButton",
+              "EnableLocalPassword": false
+            },
+            "Policy": {
+              "IsAdministrator": false,
+              "IsHidden": false,
+              "IsHiddenRemotely": true,
+              "IsHiddenFromUnusedDevices": false,
+              "IsDisabled": true,
+              "LockedOutDate": 0,
+              "AllowTagOrRating": false,
+              "BlockedTags": [],
+              "IsTagBlockingModeInclusive": false,
+              "IncludeTags": [],
+              "EnableUserPreferenceAccess": true,
+              "AccessSchedules": [],
+              "BlockUnratedItems": [],
+              "EnableRemoteControlOfOtherUsers": false,
+              "EnableSharedDeviceControl": true,
+              "EnableRemoteAccess": true,
+              "EnableLiveTvManagement": true,
+              "EnableLiveTvAccess": true,
+              "EnableMediaPlayback": true,
+              "EnableAudioPlaybackTranscoding": true,
+              "EnableVideoPlaybackTranscoding": true,
+              "EnableTranscodingQuality": true,
+              "AutoRemoteQuality": 0,
+              "EnablePlaybackRemuxing": true,
+              "EnableContentDeletion": false,
+              "RestrictedFeatures": [],
+              "EnableContentDeletionFromFolders": [],
+              "EnableContentDownloading": true,
+              "EnableSubtitleDownloading": true,
+              "EnableSubtitleManagement": false,
+              "EnableSyncTranscoding": true,
+              "EnableMediaConversion": true,
+              "EnabledChannels": [],
+              "EnableAllChannels": true,
+              "EnabledFolders": [],
+              "EnableAllFolders": true,
+              "InvalidLoginAttemptCount": 0,
+              "EnablePublicSharing": true,
+              "RemoteClientBitrateLimit": 0,
+              "ExcludedSubFolders": [],
+              "SimultaneousStreamLimit": 0,
+              "EnabledDevices": [],
+              "EnableAllDevices": true,
+              "AllowCameraUpload": true,
+              "AllowSharingPersonalItems": false
+            }
+          },
+          {
+            "Name": "<scrubbed>",
+            "ServerId": "abee943affdb4f8d9cf2d9fd90d5c1b1",
+            "Prefix": "R",
+            "DateCreated": "2026-10-30T16:59:12.3391994Z",
+            "Id": "58ef07c4e1d14706901e147f547beab6",
+            "HasPassword": true,
+            "HasConfiguredPassword": true,
+            "LastLoginDate": "2026-10-30T17:25:16.7226469Z",
+            "LastActivityDate": "2026-10-30T17:25:18.8057326Z",
+            "Configuration": {
+              "PlayDefaultAudioTrack": true,
+              "DisplayMissingEpisodes": false,
+              "SubtitleMode": "Smart",
+              "OrderedViews": [],
+              "LatestItemsExcludes": [],
+              "MyMediaExcludes": [],
+              "HidePlayedInLatest": true,
+              "HidePlayedInMoreLikeThis": false,
+              "HidePlayedInSuggestions": false,
+              "RememberAudioSelections": true,
+              "RememberSubtitleSelections": true,
+              "EnableNextEpisodeAutoPlay": true,
+              "ResumeRewindSeconds": 0,
+              "IntroSkipMode": "ShowButton",
+              "EnableLocalPassword": false
+            },
+            "Policy": {
+              "IsAdministrator": true,
+              "IsHidden": false,
+              "IsHiddenRemotely": true,
+              "IsHiddenFromUnusedDevices": false,
+              "IsDisabled": false,
+              "LockedOutDate": 0,
+              "AllowTagOrRating": false,
+              "BlockedTags": [],
+              "IsTagBlockingModeInclusive": false,
+              "IncludeTags": [],
+              "EnableUserPreferenceAccess": true,
+              "AccessSchedules": [],
+              "BlockUnratedItems": [],
+              "EnableRemoteControlOfOtherUsers": true,
+              "EnableSharedDeviceControl": true,
+              "EnableRemoteAccess": true,
+              "EnableLiveTvManagement": true,
+              "EnableLiveTvAccess": true,
+              "EnableMediaPlayback": true,
+              "EnableAudioPlaybackTranscoding": true,
+              "EnableVideoPlaybackTranscoding": true,
+              "EnableTranscodingQuality": true,
+              "AutoRemoteQuality": 0,
+              "EnablePlaybackRemuxing": true,
+              "EnableContentDeletion": true,
+              "RestrictedFeatures": [],
+              "EnableContentDeletionFromFolders": [],
+              "EnableContentDownloading": true,
+              "EnableSubtitleDownloading": true,
+              "EnableSubtitleManagement": true,
+              "EnableSyncTranscoding": true,
+              "EnableMediaConversion": true,
+              "EnabledChannels": [],
+              "EnableAllChannels": true,
+              "EnabledFolders": [],
+              "EnableAllFolders": true,
+              "InvalidLoginAttemptCount": 0,
+              "EnablePublicSharing": true,
+              "RemoteClientBitrateLimit": 0,
+              "AuthenticationProviderId": "Emby.Server.Implementations.Library.DefaultAuthenticationProvider",
+              "ExcludedSubFolders": [],
+              "SimultaneousStreamLimit": 0,
+              "EnabledDevices": [],
+              "EnableAllDevices": true,
+              "AllowCameraUpload": true,
+              "AllowSharingPersonalItems": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Users/58ef07c4e1d14706901e147f547beab6/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&IsPlayed=true&Fields=UserData&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "bodyText": "{\"Items\":[{\"Name\":\"Recorded Locked\",\"ServerId\":\"abee943affdb4f8d9cf2d9fd90d5c1b1\",\"Id\":\"8\",\"RunTimeTicks\":200230000,\"IsFolder\":false,\"Type\":\"Movie\",\"UserData\":{\"PlaybackPositionTicks\":0,\"PlayCount\":0,\"IsFavorite\":false,\"Played\":true},\"ImageTags\":{\"Primary\":\"23237a3bc9bc55669c1b83e632ac317f_639289775493820568\"},\"BackdropImageTags\":[],\"MediaType\":\"Video\"}],\"TotalRecordCount\":1}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Users/58ef07c4e1d14706901e147f547beab6/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&IsFavorite=true&Fields=UserData&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [],
+          "TotalRecordCount": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Users/58ef07c4e1d14706901e147f547beab6/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Filters=IsResumable&Fields=UserData&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [],
+          "TotalRecordCount": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Users/697e5d0d089a4a73a7786ff8e3284d1a/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&IsPlayed=true&Fields=UserData&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [],
+          "TotalRecordCount": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Users/697e5d0d089a4a73a7786ff8e3284d1a/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&IsFavorite=true&Fields=UserData&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "bodyText": "{\"Items\":[{\"Name\":\"Recorded Locked\",\"ServerId\":\"abee943affdb4f8d9cf2d9fd90d5c1b1\",\"Id\":\"8\",\"RunTimeTicks\":200230000,\"IsFolder\":false,\"Type\":\"Movie\",\"UserData\":{\"PlayedPercentage\":29.965539629426157,\"PlaybackPositionTicks\":60000000,\"PlayCount\":0,\"IsFavorite\":true,\"Played\":false},\"ImageTags\":{\"Primary\":\"23237a3bc9bc55669c1b83e632ac317f_639289775493820568\"},\"BackdropImageTags\":[],\"MediaType\":\"Video\"}],\"TotalRecordCount\":1}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Users/697e5d0d089a4a73a7786ff8e3284d1a/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Filters=IsResumable&Fields=UserData&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "bodyText": "{\"Items\":[{\"Name\":\"Recorded Locked\",\"ServerId\":\"abee943affdb4f8d9cf2d9fd90d5c1b1\",\"Id\":\"8\",\"RunTimeTicks\":200230000,\"IsFolder\":false,\"Type\":\"Movie\",\"UserData\":{\"PlayedPercentage\":29.965539629426157,\"PlaybackPositionTicks\":60000000,\"PlayCount\":0,\"IsFavorite\":true,\"Played\":false},\"ImageTags\":{\"Primary\":\"23237a3bc9bc55669c1b83e632ac317f_639289775493820568\"},\"BackdropImageTags\":[],\"MediaType\":\"Video\"}],\"TotalRecordCount\":1}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Users/3c9de07b8afd4a7a9c21f4f83bec9741/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&IsPlayed=true&Fields=UserData&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "bodyText": "{\"Items\":[{\"Name\":\"Recorded Locked\",\"ServerId\":\"abee943affdb4f8d9cf2d9fd90d5c1b1\",\"Id\":\"8\",\"RunTimeTicks\":200230000,\"IsFolder\":false,\"Type\":\"Movie\",\"UserData\":{\"PlaybackPositionTicks\":0,\"PlayCount\":0,\"IsFavorite\":false,\"Played\":true},\"ImageTags\":{\"Primary\":\"23237a3bc9bc55669c1b83e632ac317f_639289775493820568\"},\"BackdropImageTags\":[],\"MediaType\":\"Video\"}],\"TotalRecordCount\":1}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Users/3c9de07b8afd4a7a9c21f4f83bec9741/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&IsFavorite=true&Fields=UserData&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [],
+          "TotalRecordCount": 0
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/emby/Users/3c9de07b8afd4a7a9c21f4f83bec9741/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Filters=IsResumable&Fields=UserData&StartIndex=0&Limit=500"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "Items": [],
+          "TotalRecordCount": 0
+        }
+      }
+    }
+  ]
+}

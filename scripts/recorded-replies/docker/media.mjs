@@ -37,7 +37,8 @@ function makeMedia() {
 
 // REC_ONLY=state,state limits what is written (to add states to an app already recorded without replacing its other files).
 const only = process.env.REC_ONLY ? new Set(process.env.REC_ONLY.split(',')) : null;
-const save = (app, version, state, ...rest) => { if (!only || only.has(state)) saveState(app, version, state, ...rest); };
+const wants = (state) => !only || only.has(state);
+const save = (app, version, state, ...rest) => { if (wants(state)) saveState(app, version, state, ...rest); };
 const mediaNote = (kind, version, what) => `${what} (${kind} ${version} in Docker, a library of one film and a two-episode series made from one generated video, found by name).`;
 
 // ------------------------------------------------------------------ Jellyfin and Emby (the same API; Emby lives under /emby)
@@ -185,6 +186,9 @@ async function embyFamily(kind) {
     const unfav = await send('DELETE', `/Users/${userId}/FavoriteItems/${collectionId}`);
     save(kind, version, 'collection-sync', note('A collection made with the film, described, put on the home screen (favourite), a series added and taken out again, then listed with its members'), [
       made, read, describe, fav, addMore, remove, await get(`/Users/${userId}/Items?Recursive=true&IncludeItemTypes=BoxSet&CollapseBoxSetItems=false`), await get(`/Users/${userId}/Items?ParentId=${collectionId}&CollapseBoxSetItems=false`), await get(`/Users/${userId}/Items?Recursive=true&IncludeItemTypes=Playlist&CollapseBoxSetItems=false`)]);
+    // The same listing with the server's grouping on (what Deluno's CollapseBoxSetItems=false asks it not to do): a collection stands in for its films.
+    save(kind, version, 'catalogue-grouped', note('The movie listing with CollapseBoxSetItems=true while a collection holds the film: the server answers with the collection, not the film'), [
+      await get(`/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=true&Fields=${FIELDS}&StartIndex=0&Limit=500`)]);
     save(kind, version, 'collection-unfavourited', note('The collection taken off the home screen (DELETE /Users/{id}/FavoriteItems/{id})'), [unfav]);
     save(kind, version, 'collection-deleted', note('The collection deleted (DELETE /Items/{id}), and again'), [await send('DELETE', `/Items/${collectionId}`), await send('DELETE', `/Items/${collectionId}`)]);
   } else addMissing(`${kind} collection-sync: a collection could not be made (POST /Collections answered ${made.reply.status})`);
@@ -227,6 +231,45 @@ async function embyFamily(kind) {
     const pol = replyJson(await get(`/Users/${newId}`)).Policy;
     const setPol = await send('POST', `/Users/${newId}/Policy`, pol);
     save(kind, version, 'user-created', note('A user made (POST /Users/New), given its policy back, listed, then removed'), [newUser, setPol, await get('/Users'), await send('DELETE', `/Users/${newId}`)]);
+  }
+
+  // Several people: a second and a third user (the third turned off), each with a different history with the film. Deluno asks for the played,
+  // favourite and resumable listings once per enabled user and never for a user who is turned off.
+  if (wants('users-several')) {
+    const make = async (n) => replyJson(await send('POST', '/Users/New', { Name: n }));
+    const ben = await make('Ben');
+    const old = await make('Old');
+    const oldPolicy = replyJson(await get(`/Users/${old.Id}`)).Policy;
+    await send('POST', `/Users/${old.Id}/Policy`, { ...oldPolicy, IsDisabled: true });
+    await send('POST', `/Users/${userId}/PlayedItems/${movieId}`);
+    await send('POST', `/Users/${old.Id}/PlayedItems/${movieId}`);
+    await send('POST', `/Users/${ben.Id}/FavoriteItems/${movieId}`);
+    const progress = await send('POST', `/Users/${ben.Id}/Items/${movieId}/UserData`, { PlaybackPositionTicks: 60000000, Played: false });
+    console.log('  resume position for the second user: ' + progress.reply.status);
+    const users = await get('/Users');
+    const perUser = [];
+    for (const u of [userId, ben.Id, old.Id]) {
+      for (const f of ['IsPlayed=true', 'IsFavorite=true', 'Filters=IsResumable']) perUser.push(await get(`/Users/${u}/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&${f}&Fields=UserData&StartIndex=0&Limit=500`));
+    }
+    save(kind, version, 'users-several', note('Three users (the administrator, Ben, and Old who is turned off): the user list, then for each in that order the played, favourite and resumable listings'), [users, ...perUser]);
+    // The users stay: deleting a user whose play state is still being announced crashed Jellyfin 12.4.0 (Invalid user ID), and the volume is thrown away after a recording.
+  }
+
+  // A library bigger than one page of 500: 501 tiny films in a library of their own with the internet sources off, so the scan is quick.
+  if (wants('catalogue-paged')) {
+    const bulk = '/media/Bulk';
+    const script = [`set -e`, `mkdir -p "${bulk}/seed"`,
+      `/usr/lib/jellyfin-ffmpeg/ffmpeg -y -loglevel error -f lavfi -i testsrc=size=64x64:rate=5 -t 1 -c:v libx264 -preset ultrafast -pix_fmt yuv420p "${bulk}/seed/seed.mkv"`,
+      `i=1; while [ $i -le 501 ]; do n=$(printf %04d $i); d="${bulk}/Bulk Film $n (2000)"; mkdir -p "$d"; cp "${bulk}/seed/seed.mkv" "$d/Bulk Film $n (2000).mkv"; i=$((i+1)); done`,
+      `rm -r "${bulk}/seed"`, 'chmod -R a+rwX /media'].join('; ');
+    docker('run', '--rm', '-v', `${project}_media:/media`, '--entrypoint', 'sh', 'jellyfin/jellyfin:latest', '-c', script);
+    const offline = { EnableInternetProviders: false, EnableRealtimeMonitor: false, SaveLocalMetadata: false, MetadataSavers: [], TypeOptions: [{ Type: 'Movie', MetadataFetchers: [], ImageFetchers: [] }] };
+    const bulkLibrary = await send('POST', `/Library/VirtualFolders?name=Bulk&collectionType=movies&paths=${encodeURIComponent(bulk)}&refreshLibrary=true`, { LibraryOptions: offline });
+    console.log('  bulk library: ' + bulkLibrary.reply.status);
+    const movieQuery = (start) => `/Items?Recursive=true&IncludeItemTypes=Movie&CollapseBoxSetItems=false&Fields=${FIELDS}&StartIndex=${start}&Limit=500`;
+    await until('the 501 films to be scanned', 1500, async () => { const t = replyJson(await get('/Items?Recursive=true&IncludeItemTypes=Movie&Limit=1'))?.TotalRecordCount; console.log('  scan: ' + t + ' films'); return t >= 502; }, 15000);
+    const first = await get(movieQuery(0));
+    save(kind, version, 'catalogue-paged', note('The movie listing over 502 films (Sintel and 501 tiny ones): the first page of 500 with the total, then the second page'), [first, await get(movieQuery(500))]);
   }
   save(kind, version, 'not-answering', 'A request sent to a port nothing listens on: the connection is refused.', [await new Client('http://127.0.0.1:1').get(`${prefix}/System/Info`)]);
 }
