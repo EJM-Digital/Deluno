@@ -75,4 +75,13 @@ public sealed class ConfigChangedPushLowGapTests
         Assert.Equal(System.Net.HttpStatusCode.Created, response.StatusCode);
         Assert.Equal([(SystemChangeEventNames.ConfigChanged, "tags")], publisher.Sent);
     }
+
+    [Fact]
+    public async Task A_push_that_fails_after_the_write_succeeded_does_not_turn_the_answer_into_an_error()
+    {
+        var (response, _) = await WriteAsync(publisherThrows: true);
+
+        Assert.Equal(System.Net.HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal("saved", await response.Content.ReadAsStringAsync());
+    }
 }

@@ -183,6 +183,41 @@ public sealed class TryAgainActsOnWhatTheDownloadIsTests
         world.Dispatches.Verify(repository => repository.ArchiveDispatchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [Fact]
+    public async Task A_download_the_client_never_showed_is_refused_in_plain_words_when_its_library_is_gone()
+    {
+        var world = new World(detected: false, handoffStatus: null);
+        world.Libraries.Setup(repository => repository.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+
+        var outcome = await world.RetryAsync("downloadFailed");
+
+        Assert.False(outcome.Retried);
+        Assert.Equal("The library this download was for no longer exists. Dismiss this.", outcome.Message);
+        world.Dispatches.Verify(repository => repository.ArchiveDispatchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        world.Scheduler.Verify(scheduler => scheduler.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Stop_wanting_it_is_refused_in_plain_words_when_the_case_names_no_download_or_the_download_is_gone(bool namesADispatch)
+    {
+        var world = new World(detected: true, handoffStatus: null);
+        var unmonitor = new Mock<IDispatchTitleUnmonitorService>();
+        world.Dispatches.Setup(repository => repository.GetDispatchIncludingArchivedAsync("gone", It.IsAny<CancellationToken>())).ReturnsAsync((DownloadDispatchItem?)null);
+
+        var outcome = await RecoveryCaseRetry.StopWantingAsync(
+            namesADispatch ? JsonSerializer.Serialize(new { DispatchId = "gone" }) : JsonSerializer.Serialize(new { Other = 1 }),
+            world.Dispatches.Object,
+            unmonitor.Object,
+            CancellationToken.None);
+
+        Assert.False(outcome.Retried);
+        Assert.Contains(namesADispatch ? "no longer has the download" : "does not say which download", outcome.Message);
+        world.Dispatches.Verify(repository => repository.ArchiveDispatchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        unmonitor.Verify(service => service.UnmonitorAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     private sealed class World
     {
         public Mock<IDownloadDispatchesRepository> Dispatches { get; } = new();

@@ -85,6 +85,55 @@ public sealed class RecycleBinTests
         }
     }
 
+    /// <summary>The preview counts what goes only because the bin is over its size limit apart from what has expired, and totals the bytes both free.</summary>
+    [Fact]
+    public async Task An_empty_counts_the_items_going_for_size_apart_from_the_expired_ones_and_totals_the_bytes()
+    {
+        var sandbox = Path.Combine(Path.GetTempPath(), $"deluno-recycle-{Guid.NewGuid():N}");
+        var dataRoot = Path.Combine(sandbox, "data");
+        var libraryRoot = Path.Combine(sandbox, "library");
+
+        try
+        {
+            Directory.CreateDirectory(libraryRoot);
+            var first = Path.Combine(libraryRoot, "First.Movie.2020.mkv");
+            var second = Path.Combine(libraryRoot, "Second.Movie.2021.mkv");
+            File.WriteAllBytes(first, new byte[700_000]);
+            File.WriteAllBytes(second, new byte[700_000]);
+
+            var service = CreateService(dataRoot, "2026-08-31T00:00:00Z");
+            await service.SaveSettingsAsync(new RecycleBinSettings(30, 100), CancellationToken.None);
+            await service.MoveAsync(
+                [new TrackedLibraryFile("library-1", first)],
+                [CreateLibrary("library-1", libraryRoot)],
+                CancellationToken.None);
+            await service.MoveAsync(
+                [new TrackedLibraryFile("library-1", second)],
+                [CreateLibrary("library-1", libraryRoot)],
+                CancellationToken.None);
+
+            // Retention is enforced whenever the bin is written, so a bin over its limit can only be met by reading a state file whose limit is lower
+            // than the files in it: a limit of one megabyte (the smallest) against two 700 KB files, none of them expired.
+            var stateFile = Directory.GetFiles(dataRoot, "state.json", SearchOption.AllDirectories).Single();
+            var state = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(stateFile))!.AsObject();
+            var settings = state.First(entry => string.Equals(entry.Key, "settings", StringComparison.OrdinalIgnoreCase)).Value!.AsObject();
+            settings[settings.First(entry => string.Equals(entry.Key, "maxSizeMb", StringComparison.OrdinalIgnoreCase)).Key] = 1;
+            File.WriteAllText(stateFile, state.ToJsonString());
+            service = CreateService(dataRoot, "2026-08-31T00:00:00Z");
+            var preview = await service.PreviewCleanupAsync(CancellationToken.None);
+
+            Assert.Equal(0, preview.ExpiredCount);
+            Assert.Equal(1, preview.OverCapacityCount);
+            Assert.Single(preview.Items);
+            Assert.Equal(700_000, preview.BytesFreed);
+            Assert.Equal(2, (await service.ListAsync(CancellationToken.None)).Count);
+        }
+        finally
+        {
+            if (Directory.Exists(sandbox)) Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
     /**
      * DESIGN-007 decision 15: "Enforce retention automatically, and show what a
      * manual empty takes". The empty used to delete first and count afterwards,

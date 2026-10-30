@@ -80,4 +80,19 @@ public sealed class TitleFolderNeighboursTests
         Assert.True(await TitleFolderNeighbours.OtherTitleHasFilesUnderAsync(storage.Factory, "m-me", null, @"\\NAS\Films\Alien\", default));
         Assert.False(await TitleFolderNeighbours.OtherTitleHasFilesUnderAsync(storage.Factory, "m-me", null, "/tv/Gone", default));
     }
+    [Theory]
+    [InlineData("")]
+    [InlineData("/")]
+    public async Task An_empty_folder_counts_as_having_neighbours_so_nothing_is_removed(string folder)
+    {
+        using var storage = await SeedAsync();
+        Assert.True(await TitleFolderNeighbours.OtherTitleHasFilesUnderAsync(storage.Factory, "m-me", null, folder, default));
+    }
+
+    [Fact]
+    public async Task A_kind_of_title_never_set_up_on_this_install_holds_no_files_instead_of_failing()
+    {
+        using var storage = TestStorage.Create();
+        Assert.False(await TitleFolderNeighbours.OtherTitleHasFilesUnderAsync(storage.Factory, "m-me", "s-me", @"D:FilmsDune", default));
+    }
 }
