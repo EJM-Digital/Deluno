@@ -189,21 +189,10 @@ public sealed class AHandSendForSomethingAlreadyDownloadingAsksFirstTests
         app.Run(async context =>
         {
             context.Response.ContentType = "application/rss+xml";
-            await context.Response.WriteAsync(
-                """
-                <?xml version="1.0"?>
-                <rss version="2.0" xmlns:torznab="http://torznab.com/schemas/2015/feed">
-                  <channel>
-                    <item>
-                      <title>The.Simpsons.S00E78.Extreme.Makeover.Homer.Edition.2026.1080p.DSNP.WEB-DL.DDP5.1.H.264-GRP</title>
-                      <link>https://fixture.invalid/simpsons.torrent</link>
-                      <size>1500000000</size>
-                      <torznab:attr name="seeders" value="40" />
-                      <torznab:attr name="peers" value="3" />
-                    </item>
-                  </channel>
-                </rss>
-                """);
+            // Jackett's recorded Torznab feed with one release: the one the test is about.
+            await context.Response.WriteAsync(Deluno.Tests.Recorded.RecordedReplies.TorznabFeed(new Deluno.Tests.Recorded.FeedRelease(
+                "The.Simpsons.S00E78.Extreme.Makeover.Homer.Edition.2026.1080p.DSNP.WEB-DL.DDP5.1.H.264-GRP",
+                Link: "https://fixture.invalid/simpsons.torrent", Size: 1500000000, Seeders: 40, Peers: 3)));
         });
         await app.StartAsync();
         var address = app.Services.GetRequiredService<Microsoft.AspNetCore.Hosting.Server.IServer>().Features

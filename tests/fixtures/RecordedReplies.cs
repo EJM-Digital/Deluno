@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Xml.Linq;
 
 namespace Deluno.Tests.Recorded;
 
@@ -53,6 +54,75 @@ public static class RecordedReplies
 
         all.AddRange(edits);
         return Utorrent("finished-single-file").Body("list=1", all.ToArray());
+    }
+
+    /// <summary>
+    /// Jackett's recorded Torznab feed (`t=search`, 0.24.2850) with the releases the test is about: the channel and the first recorded
+    /// item are the real ones, and each release is that item with only the given values changed (title, link, size, seeders, peers,
+    /// grabs and any other torznab attribute). A release the test does not give a link gets its own, a fixture address, and the
+    /// recorded item's info hash and magnet link are replaced by ones made from the title so releases are never the same torrent.
+    /// What a release is not given (size, seeders, peers) is left out, as an indexer that does not report it does. A feed of no releases is the recorded channel with none.
+    /// </summary>
+    public static string TorznabFeed(params FeedRelease[] releases) => TorznabFeed(Jackett("search-feed"), releases);
+
+    /// <summary>The same for any recorded feed that holds an item (the first one is the template).</summary>
+    public static string TorznabFeed(Recording recording, params FeedRelease[] releases)
+    {
+        var document = System.Xml.Linq.XDocument.Parse(recording.Exchanges[0].Reply.Body ?? throw new InvalidOperationException("The recording has no feed."));
+        XNamespace torznab = "http://torznab.com/schemas/2015/feed";
+        var channel = document.Root!.Element("channel")!;
+        var template = channel.Elements("item").FirstOrDefault() ?? throw new InvalidOperationException($"{recording.App} {recording.State} holds no item to start from.");
+        channel.Elements("item").Remove();
+        for (var i = 0; i < releases.Length; i++)
+        {
+            var release = releases[i];
+            var item = new XElement(template);
+            var link = release.Link ?? $"https://fixture.invalid/release/{i}.torrent";
+            item.Element("title")!.Value = release.Title;
+            item.Element("guid")!.Value = link;
+            item.Element("link")!.Value = link;
+            var enclosure = item.Element("enclosure");
+            if (enclosure is not null)
+            {
+                enclosure.SetAttributeValue("url", link);
+                if (release.EnclosureType is not null) enclosure.SetAttributeValue("type", release.EnclosureType);
+            }
+
+            if (release.PublishedAt is { } published) item.Element("pubDate")!.Value = published.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+
+            // What the test does not give is not reported (the recorded tracker's own seeders, peers and size would decide the test).
+            if (release.Size is { } size)
+            {
+                item.Element("size")!.Value = size.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                enclosure?.SetAttributeValue("length", size);
+            }
+            else
+            {
+                item.Element("size")?.Remove();
+                enclosure?.Attribute("length")?.Remove();
+            }
+
+            var hash = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(Encoding.UTF8.GetBytes(release.Title)));
+            var attributes = new Dictionary<string, string>
+            {
+                ["seeders"] = string.Empty,
+                ["peers"] = string.Empty,
+                ["infohash"] = hash,
+                ["magneturl"] = $"magnet:?xt=urn:btih:{hash}&dn={Uri.EscapeDataString(release.Title)}"
+            };
+            if (release.Seeders is { } seeders) attributes["seeders"] = seeders.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (release.Peers is { } peers) attributes["peers"] = peers.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (release.Attributes is not null) foreach (var (name, value) in release.Attributes) attributes[name] = value;
+            foreach (var (name, value) in attributes)
+            {
+                item.Elements(torznab + "attr").Where(a => (string?)a.Attribute("name") == name).Remove();
+                if (value.Length > 0) item.Add(new XElement(torznab + "attr", new XAttribute("name", name), new XAttribute("value", value)));
+            }
+
+            channel.Add(item);
+        }
+
+        return document.Declaration is null ? document.ToString(SaveOptions.DisableFormatting) : document.Declaration + "\n" + document.ToString(SaveOptions.DisableFormatting);
     }
 
     /// <summary>rTorrent's XML-RPC mount, recorded from the real app (the `methodName` of the call is the operation).</summary>
@@ -375,6 +445,11 @@ public static class RecordedReplies
 }
 
 /// <summary>One recorded state of one app at one version: the requests made and the real replies.</summary>
+/// <summary>One release of a recorded Torznab feed with the values a test is about; see <see cref="RecordedReplies.TorznabFeed(FeedRelease[])"/>.</summary>
+/// <param name="Attributes">Other torznab attributes to set (an empty value removes the recorded one).</param>
+public sealed record FeedRelease(string Title, string? Link = null, long? Size = null, int? Seeders = null, int? Peers = null, string? EnclosureType = null,
+    IReadOnlyDictionary<string, string>? Attributes = null, DateTimeOffset? PublishedAt = null);
+
 public sealed record Recording(string App, string Version, string State, IReadOnlyList<Exchange> Exchanges)
 {
     /// <summary>The only exchange of a state recorded with one.</summary>

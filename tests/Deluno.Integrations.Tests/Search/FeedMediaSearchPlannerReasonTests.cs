@@ -16,6 +16,7 @@ using Deluno.Quality.ReleasePreferences;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Deluno.Tests.Recorded;
 
 namespace Deluno.Integrations.Tests.Search;
 
@@ -310,10 +311,9 @@ public sealed class FeedMediaSearchPlannerReasonTests
         return throttle.Object;
     }
 
-    private const string ExactTargetFeed =
-        "<rss><channel><item><title>Big.Buck.Bunny.2008.1080p.WEB-DL.x264-GOLDEN</title>" +
-        "<link>https://fixture.invalid/release/1</link>" +
-        "<enclosure url=\"https://fixture.invalid/release/1.nzb\" length=\"1700000000\" type=\"application/x-nzb\" /></item></channel></rss>";
+    // Jackett's recorded Torznab feed with the one release the search is waiting for (a link to an NZB, 1.7 GB).
+    private static readonly string ExactTargetFeed = Feed(new FeedRelease(
+        "Big.Buck.Bunny.2008.1080p.WEB-DL.x264-GOLDEN", Link: "https://fixture.invalid/release/1.nzb", Size: 1700000000, EnclosureType: "application/x-nzb"));
 
     /// <summary>
     /// #1184: the indexer whose new release started a search is waited for through its whole request interval, so
@@ -383,11 +383,7 @@ public sealed class FeedMediaSearchPlannerReasonTests
         var indexer = CreateIndexer("empty-indexer", "Empty indexer");
         var plan = await CreatePlanner(
             CreateConnections(indexer).Object,
-            new FixedFeedHandler(
-                """
-                <?xml version="1.0" encoding="UTF-8"?>
-                <rss version="2.0"><channel /></rss>
-                """),
+            new FixedFeedHandler(Feed()),
             new RecordingLogger<FeedMediaSearchPlanner>()).BuildPlanAsync(
                 "Example",
                 2026,
@@ -411,11 +407,8 @@ public sealed class FeedMediaSearchPlannerReasonTests
     public async Task A_torznab_items_magnet_attribute_is_preferred_when_the_indexer_asks_for_it()
     {
         var indexer = CreateIndexer("magnet-preferring-indexer", "Magnet preferring indexer") with { PreferMagnetUrl = true };
-        var feed = "<rss><channel><item>" +
-            "<title>Example.Release.2026.WEB.1080p</title>" +
-            "<enclosure url=\"https://fixture.invalid/release/1.torrent\" length=\"1000\" type=\"application/x-bittorrent\" />" +
-            "<torznab:attr xmlns:torznab=\"http://torznab.com/schemas/2015/feed\" name=\"magneturl\" value=\"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567\" />" +
-            "</item></channel></rss>";
+        // Jackett's recorded Torznab item, which carries its own magnet link (magneturl) beside the enclosure; only the title, link and size are the test's.
+        var feed = Feed(new FeedRelease("Example.Release.2026.WEB.1080p", Link: "https://fixture.invalid/release/1.torrent", Size: 1000, EnclosureType: "application/x-bittorrent"));
 
         var plan = await CreatePlanner(
             CreateConnections(indexer).Object,
@@ -437,11 +430,8 @@ public sealed class FeedMediaSearchPlannerReasonTests
     public async Task A_torznab_items_torrent_link_is_kept_when_the_indexer_does_not_prefer_magnet()
     {
         var indexer = CreateIndexer("magnet-indifferent-indexer", "Magnet indifferent indexer");
-        var feed = "<rss><channel><item>" +
-            "<title>Example.Release.2026.WEB.1080p</title>" +
-            "<enclosure url=\"https://fixture.invalid/release/1.torrent\" length=\"1000\" type=\"application/x-bittorrent\" />" +
-            "<torznab:attr xmlns:torznab=\"http://torznab.com/schemas/2015/feed\" name=\"magneturl\" value=\"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567\" />" +
-            "</item></channel></rss>";
+        // Jackett's recorded Torznab item, which carries its own magnet link (magneturl) beside the enclosure; only the title, link and size are the test's.
+        var feed = Feed(new FeedRelease("Example.Release.2026.WEB.1080p", Link: "https://fixture.invalid/release/1.torrent", Size: 1000, EnclosureType: "application/x-bittorrent"));
 
         var plan = await CreatePlanner(
             CreateConnections(indexer).Object,
@@ -463,11 +453,8 @@ public sealed class FeedMediaSearchPlannerReasonTests
     public async Task A_newznab_indexer_never_prefers_a_magnet_even_if_one_is_present()
     {
         var indexer = CreateIndexer("usenet-indexer", "Usenet indexer") with { Protocol = "newznab", PreferMagnetUrl = true };
-        var feed = "<rss><channel><item>" +
-            "<title>Example.Release.2026.WEB.1080p</title>" +
-            "<enclosure url=\"https://fixture.invalid/release/1.nzb\" length=\"1000\" type=\"application/x-nzb\" />" +
-            "<torznab:attr xmlns:torznab=\"http://torznab.com/schemas/2015/feed\" name=\"magneturl\" value=\"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567\" />" +
-            "</item></channel></rss>";
+        // Jackett's recorded Torznab item, which carries its own magnet link (magneturl) beside the enclosure; only the title, link and size are the test's.
+        var feed = Feed(new FeedRelease("Example.Release.2026.WEB.1080p", Link: "https://fixture.invalid/release/1.nzb", Size: 1000, EnclosureType: "application/x-nzb"));
 
         var plan = await CreatePlanner(
             CreateConnections(indexer).Object,
@@ -532,13 +519,8 @@ public sealed class FeedMediaSearchPlannerReasonTests
         var indexer = CreateIndexer("duplicate-indexer", "Duplicate indexer");
         var plan = await CreatePlanner(
             CreateConnections(indexer).Object,
-            new FixedFeedHandler(
-                """
-                <rss><channel>
-                  <item><title>Example.Release.WEB.1080p</title><link>https://fixture.invalid/one</link></item>
-                  <item><title>example_release_web_1080p</title><link>https://fixture.invalid/two</link></item>
-                </channel></rss>
-                """)).BuildPlanAsync(
+            new FixedFeedHandler(Feed(new FeedRelease("Example.Release.WEB.1080p", Link: "https://fixture.invalid/one"),
+                new FeedRelease("example_release_web_1080p", Link: "https://fixture.invalid/two")))).BuildPlanAsync(
                     "Example",
                     2026,
                     "movies",
@@ -744,19 +726,7 @@ public sealed class FeedMediaSearchPlannerReasonTests
         // the same torznab attributes the release-acceptance decision
         // already reads.
         var indexer = CreateIndexer("enriched-indexer", "Enriched indexer");
-        var handler = new FixedFeedHandler(
-            $"""
-            <rss><channel>
-              <item>
-                <title>Example.Release.WEB.1080p</title>
-                <link>https://fixture.invalid/x</link>
-                <pubDate>{DateTimeOffset.UtcNow.AddHours(-5):R}</pubDate>
-                <torznab:attr xmlns:torznab="http://torznab.com/schemas/2015/feed" name="seeders" value="12" />
-                <torznab:attr xmlns:torznab="http://torznab.com/schemas/2015/feed" name="peers" value="3" />
-                <torznab:attr xmlns:torznab="http://torznab.com/schemas/2015/feed" name="grabs" value="47" />
-              </item>
-            </channel></rss>
-            """);
+        var handler = new FixedFeedHandler(Feed(new FeedRelease("Example.Release.WEB.1080p", Link: "https://fixture.invalid/x", Seeders: 12, Peers: 3, Attributes: new Dictionary<string, string> { ["grabs"] = "47" }, PublishedAt: DateTimeOffset.UtcNow.AddHours(-5))));
 
         var plan = await CreatePlanner(
             CreateConnections(indexer).Object,
@@ -784,17 +754,7 @@ public sealed class FeedMediaSearchPlannerReasonTests
         // #969: "blank when the indexer does not report it" -- an indexer
         // that never sends a grabs attr must not surface a fabricated 0.
         var indexer = CreateIndexer("no-grabs-indexer", "No grabs indexer");
-        var handler = new FixedFeedHandler(
-            $"""
-            <rss><channel>
-              <item>
-                <title>Example.Release.WEB.1080p</title>
-                <link>https://fixture.invalid/x</link>
-                <pubDate>{DateTimeOffset.UtcNow.AddHours(-5):R}</pubDate>
-                <torznab:attr xmlns:torznab="http://torznab.com/schemas/2015/feed" name="seeders" value="12" />
-              </item>
-            </channel></rss>
-            """);
+        var handler = new FixedFeedHandler(Feed(new FeedRelease("Example.Release.WEB.1080p", Link: "https://fixture.invalid/x", Seeders: 12, PublishedAt: DateTimeOffset.UtcNow.AddHours(-5))));
 
         var plan = await CreatePlanner(
             CreateConnections(indexer).Object,
@@ -815,13 +775,8 @@ public sealed class FeedMediaSearchPlannerReasonTests
     public async Task Typed_search_exposes_and_uses_the_explicit_seeder_tie_break_family()
     {
         var indexer = CreateIndexer("seeders-indexer", "Seeders indexer");
-        var handler = new FixedFeedHandler(
-            """
-            <rss><channel>
-              <item><title>Example.Release.Z.WEB.1080p</title><link>https://fixture.invalid/z</link><torznab:attr xmlns:torznab="http://torznab.com/schemas/2015/feed" name="seeders" value="0" /></item>
-              <item><title>Example.Release.A.WEB.1080p</title><link>https://fixture.invalid/a</link><torznab:attr xmlns:torznab="http://torznab.com/schemas/2015/feed" name="seeders" value="12" /></item>
-            </channel></rss>
-            """);
+        var handler = new FixedFeedHandler(Feed(new FeedRelease("Example.Release.Z.WEB.1080p", Link: "https://fixture.invalid/z", Seeders: 0),
+                new FeedRelease("Example.Release.A.WEB.1080p", Link: "https://fixture.invalid/a", Seeders: 12)));
 
         var plan = await CreatePlanner(
             CreateConnections(indexer).Object,
@@ -855,13 +810,8 @@ public sealed class FeedMediaSearchPlannerReasonTests
     public async Task Season_search_prefers_a_season_pack_over_a_same_quality_single_episode()
     {
         var indexer = CreateIndexer("season-pack-indexer", "Season pack indexer", "tv");
-        var handler = new FixedFeedHandler(
-            """
-            <rss><channel>
-              <item><title>Example.S02E01.1080p.WEB-DL</title><link>https://fixture.invalid/episode</link></item>
-              <item><title>Example.S02.1080p.WEB-DL</title><link>https://fixture.invalid/pack</link></item>
-            </channel></rss>
-            """);
+        var handler = new FixedFeedHandler(Feed(new FeedRelease("Example.S02E01.1080p.WEB-DL", Link: "https://fixture.invalid/episode"),
+                new FeedRelease("Example.S02.1080p.WEB-DL", Link: "https://fixture.invalid/pack")));
 
         var plan = await CreatePlanner(
             CreateConnections(indexer).Object,
@@ -893,13 +843,8 @@ public sealed class FeedMediaSearchPlannerReasonTests
     public async Task Season_search_does_not_let_a_pack_beat_a_clearly_better_quality_release()
     {
         var indexer = CreateIndexer("season-pack-quality-indexer", "Season pack quality indexer", "tv");
-        var handler = new FixedFeedHandler(
-            """
-            <rss><channel>
-              <item><title>Example.S02.1080p.WEB-DL</title><link>https://fixture.invalid/pack</link></item>
-              <item><title>Example.S02E01.2160p.WEB-DL</title><link>https://fixture.invalid/episode</link></item>
-            </channel></rss>
-            """);
+        var handler = new FixedFeedHandler(Feed(new FeedRelease("Example.S02.1080p.WEB-DL", Link: "https://fixture.invalid/pack"),
+                new FeedRelease("Example.S02E01.2160p.WEB-DL", Link: "https://fixture.invalid/episode")));
 
         var plan = await CreatePlanner(
             CreateConnections(indexer).Object,
@@ -926,13 +871,8 @@ public sealed class FeedMediaSearchPlannerReasonTests
     public async Task Episode_search_is_unaffected_by_the_season_pack_tie_break()
     {
         var indexer = CreateIndexer("episode-search-indexer", "Episode search indexer", "tv");
-        var handler = new FixedFeedHandler(
-            """
-            <rss><channel>
-              <item><title>Example.S02.1080p.WEB-DL</title><link>https://fixture.invalid/pack</link></item>
-              <item><title>Example.S02E03.1080p.WEB-DL</title><link>https://fixture.invalid/episode</link></item>
-            </channel></rss>
-            """);
+        var handler = new FixedFeedHandler(Feed(new FeedRelease("Example.S02.1080p.WEB-DL", Link: "https://fixture.invalid/pack"),
+                new FeedRelease("Example.S02E03.1080p.WEB-DL", Link: "https://fixture.invalid/episode")));
 
         var plan = await CreatePlanner(
             CreateConnections(indexer).Object,
@@ -1098,12 +1038,7 @@ public sealed class FeedMediaSearchPlannerReasonTests
     public async Task Runtime_minutes_passed_into_build_plan_reaches_the_parsed_candidates_size_decision()
     {
         var indexer = CreateIndexer("short-film-indexer", "Short Film Indexer");
-        var feed = new FixedFeedHandler(
-            """
-            <rss><channel>
-              <item><title>Tears.of.Steel.2012.1080p.WEB-DL.DD5.1.H.264-GRP</title><link>https://fixture.invalid/tears-of-steel</link><torznab:attr xmlns:torznab="http://torznab.com/schemas/2015/feed" name="size" value="200000000" /></item>
-            </channel></rss>
-            """);
+        var feed = new FixedFeedHandler(Feed(new FeedRelease("Tears.of.Steel.2012.1080p.WEB-DL.DD5.1.H.264-GRP", Link: "https://fixture.invalid/tears-of-steel", Size: 200000000)));
         var sizeRules = new[] { new ProfileSizeRule("WEB 1080p", 1.5, 25.0, 420, 3800) };
 
         var withoutRuntime = await CreatePlanner(CreateConnections(indexer).Object, feed).BuildPlanAsync(
@@ -1461,8 +1396,11 @@ public sealed class FeedMediaSearchPlannerReasonTests
             UpdatedUtc: DateTimeOffset.UtcNow);
 
     private static string CreateFeed(int itemCount)
-        => $"<rss><channel>{string.Join(string.Empty, Enumerable.Range(1, itemCount).Select(index =>
-            $"<item><title>Example.Release.{index:00}.WEB.1080p</title><link>https://fixture.invalid/release/{index}</link></item>"))}</channel></rss>";
+        => Feed(Enumerable.Range(1, itemCount).Select(index =>
+            new FeedRelease($"Example.Release.{index:00}.WEB.1080p", Link: $"https://fixture.invalid/release/{index}")).ToArray());
+
+    /// <summary>Jackett 0.24.2850's recorded Torznab feed with the given releases (see RecordedReplies.TorznabFeed).</summary>
+    private static string Feed(params FeedRelease[] releases) => RecordedReplies.TorznabFeed(releases);
 
     private sealed class FixedClientFactory(HttpMessageHandler handler) : IHttpClientFactory
     {

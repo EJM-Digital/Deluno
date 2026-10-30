@@ -403,7 +403,8 @@ public sealed class ConnectionNamesTests
     {
         var handler = new StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.OK)
         {
-            Content = new StringContent($"<caps><server title=\"{title}\" /><searching /></caps>")
+            // Jackett 0.24.2850's recorded caps answer with only the server title changed.
+            Content = new StringContent(Deluno.Tests.Recorded.RecordedReplies.Jackett("caps").Exchanges[0].Reply.Body!.Replace("title=\"Jackett\"", $"title=\"{title}\"", StringComparison.Ordinal))
         });
         using var client = new HttpClient(handler);
 

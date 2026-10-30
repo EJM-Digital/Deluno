@@ -92,10 +92,9 @@ public sealed class AWholeShowPreviewChecksEachReleaseAgainstItsOwnEpisodeTests
         var builder = WebApplication.CreateSlimBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         var app = builder.Build();
-        var items = string.Concat(releaseNames.Select((name, index) =>
-            $"<item><title>{name}</title><link>https://fixture.invalid/s{index}.torrent</link><size>1500000000</size>"
-            + "<torznab:attr name=\"seeders\" value=\"40\" /><torznab:attr name=\"peers\" value=\"3\" /></item>"));
-        var feed = "<?xml version=\"1.0\"?><rss version=\"2.0\" xmlns:torznab=\"http://torznab.com/schemas/2015/feed\"><channel>" + items + "</channel></rss>";
+        // Jackett's recorded Torznab feed, one release per name with the size and seeders the test uses.
+        var feed = Deluno.Tests.Recorded.RecordedReplies.TorznabFeed(releaseNames.Select((name, index) => new Deluno.Tests.Recorded.FeedRelease(
+            name, Link: $"https://fixture.invalid/s{index}.torrent", Size: 1500000000, Seeders: 40, Peers: 3)).ToArray());
         app.Run(async context =>
         {
             context.Response.ContentType = "application/rss+xml";

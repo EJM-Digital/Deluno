@@ -6,7 +6,8 @@ namespace Deluno.Integrations.Tests.Search.Trackers;
 /// <summary>#606: a tracker's releases reach the planner as the Torznab feed every other indexer sends.</summary>
 public sealed class TorznabFeedTests
 {
-    private static readonly XNamespace Torznab = "http://torznab.com/schemas/2015/feed";
+    // The namespace of Jackett 0.24.2850's recorded Torznab feed, which the feed Deluno writes has to share.
+    private static readonly XNamespace Torznab = XDocument.Parse(Deluno.Tests.Recorded.RecordedReplies.Jackett("search-feed").Exchanges[0].Reply.Body!).Root!.GetNamespaceOfPrefix("torznab")!;
 
     [Fact]
     public void Writes_what_the_planner_reads_from_any_torznab_indexer()

@@ -403,23 +403,10 @@ public sealed class ReferenceSearchFlowTests
             RequestCount++;
             firstRequest.TrySetResult();
             Query = request.RequestUri?.Query ?? string.Empty;
-            const string feed = """
-                <?xml version="1.0" encoding="UTF-8"?>
-                <rss version="2.0" xmlns:torznab="http://torznab.com/schemas/2015/feed">
-                  <channel>
-                    <item>
-                      <title>Dune.Part.Two.2024.CAM.720p-BAD</title>
-                      <enclosure url="https://fixture.invalid/download/bad.torrent" length="1000000000" type="application/x-bittorrent" />
-                      <torznab:attr name="seeders" value="10" />
-                    </item>
-                    <item>
-                      <title>Dune.Part.Two.2024.WEB.1080p-PREFERRED</title>
-                      <enclosure url="https://fixture.invalid/download/good.torrent" length="8000000000" type="application/x-bittorrent" />
-                      <torznab:attr name="seeders" value="25" />
-                    </item>
-                  </channel>
-                </rss>
-                """;
+            // Jackett's recorded Torznab feed with the two releases this test is about (a CAM and a WEB-DL), each with its own link, size and seeders.
+            var feed = Deluno.Tests.Recorded.RecordedReplies.TorznabFeed(
+                new Deluno.Tests.Recorded.FeedRelease("Dune.Part.Two.2024.CAM.720p-BAD", Link: "https://fixture.invalid/download/bad.torrent", Size: 1000000000, Seeders: 10),
+                new Deluno.Tests.Recorded.FeedRelease("Dune.Part.Two.2024.WEB.1080p-PREFERRED", Link: "https://fixture.invalid/download/good.torrent", Size: 8000000000, Seeders: 25));
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(feed, Encoding.UTF8, "application/xml")

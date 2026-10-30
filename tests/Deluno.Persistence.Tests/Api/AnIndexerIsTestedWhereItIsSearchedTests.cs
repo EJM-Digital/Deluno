@@ -164,7 +164,8 @@ public sealed class AnIndexerIsTestedWhereItIsSearchedTests
             if (context.Request.Path.StartsWithSegments(apiSegment))
             {
                 context.Response.ContentType = "application/rss+xml";
-                await context.Response.WriteAsync("<?xml version=\"1.0\"?><rss version=\"2.0\" xmlns:newznab=\"http://www.newznab.com/DTD/2010/feeds/attributes/\"><channel></channel></rss>");
+                // NZBHydra2 9.1.1's recorded Newznab answer to a search that finds nothing.
+                await context.Response.WriteAsync(Deluno.Tests.Recorded.RecordedReplies.Nzbhydra2("search-text").Exchanges[0].Reply.Body!);
                 return;
             }
 
