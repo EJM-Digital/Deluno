@@ -84,3 +84,12 @@ describe("colour mode", () => {
     vi.restoreAllMocks();
   });
 });
+
+describe("colour mode without its provider", () => {
+  it("reads as standard and ignores a choice, rather than failing", () => {
+    render(<Probe />);
+    expect(screen.getByTestId("mode").textContent).toBe("standard");
+    act(() => screen.getByRole("button", { name: "Impaired" }).click());
+    expect(screen.getByTestId("mode").textContent).toBe("standard");
+  });
+});

@@ -125,3 +125,34 @@ describe("the realtime connection flag", () => {
     setRealtimeConnected(false);
   });
 });
+
+describe("applying pushed sections, edge cases", () => {
+  it("applies an update that lists no unavailable sections at all", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(DASHBOARD_SUMMARY_KEY, summary());
+    const event = update({ downloads: { asOfUtc: "2026-10-01T12:00:05.000Z", active: 2 } });
+    delete (event as unknown as { unavailable?: string[] }).unavailable;
+    expect(applyDashboardSummaryUpdate(queryClient, event)).toBe(true);
+    expect(queryClient.getQueryData<DashboardSummary>(DASHBOARD_SUMMARY_KEY)!.unavailableSections).toEqual(["health"]);
+  });
+
+  it("skips a section the server sent as empty and keeps the cached one", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(DASHBOARD_SUMMARY_KEY, summary());
+    expect(applyDashboardSummaryUpdate(queryClient, update({ downloads: null }))).toBe(false);
+    expect(queryClient.getQueryData<DashboardSummary>(DASHBOARD_SUMMARY_KEY)!.downloads).toEqual(summary().downloads);
+  });
+
+  it("takes a section with no readable time over one whose time it cannot read", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(DASHBOARD_SUMMARY_KEY, summary({ downloads: { asOfUtc: "not a time", active: 1 }, pipeline: { active: 2 } }));
+    const applied = applyDashboardSummaryUpdate(
+      queryClient,
+      update({ downloads: { asOfUtc: "2026-10-01T12:00:05.000Z", active: 7 }, pipeline: { active: 3 } })
+    );
+    const next = queryClient.getQueryData<DashboardSummary>(DASHBOARD_SUMMARY_KEY)!;
+    expect(applied).toBe(true);
+    expect((next.downloads as unknown as { active: number }).active).toBe(7);
+    expect((next.pipeline as unknown as { active: number }).active).toBe(3);
+  });
+});

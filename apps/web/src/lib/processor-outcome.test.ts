@@ -71,3 +71,17 @@ describe("processorOutcomeSummary (#580)", () => {
     expect(processorOutcomeSummary({ ...owed, outcome: "not-imported" }, when).said).toBe("It will not import the file");
   });
 });
+
+describe("processorOutcomeSummary, other timings and answers", () => {
+  it("says one attempt in the singular, with and without a next try", () => {
+    expect(processorOutcomeSummary({ ...owed, attempts: 1 }, when).heard).toBe("Not yet · 1 attempt · next at 07:54");
+    expect(processorOutcomeSummary({ ...owed, attempts: 1, nextAttemptUtc: null }, when).heard).toBe("Not yet · 1 attempt");
+  });
+
+  it("says a settled report was not repeated, and does not offer to send it again", () => {
+    const summary = processorOutcomeSummary({ ...owed, delivery: "settled" }, when);
+    expect(summary.heard).toBe("It kept its earlier answer, so Deluno stopped telling it");
+    expect(summary.detail).toBe("Deluno could not reach Weir.");
+    expect(summary.canSendAgain).toBe(false);
+  });
+});

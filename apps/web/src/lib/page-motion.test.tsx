@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render } from "@testing-library/react";
 import { CountUp } from "../components/ui/count-up";
 import { RadialGauge } from "../components/ui/radial-gauge";
-import { installHiddenPageMotionGuard, motionAllowed } from "./page-motion";
+import { installHiddenPageMotionGuard, motionAllowed, onPageHidden } from "./page-motion";
 
 // #873: a value that changes while the tab is hidden must be shown at its
 // current value on return, not counted up from the value on screen when the
@@ -98,5 +98,44 @@ describe("hidden-page motion guard (#873)", () => {
     expect(motionAllowed()).toBe(true);
     setVisibility("hidden");
     expect(motionAllowed()).toBe(false);
+  });
+});
+
+describe("when movement is allowed (#873)", () => {
+  it("is refused while the page is hidden, or when the person asked for reduced motion, and allowed otherwise", () => {
+    expect(motionAllowed()).toBe(true);
+    window.matchMedia = vi.fn().mockReturnValue({ matches: true }) as unknown as typeof window.matchMedia;
+    expect(motionAllowed()).toBe(false);
+    window.matchMedia = vi.fn().mockReturnValue({ matches: false }) as unknown as typeof window.matchMedia;
+    visibility = "hidden";
+    expect(motionAllowed()).toBe(false);
+  });
+});
+
+describe("settling when the page is hidden (#873)", () => {
+  it("settles once on hiding, not on showing, and stops after it is unsubscribed", () => {
+    const settle = vi.fn();
+    const stop = onPageHidden(settle);
+    setVisibility("hidden");
+    expect(settle).toHaveBeenCalledTimes(1);
+    setVisibility("visible");
+    expect(settle).toHaveBeenCalledTimes(1);
+    stop();
+    setVisibility("hidden");
+    expect(settle).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing, and unsubscribes nothing, where there is no document", () => {
+    vi.stubGlobal("document", undefined);
+    const stop = onPageHidden(vi.fn());
+    expect(() => stop()).not.toThrow();
+    vi.unstubAllGlobals();
+  });
+
+  it("marks the page as hidden at once when it is installed while hidden", () => {
+    visibility = "hidden";
+    const remove = installHiddenPageMotionGuard();
+    expect(document.documentElement.hasAttribute("data-page-hidden")).toBe(true);
+    remove();
   });
 });

@@ -55,7 +55,6 @@ interface ColorModeContextValue {
 const ColorModeContext = createContext<ColorModeContextValue | null>(null);
 
 function readStored(): ColorMode {
-  if (typeof window === "undefined") return DEFAULT;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     return isColorMode(raw) ? raw : DEFAULT;

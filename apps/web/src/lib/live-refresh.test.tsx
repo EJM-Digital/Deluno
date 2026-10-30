@@ -1,6 +1,8 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryObserver } from "@tanstack/react-query";
+import { createElement, type ReactNode } from "react";
+import { UNSAFE_DataRouterContext } from "react-router-dom";
 import { queryClient, defineSources } from "./route-cache";
 
 const handlers = vi.hoisted(() => new Map<string, Set<(payload: unknown) => void>>());
@@ -56,6 +58,50 @@ describe("useLiveRefresh (#1179)", () => {
     renderHook(() => useLiveRefresh({ events: ["LibraryChanged"] }, vi.fn()));
     expect(handlers.has("ConfigChanged")).toBe(false);
     expect(handlers.has("LibraryChanged")).toBe(true);
+  });
+});
+
+describe("useLiveRefresh with no refresh of its own (#1179)", () => {
+  it("asks the router to read the page's data again", async () => {
+    const revalidate = vi.fn();
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(UNSAFE_DataRouterContext.Provider, { value: { router: { revalidate } } as never }, children);
+    renderHook(() => useLiveRefresh({ events: ["SettingsChanged"] }), { wrapper });
+
+    push("SettingsChanged");
+    await wait(1_500);
+    expect(revalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing, and does not fail, where there is no router", async () => {
+    renderHook(() => useLiveRefresh({ events: ["SettingsChanged"] }));
+    push("SettingsChanged");
+    await wait(1_500);
+    expect(handlers.has("SettingsChanged")).toBe(true);
+  });
+
+  it("listens only for ConfigChanged when the page names areas but no events", async () => {
+    const refresh = vi.fn();
+    renderHook(() => useLiveRefresh({ areas: ["tags"] }, refresh));
+    expect([...handlers.keys()]).toEqual(["ConfigChanged"]);
+    push("ConfigChanged", { area: "tags" });
+    await wait(1_500);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("listens for nothing when the page names neither events nor areas, and ignores an empty list of areas", () => {
+    renderHook(() => useLiveRefresh({}, vi.fn()));
+    renderHook(() => useLiveRefresh({ events: ["LibraryChanged"], areas: [] }, vi.fn()));
+    expect([...handlers.keys()]).toEqual(["LibraryChanged"]);
+  });
+
+  it("ignores a ConfigChanged push that names no area", async () => {
+    const refresh = vi.fn();
+    renderHook(() => useLiveRefresh({ areas: ["tags"] }, refresh));
+    push("ConfigChanged", null);
+    push("ConfigChanged", {});
+    await wait(1_500);
+    expect(refresh).not.toHaveBeenCalled();
   });
 });
 

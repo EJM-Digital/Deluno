@@ -161,8 +161,7 @@ function addLocalDays(date: Date, days: number): Date {
 function parseDay(token: string): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(token);
   if (!match) return null;
-  const day = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-  return Number.isNaN(day.getTime()) ? null : day;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
 }
 
 /** The moment a "since" word starts, in the person's own day. Null when it is not one. */
