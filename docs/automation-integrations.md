@@ -179,7 +179,7 @@ curl --fail-with-body -H "X-Api-Key: $DELUNO_SYSTEM_API_KEY" \
 
 The dependency-free TypeScript client is in `sdk/typescript` and is
 typechecked in CI. It exposes the bulk catalogue/episode operations, readiness,
- library import, search, queue, dispatch/import history, backup and
+ library import, search, dispatch/import history, backup and
  scope-template methods:
 
 ```ts

@@ -35,6 +35,28 @@ public sealed class QueueHistoryWantedEndpointTests
     }
 
     [Fact]
+    public async Task A_successful_removal_is_a_200_carrying_succeeded_message_blocklisted_searchStarted_entityId_and_mediaType()
+    {
+        var telemetry = new RecordingTelemetry { EntityId = "movie-7", MediaType = "movie", SearchStarted = true };
+        await using var app = await StartAsync(telemetry);
+
+        var response = await app.Client.DeleteAsync("/api/queue/client-1/hash-abc?blocklist=true");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(body.GetProperty("succeeded").GetBoolean());
+        Assert.Equal("ok", body.GetProperty("message").GetString());
+        Assert.True(body.GetProperty("blocklisted").GetBoolean());
+        Assert.True(body.GetProperty("searchStarted").GetBoolean());
+        Assert.Equal("movie-7", body.GetProperty("entityId").GetString());
+        Assert.Equal("movie", body.GetProperty("mediaType").GetString());
+
+        var plain = await (await app.Client.DeleteAsync("/api/queue/client-1/hash-def")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(plain.GetProperty("blocklisted").GetBoolean());
+        Assert.True(plain.GetProperty("searchStarted").GetBoolean());
+    }
+
+    [Fact]
     public async Task The_flags_in_the_query_reach_the_removal()
     {
         var telemetry = new RecordingTelemetry();
@@ -355,6 +377,12 @@ public sealed class QueueHistoryWantedEndpointTests
     {
         public bool Succeed { get; init; } = true;
 
+        public string? EntityId { get; init; }
+
+        public string? MediaType { get; init; }
+
+        public bool SearchStarted { get; init; }
+
         /// <summary>A queue item id Deluno "did not send"; the shared ownership check refuses it.</summary>
         public string? ForeignItemId { get; init; }
 
@@ -384,7 +412,7 @@ public sealed class QueueHistoryWantedEndpointTests
 
             Removals.Add((clientId, queueItemId, removeFromClient, blocklist, skipRedownload));
             return Task.FromResult(new QueueRemovalResult(
-                clientId, queueItemId, "removed", Succeed, Succeed ? "ok" : "That did not work.", blocklist, false, null, null));
+                clientId, queueItemId, "removed", Succeed, Succeed ? "ok" : "That did not work.", blocklist, SearchStarted, EntityId, MediaType));
         }
 
         public Task<DownloadClientActionResult> ExecuteActionAsync(string clientId, DownloadClientActionRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();

@@ -40,6 +40,20 @@ public sealed class TheDashboardVolumeReadingSurvivesWhatItCannotReadTests
             => Fail ? throw new IOException("the libraries could not be read") : inner.CreateScope();
     }
 
+    private sealed class ScopesHeldOpen(IServiceScopeFactory inner) : IServiceScopeFactory
+    {
+        public ManualResetEventSlim Gate { get; } = new(false);
+
+        public int Opened;
+
+        public IServiceScope CreateScope()
+        {
+            Interlocked.Increment(ref Opened);
+            Gate.Wait(TimeSpan.FromSeconds(30)); // reason: a failed test must not hang; 30 s is far past any real read
+            return inner.CreateScope();
+        }
+    }
+
     private static DashboardVolumeCache CacheOver(ApplicationTestHost app, IServiceScopeFactory scopes, TimeProvider clock)
         => new(scopes, Options.Create(new StoragePathOptions { DataRoot = app.DataRoot }), clock, NullLogger<DashboardVolumeCache>.Instance);
 
@@ -90,6 +104,25 @@ public sealed class TheDashboardVolumeReadingSurvivesWhatItCannotReadTests
         Assert.Equal([unreadable], missing.Paths);
         Assert.Null(missing.TotalBytes);
         Assert.Null(missing.FreeBytes);
+    }
+
+    [Fact]
+    public async Task Two_refreshes_at_once_share_one_read_and_the_next_one_after_it_reads_again()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scopes = new ScopesHeldOpen(app.Services.GetRequiredService<IServiceScopeFactory>());
+        var cache = CacheOver(app, scopes, TimeProvider.System);
+
+        var first = cache.RefreshAsync(CancellationToken.None);
+        var second = cache.RefreshAsync(CancellationToken.None);
+        Assert.Same(first, second);
+        scopes.Gate.Set();
+        await Task.WhenAll(first, second);
+
+        Assert.Equal(1, scopes.Opened);
+        Assert.NotNull(cache.Latest);
+        await cache.RefreshAsync(CancellationToken.None);
+        Assert.Equal(2, scopes.Opened);
     }
 
     [Fact]

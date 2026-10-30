@@ -235,3 +235,36 @@ describe("search on add (#1399)", () => {
     }
   });
 });
+
+describe("closing the Add dialog (#1329)", () => {
+  async function openFromLink() {
+    metadataReply = () => [match("1", "Arrival")];
+    const router = createMemoryRouter([{ path: "/", element: <LibraryView variant="movies" metadataStatus={null} /> }, { path: "*", element: <p>elsewhere</p> }], { initialEntries: ["/?add=true&title=Arrival"] });
+    render(<RouterProvider router={router} />);
+    const dialog = await screen.findByRole("dialog", { name: /Add movie/ });
+    fireEvent.click(await within(dialog).findByText("Arrival"));
+    expect(await within(dialog).findByRole("button", { name: "Add selected movie" })).toBeInTheDocument();
+    expect(router.state.location.search).toContain("add=true");
+    return router;
+  }
+
+  const closers: Array<[string, () => void]> = [
+    ["the X", () => fireEvent.click(screen.getByRole("button", { name: "Close add movie" }))],
+    ["Cancel", () => fireEvent.click(within(screen.getByRole("dialog", { name: /Add movie/ })).getByRole("button", { name: "Cancel" }))],
+    ["Esc", () => fireEvent.keyDown(screen.getByRole("dialog", { name: /Add movie/ }), { key: "Escape", code: "Escape" })],
+    ["a click on the overlay", () => { fireEvent.pointerDown(document.body); fireEvent.mouseDown(document.body); fireEvent.click(document.body); }]
+  ];
+
+  it.each(closers)("closing with %s drops the picked matches and takes add=true off the address", async (_name, close) => {
+    const router = await openFromLink();
+
+    close();
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Add movie/ })).toBeNull());
+    await waitFor(() => expect(router.state.location.search).not.toContain("add="));
+    fireEvent.click(screen.getAllByRole("button", { name: "Add movie" })[0]);
+    const reopened = await screen.findByRole("dialog", { name: /Add movie/ });
+    expect(within(reopened).queryByRole("button", { name: "Add selected movie" })).toBeNull();
+    expect(within(reopened).queryByRole("button", { name: /^Add \d+ movies$/ })).toBeNull();
+  });
+});

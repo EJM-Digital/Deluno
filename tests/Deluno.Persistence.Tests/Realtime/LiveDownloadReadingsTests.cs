@@ -4,6 +4,7 @@ using Deluno.Integrations.DownloadClients;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Worker.Services;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 
@@ -153,5 +154,87 @@ public sealed class LiveDownloadReadingsTests : IAsyncDisposable
         Assert.Equal("qBittorrent", change.ClientName);
         Assert.False(change.Reachable);
         Assert.Equal("Refused the connection.", change.Message);
+    }
+
+    private sealed class LoggedLines : ILogger<DownloadProgressPublisher>
+    {
+        public List<LogLevel> Levels { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            lock (Levels)
+            {
+                Levels.Add(logLevel);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task A_telemetry_call_that_throws_falls_back_to_the_idle_pace_and_warns_once_then_a_good_reading_ends_the_silence()
+    {
+        var log = new LoggedLines();
+        await using var publisher = new PublisherUnderTest(this, log);
+        var fail = true;
+        _readings.Overview = () => fail ? throw new InvalidOperationException("The client did not answer.") : Reading(10, 6);
+        await publisher.Inner.StartAsync(CancellationToken.None);
+
+        await AdvanceAsync(TimeSpan.FromSeconds(21));
+        Assert.Equal(1, _readings.Readings);
+        // A failed pass waits the idle 20 s, never the 1 s or 2 s of a moving one.
+        await AdvanceAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(1, _readings.Readings);
+        // The second look is due at 40 s; the clock runs on to 45 so a slow machine has time to take it.
+        await AdvanceAsync(TimeSpan.FromSeconds(14));
+        Assert.Equal(2, _readings.Readings);
+
+        lock (log.Levels)
+        {
+            Assert.Equal(1, log.Levels.Count(level => level == LogLevel.Warning));
+            Assert.Equal(1, log.Levels.Count(level => level == LogLevel.Debug));
+        }
+
+        fail = false;
+        await AdvanceAsync(TimeSpan.FromSeconds(21));
+        Assert.Contains("item-1", _realtime.DownloadProgressIds);
+    }
+
+    [Fact]
+    public async Task An_unchanged_reading_is_not_sent_again_and_an_item_the_client_stopped_listing_is_forgotten_so_its_return_is_sent_afresh()
+    {
+        var listed = true;
+        _readings.Overview = () => listed ? Reading(10, 6) : new DownloadTelemetryOverview(new DownloadTelemetrySummary(0, 0, 0, 0, 0, 0, 0), [], _clock.GetUtcNow());
+        await _publisher.StartAsync(CancellationToken.None);
+
+        await AdvanceAsync(TimeSpan.FromSeconds(21));
+        await AdvanceAsync(TimeSpan.FromSeconds(8));
+        Assert.True(_readings.Readings >= 4, $"Expected several readings, got {_readings.Readings}.");
+        Assert.Single(_realtime.DownloadProgressIds);
+
+        listed = false;
+        await AdvanceAsync(TimeSpan.FromSeconds(6));
+        listed = true;
+        await AdvanceAsync(TimeSpan.FromSeconds(24));
+
+        Assert.Equal(2, _realtime.DownloadProgressIds.Count);
+    }
+
+    private sealed class PublisherUnderTest : IAsyncDisposable
+    {
+        public PublisherUnderTest(LiveDownloadReadingsTests owner, ILogger<DownloadProgressPublisher> log)
+        {
+            Inner = new DownloadProgressPublisher(log, owner._services.GetRequiredService<IServiceScopeFactory>(), owner._realtime, owner._clock, owner._watchers);
+        }
+
+        public DownloadProgressPublisher Inner { get; }
+
+        public async ValueTask DisposeAsync()
+        {
+            await Inner.StopAsync(CancellationToken.None);
+            Inner.Dispose();
+        }
     }
 }

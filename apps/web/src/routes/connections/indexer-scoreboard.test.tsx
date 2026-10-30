@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { IndexerScoreboardRow, IndexerScoreboardSnapshot } from "../../lib/api";
 import { IndexerScoreboard } from "./indexer-scoreboard";
@@ -41,5 +41,30 @@ describe("the Scoreboard says each indexer's name once (#1249)", () => {
     for (const label of ["Queries", "Grabs", "Grab rate", "Response", "Failed"]) {
       expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(1);
     }
+  });
+});
+
+describe("the Scoreboard status chip (#1329)", () => {
+  const chipOf = (name: string, label: string) => {
+    const cell = screen.getAllByText(name)[0]!.closest("[role='row'], tr, li")!;
+    return within(cell as HTMLElement).getAllByText(label)[0]!;
+  };
+
+  it("reads Paused for a switched-off indexer and Removed for a removed one, in the quiet tone; a failure rate of 25% or more, unreachable or degraded warns; a healthy one is ok", () => {
+    render(<IndexerScoreboard snapshot={snapshot([
+      row({ id: "p", name: "Paused One", isEnabled: false, healthStatus: "healthy", failureRate: 0.9 }),
+      row({ id: "r", name: "Removed One", isEnabled: false, healthStatus: "removed" }),
+      row({ id: "f", name: "Failing One", healthStatus: "healthy", failureRate: 0.25 }),
+      row({ id: "u", name: "Unreachable One", healthStatus: "unreachable", failureRate: 0 }),
+      row({ id: "d", name: "Degraded One", healthStatus: "degraded", failureRate: 0 }),
+      row({ id: "h", name: "Healthy One", healthStatus: "healthy", failureRate: 0.24 })
+    ])} />);
+
+    expect(chipOf("Paused One", "Paused").className).toContain("text-muted-foreground");
+    expect(chipOf("Removed One", "Removed").className).toContain("text-muted-foreground");
+    expect(chipOf("Failing One", "healthy").className).toContain("text-warning");
+    expect(chipOf("Unreachable One", "unreachable").className).toContain("text-warning");
+    expect(chipOf("Degraded One", "degraded").className).toContain("text-warning");
+    expect(chipOf("Healthy One", "healthy").className).toContain("text-success");
   });
 });

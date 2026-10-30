@@ -55,6 +55,29 @@ public sealed class WritingSubtitlesOnDiskTests
         Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(video)!, "*.partial"));
     }
 
+    [Fact]
+    public async Task The_name_without_a_language_code_for_older_televisions_keeps_the_forced_and_hearing_impaired_variants_apart()
+    {
+        var (app, writer, video) = await StartAsync();
+        await using var _ = app;
+        var folder = Path.GetDirectoryName(video)!;
+
+        var plain = await writer.WriteAsync(video, "English", false, Encoding.UTF8.GetBytes("plain"), CancellationToken.None, omitLanguageCode: true);
+        var hearing = await writer.WriteAsync(video, "English", true, Encoding.UTF8.GetBytes("hearing"), CancellationToken.None, omitLanguageCode: true);
+        var forced = await writer.WriteAsync(video, "English", false, Encoding.UTF8.GetBytes("forced"), CancellationToken.None, forced: true);
+        var forcedWithoutCode = await writer.WriteAsync(video, "English", false, Encoding.UTF8.GetBytes("forced, bare"), CancellationToken.None, omitLanguageCode: true, forced: true);
+
+        Assert.Equal(Path.Combine(folder, "Big Buck Bunny (2008).srt"), plain);
+        Assert.Equal(Path.Combine(folder, "Big Buck Bunny (2008).sdh.srt"), hearing);
+        Assert.Equal(Path.Combine(folder, "Big Buck Bunny (2008).en.forced.srt"), forced);
+        Assert.Equal(Path.Combine(folder, "Big Buck Bunny (2008).forced.srt"), forcedWithoutCode);
+        Assert.Equal("plain", File.ReadAllText(plain));
+        Assert.Equal("hearing", File.ReadAllText(hearing));
+        Assert.Equal("forced", File.ReadAllText(forced));
+        Assert.Equal("forced, bare", File.ReadAllText(forcedWithoutCode));
+        Assert.Empty(Directory.GetFiles(folder, "*.partial"));
+    }
+
     [Theory]
     [InlineData("windows-1252")]
     [InlineData("utf-16")]

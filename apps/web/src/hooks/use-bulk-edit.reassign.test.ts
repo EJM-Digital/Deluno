@@ -103,6 +103,39 @@ describe("useBulkEdit bulk reassign-library move-files (#787)", () => {
     );
   });
 
+  it("without a destination library it says Choose a destination library first. and sends nothing", async () => {
+    const { result } = renderHook(() => useHarness([makeItem("a", { libraryId: "lib-a" })]));
+
+    act(() => { result.current.bulk.setSelectedIds(["a"]); });
+    act(() => { result.current.bulk.openBulkTools("reassignLibrary"); });
+    await act(async () => { await result.current.bulk.executeBulkToolsOperation(); });
+    await act(async () => { await result.current.bulk.executeBulkToolsOperation(); });
+
+    expect(result.current.bulk.bulkError).toBe("Choose a destination library first.");
+    expect(authedFetch).not.toHaveBeenCalled();
+  });
+
+  it("sends one request for each library the selection comes from, and none for titles already in the destination", async () => {
+    const { result } = renderHook(() => useHarness([
+      makeItem("a", { libraryId: "lib-a" }),
+      makeItem("b", { libraryId: "lib-a" }),
+      makeItem("c", { libraryId: "lib-c" }),
+      makeItem("d", { libraryId: "lib-b" })
+    ]));
+
+    act(() => { result.current.bulk.setSelectedIds(["a", "b", "c", "d"]); });
+    act(() => { result.current.bulk.openBulkTools("reassignLibrary"); });
+    act(() => { result.current.bulk.setBulkTargetLibraryId("lib-b"); });
+    await act(async () => { await result.current.bulk.executeBulkToolsOperation(); });
+    await act(async () => { await result.current.bulk.executeBulkToolsOperation(); });
+
+    const bodies = vi.mocked(authedFetch).mock.calls.map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+    expect(bodies).toEqual([
+      { movieIds: ["a", "b"], fromLibraryId: "lib-a", toLibraryId: "lib-b", moveFiles: false },
+      { movieIds: ["c"], fromLibraryId: "lib-c", toLibraryId: "lib-b", moveFiles: false }
+    ]);
+  });
+
   it("passes moveFiles through when the user opts in", async () => {
     const { result } = renderHook(() => useHarness([makeItem("a", { libraryId: "lib-a" })]));
 

@@ -319,3 +319,14 @@ test('listReleasePreferencePlans and getReleasePreferencePlan ask the plan route
   ]);
   assert.ok(calls.every((call) => call.method === 'GET'));
 });
+
+test('the client has the methods the docs list, none for the queue or the other tools endpoints, and the docs claim no queue method', () => {
+  const methods = Object.getOwnPropertyNames(DelunoClient.prototype);
+  for (const name of ['readiness', 'scopeTemplates', 'automationSummary', 'listDownloadDispatches', 'getDownloadDispatch', 'listImportResolutions', 'bulkAddCatalogue', 'syncSeriesEpisodes', 'listJobs', 'listActivity', 'listDecisions', 'listBackups', 'createBackup', 'searchLibrary', 'startExistingLibraryImport', 'importProgress']) {
+    assert.ok(methods.includes(name), `${name} is on the client`);
+  }
+  assert.equal(methods.filter((name) => /queue|diskspace|wanted|history|stats|command/i.test(name)).length, 0);
+  const docs = readFileSync(fileURLToPath(new URL('../../../docs/automation-integrations.md', import.meta.url)), 'utf8');
+  const sdkSentence = docs.slice(docs.indexOf('## Supported SDK'), docs.indexOf('```ts'));
+  assert.doesNotMatch(sdkSentence, /\bqueue\b/);
+});
