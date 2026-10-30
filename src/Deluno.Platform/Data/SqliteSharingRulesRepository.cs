@@ -204,7 +204,7 @@ public sealed class SqliteSharingRulesRepository(
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT COALESCE(MAX(priority), 0) + 10 FROM sharing_rules;";
         var result = await command.ExecuteScalarAsync(cancellationToken);
-        return result is long value ? (int)value : 10;
+        return Convert.ToInt32(result);
     }
 
     private static void AddRuleParameters(System.Data.Common.DbCommand command, SharingRuleItem item)
