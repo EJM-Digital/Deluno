@@ -57,6 +57,16 @@ public sealed class UTorrentStatesOnRecordingsTests
         Assert.Equal(DownloadQueueStatuses.Downloading, Assert.Single(queue, i => i.Id == Two).Status);
     }
 
+    // #1421: a torrent stopped in uTorrent has neither the Started nor the Queued bit (136); like a stopped torrent in qBittorrent
+    // and Transmission it reads Paused, not Queued.
+    [Fact]
+    public async Task A_stopped_torrent_reads_Paused_not_Queued()
+    {
+        var queue = await Read("stopped");
+
+        Assert.Equal(DownloadQueueStatuses.Paused, Assert.Single(queue).Status);
+    }
+
     private static async Task<IReadOnlyList<DownloadQueueItem>> Read(string state)
     {
         var token = RecordedReplies.Utorrent("token").Single.Reply.Body!.Replace("<scrubbed>", "recorded-token");

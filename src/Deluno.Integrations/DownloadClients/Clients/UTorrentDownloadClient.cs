@@ -396,7 +396,9 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
         // A paused torrent has the Paused, Queued and Started bits all set, so Paused is read first.
         if ((bits & UTorrentStatus.Paused) != 0) return DownloadQueueStatuses.Paused;
         if ((bits & UTorrentStatus.Started) != 0) return DownloadQueueStatuses.Downloading;
-        return DownloadQueueStatuses.Queued;
+        // Neither started nor in the queue (136, "Stopped" in uTorrent): a person stopped it, which reads like qBittorrent's and
+        // Transmission's stopped torrent (#1421). Only a torrent waiting in the queue (200) is Queued.
+        return (bits & UTorrentStatus.Queued) != 0 ? DownloadQueueStatuses.Queued : DownloadQueueStatuses.Paused;
     }
 
     /// <summary>
