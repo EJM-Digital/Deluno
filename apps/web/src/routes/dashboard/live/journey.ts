@@ -125,7 +125,7 @@ function entityOf(dispatch: DownloadDispatchItem | undefined): JourneyCard["enti
   return undefined;
 }
 
-/** The title's own page when we know which title it is, otherwise Transfers. An episode's show is found by the titles lookup. */
+/** The title's own page when we know which title it is, otherwise In progress. An episode's show is found by the titles lookup. */
 export function cardLink(entity: JourneyCard["entity"]): string {
   if (!entity) return "/queue";
   if (entity.kind === "movie") return `/movies/${entity.id}`;
@@ -446,7 +446,7 @@ export function processorHasStarted(card: Pick<JourneyCard, "state">): boolean {
 
 function handoffState(handoff: ProcessorHandoffItem): JourneyCard["state"] {
   const status = handoff.status.toLowerCase();
-  // The words are Transfers' own (#1186): a download that was gone before the processor could clean it says so, it
+  // The words are In progress' own (#1186): a download that was gone before the processor could clean it says so, it
   // does not blame the processor. A failure message on a status with no failure word of its own stays "Processor failed".
   if (isProcessorFailure(status)) return { tone: "bad", label: handoffStatusLabel(status) };
   if (handoff.failureMessage) return { tone: "bad", label: "Processor failed" };

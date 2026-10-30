@@ -301,7 +301,7 @@ describe("the Tags button of the indexers list, low rows (#1329)", () => {
   });
 });
 
-describe("an indexer link from Transfers (#1426)", () => {
+describe("an indexer link from In progress (#1426)", () => {
   it("?indexer=<name> opens that indexer's own page once, whatever the case of the name, and leaves the address clean", async () => {
     reset({ indexers: [indexer(), indexer({ id: "i2", name: "Beta", baseUrl: "https://beta.example/api" })] });
     const router = createMemoryRouter([{ path: "*", element: <IndexersPage /> }], { initialEntries: ["/indexers/indexers?indexer=beta"] });

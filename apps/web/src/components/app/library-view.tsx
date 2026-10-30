@@ -1180,7 +1180,7 @@ export function LibraryView({
       const searches = result.searchesTriggered ?? 0;
       toast.success(
         searches > 0
-          ? `Searching for ${searches} ${searches === 1 ? singular : label}. Watch it in Transfers.`
+          ? `Searching for ${searches} ${searches === 1 ? singular : label}. Watch it under In progress.`
           : `None of these ${label} was ready to search. Check that it is wanted in a library and a search source is set up.`,
         { id: loadingId }
       );

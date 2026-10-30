@@ -1110,7 +1110,7 @@ describe("the show's History tab", () => {
     expect(screen.getAllByText("Whole show").length).toBeGreaterThan(0);
   });
 
-  it("lists this show's last sent releases with the client and an Open Transfers link", async () => {
+  it("lists this show's last sent releases with the client and an Open In progress link", async () => {
     setup((url) =>
       url.startsWith("/api/download-dispatches")
         ? { body: { items: [{ id: "d1", entityId: "s1", mediaType: "tv", releaseName: "The.Wire.S01E02.Dispatch", indexerName: "Fixture", downloadClientName: "qBittorrent", status: "sent", createdUtc: daysAgo(1) }], hasMore: false } }
@@ -1121,7 +1121,7 @@ describe("the show's History tab", () => {
 
     expect(await screen.findByText("The.Wire.S01E02.Dispatch")).toBeInTheDocument();
     expect(screen.getByText("qBittorrent")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open Transfers" })).toHaveAttribute("href", "/queue");
+    expect(screen.getByRole("link", { name: "Open In progress" })).toHaveAttribute("href", "/queue");
   });
 });
 

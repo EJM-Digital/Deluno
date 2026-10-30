@@ -12,7 +12,7 @@ const screens: Screen[] = [
   { name: "Dashboard", heading: "Dashboard", path: "/" },
   { name: "Movies", heading: "Movies", path: "/movies" },
   { name: "TV Shows", heading: "TV Shows", path: "/tv" },
-  { name: "Transfers", heading: "Transfers", path: "/queue" },
+  { name: "In progress", heading: "In progress", path: "/queue" },
   { name: "Find & Download", heading: "Find & Download", path: "/indexers/indexers" },
   { name: "System", heading: "System", path: "/system" },
   { name: "Schedule", heading: "Schedule", path: "/calendar" }

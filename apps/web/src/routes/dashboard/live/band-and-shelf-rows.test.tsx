@@ -20,9 +20,9 @@ function renderBand(summary: DashboardSummary | undefined) {
 const withCycle = (lastSearchCycle: unknown) => ({ automation: { lastSearchCycle } }) as unknown as DashboardSummary;
 
 describe("Live top band: Speed and Working on now", () => {
-  it("names the Speed label's link \"Transfers: Speed\" and sends it to Transfers", () => {
+  it("names the Speed label's link \"In progress: Speed\" and sends it to In progress", () => {
     renderBand(undefined);
-    const link = screen.getByRole("link", { name: "Transfers: Speed" });
+    const link = screen.getByRole("link", { name: "In progress: Speed" });
     expect(link).toHaveAttribute("href", "/queue");
   });
 

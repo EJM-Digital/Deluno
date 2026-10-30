@@ -1,7 +1,7 @@
 /**
- * Transfers is live: what the server pushes is applied to the lists the screen
+ * In progress is live: what the server pushes is applied to the lists the screen
  * already reads, with no request after it. The patches that already exist for the
- * Live board (`dashboard/live/realtime.ts`) are shared; the two Transfers needs on
+ * Live board (`dashboard/live/realtime.ts`) are shared; the two In progress needs on
  * top of them, a download's own reading and a client's light, are here. A source
  * with no patch of its own is read again, once, after a burst of events
  * (`useCoalescedRefresh`), never on a timer.
@@ -100,7 +100,7 @@ export function importOutcomeStatus(job: Pick<JobQueueItem, "status" | "attempts
   return downloadQueueStatuses.importQueued;
 }
 
-/** The jobs list Transfers reads (its own source in queue-screen). */
+/** The jobs list In progress reads (its own source in queue-screen). */
 export const TRANSFERS_JOBS_KEY = ["src", "jobs-80"] as const;
 
 /** The import job a click just made joins the jobs list the screen reads, so "Importing" counts it with no wait. */
@@ -141,7 +141,7 @@ export function useCoalescedRefresh(keys: ReadonlyArray<readonly unknown[]>, wai
 const PROGRESS_FLUSH_MS = 250;
 
 /**
- * Mounts every push Transfers shows. Joins the subjects only while Transfers is
+ * Mounts every push In progress shows. Joins the subjects only while In progress is
  * open, and tells the server this screen is watching so it reads the clients every second.
  * `refresh` is called for the sources that have no patch of their own.
  */

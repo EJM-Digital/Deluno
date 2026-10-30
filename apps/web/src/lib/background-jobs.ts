@@ -8,7 +8,7 @@ import { isJobRetrying } from "./job-status-constants";
 
 export const SYSTEM_BACKGROUND_JOBS_LINK = "/system";
 
-/** Importing a download is always about a file and a title, and Transfers owns it, whether or not the job names the title. */
+/** Importing a download is always about a file and a title, and In progress owns it, whether or not the job names the title. */
 const TITLE_JOB_TYPES = new Set(["filesystem.import.execute"]);
 
 export function isBackgroundJob(job: Pick<JobQueueItem, "relatedEntityId"> & { jobType?: string }): boolean {

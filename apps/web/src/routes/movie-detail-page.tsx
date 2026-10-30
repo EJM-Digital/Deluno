@@ -1626,7 +1626,7 @@ export function MovieDetailPage() {
             actions={
               movieDispatches.length ? (
                 <Button asChild type="button" size="sm" variant="outline">
-                  <Link to="/queue">Open Transfers</Link>
+                  <Link to="/queue">Open In progress</Link>
                 </Button>
               ) : null
             }

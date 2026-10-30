@@ -6,7 +6,7 @@ import { api, expectNoErrorScreen, openScreen, recordRequests } from "../helpers
 import { untilQuiet } from "../helpers/settle";
 
 /**
- * What Transfers offers for a hand-off that did not finish, and for several things at once, against the real server and the
+ * What In progress offers for a hand-off that did not finish, and for several things at once, against the real server and the
  * real databases, nothing stubbed (measure 4, issue 1270). The starting records are written by the smoke host's seeding route
  * (TransfersSeedTestEndpoints), with the same repository calls the work planner makes; each button then goes through the real
  * routes. Every test clears the seeding it made, so the specs that follow meet the install as they found it.
@@ -30,7 +30,7 @@ async function openTransfers(page: Page) {
 
 const rowOf = (page: Page, release: string) => page.getByRole("row").filter({ hasText: release }).first();
 
-test.describe("Transfers, acting on what did not finish", () => {
+test.describe("In progress, acting on what did not finish", () => {
   test.describe.configure({ mode: "serial" });
   test.setTimeout(120_000);
 

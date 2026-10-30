@@ -4,7 +4,7 @@ import { HeaderTabsPortal, useHeaderSlot } from "../ui/header-tabs";
 import { paramsWithView, TRANSFERS_VIEWS, transfersViewFromParams, type TransfersView } from "../../lib/transfers-view";
 
 /**
- * The one control that narrows Transfers to live downloads, hand-offs, or the history (#1426). The view is in the
+ * The one control that narrows In progress to live downloads, hand-offs, or the history (#1426). The view is in the
  * address, so the browser's Back button and a bookmark both return to it. `bare` gives the chips alone, for a
  * toolbar that lays them out itself (the history's filters); otherwise they sit on the header's title line from
  * `lg` up and in a row of their own below it.

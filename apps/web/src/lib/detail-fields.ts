@@ -135,7 +135,7 @@ export function fixLinkForActivity(category: string, outcome?: string | null): {
     lower.startsWith("processing.") || lower.startsWith("download.") || lower.startsWith("import.") || lower.startsWith("handoff")
     || lower.startsWith("filesystem.") || lower.startsWith("job.") || lower.startsWith("processor.")
   ) {
-    return { to: "/queue", label: "Fix it in Transfers" };
+    return { to: "/queue", label: "Fix under In progress" };
   }
   if (lower.startsWith("indexer") || lower.startsWith("trackers.")) return { to: "/indexers", label: "Fix it in Find & Download" };
   return { to: "/system", label: "Fix it in System" };

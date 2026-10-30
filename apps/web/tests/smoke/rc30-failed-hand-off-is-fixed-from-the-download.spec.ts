@@ -96,7 +96,7 @@ test("Activity shows a failed send to the processor as labelled fields, never ra
 });
 
 // #1155. Nosferatu was cleaned once, its hand-off had been refused earlier, and "Try
-// again" from Transfers sent it a second time, leaving a second copy. A download that
+// again" from In progress sent it a second time, leaving a second copy. A download that
 // already has its processed file offers nothing to send again.
 test("a download the processor already cleaned offers no second send (#1155)", async ({ page, isMobile }) => {
   test.skip(isMobile, "The drawer is the same on a phone; the desktop run proves the behaviour.");

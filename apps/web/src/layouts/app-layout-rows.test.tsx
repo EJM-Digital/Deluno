@@ -144,7 +144,7 @@ describe("the command palette's recents and Preferences entry (#1329)", () => {
 
   it("lists the last 5 distinct destinations first, newest first, and a recent reopens its page", async () => {
     await mount("/");
-    for (const label of ["Movies", "TV", "Discover", "Movies", "Transfers", "Collections", "Schedule"]) await pick(label);
+    for (const label of ["Movies", "TV", "Discover", "Movies", "In progress", "Collections", "Schedule"]) await pick(label);
 
     const dialog = await openPalette();
     const recents = within(dialog).getByText("Recents").parentElement!;
@@ -346,9 +346,9 @@ describe("each route names itself in the topbar (#1329)", () => {
     expect(title()).toBe(expected);
   });
 
-  it.each(["/queue", "/queue?view=handoffs", "/queue?view=history&status=failed"])("%s is Transfers, which holds what Activity was, and says so", async (path) => {
+  it.each(["/queue", "/queue?view=handoffs", "/queue?view=history&status=failed"])("%s is In progress, which holds what Activity was, and says so", async (path) => {
     await mount(path);
-    expect(title()).toBe("Transfers");
+    expect(title()).toBe("In progress");
     expect(screen.getByText("Downloads, hand-offs to the processor, and the record of what happened")).toBeInTheDocument();
   });
 

@@ -174,8 +174,8 @@ async function serveBusyInstall(page: Page) {
   // What the server's attention summary (#1185) makes of the same busy install: the bell draws these rows and this count.
   const row = (over: Record<string, unknown>) => ({ section: "deluno", tone: "warn", text: "Something needs a look.", to: "/system", action: "Open System", count: 1, sinceUtc: null, data: null, ...over });
   const attentionRows = [
-    ...queue.map((item) => row({ id: `stuck:${item.clientId}:${item.id}`, kind: "stuck", section: "media", tone: "bad", title: item.title, to: "/queue", action: "Open Transfers", text: item.errorMessage, data: item })),
-    ...cases.map((item) => row({ id: `recovery:movie:${item.id}`, kind: "recovery", section: "media", title: item.title, to: "/queue", action: "Open Transfers", text: `Movies: ${item.summary}`, data: { ...item, mediaType: "movie", status: "open", resolvedUtc: null } })),
+    ...queue.map((item) => row({ id: `stuck:${item.clientId}:${item.id}`, kind: "stuck", section: "media", tone: "bad", title: item.title, to: "/queue", action: "Open In progress", text: item.errorMessage, data: item })),
+    ...cases.map((item) => row({ id: `recovery:movie:${item.id}`, kind: "recovery", section: "media", title: item.title, to: "/queue", action: "Open In progress", text: `Movies: ${item.summary}`, data: { ...item, mediaType: "movie", status: "open", resolvedUtc: null } })),
     ...clients.filter((client) => !client.reachable || client.paused || client.warnings > 0).map((client) => row({ id: `client:${client.id}`, kind: "connection", title: `${client.name} isn’t answering`, data: { id: client.id, name: client.name } })),
     ...summary.health.topProblems.map((problem) => row({ id: `health:${problem.id}`, kind: "health:system", title: problem.title, text: problem.message, data: { id: problem.id, category: "system", name: problem.title, link: "/system" } }))
   ];
@@ -357,7 +357,7 @@ test.describe("Dashboard tabs", () => {
       else await expect(kid).toBeVisible();
       await expect(page.getByRole("link", { name: /^www Torrenting/ })).toHaveCount(0);
       await expect(page.getByRole("group", { name: "Needs you" })).toHaveCount(0);
-      // A station with more titles than its rows hold ends with "and N more" to Transfers, as the mockup does.
+      // A station with more titles than its rows hold ends with "and N more" under In progress, as the mockup does.
       await expect(page.getByRole("region", { name: /^pipeline/i }).getByRole("link", { name: /^and [0-9]+ more/ }).first()).toHaveAttribute("href", "/queue");
       await expect(page.getByRole("region", { name: /^pipeline/i }).getByText(/in progress · all done by about/)).toBeVisible();
       // Space and standing facts are on System, not here.

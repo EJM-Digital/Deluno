@@ -186,7 +186,7 @@ test.describe("A film's releases", () => {
     }
   });
 
-  test("a download sent for the film lists under Sent to downloads with Open Transfers, which goes to Transfers", async ({ page }) => {
+  test("a download sent for the film lists under Sent to downloads with Open In progress, which goes to In progress", async ({ page }) => {
     await openMovie(page);
     const seeded = await api(page, "POST", "/api/testing/transfers/handoff", {
       libraryId, mediaType: "movies", entityId: movieId, releaseName: "Sintel.2010.1080p.WEB-DL-LIST", clientId, queueItemId: "69ca35bca234b9cb822abc435ddbababf6147591"
@@ -197,7 +197,7 @@ test.describe("A film's releases", () => {
       await untilQuiet(page);
       await page.getByRole("tab", { name: "History", exact: true }).click();
       await expect(page.getByText("Sintel.2010.1080p.WEB-DL-LIST").first()).toBeVisible();
-      await page.getByRole("link", { name: "Open Transfers", exact: true }).first().click();
+      await page.getByRole("link", { name: "Open In progress", exact: true }).first().click();
       await expect(page).toHaveURL(/\/queue/);
     } finally {
       await api(page, "POST", "/api/testing/transfers/clear");

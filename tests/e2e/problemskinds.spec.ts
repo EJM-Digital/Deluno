@@ -4,9 +4,9 @@ import { containerOf, docker, makeFilm, routeLibraryTo, setUpStack, until, type 
 
 /**
  * Group `problemskinds` (#1288, the queue area's "dismiss everywhere for the other kinds of problem"; `problems` covers a failed hand-off): a
- * held release and a leftover folder, each a problem Transfers counts, each shown in several places and each dismissed from the button on the
- * Transfers screen itself (not through the API). A leftover stands in Transfers (Needs attention) and in the bell (the attention summary); a
- * held release is Transfers' own (the bell lists only what no other screen does), in its list and on the open screen. Once dismissed it is
+ * held release and a leftover folder, each a problem In progress counts, each shown in several places and each dismissed from the button on the
+ * In progress screen itself (not through the API). A leftover stands under In progress (Needs attention) and in the bell (the attention summary); a
+ * held release is In progress' own (the bell lists only what no other screen does), in its list and on the open screen. Once dismissed it is
  * gone from every place within 15 seconds, with the screen open and nothing reloaded.
  *   - held release: a search finds a release that is usable but below the profile's cutoff, so Deluno holds it for a person's yes instead of
  *     sending it (the profile's cutoff is raised for the run and put back, and its size rules are loosened to one megabyte so the small test
@@ -31,7 +31,7 @@ test.beforeAll(async () => {
   stack = await setUpStack();
 });
 
-test("problems.dismiss-everywhere.leftover: A leftover folder stands in Transfers and the bell and clears from both when Keep is pressed on the Transfers screen", async ({ browser }) => {
+test("problems.dismiss-everywhere.leftover: A leftover folder stands under In progress and the bell and clears from both when Keep is pressed on the In progress screen", async ({ browser }) => {
   test.setTimeout(8 * 60_000);
   // A leftover is what a release Deluno grabbed left behind once nothing uses it: Deluno sends a release that no one serves (so the client holds
   // it and nothing is downloaded), the person tells Deluno to stop tracking it and takes it out of the client, and the folder it would have
@@ -40,7 +40,7 @@ test("problems.dismiss-everywhere.leftover: A leftover folder stands in Transfer
   const name = sent.film.release;
   const folder = `/downloads/completed/Movies/${name}`;
   const run = (script: string) => docker("exec", "-u", "1654", containerOf("qbittorrent"), "sh", "-c", script);
-  const row = (await until(`Transfers to list ${name}`, 120, async () => (await telemetryRows(stack)).find((r) => String(r.releaseName ?? "").includes(name)), 1000)).value;
+  const row = (await until(`In progress to list ${name}`, 120, async () => (await telemetryRows(stack)).find((r) => String(r.releaseName ?? "").includes(name)), 1000)).value;
   const forget = await stack.deluno.call<any>("POST", `/api/download-clients/${row.clientId}/queue/${encodeURIComponent(row.id)}/remove`, { reason: "forget" });
   expect(forget.status === 200 && forget.body?.succeeded, `Deluno stops tracking the send (HTTP ${forget.status}: ${forget.text.slice(0, 200)})`).toBeTruthy();
   await stack.qbittorrent.post("/api/v2/torrents/delete", { hashes: sent.film.infohash.toLowerCase(), deleteFiles: "false" });
@@ -56,7 +56,7 @@ test("problems.dismiss-everywhere.leftover: A leftover folder stands in Transfer
       const summary = await summaryText();
       const parsed = (() => { try { return JSON.parse(summary); } catch { return {}; } })();
       return {
-        "Transfers: Needs attention (leftover folders)": orphans.status === 200 && orphans.text.includes(name),
+        "In progress: Needs attention (leftover folders)": orphans.status === 200 && orphans.text.includes(name),
         "The bell (attention summary)": summary.includes(name) || (parsed.leftovers ?? 0) > before
       };
     };
@@ -70,10 +70,10 @@ test("problems.dismiss-everywhere.leftover: A leftover folder stands in Transfer
 
     // The row is on the open screen (it follows the server, so no reload is needed to see it).
     const keep = page.getByRole("button", { name: `Keep ${name}` });
-    await expect(keep, "The Transfers screen lists the leftover with its Keep button").toBeVisible({ timeout: 60_000 });
+    await expect(keep, "The In progress screen lists the leftover with its Keep button").toBeVisible({ timeout: 60_000 });
     const t0 = Date.now();
     await keep.click();
-    await expect(keep, "The row leaves the Transfers screen without a reload").toBeHidden({ timeout: 15_000 });
+    await expect(keep, "The row leaves the In progress screen without a reload").toBeHidden({ timeout: 15_000 });
     const clear = await until("every place to clear", 15, async () => (standing(await places()).length === 0 ? true : undefined), 500).catch(() => undefined);
     expect(clear !== undefined, `Every place clears within 15 s (${clear ? `after ${((Date.now() - t0) / 1000).toFixed(1)} s` : `still in: ${standing(await places()).join(" | ")}`})`).toBe(true);
     // Keep is a dismissal: the folder and its film are still on disk.
@@ -84,7 +84,7 @@ test("problems.dismiss-everywhere.leftover: A leftover folder stands in Transfer
   }
 });
 
-test("problems.dismiss-everywhere.held: A held release stands in Transfers' list and on its open screen and clears from both when Dismiss is pressed on the Transfers screen", async ({ browser }) => {
+test("problems.dismiss-everywhere.held: A held release stands under In progress' list and on its open screen and clears from both when Dismiss is pressed on the In progress screen", async ({ browser }) => {
   test.setTimeout(8 * 60_000);
   const library = (await stack.deluno.must<any[]>("GET", "/api/libraries")).find((l) => l.id === stack.libraryId)!;
   const profile = (await stack.deluno.must<any[]>("GET", "/api/quality-profiles")).find((p) => p.id === library.qualityProfileId)!;
@@ -113,24 +113,24 @@ test("problems.dismiss-everywhere.held: A held release stands in Transfers' list
 
     page = await openDeluno(browser, stack, "/queue");
     const dismiss = page.getByRole("button", { name: `Dismiss ${film.release}` });
-    // A held release is Transfers' own list (the bell lists only what no other screen does), so it stands in the list the screen reads and in
+    // A held release is In progress' own list (the bell lists only what no other screen does), so it stands in the list the screen reads and in
     // the row on the open screen, which follows the server with no reload.
     const places = async (): Promise<Record<string, boolean>> => {
       const rows = await stack.deluno.must<any[]>("GET", "/api/attention/held-releases");
       return {
-        "Transfers: the held-release list": rows.some((r) => String(r.releaseName).includes(film.release)),
-        "Transfers: the row on the open screen": (await dismiss.count()) > 0
+        "In progress: the held-release list": rows.some((r) => String(r.releaseName).includes(film.release)),
+        "In progress: the row on the open screen": (await dismiss.count()) > 0
       };
     };
-    await expect(dismiss, "The Transfers screen lists the held release with its Dismiss button").toBeVisible({ timeout: 60_000 });
+    await expect(dismiss, "The In progress screen lists the held release with its Dismiss button").toBeVisible({ timeout: 60_000 });
     const stood = await places();
-    expect(stood["Transfers: the held-release list"], `The release is held for a yes: ${JSON.stringify(held).slice(0, 300)}`).toBe(true);
+    expect(stood["In progress: the held-release list"], `The release is held for a yes: ${JSON.stringify(held).slice(0, 300)}`).toBe(true);
     expect(standing(stood).length, `The held release stands in two places: ${standing(stood).join(" | ")}`).toBe(2);
-    expect(await summaryText(), "The bell does not list a held release (Transfers does)").not.toContain(film.release);
+    expect(await summaryText(), "The bell does not list a held release (In progress does)").not.toContain(film.release);
 
     const t0 = Date.now();
     await dismiss.click();
-    await expect(dismiss, "The row leaves the Transfers screen without a reload").toBeHidden({ timeout: 15_000 });
+    await expect(dismiss, "The row leaves the In progress screen without a reload").toBeHidden({ timeout: 15_000 });
     const clear = await until("every place to clear", 15, async () => (standing(await places()).length === 0 ? true : undefined), 500).catch(() => undefined);
     expect(clear !== undefined, `Every place clears within 15 s (${clear ? `after ${((Date.now() - t0) / 1000).toFixed(1)} s` : `still in: ${standing(await places()).join(" | ")}`})`).toBe(true);
     // Dismissing answers the question; the film is still wanted and nothing was sent.

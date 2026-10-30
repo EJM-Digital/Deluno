@@ -56,7 +56,7 @@ All five nits are closed, and the pass turned up one real bug that was not cosme
 1. **Automation & recovery** — walked live end to end. It was the only converted page missing `chrome: "none"`, so the shell drew an H1 over a page that carries its own toolbar. Its failed-download form also never showed "Saved just now": the baseline was derived from loader `settings`, so between the save landing and the 10s revalidation returning it still compared dirty, and the effect that clears a stale status wiped the confirmation. The baseline is state now. "Recent cycles" counted 50 runs while rendering 12; it says "Latest 12 of 50 runs".
 2. **"TV shows" wrapping** — fixed in `SegmentedControl`: `flex-1` gives each segment a 0 basis, so any two-word label wrapped. Segments are `whitespace-nowrap`, and the label is "TV" to match the vocabulary `MediaTypeFilter` already uses.
 3. **Size rules length** — resolution bands collapse, with only 1080p and 2160p open by default and "Expand all" in the card header. A collapsed band still states its own span.
-4. **The summary strip** — promoted to `summary-strip.tsx` (`SummaryStrip`, 2–5 read-only cells). Nothing in it is a row and nothing opens a drawer, which is why it is not a `ListCard`. #111 puts Transfers, Dashboard and System on the same shape.
+4. **The summary strip** — promoted to `summary-strip.tsx` (`SummaryStrip`, 2–5 read-only cells). Nothing in it is a row and nothing opens a drawer, which is why it is not a `ListCard`. #111 puts In progress, Dashboard and System on the same shape.
 5. **Cramped low-quality bands** — the ruler is square-root scaled, and drawn. A per-band ruler was tried first and rejected: it fixed the slivers but silently changed scale at a band boundary, so "Remux 1080p · 12–60 GB" filled the track and "HDTV 2160p · 4–40 GB" one row below filled a third of it. One sqrt ruler for all 26 rows keeps the quality profile comparable end to end and still gives the bottom of the range room: the first low-quality bar went from 2.9% to 9%. `RangeAxis` draws the ticks (0 · 5 · 20 · 50 · 100 · 150 GB) under the column header, because an undrawn non-linear ruler is worse than a cramped linear one.
 6. **0 min and 0 max now reads as off** — empty track, both thumbs parked left, the row subtitled "any size". It used to fill the track end to end, since a max of 0 means unlimited; 0 *and* 0 is no rule at all, which is not the same thing. A tier switched off this way no longer drags its band's summary to "Unlimited".
 7. **The table is one grid** — the column header, the axis, the band rows and the tier rows all share `SIZE_GRID`, so a band's summary sits over the Min and Max columns it summarises instead of floating at the card edge. Per-band tier counts are gone.
@@ -83,7 +83,7 @@ Six more pages, one per commit, each verified live before committing.
 
 ## Operational pages and navigation — done
 
-**#111 closed.** Transfers ~2,600px → 620px (a six-stat hero, a path banner, seven metric tiles, a "next up" panel and nine panels → a strip and three cards). System Health 3,748px → 1,783px (five KPI cards carrying *hardcoded fake sparkline data*, plus a duplicate of the whole audit timeline the Activity tab already owns). Dashboard: cards with nothing in them are no longer rendered at all.
+**#111 closed.** In progress ~2,600px → 620px (a six-stat hero, a path banner, seven metric tiles, a "next up" panel and nine panels → a strip and three cards). System Health 3,748px → 1,783px (five KPI cards carrying *hardcoded fake sparkline data*, plus a duplicate of the whole audit timeline the Activity tab already owns). Dashboard: cards with nothing in them are no longer rendered at all.
 
 **Navigation.** Areas carry `tabsInToolbar`: when every page in an area has a toolbar with those items as tabs, the sidebar shows one row and the toolbar is the only way between siblings. The sidebar has **no expanders left**. "System & settings" split into **Preferences** (General · Interface · Notifications · Migration) and **System** (`/system/*`).
 
@@ -180,7 +180,7 @@ Everything left is media-side — roughly 5,400 lines across nine files. No sett
 
 ### Verification gaps
 
-- **Transfers' Downloads table and its drawer have never been seen with real data** — no download client is configured on this machine, so the queue is always empty.
+- **In progress' Downloads table and its drawer have never been seen with real data** — no download client is configured on this machine, so the queue is always empty.
 - Indexer, download-client, import-list and destination-rule drawers were verified when built but not re-exercised in the later sweeps, for the same reason.
 
 ### Navigation — done for five areas

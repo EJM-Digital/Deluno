@@ -1,6 +1,6 @@
 /**
  * A release a search held for review (#1159): usable, but not safe to send on its own, so a person says yes.
- * Transfers lists it under Needs action with the candidate and three answers.
+ * In progress lists it under Needs action with the candidate and three answers.
  *
  * - Approve asks the server to judge the release again and send it (it refuses with a plain reason when the title
  *   or episode no longer wants it or today's rules refuse that release), then stops listing it.

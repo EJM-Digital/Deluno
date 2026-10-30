@@ -1,7 +1,7 @@
 import type { ProcessorOutcomeRecord } from "./api";
 
 /**
- * How a hand-off's outcome report stands, in the words the Transfers drawer
+ * How a hand-off's outcome report stands, in the words the In progress drawer
  * uses (#580). Mirrors `ProcessorOutcomeDeliveries` in
  * `Deluno.Platform.Contracts`.
  */

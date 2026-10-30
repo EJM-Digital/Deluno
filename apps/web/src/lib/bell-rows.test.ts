@@ -127,7 +127,7 @@ describe("a pile of the same old problem is one row; a new one is its own row (#
     const pile = rows.media.find((row) => row.key === "pile:stuck")!;
     expect(pile.title).toBe("3 downloads have been stuck for over a day");
     expect(pile.count).toBe(3);
-    expect(pile.actions.map((action) => action.label)).toEqual(["Open Transfers"]);
+    expect(pile.actions.map((action) => action.label)).toEqual(["Open In progress"]);
     expect(rows.media.find((row) => row.title === "Show fresh")).toBeDefined();
   });
 

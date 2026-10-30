@@ -5,7 +5,7 @@ import { sharedSources } from "../lib/shared-sources";
 import { useCoalescedRefresh, useTransfersLiveEvents } from "./queue-live";
 
 /**
- * Transfers follows the server's pushes with no timer: each event reads again only the lists it can change, a burst reads them
+ * In progress follows the server's pushes with no timer: each event reads again only the lists it can change, a burst reads them
  * once, and a manual import's row moves only when the import job itself says it finished.
  */
 
@@ -46,7 +46,7 @@ beforeEach(() => {
   queryClient.clear();
 });
 
-describe("what each push reads again on Transfers", () => {
+describe("what each push reads again under In progress", () => {
   it("JobChanged reads the jobs list, and a failed job also reads the failed-jobs list", () => {
     const refresh = mount();
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");

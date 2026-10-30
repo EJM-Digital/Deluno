@@ -5,7 +5,7 @@
  * Nothing written since had been checked against it, because nothing in the
  * codebase stated it: every screen picked its own tone at the point of use, so
  * the same state could be — and was — three different colours at once. A
- * release ready to import was green in Transfers, grey in the pipeline strip
+ * release ready to import was green under In progress, grey in the pipeline strip
  * and blue on a library card. See `AUDIT-002-status-colours.md`.
  *
  * A state cannot be coloured twice if only one place colours it. That is the
@@ -60,7 +60,7 @@ export const STATUS_PRESENTATION = {
   // what separates it from a failure that will be tried again.
   "job.deadLetter": { tone: "warn", label: "Gave up" },
 
-  // ── Transfers and the acquisition pipeline ──────────────────────────────
+  // ── In progress and the acquisition pipeline ──────────────────────────────
   "transfer.queued": { tone: "info", label: "Queued" },
   "transfer.downloading": { tone: "info", label: "Downloading" },
   // Stopped, and it will not restart itself.
@@ -71,7 +71,7 @@ export const STATUS_PRESENTATION = {
   // A person stopped this, distinct from Queued, which is the client holding
   // it back on its own. Nothing happens until they resume it (#660/#661).
   "transfer.paused": { tone: "idle", label: "Paused" },
-  // Mid-pipeline, not finished — it was green in Transfers, which is the
+  // Mid-pipeline, not finished — it was green under In progress, which is the
   // colour for done, and grey in the pipeline strip, which is the colour for
   // nothing happening.
   "transfer.importReady": { tone: "info", label: "Ready to import" },
@@ -155,7 +155,7 @@ export function retentionMarkPresentation(state: string): StatusPresentation {
  *
  * A separate ladder from the operational tones above, and deliberately so.
  * Nothing on a poster is a failure or a machine's health — those live in
- * Transfers, Activity and Needs You — which is what frees red for *Missing* and
+ * In progress, Activity and Needs You — which is what frees red for *Missing* and
  * leaves amber meaning what it means everywhere else. Read the operational
  * table for a chip about the machinery; read this one for a mark on a title.
  *

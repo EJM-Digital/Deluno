@@ -1,5 +1,5 @@
 /**
- * Transfers — the live hand-off view, on the shared grammar.
+ * In progress — the live hand-off view, on the shared grammar.
  *
  *   PageToolbar  (Manual import)
  *   SummaryStrip (downloading · speed · ready to import · needs action · clients)
@@ -146,7 +146,7 @@ interface FolderScanRow {
 }
 
 /**
- * Transfers opens on the answers it already has and asks again behind them
+ * In progress opens on the answers it already has and asks again behind them
  * (#1081). Only the downloads and what was sent are waited for; everything else
  * fills in as it arrives, and a source that fails says so on the screen with a
  * Retry rather than taking the whole page to the error screen.
@@ -186,7 +186,7 @@ export const queueSources = defineSources({
 
 export const queueLoader = sourceLoader(queueSources);
 
-/** One row shape for the finished things a Transfers drawer can open. */
+/** One row shape for the finished things an In progress drawer can open. */
 interface ActivityEntry {
   id: string;
   kind: "import" | "processor" | "sent" | "client" | "health";
@@ -227,7 +227,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   const { preferences } = useDisplayPreferences();
   const queueColumns = useColumnVisibility("queue-screen.columns", QUEUE_OPTIONAL_COLUMNS);
 
-  // Transfers is live: pushes patch the lists this screen reads (queue-live.ts). Only the lists with no
+  // In progress is live: pushes patch the lists this screen reads (queue-live.ts). Only the lists with no
   // patch of their own are read again, once, after a burst; there is no timer and no Refresh.
   const refreshDispatches = useCoalescedRefresh([queueSources.dispatches.key, queueSources.telemetry.key, queueSources.activityEvents.key]);
   const refreshActivity = useCoalescedRefresh([queueSources.activityEvents.key]);
@@ -1700,7 +1700,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       >
         <div className="grid gap-(--grid-gap) p-(--card-pad-x)">
           <p className="max-w-3xl text-(length:--type-body-sm) leading-relaxed text-muted-foreground">
-            Transfers records why media failed, was blocked, or was removed. Deluno will not delete a client entry or payload just because a health check failed unless the matching safeguards are enabled.
+            In progress records why media failed, was blocked, or was removed. Deluno will not delete a client entry or payload just because a health check failed unless the matching safeguards are enabled.
           </p>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <PolicyFact label="Block release" enabled={settings.cleanupBlockReleaseAfterThreshold} />

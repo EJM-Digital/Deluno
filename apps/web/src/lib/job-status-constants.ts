@@ -45,7 +45,7 @@ export const isJobDeadLettered = (status: JobStatus): boolean =>
  *
  * <p>The backend writes "failed" for both, with the next attempt's time beside
  * it. Every import of a processed file failed once, because its first attempt
- * found the processor still finishing with the file, so Transfers, Activity and
+ * found the processor still finishing with the file, so In progress, Activity and
  * the sidebar each counted a failure for half a minute on an import that then
  * succeeded (#562).</p>
  */

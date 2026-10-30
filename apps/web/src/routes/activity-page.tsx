@@ -356,7 +356,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
     return groupEpisodeSearches(active, jobs.filter((job) => isJobSuccessful(job.status as JobStatus))).groups.find((group) => group.showId === openGroupId) ?? null;
   }, [jobs, openGroupId]);
 
-  // Processing, Download health and Download client are steps of their own, built from what Transfers reads (#1115).
+  // Processing, Download health and Download client are steps of their own, built from what In progress reads (#1115).
   // Each is read only while its step is chosen, so the page does not ask for them otherwise.
   const liveStep = isLiveStep(filters.type) ? filters.type : null;
   const handoffs = useQuery({
@@ -744,7 +744,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
               {/* The title above is cut to two lines on a phone; its full words are one tap away here. */}
               <DrawerFacts items={openLive.facts.some((fact) => fact.value === openLive.title) ? openLive.facts : [{ label: "Title", value: openLive.title }, ...openLive.facts]} />
               <Link to="/queue" onClick={() => setOpenLive(null)} className="mt-2 inline-block text-(length:--type-caption) font-semibold text-primary hover:underline">
-                Open Transfers
+                Open In progress
               </Link>
             </DrawerSection>
           </>

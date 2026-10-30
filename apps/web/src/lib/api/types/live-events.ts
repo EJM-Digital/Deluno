@@ -4,7 +4,7 @@ import type { DashboardSectionName, DashboardSummary, TurnedDownGroup } from "./
  * Payloads of the pushed Live events (#1097). Every one carries its own data: a
  * screen applies it as it arrives and never fetches after a nudge. The server
  * sends them to the "live" realtime subject, which a screen joins only while it
- * is on Live or Transfers (`useLiveWatching`, or any `useLiveEvent`), and that is
+ * is on Live or In progress (`useLiveWatching`, or any `useLiveEvent`), and that is
  * also how the server knows to ask the download clients every second.
  *
  * Mirrors src/Deluno.Contracts/LiveEvents.cs. Timestamps are ISO 8601.

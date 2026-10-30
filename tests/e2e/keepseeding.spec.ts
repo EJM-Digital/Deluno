@@ -13,7 +13,7 @@ import { readRules, restoreRules, setHealthRules } from "./stuck.ts";
  *   - one from "Golden private feed", an indexer the group adds and marks private; the rule says "Move it to the keep-seeding category
  *     and look for another copy". Activity says it was moved, to which category, on which client, and that Deluno is looking for another
  *     copy; the client (asked itself, not Deluno) still holds it, now in the keep-seeding category; its data is still on disk; it is gone
- *     from Transfers and stays gone through another check; nothing was removed; no problem is raised;
+ *     from In progress and stays gone through another check; nothing was removed; no problem is raised;
  *   - one from the public feed, struck by the same rule: removed from the client and replaced, exactly as before.
  * The private tracker is the fixture’s feed under another address (/private/api). The group puts the rule, the keep-seeding choices and the
  * indexer back at the end through Deluno’s own API. The category made in qBittorrent and Deluge stays in the client (Deluno never deletes one).
@@ -170,7 +170,7 @@ for (const kind of TORRENTS) {
     expect.soft(files.filter((f) => f.size > 0).length, `Its data is still on disk (${files.slice(0, 3).map((f) => `${f.path} (${f.size} bytes)`).join("; ")})`).toBeGreaterThan(0);
 
     const row = (await telemetryRows(stack)).find((r) => String(r.releaseName ?? "").includes(pf.release) || String(r.title ?? "").includes(pf.release));
-    expect.soft(row, `It is gone from Transfers, and stayed gone through another check${row ? `: still listed as '${row.status}'` : ""}`).toBeUndefined();
+    expect.soft(row, `It is gone from In progress, and stayed gone through another check${row ? `: still listed as '${row.status}'` : ""}`).toBeUndefined();
     const strikes = strikeLines(pf);
     expect.soft(strikes.length, `It was not struck again after the move (one strike line, the move): ${strikes.length} line(s): ${strikes.map((s) => s.actions.join("+")).join(" | ")}`).toBe(1);
     const problems = ((afterView?.problems ?? []) as any[]).filter((p) => String(p.releaseName ?? "").includes(pf.title));

@@ -318,7 +318,7 @@ export const RealtimeGroups = {
   Dashboard: "dashboard",
   Queue: "queue",
   Activity: "activity",
-  /** Joined only while Live or Transfers is open: tells the server someone is watching, so it reads the download clients every second (#1097). */
+  /** Joined only while Live or In progress is open: tells the server someone is watching, so it reads the download clients every second (#1097). */
   Live: "live",
   Library: (libraryId: string) => `library:${libraryId}`,
   /** One film or show: a title page joins this and hears only about its own title (#1179). */
@@ -837,7 +837,7 @@ export function useLiveEvent<T extends LiveEventName>(
 }
 
 /**
- * Marks this screen as watching Live or Transfers for as long as it is mounted,
+ * Marks this screen as watching Live or In progress for as long as it is mounted,
  * without listening for anything in particular (#1097). Use on a screen that
  * shows download progress through `useSignalREvent` but is not a `useLiveEvent` consumer.
  */

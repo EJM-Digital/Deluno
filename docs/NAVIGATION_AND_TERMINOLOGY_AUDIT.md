@@ -15,7 +15,7 @@ link.
 | Movies | Work with the movie collection. | Library, Wanted, Upgrades, Needs attention. Movie detail screens belong to the selected movie. |
 | TV Shows | Work with the TV collection. | Library, Wanted, Upgrades, Needs attention. Episode search and show detail belong to the selected show. |
 | Schedule | See releases and retry windows. | Calendar context only; it does not duplicate automation configuration. |
-| Transfers | Follow work moving through download, processing, import, and recovery. | Download progress, processing handoffs, import jobs, client history, and recovery are one lifecycle. |
+| In progress | Follow work moving through download, processing, import, and recovery. | Download progress, processing handoffs, import jobs, client history, and recovery are one lifecycle. |
 | Automation | Observe and control work Deluno is doing now. | Search runs, retries, queues, and per-library pauses. It is an operational screen, not the home for permanent policy. |
 | Activity | Read the durable record of what happened and why. | History only; it is not a live-control screen. |
 
@@ -43,7 +43,7 @@ link.
   observes, imports, routes, and recovers media around them.
 - **Only Deluno's own downloads** (decided 30 Sep 2026): Deluno only sees and
   acts on downloads it sent. Anything added to a download client outside Deluno
-  is invisible to it: not listed, counted, cleaned or touched on Transfers,
+  is invisible to it: not listed, counted, cleaned or touched under In progress,
   Queue, Health, clean-up or the API. A removal is refused for a download Deluno
   did not send.
 - **Queue removal permission** lives with Download clients. It only enables a

@@ -29,7 +29,7 @@ export function stuckRow(id: string, hours: number, over: Partial<AttentionSumma
     title: `Show ${id}`,
     text: "Not moving for 2 days.",
     to: "/queue",
-    action: "Open Transfers",
+    action: "Open In progress",
     sinceUtc,
     data: { id, clientId: "qb", clientName: "qBittorrent", title: `Show ${id}`, releaseName: `Show.${id}.1080p`, status: "stalled", errorMessage: null, healthFindings: [{ kind: "stalled", summary: "Not moving for 2 days." }], addedUtc: sinceUtc },
     ...over

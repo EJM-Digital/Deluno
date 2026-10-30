@@ -6,11 +6,11 @@ import type { DownloadClientTelemetrySnapshot, DownloadQueueItem, JobQueueItem, 
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { QueuePage } from "./queue-screen";
 
-/** Which view of Transfers the test opens (#1426): the hand-offs and imports moved off the live downloads. */
+/** Which view of In progress the test opens (#1426): the hand-offs and imports moved off the live downloads. */
 let viewEntry = "/queue";
 
 /**
- * Transfers: the words a row says. One row per download with its stage, its detail and a status chip, one row per import job
+ * In progress: the words a row says. One row per download with its stage, its detail and a status chip, one row per import job
  * with its stage and chip, and the connector's own chips. The words are what a person reads to know where a download is.
  */
 
@@ -96,7 +96,7 @@ afterEach(() => {
   queueLoaderData.processorHandoffs = [];
 });
 
-describe("Transfers: the Stage column says where each download is", () => {
+describe("In progress: the Stage column says where each download is", () => {
   it.each([
     ["handingOver", "Handing over"],
     ["handedOverElsewhere", "Another copy was handed over"],
@@ -145,7 +145,7 @@ describe("Transfers: the Stage column says where each download is", () => {
   });
 });
 
-describe("Transfers: the Status chip", () => {
+describe("In progress: the Status chip", () => {
   it.each([
     ["stalled", "Stalled"],
     ["paused", "Paused"],
@@ -177,7 +177,7 @@ describe("Transfers: the Status chip", () => {
   });
 });
 
-describe("Transfers: Import & naming rows", () => {
+describe("In progress: Import & naming rows", () => {
   beforeEach(() => { viewEntry = "/queue?view=handoffs"; });
   afterEach(() => { viewEntry = "/queue"; });
   const job = (overrides: Partial<JobQueueItem>) => ({
@@ -229,7 +229,7 @@ describe("Transfers: Import & naming rows", () => {
   });
 });
 
-describe("Transfers: the Processing connector card", () => {
+describe("In progress: the Processing connector card", () => {
   beforeEach(() => { viewEntry = "/queue?view=handoffs"; });
   afterEach(() => { viewEntry = "/queue"; });
   const connection = (overrides: Record<string, unknown>) => ({
@@ -251,7 +251,7 @@ describe("Transfers: the Processing connector card", () => {
   });
 });
 
-describe("Transfers: the summary strip cells", () => {
+describe("In progress: the summary strip cells", () => {
   const zeroSummary = {
     activeCount: 0, queuedCount: 0, completedCount: 0, stalledCount: 0,
     processingCount: 0, importReadyCount: 0, totalSpeedMbps: 0, totalUploadSpeedMbps: 0, waitingForProcessorCount: 0
@@ -334,7 +334,7 @@ describe("Transfers: the summary strip cells", () => {
   });
 });
 
-describe("Transfers: the Media pipeline table", () => {
+describe("In progress: the Media pipeline table", () => {
   it("the header counts the downloads in flight and the import jobs writing, in one line", () => {
     queueLoaderData.jobs = [{ id: "job-run", jobType: "filesystem.import.execute", label: "Import", source: "download-client", sourceLabel: "A download", status: "running", payloadJson: "{}", attempts: 1, maxAttempts: 5, nextAttemptUtc: null, createdUtc: "2026-10-14T01:00:00Z", scheduledUtc: "2026-10-14T01:00:00Z", startedUtc: null, completedUtc: null, leasedUntilUtc: null, workerId: null, lastError: null, relatedEntityType: null, relatedEntityId: null, idempotencyKey: null, dedupeKey: null } as unknown as JobQueueItem];
     showQueue([item("Count.Me.2026.1080p-GROUP")]);
@@ -359,7 +359,7 @@ describe("Transfers: the Media pipeline table", () => {
   });
 });
 
-describe("Transfers: the cleanup guardrails card", () => {
+describe("In progress: the cleanup guardrails card", () => {
   afterEach(() => {
     queueLoaderData.settings = emptyPlatformSettingsSnapshot;
   });

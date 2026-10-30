@@ -20,11 +20,11 @@ export interface AttentionSnapshot {
   deadLetteredJobs: number;
   indexerAlerts: number;
   /**
-   * What Transfers lists under Needs attention, other than failed import jobs,
+   * What In progress lists under Needs attention, other than failed import jobs,
    * which are already among the failed jobs (#556).
    */
   downloadsNeedingAction: number;
-  /** Failed import jobs, which Transfers lists beside the downloads. */
+  /** Failed import jobs, which In progress lists beside the downloads. */
   failedImportJobs: number;
   movieWanted: number;
   tvWanted: number;
@@ -60,7 +60,7 @@ const empty: AttentionSnapshot = {
  * Everything that genuinely needs a person, in one number: the bell's badge.
  * It used to read only failed jobs, so it said nothing beside a dead-lettered
  * import and an unhealthy search source (#250), and then beside twenty
- * downloads on Transfers asking for Try again or Dismiss (#556).
+ * downloads under In progress asking for Try again or Dismiss (#556).
  */
 export function attentionTotal(snapshot: Pick<AttentionSnapshot, "total">): number {
   return snapshot.total;
@@ -68,7 +68,7 @@ export function attentionTotal(snapshot: Pick<AttentionSnapshot, "total">): numb
 
 /**
  * Every source the count reads, all through the shared cache (#1081), so the
- * sidebar, Transfers, Activity and Find & Download read one answer instead of
+ * sidebar, In progress, Activity and Find & Download read one answer instead of
  * each asking. A read is a cache read whenever the answer is recent enough.
  */
 const ATTENTION_FRESH_MS = 30_000;
@@ -125,7 +125,7 @@ function snapshotFromCache(): AttentionSnapshot | null {
 /**
  * The sources a push can have moved, by the words the server names (#1179), or null when everything should be read
  * again (a word this list does not know, or one that can move several lists: a client or a download's journey).
- * Held releases are listed on Transfers, not in the bell, so they read nothing here.
+ * Held releases are listed under In progress, not in the bell, so they read nothing here.
  */
 export function attentionSourcesForReasons(reasons: readonly string[]): RouteSource<unknown>[] | null {
   const wanted = new Map<string, RouteSource<unknown>>();
@@ -182,7 +182,7 @@ export function useAttention() {
   /**
    * `force` asks the server again whatever the cache holds (an event said
    * something changed). The leftover-folders list is the one source the poll
-   * never asks for: it walks folders on the server, and Transfers, which shows
+   * never asks for: it walks folders on the server, and In progress, which shows
    * it, refreshes it while it is open. It is read here only if nothing has ever
    * read it.
    */
@@ -199,7 +199,7 @@ export function useAttention() {
         readFresh(sharedSources.indexers, force).catch(() => undefined),
         readFresh(sharedSources.movieWanted, force).catch(() => undefined),
         readFresh(sharedSources.seriesWanted, force).catch(() => undefined),
-        // The sources Transfers reads for Needs attention, so the two agree.
+        // The sources In progress reads for Needs attention, so the two agree.
         readFresh(sharedSources.movieRecovery, force).catch(() => undefined),
         readFresh(sharedSources.seriesRecovery, force).catch(() => undefined),
         readFresh(sharedSources.dispatches, force).catch(() => undefined),
@@ -240,7 +240,7 @@ export function useAttention() {
     return () => window.clearTimeout(timer);
   }, [load]);
 
-  // Whatever a screen reads and finds changed (Transfers finishing a leftover
+  // Whatever a screen reads and finds changed (In progress finishing a leftover
   // folder scan, Activity dismissing a failure) moves the count now, without a
   // request of its own.
   useEffect(() => {

@@ -7,7 +7,7 @@ import { serveLiveRig } from "./helpers/live-rig";
 import { untilQuiet } from "./helpers/settle";
 
 // Retakes the README's screenshots (#1122) from the same mock data the smoke
-// tests use: the Dashboard, Transfers and Activity come from serveLiveRig; the
+// tests use: the Dashboard, In progress and Activity come from serveLiveRig; the
 // library pages are real titles seeded into the disposable backend, with
 // artwork, quality and ratings added to the answers on the way to the browser.
 //
@@ -224,7 +224,7 @@ test.describe("README screenshots", () => {
 
     await shot("/", "dashboard-live", /pipeline/i);
     await shot("/?tab=system", "dashboard-system", /health/i);
-    // Transfers and Activity read best from the healthy busy board: things downloading, queued and imported.
+    // In progress and Activity read best from the healthy busy board: things downloading, queued and imported.
     const busy = await serveLiveBusy(page);
     const { json, at, host, queue, events } = busy as unknown as {
       json: (b: unknown) => never;

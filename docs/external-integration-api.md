@@ -694,7 +694,7 @@ A hand-off gets one completion report, sent once every file in it is finished �
 }
 ```
 
-Deluno checks `outputFiles` against what is actually there. A named file it cannot find is not passed over quietly: the hand-off records the problem, and it surfaces on the download in Transfers instead of being reported as a plain success.
+Deluno checks `outputFiles` against what is actually there. A named file it cannot find is not passed over quietly: the hand-off records the problem, and it surfaces on the download under In progress instead of being reported as a plain success.
 
 **Partial success.** When a processor only finishes some of a hand-off's files, it reports `status: "completed"` for the outputs it made when every file finished, or `status: "failed"` with a `message` giving the counts and `outputFiles` listing only the files that did succeed when some did not. Deluno still imports the files a failed report does name — a partial failure does not throw away the work the processor already did — and keeps the failure message so a person can see how many did not make it.
 

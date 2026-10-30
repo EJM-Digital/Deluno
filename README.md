@@ -25,7 +25,7 @@ It runs on Windows and in Docker. It is for one person, and your data stays on y
 
 <img src="screenshots/transfers.png" width="49%"> <img src="screenshots/activity.png" width="49%">
 
-*Transfers, and Activity: every search, grab, import and rename, in the order it happened*
+*In progress, and Activity: every search, grab, import and rename, in the order it happened*
 
 <img src="screenshots/quality.png">
 

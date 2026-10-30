@@ -118,7 +118,7 @@ const RECOVERY_CLEANUP_PREFERENCE_ROWS: Array<{
   description: string;
 }> = [
   { key: "stalledDownloadHandledEnabled", name: "Stalled/slow download handled", description: "A download that stopped progressing had a health rule's action applied to it." },
-  { key: "queueItemRemovedEnabled", name: "Queue item removed", description: "A download was removed from a client's queue, from Transfers." },
+  { key: "queueItemRemovedEnabled", name: "Queue item removed", description: "A download was removed from a client's queue, from In progress." },
   { key: "orphanedDownloadRemovedEnabled", name: "Orphaned download removed", description: "A completed download folder nothing claimed was removed." },
   { key: "forcedImportEnabled", name: "Forced re-download", description: "Someone forced a re-download of a title from its page." },
   { key: "strikesPurgedEnabled", name: "Download-health strikes purged", description: "Every recorded download-health strike was cleared in one go." },

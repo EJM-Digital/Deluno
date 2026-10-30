@@ -8,7 +8,7 @@ import { untilQuiet } from "../helpers/settle";
 /**
  * System > Health, the rows for stray items in a processor's output folder, against the real server, nothing stubbed
  * (measure 4, issue 1294). A real folder with a real stray media file and a real scrap file is set up through the real
- * library route; the screen lists them; Import (media only) lands on Transfers with the Manual import drawer open and the
+ * library route; the screen lists them; Import (media only) lands under In progress with the Manual import drawer open and the
  * path and media type already filled in; Clear moves the item to the recycle bin and the row goes.
  */
 

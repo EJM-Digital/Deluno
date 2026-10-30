@@ -7,7 +7,7 @@ import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { QueuePage } from "./queue-screen";
 
 /**
- * The views of the one Transfers page (#1426): live downloads, hand-offs and the history. Each view holds its own
+ * The views of the one In progress page (#1426): live downloads, hand-offs and the history. Each view holds its own
  * cards, the chips move between them and write the address, and a release name links to its indexer.
  */
 
@@ -118,7 +118,7 @@ beforeEach(() => {
   authedFetchMock.mockImplementation(() => reply());
 });
 
-describe("Transfers views", () => {
+describe("In progress views", () => {
   it("opens on the live downloads: the pipeline and the cleanup guardrails, and none of the hand-off cards", () => {
     show("/queue");
 

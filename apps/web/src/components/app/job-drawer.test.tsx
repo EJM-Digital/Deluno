@@ -27,19 +27,19 @@ function show(job: JobQueueItem, onRetry?: (job: JobQueueItem) => void) {
 
 // #1151: the "Import a download / Gave up" row showed only Dismiss and Close.
 describe("JobDrawer for a job that gave up", () => {
-  it("offers Try again for an import, and a fix link to Transfers, beside Dismiss", () => {
+  it("offers Try again for an import, and a fix link to In progress, beside Dismiss", () => {
     const onRetry = vi.fn();
     show(gaveUp, onRetry);
 
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(onRetry).toHaveBeenCalledWith(gaveUp);
-    expect(screen.getByRole("link", { name: "Fix it in Transfers" })).toHaveAttribute("href", "/queue");
+    expect(screen.getByRole("link", { name: "Fix under In progress" })).toHaveAttribute("href", "/queue");
     expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
   });
 
   it("still links to the fix for a job that is not an import, with no Try again", () => {
     show({ ...gaveUp, jobType: "library.scan" } as JobQueueItem, vi.fn());
     expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Fix it in Transfers" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Fix under In progress" })).toBeInTheDocument();
   });
 });

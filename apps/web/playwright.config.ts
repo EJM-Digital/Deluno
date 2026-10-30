@@ -88,7 +88,7 @@ export default defineConfig({
         Testing__EnableLargeLibrarySeedEndpoint: "true",
         // #1178 — lets realtime-dashboard-live.spec.ts make the server raise events.
         Testing__EnableRealtimePushEndpoint: "true",
-        // Lets the real Transfers specs start from a sent download and its hand-off (TransfersSeedTestEndpoints).
+        // Lets the real In progress specs start from a sent download and its hand-off (TransfersSeedTestEndpoints).
         Testing__EnableTransfersSeedEndpoint: "true",
         // Lets the real show-page spec start from a show with episodes and searches (SeriesSeedTestEndpoints).
         Testing__EnableSeriesSeedEndpoint: "true",

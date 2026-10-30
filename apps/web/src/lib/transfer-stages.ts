@@ -7,7 +7,7 @@ import type { FailedDownloadRow } from "./needs-action";
  *
  * A single download can leave a trail of records as it moves: a processor
  * hand-off, an import job and, if it went wrong, a failure. Each used to get
- * its own row in its own Transfers table, so one film showed three times. Every
+ * its own row in its own In progress table, so one film showed three times. Every
  * record is reduced to the names, paths and ids that identify its download, and
  * a download is shown only in the table for where it is now: a problem wins over
  * the import stage, and the import stage wins over the processor's.

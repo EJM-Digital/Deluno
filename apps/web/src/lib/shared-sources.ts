@@ -23,7 +23,7 @@ import type { RouteSource } from "./route-cache";
 /**
  * Sources that more than one screen reads (#1081).
  *
- * The sidebar counts, Transfers, Activity and Find & Download all ask for the
+ * The sidebar counts, In progress, Activity and Find & Download all ask for the
  * same lists. Each one used to fetch its own copy; here they are named once,
  * under one cache key each, so whichever asks first pays and the rest read the
  * answer (and the request that is already on its way).

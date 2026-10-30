@@ -79,7 +79,7 @@ export function SpeedCell({ samples, summary }: { samples: DownloadThroughputSam
     <BandCard
       label="Speed"
       to="/queue"
-      linkName="Transfers: Speed"
+      linkName="In progress: Speed"
       aside={aside}
       figure={
         <>

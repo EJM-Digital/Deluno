@@ -604,7 +604,7 @@ test.describe("dashboard workflow", () => {
     await expect(page.getByText("Change the folders, sources, download clients, plans, and rules Deluno uses.", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Check health, keep backups, install updates, and manage advanced access.", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Guided configuration for your media library, quality policy, automation, and runtime behaviour.").first()).toBeVisible();
-    await page.getByRole("link", { name: "Transfers" }).click();
+    await page.getByRole("link", { name: "In progress" }).click();
     await expect(page.getByText("Downloads, hand-offs to the processor, and the record of what happened", { exact: true })).toBeVisible();
     await expect(page.getByText("Control room", { exact: true })).toHaveCount(0);
   });
@@ -944,10 +944,10 @@ test.describe("dashboard workflow", () => {
     await authenticateAndNavigate(page, "/queue");
 
     await expect(page.getByRole("heading", { name: "Media pipeline" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Transfers" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "In progress" })).toBeVisible();
   });
 
-  test("points from Transfers to Activity for the history", async ({ page }) => {
+  test("points from In progress to Activity for the history", async ({ page }) => {
     await authenticateAndNavigate(page, "/queue");
 
     // A real click: on a page this short the link sits where the sidebar account menu's flyout opens, and the closed

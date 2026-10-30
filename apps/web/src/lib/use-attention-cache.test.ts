@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 /**
  * #1081: the sidebar counts read through the shared cache. They never hold up
  * a screen change, they show the last count at once on a return, and the
- * leftover-folders walk (which Transfers refreshes while it is open) is not part
+ * leftover-folders walk (which In progress refreshes while it is open) is not part
  * of the 45 second poll.
  */
 const mocks = vi.hoisted(() => ({ calls: [] as string[] }));

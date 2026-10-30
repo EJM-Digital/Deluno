@@ -7,11 +7,11 @@ import type { HeldReleaseRow } from "../lib/held-releases";
 import { QueuePage } from "./queue-screen";
 import { readyRouteSources } from "../test/route-sources";
 
-/** Which view of Transfers the test opens (#1426): the hand-offs and imports moved off the live downloads. */
+/** Which view of In progress the test opens (#1426): the hand-offs and imports moved off the live downloads. */
 let viewEntry = "/queue";
 
 /**
- * Transfers, drawer by drawer and row by row: what an integration failure says, what Preview import sends and shows, the words
+ * In progress, drawer by drawer and row by row: what an integration failure says, what Preview import sends and shows, the words
  * for a download the processor is working on or has delivered, the processor's own stage line, a failed Manual import, the
  * link System > Health opens it with, and the screen when its sources cannot be read.
  */
@@ -297,7 +297,7 @@ describe("Manual import, when the server refuses", () => {
   });
 });
 
-describe("the link System > Health opens Transfers with", () => {
+describe("the link System > Health opens In progress with", () => {
   it("opens Manual import already filled in with the path and media type, and takes the two words out of the address", async () => {
     let address = "";
     const { Routes, Route, useLocation } = await import("react-router-dom");
@@ -331,7 +331,7 @@ describe("the link System > Health opens Transfers with", () => {
   });
 });
 
-describe("Transfers when its data cannot be read", () => {
+describe("In progress when its data cannot be read", () => {
   it("says which list could not be read, with the reason, and a Retry that reads again; once it can, the message goes", async () => {
     sourcesState = {
       ...readyRouteSources(queueLoaderData, revalidateMock),
@@ -416,7 +416,7 @@ describe("a release held for approval: Find another", () => {
   });
 });
 
-describe("Transfers while the processor is not answering", () => {
+describe("In progress while the processor is not answering", () => {
   beforeEach(() => { viewEntry = "/queue?view=handoffs"; });
   afterEach(() => { viewEntry = "/queue"; });
   const handoff = {

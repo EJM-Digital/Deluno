@@ -6,7 +6,7 @@ import { api, expectNoErrorScreen, openScreen } from "../helpers/real";
 import { untilQuiet } from "../helpers/settle";
 
 /**
- * Transfers with a processor hand-off in every state it has, against the real server and the real databases, nothing stubbed
+ * In progress with a processor hand-off in every state it has, against the real server and the real databases, nothing stubbed
  * (measure 4). Each starting record is written by the same repository calls the work planner makes, through the smoke host's
  * seeding route (TransfersSeedTestEndpoints, only mapped when the smoke process opts in); what the screen then reads, what
  * each drawer offers and every button it presses go through the real routes. The seeding is taken out again at the end, so
@@ -30,10 +30,10 @@ async function openTransfers(page: Page, address = "/queue") {
   await expectNoErrorScreen(page);
 }
 
-/** The row of a release, wherever Transfers lists it. */
+/** The row of a release, wherever In progress lists it. */
 const rowOf = (page: Page, release: string) => page.getByRole("row").filter({ hasText: release }).first();
 
-test.describe("Transfers, with hand-offs to a processor", () => {
+test.describe("In progress, with hand-offs to a processor", () => {
   test.describe.configure({ mode: "serial" });
   test.setTimeout(120_000);
 
@@ -127,7 +127,7 @@ test.describe("Transfers, with hand-offs to a processor", () => {
     await expect.poll(async () => (await api<Array<{ id: string; status: string }>>(page, "GET", "/api/integrations/processors/handoffs?take=50")).body.filter((h) => h.status === "accepted").length).toBe(0);
   });
 
-  test("a failed hand-off reads Processing failed, a timed-out one Timed out and one whose download was gone Download gone, the same on Transfers and on the Dashboard", async ({ page }) => {
+  test("a failed hand-off reads Processing failed, a timed-out one Timed out and one whose download was gone Download gone, the same under In progress and on the Dashboard", async ({ page }) => {
     await openScreen(page, "/queue");
     await seed(page, { releaseName: "Words.Failed.2023.1080p-GRP", status: "failed", failureMessage: "Weir refused the hand-off." });
     await seed(page, { releaseName: "Words.Timed.2023.1080p-GRP", status: "timed-out", failureMessage: "Weir never answered." });

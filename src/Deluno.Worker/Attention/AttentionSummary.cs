@@ -180,7 +180,7 @@ public static class AttentionSummaryBuilder
                 $"stuck:{item.ClientId}:{item.Id}", Media, "stuck",
                 item.Status == DownloadQueueStatuses.Stalled || !string.IsNullOrWhiteSpace(item.ErrorMessage) ? Bad : Warn,
                 string.IsNullOrWhiteSpace(item.Title) ? item.ReleaseName : item.Title,
-                StuckReason(item), "/queue", "Open Transfers", 1, item.LastActivityUtc ?? item.AddedUtc, item));
+                StuckReason(item), "/queue", "Open In progress", 1, item.LastActivityUtc ?? item.AddedUtc, item));
         }
 
         foreach (var item in cases)
@@ -188,7 +188,7 @@ public static class AttentionSummaryBuilder
             rows.Add(new AttentionRow(
                 $"recovery:{item.MediaType}:{item.Id}", Media, "recovery", Warn, item.Title,
                 $"{(item.MediaType == "movie" ? "Movies" : "TV")}: {item.Summary}",
-                "/queue", "Open Transfers", 1, item.DetectedUtc, item));
+                "/queue", "Open In progress", 1, item.DetectedUtc, item));
         }
 
         foreach (var job in failedImportJobs)
@@ -196,7 +196,7 @@ public static class AttentionSummaryBuilder
             rows.Add(new AttentionRow(
                 $"import:{job.Id}", Media, "import", Bad, "An import didn’t finish",
                 string.IsNullOrWhiteSpace(job.LastError) ? "It stopped without saying why." : PlainFailure(job.LastError, "The import"),
-                "/queue", "Open Transfers", 1, job.CompletedUtc ?? job.CreatedUtc, new { id = job.Id }));
+                "/queue", "Open In progress", 1, job.CompletedUtc ?? job.CreatedUtc, new { id = job.Id }));
         }
 
         foreach (var handoff in failedHandoffs)
@@ -207,7 +207,7 @@ public static class AttentionSummaryBuilder
                 string.IsNullOrWhiteSpace(handoff.FailureMessage)
                     ? $"{processor ?? "The processor"} could not finish it."
                     : PlainFailure(handoff.FailureMessage, $"Sending it to {processor ?? "the processor"}"),
-                "/queue", "Open Transfers", 1, handoff.UpdatedUtc, new
+                "/queue", "Open In progress", 1, handoff.UpdatedUtc, new
                 {
                     id = handoff.Id,
                     releaseName = handoff.ReleaseName,
@@ -304,7 +304,7 @@ public static class AttentionSummaryBuilder
                 new { id = problem.Id, category = problem.Category, name = problem.Name, link }));
         }
 
-        // A job that gave up is one Retry row. A failed import is on Transfers, and a job Deluno will try again by
+        // A job that gave up is one Retry row. A failed import is under In progress, and a job Deluno will try again by
         // itself is not a problem. Split by where each is cleared (#1114).
         var stopped = source.FailedJobs
             .Where(job => job.JobType != ImportJobType && IsFailed(job.Status) && !IsRetrying(job))

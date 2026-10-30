@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
 
-// #1179: Transfers changes by itself. The page joins the hub, and a download's
+// #1179: In progress changes by itself. The page joins the hub, and a download's
 // progress and a sent download's stage reach the screen with no reload and no
 // Refresh button. Only the two REST lists (the downloads and what was sent) are stubbed; the pushes
 // are raised by the server through the Testing-only endpoints
@@ -49,7 +49,7 @@ async function server(page: Page, path: string, body?: unknown) {
   }, { path, body });
 }
 
-test.describe("Transfers is live (#1179)", () => {
+test.describe("In progress is live (#1179)", () => {
   test("a download's progress and a sent download's stage change with no reload", async ({ page, isMobile }) => {
     // A phone shows a download's name and state; progress, speed and the reason are columns it hides, so there the check is that
     // the value changed on the page, not that it is on screen.

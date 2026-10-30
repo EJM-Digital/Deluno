@@ -34,8 +34,8 @@ describe("detailFields", () => {
 });
 
 describe("fixLinkForActivity", () => {
-  it("links a failed hand-off to Transfers", () => {
-    expect(fixLinkForActivity("processing.submission-failed")).toEqual({ to: "/queue", label: "Fix it in Transfers" });
+  it("links a failed hand-off under In progress", () => {
+    expect(fixLinkForActivity("processing.submission-failed")).toEqual({ to: "/queue", label: "Fix under In progress" });
   });
 
   it("links nothing for an entry that did not fail", () => {

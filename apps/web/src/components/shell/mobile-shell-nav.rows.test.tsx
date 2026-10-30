@@ -27,15 +27,15 @@ const moreTab = () => within(tabs()).getByRole("button", { name: "More destinati
 /** The bar marks the tab it is on with a short rule across its top; the More tab also turns its text darker. */
 const marked = (element: HTMLElement) => element.querySelector("[aria-hidden].absolute.top-1") !== null;
 
-describe("the Transfers tab's dot (#1329)", () => {
+describe("the In progress tab's dot (#1329)", () => {
   it("shows a red pulsing dot while jobs have failed, and no dot while none have", () => {
     const quiet = renderAt("/");
-    const quietLink = within(tabs()).getByRole("link", { name: /Transfers/ });
+    const quietLink = within(tabs()).getByRole("link", { name: /In progress/ });
     expect(quietLink.querySelector(".bg-state-danger")).toBeNull();
     quiet.unmount();
 
     renderAt("/", { ...calm, failedJobs: 2 });
-    const link = within(tabs()).getByRole("link", { name: /Transfers/ });
+    const link = within(tabs()).getByRole("link", { name: /In progress/ });
     const dot = link.querySelector(".bg-state-danger");
     expect(dot).not.toBeNull();
     expect(dot!.className).toContain("animate-pulse");

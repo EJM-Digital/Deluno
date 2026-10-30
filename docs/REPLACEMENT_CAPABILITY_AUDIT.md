@@ -12,12 +12,12 @@ Mature transfer engines remain integrations until Deluno's own equivalent is pro
 
 | Legacy product | User job worth preserving | Deluno shape | Current status / governing issue |
 | --- | --- | --- | --- |
-| Radarr | Manage movies, quality targets, upgrades, candidates, import, rename, calendar, and history | Movies is a first-class library surface; plans and Transfers explain the acquisition path | Foundation exists; canonical policy and supported-flow proof remain #88 and #93 |
+| Radarr | Manage movies, quality targets, upgrades, candidates, import, rename, calendar, and history | Movies is a first-class library surface; plans and In progress explain the acquisition path | Foundation exists; canonical policy and supported-flow proof remain #88 and #93 |
 | Sonarr | Manage shows, episodes/seasons, missing episodes, upgrades, manual import, calendar, and history | TV is a first-class library surface sharing the same policy and transfer story as Movies | Foundation exists; supported-flow proof remains #93 |
 | Prowlarr | Configure, test, tag, route, and diagnose search sources across media apps | Connections owns sources, download clients, routing, testing, and health | Existing foundation; app/profile parity and real provider proof are part of #93 |
 | SABnzbd / torrent clients | Perform the actual transfer, protocol work, queueing, repair/unpack, category and seeding management | External download-client connection with telemetry, dispatch, queue actions, and guarded cleanup | Keep as integration by default; do not claim full replacement until #93 and #78 evidence |
 | Huntarr | Revisit missing or below-goal media safely and automatically | Explainable search cycles with schedule, budget, backoff, pause, retry, and title overrides | #90 |
-| CleanUpArr | Identify unhealthy downloads, strike them, safely clean owned data, and request a replacement | Download health and cleanup policy within Transfers, Activity, title details, and plans | #95 |
+| CleanUpArr | Identify unhealthy downloads, strike them, safely clean owned data, and request a replacement | Download health and cleanup policy within In progress, Activity, title details, and plans | #95 |
 | Recyclarr / Configarr / TRaSH Guides | Apply reusable quality, size, custom-format, naming, and media-management guidance with a safe update story | Bundled curated Media Plan preferences: scenario first, visible provenance/diff, local overrides, and rollback | #88 |
 | Radarr / Sonarr Import Lists | Turn trusted watchlists and curated lists into managed titles without accidental library damage | Import Lists feed titles into the same library/plan/automation model as manual add | Existing fetch foundation; completion and safety work #100 |
 
@@ -50,9 +50,9 @@ Every stage must state the next action and its reason. A title discovered from a
 
 ## Usability rules
 
-- Use familiar terms where they reduce onboarding cost: **Import Lists**, **Search sources**, **Download clients**, **Quality**, **Custom formats**, **Transfers**, and **Activity**.
+- Use familiar terms where they reduce onboarding cost: **Import Lists**, **Search sources**, **Download clients**, **Quality**, **Custom formats**, **In progress**, and **Activity**.
 - Explain those terms in plain language in the moment rather than forcing Arr knowledge.
-- Keep routine daily work in Dashboard, Movies, TV, Transfers, and Activity. Keep configuration decisions in Library setup.
+- Keep routine daily work in Dashboard, Movies, TV, In progress, and Activity. Keep configuration decisions in Library setup.
 - Present scenarios and safe defaults first; preserve granular controls under a clear advanced path.
 - Never report fabricated health, capacity, activity, queue, or historical data. Unknown and not configured are valid states and must be shown honestly.
 - Make destructive actions previewable, attributable, opt-in, and constrained to data Deluno can prove it owns.

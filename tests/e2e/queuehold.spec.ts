@@ -5,7 +5,7 @@ import { blockedFor, clientPaused, filesOnDisk, openDownload, pressAction, remov
 import { setUpStack, until, type Stack } from "./stack.ts";
 
 /**
- * Group `queuehold` (Transfers, "In the client" and "Remove from client"): on a real download in each of the five clients, on the
+ * Group `queuehold` (In progress, "In the client" and "Remove from client"): on a real download in each of the five clients, on the
  * real screen in a real browser, Pause pauses it and Resume starts it again, each as the client's own API shows; then "Just stop
  * tracking it" makes Deluno forget the download while the client keeps it, running as it was, and its files untouched.
  */
@@ -59,10 +59,10 @@ for (const kind of CLIENT_KINDS) {
       }, 1000).catch(() => undefined);
       expect(closed, "Deluno closed its record of the send (the film is free for a new one)").toBeTruthy();
       expect(await clientHolds(stack, kind, film), `${kind} still holds the download`).toBe(true);
-      // #1356: it is outside Deluno's view now, so Transfers no longer lists it, though the client still holds it.
-      const gone = await until(`Transfers to stop listing ${film.release}`, 60, async () =>
+      // #1356: it is outside Deluno's view now, so In progress no longer lists it, though the client still holds it.
+      const gone = await until(`In progress to stop listing ${film.release}`, 60, async () =>
         !(await telemetryRows(stack)).some((r) => String(r.releaseName ?? "").includes(film.release) || String(r.title ?? "").includes(film.title)), 1000).catch(() => undefined);
-      expect(gone, "Transfers no longer lists the download Deluno stopped tracking").toBeTruthy();
+      expect(gone, "In progress no longer lists the download Deluno stopped tracking").toBeTruthy();
       expect(await filesOnDisk(film.title), `${kind}'s files are untouched (${filesBefore} before)`).toBeGreaterThanOrEqual(filesBefore);
       expect((await blockedFor(stack, film.release)).length, "Nothing is blocklisted").toBe(0);
       const lines = await activityLines(stack, film.title);

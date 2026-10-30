@@ -6,13 +6,13 @@ import { expectNoErrorScreen, openScreen, recordRequests } from "../helpers/real
 import { untilQuiet } from "../helpers/settle";
 
 /**
- * Transfers (the Queue screen) against the real server, nothing stubbed (measure 4, issue 1270): the empty state,
+ * In progress (the Queue screen) against the real server, nothing stubbed (measure 4, issue 1270): the empty state,
  * the safeguards it states, and Manual import with a real file on this machine's disk.
  * A populated queue needs a download client with a real download in it, which this disposable host does not have:
  * that state is proven on the golden VM scenarios, not here.
  */
 
-test.describe("Transfers", () => {
+test.describe("In progress", () => {
   test("with nothing sent to a download client the screen says so in words and every counter is there", async ({ page }) => {
     await openScreen(page, "/queue");
     await untilQuiet(page);

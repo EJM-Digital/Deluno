@@ -1,5 +1,5 @@
 /**
- * The views of the one Transfers page (#1426): live downloads, the hand-offs to the processor and the
+ * The views of the one In progress page (#1426): live downloads, the hand-offs to the processor and the
  * imports, and the history of what happened. The view is in the address (`/queue?view=history&status=failed`),
  * so a link lands on it; no `view` is the live downloads. The old Activity address (`/activity?...`) opens
  * the history with its own parameters kept.
