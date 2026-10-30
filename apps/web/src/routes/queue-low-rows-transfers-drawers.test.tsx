@@ -430,4 +430,17 @@ describe("Transfers: the transfer details drawer of a failed send", () => {
     const drawer = await screen.findByRole("dialog");
     expect(await within(drawer).findByText("Transfer details unavailable")).toBeVisible();
   });
+
+  it("Dismiss this download stops counting a failed send, closes the drawer and says so (#1270)", async () => {
+    const d = dispatch();
+    openDispatch(d, { dispatch: d, timeline: [] });
+
+    const drawer = await screen.findByRole("dialog");
+    fireEvent.click(await within(drawer).findByRole("button", { name: "Dismiss" }));
+
+    await waitFor(() => expect(calls("/api/v1/download-dispatches/d1?reason=dismissed")).toHaveLength(1));
+    expect(authedFetchMock.mock.calls.find(([url]) => String(url) === "/api/v1/download-dispatches/d1?reason=dismissed")?.[1]).toMatchObject({ method: "DELETE" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
 });
+

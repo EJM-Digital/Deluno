@@ -301,3 +301,29 @@ describe("Resync now and Out of sync", () => {
     expect(onChanged).toHaveBeenCalled();
   });
 });
+
+describe("the by-hand subtitle search dialog: Close and Choose a file (#1270)", () => {
+  it("Close manual subtitle search closes the dialog without sending anything", async () => {
+    mocks.fetchJson.mockResolvedValue([]);
+    const onOpenChange = vi.fn();
+    render(<SubtitleManualSearchDialog open onOpenChange={onOpenChange} basePath="/api/movies/m1" language="en" />);
+    await screen.findByText(/No provider offered/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Close manual subtitle search" }));
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("Choose a file opens the file picker for the upload box", async () => {
+    mocks.fetchJson.mockResolvedValue([]);
+    render(<SubtitleManualSearchDialog open onOpenChange={vi.fn()} basePath="/api/movies/m1" language="en" />);
+    await screen.findByText(/No provider offered/);
+    const input = screen.getByLabelText("Upload a EN subtitle file") as HTMLInputElement;
+    const click = vi.spyOn(input, "click");
+
+    fireEvent.click(screen.getByRole("button", { name: "Choose a file…" }));
+
+    expect(click).toHaveBeenCalledTimes(1);
+  });
+});

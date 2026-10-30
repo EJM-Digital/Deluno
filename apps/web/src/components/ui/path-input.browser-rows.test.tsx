@@ -130,3 +130,19 @@ describe("PathInput: Stop waiting (low rows)", () => {
     expect(screen.queryByRole("button", { name: "Stop waiting" })).toBeNull();
   });
 });
+
+describe("PathInput: Advanced (#1270)", () => {
+  it("Advanced opens the server folder browser at once, and the typed path box edits the value", async () => {
+    vi.stubGlobal("location", { hostname: "192.168.1.10" });
+    listing({ "": roots });
+    const onChange = vi.fn();
+    render(<PathInput value="" onChange={onChange} />);
+
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "/media" } });
+    expect(onChange).toHaveBeenCalledWith("/media");
+
+    fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
+    expect(await screen.findByText("Use typed path")).toBeInTheDocument();
+    expect(await screen.findByText("Computer roots")).toBeInTheDocument();
+  });
+});
