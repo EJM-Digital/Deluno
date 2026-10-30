@@ -139,8 +139,7 @@ public static class SensitiveDataRedactor
             case JsonValueKind.False:
                 writer.WriteBooleanValue(false);
                 break;
-            case JsonValueKind.Null:
-            case JsonValueKind.Undefined:
+            default: // null (a parsed document has no undefined values)
                 writer.WriteNullValue();
                 break;
         }

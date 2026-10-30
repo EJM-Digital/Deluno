@@ -46,6 +46,13 @@ public static class DownloadIntegrityFileResolver
     /// </list>
     /// </summary>
     public static IReadOnlyList<string> Resolve(string sourcePath)
+        => Resolve(
+            sourcePath,
+            folder => Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories),
+            path => new FileInfo(path).Length);
+
+    /// <summary>The same, with the folder listing and the size read handed in so a share that drops mid-listing can be tested.</summary>
+    internal static IReadOnlyList<string> Resolve(string sourcePath, Func<string, IEnumerable<string>> listFiles, Func<string, long> sizeOf)
     {
         if (File.Exists(sourcePath))
         {
@@ -59,10 +66,10 @@ public static class DownloadIntegrityFileResolver
 
         try
         {
-            return Directory.EnumerateFiles(sourcePath, "*", SearchOption.AllDirectories)
+            return listFiles(sourcePath)
                 .Where(SupportedVideoExtensions.Contains)
                 .Where(path => !LooksLikeSample(path))
-                .Select(path => (Path: path, Size: TryGetLength(path)))
+                .Select(path => (Path: path, Size: TryGetLength(path, sizeOf)))
                 .OrderByDescending(entry => entry.Size)
                 .Select(entry => entry.Path)
                 .ToArray();
@@ -75,11 +82,11 @@ public static class DownloadIntegrityFileResolver
         }
     }
 
-    private static long TryGetLength(string path)
+    private static long TryGetLength(string path, Func<string, long> sizeOf)
     {
         try
         {
-            return new FileInfo(path).Length;
+            return sizeOf(path);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
