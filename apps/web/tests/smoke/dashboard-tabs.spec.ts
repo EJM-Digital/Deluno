@@ -348,7 +348,7 @@ test.describe("Dashboard tabs", () => {
       // Only titles that are moving are on the journey, each with its library title; a station with too many to fit ends with an and-N-more link.
       await expect(page.getByRole("link", { name: /^Oppenheimer \(2023\): 88%/ })).toBeVisible();
       await expect(page.getByRole("link", { name: /^Sintel \(2010\): Cleaner is working on it/ })).toBeVisible();
-      await expect(page.getByRole("link", { name: /^Shogun: Asked for in Seerr · looking/ })).toBeVisible();
+      await expect(page.getByRole("link", { name: /^Shogun: Asked for in Seerr · checking/ })).toBeVisible();
       await expect(page.getByRole("link", { name: /^Coherence \(2013\): in the library/ })).toBeVisible();
       // A stopped download is not a problem card: it stays on the journey, after the downloads that are moving, so
       // on a busy board it is one of the "and N more" (named in that link's list) or a card of its own.

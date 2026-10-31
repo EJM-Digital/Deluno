@@ -14,6 +14,11 @@ vi.mock("./use-signalr", () => ({
   useSignalREvent: () => undefined
 }));
 vi.mock("./failed-jobs", () => ({ fetchFailedJobs: () => { mocks.calls.push("failed-jobs"); return Promise.resolve([]); } }));
+// The In progress badge counts held releases too (#1448); their source reads through ./api/client, not the ./api mocked below.
+vi.mock("./held-releases", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./held-releases")>();
+  return { ...actual, heldReleasesSource: { ...actual.heldReleasesSource, fetch: () => { mocks.calls.push("/api/attention/held-releases"); return Promise.resolve([]); } } };
+});
 vi.mock("./api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./api")>()),
   ApiRequestError: class ApiRequestError extends Error {},

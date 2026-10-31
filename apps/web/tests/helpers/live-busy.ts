@@ -188,6 +188,8 @@ export async function serveLiveBusy(page: Page) {
       { mediaType: "movie", entityId: "m29", title: "Perfect Days", status: "search-failed", requestedBy: "Alex", createdUtc: importAt(300), updatedUtc: importAt(300) },
       { mediaType: "movie", entityId: "m26", title: "Past Lives", status: "available", requestedBy: "Sam", createdUtc: importAt(500), updatedUtc: importAt(170) }
     ],
+    // The Seerr request whose search is running now (#1442): only a running search is on the Searching lane.
+    searching: [{ entityType: "series", entityId: "s5", title: "Shogun", startedBy: "missing", label: "Asked for in Seerr · checking 5 indexers", startedUtc: importAt(1) }],
     retentionReclaimBytes: 38e9,
     cleanedUpToday: 3,
     // Every release looked at and not taken today, by plain reason, and the newest ones.
