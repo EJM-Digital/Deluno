@@ -81,6 +81,10 @@ internal static class DownloadClientHelpers
     internal static async Task<string> GetUTorrentTokenAsync(HttpClient http, CancellationToken cancellationToken)
     {
         var html = await http.GetStringAsync("gui/token.html", cancellationToken);
+        // uTorrent 3.6 answers <html><div id='token' style='display:none;'>TOKEN</div></html>: the token is the text of the div (read
+        // from the recorded page, #1329). Taking everything between the first > and the last < sent the whole div as the token.
+        var div = System.Text.RegularExpressions.Regex.Match(html, "<div[^>]*>(?<token>[^<]*)</div>", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline, TimeSpan.FromSeconds(1));
+        if (div.Success) return div.Groups["token"].Value.Trim();
         var start = html.IndexOf('>');
         var end = html.LastIndexOf('<');
         return start >= 0 && end > start ? html[(start + 1)..end].Trim() : string.Empty;

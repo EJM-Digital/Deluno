@@ -115,6 +115,7 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
             if (listed is not null)
             {
                 await TryLabelAsync(http, token, listed, DownloadClientHelpers.ResolveCategory(client, request), cancellationToken);
+                successMessage += await TryAddPausedAsync(http, token, listed, client, cancellationToken);
             }
 
             return DownloadClientHelpers.GrabSuccess(client, request, successMessage) with { ExternalId = knownHash };
@@ -130,6 +131,7 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
         }
 
         await TryLabelAsync(http, token, added, DownloadClientHelpers.ResolveCategory(client, request), cancellationToken);
+        successMessage += await TryAddPausedAsync(http, token, added, client, cancellationToken);
         return DownloadClientHelpers.GrabSuccess(client, request, successMessage) with { ExternalId = added.ToLowerInvariant() };
     }
 
@@ -155,6 +157,24 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// "Add downloads paused" (#1329): uTorrent's add verbs have no paused option, so a torrent the client has just taken is stopped
+    /// once it is listed. A stop that does not go through leaves the torrent running and says so in the grab's message.
+    /// </summary>
+    private static async Task<string> TryAddPausedAsync(HttpClient http, string token, string hash, DownloadClientItem client, CancellationToken cancellationToken)
+    {
+        if (!client.AddPaused) return string.Empty;
+        try
+        {
+            using var stopped = await http.GetAsync($"gui/?token={Uri.EscapeDataString(token)}&action=stop&hash={Uri.EscapeDataString(hash)}", cancellationToken);
+            return stopped.IsSuccessStatusCode ? " It was added stopped, as this client is set to add downloads paused." : " uTorrent would not stop it, so it is running.";
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return " uTorrent would not stop it, so it is running.";
+        }
     }
 
     /// <summary>
