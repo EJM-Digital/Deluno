@@ -9,8 +9,8 @@ name: Mutation (weekly)
 
 on:
   schedule:
-    # Every night, 15:00 UTC: a quiet hour (GitHub-hosted runners are free for a public repository).
-    - cron: "0 15 * * 6"
+  # Saturdays, 11:17 UTC (Saturday 22:17 Sydney, AEDT). Capped at 12 parallel jobs. Off the top of the hour. GitHub may start a scheduled run late on busy days.
+    - cron: "17 11 * * 6"
   workflow_dispatch:
 
 concurrency:
@@ -53,6 +53,7 @@ jobs:
     timeout-minutes: 350
     strategy:
       fail-fast: false
+      max-parallel: 9
       matrix: ${{ fromJSON(needs.matrix.outputs.dotnet) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -89,6 +90,7 @@ jobs:
     timeout-minutes: 340
     strategy:
       fail-fast: false
+      max-parallel: 3
       matrix:
         include:
           - name: web

@@ -6,8 +6,8 @@ name: Dependency audit
 
 on:
   schedule:
-    # Mondays, 19:23 UTC.
-    - cron: "23 19 * * 1"
+  # Sundays, 09:23 UTC (Sunday 20:23 Sydney, AEDT). Off the top of the hour. GitHub may start a scheduled run late on busy days.
+    - cron: "23 9 * * 0"
   workflow_dispatch:
 
 permissions:
