@@ -1,6 +1,6 @@
 /* Turned down today (#1098): the mockup's reason bars, rule for rule, mapped to the app's tokens. */
 .ltd-bars { flex: 1 1 0; min-height: 0; padding: 2px 18px 12px; display: grid; grid-auto-rows: min-content; gap: 8px; align-content: space-between; overflow: hidden; }
-.ltd-br { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; font-size: 12.5px; color: hsl(var(--foreground)); cursor: pointer; border-radius: 6px; padding: 3px 4px; margin: -3px -4px; }
+.ltd-br { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; font-size: var(--type-caption); color: hsl(var(--foreground)); cursor: pointer; border-radius: 6px; padding: 3px 4px; margin: -3px -4px; }
 .ltd-br:hover { background: hsl(var(--surface-2)); }
 .ltd-br:focus-visible, .ltd-more:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
 .ltd-br.zero { color: hsl(var(--muted-foreground)); }
@@ -10,5 +10,5 @@
 .ltd-tr i { display: block; height: 100%; border-radius: 9px; background: var(--c); transition: width .7s cubic-bezier(.2, .8, .2, 1), box-shadow .3s; }
 .ltd-br[data-hit] .ltd-tr i { box-shadow: 0 0 12px var(--c); }
 .ltd-br[data-hit] .ltd-num { color: var(--c); }
-.ltd-more { font-size: 11.5px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
+.ltd-more { font-size: var(--type-micro); color: hsl(var(--muted-foreground)); white-space: nowrap; }
 .ltd-more:hover { color: hsl(var(--foreground)); }

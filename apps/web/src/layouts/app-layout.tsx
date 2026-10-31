@@ -796,7 +796,7 @@ function SidebarItem({
           </span>
           {rail ? null : <span className="min-w-0 flex-1 whitespace-nowrap">{item.label}</span>}
           {count > 0 ? (
-            <span title={countTitle} aria-hidden={rail || undefined} className={cn("flex h-[calc(var(--shell-pill-height)*0.42)] min-w-[calc(var(--shell-pill-height)*0.42)] shrink-0 items-center justify-center rounded-full px-1.5 text-(length:--shell-nav-badge-size) font-bold tabular-nums", rail && "absolute right-[8px] top-[2px] h-[15px] min-w-[15px] px-1 text-[length:9px]", isActive ? "bg-(--nav-accent) text-background" : "bg-surface-2 text-muted-foreground")}>
+            <span title={countTitle} aria-hidden={rail || undefined} className={cn("flex h-[calc(var(--shell-pill-height)*0.42)] min-w-[calc(var(--shell-pill-height)*0.42)] shrink-0 items-center justify-center rounded-full px-1.5 text-(length:--shell-nav-badge-size) font-bold tabular-nums", rail && "absolute right-[8px] top-[2px] h-[15px] min-w-[15px] px-1 text-(length:--type-micro)", isActive ? "bg-(--nav-accent) text-background" : "bg-surface-2 text-muted-foreground")}>
               {count}
             </span>
           ) : null}

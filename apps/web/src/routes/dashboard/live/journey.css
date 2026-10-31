@@ -40,15 +40,15 @@
 .lj-dot svg { width: 12px; height: 12px; }
 /* A label never runs into its icon: the text may shrink and ends in an ellipsis, the stage's name kept whole before the count (it shortens only when it alone does not fit). */
 .lj-text { display: flex; flex: 0 1 auto; gap: 6px; align-items: baseline; justify-content: center; white-space: nowrap; min-width: 0; overflow: hidden; line-height: 1.25; }
-.lj-nm { flex: 0 0 auto; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
-.lj-ct { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; font-weight: 700; color: hsl(var(--foreground)); font-variant-numeric: tabular-nums; }
+.lj-nm { flex: 0 0 auto; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-weight: 600; font-size: var(--type-control); color: hsl(var(--foreground)); }
+.lj-ct { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--type-caption); font-weight: 700; color: hsl(var(--foreground)); font-variant-numeric: tabular-nums; }
 .lj-empty { opacity: 0.55; }
 .lj-active { background: color-mix(in srgb, var(--lj-st) 24%, transparent); }
 .lj-active::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(100deg, transparent 30%, hsl(0 0% 100% / 0.1) 50%, transparent 70%); animation: lj-sheen 2.6s linear infinite; }
 
 .lj-lanes { position: relative; margin: 0 12px; flex: 1 1 0; min-height: 0; overflow: hidden; }
 .lj-lane-bg { position: absolute; top: 0; bottom: 0; border-left: 1px dashed var(--lj-divider); pointer-events: none; }
-.lj-calm { position: absolute; left: 0; right: 0; top: 0; height: var(--lj-card-h, 86px); display: flex; align-items: center; padding: 0 8px; font-size: 13px; color: var(--lj-muted); }
+.lj-calm { position: absolute; left: 0; right: 0; top: 0; height: var(--lj-card-h, 86px); display: flex; align-items: center; padding: 0 8px; font-size: var(--type-control); color: var(--lj-muted); }
 
 /* A card: the poster is 2:3 and 17px shorter than the card at every size, so its width is (card - 17) / 1.5. */
 .lj-token {
@@ -71,12 +71,12 @@
 .lj-poster { display: block; width: calc(var(--lj-poster-h, 69px) / 1.5); height: var(--lj-poster-h, 69px); border-radius: 6px; overflow: hidden; }
 .lj-poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
 /* A title's poster, 2:3, filling the box it is in. Where there is no picture it is the title's initials on a tinted tile (Weir's tile), the tint set by --tile-hue. */
-.lj-tile { position: relative; display: flex; width: 100%; height: 100%; box-sizing: border-box; align-items: flex-end; justify-content: center; padding-bottom: 6%; overflow: hidden; border-radius: 6px; background: linear-gradient(160deg, hsl(var(--tile-hue, 210) 45% 34%), hsl(calc(var(--tile-hue, 210) + 40) 50% 14%)); font-size: 10px; font-weight: 700; letter-spacing: 0.04em; color: hsl(0 0% 100% / 0.88); }
+.lj-tile { position: relative; display: flex; width: 100%; height: 100%; box-sizing: border-box; align-items: flex-end; justify-content: center; padding-bottom: 6%; overflow: hidden; border-radius: 6px; background: linear-gradient(160deg, hsl(var(--tile-hue, 210) 45% 34%), hsl(calc(var(--tile-hue, 210) + 40) 50% 14%)); font-size: var(--type-micro); font-weight: 700; letter-spacing: 0.04em; color: hsl(0 0% 100% / 0.88); }
 .lj-body { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 /* Title, status and bar keep their height whatever is under them, so the room left for the detail lines is what is measured. */
 .lj-body > * { flex: none; }
-.lj-t { font-weight: 600; font-size: clamp(13px, calc(var(--lj-card-h, 86px) * 0.15), 15px); line-height: 1.25; display: -webkit-box; -webkit-line-clamp: var(--lj-title-lines, 2); -webkit-box-orient: vertical; overflow: hidden; color: hsl(var(--foreground)); }
-.lj-s { font-size: 11.5px; line-height: 1.2; color: var(--lj-muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+.lj-t { font-weight: 600; font-size: var(--type-body-sm); line-height: 1.25; display: -webkit-box; -webkit-line-clamp: var(--lj-title-lines, 2); -webkit-box-orient: vertical; overflow: hidden; color: hsl(var(--foreground)); }
+.lj-s { font-size: var(--type-micro); line-height: 1.2; color: var(--lj-muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
 .lj-s-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .lj-s b { color: var(--lj-st); font-weight: 600; }
 .lj-s-warn { color: var(--lj-warning); }
@@ -90,12 +90,12 @@
 .lj-pulse { display: inline-block; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--lj-st); margin-right: 5px; animation: lj-blink 1.2s ease-in-out infinite; }
 /* The detail block: what matters at this stage, as many whole lines as the card's height holds (detail-fit.ts). */
 .lj-body > .lj-x { flex: 1 1 0; }
-.lj-x { display: grid; gap: 2px; align-content: start; margin-top: 6px; font-size: 11.5px; color: var(--lj-muted); min-height: 0; overflow: hidden; }
+.lj-x { display: grid; gap: 2px; align-content: start; margin-top: 6px; font-size: var(--type-micro); color: var(--lj-muted); min-height: 0; overflow: hidden; }
 .lj-xl { line-height: 1.2; display: flex; justify-content: space-between; gap: 8px; white-space: nowrap; overflow: hidden; }
 .lj-xl > span:first-child { overflow: hidden; text-overflow: ellipsis; }
 .lj-xl b { color: hsl(var(--foreground)); font-weight: 600; }
-.lj-rel { font-family: ui-monospace, Consolas, monospace; font-size: 10.5px; color: hsl(var(--muted-foreground)); }
-.lj-more { position: absolute; font-size: 12px; line-height: 14px; color: var(--lj-primary); text-decoration: none; }
+.lj-rel { font-family: ui-monospace, Consolas, monospace; font-size: var(--type-micro); color: hsl(var(--muted-foreground)); }
+.lj-more { position: absolute; font-size: var(--type-caption); line-height: 14px; color: var(--lj-primary); text-decoration: none; }
 .lj-more:hover { text-decoration: underline; }
 .lj-more:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; border-radius: 4px; }
 
