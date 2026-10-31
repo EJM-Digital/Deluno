@@ -138,6 +138,7 @@ $needVm = $scope.NeedVm
 $runUpdate = $scope.RunUpdate
 $runGithubPicker = $scope.RunGithubPicker
 $runGuide = $scope.RunGuide
+$runServiceReboot = $scope.RunServiceReboot
 
 
 if ($ListOnly) {
@@ -570,13 +571,17 @@ function Invoke-GithubPickerPhase {
 # installs the clients and Weir), and then the suite's runner walks the guide in the VM, in the signed-in desktop session.
 $guideId = 'guided-setup.walk'
 $guideTitle = 'The installed Windows app is set up end to end through the guided setup in the browser: clients and Weir connected, every question answered, the baseline created, and the libraries, the Weir workflows and the folder chain checked against the real apps'
-function New-GuideFailureRecord([string] $Why) {
-    [pscustomobject]@{ id = $guideId; title = $guideTitle; status = 'fail'; seconds = 0; error = $null; notes = @()
+function New-GuideFailureRecord([string] $Why, [string] $ScenarioId = $guideId) {
+    [pscustomobject]@{ id = $ScenarioId; title = $(if ($ScenarioId -eq $guideId) { $guideTitle } else { $ScenarioId }); status = 'fail'; seconds = 0; error = $null; notes = @()
         checks = @([pscustomobject]@{ name = 'The guided-setup walk could run'; ok = $false; detail = $Why }) }
 }
 
 function Invoke-GuidePhase {
-    $guideDir = Join-Path $OutDirectory 'guide-phase'
+    # Also runs service.starts-clients-after-reboot (#1452) on a clean machine of its own: that scenario restarts the VM, so the poll below
+    # lives through the PowerShell Direct session going away and coming back, and the startup task in the VM writes the finished record.
+    param([string] $ScenarioId = $guideId)
+    $reboots = ($ScenarioId -ne $guideId)
+    $guideDir = Join-Path $OutDirectory $(if ($reboots) { 'service-reboot-phase' } else { 'guide-phase' })
     New-Item -ItemType Directory -Force -Path $guideDir | Out-Null
     try {
         Write-Host 'Guide phase: restoring the clean checkpoint and installing the way a person does, then walking the guide in the browser...' -ForegroundColor Cyan
@@ -595,21 +600,23 @@ function Invoke-GuidePhase {
         $guideHarnessFile = Join-Path $guideDir ("golden-path-{0}-{1}.md" -f $Version, (Get-Date -Format 'yyyy-MM-dd'))
         $rows = @(Read-HarnessRows -File $guideHarnessFile)
         $bad = @($rows | Where-Object { $_.Status -eq 'failed' } | ForEach-Object { $_.Step })
-        if ($rows.Count -eq 0) { return (New-GuideFailureRecord "The install wrote no results file at $guideHarnessFile.") }
-        if ($bad.Count -gt 0) { return (New-GuideFailureRecord "The install did not finish cleanly: $($bad -join '; ').") }
+        if ($rows.Count -eq 0) { return (New-GuideFailureRecord "The install wrote no results file at $guideHarnessFile." $ScenarioId) }
+        if ($bad.Count -gt 0) { return (New-GuideFailureRecord "The install did not finish cleanly: $($bad -join '; ')." $ScenarioId) }
 
         $rigG = New-PSSession -ComputerName $RigHost -Credential (Import-Clixml $RigCredentialFile)
         try {
             $vmCredG = Import-Clixml $VmCredentialFile
             Send-BundleToVm -Session $rigG -Name $VmName -Credential $vmCredG -Bundle $bundle
-            $runArgs3 = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\golden\suite\vm\Run-Suite.ps1" -Root "C:\golden\suite" -FreshInstall -Scenarios guided-setup.walk'
+            $runArgs3 = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\golden\suite\vm\Run-Suite.ps1" -Root "C:\golden\suite" -FreshInstall -Scenarios ' + $ScenarioId
             Invoke-InVmVia -Session $rigG -Name $VmName -Credential $vmCredG -ArgumentList @('GoldenGuideRun', $runArgs3) -Block $startTaskBlock | Out-Null
             Write-Host 'Guide phase: the walk is running in the VM...' -ForegroundColor Cyan
             $deadline = (Get-Date).AddMinutes(60)
             $done = $null
             while ((Get-Date) -lt $deadline -and $null -eq $done) {
                 Start-Sleep -Seconds 20 # reason: poll interval inside a loop bounded by its deadline
-                $done = Invoke-InVmVia -Session $rigG -Name $VmName -Credential $vmCredG -Block { $f = 'C:\golden\suite\results\done.flag'; if (Test-Path $f) { (Get-Content -Raw $f).Trim() } else { $null } }
+                # While the VM restarts the session is gone: that is not an answer, so the poll goes on until it is back.
+                try { $done = Invoke-InVmVia -Session $rigG -Name $VmName -Credential $vmCredG -Block { $f = 'C:\golden\suite\results\done.flag'; if (Test-Path $f) { (Get-Content -Raw $f).Trim() } else { $null } } }
+                catch { if (-not $reboots) { throw }; $done = $null; $rigG = New-PSSession -ComputerName $RigHost -Credential (Import-Clixml $RigCredentialFile) -ErrorAction SilentlyContinue }
             }
             $json = Invoke-InVmVia -Session $rigG -Name $VmName -Credential $vmCredG -Block { $f = 'C:\golden\suite\results\results.json'; if (Test-Path $f) { Get-Content -Raw $f } else { $null } }
             try {
@@ -628,16 +635,16 @@ function Invoke-GuidePhase {
                 finally { Invoke-Command -Session $rigG -ArgumentList $st -ScriptBlock { param($d) Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue } }
             }
             catch { [void]$warnings.Add("Collecting the guide phase's logs failed: $($_.Exception.Message)") }
-            if ($null -eq $done) { return (New-GuideFailureRecord 'The guide walk did not finish within 60 minutes.') }
+            if ($null -eq $done) { return (New-GuideFailureRecord 'The guide walk did not finish within 60 minutes.' $ScenarioId) }
             $parsed = $null
             if ($json) { try { $parsed = $json | ConvertFrom-Json } catch { } }
-            $rec = @($parsed.scenarios) | Where-Object { $_.id -eq $guideId } | Select-Object -First 1
-            if (-not $rec) { return (New-GuideFailureRecord "The guide walk reported no result (it ended: $done).") }
+            $rec = @($parsed.scenarios) | Where-Object { $_.id -eq $ScenarioId } | Select-Object -First 1
+            if (-not $rec) { return (New-GuideFailureRecord "The guide walk reported no result (it ended: $done)." $ScenarioId) }
             return $rec
         }
         finally { Remove-PSSession $rigG -ErrorAction SilentlyContinue }
     }
-    catch { return (New-GuideFailureRecord "The guide phase stopped: $($_.Exception.Message)") }
+    catch { return (New-GuideFailureRecord "The guide phase stopped: $($_.Exception.Message)" $ScenarioId) }
 }
 
 # The update phase (#1256) runs after the groups (only the GitHub picker follows it, #1368), after the groups, the log collection and the after-suite script, and depends on nothing
@@ -755,6 +762,11 @@ function Invoke-UpdatePhase {
 
 if ($runGuide) {
     $reported = @($reported) + @(Invoke-GuidePhase)
+}
+
+# Restarts the VM, so it runs on a clean machine of its own after the groups (#1452), and the groups that follow the service group are not cut short.
+if ($runServiceReboot) {
+    $reported = @($reported) + @(Invoke-GuidePhase -ScenarioId 'service.starts-clients-after-reboot')
 }
 
 if ($runUpdate) {

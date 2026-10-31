@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Runs the scenario suite inside the golden-path VM, unattended, in the signed-in desktop session (golden path scenario suite).
 
@@ -89,7 +89,7 @@ try {
         # A group none of whose scenarios was chosen sets nothing up.
         if (-not (Test-AnyScenarioSelected -Ids $group.Ids)) { continue }
         # The update phase is run by the host after the groups, on a machine of its own (Invoke-ScenarioSuite.ps1, Run-Update.ps1).
-        if ($group.Host -and -not ($FreshInstall -and $group.Name -eq 'guide')) { continue }
+        if ($group.Host -and -not ($FreshInstall -and $group.Name -in 'guide', 'servicereboot')) { continue }
         Write-SuiteLog "=== group $($group.Name)"
         try { & $group.Function }
         catch {
