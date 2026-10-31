@@ -230,6 +230,10 @@ function Invoke-UpdateInApp {
             Add-Note $(if ($again.Data) { "A second check after the download answered '$($again.Data.message)', state $($again.Data.status.state), restartRequired $($again.Data.status.restartRequired). From the next release a second check keeps the downloaded update waiting for the restart; the previous release this phase installs predates that." } else { "A second check answered $($again.Status)" })
 
             # Restart to update.
+            # The backup the Backups page makes, taken now, to compare with the one the update takes.
+            $zipsBefore = @(Get-BackupFiles)
+            $manual = Try-Deluno -Method POST -Path '/api/backups' -Body @{ reason = 'manual' } -TimeoutSec 300
+            $manualZip = @(Get-BackupFiles | Where-Object { $_ -notin $zipsBefore } | Select-Object -First 1)
             $backupsBefore = Get-BackupListText
             $began = Get-Date
             $rs = Try-Deluno -Method POST -Path '/api/updates/restart-now' -TimeoutSec 600
@@ -243,6 +247,13 @@ function Invoke-UpdateInApp {
             Add-Note ("Back {0:N0} s after Restart to update was pressed." -f ((Get-Date) - $began).TotalSeconds)
             $after = Get-BackupListText
             Add-Check 'A "pre-update" backup is in the backups the new build lists' ($after -match 'pre-update') (($after -replace '\s+', ' ').Substring(0, [math]::Min(300, $after.Length)))
+            # The backups folder names a file by its time, not its reason: the update's is the one that is neither there before nor the manual one.
+            $preZip = @(Get-BackupFiles | Where-Object { $_ -notin $zipsBefore -and ($manualZip.Count -eq 0 -or $_ -ne $manualZip[0]) } | Select-Object -First 1 | ForEach-Object { Get-Item -LiteralPath (Join-Path (Join-Path (Join-Path $env:LOCALAPPDATA 'DelunoData') 'backups') $_) })
+            $zipEntries = { param($path) Add-Type -AssemblyName System.IO.Compression.FileSystem; $z = [IO.Compression.ZipFile]::OpenRead($path); try { @($z.Entries | ForEach-Object { $_.FullName } | Sort-Object) } finally { $z.Dispose() } }
+            $manualPath = if ($manualZip.Count) { Join-Path (Join-Path (Join-Path $env:LOCALAPPDATA 'DelunoData') 'backups') $manualZip[0] } else { $null }
+            $same = $false; $detail = 'no manual backup or no pre-update backup file'
+            if ($manualPath -and $preZip.Count -and (Test-Path $manualPath)) { $e1 = & $zipEntries $manualPath; $e2 = & $zipEntries $preZip[0].FullName; $same = ($e1.Count -gt 0 -and ($e1 -join '|') -eq ($e2 -join '|')); $detail = "manual $($manualZip[0]): $($e1.Count) files; pre-update $($preZip[0].Name): $($e2.Count) files" }
+            Add-Check 'The pre-update backup holds the same files as the backup the Backups page makes' $same $detail
             $s2 = Get-UpdateStatus
             Add-Check 'The new build is on the same feed with nothing newer to apply' ($s2 -and $s2.currentVersion -like "*$CandidateVersion*" -and -not $s2.restartRequired) $(if ($s2) { "current $($s2.currentVersion), restartRequired $($s2.restartRequired)" } else { 'no status' })
             # #1376: the Windows updater records the update like the Docker path does: the version on the Updates card with its
@@ -544,5 +555,43 @@ function Invoke-UpdateTrayMenu {
             Add-Note $(if ($new.Count -gt 0) { "The tray's Restart to update took a pre-update backup: $($new -join ', ')." } else { "The previous release's tray menu Restart to update took NO pre-update backup (the Updates page route does); fixed in the build after rc.30.35." })
         }
         finally { Stop-UpdateFeed $feed }
+    }
+}
+
+# The installed copy's own uninstall, run the way Windows runs it from Apps (Velopack's Update.exe), silently.
+function Invoke-DelunoUninstall {
+    $dir = Join-Path $env:LOCALAPPDATA 'Deluno'
+    $updateExe = Join-Path $dir 'Update.exe'
+    if (-not (Test-Path $updateExe)) { return [pscustomobject]@{ Ok = $false; Detail = 'no Update.exe in the install folder' } }
+    $p = Start-Process -FilePath $updateExe -ArgumentList '--uninstall', '--silent' -PassThru
+    $done = $p.WaitForExit(300000)
+    [pscustomobject]@{ Ok = ($done -and $p.ExitCode -eq 0); Detail = "exit $(if ($done) { $p.ExitCode } else { 'none (timed out)' })" }
+}
+
+function Invoke-UninstallKeepsData {
+    Invoke-Scenario -Id 'uninstall.keeps-data' -Title 'Uninstalling Deluno removes the program but keeps the data folder (databases, secrets, backups) and the settings file' -Body {
+        $ctx = Start-PreviousForUpdate -CandidateVersion 'no-candidate-here'
+        if (-not $ctx) { return }
+        # A backup, so the folder holds one of everything the row names.
+        $backup = Try-Deluno -Method POST -Path '/api/backups' -Body @{ reason = 'manual' } -TimeoutSec 300
+        Add-Check 'A backup was taken before the uninstall' ($backup.Status -eq 200) "HTTP $($backup.Status)"
+        $data = Join-Path $env:LOCALAPPDATA 'DelunoData'
+        $config = Join-Path $env:LOCALAPPDATA 'DelunoConfig\deluno.json'
+        $quit = Quit-DelunoFromTray
+        Add-Check 'Deluno is quit before the uninstall' ($quit -and @(Get-DelunoProcess).Count -eq 0) ''
+        $kept = @(Get-ChildItem -Path $data -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in '.db', '.zip' -or $_.FullName -match 'protection-keys' } | ForEach-Object { $_.FullName.Substring($data.Length) })
+        Add-Check 'The data folder holds databases, a backup and the protection keys' (@($kept | Where-Object { $_ -match '\.db$' }).Count -ge 3 -and @($kept | Where-Object { $_ -match '\.zip$' }).Count -ge 1 -and @($kept | Where-Object { $_ -match 'protection-keys' }).Count -ge 1) "$($kept.Count) files"
+        $configBefore = if (Test-Path $config) { (Get-FileHash $config -Algorithm SHA256).Hash } else { $null }
+        $installFolder = Join-Path $env:LOCALAPPDATA 'Deluno'
+        $r = Invoke-DelunoUninstall
+        Add-Check 'The uninstaller (Update.exe --uninstall --silent) finished' $r.Ok $r.Detail
+        $gone = Wait-Until -TimeoutSec 120 -IntervalSec 2 -Condition { -not (Test-Path (Join-Path $installFolder 'current\Deluno.exe')) }
+        Add-Check 'The program is gone: no Deluno.exe in the install folder and no Deluno process' ($gone.Ok -and @(Get-DelunoProcess).Count -eq 0) ''
+        $now = @(Get-ChildItem -Path $data -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName.Substring($data.Length) })
+        $lost = @($kept | Where-Object { $_ -notin $now })
+        Add-Check 'The data folder is kept: every database, backup and protection key is still there' ($kept.Count -gt 0 -and $lost.Count -eq 0) $(if ($lost.Count) { 'lost: ' + ($lost -join ', ') } else { "$($kept.Count) files kept" })
+        Add-Check 'The settings file is kept as it was' ($null -ne $configBefore -and (Test-Path $config) -and (Get-FileHash $config -Algorithm SHA256).Hash -eq $configBefore) ''
+        $listed = @(Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'Deluno*' })
+        Add-Check 'Deluno is no longer listed in Apps' ($listed.Count -eq 0) (($listed | ForEach-Object { $_.DisplayName }) -join ', ')
     }
 }

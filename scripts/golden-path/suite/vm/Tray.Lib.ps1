@@ -230,15 +230,20 @@ function Open-TrayMenuOnce {
     if (-not $btn -or $btn.Element.Current.IsOffscreen) { $opened = Open-TrayOverflow; $btn = Find-TrayIcon -Icon $Icon }
     if (-not $btn) { return @() }
     Wait-UiaClickable -Element $btn.Element -What "the $Icon tray icon"
-    if ($Attempt -le 2) {
+    # While the icon is changing (a download shows on it) Windows can refuse it the focus ("Target element cannot receive focus"); that attempt
+    # is then a right click on the icon, as the later ones are.
+    $viaKey = $Attempt -le 2
+    if ($viaKey) {
         # Through the icon's own automation element: focus it and press the menu key, with the taskbar in front so the key reaches it.
         # A click at a screen position can land on the taskbar (it once opened Server Manager's jump list over the component picker).
         [void](Set-TaskbarForeground)
-        $btn.Element.SetFocus()
-        Start-Sleep -Milliseconds 200 # reason: UI settle after input; Windows raises no event for it
-        [System.Windows.Forms.SendKeys]::SendWait('+{F10}')
+        try { $btn.Element.SetFocus() } catch { $viaKey = $false }
+        if ($viaKey) {
+            Start-Sleep -Milliseconds 200 # reason: UI settle after input; Windows raises no event for it
+            [System.Windows.Forms.SendKeys]::SendWait('+{F10}')
+        }
     }
-    else {
+    if (-not $viaKey) {
         # The key did not open it twice: a right click on the icon's own rectangle (read just now from the taskbar) always reaches it.
         $r = $btn.Element.Current.BoundingRectangle
         Send-Click -X ([int]($r.X + $r.Width / 2)) -Y ([int]($r.Y + $r.Height / 2)) -Right

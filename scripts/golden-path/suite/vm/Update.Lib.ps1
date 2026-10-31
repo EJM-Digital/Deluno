@@ -135,6 +135,14 @@ function Invoke-UpdateScenario {
         }
         Add-Check 'Deluno was started again after Setup, by nobody in this scenario (a new process appeared)' $started.Ok $(if ($started.Ok) { "process $($started.Value[0].Id) after $($started.Seconds) s" } else { 'Deluno was never started again after Setup: the installer did not relaunch it. This is not a hung start.' })
         if (-not $started.Ok) { Save-UpdateEvidence -StartLog $startLog -Since $began; return }
+        # The previous release carries running marks, so the install hook knows Deluno was running from the mark, not from the jobs database's heartbeat.
+        $hookLog = Join-Path (Join-Path $env:LOCALAPPDATA 'Deluno\logs') 'install-hook.log'
+        $hookText = @(if (Test-Path $hookLog) { Get-Content $hookLog -Tail 120 } else { @() })
+        $at = -1
+        for ($i = 0; $i -lt $hookText.Count; $i++) { if ($hookText[$i] -match ('--veloapp-install ' + [regex]::Escape($CandidateVersion))) { $at = $i } }
+        $thisInstall = if ($at -ge 0) { @($hookText[$at..($hookText.Count - 1)]) } else { @() }
+        $viaMark = (@($thisInstall | Where-Object { $_ -match 'Deluno was running before this install' }).Count -gt 0) -and (@($thisInstall | Where-Object { $_ -match 'No record that Deluno was running' }).Count -eq 0)
+        Add-Check 'The install hook knew Deluno was running from the previous release''s running mark, not from the jobs database heartbeat' $viaMark (($thisInstall | Where-Object { $_ -match 'running' } | Select-Object -First 2) -join ' | ')
         $newPid = $started.Value[0].Id
 
         # Did the new process come up? (Deluno's part)
