@@ -16,7 +16,7 @@ internal sealed class NumberOrStringConverter : JsonConverter<string?>
             JsonTokenType.Number => reader.TryGetInt64(out var whole)
                 ? whole.ToString(System.Globalization.CultureInfo.InvariantCulture)
                 : reader.GetDouble().ToString(System.Globalization.CultureInfo.InvariantCulture),
-            JsonTokenType.Null => null,
+            // A JSON null never reaches here: System.Text.Json reads it as null for a string without calling the converter.
             _ => throw new JsonException("Expected an identifier as a string or a number.")
         };
 
