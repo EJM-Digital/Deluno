@@ -56,7 +56,7 @@ public sealed record SubtitleProviderConnection(
     /// spend the next answer as well.</para>
     /// </summary>
     public bool IsAskable(DateTimeOffset now)
-        => IsEnabled && !SecretUnreadable && (RateLimitedUntilUtc is null || RateLimitedUntilUtc <= now);
+        => IsEnabled && !SecretUnreadable && (RateLimitedUntilUtc is not { } until || until <= now);
 }
 
 /// <summary>
