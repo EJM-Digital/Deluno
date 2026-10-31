@@ -5,11 +5,12 @@
 #
 # Each .NET production project is one job (Stryker.NET, its stryker-config.json, the test projects that cover it), so a
 # slow project cannot starve the others. The web app, the API client and the metadata gateway are StrykerJS jobs.
-name: Mutation (weekly)
+name: Mutation (fortnightly)
 
 on:
   schedule:
-  # Saturdays, 11:17 UTC (Saturday 22:17 Sydney, AEDT). Capped at 12 parallel jobs. Off the top of the hour. GitHub may start a scheduled run late on busy days.
+  # Saturdays, 11:17 UTC (Saturday 22:17 Sydney, AEDT), and only every second one: cron cannot say fortnightly, so the
+  # first job skips the run on odd ISO weeks. At most 6 jobs at once (4 .NET, 2 JavaScript). Off the top of the hour.
     - cron: "17 11 * * 6"
   workflow_dispatch:
 
@@ -25,8 +26,25 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
 
 jobs:
+  # Every push already mutates its changed files (ci.yml); the whole-project scores move slowly, so they are measured
+  # every second week (the owner, 1 Nov 2026). A run started by hand always runs.
+  fortnight:
+    name: This week's run
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.week.outputs.run }}
+    steps:
+      - name: Even ISO week, or started by hand
+        id: week
+        run: |
+          week=$(date -u +%V)
+          if [ "${{ github.event_name }}" != "schedule" ] || [ $((10#$week % 2)) -eq 0 ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else echo "run=false" >> "$GITHUB_OUTPUT"; echo "ISO week $week is odd: this fortnight's run was last week."; fi
+
   matrix:
     name: Projects to mutate
+    needs: fortnight
+    if: ${{ needs.fortnight.outputs.run == 'true' }}
     runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 5
     outputs:
@@ -53,7 +71,7 @@ jobs:
     timeout-minutes: 350
     strategy:
       fail-fast: false
-      max-parallel: 9
+      max-parallel: 4
       matrix: ${{ fromJSON(needs.matrix.outputs.dotnet) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -67,7 +85,9 @@ jobs:
         shell: bash
         run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
 
+      # Stopped short of the job's own limit, so a slow project still uploads what it wrote and the score job runs.
       - name: Stryker.NET, pinned in .config/dotnet-tools.json
+        timeout-minutes: 330
         shell: bash
         run: |
           dotnet tool restore
@@ -75,22 +95,25 @@ jobs:
           mkdir -p mutation-reports
           cp "StrykerOutput/${{ matrix.project }}/reports/mutation-report.json" "mutation-reports/${{ matrix.project }}.json"
 
+      # Uploaded even when the run was cancelled or the project timed out, so the projects that finished still count.
       - name: Upload the report
-        if: ${{ !cancelled() }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mutation-${{ matrix.project }}
           path: mutation-reports/
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
 
   javascript:
     name: ${{ matrix.name }}
+    needs: fortnight
+    if: ${{ needs.fortnight.outputs.run == 'true' }}
     runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 340
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 2
       matrix:
         include:
           - name: web
@@ -110,6 +133,7 @@ jobs:
         run: npm ci
 
       - name: StrykerJS
+        timeout-minutes: 320
         working-directory: ${{ matrix.dir }}
         run: npx stryker run
 
@@ -118,21 +142,23 @@ jobs:
           mkdir -p mutation-reports
           cp "${{ matrix.dir }}/reports/mutation/${{ matrix.name }}.json" "mutation-reports/${{ matrix.name }}.json"
 
+      # Uploaded even when the run was cancelled or the project timed out, so the projects that finished still count.
       - name: Upload the report
-        if: ${{ !cancelled() }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mutation-${{ matrix.name }}
           path: mutation-reports/
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
 
   # The score per project, held to its threshold. The proposed raise is published for the owner to review and commit;
   # this workflow never commits it.
   score:
     name: Score per project and ratchet
-    needs: [dotnet, javascript]
-    if: ${{ !cancelled() }}
+    needs: [fortnight, dotnet, javascript]
+    # Scores whatever finished, even after a cancel or a timeout; a project with no report is listed as not measured.
+    if: ${{ always() && needs.fortnight.outputs.run == 'true' }}
     runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:

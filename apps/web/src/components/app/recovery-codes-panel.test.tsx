@@ -11,15 +11,16 @@ describe("the recovery codes can be saved as a text file (#1456)", () => {
     let saved: Blob | null = null;
     const create = vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => { saved = blob as Blob; return "blob:codes"; });
     const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
-    let clicked: HTMLAnchorElement | null = null;
-    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) { clicked = this; });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
     render(<RecoveryCodesPanel codes={codes} onSaved={() => undefined} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Download as a text file" }));
 
     expect(create).toHaveBeenCalledOnce();
-    expect(clicked!.download).toBe("deluno-recovery-codes.txt");
-    expect(clicked!.href).toBe("blob:codes");
+    expect(click).toHaveBeenCalledOnce();
+    const clicked = click.mock.contexts[0] as HTMLAnchorElement;
+    expect(clicked.download).toBe("deluno-recovery-codes.txt");
+    expect(clicked.href).toBe("blob:codes");
     const text = await saved!.text();
     for (const code of codes) expect(text).toContain(code);
     expect(text).toContain("Each code works once.");
