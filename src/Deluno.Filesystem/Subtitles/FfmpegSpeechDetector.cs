@@ -49,10 +49,12 @@ public interface ISpeechDetector
 /// dispositions, and it belongs with the code that knows what the title is —
 /// not here.</para>
 /// </summary>
-public sealed class FfmpegSpeechDetector(ILogger<FfmpegSpeechDetector> logger) : ISpeechDetector
+public sealed class FfmpegSpeechDetector(ILogger<FfmpegSpeechDetector> logger, TimeSpan? listenLimit = null) : ISpeechDetector
 {
     /// <summary>The longest one listen may take. Listening runs far faster than playing, so this is for a stalled share.</summary>
-    private static readonly TimeSpan ListenLimit = TimeSpan.FromHours(2);
+    private static readonly TimeSpan DefaultListenLimit = TimeSpan.FromHours(2);
+
+    private readonly TimeSpan ListenLimit = listenLimit ?? DefaultListenLimit;
 
     /// <summary>
     /// The level below which audio counts as silence, and how long it has to
@@ -219,7 +221,7 @@ public sealed class FfmpegSpeechDetector(ILogger<FfmpegSpeechDetector> logger) :
         return mask;
     }
 
-    private static void TryKill(Process process)
+    internal static void TryKill(Process process)
     {
         try
         {
