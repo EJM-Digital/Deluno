@@ -16,7 +16,7 @@ public sealed class DownloadIntegrityFileResolverTests : IDisposable
 
     private string Make(string relative, int bytes = 1)
     {
-        var path = Path.Combine(root, relative);
+        var path = Path.GetFullPath(Path.Combine(root, relative));
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllBytes(path, new byte[bytes]);
         return path;
