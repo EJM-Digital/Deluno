@@ -289,14 +289,11 @@ function Invoke-UpdateApplyOnQuit {
             $new = @(Get-BackupFiles | Where-Object { $_ -notin $backupsBefore })
             Add-Check 'The pre-update backup was taken before the install (a new backup file exists)' ($new.Count -gt 0) ($new -join ', ')
             Wait-InstallerQuiet | Out-Null
-            # What starts Deluno after the install is not asserted here: the previous release this phase installs predates the mark that
-            # tells a quit Deluno from a running one, so the install hook may start it (it says which in its log). Either way it answers.
-            $running = Wait-Until -TimeoutSec 60 -IntervalSec 3 -Condition { Test-DelunoAnswering }
-            Add-Note $(if ($running.Ok) { "Deluno was running again $($running.Seconds) s after the installer finished, started by the install hook's helper." } else { 'Nothing started Deluno after the install; it is started by hand next.' })
-            if (-not $running.Ok) {
-                $exe = Get-InstalledDelunoExe
-                Start-ProgramUnelevated -Path $exe.FullName -WorkingDirectory $exe.DirectoryName -Elevated
-            }
+            # Quit means Deluno stays closed (#1451): the install hook decides from the record of how Deluno ended, not from the jobs database heartbeat.
+            Start-Sleep -Seconds 60 # reason: a Deluno wrongly started by the install hook's helper appears within seconds of the installer finishing; nothing signals "nothing will start"
+            Add-Check 'Deluno is not running after Quit and install: the person quit it, so nothing starts it' (@(Get-DelunoProcess).Count -eq 0 -and -not (Test-DelunoAnswering)) "processes: $(@(Get-DelunoProcess).Count)"
+            $exe = Get-InstalledDelunoExe
+            Start-ProgramUnelevated -Path $exe.FullName -WorkingDirectory $exe.DirectoryName -Elevated
             Test-CameBackAsCandidate -Context $ctx -CandidateVersion $CandidateVersion | Out-Null
             Add-Check 'The pre-update backup is still in the backups the new build lists' ((Get-BackupListText) -match 'pre-update') ''
         }

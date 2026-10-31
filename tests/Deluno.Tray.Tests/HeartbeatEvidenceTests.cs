@@ -173,7 +173,7 @@ public sealed class HeartbeatEvidenceTests : IDisposable
     }
 
     private RelaunchKind Schedule(Store store, TimeSpan? heartbeatAge, bool serviceInstalled = false)
-        => RelaunchAfterSetup.Schedule(new RunningMarks(store), Exe, _ => false, () => serviceInstalled, () => 7624, () => heartbeatAge, "x.log", _started.Add, _log.Add);
+        => RelaunchAfterSetup.Schedule(new RunningMarks(store), Exe, _ => false, () => serviceInstalled, () => 7624, "x.log", _started.Add, _log.Add);
 
     private static Store WithMark() => new() { Mark = new RunningMark(1, 2, Exe) };
 
@@ -182,23 +182,10 @@ public sealed class HeartbeatEvidenceTests : IDisposable
         => Assert.Equal(RelaunchKind.Tray, Schedule(WithMark(), heartbeatAge: null));
 
     [Fact]
-    public void A_heartbeat_alone_starts_Deluno_and_the_log_says_how_it_was_known_and_what_a_false_positive_means()
+    public void A_recent_heartbeat_alone_no_longer_starts_Deluno()
     {
-        Assert.Equal(RelaunchKind.Tray, Schedule(new Store(), TimeSpan.FromSeconds(14)));
-
-        Assert.Single(_started);
-        Assert.Contains(_log, l => l.Contains("No record that Deluno was running") && l.Contains("14 seconds") && l.Contains("started anyway"));
-    }
-
-    [Fact]
-    public void A_heartbeat_alone_in_service_mode_restarts_the_service()
-        => Assert.Equal(RelaunchKind.Service, Schedule(new Store(), TimeSpan.FromSeconds(5), serviceInstalled: true));
-
-    [Fact]
-    public void Neither_a_mark_nor_a_recent_heartbeat_leaves_Deluno_stopped()
-    {
-        Assert.Equal(RelaunchKind.None, Schedule(new Store(), TimeSpan.FromMinutes(20)));
-        Assert.Equal(RelaunchKind.None, Schedule(new Store(), null));
+        Assert.Equal(RelaunchKind.None, Schedule(new Store(), TimeSpan.FromSeconds(14)));
+        Assert.Equal(RelaunchKind.None, Schedule(new Store(), TimeSpan.FromSeconds(5), serviceInstalled: true));
         Assert.Empty(_started);
     }
 
