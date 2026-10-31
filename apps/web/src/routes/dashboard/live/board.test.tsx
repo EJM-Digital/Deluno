@@ -151,9 +151,9 @@ describe("what comes next", () => {
     expect(buildNext(running, [], NOW.getTime())[0]).toMatchObject({ label: "Search Movies", running: true });
   });
 
-  it("says a countdown under an hour and a clock time beyond it, with the day when it is not today", () => {
+  it("says a clock time however near or far, with the day when it is not today", () => {
     const now = NOW.getTime();
-    expect(whenText(now + 252_000, now)).toBe("4:12");
+    expect(whenText(now + 252_000, now)).toBe(clockTime(now + 252_000));
     expect(whenText(now + 5_040_000, now)).toBe("11:24 am");
     expect(whenText(now + 5 * 3_600_000, now)).toBe("3:00 pm");
     expect(whenText(now + 24 * 3_600_000, now)).toBe("tomorrow 10:00 am");
@@ -175,13 +175,13 @@ describe("what comes next", () => {
     expect(within(next).getByText("8:57")).toBeInTheDocument();
   });
 
-  it("figures: running, due now, a countdown or a clock time", () => {
+  it("figures: running, due now, or a countdown however far off", () => {
     const now = NOW.getTime();
     const item = { key: "k", label: "x", at: now, last: null, running: false, to: "/", kind: "job" as const };
     expect(nextFigure({ ...item, running: true }, now).kind).toBe("running");
     expect(nextFigure({ ...item, at: now - 1 }, now).kind).toBe("due");
     expect(nextFigure({ ...item, at: now + 60_000 }, now)).toEqual({ text: "1:00", kind: "count" });
-    expect(nextFigure({ ...item, at: now + 7_200_000 }, now).kind).toBe("clock");
+    expect(nextFigure({ ...item, at: now + 7_200_000 }, now)).toEqual({ text: "2:00:00", kind: "count" });
   });
 
   it("says something true when nothing is scheduled", () => {

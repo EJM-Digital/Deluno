@@ -7,7 +7,6 @@ import type { DownloadDispatchItem, ProcessorHandoffItem, SeriesUpcomingEpisodeI
 import type { DashboardSummary } from "../../../lib/api/types/operations";
 import { formatEta } from "../downloads-kit";
 import { buildCountdownRows } from "./countdowns";
-import { formatCountdown } from "./countdown";
 import type { JourneyCard, Stage } from "./journey";
 
 /** "2:28 pm": the clock time the way Australians read it, the same in every browser. */
@@ -134,8 +133,8 @@ export function buildNext(summary: DashboardSummary | undefined, upcoming: reado
 
 /** A countdown under an hour ("4:12"), a clock time beyond ("3:34 pm"), with the day when it is not today. */
 export function whenText(at: number, now: number): string {
-  const remaining = at - now;
-  if (remaining < 3_600_000) return remaining <= 0 ? "now" : formatCountdown(remaining);
+  // Always a clock time, never a countdown, so a list of runs reads one way (the owner, 31 Oct).
+  if (at - now <= 0) return "now";
   const startOfDay = (ms: number) => new Date(new Date(ms).getFullYear(), new Date(ms).getMonth(), new Date(ms).getDate()).getTime();
   const days = Math.round((startOfDay(at) - startOfDay(now)) / 86_400_000);
   const clock = clockTime(at);

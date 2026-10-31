@@ -121,13 +121,15 @@ function WorkingNow({ summary, operations, across }: { summary: DashboardSummary
   );
 }
 
-/** What the big figure of Next says: a countdown under the hour, a clock time beyond it, "running" while it runs. */
-export function nextFigure(item: NextItem, now: number): { text: string; kind: "running" | "due" | "count" | "clock" } {
+/**
+ * What the big figure of Next says: always a countdown, however far off, "running" while it runs. The rows under it are
+ * always clock times; the owner asked for the two not to swap formats at the hour (31 Oct).
+ */
+export function nextFigure(item: NextItem, now: number): { text: string; kind: "running" | "due" | "count" } {
   if (item.running) return { text: "running", kind: "running" };
   const remaining = item.at - now;
   if (remaining <= 0) return { text: "due now", kind: "due" };
-  if (remaining < 3_600_000) return { text: formatCountdown(remaining), kind: "count" };
-  return { text: whenText(item.at, now), kind: "clock" };
+  return { text: formatCountdown(remaining), kind: "count" };
 }
 
 function NextCard({ items, now, across }: { items: NextItem[]; now: number; across: boolean }) {
