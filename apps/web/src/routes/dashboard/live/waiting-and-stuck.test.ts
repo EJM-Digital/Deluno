@@ -27,6 +27,16 @@ describe("a new download is waiting, not stuck, until the stall rule decides (#1
     expect(waitingWords(queue({ sizeBytes: 2e9, healthFindings: [finding()], peers: 4 }), NOW)).toBe("No data yet · checking again in 2 min (strike 1 of 3)");
   });
 
+  it("is not stuck for the server's low-availability note, which the server itself never counts as a strike", () => {
+    // The rig on 31 Oct, The General (1926) a minute after it was sent: size 0, two peers, one no-progress strike and a
+    // low-availability reading at strike 0. It read "Stuck · needs a look".
+    const general = queue({ peers: 2, healthFindings: [finding(), finding({ kind: "low-availability", strikeCount: 0, ruleId: null, ruleStrikeLimit: null })] });
+    expect(isStuck(general, NOW)).toBe(false);
+    expect(queueItemNeedsAttention(general)).toBe(false);
+    expect(waitingWords(general, NOW)).toBe("Getting the torrent's details · checking again in 2 min (strike 1 of 3)");
+    expect(isStuck(queue({ sizeBytes: 2e9, peers: 2, speedMbps: 1, healthFindings: [finding({ kind: "low-availability", strikeCount: 0 })] }), NOW)).toBe(false);
+  });
+
   it("says it is looking for people sharing it once it has its details but no peers", () => {
     expect(waitingWords(queue({ sizeBytes: 2e9 }), NOW)).toBe("Looking for people sharing it");
     expect(waitingWords(queue({ sizeBytes: 2e9, peers: 5, speedMbps: 2 }), NOW)).toBeNull();
