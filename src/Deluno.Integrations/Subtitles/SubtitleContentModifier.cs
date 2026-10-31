@@ -219,8 +219,8 @@ public static partial class SubtitleContentModifier
     private static string ReplaceDigitInsideWord(Match match, string line)
     {
         var letter = match.Groups["digit"].Value == "0" ? 'o' : 'l';
-        var previous = match.Index > 0 ? line[match.Index - 1] : ' ';
-        var next = match.Index + 1 < line.Length ? line[match.Index + 1] : ' ';
+        var previous = line[match.Index - 1];
+        var next = line[match.Index + 1];
         return char.IsUpper(previous) && char.IsUpper(next)
             ? char.ToUpperInvariant(letter).ToString()
             : letter.ToString();

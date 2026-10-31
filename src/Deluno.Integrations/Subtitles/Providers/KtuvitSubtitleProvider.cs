@@ -232,11 +232,11 @@ public sealed class KtuvitSubtitleProvider(IHttpClientFactory httpClientFactory)
             }
 
             var element = d.ValueKind == JsonValueKind.String
-                ? JsonDocument.Parse(d.GetString() ?? "{}").RootElement
+                ? JsonDocument.Parse(d.GetString()!).RootElement
                 : d;
 
             return element.TryGetProperty(arrayProperty, out var array) && array.ValueKind == JsonValueKind.Array
-                ? array.Deserialize<List<T>>() ?? []
+                ? array.Deserialize<List<T>>()!
                 : [];
         }
         catch (JsonException)
@@ -256,7 +256,7 @@ public sealed class KtuvitSubtitleProvider(IHttpClientFactory httpClientFactory)
             }
 
             var element = d.ValueKind == JsonValueKind.String
-                ? JsonDocument.Parse(d.GetString() ?? "{}").RootElement
+                ? JsonDocument.Parse(d.GetString()!).RootElement
                 : d;
 
             return element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String

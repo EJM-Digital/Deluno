@@ -794,6 +794,26 @@ public sealed class SubtitleFetchTests
         Assert.False(unreadable.IsAskable(DateTimeOffset.UtcNow));
     }
 
+    [Fact]
+    public async Task A_films_only_provider_is_not_asked_about_an_episode()
+    {
+        var filmsOnly = new FakeProvider("first", [Candidate("en")], Srt) { Scope = SubtitleProviderScope.MoviesOnly };
+        var service = Build([filmsOnly], new FakeWriter());
+
+        var outcome = await service.FetchAsync(Request(), "en", isEpisodeMedia: true, @"D:\Media\Show\Show.S01E01.mkv", SubtitleHearingImpairedPreferences.PlainPreferred, CancellationToken.None);
+
+        Assert.False(outcome.Found);
+        Assert.Equal(0, filmsOnly.Searches);
+    }
+
+    [Fact]
+    public void A_miss_with_no_recorded_failures_has_no_failure_to_report()
+    {
+        var outcome = new SubtitleFetchOutcome("en", false, null, null, false, "Nothing found.");
+
+        Assert.Null(outcome.Failure);
+    }
+
     private static SubtitleProviderConnection Connection(string key)
         => new(key, key, key, null, null, null, 100, true, "untested", null, null, null, 0, null, null,
             DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
