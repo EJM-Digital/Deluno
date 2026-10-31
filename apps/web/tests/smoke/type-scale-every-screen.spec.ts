@@ -64,6 +64,39 @@ function audit({ tokens, exceptions }: { tokens: string[]; exceptions: string[] 
   return { bad, seen, allowed: Array.from(allowed).sort((a, b) => a - b) };
 }
 
+// A film page and a show page as the rig has them (the fit spec's fixtures): a logo, alternate titles, every fact, a long synopsis and cast.
+const json = (body: unknown) => ({ contentType: "application/json", body: JSON.stringify(body) });
+const FIT_LOGO = `data:image/svg+xml;utf8,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='288' height='48'><rect width='288' height='48' fill='#888'/></svg>")}`;
+const CAST = [
+  { name: "Christopher Montgomery Featherstonehaugh-Cholmondeley", character: "Lieutenant Commander Bartholomew Winterbottom-Smythe" },
+  { name: "Arabella Guinevere Pennington-Whitcombe", character: "Dowager Countess of Little Wittering-on-the-Marsh" }
+].map((person, index) => ({ ...person, personId: `type-person-${index}`, profileUrl: null, imdbUrl: null }));
+const META = { cast: CAST, logoUrl: FIT_LOGO, alternateTitles: ["La Dimension Desconocida", "Das Unheimliche Zwielicht"], Network: "A Very Long Network Name", Studio: "Cayuga Productions And Partners", OriginalLanguage: "English", Collection: "A Collection With A Rather Long Name", Director: "Rod Serling And Others", Status: "Ended", Certification: "TV-14" };
+const SYNOPSIS = "A documentary crew follows a small town through one long winter, and the longer they stay the less sure they are of what they came to film.";
+
+async function seedTitles(page: Page) {
+  const token = await page.evaluate(() => localStorage.getItem("deluno-auth-token"));
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const stamp = Date.now();
+  const movie = await (await page.request.post("/api/movies/", { headers, data: { title: `Type check movie ${stamp}`, releaseYear: 1962, monitored: true } })).json() as { id: string };
+  const series = await (await page.request.post("/api/series/", { headers, data: { title: `Type check show ${stamp}`, startYear: 2024, monitored: true } })).json() as { id: string };
+  for (const [kind, id] of [["series", series.id], ["movies", movie.id]] as const) {
+    await page.route(new RegExp(`/api/${kind}/${id}$`), async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      const response = await route.fetch();
+      const body = await response.json() as Record<string, unknown>;
+      return route.fulfill({ response, json: { ...body, overview: SYNOPSIS, genres: "Drama, Fantasy, Mystery", metadataJson: JSON.stringify(META) } });
+    });
+  }
+  return {
+    routes: [`/movies/${movie.id}`, `/tv/${series.id}`],
+    async remove() {
+      await page.request.delete(`/api/movies/${movie.id}`, { headers });
+      await page.request.delete(`/api/series/${series.id}`, { headers });
+    }
+  };
+}
+
 async function walk(page: Page, data: ReturnType<typeof trackDataRequests>, route: string, size: { width: number; height: number }, offenders: string[], roles: string[]) {
   await page.goto(route);
   await data.settled();
@@ -85,7 +118,8 @@ test.describe("type scale on every screen", () => {
 
   for (const size of SIZES) {
     test(`every visible text size is on the type scale at ${size.width}x${size.height}`, async ({ page }) => {
-      const routes = [...new Set([...sidebarRoutes(), ...settingsRoutes(), "/?tab=system"])];
+      // The walk adds the routed screens the sidebar and settings lists do not name (search, the system docs and updates pages) and a film and a show.
+      const routes = [...new Set([...sidebarRoutes(), ...settingsRoutes(), "/?tab=system", "/search", "/system/docs", "/system/updates"])];
       test.setTimeout(60_000 + routes.length * 8_000);
       await page.setViewportSize(size);
       await authenticateAndNavigate(page, "/");
@@ -93,12 +127,14 @@ test.describe("type scale on every screen", () => {
       // The setup guide saves a draft as it opens; the walk must not leave that request hanging (the other walk answers it too).
       await page.route("**/api/setup/draft", (route) => route.request().method() === "PUT" ? route.fulfill({ contentType: "application/json", body: "{}" }) : route.continue());
       const data = trackDataRequests(page);
+      const titles = await seedTitles(page);
       const only = process.env.TYPE_ONLY;
       const offenders: string[] = [];
       const roles: string[] = [];
-      for (const route of routes.filter((item) => !only || only.split(",").some((part) => (part === "home" ? item === "/" : item.includes(part))))) {
+      for (const route of [...routes, ...titles.routes].filter((item) => !only || only.split(",").some((part) => (part === "home" ? item === "/" : item.includes(part))))) {
         await walk(page, data, route, size, offenders, roles);
       }
+      await titles.remove();
       if (process.env.TYPE_ROLES) console.log(`ROLES on / at ${size.width}:\n${roles.join("\n")}`);
       if (offenders.length > 0) console.log(`TYPE OFFENDERS at ${size.width}x${size.height}:\n${offenders.join("\n")}`);
       expect(offenders, offenders.join("\n")).toEqual([]);
