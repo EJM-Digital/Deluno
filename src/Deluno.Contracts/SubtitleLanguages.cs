@@ -100,11 +100,6 @@ public static class SubtitleLanguages
         }
 
         var trimmed = value.Trim().ToLowerInvariant();
-        if (trimmed.Length == 0)
-        {
-            return null;
-        }
-
         if (ByAnyName.TryGetValue(trimmed, out var direct))
         {
             return direct;
@@ -163,15 +158,7 @@ public static class SubtitleLanguages
             return "Unknown";
         }
 
-        foreach (var language in All)
-        {
-            if (language.Code == normalized)
-            {
-                return language.Name;
-            }
-        }
-
-        return normalized.ToUpperInvariant();
+        return All.First(language => language.Code == normalized).Name;
     }
 
     private static Dictionary<string, string> BuildIndex()
