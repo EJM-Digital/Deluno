@@ -67,6 +67,20 @@ public sealed class TheInstallHookStartsDelunoOnlyAfterARestartTests : IDisposab
     }
 
     [Fact]
+    public void An_older_build_that_restarts_to_update_leaves_no_record_and_the_hook_starts_nothing_because_Velopack_restarts_it()
+    {
+        // Old to new: the older build writes no record and has cleared its mark on its orderly exit.
+        Assert.Equal(RelaunchKind.None, Hook(new Store(), reason: null));
+        Assert.Empty(_started);
+
+        // Velopack's ApplyUpdatesAndRestart relaunches the app itself (Update.exe --restart), so every restart path uses it.
+        var root = AppContext.BaseDirectory;
+        while (root is not null && !File.Exists(Path.Combine(root, "Deluno.slnx"))) root = Path.GetDirectoryName(root);
+        var source = File.ReadAllText(Path.Combine(root!, "apps", "windows-tray", "VelopackUpdateOrchestrator.cs"));
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(source, @"ApplyUpdatesAndRestart\(").Count);
+    }
+
+    [Fact]
     public void The_record_is_written_read_and_cleared()
     {
         var path = Path.Combine(_folder, "reason.txt");
