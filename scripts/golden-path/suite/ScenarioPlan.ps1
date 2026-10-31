@@ -32,7 +32,7 @@ function Get-ScenarioPlan {
         @{ Name = 'tray'; Function = 'Invoke-GroupTray'; Ids = @('tray.menu-actions', 'tray.change-port', 'tray.allowed-hosts-recovery', 'tray.red-when-host-fails', 'tray.serves-front-end') }
         @{ Name = 'traystates'; Function = 'Invoke-GroupTrayStates'; Ids = @('tray.dot-and-hover', 'tray.starting-dot', 'tray.menu-details', 'tray.quit') }
         @{ Name = 'trayplatform'; Function = 'Invoke-GroupTrayPlatform'; Ids = @('tray.clicks-and-second-launch') }
-        @{ Name = 'service'; Function = 'Invoke-GroupService'; Ids = @('service.install-run-uninstall', 'service.let-any-address-in', 'service.wrong-password') }
+        @{ Name = 'service'; Function = 'Invoke-GroupService'; Ids = @('service.install-run-uninstall', 'service.let-any-address-in', 'service.wrong-password', 'service.starts-clients-after-reboot') }
         @{ Name = 'desktop'; Function = 'Invoke-GroupDesktop'; Ids = @('companions.tray-install-picker', 'filesystem.native-folder-picker') }
         # The last group that runs in the VM: it uses GitHub's hourly allowance up, which stays used up for up to an hour.
         @{ Name = 'github';   Function = 'Invoke-GroupGithub';   Ids = @('github-limit.messages') }
