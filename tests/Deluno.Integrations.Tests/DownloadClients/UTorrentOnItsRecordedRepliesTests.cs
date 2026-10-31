@@ -596,6 +596,22 @@ public sealed class UTorrentOnItsRecordedRepliesTests
     }
 
     [Fact]
+    public async Task A_torrent_file_uTorrent_accepts_is_followed_by_the_hash_of_the_file_and_is_labelled()
+    {
+        var file = Encoding.Latin1.GetBytes("d4:infod6:lengthi5eee");
+        var hash = TorrentInfoHash.FromTorrentFile(file, out _)!.ToUpperInvariant();
+        var accepted = RecordedReplies.Utorrent("add-file-accepted");
+        var uTorrent = new UTorrent(ActionReplyOf(accepted), RecordedReplies.Utorrent("idle").Single.Reply.Body!, RecordedReplies.UtorrentList([hash]));
+
+        var result = await On(uTorrent).GrabAsync(Client(), Grab("http://indexer.test/download/1") with { TorrentFile = file }, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(hash, result.ExternalId, ignoreCase: true);
+        Assert.Contains("action=add-file", Assert.Single(uTorrent.Sent, call => call.Contains("add-file", StringComparison.Ordinal)), StringComparison.Ordinal);
+        Assert.Contains("hash=" + hash, Assert.Single(uTorrent.Actions("setprops")), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_file_uTorrent_refuses_is_a_failed_send_with_its_own_reason_and_no_label()
     {
         var refused = RecordedReplies.Utorrent("add-refused");
