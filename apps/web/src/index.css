@@ -871,6 +871,16 @@
   border-color: hsl(var(--foreground) / 0.2);
 }
 
+  /* Text roles (#1447). One role, one style, wherever it appears: a card's headline number, the unit beside it, the sentence
+     under it, the secondary list, the corner note, the eyebrow. They set size, weight, line height and figure style only; colour
+     stays with the card. Tabular figures belong to numbers that change, so a list that holds one marks it with .role-changing. */
+  .role-figure { font-size: var(--type-figure); font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .role-unit { font-size: var(--type-body-sm); font-weight: 500; letter-spacing: 0; font-variant-numeric: normal; color: hsl(var(--muted-foreground)); }
+  .role-sentence, .role-list { font-size: var(--type-body-sm); font-weight: 400; line-height: 1.45; font-variant-numeric: normal; color: hsl(var(--muted-foreground)); }
+  .role-corner { font-size: var(--type-caption); font-weight: 400; font-variant-numeric: tabular-nums; color: hsl(var(--muted-foreground)); }
+  .role-eyebrow { font-size: var(--type-micro); font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: hsl(var(--muted-foreground)); }
+  .role-changing { font-variant-numeric: tabular-nums; }
+
   .type-micro { font-size: var(--type-micro); line-height: 1.3; }
   .type-caption { font-size: var(--type-caption); line-height: 1.35; }
   .type-body-sm { font-size: var(--type-body-sm); line-height: 1.45; }
@@ -1127,6 +1137,8 @@ html,
   --type-body: calc(15px * var(--font-scale));
   --type-body-lg: calc(16px * var(--font-scale));
   --type-card-title: calc(15px * var(--font-scale));
+  /* The headline number of a card: Speed, Working on now, Next (#1447). */
+  --type-figure: calc(34px * var(--font-scale));
   --type-title-sm: calc(20px * var(--font-scale));
   --type-title-md: calc(26px * var(--font-scale));
   --type-title-lg: clamp(calc(32px * var(--font-scale)), calc(2.2vw * var(--font-scale)), calc(42px * var(--font-scale)));
@@ -1168,9 +1180,9 @@ html,
   --dashboard-poster-min: calc(138px * var(--ui-scale));
 
   --shell-brand-size: calc(16px * var(--font-scale));
-  --shell-subtle-size: calc(12.5px * var(--font-scale));
+  --shell-subtle-size: calc(12px * var(--font-scale));
   --shell-nav-size: calc(14px * var(--font-scale));
-  --shell-nav-badge-size: calc(9.5px * var(--font-scale));
+  --shell-nav-badge-size: calc(11px * var(--font-scale));
   --shell-nav-text-min: calc(168px * var(--font-scale));
   --shell-pill-height: calc(42px * var(--ui-scale));
   --shell-nav-pad-x: calc(15px * var(--ui-scale));
@@ -1182,14 +1194,14 @@ html,
   --shell-action-gap: calc(4px * var(--ui-scale));
   --shell-avatar-size: calc(26px * var(--ui-scale));
   --shell-divider-height: calc(17px * var(--ui-scale));
-  --shell-kbd-size: calc(9px * var(--font-scale));
+  --shell-kbd-size: calc(11px * var(--font-scale));
   --shell-nav-radius: calc(12px * var(--ui-scale));
   --shell-icon-col: calc(var(--shell-pill-height) * 0.68);
 
   --settings-nav-size: calc(14px * var(--font-scale));
   --settings-nav-pad-y: calc(8px * var(--ui-scale));
   --settings-nav-pad-x: calc(12px * var(--ui-scale));
-  --section-eyebrow-size: calc(10.3px * var(--font-scale));
+  --section-eyebrow-size: calc(11px * var(--font-scale));
   /*
     How far the title line's boxes move down so their centres sit on the page title's text, not on the header's middle:
     the eyebrow line above the title pushes the title down by its own height, so half of that, plus the 1.75px between

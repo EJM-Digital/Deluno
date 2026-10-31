@@ -2,7 +2,7 @@
  * The values on a graph (#1105): a faint gridline at the top and at half with its label at the left edge (the owner, 2 Oct), the time span
  * at the two ends, and the reading under the pointer. All of it sits inside the chart's own box, so no card grows.
  */
-.cs-layer { position: absolute; inset: 0; z-index: 1; touch-action: pan-y; font-size: 10px; line-height: 11px; font-variant-numeric: tabular-nums; color: hsl(var(--muted-foreground)); }
+.cs-layer { position: absolute; inset: 0; z-index: 1; touch-action: pan-y; font-size: var(--type-micro); line-height: 11px; font-variant-numeric: tabular-nums; color: hsl(var(--muted-foreground)); }
 .cs-grid { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid hsl(var(--hairline) / .35); pointer-events: none; }
 .cs-tick, .cs-end { position: absolute; padding: 0 3px; border-radius: 3px; font-weight: 500; white-space: nowrap; background: hsl(var(--card) / .78); pointer-events: none; }
 .cs-tick { left: 0; }
@@ -21,7 +21,7 @@
   border: 1px solid hsl(var(--hairline));
   background: hsl(var(--surface-2));
   color: hsl(var(--foreground));
-  font-size: 11px;
+  font-size: var(--type-micro);
   line-height: 15px;
   font-weight: 600;
   white-space: nowrap;

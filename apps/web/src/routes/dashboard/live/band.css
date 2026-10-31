@@ -37,27 +37,23 @@
 [data-live-grid="shared"] .lb-now { height: 100%; grid-template-rows: minmax(0, 1fr); }
 [data-live-grid="shared"] .lb-now > .lb-tile { height: 100%; }
 .lb-tile .lb-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; }
-.lb-label { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--lb-muted); font-weight: 600; }
+.lb-label { color: var(--lb-muted); }
 a.lb-label:hover { color: hsl(var(--foreground)); }
-.lb-aside { font-size: 12px; color: hsl(var(--muted-foreground)); font-variant-numeric: tabular-nums; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lb-aside { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lb-aside a { color: inherit; }
 .lb-aside a:hover { text-decoration: underline; }
 .lb-tile .lb-fig {
   display: flex;
   align-items: baseline;
   gap: 10px;
-  font-size: 34px;
-  font-weight: 700;
-  letter-spacing: -.02em;
   line-height: 44px;
   white-space: nowrap;
   overflow: hidden;
-  font-variant-numeric: tabular-nums;
   color: hsl(var(--foreground));
 }
-.lb-tile .lb-fig small { font-size: 14px; font-weight: 500; color: var(--lb-muted); letter-spacing: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.lb-tile .lb-fig small { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* The upload sits right after the download's unit, as the mockup shows it (its .side is display: contents there, so the margin never applied). */
-.lb-tile .lb-fig .lb-side { font-size: 15px; font-weight: 600; flex: none; color: hsl(var(--success)); }
+.lb-tile .lb-fig .lb-side { font-size: var(--type-body); font-weight: 600; flex: none; color: hsl(var(--success)); }
 .lb-tile .lb-fig .lb-down { color: hsl(var(--info)); }
 .lb-body { min-width: 0; min-height: 0; position: relative; }
 
@@ -74,7 +70,7 @@ a.lb-label:hover { color: hsl(var(--foreground)); }
   align-items: center;
   padding: 7px 0;
   border-bottom: 1px solid hsl(217 24% 16%);
-  font-size: 14px;
+  font-size: var(--type-body-sm);
   line-height: 1.45;
   color: hsl(var(--foreground));
   animation: lb-slide-in .45s ease;
@@ -85,19 +81,19 @@ a.lb-op:hover { color: hsl(var(--primary)); }
 .lb-op .lb-ico svg { width: 13px; height: 13px; }
 .lb-op .lb-txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lb-op .lb-txt b { font-weight: 700; }
-.lb-op .lb-right { font-size: 12px; color: var(--lb-muted); font-variant-numeric: tabular-nums; }
+.lb-op .lb-right { font-size: var(--type-caption); color: var(--lb-muted); font-variant-numeric: tabular-nums; }
 .lb-op .lb-bar { grid-column: 2 / 4; height: 4px; background: var(--lb-card-3); border-radius: 9px; overflow: hidden; margin-top: 2px; }
 .lb-op .lb-bar i { display: block; height: 100%; border-radius: 9px; background: hsl(var(--c)); transition: width 1s linear; }
-.lb-idle { margin: 0; font-size: 14px; line-height: 1.45; color: var(--lb-muted); }
+.lb-idle { margin: 0; }
 
 /* Next */
 .lb-next-bar { display: block; height: 4px; background: var(--lb-card-3); border-radius: 9px; overflow: hidden; margin: 2px 0 6px; }
 .lb-next-bar i { display: block; height: 100%; border-radius: 9px; background: hsl(var(--primary)); transition: width 1s linear; }
-.lb-then { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 12.5px; color: var(--lb-muted); font-variant-numeric: tabular-nums; }
+.lb-then { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
 .lb-then li { display: flex; justify-content: space-between; gap: 12px; min-width: 0; }
 .lb-then li a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lb-then li a:hover { color: hsl(var(--foreground)); }
-.lb-then li span { flex: none; }
+.lb-then li span { flex: none; font-variant-numeric: tabular-nums; }
 
 @keyframes lb-slide-in { from { opacity: 0; transform: translateY(-6px); } }
 @media (prefers-reduced-motion: reduce) {
