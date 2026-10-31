@@ -69,7 +69,7 @@ import { fileProvenanceFromTimeline } from "../lib/dispatch-provenance";
 import { dismissFailedJob } from "../lib/failed-jobs";
 import { JOB_STATUS, isJobActive, isJobDeadLettered, isJobFailed, isJobRetrying, type JobStatus } from "../lib/job-status-constants";
 import { finishedPlan, splitQueue } from "../lib/in-progress";
-import { waitingWords } from "../lib/download-wait";
+import { isStuck, waitingWords } from "../lib/download-wait";
 import { clientHistoryOutcomeLabel, downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
 import { parseImportJobPayload } from "../lib/import-job-payload";
 import { placeDownloadsOnce } from "../lib/transfer-stages";
@@ -100,6 +100,9 @@ import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences, type
 import { useColumnVisibility, type ColumnDefinition } from "../lib/use-column-visibility";
 import { formatProgressPercent } from "../lib/progress-format";
 import { plural } from "../lib/plural";
+
+/** Downloads still in their client: moving, waiting, stopped or stalled, as the Downloading tile counts them (#1448). */
+const DOWNLOADING_IN_CLIENT: string[] = [downloadQueueStatuses.downloading, downloadQueueStatuses.queued, downloadQueueStatuses.stalled, downloadQueueStatuses.paused, downloadQueueStatuses.notTransferring];
 
 /**
  * The queue table's optional columns (#796): quality, custom-format score,
@@ -368,6 +371,8 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   // What is happening now sits at the top; what is finished and only still listed by its client has its own folded group (#1448).
   const { happeningNow, finished: finishedInClient } = useMemo(() => splitQueue(queue), [queue]);
   const [finishedOpen, setFinishedOpen] = useState(false);
+  const inTheClient = happeningNow.filter((item) => DOWNLOADING_IN_CLIENT.includes(item.status));
+  const inTheClientStalled = inTheClient.filter((item) => isStuck(item)).length;
   const healthyClients = telemetry.clients.filter((client) => isHealthyClient(client.healthStatus)).length;
   const needsActionCount = attention.total + heldReleases.length;
 
@@ -1250,7 +1255,8 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
 
       <SummaryStrip
         cells={[
-          { label: "Downloading", value: String(telemetry.summary.activeCount), help: `${telemetry.summary.totalSpeedMbps.toFixed(1)} MB/s combined` },
+          // The rows under it, stalled and waiting ones included, so the tile and the list say the same number (#1448).
+          { label: "Downloading", value: String(inTheClient.length), help: inTheClientStalled ? `${inTheClientStalled} not moving · ${telemetry.summary.totalSpeedMbps.toFixed(1)} MB/s combined` : `${telemetry.summary.totalSpeedMbps.toFixed(1)} MB/s combined` },
           { label: "Processing", value: String(processing.length + activeProcessorHandoffs.length), help: activeProcessorHandoffs.length ? `${activeProcessorHandoffs.length} with the processor` : processorConnections.length ? `${plural(processorConnections.length, "connector")} configured` : "no processor connected" },
           { label: "Importing", value: String(activeImportJobs), help: activeImportJobs ? "writing into your library" : "nothing being written" },
           // Automation picks these up on its next pass; "waiting on you" asked
