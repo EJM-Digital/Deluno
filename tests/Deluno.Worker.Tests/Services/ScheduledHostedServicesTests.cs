@@ -24,7 +24,7 @@ public sealed class ScheduledHostedServicesTests
     {
         for (var attempt = 0; attempt < 500 && !condition(); attempt++)
         {
-            await Task.Delay(10);
+            await Task.Delay(10); // reason: the service has no signal to await; the loop is bounded by 500 tries
         }
 
         Assert.True(condition(), "The service did not get there in time.");
@@ -256,7 +256,7 @@ public sealed class ScheduledHostedServicesTests
     {
         var gate = new Mock<IDelunoStartupGate>();
         gate.Setup(g => g.WaitAsync(It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
-            .Returns<TimeSpan, CancellationToken>((_, token) => Task.Delay(Timeout.Infinite, token));
+            .Returns<TimeSpan, CancellationToken>((_, token) => Task.Delay(Timeout.Infinite, token)); // reason: the gate never opens; the stop token ends it
         var update = new Mock<ITrackerDefinitionUpdateService>(MockBehavior.Strict);
         var check = new Mock<IGuideUpdateCheckService>(MockBehavior.Strict);
         using var tracker = new TrackerDefinitionAutoUpdateHostedService(update.Object, gate.Object, NullLogger<TrackerDefinitionAutoUpdateHostedService>.Instance);
