@@ -5,10 +5,10 @@
         With Deluno installed as a service and nobody signed in to the tray after the restart, Deluno and each bundled download client the
         person chose answer on their ports again. In tray mode the clients are started by the tray's own start; the service does it itself.
 
-    The restart ends the suite's runner (it lives in the signed-in session), so the checks after it are made by a startup task that runs as
-    SYSTEM before anyone signs in: it waits for each port, adds its checks to this scenario's record in results.json, and writes done.flag.
-    Groups that follow the service group in a full run (desktop, github) do not run after the restart, so run this scenario on its own:
-    -Scenarios service.starts-clients-after-reboot.
+    The restart ends the suite's runner (it lives in the signed-in session), so this scenario is a host group (servicereboot): the host restores a clean
+    machine, installs, starts the runner for this scenario alone, and keeps polling while the VM restarts. A startup task running as SYSTEM, before anyone
+    signs in, waits for each port, adds its checks to this scenario's record in results.json and writes done.flag. The desktop and github groups run
+    before it, in the VM, as usual.
 #>
 
 # The ports the bundled clients answer on (installer/bundled-components.json, "defaultPort").

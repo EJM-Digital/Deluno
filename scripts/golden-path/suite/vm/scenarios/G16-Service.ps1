@@ -245,6 +245,4 @@ function Invoke-GroupService {
             Add-Check 'The test account and the service are gone, and the tray''s Deluno still answers' (-not (Get-DelunoServiceFacts) -and (Restore-DelunoTray)) ''
         }
     }
-
-    Invoke-ServiceRebootScenario
 }

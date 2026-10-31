@@ -32,7 +32,7 @@ function Get-ScenarioPlan {
         @{ Name = 'tray'; Function = 'Invoke-GroupTray'; Ids = @('tray.menu-actions', 'tray.change-port', 'tray.allowed-hosts-recovery', 'tray.red-when-host-fails', 'tray.serves-front-end') }
         @{ Name = 'traystates'; Function = 'Invoke-GroupTrayStates'; Ids = @('tray.dot-and-hover', 'tray.starting-dot', 'tray.menu-details', 'tray.quit') }
         @{ Name = 'trayplatform'; Function = 'Invoke-GroupTrayPlatform'; Ids = @('tray.clicks-and-second-launch') }
-        @{ Name = 'service'; Function = 'Invoke-GroupService'; Ids = @('service.install-run-uninstall', 'service.let-any-address-in', 'service.wrong-password', 'service.starts-clients-after-reboot') }
+        @{ Name = 'service'; Function = 'Invoke-GroupService'; Ids = @('service.install-run-uninstall', 'service.let-any-address-in', 'service.wrong-password') }
         @{ Name = 'desktop'; Function = 'Invoke-GroupDesktop'; Ids = @('companions.tray-install-picker', 'filesystem.native-folder-picker') }
         # The last group that runs in the VM: it uses GitHub's hourly allowance up, which stays used up for up to an hour.
         @{ Name = 'github';   Function = 'Invoke-GroupGithub';   Ids = @('github-limit.messages') }
@@ -40,6 +40,8 @@ function Get-ScenarioPlan {
         # The host's own, on a clean machine: the guided setup walked through in the browser from a fresh install, with the clients and Weir the picker installed.
         @{ Name = 'guide'; Function = 'Invoke-GroupGuide'; Host = $true; Ids = @('guided-setup.walk') }
         # The other ways an installed Deluno is updated (#1295), each on a clean machine of its own with the previous release installed, against the candidate's real packages served from a local feed in the VM.
+        # Restarts the VM (#1452), so it too runs on a clean machine of its own: Deluno as a service, the computer restarted, the chosen clients answering.
+        @{ Name = 'servicereboot'; Function = 'Invoke-ServiceRebootScenario'; Host = $true; Ids = @('service.starts-clients-after-reboot') }
         @{ Name = 'updatepaths'; Function = $null; Host = $true; Ids = @('update.in-app', 'update.apply-on-quit', 'update.apply-at-start', 'update.corrupt-package', 'update.setup-interactive', 'update.setup-over-stopped', 'update.service-mode', 'update.tray-menu', 'uninstall.keeps-data') }
         @{ Name = 'update';   Function = $null; Host = $true; Ids = @('update.over-running-previous') }
         # The github-limit scenarios use up GitHub's anonymous allowance (60 calls an hour for the whole network), and it stays used up
@@ -91,6 +93,7 @@ function Get-RunScope {
         UpdatePathIds = @($chosen | Where-Object { $_ -in @('update.in-app', 'update.apply-on-quit', 'update.apply-at-start', 'update.corrupt-package', 'update.setup-interactive', 'update.setup-over-stopped', 'update.service-mode', 'update.tray-menu', 'uninstall.keeps-data') })
         RunGithubPicker = ('github-limit.picker' -in $chosen)
         RunGuide = ('guided-setup.walk' -in $chosen)
+        RunServiceReboot = ('service.starts-clients-after-reboot' -in $chosen)
     }
 }
 
@@ -145,6 +148,7 @@ function Get-ScenarioTopics {
         [pscustomobject]@{ Group = 'traystates'; Proves = 'The tray icon''s own states and details: a green dot with its hover text, pause bars when automation is paused, amber while a download client is down and green again when it is gone; the blinking starting dot and "Starting..." on a restart from the menu, in the same tray process and with no "stopped by itself" balloon; the Advanced items, the version line, Report a problem and Check for updates; and Quit removes the icon and stops the host. (#1278)' }
         [pscustomobject]@{ Group = 'trayplatform'; Proves = 'The tray icon''s own mouse handling and starts (#1278): a left click and a double click open Deluno once, a middle click opens nothing, a right click opens the menu, a click while Deluno starts says why in a balloon; a second launch ends by itself, leaves one tray and shows "Deluno is already running"; the sign-in entry holds the quoted exe and no flags; a start after Quit says "Deluno is running"; --port serves one run on another port and is not saved.' }
         [pscustomobject]@{ Group = 'service'; Proves = 'Deluno as a Windows service on a real Windows: Run as a Windows service... from the tray makes the service (auto start, description, restart-on-failure actions, LocalSystem), the tray leaves, the service answers with the same sign-in rules, Windows starts it again after it is killed, and --uninstall-service removes it and the tray comes back; with no tray, Allowed Hosts turns an address away, the service''s settings file (allowedHostsForceDisabled) lets it in after a restart with the saved choice untouched, and removing it turns the address away again; a wrong password for a named user creates a service that does not run. (#1278, #1295)' }
+        [pscustomobject]@{ Group = 'servicereboot'; Proves = 'Deluno as a Windows service across a restart of the computer, on a clean machine of its own: after the restart, with nobody signed in, Deluno and each bundled download client the person chose answer on their ports again. (#1452)' }
         [pscustomobject]@{ Group = 'desktop'; Proves = 'Two things Deluno does on the computer''s own desktop: the Companion Tools page asks the tray to install an app only the tray installs, and the tray''s picker window opens naming it (a tool the tray does not install is refused); and the native folder picker opens Windows'' own folder window, returns a typed folder on OK, reports cancelled on Cancel and refuses a second ask while one is open. (#1283, #1278)' }
         [pscustomobject]@{ Group = 'github'; Proves = 'With GitHub''s anonymous hourly allowance used up from the VM, the tracker definitions'' Update now and the connections'' version check each name GitHub''s limit, with the reset in the viewer''s local time (never UTC), on the API and on the screen. Uses the limit up for up to an hour, so it is the last group in the VM. (#1181)' }
         [pscustomobject]@{ Group = 'githubpicker'; Proves = 'Run by the host on a clean machine of its own, after the groups: GitHub''s allowance is used up inside the VM before Setup runs, and the first-run picker still installs Weir through github.com''s release feed (releases.atom); the install log names Weir''s installer and checksum, never says the limit stopped it, and the installed Weir is a release the feed lists. (#1181)' }
