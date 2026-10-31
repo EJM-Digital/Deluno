@@ -89,7 +89,6 @@ public static partial class TrackerJson
         JsonValue value when value.GetValueKind() == JsonValueKind.String => value.GetValue<string>(),
         JsonValue value when value.GetValueKind() == JsonValueKind.True => "True",
         JsonValue value when value.GetValueKind() == JsonValueKind.False => "False",
-        JsonValue value when value.GetValueKind() == JsonValueKind.Null => null,
         JsonValue value => value.ToJsonString(),
         _ => node.ToJsonString()
     };
@@ -110,7 +109,7 @@ public static partial class TrackerJson
             {
                 "has" => Value(node, argument) is not null,
                 "not" => Value(node, argument) is null,
-                "contains" => node.ToJsonString().Contains(argument, StringComparison.Ordinal) || (Text(node) ?? string.Empty).Contains(argument, StringComparison.Ordinal),
+                "contains" => node.ToJsonString().Contains(argument, StringComparison.Ordinal) || Text(node)!.Contains(argument, StringComparison.Ordinal),
                 _ => true
             };
 
