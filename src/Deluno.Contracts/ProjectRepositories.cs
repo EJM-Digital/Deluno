@@ -41,6 +41,6 @@ public static class ProjectRepositories
         return FormerDelunoWebUrls.Any(former => string.Equals(former, trimmed, StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>The one image name, for every version: the repository, lower-cased, as the release workflow names it. Earlier releases were copied here from the former package on 23 Oct 2026, by a one-off workflow since removed.</summary>
+    /// <summary>The one image name, for every version: the repository, lower-cased, as the release workflow names it. Earlier releases were copied here from the former package (copy-former-images.yml).</summary>
     public static string DelunoImage => "ghcr.io/" + Deluno.ToLowerInvariant();
 }
