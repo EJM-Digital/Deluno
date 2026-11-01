@@ -270,10 +270,12 @@ describe("Schedule steps the period", () => {
 
 describe("Calendar empty states", () => {
   it("says Nothing is scheduled in the stepped range when it has no entry, and Nothing has a date yet, with the provider hint, when nothing has a date at all", () => {
+  // The fixtures are dated today, so the month after today is always empty; the expected label is worked out from the clock, never typed.
     const { unmount } = renderPage();
     fireEvent.click(screen.getByRole("button", { name: "Next month" }));
-    expect(screen.getByText(/^Nothing is scheduled in November 2026. Step to another month/)).toBeInTheDocument();
-    unmount();
+    const nextLabel = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    expect(screen.getByText(new RegExp(`^Nothing is scheduled in ${nextLabel}. Step to another month`))).toBeInTheDocument();
+      unmount();
 
     const saved = { episodes: loaderData.episodes, movies: loaderData.movies };
     loaderData.episodes = [];
