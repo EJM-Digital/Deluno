@@ -56,6 +56,18 @@ describe("a release just sent is a Grabbed card from the sent record (#1442)", (
     expect(frames).toEqual([1, 2, 1, 1]);
   });
 
+  it("is one card, with one key, when the client names the download differently from the sent record and the hand-off (#1459)", () => {
+    // CI run 41247553280: the client lists the torrent without the file extension the sent record and the hand-off carry.
+    const named = `${RELEASE}.mkv`;
+    const handoff = { id: "h1", libraryId: "l", mediaType: "movies", clientId: "qb", queueItemId: "abc123", releaseName: named, sourcePath: "", processorName: "Weir", status: "started", outputPath: null, importJobId: null, failureMessage: null, createdUtc: iso(-20_000), updatedUtc: iso(-5_000) } as never;
+    for (const handoffs of [[], [handoff]]) {
+      for (const status of ["downloading", "waitingForProcessor", "completed"]) {
+        const cards = buildJourney({ ...base, dispatches: [dispatch({ releaseName: named })], queue: [queue({ status, progress: status === "downloading" ? 40 : 100, sizeBytes: 1e6 })], handoffs });
+        expect(cards.map((card) => card.key), `${status}, ${handoffs.length} hand-off`).toEqual(["qb:abc123"]);
+      }
+    }
+  });
+
   it("draws nothing for a refused send, one sent long ago, or one that was imported", () => {
     for (const record of [dispatch({ grabStatus: "failed" }), dispatch({ grabAttemptedUtc: iso(-10 * 60_000), createdUtc: iso(-10 * 60_000) }), dispatch({ importStatus: "imported" })]) {
       expect(byStage(buildJourney({ ...base, dispatches: [record] })).grabbed).toHaveLength(0);
