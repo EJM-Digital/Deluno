@@ -48,7 +48,7 @@ for (const kind of CLIENT_KINDS) {
         expect(await row.innerText(), "The row never says Waiting for processor").not.toMatch(/Waiting for processor/i);
       } else {
         // A finished Usenet job leaves the client's queue for its history, so it has no row until its hand-off exists.
-        await expect.poll(() => pageText(page), { timeout: 60_000, message: "In progress has loaded" }).toMatch(/in flight|Nothing in motion/i);
+        await expect.poll(() => pageText(page), { timeout: 60_000, message: "In progress has loaded" }).toMatch(/happening now|Nothing in motion/i);
         await sleep(3000);
       }
       expect(await pageText(page), "The page never says Waiting for processor").not.toMatch(/Waiting for processor/i);
