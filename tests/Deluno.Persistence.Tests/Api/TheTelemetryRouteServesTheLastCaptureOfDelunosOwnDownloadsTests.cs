@@ -73,4 +73,29 @@ public sealed class TheTelemetryRouteServesTheLastCaptureOfDelunosOwnDownloadsTe
         Assert.Equal(1, second.GetProperty("clients")[0].GetProperty("queue").GetArrayLength());
         Assert.Equal(callsBefore, qbit.Requests.Count);
     }
+    [Fact]
+    public async Task A_client_added_after_a_capture_was_taken_is_listed_on_the_very_next_read()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var listing = RecordedReplies.Qbittorrent("downloading").Body("torrents/info");
+        await using var qbit = await RecordedAppServer.StartAsync(
+            "qbittorrent",
+            new[] { "sign-in", "version", "settings", "trackers" }.Select(RecordedReplies.Qbittorrent),
+            (request, _) => request.RequestUri is { } uri && uri.AbsolutePath.EndsWith("torrents/info", StringComparison.Ordinal) ? RecordedReplies.Json(listing) : null);
+
+        // A capture with no client in it is held (a screen opened before the client was set up).
+        var before = await app.Client.GetFromJsonAsync<JsonElement>("/api/download-clients/telemetry");
+        Assert.Equal(0, before.GetProperty("clients").GetArrayLength());
+
+        var created = await app.Client.PostAsJsonAsync("/api/download-clients", new
+        {
+            protocol = "qbittorrent", host = qbit.Host, port = qbit.Port, username = "deluno", password = "a-test-password",
+            moviesCategory = "movies", tvCategory = "tv", priority = 10, isEnabled = true
+        });
+        Assert.True(created.IsSuccessStatusCode, await created.Content.ReadAsStringAsync());
+
+        // Straight away, well inside the age a held capture is served for, the new client is there.
+        var after = await app.Client.GetFromJsonAsync<JsonElement>("/api/download-clients/telemetry");
+        Assert.Equal(1, after.GetProperty("clients").GetArrayLength());
+    }
 }

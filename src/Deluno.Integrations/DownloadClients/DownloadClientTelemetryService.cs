@@ -167,6 +167,19 @@ public sealed class DownloadClientTelemetryService(
         }
 
         var entry = await snapshotStore.GetLatestAsync(maxAge, cancellationToken);
+        if (entry is not null)
+        {
+            // A client added (or switched on) after the held capture was taken is not in it. The screen would show no client
+            // until the next pass; read once now instead, shared with every other reader. Every enabled client is in
+            // every capture (an unanswering one as not-yet-read), so this only fires after a configuration change.
+            var held = entry.Value.Overview.Clients.Select(client => client.ClientId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var configured = await connectionsRepository.ListDownloadClientsAsync(cancellationToken);
+            if (configured.Any(client => client.IsEnabled && !held.Contains(client.Id)))
+            {
+                entry = await snapshotStore.RefreshAsync(TimeSpan.Zero, cancellationToken);
+            }
+        }
+
         return entry?.Value.Overview ?? new DownloadTelemetryOverview(Summarize([]), [], timeProvider.GetUtcNow());
     }
 

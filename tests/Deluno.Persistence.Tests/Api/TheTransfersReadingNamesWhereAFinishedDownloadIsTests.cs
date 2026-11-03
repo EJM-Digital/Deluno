@@ -108,6 +108,8 @@ public sealed class TheTransfersReadingNamesWhereAFinishedDownloadIsTests
 
     private static async Task<(JsonElement Item, JsonElement Summary)> ReadAsync(Scene scene)
     {
+        // The first read waits for the first capture; a slow machine must not turn that wait into an empty reading.
+        ((Deluno.Integrations.DownloadClients.DownloadTelemetrySnapshotStore)scene.App.Services.GetRequiredService<Deluno.Integrations.DownloadClients.IDownloadTelemetrySnapshotStore>()).ColdWait = TimeSpan.FromSeconds(60);
         var overview = await scene.App.Client.GetFromJsonAsync<JsonElement>("/api/download-clients/telemetry");
         var queue = overview.GetProperty("clients")[0].GetProperty("queue").EnumerateArray().ToArray();
         return (Assert.Single(queue), overview.GetProperty("summary").Clone());
