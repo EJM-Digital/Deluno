@@ -22,7 +22,7 @@ function Invoke-ServiceRebootScenario {
         $dataRoot = Join-Path $env:LOCALAPPDATA 'DelunoData'
         $remembered = @()
         $choicesFile = Join-Path $dataRoot 'config\started-components.json'
-        if (Test-Path $choicesFile) { $remembered = @(Get-Content -Raw $choicesFile | ConvertFrom-Json) }
+        if (Test-Path $choicesFile) { $remembered = @(foreach ($c in (Get-Content -Raw $choicesFile | ConvertFrom-Json)) { $c }) } # Windows PowerShell 5.1 hands a JSON array over as ONE object; the foreach unrolls it
         $expected = @($remembered | Where-Object { $script:ClientPorts.ContainsKey([string]$_) } | ForEach-Object { [pscustomobject]@{ kind = [string]$_; port = [int]$script:ClientPorts[[string]$_] } })
         Add-Check 'The install left the clients the person chose in the list Deluno starts again (so there is something to prove)' ($expected.Count -gt 0) ((@($remembered)) -join ', ')
 
