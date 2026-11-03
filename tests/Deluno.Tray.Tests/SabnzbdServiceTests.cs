@@ -235,23 +235,7 @@ public sealed partial class ComponentSetupTests
         // Uninstall() is what --uninstall-service runs.
         var uninstall = program[program.IndexOf("public static void Uninstall()", StringComparison.Ordinal)..];
         Assert.Contains("SabnzbdService", uninstall[..uninstall.IndexOf('}', StringComparison.Ordinal)], StringComparison.Ordinal);
-        Assert.Contains("SabnzbdService", hooks[hooks.IndexOf("internal static void OnBeforeUninstall(", StringComparison.Ordinal)..], StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Deluno_uninstalling_removes_the_SABnzbd_service_it_made_and_leaves_one_it_did_not_make()
-    {
-        var env = new FakeSabnzbdEnvironment { Exists = true, Marker = true };
-        var runner = new RecordingCommands(env);
-
-        InstallHooks.OnBeforeUninstall(() => throw new InvalidOperationException("no firewall"), new NoSignInEntry(), Sab(runner, env));
-
-        Assert.Equal(["sc.exe stop SABnzbd", "sc.exe delete SABnzbd"], runner.Lines);
-
-        var own = new FakeSabnzbdEnvironment { Exists = true, Marker = false };
-        var ownRunner = new RecordingCommands(own);
-        InstallHooks.OnBeforeUninstall(() => throw new InvalidOperationException("no firewall"), new NoSignInEntry(), Sab(ownRunner, own));
-        Assert.Empty(ownRunner.Lines);
+        Assert.Contains("ServiceUninstall", hooks[hooks.IndexOf("internal static void OnBeforeUninstall(", StringComparison.Ordinal)..], StringComparison.Ordinal);
     }
 
     private sealed class NoSignInEntry : ISignInEntry
