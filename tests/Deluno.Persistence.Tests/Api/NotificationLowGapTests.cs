@@ -9,7 +9,7 @@ namespace Deluno.Persistence.Tests.Api;
 
 /// <summary>
 /// Low-severity gap rows (#1329) of the notification connections, on the whole application with its own SQLite databases. The
-/// receiving end, where there is one, is the recorded ntfy 2.34.0 served over a loopback port.
+/// receiving end, where there is one, is the recorded ntfy 2.37.1 served over a loopback port.
 /// </summary>
 public sealed class NotificationLowGapTests
 {
