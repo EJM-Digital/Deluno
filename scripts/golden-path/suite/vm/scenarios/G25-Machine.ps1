@@ -279,6 +279,7 @@ function Invoke-GroupMachine {
                     $leftovers = @($after | Where-Object { $_.Extension -notin '.mkv', '.mp4', '.avi' })
                     $destLen = if ($videos.Count) { $videos[0].FullName.Length } else { 0 }
                     $baseLen = (Get-Item -LiteralPath $script:Fx.Base['small']).Length
+                    Add-Check "$($case.Name): the path in the library is under the 260-character limit (Deluno shortened the names to fit), or the import was refused" ((-not $r.Succeeded) -or ($destLen -gt 0 -and $destLen -lt 260)) "path length $destLen"
                     Add-Note ("$($case.Name): import succeeded=$($r.Succeeded); library holds $($videos.Count) film(s) (path length $destLen); message: $($r.Message)")
                     Add-Check "$($case.Name): Deluno answered the import (no crash)" ($r.Status -in 200, 207, 400, 409, 422) "HTTP $($r.Status)"
                     Add-Check "$($case.Name): one whole film is in place, or the import said in plain words why not" (($r.Succeeded -and $videos.Count -eq 1 -and $videos[0].Length -eq $baseLen) -or (-not $r.Succeeded -and $videos.Count -eq 0 -and $r.Message -match '\w{3}' -and $r.Message -notmatch '(?m)^\s+at |System\.[A-Z]\w+Exception|Unhandled')) $r.Message
@@ -287,7 +288,10 @@ function Invoke-GroupMachine {
                     $alive = Try-Deluno -Path '/api/system/health'
                     Add-Check "$($case.Name): Deluno still answers" ($alive.Status -eq 200) "HTTP $($alive.Status)"
                 }
-                finally { Remove-VolumeMovie -Movie $movie }
+                finally {
+                    Remove-VolumeMovie -Movie $movie
+                    try { [System.IO.Directory]::Delete($longPrefix + $libRoot, $true); New-Item -ItemType Directory -Force -Path $libRoot | Out-Null } catch { }
+                }
             }
         }
         finally {
@@ -351,14 +355,14 @@ function Invoke-GroupMachine {
         # Weir works again: the hand-off ends one way or another, and an ended hand-off is no blocker.
         $end = Wait-Until -TimeoutSec 300 -IntervalSec 3 -Condition {
             $h = @(Find-Handoffs -Name $film.Release) | Where-Object { $_.id -eq $handoff.id } | Select-Object -First 1
-            if ($h -and $h.status -in 'completed', 'failed', 'rejected', 'lost', 'timed-out', 'stalled', 'cancelled', 'released') { $h } else { $null }
+            if ($h -and $h.status -in 'completed', 'failed', 'rejected', 'lost', 'timed-out', 'stalled', 'cancelled', 'released', 'dismissed') { $h } else { $null }
         }
         Add-Check 'The hand-off ended once Weir worked again' $end.Ok $(if ($end.Ok) { "status $($end.Value.status)" } else { 'still open' })
         $b2 = Try-Deluno -Path "/api/movies/$($film.MovieId)/acquisition-blockers"
         Add-Check 'An ended hand-off no longer blocks the title' ($b2.Status -eq 200 -and $b2.Raw -notmatch 'processor-holding-file') $(if ($b2.Raw.Length -gt 300) { $b2.Raw.Substring(0, 300) } else { $b2.Raw })
     }
 
-    Invoke-Scenario -Id 'machine.external-redownload' -Title 'Weir asks Deluno to download an imported film again: the file goes to the recycle bin, the client forgets the finished download, and the new copy comes back through the workflow and Weir' -Body {
+    Invoke-Scenario -Id 'machine.external-redownload' -Title 'Weir asks Deluno to download an imported film again: the file goes to the recycle bin, the client forgets the finished download, and a new copy comes back through the client, Weir and the library' -Body {
         $keyName = 'machine-redownload-key'
         $created = $null
         $film = New-FilmFor -Kind 'qbittorrent' -Layout 'folder' -Label 'again'
@@ -394,11 +398,21 @@ function Invoke-GroupMachine {
             Restore-FilmData -Film $film
         }
         finally { Stop-AutomationPause }
+        # The search the ask queued ran against the real indexer; this tiny film is below the profile's size floor, so the search itself
+        # refuses it (the suite always sends its films with "Send anyway"). The same release is sent again that way: the client, which
+        # forgot the old download, takes it, Weir cleans it in a new hand-off and it is imported again.
+        $sentAgain = Try-Deluno -Method POST -Path "/api/movies/$($film.MovieId)/grab" -Body @{
+            releaseName = $film.Release; indexerId = $film.IndexerId; indexerName = 'Golden feed'; candidateQuality = 'WEB 1080p'
+            downloadUrl = $film.Url; sizeBytes = $film.Size; seeders = 50; force = $true; overrideReason = 'Golden scenario suite: a controlled release'; duplicateAction = $null
+        }
+        Add-Check 'The client takes the release again (it forgot the old download, so it does not refuse it)' ($sentAgain.Status -ge 200 -and $sentAgain.Status -lt 300) "HTTP $($sentAgain.Status) $($sentAgain.Raw)"
+        $film.SentUtc = [DateTime]::UtcNow
+        Invoke-FilmSettle -Film $film -WaitForRowSec 60 | Out-Null
         $new = Wait-Until -TimeoutSec 360 -IntervalSec 3 -Condition {
             $h = @(Find-Handoffs -Name $film.Release) | Where-Object { $_.id -ne $firstHandoff.id } | Select-Object -First 1
             if ($h -and $h.status -eq 'completed') { $h } else { $null }
         }
-        Add-Check 'The search found the release again, the client downloaded it and Weir processed it in a new hand-off' $new.Ok $(if ($new.Ok) { "after $($new.Seconds) s" } else { 'no new completed hand-off' })
+        Add-Check 'Weir cleaned the new copy in a new hand-off' $new.Ok $(if ($new.Ok) { "after $($new.Seconds) s" } else { 'no new completed hand-off' })
         $back = Wait-Until -TimeoutSec 180 -IntervalSec 3 -Condition { Find-Imported -Title $film.Title }
         Add-Check 'The new copy is imported into the library again' $back.Ok $(if ($back.Ok) { $back.Value.FullName } else { '' })
         try { if ($created.id) { Invoke-Deluno -Method DELETE -Path "/api/api-keys/$($created.id)" | Out-Null } } catch { }
@@ -414,7 +428,7 @@ function Invoke-GroupMachine {
             $done = $false
             while ((Get-Date) -lt $until -and -not $done) {
                 Read-HubMessages -Connection $hub -WaitMs 500
-                $done = @($hub.Messages | Where-Object { $_.Target -eq 'ActivityEventAdded' -and "$($_.Args[0].message)" -match [regex]::Escape($film.Title) -and "$($_.Args[0].message)" -match 'Imported into the library' }).Count -gt 0
+                $done = @($hub.Messages | Where-Object { $_.Target -eq 'ActivityEventAdded' -and "$($_.Args[0].message)" -match [regex]::Escape($film.Title) -and "$($_.Args[0].label)" -eq 'Imported into the library' }).Count -gt 0
             }
             for ($i = 0; $i -lt 10; $i++) { Read-HubMessages -Connection $hub -WaitMs 300 } # the last pushes of the import
             $mine = @($hub.Messages | Where-Object { $_.Type -eq 1 })
@@ -431,7 +445,8 @@ function Invoke-GroupMachine {
             $ho = @($mine | Where-Object { $_.Target -eq 'ProcessorHandoffChanged' -and "$($_.Args[0].releaseName)" -eq $film.Release })
             Add-Check 'The hand-off to Weir was pushed as it moved, ending completed' ($ho.Count -ge 1 -and "$($ho[-1].Args[0].state)" -match 'completed|passed') (($ho | ForEach-Object { $_.Args[0].state }) -join ' > ')
             $acts = @($mine | Where-Object { $_.Target -eq 'ActivityEventAdded' -and "$($_.Args[0].message)" -match [regex]::Escape($film.Title) })
-            $idx = @('Sent to the download client', 'Sent to the processor', 'Imported into the library') | ForEach-Object { $p = $_; $k = -1; for ($j = 0; $j -lt $acts.Count; $j++) { if ("$($acts[$j].Args[0].message)" -match $p) { $k = $j; break } }; $k }
+            Add-Check 'Activity pushes carry the words a person reads (a label and a message naming the film)' (@($acts | Where-Object { $_.Args[0].label -and $_.Args[0].message }).Count -ge 3) "$($acts.Count) pushes about this film"
+            $idx = @('Sent to the download client', 'Sent to the processor', 'Imported into the library') | ForEach-Object { $p = $_; $k = -1; for ($j = 0; $j -lt $acts.Count; $j++) { if ("$($acts[$j].Args[0].label)" -eq $p) { $k = $j; break } }; $k }
             Add-Check 'Activity pushed "Sent to the download client", "Sent to the processor" and "Imported into the library", in that order' (($idx -notcontains -1) -and $idx[0] -lt $idx[1] -and $idx[1] -lt $idx[2]) ("positions: " + ($idx -join ', '))
         }
         finally { Close-HubConnection -Connection $hub }
