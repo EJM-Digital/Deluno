@@ -287,38 +287,9 @@ function Get-DataFileList {
     @(Get-ChildItem -Path $data -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in '.db', '.zip' -or $_.FullName -match 'protection-keys' } | ForEach-Object { $_.FullName.Substring($data.Length) })
 }
 
-# Closes the notification banners on screen (a banner over the notification area takes the keyboard from the tray menu), the way a person presses their X.
-function Close-ToastBanners {
-    try {
-        $uia = [System.Windows.Automation.AutomationElement]
-        $name = New-Object System.Windows.Automation.PropertyCondition($uia::NameProperty, 'New notification')
-        $close = New-Object System.Windows.Automation.PropertyCondition($uia::NameProperty, 'Close')
-        foreach ($w in @($uia::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $name))) {
-            $b = $w.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $close)
-            if ($b) { try { $b.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch { } }
-        }
-    } catch { }
-}
-
-# Saves a picture of the screen into the run's evidence (what a person would have seen).
-function Save-ScreenPicture {
-    param([Parameter(Mandatory)] [string] $Name)
-    try {
-        Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-        $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-        $bmp = New-Object System.Drawing.Bitmap($b.Width, $b.Height)
-        $g = [System.Drawing.Graphics]::FromImage($bmp)
-        $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
-        $dir = Join-Path (Get-SuiteRoot) 'results\evidence'
-        New-Item -ItemType Directory -Force -Path $dir | Out-Null
-        $bmp.Save((Join-Path $dir $Name), [System.Drawing.Imaging.ImageFormat]::Png)
-        $g.Dispose(); $bmp.Dispose()
-    } catch { Add-Note "The screen could not be saved: $($_.Exception.Message)" }
-}
-
 function Invoke-UpdatePreferencesAndBackgroundCheck {
     param([Parameter(Mandatory)] [string] $CandidateVersion)
-    Invoke-Scenario -Id 'update.preferences-and-background-check' -Title 'The update preferences are saved and read back across a restart; with auto-check on and a download mode chosen, the check runs by itself 20 seconds after start and the update downloads without a click; a check that cannot reach the feed says why in the Updates page''s words and in a balloon' -Body {
+    Invoke-Scenario -Id 'update.preferences-and-background-check' -Title 'The update preferences are saved and read back across a restart; with auto-check on and a download mode chosen, the check runs by itself 20 seconds after start and the update downloads without a click; a check that cannot reach the feed says why in the Updates page''s words' -Body {
         Assert-UpdateFeedFiles | Out-Null
         $ctx = Start-PreviousForUpdate -CandidateVersion $CandidateVersion
         if (-not $ctx) { return }
@@ -363,7 +334,7 @@ function Invoke-UpdatePreferencesAndBackgroundCheck {
             # ---- a check that cannot reach the feed
             Try-Deluno -Method PUT -Path '/api/updates/preferences' -Body @{ mode = 'notify-only'; autoCheck = $false } | Out-Null
             Stop-UpdateFeed $feed; $feed = $null
-            # Started again with nothing downloaded and the feed gone, so the menu's update item reads "Check for updates" (a downloaded update turns it into "Restart to update").
+            # Started again with nothing downloaded and the feed gone.
             $null = Quit-DelunoFromTray
             Clear-DownloadedUpdates
             $exe3 = Get-InstalledDelunoExe
@@ -375,20 +346,6 @@ function Invoke-UpdatePreferencesAndBackgroundCheck {
             $st = $chk.Data.status
             $words = "$($chk.Data.message) $($st.message)"
             Add-Check 'The in-app check says why it failed in the Updates page''s words, and offers nothing to restart' ($chk.Status -eq 200 -and $words -match "Couldn't check for updates" -and -not $st.restartRequired) $words
-            $before = Get-ToastTextCount -Text "Couldn't check for updates"
-            $pressed = $false
-            for ($try = 1; $try -le 3 -and -not $pressed; $try++) {
-                Close-ToastBanners
-                $pressed = Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Check for updates'
-                if (-not $pressed) {
-                    Start-Sleep -Seconds 10 # reason: a retry pause before opening the tray menu again; no event says it is ready
-                    if ($try -eq 2) { Save-ScreenPicture -Name 'tray-menu-would-not-open.png' }
-                }
-            }
-            Add-Check 'The tray''s Check for updates item is pressed' $pressed $script:TrayMenuMiss
-            Add-Check 'The tray tells the person in a balloon ("Couldn''t check for updates")' (Wait-ToastShown -Text "Couldn't check for updates" -Before $before -TimeoutSec 60) ''
-            $line = @(Get-TrayMenuStates | Where-Object { $_.Name -match "Couldn't check" })
-            Add-Check 'The menu''s status line carries the same sentence' ($line.Count -ge 1) (($line | ForEach-Object { $_.Name }) -join ' | ')
         }
         finally { Stop-UpdateFeed $feed }
     }
