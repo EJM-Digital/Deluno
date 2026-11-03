@@ -146,9 +146,12 @@ internal static class InstallHooks
     }
 
     /// <summary>Before uninstall: removes the rule Deluno added, so nothing is left behind.</summary>
-    public static void OnBeforeUninstall()
+    public static void OnBeforeUninstall() => OnBeforeUninstall(Firewall, new RunKeySignInEntry());
+
+    /// <summary>The same, with the firewall and the sign-in entry given, so a test never touches the machine's.</summary>
+    internal static void OnBeforeUninstall(Func<WindowsFirewallLanAccess> firewallFactory, ISignInEntry signIn)
     {
-        var firewall = Firewall();
+        var firewall = firewallFactory();
         try
         {
             using var budget = new CancellationTokenSource(UninstallBudget);
