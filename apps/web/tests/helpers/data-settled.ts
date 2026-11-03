@@ -17,6 +17,12 @@ export function trackDataRequests(page: Page) {
   const inFlight = new Map<Request, number>();
   const settle = (request: Request) => inFlight.delete(request);
   page.on("request", (request) => {
+    // A full page load starts with its navigation request, and what the old
+    // document still had open dies with it. Playwright does not always report
+    // those as finished: one search hung settled() on CI for 8 minutes.
+    if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+      inFlight.clear();
+    }
     const pathname = new URL(request.url()).pathname;
     // A Web Worker's own script load (live-ticker.worker-*.js) is not page
     // data, and Playwright does not always report it finished, which hung

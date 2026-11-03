@@ -131,10 +131,14 @@ test.describe("type scale on every screen", () => {
       const only = process.env.TYPE_ONLY;
       const offenders: string[] = [];
       const roles: string[] = [];
-      for (const route of [...routes, ...titles.routes].filter((item) => !only || only.split(",").some((part) => (part === "home" ? item === "/" : item.includes(part))))) {
-        await walk(page, data, route, size, offenders, roles);
+      // The seeded film and show go even when the walk fails, or every later spec on this host sees a library that is not empty.
+      try {
+        for (const route of [...routes, ...titles.routes].filter((item) => !only || only.split(",").some((part) => (part === "home" ? item === "/" : item.includes(part))))) {
+          await walk(page, data, route, size, offenders, roles);
+        }
+      } finally {
+        await titles.remove();
       }
-      await titles.remove();
       if (process.env.TYPE_ROLES) console.log(`ROLES on / at ${size.width}:\n${roles.join("\n")}`);
       if (offenders.length > 0) console.log(`TYPE OFFENDERS at ${size.width}x${size.height}:\n${offenders.join("\n")}`);
       expect(offenders, offenders.join("\n")).toEqual([]);
