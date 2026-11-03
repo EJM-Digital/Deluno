@@ -107,6 +107,12 @@ public static class ServiceManager
 
     private static void CreateService(string? username, string? password)
     {
+        // The account must be allowed to log on as a service or Windows never starts it (sc.exe does not grant that); nothing is made until it is.
+        if (!string.IsNullOrEmpty(username))
+        {
+            GiveLogonRight(username);
+        }
+
         var binPath = $"\"{ExePath}\" --service";
 
         // sc.exe is the simplest cross-version way to create a service with credentials
@@ -130,6 +136,18 @@ public static class ServiceManager
 
         // Start immediately
         RunSc($"start {ServiceName}");
+    }
+
+    /// <summary>Test seam: gives an account the right to log on as a service; returns the reason in plain words when it could not.</summary>
+    internal static Func<string, string?> LogonRightGranter { get; set; } = ServiceLogonRight.Grant;
+
+    /// <summary>Gives the account the right to log on as a service, or says why it could not (the service would never start).</summary>
+    internal static void GiveLogonRight(string account)
+    {
+        if (LogonRightGranter(account) is { } problem)
+        {
+            throw new InvalidOperationException($"Deluno could not let {account} run a Windows service: {problem}");
+        }
     }
 
     /// <summary>
