@@ -39,3 +39,14 @@ test("a project that most of the suite names keeps the whole suite, and one that
   assert.equal(filterFor(new Set(["Nothing"]), classes), null);
   assert.equal(filterFor(new Set(), classes), null);
 });
+
+test("a nested helper class after the facts does not stand in for the test class that holds them", () => {
+  const root = repo({
+    "tests/X.Tests/Nested.cs": "namespace X;\npublic sealed class PublisherTests\n{\n    [Fact]\n    public void A() { }\n\n    private sealed class FakeWatchers { }\n}\n"
+  });
+  try {
+    assert.deepEqual(testClasses(root).map((c) => c.name), ["PublisherTests"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

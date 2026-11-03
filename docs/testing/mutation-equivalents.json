@@ -465,6 +465,46 @@
       "line": 103,
       "replacement": "false",
       "reason": "The guided setup is opened twice on the way out of the codes step, by the Continue button and by the sign-in effect that sees the lock released; either alone gives the same result, so removing one part changes nothing a person or test can reach."
+    },
+    {
+      "project": "Deluno.Realtime",
+      "file": "src/Deluno.Realtime/SignalRRealtimeEventPublisher.cs",
+      "mutator": "Boolean mutation",
+      "line": 29,
+      "replacement": "false",
+      "reason": "SingleReader is a performance hint to the channel; this publisher has one reader loop, and with the hint off the channel still delivers the same events in the same order, so no assertion can tell the two apart."
+    },
+    {
+      "project": "Deluno.Realtime",
+      "file": "src/Deluno.Realtime/SignalRRealtimeEventPublisher.cs",
+      "mutator": "Boolean mutation",
+      "line": 30,
+      "replacement": "true",
+      "reason": "SingleWriter is a performance hint that lets the channel skip a lock; it changes only how the channel guards concurrent writers internally, never which events are delivered or in what order, so a test cannot observe it."
+    },
+    {
+      "project": "Deluno.Realtime",
+      "file": "src/Deluno.Realtime/SignalRRealtimeEventPublisher.cs",
+      "mutator": "Linq method mutation (First() to FirstOrDefault())",
+      "line": 386,
+      "replacement": "libraryIds.FirstOrDefault",
+      "reason": "The call is guarded by Count == 1, so the collection is never empty and First() and FirstOrDefault() return the same item."
+    },
+    {
+      "project": "Deluno.Realtime",
+      "file": "src/Deluno.Realtime/SignalRRealtimeEventPublisher.cs",
+      "mutator": "Statement mutation",
+      "line": 433,
+      "replacement": ";",
+      "reason": "The rethrow of a cancelled send is followed by the loop reading the queue again with the same cancelled token, which throws the same cancellation at once, so the loop ends cancelled with or without the rethrow."
+    },
+    {
+      "project": "Deluno.Realtime",
+      "file": "src/Deluno.Realtime/SignalRRealtimeEventPublisher.cs",
+      "mutator": "Statement mutation",
+      "line": 557,
+      "replacement": ";",
+      "reason": "The early return stops a second flush loop starting while one runs. Without it the extra loop only waits on a timer, finds the batch already taken, and ends; the pushes and the resting flag are the same, so no test can reach a difference."
     }
   ]
 }
