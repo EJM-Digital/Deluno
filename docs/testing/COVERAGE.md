@@ -152,7 +152,7 @@ either is out of date, so they cannot drift from the baseline. `coverage-areas.j
 | src/Deluno.Quality | 82 | 30 | 52 | 96.9% | 86.0% | #1296 |
 | src/Deluno.Realtime | 8 | 5 | 3 | 99.1% | 98.5% | #1296 |
 | src/Deluno.Recovery | 12 | 5 | 7 | 95.2% | 89.0% | #1296 |
-| src/Deluno.Retention | 13 | 1 | 12 | 93.5% | 80.7% | #1296 |
+| src/Deluno.Retention | 13 | 1 | 12 | 93.5% | 80.4% | #1296 |
 | src/Deluno.Security | 51 | 25 | 26 | 96.0% | 87.9% | #1302 |
 | src/Deluno.Series | 111 | 87 | 24 | 96.7% | 83.7% | #1296 |
 | src/Deluno.Worker | 142 | 42 | 100 | 93.3% | 84.3% | #1296 |

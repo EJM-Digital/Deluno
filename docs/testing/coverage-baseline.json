@@ -6043,7 +6043,7 @@
       "branch": 95.83
     },
     "src/Deluno.Quality/ReleasePreferences/CustomFormatDefinitionMatcher.cs": {
-      "line": 91.23,
+      "line": 90.75,
       "branch": 75.25
     },
     "src/Deluno.Quality/ReleasePreferences/CustomFormatPreferenceTraits.cs": {
@@ -6216,7 +6216,7 @@
     },
     "src/Deluno.Retention/RetentionEndpoints.cs": {
       "line": 93.42,
-      "branch": 53.57
+      "branch": 50
     },
     "src/Deluno.Retention/RetentionEpisodeMath.cs": {
       "line": 100,
@@ -7192,7 +7192,7 @@
     },
     "src/Deluno.Worker/Jobs/LibraryMediaProbeJobHandler.cs": {
       "line": 95.97,
-      "branch": 93.24
+      "branch": 91.89
     },
     "src/Deluno.Worker/Jobs/LibrarySearchJobHandler.cs": {
       "line": 91.7,

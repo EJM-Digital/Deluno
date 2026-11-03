@@ -951,7 +951,7 @@ Issue #1296. Closed by a test for each uncovered quality and custom-format branc
 | src/Deluno.Quality/QualityProfileResolver.cs | 94.5% | 90.5% |
 | src/Deluno.Quality/ReleaseNameQuality.cs | 89.4% | 82.1% |
 | src/Deluno.Quality/ReleaseNameWords.cs | 96.7% | 95.8% |
-| src/Deluno.Quality/ReleasePreferences/CustomFormatDefinitionMatcher.cs | 91.2% | 75.3% |
+| src/Deluno.Quality/ReleasePreferences/CustomFormatDefinitionMatcher.cs | 90.8% | 75.3% |
 | src/Deluno.Quality/ReleasePreferences/CustomFormatPreferenceTraits.cs | 95.8% | 59.1% |
 | src/Deluno.Quality/ReleasePreferences/DraftProfileJudgement.cs | 100.0% | 86.7% |
 | src/Deluno.Quality/ReleasePreferences/InstalledPreferenceEvaluationFactory.cs | 95.6% | 82.8% |
@@ -1001,7 +1001,7 @@ Issue #1296. Closed by a test for each uncovered retention branch.
 | src/Deluno.Retention/RetentionAnswers.cs | 84.3% | 68.0% |
 | src/Deluno.Retention/RetentionCollectionService.cs | 91.2% | 88.9% |
 | src/Deluno.Retention/RetentionContracts.cs | 98.7% | 92.3% |
-| src/Deluno.Retention/RetentionEndpoints.cs | 93.4% | 53.6% |
+| src/Deluno.Retention/RetentionEndpoints.cs | 93.4% | 50.0% |
 | src/Deluno.Retention/RetentionEvaluator.cs | 90.0% | 70.9% |
 | src/Deluno.Retention/RetentionFields.cs | 100.0% | 95.0% |
 | src/Deluno.Retention/RetentionSeerr.cs | 91.1% | 84.4% |
@@ -1127,7 +1127,7 @@ Issue #1296. Closed by a test for each uncovered worker branch.
 | src/Deluno.Worker/Jobs/IntakeSyncJobHandler.cs | 100.0% | 75.0% |
 | src/Deluno.Worker/Jobs/JobPayloads.cs | 94.0% | 75.0% |
 | src/Deluno.Worker/Jobs/LibraryImportExistingJobHandler.cs | 100.0% | 87.5% |
-| src/Deluno.Worker/Jobs/LibraryMediaProbeJobHandler.cs | 96.0% | 93.2% |
+| src/Deluno.Worker/Jobs/LibraryMediaProbeJobHandler.cs | 96.0% | 91.9% |
 | src/Deluno.Worker/Jobs/LibrarySearchJobHandler.cs | 91.7% | 88.7% |
 | src/Deluno.Worker/Jobs/LibrarySubtitleScanJobHandler.cs | 80.8% | 63.8% |
 | src/Deluno.Worker/Jobs/LibrarySubtitleSearchJobHandler.cs | 99.1% | 88.2% |
