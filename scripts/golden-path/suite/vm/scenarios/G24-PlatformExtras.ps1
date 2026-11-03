@@ -287,6 +287,19 @@ function Get-DataFileList {
     @(Get-ChildItem -Path $data -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in '.db', '.zip' -or $_.FullName -match 'protection-keys' } | ForEach-Object { $_.FullName.Substring($data.Length) })
 }
 
+# Closes the notification banners on screen (a banner over the notification area takes the keyboard from the tray menu), the way a person presses their X.
+function Close-ToastBanners {
+    try {
+        $uia = [System.Windows.Automation.AutomationElement]
+        $name = New-Object System.Windows.Automation.PropertyCondition($uia::NameProperty, 'New notification')
+        $close = New-Object System.Windows.Automation.PropertyCondition($uia::NameProperty, 'Close')
+        foreach ($w in @($uia::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $name))) {
+            $b = $w.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $close)
+            if ($b) { try { $b.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch { } }
+        }
+    } catch { }
+}
+
 # Saves a picture of the screen into the run's evidence (what a person would have seen).
 function Save-ScreenPicture {
     param([Parameter(Mandatory)] [string] $Name)
@@ -365,6 +378,7 @@ function Invoke-UpdatePreferencesAndBackgroundCheck {
             $before = Get-ToastTextCount -Text "Couldn't check for updates"
             $pressed = $false
             for ($try = 1; $try -le 3 -and -not $pressed; $try++) {
+                Close-ToastBanners
                 $pressed = Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Check for updates'
                 if (-not $pressed) {
                     Start-Sleep -Seconds 10 # reason: a retry pause before opening the tray menu again; no event says it is ready

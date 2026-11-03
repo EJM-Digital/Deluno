@@ -60,6 +60,10 @@ function Invoke-ServiceRebootScenario {
             '    while (-not (Test-Port $w.port) -and (Get-Date) -lt $deadline) { [Threading.Thread]::Sleep(5000) }'
             '    $checks += [ordered]@{ name = "After the restart, $($w.kind) answers on port $($w.port) with nobody signed in"; ok = (Test-Port $w.port); detail = ''''; atUtc = [DateTime]::UtcNow.ToString(''o'') }'
             '}'
+            # What the service said after the restart, kept for the run's record: the tail of every log under the data folder and the install's logs.
+            '$ev = ''' + $results + '\evidence'''
+            'New-Item -ItemType Directory -Force -Path $ev | Out-Null'
+            ('foreach ($d in @(''' + $dataRoot + '\logs'', ''' + (Join-Path $env:LOCALAPPDATA 'Deluno\logs') + ''')) { foreach ($f in @(Get-ChildItem -LiteralPath $d -File -ErrorAction SilentlyContinue)) { Get-Content -LiteralPath $f.FullName -Tail 300 -ErrorAction SilentlyContinue | Set-Content -Path (Join-Path $ev (''after-reboot-'' + $f.Name + ''.txt'')) -Encoding utf8 } }')
             '$svc = Get-CimInstance Win32_Service -Filter "Name=''Deluno''"'
             '$sab = Get-CimInstance Win32_Service -Filter "Name=''SABnzbd''"'
             '$checks += [ordered]@{ name = ''SABnzbd is running as its own Windows service (it cannot run as a plain process with nobody signed in)''; ok = ($null -ne $sab -and $sab.State -eq ''Running'' -and $sab.StartMode -eq ''Auto''); detail = "$($sab.State) / $($sab.StartMode)"; atUtc = [DateTime]::UtcNow.ToString(''o'') }'
