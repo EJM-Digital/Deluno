@@ -10,7 +10,7 @@ import path from "node:path";
 const SKIP = new Set(["bin", "obj", "node_modules", "fixtures", "StrykerOutput"]);
 const TYPE = /\b(?:class|record|interface|struct|enum)\s+(?:struct\s+|class\s+)?([A-Z]\w{3,})/g;
 const HAS_TEST = /\[(?:\w+\.)?(?:Fact|Theory)\b/;
-const TEST_CLASS = /\bclass\s+(\w+)/g;
+const TEST_CLASS = /^([ \t]*)(?:\w+\s+)*?class\s+(\w+)/gm;
 
 function* csFiles(dir) {
   if (!existsSync(dir)) return;
@@ -37,10 +37,14 @@ export function testClasses(root) {
   for (const file of csFiles(path.join(root, "tests"))) {
     const text = readFileSync(file, "utf8");
     if (!HAS_TEST.test(text)) continue;
-    const starts = [...text.matchAll(TEST_CLASS)];
+    // Only the outermost classes name a test: a nested helper class (a fake, a fixture) comes after the facts and would
+    // otherwise be taken for the class that holds them, dropping the real class from the filter.
+    const all = [...text.matchAll(TEST_CLASS)];
+    const outer = Math.min(...all.map((m) => m[1].length));
+    const starts = all.filter((m) => m[1].length === outer);
     starts.forEach((m, i) => {
       const body = text.slice(m.index, i + 1 < starts.length ? starts[i + 1].index : text.length);
-      if (HAS_TEST.test(body)) out.push({ name: m[1], text });
+      if (HAS_TEST.test(body)) out.push({ name: m[2], text });
     });
   }
   return out;
