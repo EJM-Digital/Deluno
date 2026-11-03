@@ -69,11 +69,12 @@ function Invoke-GroupPlatformExtras {
             Add-Check 'The service process is gone: nothing is left holding the databases' $left.Ok ''
             $svc = Get-CimInstance Win32_Service -Filter "Name='Deluno'" -ErrorAction SilentlyContinue
             Add-Check 'It stopped with exit code 0 (a clean stop, so the restart-on-failure actions do not run)' ($svc -and [int]$svc.ExitCode -eq 0) "exit code $($svc.ExitCode)"
-            $events = @(Get-WinEvent -LogName System -FilterXPath "*[System[Provider[@Name='Service Control Manager'] and EventRecordID>$lastRecord]]" -ErrorAction SilentlyContinue |
-                Where-Object { $_.Message -match 'Deluno' })
+            $readEvents = { @(Get-WinEvent -LogName System -FilterXPath "*[System[Provider[@Name='Service Control Manager'] and EventRecordID>$lastRecord]]" -ErrorAction SilentlyContinue | Where-Object { $_.Message -match 'Deluno' }) }
+            $null = Wait-Until -TimeoutSec 30 -IntervalSec 1 -Condition { @(& $readEvents | Where-Object { $_.Id -eq 7036 -and $_.Message -match 'stopped' }).Count -gt 0 } # the log line follows the stop by a moment
+            $events = @(& $readEvents)
             $bad = @($events | Where-Object { $_.Id -in 7031, 7034 })
             $good = @($events | Where-Object { $_.Id -eq 7036 -and $_.Message -match 'stopped' })
-            Add-Check 'Windows logged the service entering the stopped state, and no "terminated unexpectedly" or "terminated with an error"' ($good.Count -ge 1 -and $bad.Count -eq 0) "stopped events $($good.Count), unexpected-termination events $($bad.Count)"
+            Add-Check 'Windows logged the service entering the stopped state, and no "terminated unexpectedly" or "terminated with an error"' ($good.Count -ge 1 -and $bad.Count -eq 0) "stopped events $($good.Count), unexpected-termination events $($bad.Count), after record $lastRecord, all Deluno events: $((($events | ForEach-Object { "$($_.Id)" }) -join ','))"
 
             # Databases closed: a clean close checkpoints the write-ahead log away, and each file can be taken exclusively.
             $dbs = @(Get-ChildItem -Path $dataRoot -Filter '*.db' -File -ErrorAction SilentlyContinue)
@@ -186,10 +187,10 @@ function Invoke-GroupPlatformExtras {
 
             # The notes a reinstall that lost Transmission's folder, and a picker stopped by GitHub's limit, leave.
             New-Item -ItemType Directory -Force -Path (Split-Path $readd) | Out-Null
-            Set-Content -Path $readd -Encoding utf8 -Value (@{ createdUtc = [DateTime]::UtcNow.ToString('o'); daemonNeedsRestart = $false; torrents = @() } | ConvertTo-Json -Compress)
+            Set-Content -Path $readd -Encoding utf8 -Value (@{ CreatedUtc = [DateTime]::UtcNow.ToString('o'); DaemonNeedsRestart = $false; Torrents = @(); Summary = $null } | ConvertTo-Json -Compress) # the names the app itself writes (its files are read with the exact names)
             New-Item -ItemType Directory -Force -Path (Split-Path $pending) | Out-Null
             $at = [DateTime]::UtcNow.AddHours(2).ToString('o') # in the future: once the wait is over the tray offers the picker by itself
-            Set-Content -Path $pending -Encoding utf8 -Value (@{ kinds = @('weir'); retryAfterUtc = $at; askedByPerson = $false; reason = "GitHub's hourly limit on looking up releases was used up." } | ConvertTo-Json -Compress)
+            Set-Content -Path $pending -Encoding utf8 -Value (@{ Kinds = @('weir'); RetryAfterUtc = $at; AskedByPerson = $false; Reason = "GitHub's hourly limit on looking up releases was used up." } | ConvertTo-Json -Compress)
             $shown = Wait-Until -TimeoutSec 20 -IntervalSec 1 -Condition {
                 $names = @(Get-TrayMenuStates | ForEach-Object { $_.Name })
                 if (@($names | Where-Object { $_ -match "^Add Transmission's torrents back" }).Count -eq 1 -and @($names | Where-Object { $_ -match '^Try again: install ' }).Count -eq 1) { $names } else { $null }
@@ -213,7 +214,7 @@ function Invoke-GroupPlatformExtras {
             Add-Check 'The first line is gone from the menu and the second stays' (@($after | Where-Object { $_ -match "^Add Transmission" }).Count -eq 0 -and @($after | Where-Object { $_ -match '^Try again: install ' }).Count -eq 1) ($after -join ' | ')
 
             # A list with no app left in it: the line goes.
-            Set-Content -Path $pending -Encoding utf8 -Value (@{ kinds = @(); retryAfterUtc = $null; askedByPerson = $false; reason = $null } | ConvertTo-Json -Compress)
+            Set-Content -Path $pending -Encoding utf8 -Value (@{ Kinds = @(); RetryAfterUtc = $null; AskedByPerson = $false; Reason = $null } | ConvertTo-Json -Compress)
             $cleared = Wait-Until -TimeoutSec 20 -IntervalSec 1 -Condition { @(Get-TrayMenuStates | Where-Object { $_.Name -match '^Try again' }).Count -eq 0 }
             Add-Check 'When the list of waiting apps is emptied the second line goes too' $cleared.Ok ''
         }
@@ -528,7 +529,7 @@ function Invoke-InstallSilentFirstInstall {
 
 # Inside the group: a second picker on a machine that has the apps already.
 function Invoke-GroupPlatformExtrasPicker {
-    Invoke-Scenario -Id 'install.second-picker-leaves-installed-apps' -Title 'A picker opened again on a machine that has the apps shows each installed app unticked and disabled, with nothing to install; with nothing ticked Install selected is not offered, and Skip closes it without running any installer' -Body {
+    Invoke-Scenario -Id 'install.second-picker-leaves-installed-apps' -Title 'A picker opened again on a machine that has the apps marks each as already installed and will not be touched, refuses to tick it, and Install selected with nothing ticked closes it without running any installer' -Body {
         Connect-Deluno
         $dataRoot = Join-Path $env:LOCALAPPDATA 'DelunoData'
         $pending = Join-Path $dataRoot 'config\pending-component-installs.json'
@@ -544,17 +545,18 @@ function Invoke-GroupPlatformExtrasPicker {
             $boxes = @(Get-WindowControls -Window $dlg | Where-Object { $_.Type -eq 'CheckBox' -and -not $_.Offscreen })
             Save-Evidence -Name 'second-picker-window.txt' -Text (Get-WindowText -Window $dlg)
             Add-Check 'It lists the six apps' ($boxes.Count -eq 6) (($boxes | ForEach-Object { "$($_.Name) enabled=$($_.Enabled)" }) -join ' | ')
-            $live = @($boxes | Where-Object { $_.Enabled })
-            Add-Check 'Every app already on this machine is disabled (it cannot be ticked, so nothing can be installed twice)' ($boxes.Count -eq 6 -and $live.Count -eq 0) "ticked or tickable: $((($live | ForEach-Object { $_.Name }) -join ', '))"
-            $ticked = @($boxes | Where-Object { try { $_.Element.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -eq 'On' } catch { $false } })
-            Add-Check 'Nothing is ticked' ($ticked.Count -eq 0) (($ticked | ForEach-Object { $_.Name }) -join ', ')
-            $text = Get-WindowText -Window $dlg
-            Add-Check 'The window says the installed ones will not be touched' ($text -match 'not be touched|already') $text
-            $install = Get-WindowControls -Window $dlg | Where-Object { $_.Type -eq 'Button' -and $_.Name -match '^Install' } | Select-Object -First 1
-            Add-Check 'With nothing ticked, Install selected is not offered (disabled or absent)' ((-not $install) -or (-not $install.Enabled)) $(if ($install) { "$($install.Name) enabled=$($install.Enabled)" } else { 'absent' })
-            Click-WindowButton -Window $dlg -NamePattern '^Skip$' | Out-Null
+            $labelled = @($boxes | Where-Object { $_.Name -match 'already installed, will not be touched' })
+            Add-Check 'Each of the six apps is marked "already installed, will not be touched"' ($boxes.Count -eq 6 -and $labelled.Count -eq 6) (($boxes | ForEach-Object { $_.Name }) -join ' | ')
+            # A person pressing a row: the tick is refused, so an installed app cannot be ticked and so cannot be installed again.
+            foreach ($b in $boxes) { try { $b.Element.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle() } catch { } }
+            Start-Sleep -Milliseconds 700 # reason: UI settle after input; Windows raises no event for it
+            $again = @(Get-WindowControls -Window $dlg | Where-Object { $_.Type -eq 'CheckBox' -and -not $_.Offscreen })
+            $ticked = @($again | Where-Object { try { $_.Element.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -eq 'On' } catch { $false } })
+            Add-Check 'Pressing every row ticks none of them' ($again.Count -eq 6 -and $ticked.Count -eq 0) "ticked: $((($ticked | ForEach-Object { $_.Name }) -join ', '))"
+            # Install selected with nothing ticked closes the window and runs nothing.
+            Click-WindowButton -Window $dlg -NamePattern '^Install selected$' | Out-Null
             $closed = Wait-Until -TimeoutSec 20 -IntervalSec 0.5 -Condition { -not (Wait-DesktopWindow -NamePattern '^Set up download clients and Weir$' -Process 'Deluno' -TimeoutSec 1) }
-            Add-Check 'Skip closes it' $closed.Ok ''
+            Add-Check 'Install selected with nothing ticked closes the picker' $closed.Ok ''
             $hookAfter = if (Test-Path $hook) { Get-Content -Raw $hook } else { '' }
             $newText = if ($hookAfter.Length -gt $hookBefore) { $hookAfter.Substring($hookBefore) } else { '' }
             Add-Check 'No installer ran: the install log gained no download, checksum or install line' ($newText -notmatch 'installer .* sha256|SHA-256|Installed:') $newText
