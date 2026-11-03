@@ -121,10 +121,8 @@ public static class AcquisitionBlockerSources
                  && string.Equals(handoff.QueueItemId, downloadItemId, StringComparison.OrdinalIgnoreCase))));
     }
 
-    private static readonly string[] VideoExtensions = [".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv", ".ts", ".m2ts", ".webm"];
-
     private static string WithoutVideoExtension(string name)
-        => VideoExtensions.FirstOrDefault(extension => name.EndsWith(extension, StringComparison.OrdinalIgnoreCase)) is { } found
+        => VideoFileExtensions.TrailingVideoExtension(name) is { } found
             ? name[..^found.Length]
             : name;
 
