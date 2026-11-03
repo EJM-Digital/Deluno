@@ -6147,8 +6147,8 @@
       "branch": 100
     },
     "src/Deluno.Realtime/SignalRRealtimeEventPublisher.cs": {
-      "line": 97.79,
-      "branch": 98.61
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Realtime/TitleChangeNotifier.cs": {
       "line": 95.27,
