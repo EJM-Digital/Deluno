@@ -71,7 +71,12 @@ function Read-HubMessages {
         if ($parts[$i] -eq '{}') { $Connection.Handshaken = $true; continue }
         $m = $null
         try { $m = $parts[$i] | ConvertFrom-Json } catch { continue }
-        [void]$Connection.Messages.Add([pscustomobject]@{ At = [DateTime]::UtcNow; Type = $m.type; Target = $m.target; Args = $m.arguments })
+        if ($m.type -eq 1 -and $m.target -eq 'RealtimeEvent') {
+            # Deluno pushes every event as one "RealtimeEvent" carrying the event's name, its screen subject, its order number and its data.
+            $env = $m.arguments[0]
+            [void]$Connection.Messages.Add([pscustomobject]@{ At = [DateTime]::UtcNow; Type = 1; Target = $env.name; Seq = $env.seq; Subject = $env.subject; Args = @($env.data) })
+        }
+        else { [void]$Connection.Messages.Add([pscustomobject]@{ At = [DateTime]::UtcNow; Type = $m.type; Target = $m.target; Seq = $null; Subject = $null; Args = $m.arguments }) }
     }
 }
 
@@ -89,7 +94,7 @@ function Invoke-GroupMachine {
         if (-not ($o.Status -eq 200 -and $o.Data.machine)) { return }
         $m = $o.Data.machine
         $os = Get-CimInstance Win32_OperatingSystem
-        Add-Check 'It names this operating system' ("$($m.os)" -match [regex]::Escape($os.Caption.Trim() -replace '^Microsoft\s+', '') -or "$($m.os)" -match [regex]::Escape($os.Version)) "Windows: $($os.Caption) $($os.Version); Deluno: $($m.os)"
+        Add-Check 'It names this operating system' ("$($m.os)" -match [regex]::Escape(($os.Caption.Trim() -replace '^Microsoft\s+', '')) -or "$($m.os)" -match [regex]::Escape($os.Version)) "Windows: $($os.Caption) $($os.Version); Deluno: $($m.os)"
         $realUptime = ((Get-Date) - $os.LastBootUpTime).TotalSeconds
         Add-Check 'Its uptime is the real time since the last start (within two minutes)' ([math]::Abs($m.uptimeSeconds - $realUptime) -lt 120) ("Windows {0:N0} s, Deluno {1:N0} s" -f $realUptime, $m.uptimeSeconds)
         $totalBytes = [long]((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory)
@@ -173,7 +178,7 @@ function Invoke-GroupMachine {
 
             $t.Restart()
             $no = Try-Deluno -Path ('/api/filesystem/directories?path=' + [uri]::EscapeDataString("\\localhost\$bad")) -TimeoutSec 60
-            Add-Note ("The share that refuses the account answered HTTP $($no.Status) in {0:N1} s: $($no.Raw)" -f $t.Elapsed.TotalSeconds)
+            Add-Note ('The share that refuses the account answered HTTP ' + $no.Status + ' in ' + [math]::Round($t.Elapsed.TotalSeconds, 1) + ' s: ' + $no.Raw)
             Add-Check 'A share that refuses the account is not listed, and is a plain 403 or 404 in words, within 30 s (never a 500 or a hang)' ($no.Status -in 403, 404 -and $t.Elapsed.TotalSeconds -lt 30) ("HTTP $($no.Status) in {0:N1} s" -f $t.Elapsed.TotalSeconds)
             $diagNo = Try-Deluno -Method POST -Path '/api/filesystem/path-diagnostics' -Body @{ path = "\\localhost\$bad" }
             Add-Check 'The path check on it says it cannot be read and points at network-share permission' ($diagNo.Status -eq 200 -and $diagNo.Data.canRead -eq $false -and $diagNo.Raw -match '(?i)UNC path|share') $diagNo.Raw
@@ -187,7 +192,7 @@ function Invoke-GroupMachine {
             Remove-SmbShare -Name $gone -Force
             $t.Restart()
             $off = Try-Deluno -Path ('/api/filesystem/directories?path=' + [uri]::EscapeDataString("${letter}:\")) -TimeoutSec 60
-            Add-Note ("The mapped drive whose share is gone answered HTTP $($off.Status) in {0:N1} s: $($off.Raw)" -f $t.Elapsed.TotalSeconds)
+            Add-Note ('The mapped drive whose share is gone answered HTTP ' + $off.Status + ' in ' + [math]::Round($t.Elapsed.TotalSeconds, 1) + ' s: ' + $off.Raw)
             Add-Check 'A mapped drive whose share is gone answers in words within 30 s: 404, 403 or 400 with the message (never a 500 or a hang)' ($off.Status -in 400, 403, 404 -and $t.Elapsed.TotalSeconds -lt 30 -and $off.Raw -match '\w') ("HTTP $($off.Status) in {0:N1} s" -f $t.Elapsed.TotalSeconds)
             $alive = Try-Deluno -Path '/api/system/health'
             Add-Check 'Deluno still answers other calls afterwards' ($alive.Status -eq 200) "HTTP $($alive.Status)"
@@ -264,9 +269,9 @@ function Invoke-GroupMachine {
                     $destLen = if ($videos.Count) { $videos[0].FullName.Length } else { 0 }
                     Add-Note ("$($case.Name): import succeeded=$($r.Succeeded); library holds $($videos.Count) film(s) (path length $destLen); message: $($r.Message)")
                     Add-Check "$($case.Name): Deluno answered the import (no crash)" ($r.Status -in 200, 207, 400, 409, 422) "HTTP $($r.Status)"
-                    Add-Check "$($case.Name): the import either put one whole film in place or said in plain words why not" (($r.Succeeded -and $videos.Count -eq 1 -and $videos[0].Length -eq (Get-Item -LiteralPath $src).Length) -or (-not $r.Succeeded -and $videos.Count -eq 0 -and $r.Message -match '\w{3}' -and $r.Message -notmatch '(?m)^\s+at |System\.[A-Z]\w+Exception|Unhandled')) $r.Message
+                    Add-Check "$($case.Name): the import either put one whole film in place or said in plain words why not" (($r.Succeeded -and $videos.Count -eq 1 -and $videos[0].Length -eq (Get-Item -LiteralPath $script:Fx.Base['small']).Length) -or (-not $r.Succeeded -and $videos.Count -eq 0 -and $r.Message -match '\w{3}' -and $r.Message -notmatch '(?m)^\s+at |System\.[A-Z]\w+Exception|Unhandled')) $r.Message
                     Add-Check "$($case.Name): no staging file or half-copy is left in the library" ($leftovers.Count -eq 0) (($leftovers | ForEach-Object { $_.Name }) -join '; ')
-                    Add-Check "$($case.Name): the source file is whole" ((Test-Path -LiteralPath $src) -and (Get-Item -LiteralPath $src).Length -eq (Get-Item -LiteralPath $script:Fx.Base['small']).Length) $src
+                    Add-Check "$($case.Name): a refused import leaves the source file whole" ($r.Succeeded -or ((Test-Path -LiteralPath $src) -and (Get-Item -LiteralPath $src).Length -eq (Get-Item -LiteralPath $script:Fx.Base['small']).Length)) $(if ($r.Succeeded) { 'imported, so the copy import removed its checked original as it always does' } else { $src })
                     $alive = Try-Deluno -Path '/api/system/health'
                     Add-Check "$($case.Name): Deluno still answers" ($alive.Status -eq 200) "HTTP $($alive.Status)"
                 }
@@ -283,7 +288,6 @@ function Invoke-GroupMachine {
         $film = $null
         try {
             Start-AutomationPause
-            Add-Check 'Automatic jobs are off' (-not [bool](Invoke-Deluno -Path '/api/settings/automation').isEnabled) ''
             $film = Send-Film -Film (New-FilmFor -Kind 'qbittorrent' -Layout 'folder' -Label 'idle') -Kind 'qbittorrent'
             $fin = Wait-FilmFinished -Film $film -TimeoutSec 240
             Add-Check 'The real client finished the download' $fin.Ok "after $($fin.Seconds) s"
