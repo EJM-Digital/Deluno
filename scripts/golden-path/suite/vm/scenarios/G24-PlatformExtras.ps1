@@ -465,6 +465,24 @@ function Invoke-UninstallLeavesNothingBehind {
         $hookLog = Join-Path $installFolder 'logs\install-hook.log'
         $hookBefore = if (Test-Path $hookLog) { @(Get-Content $hookLog).Count } else { 0 }
 
+        # The hook itself, run the way Velopack runs it (Deluno.exe --veloapp-uninstall <version>), with Deluno's own firewall rule in place so it has work to do.
+        $hookExe = Get-InstalledDelunoExe
+        $hookPort = [int]$(try { (Try-Deluno -Path '/api/system/lan-access').Data.port } catch { 7879 })
+        $ruleName = "Deluno (port $hookPort)"
+        & netsh.exe advfirewall firewall add rule name="$ruleName" dir=in action=allow protocol=TCP localport=$hookPort profile=any | Out-Null
+        $hookWatch = [Diagnostics.Stopwatch]::StartNew()
+        $hp = Start-Process -FilePath $hookExe.FullName -ArgumentList '--veloapp-uninstall', (($hookExe.VersionInfo.ProductVersion -split '\+')[0]) -PassThru -WindowStyle Hidden
+        $hookDone = $hp.WaitForExit(30000)
+        $hookWatch.Stop()
+        if (-not $hookDone) { try { $hp.Kill() } catch { } }
+        $ruleLeft = (& netsh.exe advfirewall firewall show rule name="$ruleName" 2>&1 | Out-String) -notmatch 'No rules match'
+        Add-Check 'The uninstall hook ends by itself within Velopack''s 15 seconds, with exit code 0' ($hookDone -and $hp.ExitCode -eq 0 -and $hookWatch.Elapsed.TotalSeconds -lt 15) ("{0:N1} s, exit {1}" -f $hookWatch.Elapsed.TotalSeconds, $(if ($hookDone) { $hp.ExitCode } else { 'none' }))
+        Add-Check 'It took away Deluno''s own firewall rule' (-not $ruleLeft) $ruleName
+        if ($ruleLeft) { & netsh.exe advfirewall firewall delete rule name="$ruleName" | Out-Null }
+        $hookText = if (Test-Path $hookLog) { (@(Get-Content $hookLog | Select-Object -Skip $hookBefore) -join ' | ') } else { '' }
+        Add-Check 'The hook says in the install log what it did to the rule' ($hookText -match 'delete exit=0') $hookText
+        $hookBefore = if (Test-Path $hookLog) { @(Get-Content $hookLog).Count } else { 0 }
+
         $began = Get-Date
         $r = Invoke-DelunoUninstall
         $took = ((Get-Date) - $began).TotalSeconds
@@ -473,15 +491,13 @@ function Invoke-UninstallLeavesNothingBehind {
         Add-Check 'The running Deluno was stopped and its program removed: no Deluno process, no Deluno.exe in the install folder' $gone.Ok "processes left: $(@(Get-DelunoProcess).Count)"
         $hookLines = if (Test-Path $hookLog) { @(Get-Content $hookLog | Select-Object -Skip $hookBefore) } else { @() }
         Add-Note ("The uninstall took {0:N1} s; the hook log gained {1} line(s): {2}" -f $took, $hookLines.Count, ($hookLines -join ' | '))
-        Add-Check 'The whole uninstall, hook included, ends within a minute (the hook itself has Velopack''s 15 seconds)' ($r.Ok -and $took -lt 60) ("{0:N1} s" -f $took)
-        $stale = & $readEntry
-        $staleOk = (-not $stale) -or (Test-Path -LiteralPath (([string]$stale.Value).Trim('"')))
-        Add-Check 'The sign-in entry is removed, or points at a program that is still there (never at a deleted one)' $staleOk $(if ($stale) { "left: $([string]$stale.Value)" } else { 'removed' })
         Add-Check 'No Deluno Windows service is left behind' (-not (Get-CimInstance Win32_Service -Filter "Name='Deluno'" -ErrorAction SilentlyContinue)) ''
         $now = @(Get-DataFileList)
         Add-Check 'The data folder is kept whole' (@($kept | Where-Object { $_ -notin $now }).Count -eq 0) "$($kept.Count) files"
 
-        # Reinstall: the candidate's Setup finds the old data and is not a first run.
+        # Reinstall: the candidate's Setup finds the old data and is not a first run. The uninstaller removes its own files a moment after it ends.
+        $settled = Wait-Until -TimeoutSec 90 -IntervalSec 2 -Condition { -not (Test-Path (Join-Path $installFolder 'Update.exe')) -and -not (Get-Process -Name 'Update' -ErrorAction SilentlyContinue) }
+        Add-Note ("After the uninstall ({0}) the install folder holds: {1}" -f $(if ($settled.Ok) { "settled after $($settled.Seconds) s" } else { 'Update.exe still there after 90 s' }), ((Get-ChildItem -Path $installFolder -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) -join ', '))
         $setup = 'C:\golden\candidate\Deluno-Setup.exe'
         Add-Check 'The candidate''s Setup is in the VM' (Test-Path $setup) $setup
         if (-not (Test-Path $setup)) { return }
@@ -501,24 +517,49 @@ function Invoke-UninstallLeavesNothingBehind {
         $connected = $false; try { Connect-Deluno; $connected = $true } catch { }
         Add-Check 'The old sign-in works and the old libraries are there' ($connected -and @(Get-Library).Count -gt 0) ''
 
-        # Uninstalled again while Deluno runs as a Windows service: the service must not be left behind pointing at a program that is gone.
+    }
+}
+
+function Invoke-UninstallRemovesTheSignInEntry {
+    Invoke-Scenario -Id 'uninstall.removes-the-sign-in-entry' -Title 'Uninstall with Start with Windows on takes the sign-in entry away, so Windows never tries to start a program that is gone' -Body {
+        $ctx = Start-PreviousForUpdate -CandidateVersion 'no-candidate-here'
+        if (-not $ctx) { return }
+        $readEntry = { $p = Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue; if ($p) { $p.PSObject.Properties | Where-Object { [string]$_.Value -match 'Deluno\.exe' } | Select-Object -First 1 } }
+        if (-not (& $readEntry)) { Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Start with Windows$' | Out-Null }
+        $entry = (Wait-Until -TimeoutSec 15 -IntervalSec 0.5 -Condition { & $readEntry }).Value
+        Add-Check 'Start with Windows is on before the uninstall' ($null -ne $entry) $(if ($entry) { [string]$entry.Value } else { '' })
+        $r = Invoke-DelunoUninstall
+        Add-Check 'The uninstaller (Update.exe --uninstall --silent) finished with exit code 0' $r.Ok $r.Detail
+        $gone = Wait-Until -TimeoutSec 120 -IntervalSec 2 -Condition { -not (Test-Path (Join-Path (Join-Path $env:LOCALAPPDATA 'Deluno') 'current\Deluno.exe')) }
+        Add-Check 'The program is removed' $gone.Ok ''
+        $stale = & $readEntry
+        $staleOk = (-not $stale) -or (Test-Path -LiteralPath (([string]$stale.Value).Trim('"')))
+        Add-Check 'The sign-in entry is removed, or points at a program that is still there (never at a deleted one)' $staleOk $(if ($stale) { "left: $([string]$stale.Value)" } else { 'removed' })
+    }
+}
+
+function Invoke-UninstallRemovesTheWindowsService {
+    Invoke-Scenario -Id 'uninstall.removes-the-windows-service' -Title 'Uninstall while Deluno runs as a Windows service does not leave the service behind pointing at a program that is gone' -Body {
+        $ctx = Start-PreviousForUpdate -CandidateVersion 'no-candidate-here'
+        if (-not $ctx) { return }
+        $installFolder = Join-Path $env:LOCALAPPDATA 'Deluno'
         $null = Quit-DelunoFromTray
         $exe2 = Get-InstalledDelunoExe
+        Save-Evidence -Name 'install-folder-before-uninstall.txt' -Text ((Get-ChildItem -Path $installFolder -Force -ErrorAction SilentlyContinue | ForEach-Object { "$($_.Name)  $($_.Length)" }) -join "`n")
         $shared = Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Deluno\data'
         New-Item -ItemType Directory -Force -Path $shared | Out-Null
         $trayFile = Join-Path $env:LOCALAPPDATA 'DelunoConfig\deluno.json'
         if (Test-Path $trayFile) { Copy-Item -LiteralPath $trayFile -Destination (Join-Path $shared 'deluno.json') -Force }
         & $exe2.FullName --install-service | Out-Null
         $svcUp = Wait-Until -TimeoutSec 240 -IntervalSec 3 -Condition { $x = Get-CimInstance Win32_Service -Filter "Name='Deluno'" -ErrorAction SilentlyContinue; if ($x -and $x.State -eq 'Running') { $x } else { $null } }
-        Add-Check 'Deluno runs as a Windows service before the second uninstall' $svcUp.Ok ''
-        if ($svcUp.Ok) {
-            $r2 = Invoke-DelunoUninstall
-            Add-Check 'The uninstaller finished with exit code 0 over the running service' $r2.Ok $r2.Detail
-            Start-Sleep -Seconds 20 # reason: a service whose process was ended is started again by Windows after its restart delay; nothing signals it
-            $left = Get-CimInstance Win32_Service -Filter "Name='Deluno'" -ErrorAction SilentlyContinue
-            Add-Check 'No Deluno service is left behind pointing at the deleted program' (-not $left) $(if ($left) { "left: $($left.State), $($left.PathName)" } else { 'removed' })
-            if ($left) { & sc.exe delete Deluno | Out-Null }
-        }
+        Add-Check 'Deluno runs as a Windows service before the uninstall' $svcUp.Ok ''
+        if (-not $svcUp.Ok) { return }
+        $r2 = Invoke-DelunoUninstall
+        Add-Check 'The uninstaller finished with exit code 0 over the running service' $r2.Ok $r2.Detail
+        Start-Sleep -Seconds 20 # reason: a service whose process was ended is started again by Windows after its restart delay; nothing signals it
+        $left = Get-CimInstance Win32_Service -Filter "Name='Deluno'" -ErrorAction SilentlyContinue
+        Add-Check 'No Deluno service is left behind pointing at the deleted program' (-not $left) $(if ($left) { "left: $($left.State), $($left.PathName)" } else { 'removed' })
+        if ($left) { & sc.exe delete Deluno | Out-Null }
     }
 }
 

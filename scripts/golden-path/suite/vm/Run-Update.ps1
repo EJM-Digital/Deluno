@@ -43,6 +43,8 @@ try {
         'update.killed-mid-apply' { Invoke-UpdateKilledMidApply -CandidateVersion $CandidateVersion }
         'update.older-build-newer-database' { Invoke-UpdateOlderBuildNewerDatabase -CandidateVersion $CandidateVersion }
         'uninstall.leaves-nothing-behind' { Invoke-UninstallLeavesNothingBehind }
+        'uninstall.removes-the-sign-in-entry' { Invoke-UninstallRemovesTheSignInEntry }
+        'uninstall.removes-the-windows-service' { Invoke-UninstallRemovesTheWindowsService }
         'install.silent-first-install' { Invoke-InstallSilentFirstInstall -CandidateVersion $CandidateVersion }
         'companions.install-from-the-page' { Invoke-CompanionsInstallFromThePage }
         'update.tray-menu' { Invoke-UpdateTrayMenu -CandidateVersion $CandidateVersion }
