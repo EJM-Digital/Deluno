@@ -3199,8 +3199,8 @@
       "branch": null
     },
     "src/Deluno.Integrations/MediaServers/EmbyFamilyMediaServerClient.cs": {
-      "line": 96.41,
-      "branch": 83.42
+      "line": 96.2,
+      "branch": 81.14
     },
     "src/Deluno.Integrations/MediaServers/MediaServerContracts.cs": {
       "line": 96.59,
@@ -3223,8 +3223,8 @@
       "branch": 93.58
     },
     "src/Deluno.Integrations/MediaServers/PlexMediaServerClient.cs": {
-      "line": 95.99,
-      "branch": 87.05
+      "line": 95.27,
+      "branch": 85.99
     },
     "src/Deluno.Integrations/Metadata/ArtworkCacheCleanupResult.cs": {
       "line": 100,
@@ -6215,7 +6215,7 @@
       "branch": 92.3
     },
     "src/Deluno.Retention/RetentionEndpoints.cs": {
-      "line": 93.42,
+      "line": 93.09,
       "branch": 50
     },
     "src/Deluno.Retention/RetentionEpisodeMath.cs": {
@@ -7307,7 +7307,7 @@
       "branch": 92.85
     },
     "src/Deluno.Worker/Services/DelunoHeartbeatWorker.cs": {
-      "line": 94.29,
+      "line": 93.69,
       "branch": 81.08
     },
     "src/Deluno.Worker/Services/DownloadClientReclaimGateway.cs": {

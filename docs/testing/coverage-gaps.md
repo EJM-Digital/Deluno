@@ -644,13 +644,13 @@ Issue #1301. Closed by a recorded-reply test for each uncovered integration bran
 | src/Deluno.Integrations/DownloadClients/TorrentInfoHash.cs | 94.2% | 93.4% |
 | src/Deluno.Integrations/DownloadClients/UsenetProviderService.cs | 62.5% | 79.2% |
 | src/Deluno.Integrations/IntegrationsServiceCollectionExtensions.cs | 98.2% | n/a |
-| src/Deluno.Integrations/MediaServers/EmbyFamilyMediaServerClient.cs | 96.4% | 83.4% |
+| src/Deluno.Integrations/MediaServers/EmbyFamilyMediaServerClient.cs | 96.2% | 81.1% |
 | src/Deluno.Integrations/MediaServers/MediaServerContracts.cs | 96.6% | 100.0% |
 | src/Deluno.Integrations/MediaServers/MediaServerEndpointRouteBuilderExtensions.cs | 92.9% | 71.2% |
 | src/Deluno.Integrations/MediaServers/MediaServerHttp.cs | 98.3% | 85.7% |
 | src/Deluno.Integrations/MediaServers/MediaServerLanguages.cs | 100.0% | 90.5% |
 | src/Deluno.Integrations/MediaServers/MediaServerRefreshNotifier.cs | 96.7% | 93.6% |
-| src/Deluno.Integrations/MediaServers/PlexMediaServerClient.cs | 96.0% | 87.0% |
+| src/Deluno.Integrations/MediaServers/PlexMediaServerClient.cs | 95.3% | 86.0% |
 | src/Deluno.Integrations/Metadata/MetadataCatalogueChoice.cs | 100.0% | 91.7% |
 | src/Deluno.Integrations/Metadata/MetadataEndpointRouteBuilderExtensions.cs | 97.7% | n/a |
 | src/Deluno.Integrations/Metadata/MetadataModels.cs | 98.7% | 71.0% |
@@ -1001,7 +1001,7 @@ Issue #1296. Closed by a test for each uncovered retention branch.
 | src/Deluno.Retention/RetentionAnswers.cs | 84.3% | 68.0% |
 | src/Deluno.Retention/RetentionCollectionService.cs | 91.2% | 88.9% |
 | src/Deluno.Retention/RetentionContracts.cs | 98.7% | 92.3% |
-| src/Deluno.Retention/RetentionEndpoints.cs | 93.4% | 50.0% |
+| src/Deluno.Retention/RetentionEndpoints.cs | 93.1% | 50.0% |
 | src/Deluno.Retention/RetentionEvaluator.cs | 90.0% | 70.9% |
 | src/Deluno.Retention/RetentionFields.cs | 100.0% | 95.0% |
 | src/Deluno.Retention/RetentionSeerr.cs | 91.1% | 84.4% |
@@ -1148,7 +1148,7 @@ Issue #1296. Closed by a test for each uncovered worker branch.
 | src/Deluno.Worker/Services/ArtworkRemoteUrls.cs | 10.0% | 0.0% |
 | src/Deluno.Worker/Services/BackgroundServiceFailureMonitor.cs | 82.9% | 82.0% |
 | src/Deluno.Worker/Services/ContentBlocklistRemoteRefreshService.cs | 87.8% | 92.8% |
-| src/Deluno.Worker/Services/DelunoHeartbeatWorker.cs | 94.3% | 81.1% |
+| src/Deluno.Worker/Services/DelunoHeartbeatWorker.cs | 93.7% | 81.1% |
 | src/Deluno.Worker/Services/DownloadProgressPublisher.cs | 97.8% | 79.2% |
 | src/Deluno.Worker/Services/DownloadThroughputSampler.cs | 95.9% | 100.0% |
 | src/Deluno.Worker/Services/GivenUpDownloadRemoval.cs | 93.3% | 66.7% |
