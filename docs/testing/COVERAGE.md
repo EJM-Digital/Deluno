@@ -189,8 +189,16 @@ checks that side without a half report looking like a drop. Self-test: `node --t
 
 `docs/testing/coverage-exclusions.json` is the only place a file may be left out. Each entry is a path or glob with a reason of at least
 one plain sentence; the ratchet fails on an exclusion without one. Excluded files are still listed, with their reasons, in the report.
-Nothing is excluded by an attribute in source: `tests/coverage.runsettings` drops only compiler-generated code (`GeneratedCode`,
-`CompilerGenerated`, the `obj` folder), not `[ExcludeFromCodeCoverage]` or `[Obsolete]`.
+Nothing is excluded by an attribute in source: `tests/coverage.runsettings` drops only source-generated code (`GeneratedCodeAttribute`,
+the `obj` folder), not `[ExcludeFromCodeCoverage]` or `[Obsolete]`.
+
+`CompilerGeneratedAttribute` is deliberately not excluded (issue 1450). The C# compiler moves the body of every `async` method and
+iterator into a hidden state-machine class, and every lambda into a hidden display class, all marked `[CompilerGenerated]`. Until
+31 Oct 2026 the settings excluded that mark, so the bodies of async methods, which is most of the backend (endpoints, repositories,
+clients, job handlers), never counted toward line or branch coverage and the baseline described only the synchronous code. Coverlet
+attributes those hidden bodies to their source lines, so an awaited line no test reaches now shows as uncovered. `node --test
+scripts/coverage/async-coverage.test.mjs` runs the real settings over a tiny async library and fails if a covered await is not hit,
+an unreached awaited branch is not reported, or the attribute is excluded again.
 
 ### How the baseline is filled
 
