@@ -397,10 +397,16 @@ try {
         $weirTemp = Get-ChildItem -Path (Join-Path $env:TEMP 'Deluno-components') -Filter '*Weir*' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
         $weirTempHash = if ($weirTemp) { (Get-FileHash $weirTemp.FullName -Algorithm SHA256).Hash } else { $null }
         $dataTop = if (Test-Path $data) { @(Get-ChildItem $data -Force | Select-Object -ExpandProperty Name) } else { @() }
+        # What the tray's picker says it did, one line per app ("component 'qbittorrent': Installed: ..."): the apps that went in, and the ones that did not.
+        $hookText = $hookAll -join "`n"
+        $installedKinds = @([regex]::Matches($hookText, "component '(\w+)': (?:Installed|AlreadyInstalled|InstalledNeedsSetup):") | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)
+        $failedKinds = @([regex]::Matches($hookText, "component '(\w+)': (?:DownloadFailed|VerificationFailed|InstallerFailed|StartFailed|ReadinessTimedOut):") | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)
+        $dbFiles = if (Test-Path $data) { @('platform.db', 'movies.db', 'series.db', 'jobs.db' | Where-Object { Test-Path (Join-Path $data $_) }) } else { @() }
         [pscustomobject]@{
             Exe = $exe.FullName; FileVersion = $exe.VersionInfo.ProductVersion; Processes = $procs; Http = $http; Body = $body
             Listening = $listen; Hook = $hook; HookFirstRun = $hookFirstRun; Uninstall = $uninstall; DataRoot = $data; DataTop = $dataTop
             Components = $components; ClientFolders = $clientFolders; ConfigsFound = $configs
+            HookInstalled = $installedKinds; HookFailed = $failedKinds; DataBases = $dbFiles; HookLines = $hookAll.Count
             WeirVersion = $weirExe.VersionInfo.ProductVersion; WeirServerVersion = $weirServer.VersionInfo.ProductVersion
             WeirInstallerLog = ($weirLog -join ''); WeirTempInstallerHash = $weirTempHash
         }
@@ -424,7 +430,12 @@ try {
         Add-Result 'First-run state' 'failed' 'No answer, so the first-run state could not be read.'
     }
 
-    Add-Result 'Listening ports (Deluno 7879, clients 8081/9091/8112/8080/6789, Weir 9347)' 'passed' $(if ($state.Listening.Count) { $state.Listening -join '; ' } else { 'none of them is listening' })
+    # Deluno must be listening; and so must every app the picker says it installed (it only says so after the app answered), each on its own port.
+    $appPorts = @{ qbittorrent = 8081; transmission = 9091; deluge = 8112; sabnzbd = 8080; nzbget = 6789; weir = 9347 }
+    $expectedPorts = @(7879) + @($state.HookInstalled | Where-Object { $appPorts.ContainsKey([string]$_) } | ForEach-Object { $appPorts[[string]$_] })
+    $listeningPorts = @($state.Listening | ForEach-Object { if ($_ -match ':(\d+) pid') { [int]$Matches[1] } } | Select-Object -Unique)
+    $notListening = @($expectedPorts | Where-Object { $_ -notin $listeningPorts })
+    Add-Result 'Listening ports (Deluno 7879, clients 8081/9091/8112/8080/6789, Weir 9347)' $(if ($notListening.Count -eq 0) { 'passed' } else { 'failed' }) $(if ($notListening.Count) { "Nothing is listening on: $($notListening -join ', ') (expected: $($expectedPorts -join ', '); listening: $($state.Listening -join '; '))." } elseif ($state.Listening.Count) { $state.Listening -join '; ' } else { 'none of them is listening' })
 
     # Components: the picker cannot be driven, so the expected result of a silent install is none.
     $names = 'qBittorrent', 'Transmission', 'Deluge', 'SABnzbd', 'NZBGet', 'Weir'
@@ -453,8 +464,20 @@ try {
     } else {
         Add-Result 'First-run hook ran (firewall step, picker)' 'manual' 'The install hook log has no first-run line: a silent Setup does not trigger it, so the picker and the firewall step were not exercised. Run Setup.exe by hand in the VM console for step 1.'
     }
-    Add-Result 'Component data folders' 'passed' ("data root $($state.DataRoot): [" + ($state.DataTop -join ', ') + "]; component folders: [" + ($state.Components -join ', ') + "]; client config found: [" + ($state.ConfigsFound -join ', ') + "]; download folders: " + ($state.ClientFolders -join '; '))
-    Add-Result 'Install hook log' 'passed' ($state.Hook -join ' | ')
+    # The data folder holds Deluno's databases, the download folders exist when the picker set up a client, and an app the picker installed has its folder or config.
+    $clientsInstalled = @($state.HookInstalled | Where-Object { $_ -in 'qbittorrent', 'transmission', 'deluge', 'sabnzbd', 'nzbget' })
+    $folderProblems = New-Object System.Collections.ArrayList
+    if (@($state.DataBases).Count -lt 4) { [void]$folderProblems.Add("the data folder holds only these databases: [$(@($state.DataBases) -join ', ')]") }
+    if ($clientsInstalled.Count -gt 0) {
+        foreach ($f in @($state.ClientFolders | Where-Object { $_ -match ' : False$' })) { [void]$folderProblems.Add("missing download folder $($f -replace ' : False$', '')") }
+        if (@($state.ConfigsFound).Count -eq 0) { [void]$folderProblems.Add('no client config folder was found') }
+    }
+    Add-Result 'Component data folders' $(if ($folderProblems.Count -eq 0) { 'passed' } else { 'failed' }) ("data root $($state.DataRoot): [" + ($state.DataTop -join ', ') + "]; component folders: [" + ($state.Components -join ', ') + "]; client config found: [" + ($state.ConfigsFound -join ', ') + "]; download folders: " + ($state.ClientFolders -join '; ') + $(if ($folderProblems.Count) { ' | PROBLEMS: ' + ($folderProblems -join '; ') } else { '' }))
+    # The hook log holds the run's lines, and none of the apps the picker tried failed.
+    $hookProblems = New-Object System.Collections.ArrayList
+    if ($state.HookLines -eq 0) { [void]$hookProblems.Add('the install hook log is empty or missing') }
+    if (@($state.HookFailed).Count -gt 0) { [void]$hookProblems.Add("the picker reports a failure for: $(@($state.HookFailed) -join ', ')") }
+    Add-Result 'Install hook log' $(if ($hookProblems.Count -eq 0) { 'passed' } else { 'failed' }) (($state.Hook -join ' | ') + $(if ($hookProblems.Count) { ' | PROBLEMS: ' + ($hookProblems -join '; ') } else { '' }))
 
     if ($UsenetStub) {
         try { Start-UsenetStubInVm }
