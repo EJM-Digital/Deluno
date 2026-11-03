@@ -468,3 +468,50 @@ function Invoke-UninstallLeavesNothingBehind {
         Add-Check 'The old sign-in works and the old libraries are there' ($connected -and @(Get-Library).Count -gt 0) ''
     }
 }
+
+function Invoke-InstallSilentFirstInstall {
+    param([Parameter(Mandatory)] [string] $CandidateVersion)
+    Invoke-Scenario -Id 'install.silent-first-install' -Title 'Setup.exe --silent on a machine with no Deluno installs, exits 0 and starts nothing; the first start afterwards is a plain start: none of the first-run steps (firewall rule, Start with Windows question, app picker) run' -Body {
+        $setup = 'C:\golden\candidate\Deluno-Setup.exe'
+        Add-Check 'The candidate''s Setup.exe is in the VM' (Test-Path $setup) $setup
+        $ctx = Start-PreviousForUpdate -CandidateVersion 'no-candidate-here'
+        if (-not $ctx -or -not (Test-Path $setup)) { return }
+        # A clean machine again: the previous release is uninstalled and every trace of its data and settings removed.
+        $null = Quit-DelunoFromTray
+        $u = Invoke-DelunoUninstall
+        Add-Check 'The previous release is uninstalled' $u.Ok $u.Detail
+        Get-NetFirewallRule -DisplayName 'Deluno*' -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction SilentlyContinue
+        Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Deluno' -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath (Join-Path $env:LOCALAPPDATA 'DelunoData'), (Join-Path $env:LOCALAPPDATA 'DelunoConfig'), (Join-Path $env:LOCALAPPDATA 'Deluno') -Recurse -Force -ErrorAction SilentlyContinue
+        Add-Check 'The machine has no Deluno program, data or settings left' (-not (Test-Path (Join-Path $env:LOCALAPPDATA 'Deluno\current\Deluno.exe')) -and -not (Test-Path (Join-Path $env:LOCALAPPDATA 'DelunoData'))) ''
+
+        $p = Start-Process -FilePath $setup -ArgumentList '--silent' -PassThru
+        $done = $p.WaitForExit(600000)
+        Add-Check 'Setup.exe --silent finished with exit code 0' ($done -and $p.ExitCode -eq 0) "exit $(if ($done) { $p.ExitCode } else { 'none (timed out)' })"
+        Wait-InstallerQuiet | Out-Null
+        $exe = Get-InstalledDelunoExe
+        Add-Check 'Deluno is installed, as the candidate' ($exe -and $exe.VersionInfo.ProductVersion -like "*$CandidateVersion*") $(if ($exe) { $exe.VersionInfo.ProductVersion } else { 'no Deluno.exe' })
+        Start-Sleep -Seconds 45 # reason: a Deluno wrongly started by the installer appears within seconds of it finishing; nothing signals "nothing will start"
+        Add-Check 'Nothing was started: no Deluno process and nothing answering on its port' (@(Get-DelunoProcess).Count -eq 0 -and -not (Test-DelunoAnswering)) "processes: $(@(Get-DelunoProcess).Count)"
+        Add-Check 'No sign-in entry and no firewall rule were made by the install' (-not (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue | ForEach-Object { $_.PSObject.Properties } | Where-Object { [string]$_.Value -match 'Deluno\.exe' }) -and @(Get-NetFirewallRule -DisplayName 'Deluno*' -ErrorAction SilentlyContinue).Count -eq 0) ''
+        $hook = Join-Path $env:LOCALAPPDATA 'Deluno\logs\install-hook.log'
+        $hookText = if (Test-Path $hook) { Get-Content -Raw $hook } else { '' }
+        Add-Check 'The install hook log says the install ran' ($hookText -match 'after install') ''
+
+        # The first start afterwards.
+        if (-not $exe) { return }
+        Start-ProgramUnelevated -Path $exe.FullName -WorkingDirectory $exe.DirectoryName -Elevated
+        $up = Wait-Until -TimeoutSec 420 -IntervalSec 3 -Condition { Test-DelunoAnswering }
+        Add-Check 'Deluno starts and answers' $up.Ok ''
+        if (-not $up.Ok) { return }
+        $boot = Try-Deluno -Path '/api/auth/bootstrap-status'
+        Add-Check 'It is a fresh Deluno: it asks for the first account' ($boot.Status -eq 200 -and $boot.Data.requiresSetup -eq $true) $boot.Raw
+        Start-Sleep -Seconds 30 # reason: first-run steps would show their windows and write their log lines within seconds of the start; nothing signals "none will"
+        $hookText2 = if (Test-Path $hook) { Get-Content -Raw $hook } else { '' }
+        Add-Check 'No first-run step ran: the install log has no "first run" line' ($hookText2 -notmatch 'first run:') (($hookText2 -split "`r?`n" | Where-Object { $_ -match 'first run' } | Select-Object -First 2) -join ' | ')
+        Add-Check 'No firewall rule was added by a first run' (@(Get-NetFirewallRule -DisplayName 'Deluno*' -ErrorAction SilentlyContinue).Count -eq 0) ''
+        $question = Wait-DesktopWindow -NamePattern '^Deluno$' -Process 'Deluno' -TimeoutSec 3
+        Add-Check 'No "Start Deluno when you sign in" question and no app picker is on screen' ($null -eq $question) $(if ($question) { Get-WindowText -Window $question } else { '' })
+        Add-Check 'No sign-in entry was made' (-not (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue | ForEach-Object { $_.PSObject.Properties } | Where-Object { [string]$_.Value -match 'Deluno\.exe' })) ''
+    }
+}

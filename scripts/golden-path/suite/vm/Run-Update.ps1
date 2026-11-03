@@ -43,6 +43,7 @@ try {
         'update.killed-mid-apply' { Invoke-UpdateKilledMidApply -CandidateVersion $CandidateVersion }
         'update.older-build-newer-database' { Invoke-UpdateOlderBuildNewerDatabase -CandidateVersion $CandidateVersion }
         'uninstall.leaves-nothing-behind' { Invoke-UninstallLeavesNothingBehind }
+        'install.silent-first-install' { Invoke-InstallSilentFirstInstall -CandidateVersion $CandidateVersion }
         'update.tray-menu' { Invoke-UpdateTrayMenu -CandidateVersion $CandidateVersion }
         default { throw "Unknown update scenario '$Scenario'." }
     }
