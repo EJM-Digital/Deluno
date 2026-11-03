@@ -275,7 +275,7 @@ internal sealed class RealSabnzbdEnvironment(string dataRoot, string iniPath, IS
                 return false;
             }
 
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            using var http = new HttpClient(Deluno.Infrastructure.Http.LoopbackFirstConnection.CreateHandler()) { Timeout = TimeSpan.FromSeconds(10) };
             return http.GetAsync(url).GetAwaiter().GetResult().IsSuccessStatusCode;
         }
         catch
