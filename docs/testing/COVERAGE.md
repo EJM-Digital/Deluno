@@ -150,13 +150,13 @@ either is out of date, so they cannot drift from the baseline. `coverage-areas.j
 | src/Deluno.Notifications | 12 | 3 | 9 | 89.8% | 75.3% | #1301 |
 | src/Deluno.Platform | 246 | 184 | 62 | 98.6% | 89.4% | #1302 |
 | src/Deluno.Quality | 82 | 30 | 52 | 96.9% | 86.0% | #1296 |
-| src/Deluno.Realtime | 8 | 5 | 3 | 99.1% | 98.5% | #1296 |
+| src/Deluno.Realtime | 8 | 6 | 2 | 99.4% | 98.8% | #1296 |
 | src/Deluno.Recovery | 12 | 5 | 7 | 95.2% | 89.0% | #1296 |
 | src/Deluno.Retention | 13 | 1 | 12 | 93.5% | 80.4% | #1296 |
 | src/Deluno.Security | 51 | 24 | 27 | 94.0% | 87.9% | #1302 |
 | src/Deluno.Series | 111 | 87 | 24 | 96.7% | 83.7% | #1296 |
 | src/Deluno.Worker | 142 | 42 | 100 | 93.3% | 84.2% | #1296 |
-| **All** | 1871 | 869 | 1002 | 91.4% | 79.1% | |
+| **All** | 1871 | 870 | 1001 | 91.4% | 79.1% | |
 
 Averages are per file, from the checked-in baseline (the floor the ratchet holds each file to), not weighted by size.
 

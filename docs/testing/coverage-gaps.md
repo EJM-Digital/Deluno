@@ -968,14 +968,13 @@ Issue #1296. Closed by a test for each uncovered quality and custom-format branc
 | src/Deluno.Quality/Scenarios/MediaPlanScenarioContracts.cs | 100.0% | 88.9% |
 | src/Deluno.Quality/VersionedMediaPolicyEngine.cs | 99.5% | 98.4% |
 
-## src/Deluno.Realtime: 3 of 8 files
+## src/Deluno.Realtime: 2 of 8 files
 
 Issue #1296. Closed by a test for each uncovered push branch.
 
 | File | Line | Branch |
 | --- | ---: | ---: |
 | src/Deluno.Realtime/Hubs/ActivityHub.cs | 100.0% | 97.5% |
-| src/Deluno.Realtime/SignalRRealtimeEventPublisher.cs | 97.8% | 98.6% |
 | src/Deluno.Realtime/TitleChangeNotifier.cs | 95.3% | 96.4% |
 
 ## src/Deluno.Recovery: 7 of 12 files
