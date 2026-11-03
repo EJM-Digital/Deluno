@@ -79,7 +79,7 @@ public static class AcquisitionBlockerSources
         }
 
         var handoff = open.LibraryId is { Length: > 0 } libraryId && open.ImportedFilePath is null
-            ? await FindOpenHandoffAsync(processors, libraryId, open.ReleaseName, cancellationToken)
+            ? await FindOpenHandoffAsync(processors, libraryId, open.ReleaseName, open.DownloadClientId, open.TorrentHashOrItemId, cancellationToken)
             : null;
 
         return new HeldBy(
@@ -104,13 +104,29 @@ public static class AcquisitionBlockerSources
         IProcessorRepository processors,
         string libraryId,
         string releaseName,
+        string? downloadClientId,
+        string? downloadItemId,
         CancellationToken cancellationToken)
     {
         var handoffs = await processors.ListProcessorHandoffsAsync(libraryId, 50, cancellationToken);
         return handoffs.FirstOrDefault(handoff =>
-            string.Equals(handoff.ReleaseName, releaseName, StringComparison.OrdinalIgnoreCase) &&
-            ProcessorHandoffStatuses.IsWithProcessor(handoff.Status));
+            ProcessorHandoffStatuses.IsWithProcessor(handoff.Status) &&
+            (string.Equals(handoff.ReleaseName, releaseName, StringComparison.OrdinalIgnoreCase)
+             // A single-file download is handed over under its file name ("Release.mkv") while the dispatch carries the
+             // release name ("Release"): the same download, which the golden VM showed unnamed (3 Nov 2026).
+             || string.Equals(WithoutVideoExtension(handoff.ReleaseName), releaseName, StringComparison.OrdinalIgnoreCase)
+             || (!string.IsNullOrWhiteSpace(downloadClientId)
+                 && !string.IsNullOrWhiteSpace(downloadItemId)
+                 && string.Equals(handoff.ClientId, downloadClientId, StringComparison.OrdinalIgnoreCase)
+                 && string.Equals(handoff.QueueItemId, downloadItemId, StringComparison.OrdinalIgnoreCase))));
     }
+
+    private static readonly string[] VideoExtensions = [".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv", ".ts", ".m2ts", ".webm"];
+
+    private static string WithoutVideoExtension(string name)
+        => VideoExtensions.FirstOrDefault(extension => name.EndsWith(extension, StringComparison.OrdinalIgnoreCase)) is { } found
+            ? name[..^found.Length]
+            : name;
 
     /// <summary>
     /// The most recent download Deluno actually finished for this title.
