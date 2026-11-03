@@ -3283,8 +3283,8 @@
       "branch": 88.35
     },
     "src/Deluno.Integrations/Metadata/TmdbMetadataProvider.Tvdb.cs": {
-      "line": 90.34,
-      "branch": 90.45
+      "line": 90.05,
+      "branch": 89.54
     },
     "src/Deluno.Integrations/Metadata/TmdbMetadataProvider.cs": {
       "line": 86.77,

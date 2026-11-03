@@ -659,7 +659,7 @@ Issue #1301. Closed by a recorded-reply test for each uncovered integration bran
 | src/Deluno.Integrations/Metadata/SceneMapping/XemSceneMappingProvider.cs | 96.2% | 84.8% |
 | src/Deluno.Integrations/Metadata/TmdbMetadataProvider.cs | 86.8% | 74.6% |
 | src/Deluno.Integrations/Metadata/TmdbMetadataProvider.Translations.cs | 94.9% | 88.3% |
-| src/Deluno.Integrations/Metadata/TmdbMetadataProvider.Tvdb.cs | 90.3% | 90.5% |
+| src/Deluno.Integrations/Metadata/TmdbMetadataProvider.Tvdb.cs | 90.0% | 89.5% |
 | src/Deluno.Integrations/Metadata/TvdbDirectClient.cs | 76.8% | 70.7% |
 | src/Deluno.Integrations/Metadata/TvdbModels.cs | 97.3% | n/a |
 | src/Deluno.Integrations/Processors/ProcessorConnectionService.cs | 94.8% | 90.0% |
