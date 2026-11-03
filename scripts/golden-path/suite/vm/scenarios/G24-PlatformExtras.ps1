@@ -563,7 +563,7 @@ function Invoke-UninstallRemovesTheWindowsService {
         $hookLog = Join-Path $env:LOCALAPPDATA 'Deluno\logs\install-hook.log'
         $hookCopy = Join-Path $env:TEMP 'golden-uninstall-hook-copy.log'
         Remove-Item -LiteralPath $hookCopy -ErrorAction SilentlyContinue
-        $copier = Start-Job -ScriptBlock { param($from, $to) while ($true) { try { if (Test-Path -LiteralPath $from) { $t = [IO.File]::ReadAllText($from); if ($t) { [IO.File]::WriteAllText($to, $t) } } } catch { } Start-Sleep -Milliseconds 100 } } -ArgumentList $hookLog, $hookCopy
+        $copier = Start-Job -ScriptBlock { param($from, $to) while ($true) { try { if (Test-Path -LiteralPath $from) { $t = [IO.File]::ReadAllText($from); if ($t) { [IO.File]::WriteAllText($to, $t) } } } catch { } Start-Sleep -Milliseconds 100 } } -ArgumentList $hookLog, $hookCopy # reason: copying a log the uninstaller is about to delete; nothing signals that it changed, so it is read every 100 ms
         try {
             $r2 = Invoke-DelunoUninstall
             Add-Check 'The uninstaller finished with exit code 0 over the running service' $r2.Ok $r2.Detail
