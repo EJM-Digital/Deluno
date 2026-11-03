@@ -61,6 +61,8 @@ function Invoke-ServiceRebootScenario {
             '    $checks += [ordered]@{ name = "After the restart, $($w.kind) answers on port $($w.port) with nobody signed in"; ok = (Test-Port $w.port); detail = ''''; atUtc = [DateTime]::UtcNow.ToString(''o'') }'
             '}'
             '$svc = Get-CimInstance Win32_Service -Filter "Name=''Deluno''"'
+            '$sab = Get-CimInstance Win32_Service -Filter "Name=''SABnzbd''"'
+            '$checks += [ordered]@{ name = ''SABnzbd is running as its own Windows service (it cannot run as a plain process with nobody signed in)''; ok = ($null -ne $sab -and $sab.State -eq ''Running'' -and $sab.StartMode -eq ''Auto''); detail = "$($sab.State) / $($sab.StartMode)"; atUtc = [DateTime]::UtcNow.ToString(''o'') }'
             '$checks += [ordered]@{ name = ''It is the Windows service that is running Deluno''; ok = ($null -ne $svc -and $svc.State -eq ''Running''); detail = "$($svc.State)"; atUtc = [DateTime]::UtcNow.ToString(''o'') }'
             '$json = Get-Content -Raw $resultsFile | ConvertFrom-Json'
             'foreach ($r in @($json.scenarios)) {'
