@@ -5,9 +5,13 @@
 
   What is measured is every Deluno production assembly. Test assemblies are left out here.
   Nothing else is excluded here: a source file leaves the report only through
-  docs/testing/coverage-exclusions.json, with a reason. That is why ExcludeByAttribute names only the
-  compiler's own marks: coverlet's default also drops [Obsolete] and [ExcludeFromCodeCoverage], which
-  would hide code from the report with no reason written down.
+  docs/testing/coverage-exclusions.json, with a reason. That is why ExcludeByAttribute names only
+  GeneratedCodeAttribute (source generators' output): coverlet's default also drops [Obsolete] and
+  [ExcludeFromCodeCoverage], which would hide code from the report with no reason written down.
+  CompilerGeneratedAttribute is deliberately NOT excluded (issue 1450): the compiler puts the body of every async
+  method, iterator and lambda into a hidden [CompilerGenerated] class, so excluding it dropped most of the backend
+  from the report. Coverlet attributes those bodies to their source lines.
+  scripts/coverage/async-coverage.test.mjs proves it with these very settings.
 
   The format is opencover, not cobertura, on purpose: a cobertura line only says "50% of this jump was taken", not which
   side, so merging the four backend legs' reports (#1346) could not union their branches and lost some. OpenCover names
@@ -21,7 +25,7 @@
           <Format>opencover</Format>
           <Include>[Deluno.*]*</Include>
           <Exclude>[*.Tests]*,[Deluno.Tests.*]*,[xunit*]*</Exclude>
-          <ExcludeByAttribute>GeneratedCodeAttribute,CompilerGeneratedAttribute</ExcludeByAttribute>
+          <ExcludeByAttribute>GeneratedCodeAttribute</ExcludeByAttribute>
           <ExcludeByFile>**/obj/**/*</ExcludeByFile>
           <IncludeTestAssembly>false</IncludeTestAssembly>
           <SingleHit>false</SingleHit>

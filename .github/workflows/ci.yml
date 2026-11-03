@@ -278,7 +278,7 @@ jobs:
       - name: Coverage exclusions have reasons, and the coverage merge and ratchet work
         run: |
           node scripts/check-coverage-ratchet.mjs
-          node --test scripts/check-coverage-ratchet.test.mjs scripts/coverage/merge-coverage.test.mjs
+          node --test scripts/check-coverage-ratchet.test.mjs scripts/coverage/merge-coverage.test.mjs scripts/coverage/async-coverage.test.mjs
 
       - name: The mutation tooling works, the configs are current, and the thresholds and equivalent-mutant list are valid
         run: |

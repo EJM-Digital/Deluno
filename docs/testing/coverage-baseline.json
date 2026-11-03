@@ -1703,8 +1703,8 @@
       "branch": 93.33
     },
     "src/Deluno.Api/ApiRateLimitPartitionKeyResolver.cs": {
-      "line": 95.45,
-      "branch": 90.9
+      "line": 100,
+      "branch": 95.45
     },
     "src/Deluno.Api/ApiVersioning.cs": {
       "line": 100,
@@ -1718,20 +1718,24 @@
       "line": 100,
       "branch": 100
     },
+    "src/Deluno.Api/Backup/BackupKeyVault.cs": {
+      "line": 96.55,
+      "branch": 50
+    },
     "src/Deluno.Api/Backup/BackupModels.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Api/Backup/DelunoBackupService.cs": {
-      "line": 94.97,
-      "branch": 82.14
+      "line": 96.69,
+      "branch": 90
     },
     "src/Deluno.Api/BlockedReleases/BlockedReleasesEndpointRouteBuilderExtensions.cs": {
-      "line": 100,
+      "line": 97.5,
       "branch": null
     },
     "src/Deluno.Api/BlockedReleases/ImportFailureRulesEndpointRouteBuilderExtensions.cs": {
-      "line": 100,
+      "line": 95.74,
       "branch": null
     },
     "src/Deluno.Api/Calendar/CalendarFeedBuilder.cs": {
@@ -1740,7 +1744,7 @@
     },
     "src/Deluno.Api/Calendar/CalendarFeedEndpointRouteBuilderExtensions.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Api/ConfigChangedPush.cs": {
       "line": 100,
@@ -1751,35 +1755,35 @@
       "branch": null
     },
     "src/Deluno.Api/DashboardMetricsEndpointRouteBuilderExtensions.cs": {
-      "line": 96.96,
-      "branch": 25
+      "line": 98.21,
+      "branch": 75
     },
     "src/Deluno.Api/DelunoApiExtensions.cs": {
       "line": 100,
-      "branch": 100
+      "branch": 66.66
     },
     "src/Deluno.Api/DelunoVersion.cs": {
       "line": 100,
-      "branch": 68.75
+      "branch": 87.87
     },
     "src/Deluno.Api/Discover/DiscoverEndpointRouteBuilderExtensions.cs": {
-      "line": 100,
-      "branch": 50
+      "line": 99.04,
+      "branch": 97.22
     },
     "src/Deluno.Api/Downloads/DownloadDispatchesEndpointRouteBuilderExtensions.cs": {
-      "line": 100,
-      "branch": null
+      "line": 99.04,
+      "branch": 85
     },
     "src/Deluno.Api/Health/DelunoReadinessModels.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Api/Health/DelunoReadinessService.cs": {
-      "line": 67.74,
-      "branch": 25
+      "line": 92.22,
+      "branch": 94.44
     },
     "src/Deluno.Api/Health/HealthCheckEndpointRouteBuilderExtensions.cs": {
-      "line": 100,
+      "line": 95.58,
       "branch": null
     },
     "src/Deluno.Api/IndexerHistory/IndexerHistoryAuthFailureRecorder.cs": {
@@ -1787,11 +1791,11 @@
       "branch": null
     },
     "src/Deluno.Api/IndexerHistory/IndexerHistoryContracts.cs": {
-      "line": 91.66,
-      "branch": 55
+      "line": 92,
+      "branch": 60
     },
     "src/Deluno.Api/IndexerHistory/IndexerHistoryEndpointRouteBuilderExtensions.cs": {
-      "line": 100,
+      "line": 96.96,
       "branch": null
     },
     "src/Deluno.Api/IndexerHistory/IndexerHistoryRecorder.cs": {
@@ -1799,23 +1803,27 @@
       "branch": null
     },
     "src/Deluno.Api/IndexerHistory/IndexerHistoryService.cs": {
-      "line": 96,
-      "branch": 83.33
+      "line": 97.26,
+      "branch": 92
     },
     "src/Deluno.Api/IndexerHistory/SqliteIndexerHistoryEventStore.cs": {
       "line": 100,
-      "branch": 50
+      "branch": 100
     },
-    "src/Deluno.Api/Monitoring/InMemoryApiLatencyTracker.cs": {
-      "line": 100,
-      "branch": 85
-    },
-    "src/Deluno.Api/Monitoring/LibraryRootReachability.cs": {
+    "src/Deluno.Api/Monitoring/IApiLatencyTracker.cs": {
       "line": 100,
       "branch": null
     },
+    "src/Deluno.Api/Monitoring/InMemoryApiLatencyTracker.cs": {
+      "line": 98.82,
+      "branch": 90
+    },
+    "src/Deluno.Api/Monitoring/LibraryRootReachability.cs": {
+      "line": 95.83,
+      "branch": 100
+    },
     "src/Deluno.Api/Monitoring/MonitoringContracts.cs": {
-      "line": 94.02,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Api/Monitoring/MonitoringEndpointRouteBuilderExtensions.cs": {
@@ -1823,60 +1831,68 @@
       "branch": null
     },
     "src/Deluno.Api/Monitoring/MonitoringService.cs": {
-      "line": 81.63,
-      "branch": 62.5
+      "line": 96.48,
+      "branch": 83.33
     },
     "src/Deluno.Api/Network/BundledComponentCredentials.cs": {
-      "line": 90.24,
-      "branch": 90
+      "line": 90.8,
+      "branch": 85.71
     },
     "src/Deluno.Api/Network/BundledComponents.cs": {
-      "line": 74.03,
-      "branch": 25
+      "line": 71.77,
+      "branch": 47.05
     },
     "src/Deluno.Api/Network/ConnectivityEndpointRouteBuilderExtensions.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Api/Network/InstalledComponentRecord.cs": {
-      "line": 89.47,
-      "branch": 100
+      "line": 89.74,
+      "branch": 92.85
     },
     "src/Deluno.Api/Network/LanAccess.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Api/Network/WindowsFirewallLanAccess.cs": {
-      "line": 66.66,
-      "branch": 38.18
+      "line": 58.82,
+      "branch": 43.33
     },
     "src/Deluno.Api/SubtitleWantedEndpointRouteBuilderExtensions.cs": {
-      "line": 100,
-      "branch": null
+      "line": 98,
+      "branch": 100
     },
     "src/Deluno.Api/System/SystemChangeWatcher.cs": {
-      "line": 87.5,
-      "branch": null
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Api/System/SystemInstallationInfoEndpointRouteBuilderExtensions.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Api/System/SystemLogAndDatabasesEndpointRouteBuilderExtensions.cs": {
-      "line": 87.25,
-      "branch": 81.57
+      "line": 92.44,
+      "branch": 92.5
     },
     "src/Deluno.Api/System/SystemLogFilesEndpointRouteBuilderExtensions.cs": {
-      "line": 100,
-      "branch": 100
+      "line": 97.36,
+      "branch": 86.36
     },
     "src/Deluno.Api/System/SystemLogLevelEndpointRouteBuilderExtensions.cs": {
       "line": 100,
       "branch": null
     },
+    "src/Deluno.Api/Updates/AppliedUpdateRecorder.cs": {
+      "line": 91.42,
+      "branch": 96.15
+    },
+    "src/Deluno.Api/Updates/AppliedUpdateStartupCheck.cs": {
+      "line": 28.57,
+      "branch": 0
+    },
     "src/Deluno.Api/Updates/DefaultUpdateOrchestrator.cs": {
-      "line": 93.4,
-      "branch": 57.14
+      "line": 97.98,
+      "branch": 89.13
     },
     "src/Deluno.Api/Updates/ReleaseNotes.cs": {
       "line": 92.59,
@@ -1887,59 +1903,59 @@
       "branch": 66.66
     },
     "src/Deluno.Api/Updates/UpdateStateMachine.cs": {
-      "line": 79.16,
+      "line": 82.14,
       "branch": 70.83
     },
     "src/Deluno.Companions/CompanionConfigFiles.cs": {
-      "line": 85.1,
-      "branch": 63.63
+      "line": 95.74,
+      "branch": 86.36
     },
     "src/Deluno.Companions/CompanionContracts.cs": {
-      "line": 75,
-      "branch": null
-    },
-    "src/Deluno.Companions/CompanionDownloads.cs": {
-      "line": 43.54,
-      "branch": 60
-    },
-    "src/Deluno.Companions/CompanionEndpoints.cs": {
       "line": 100,
       "branch": null
     },
+    "src/Deluno.Companions/CompanionDownloads.cs": {
+      "line": 60.97,
+      "branch": 95
+    },
+    "src/Deluno.Companions/CompanionEndpoints.cs": {
+      "line": 79.16,
+      "branch": 9.09
+    },
     "src/Deluno.Companions/CompanionSystem.cs": {
-      "line": 0,
-      "branch": 0
+      "line": 8.04,
+      "branch": 5
     },
     "src/Deluno.Companions/CompanionTools.cs": {
-      "line": 78.18,
-      "branch": 60
+      "line": 86.07,
+      "branch": 77.01
     },
     "src/Deluno.Companions/CompanionToolsService.cs": {
-      "line": 25.64,
-      "branch": 12.5
+      "line": 96.05,
+      "branch": 70.83
     },
     "src/Deluno.Companions/ConnectionUpdates.cs": {
-      "line": 96.77,
-      "branch": 85.29
+      "line": 91.19,
+      "branch": 81.13
     },
     "src/Deluno.Companions/DownloadClientConnector.cs": {
-      "line": 90.47,
-      "branch": 78.57
+      "line": 90.19,
+      "branch": 92.85
     },
     "src/Deluno.Companions/ElevatedInstallScript.cs": {
-      "line": 86.44,
+      "line": 86.66,
       "branch": 45.45
     },
     "src/Deluno.Connections/ConnectionsEndpointRouteBuilderExtensions.cs": {
-      "line": 91.32,
-      "branch": 56.48
+      "line": 92.17,
+      "branch": 71.37
     },
     "src/Deluno.Connections/ConnectionsServiceCollectionExtensions.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Connections/Contracts/ConnectionItem.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Connections/Contracts/ContentLayouts.cs": {
@@ -1959,7 +1975,7 @@
       "branch": null
     },
     "src/Deluno.Connections/Contracts/CreateProxyRequest.cs": {
-      "line": 100,
+      "line": 85.71,
       "branch": null
     },
     "src/Deluno.Connections/Contracts/DownloadClientItem.cs": {
@@ -1971,7 +1987,7 @@
       "branch": null
     },
     "src/Deluno.Connections/Contracts/ITrackerDefinitionNames.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Connections/Contracts/IndexerItem.cs": {
@@ -1999,35 +2015,35 @@
       "branch": 100
     },
     "src/Deluno.Connections/Contracts/MediaServerConnection.cs": {
-      "line": 96,
-      "branch": 85.71
+      "line": 98.14,
+      "branch": 100
     },
     "src/Deluno.Connections/Contracts/MediaServerPathMappingItem.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Connections/Contracts/ProxyAddressFormat.cs": {
-      "line": 80,
-      "branch": 75
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Connections/Contracts/ProxyItem.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Connections/Contracts/ProxyTypes.cs": {
-      "line": 96.15,
-      "branch": 84.21
+      "line": 100,
+      "branch": 86.84
     },
     "src/Deluno.Connections/Contracts/SeerrConnection.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Connections/Contracts/SubtitleProviderConnection.cs": {
-      "line": 86.27,
-      "branch": 62.5
+      "line": 98.14,
+      "branch": 100
     },
     "src/Deluno.Connections/Contracts/UpdateDownloadClientRequest.cs": {
-      "line": 100,
+      "line": 97.61,
       "branch": null
     },
     "src/Deluno.Connections/Contracts/UpdateIndexerRequest.cs": {
@@ -2035,52 +2051,56 @@
       "branch": null
     },
     "src/Deluno.Connections/Contracts/UpdateProxyRequest.cs": {
-      "line": 100,
+      "line": 87.5,
       "branch": null
     },
     "src/Deluno.Connections/Data/AggregatorIndexerNames.cs": {
-      "line": 100,
-      "branch": 70
+      "line": 97.61,
+      "branch": 88.88
     },
     "src/Deluno.Connections/Data/IMediaServerRefreshBacklogRepository.cs": {
-      "line": 27.27,
-      "branch": 0
+      "line": 100,
+      "branch": 95.45
     },
     "src/Deluno.Connections/Data/ITraktConnectionRepository.cs": {
-      "line": 100,
-      "branch": null
+      "line": 95.65,
+      "branch": 70.83
     },
     "src/Deluno.Connections/Data/IndexerNamesUpgradeService.cs": {
-      "line": 75,
-      "branch": null
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Connections/Data/IndexerProxyHttpClientFactory.cs": {
-      "line": 95,
-      "branch": 75
+      "line": 100,
+      "branch": 100
+    },
+    "src/Deluno.Connections/Data/IndexerProxyResolver.cs": {
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Connections/Data/IndexerProxyWebProxy.cs": {
       "line": 88.88,
       "branch": 83.33
     },
     "src/Deluno.Connections/Data/SqliteConnectionsRepository.cs": {
-      "line": 82.97,
-      "branch": 84.61
+      "line": 98.97,
+      "branch": 88.27
     },
     "src/Deluno.Connections/Data/SqliteMediaServerRepository.cs": {
-      "line": 87.87,
-      "branch": 86.36
+      "line": 97.34,
+      "branch": 83.33
     },
     "src/Deluno.Connections/Data/SqliteSeerrAcquisitionsRepository.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Connections/Data/SqliteSeerrRepository.cs": {
-      "line": 100,
-      "branch": 90.62
+      "line": 99.36,
+      "branch": 94
     },
     "src/Deluno.Connections/Data/SqliteSubtitleProviderRepository.cs": {
-      "line": 94.59,
-      "branch": 96.15
+      "line": 100,
+      "branch": 97.5
     },
     "src/Deluno.Connections/DownloadClientCredentialText.cs": {
       "line": 100,
@@ -2091,28 +2111,32 @@
       "branch": 66.66
     },
     "src/Deluno.Connections/IndexerCallLimiter.cs": {
-      "line": 98.11,
+      "line": 98.14,
       "branch": 88.88
     },
     "src/Deluno.Connections/QbittorrentSignIn.cs": {
       "line": 100,
-      "branch": null
+      "branch": 86.66
     },
     "src/Deluno.Connections/UsenetProvider.cs": {
-      "line": 98.9,
-      "branch": 86.11
+      "line": 97.87,
+      "branch": 81.11
     },
     "src/Deluno.Connections/Versions/ConnectionProjects.cs": {
-      "line": 25,
-      "branch": 18.51
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Connections/Versions/ConnectionVersionParsers.cs": {
       "line": 96.15,
       "branch": 97.05
     },
+    "src/Deluno.Connections/Versions/ConnectionVersionRecording.cs": {
+      "line": 71.42,
+      "branch": 100
+    },
     "src/Deluno.Connections/Versions/LatestReleaseService.cs": {
-      "line": 87.71,
-      "branch": 84.02
+      "line": 86.93,
+      "branch": 86.2
     },
     "src/Deluno.Contracts/AcquisitionBlockers.cs": {
       "line": 100,
@@ -2127,12 +2151,12 @@
       "branch": 100
     },
     "src/Deluno.Contracts/ActivityHistory.cs": {
-      "line": 97.36,
-      "branch": 97.07
+      "line": 97.65,
+      "branch": 97.33
     },
     "src/Deluno.Contracts/AutoTagging.cs": {
-      "line": 79.06,
-      "branch": 68.77
+      "line": 86.54,
+      "branch": 70.19
     },
     "src/Deluno.Contracts/BlockedReleases.cs": {
       "line": 100,
@@ -2151,16 +2175,16 @@
       "branch": 94.44
     },
     "src/Deluno.Contracts/CatalogueFilterFields.cs": {
-      "line": 99.69,
-      "branch": 88.88
+      "line": 99.71,
+      "branch": 91.66
     },
     "src/Deluno.Contracts/CatalogueFilters.cs": {
-      "line": 72.38,
-      "branch": 59.83
+      "line": 75.17,
+      "branch": 64.28
     },
     "src/Deluno.Contracts/CatalogueQuery.cs": {
       "line": 100,
-      "branch": 95.55
+      "branch": 96.15
     },
     "src/Deluno.Contracts/ClientHeldFiles.cs": {
       "line": 100,
@@ -2168,22 +2192,22 @@
     },
     "src/Deluno.Contracts/ConnectionChecks.cs": {
       "line": 100,
-      "branch": 75
+      "branch": 100
     },
     "src/Deluno.Contracts/ConnectionHealthRules.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Contracts/ConnectionNames.cs": {
-      "line": 89.07,
-      "branch": 84.72
+      "line": 100,
+      "branch": 98.99
     },
     "src/Deluno.Contracts/ConnectionUse.cs": {
-      "line": 50,
-      "branch": 29.41
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Contracts/ConnectionVersions.cs": {
-      "line": 88.88,
+      "line": 89.47,
       "branch": null
     },
     "src/Deluno.Contracts/Connectivity/ConnectivityContracts.cs": {
@@ -2199,12 +2223,12 @@
       "branch": 94.44
     },
     "src/Deluno.Contracts/DelunoPage.cs": {
-      "line": 80,
-      "branch": 62.5
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Contracts/DelunoValueNormalizers.cs": {
-      "line": 89.65,
-      "branch": 91.66
+      "line": 100,
+      "branch": 97.91
     },
     "src/Deluno.Contracts/DownloadProtocols.cs": {
       "line": 100,
@@ -2219,27 +2243,35 @@
       "branch": null
     },
     "src/Deluno.Contracts/DownloadThroughputWindow.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Contracts/FeedReleaseNames.cs": {
       "line": 100,
-      "branch": 90
+      "branch": 92.5
     },
     "src/Deluno.Contracts/ForceImportPolicy.cs": {
-      "line": 95.45,
+      "line": 95.83,
       "branch": 85.71
     },
+    "src/Deluno.Contracts/GrabStatuses.cs": {
+      "line": 90.9,
+      "branch": 95
+    },
     "src/Deluno.Contracts/HealthCheckContracts.cs": {
-      "line": 93.18,
+      "line": 100,
       "branch": 100
     },
     "src/Deluno.Contracts/IExistingLibraryImportService.cs": {
-      "line": 97.5,
+      "line": 100,
+      "branch": null
+    },
+    "src/Deluno.Contracts/IHealthCheckRepository.cs": {
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Contracts/IRealtimeEventPublisher.cs": {
-      "line": 88.88,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Contracts/ISubtitleTimingSync.cs": {
@@ -2247,8 +2279,8 @@
       "branch": null
     },
     "src/Deluno.Contracts/ImportFailurePolicy.cs": {
-      "line": 98.52,
-      "branch": 93.1
+      "line": 100,
+      "branch": 98.54
     },
     "src/Deluno.Contracts/ImportFailureRules.cs": {
       "line": 100,
@@ -2262,13 +2294,17 @@
       "line": 100,
       "branch": 95
     },
+    "src/Deluno.Contracts/IndexerApiError.cs": {
+      "line": 89.47,
+      "branch": 73.07
+    },
     "src/Deluno.Contracts/IndexerAuthFailures.cs": {
       "line": 100,
       "branch": 91.66
     },
     "src/Deluno.Contracts/IntegrationFailures.cs": {
-      "line": 90.78,
-      "branch": 77.4
+      "line": 95.85,
+      "branch": 88.7
     },
     "src/Deluno.Contracts/JobDailyMetrics.cs": {
       "line": 100,
@@ -2280,25 +2316,37 @@
     },
     "src/Deluno.Contracts/JobTypeLabels.cs": {
       "line": 98.14,
-      "branch": 56.25
+      "branch": 61.11
     },
     "src/Deluno.Contracts/LibraryImportRunItem.cs": {
       "line": 91.66,
-      "branch": 71.42
+      "branch": 78.57
     },
     "src/Deluno.Contracts/LibrarySearchJobTypes.cs": {
       "line": 100,
       "branch": 94.44
     },
     "src/Deluno.Contracts/LiveEvents.cs": {
-      "line": 99.31,
+      "line": 97.61,
+      "branch": 100
+    },
+    "src/Deluno.Contracts/LogText.cs": {
+      "line": 100,
       "branch": 100
     },
     "src/Deluno.Contracts/MachineTelemetrySample.cs": {
       "line": 100,
       "branch": 100
     },
+    "src/Deluno.Contracts/Manifest/DatabaseDescriptor.cs": {
+      "line": 100,
+      "branch": null
+    },
     "src/Deluno.Contracts/Manifest/DelunoSystemManifest.cs": {
+      "line": 94.44,
+      "branch": null
+    },
+    "src/Deluno.Contracts/Manifest/ModuleDescriptor.cs": {
       "line": 100,
       "branch": null
     },
@@ -2323,26 +2371,30 @@
       "branch": null
     },
     "src/Deluno.Contracts/MediaTagContracts.cs": {
-      "line": 100,
-      "branch": 100
+      "line": 94.73,
+      "branch": 90
     },
     "src/Deluno.Contracts/MovieAvailability.cs": {
       "line": 94.11,
-      "branch": 81.25
+      "branch": 87.5
     },
     "src/Deluno.Contracts/PathMappingTranslator.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Contracts/PendingComponentInstalls.cs": {
-      "line": 96.87,
-      "branch": 100
+      "line": 90.9,
+      "branch": 59.09
     },
     "src/Deluno.Contracts/PlainFailure.cs": {
       "line": 92.85,
-      "branch": 83.5
+      "branch": 84.15
     },
     "src/Deluno.Contracts/PlainFailureException.cs": {
+      "line": 100,
+      "branch": null
+    },
+    "src/Deluno.Contracts/PlainPercent.cs": {
       "line": 100,
       "branch": null
     },
@@ -2352,31 +2404,35 @@
     },
     "src/Deluno.Contracts/ProcessorRefusals.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
+    },
+    "src/Deluno.Contracts/ProjectRepositories.cs": {
+      "line": 90,
+      "branch": 100
     },
     "src/Deluno.Contracts/RatingSources.cs": {
       "line": 100,
-      "branch": null
+      "branch": 50
     },
     "src/Deluno.Contracts/Recovery/ContentBlocklistContracts.cs": {
-      "line": 96.49,
+      "line": 100,
       "branch": 68.75
     },
     "src/Deluno.Contracts/Recovery/DeletedThingCleanup.cs": {
-      "line": 40,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Contracts/Recovery/DispatchRecoveryHandler.cs": {
-      "line": 33.33,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Contracts/Recovery/DispatchTitleUnmonitor.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Contracts/Recovery/DownloadHealthRuleContracts.cs": {
       "line": 91.5,
-      "branch": 73.48
+      "branch": 77.04
     },
     "src/Deluno.Contracts/Recovery/GrabAppearanceLookup.cs": {
       "line": 100,
@@ -2396,31 +2452,35 @@
     },
     "src/Deluno.Contracts/ReleaseAtomFeed.cs": {
       "line": 100,
-      "branch": 100
+      "branch": 94.11
     },
     "src/Deluno.Contracts/ReleaseFallback.cs": {
-      "line": 75,
-      "branch": 50
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Contracts/ReleaseNameReader.cs": {
-      "line": 94.73,
-      "branch": 96.42
+      "line": 92.59,
+      "branch": 94.11
     },
     "src/Deluno.Contracts/ReleaseTitleMatch.cs": {
-      "line": 97.63,
-      "branch": 92.78
+      "line": 99.4,
+      "branch": 97.08
     },
     "src/Deluno.Contracts/ReleaseVersions.cs": {
-      "line": 94.73,
+      "line": 94.79,
       "branch": 89.81
     },
     "src/Deluno.Contracts/SafePath.cs": {
       "line": 90,
-      "branch": 85.48
+      "branch": 88.23
     },
     "src/Deluno.Contracts/SearchStartedWords.cs": {
-      "line": 64.7,
-      "branch": 72.58
+      "line": 100,
+      "branch": 100
+    },
+    "src/Deluno.Contracts/SearchesInFlight.cs": {
+      "line": 97.67,
+      "branch": 100
     },
     "src/Deluno.Contracts/SeedingCleanupActivity.cs": {
       "line": 100,
@@ -2435,7 +2495,7 @@
       "branch": 91.66
     },
     "src/Deluno.Contracts/StateFiles/StateFile.cs": {
-      "line": 88.16,
+      "line": 88.3,
       "branch": 84.44
     },
     "src/Deluno.Contracts/SubtitleBlockKeys.cs": {
@@ -2444,7 +2504,7 @@
     },
     "src/Deluno.Contracts/SubtitleContentModificationPolicy.cs": {
       "line": 100,
-      "branch": 97.72
+      "branch": 100
     },
     "src/Deluno.Contracts/SubtitleDecision.cs": {
       "line": 100,
@@ -2452,19 +2512,19 @@
     },
     "src/Deluno.Contracts/SubtitleLanguageModes.cs": {
       "line": 100,
-      "branch": 75
+      "branch": 100
     },
     "src/Deluno.Contracts/SubtitleLanguageTypePreference.cs": {
-      "line": 95.34,
-      "branch": 92.3
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Contracts/SubtitleLanguages.cs": {
-      "line": 89.02,
-      "branch": 76.08
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Contracts/SubtitleNamePolicy.cs": {
-      "line": 76.08,
-      "branch": 62.96
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Contracts/SubtitlePictureCodecs.cs": {
       "line": 100,
@@ -2472,11 +2532,11 @@
     },
     "src/Deluno.Contracts/SubtitleSources.cs": {
       "line": 100,
-      "branch": 50
+      "branch": 100
     },
     "src/Deluno.Contracts/SystemChangeEvents.cs": {
-      "line": 66.66,
-      "branch": 45
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Contracts/SystemOverview.cs": {
       "line": 100,
@@ -2487,20 +2547,28 @@
       "branch": 66.66
     },
     "src/Deluno.Contracts/TagRoutingMatch.cs": {
-      "line": 52.63,
-      "branch": 50
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Contracts/TraktConnectionStatus.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Contracts/TurnedDownReasons.cs": {
       "line": 100,
-      "branch": 99.44
+      "branch": 100
+    },
+    "src/Deluno.Contracts/VideoFileExtensions.cs": {
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Contracts/WantedStatuses.cs": {
       "line": 100,
       "branch": 87.5
+    },
+    "src/Deluno.Contracts/WebAddress.cs": {
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Contracts/WeirStartWait.cs": {
       "line": 100,
@@ -2511,44 +2579,48 @@
       "branch": 66.66
     },
     "src/Deluno.Filesystem/DownloadIntegrityCheck.cs": {
-      "line": 94.11,
-      "branch": 82.14
+      "line": 97.89,
+      "branch": 92.22
     },
     "src/Deluno.Filesystem/DownloadIntegrityFileResolver.cs": {
-      "line": 79.16,
-      "branch": 91.66
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Filesystem/EpisodeFilesEndpointRouteBuilderExtensions.cs": {
-      "line": 98.09,
+      "line": 96.05,
       "branch": null
     },
     "src/Deluno.Filesystem/ExistingLibraryImportService.cs": {
-      "line": 81.38,
-      "branch": 57.89
+      "line": 90.94,
+      "branch": 82.36
     },
     "src/Deluno.Filesystem/FfmpegTools.cs": {
-      "line": 62.06,
-      "branch": 55
+      "line": 79.31,
+      "branch": 75
     },
     "src/Deluno.Filesystem/FfprobeMediaProbeService.cs": {
-      "line": 19.11,
-      "branch": 5.26
+      "line": 96.81,
+      "branch": 86.36
     },
     "src/Deluno.Filesystem/FilePermissionApplier.cs": {
-      "line": 0,
-      "branch": null
+      "line": 23.33,
+      "branch": 50
     },
     "src/Deluno.Filesystem/FilesystemEndpointRouteBuilderExtensions.cs": {
-      "line": 84.89,
-      "branch": 56.57
+      "line": 90.78,
+      "branch": 73.1
+    },
+    "src/Deluno.Filesystem/FilesystemIssueIds.cs": {
+      "line": 96.15,
+      "branch": 80
     },
     "src/Deluno.Filesystem/FilesystemReconciliationModels.cs": {
-      "line": 100,
+      "line": 87.75,
       "branch": null
     },
     "src/Deluno.Filesystem/FilesystemReconciliationService.cs": {
-      "line": 87.27,
-      "branch": 68.6
+      "line": 95.7,
+      "branch": 87.68
     },
     "src/Deluno.Filesystem/FilesystemServiceCollectionExtensions.cs": {
       "line": 100,
@@ -2563,35 +2635,35 @@
       "branch": null
     },
     "src/Deluno.Filesystem/ImportFileReadiness.cs": {
-      "line": 82.14,
-      "branch": 63.63
+      "line": 89.74,
+      "branch": 76.66
     },
     "src/Deluno.Filesystem/ImportPipelineService.cs": {
-      "line": 88.53,
-      "branch": 77.9
+      "line": 91.3,
+      "branch": 87.73
     },
     "src/Deluno.Filesystem/ImportRestartMarkerFile.cs": {
-      "line": 85.71,
+      "line": 85.96,
       "branch": 83.33
     },
     "src/Deluno.Filesystem/ImportRestartRecoveryService.cs": {
-      "line": 75,
-      "branch": 100
+      "line": 91.62,
+      "branch": 90.54
     },
     "src/Deluno.Filesystem/LibraryAvailabilityService.cs": {
-      "line": 89.47,
-      "branch": 66.66
+      "line": 88.6,
+      "branch": 93.75
     },
     "src/Deluno.Filesystem/LibraryFileCheckService.cs": {
-      "line": 100,
-      "branch": null
+      "line": 92.45,
+      "branch": 95
     },
     "src/Deluno.Filesystem/LibraryImportSliceOptions.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Filesystem/ManualImportFolderScanner.cs": {
-      "line": 76.78,
+      "line": 98.24,
       "branch": 85.71
     },
     "src/Deluno.Filesystem/MediaProbeModels.cs": {
@@ -2599,16 +2671,16 @@
       "branch": null
     },
     "src/Deluno.Filesystem/MovieFilePathSafety.cs": {
-      "line": 89.01,
-      "branch": 93.33
+      "line": 95.45,
+      "branch": 95.16
     },
     "src/Deluno.Filesystem/MovieFilesEndpointRouteBuilderExtensions.cs": {
-      "line": 99.36,
-      "branch": 77.27
+      "line": 96.77,
+      "branch": 81.03
     },
     "src/Deluno.Filesystem/ProcessorHandoffOutputCleanup.cs": {
-      "line": 67.5,
-      "branch": 92.3
+      "line": 72.72,
+      "branch": 100
     },
     "src/Deluno.Filesystem/ReleasePathEvidence.cs": {
       "line": 87.5,
@@ -2619,39 +2691,43 @@
       "branch": 75
     },
     "src/Deluno.Filesystem/SubtitleFileWriter.cs": {
-      "line": 90.9,
-      "branch": 80
+      "line": 96.15,
+      "branch": 92.85
     },
     "src/Deluno.Filesystem/SubtitleInventoryService.cs": {
-      "line": 100,
-      "branch": 80.35
+      "line": 94.7,
+      "branch": 91.48
     },
     "src/Deluno.Filesystem/Subtitles/FfmpegSpeechDetector.cs": {
-      "line": 5,
-      "branch": 0
+      "line": 99,
+      "branch": 96.87
     },
     "src/Deluno.Filesystem/Subtitles/SpeechMask.cs": {
-      "line": 82.14,
-      "branch": 67.64
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Filesystem/Subtitles/SubtitleTimeline.cs": {
-      "line": 91.91,
-      "branch": 75
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Filesystem/Subtitles/SubtitleTimingSyncService.cs": {
-      "line": 12.9,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Filesystem/SupportedVideoExtensions.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Filesystem/UnmatchedImportGiveUpService.cs": {
-      "line": 85,
-      "branch": 50
+      "line": 95,
+      "branch": 93.61
     },
     "src/Deluno.Filesystem/WindowsFolderPicker.cs": {
-      "line": 0,
+      "line": 12.37,
+      "branch": 2.94
+    },
+    "src/Deluno.Host/HostListening.cs": {
+      "line": 33.33,
       "branch": 0
     },
     "src/Deluno.Host/Program.cs": {
@@ -2659,16 +2735,16 @@
       "branch": 0
     },
     "src/Deluno.Infrastructure/Caching/GenerationMemo.cs": {
-      "line": 75,
+      "line": 100,
       "branch": 100
     },
     "src/Deluno.Infrastructure/Http/GitHubApiConditionalHandler.cs": {
-      "line": 92,
-      "branch": 63.63
+      "line": 96.42,
+      "branch": 81.66
     },
     "src/Deluno.Infrastructure/Http/LoopbackFirstConnection.cs": {
       "line": 100,
-      "branch": 50
+      "branch": 100
     },
     "src/Deluno.Infrastructure/Http/SizedJson.cs": {
       "line": 100,
@@ -2676,46 +2752,46 @@
     },
     "src/Deluno.Infrastructure/InfrastructureServiceCollectionExtensions.cs": {
       "line": 100,
-      "branch": null
+      "branch": 50
     },
     "src/Deluno.Infrastructure/Observability/DelunoCorrelationMiddleware.cs": {
       "line": 100,
-      "branch": 50
+      "branch": 100
     },
     "src/Deluno.Infrastructure/Observability/DelunoFileLogger.cs": {
-      "line": 89.5,
-      "branch": 93.57
+      "line": 90.69,
+      "branch": 94.15
     },
     "src/Deluno.Infrastructure/Observability/DelunoLogBuffer.cs": {
-      "line": 88.42,
-      "branch": 82.81
+      "line": 88.54,
+      "branch": 83.33
     },
     "src/Deluno.Infrastructure/Observability/DelunoObservability.cs": {
-      "line": 80,
-      "branch": 60.6
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Infrastructure/Observability/HostConsoleLogging.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Infrastructure/Observability/MachineProbe.cs": {
-      "line": 60.81,
+      "line": 59.21,
       "branch": 32.69
     },
     "src/Deluno.Infrastructure/Observability/RuntimeLogLevelStore.cs": {
-      "line": 88.23,
-      "branch": 75
+      "line": 93.33,
+      "branch": 85.71
     },
     "src/Deluno.Infrastructure/Processes/ChildProcess.cs": {
-      "line": 71.42,
-      "branch": null
+      "line": 83.92,
+      "branch": 80
     },
     "src/Deluno.Infrastructure/Resilience/IntegrationResiliencePolicy.cs": {
-      "line": 98.41,
-      "branch": 81.08
+      "line": 99.44,
+      "branch": 91.87
     },
     "src/Deluno.Infrastructure/Resilience/OutboundRequestThrottle.cs": {
-      "line": 100,
+      "line": 90.66,
       "branch": 75
     },
     "src/Deluno.Infrastructure/Storage/CatalogueKeyset.cs": {
@@ -2726,49 +2802,69 @@
       "line": 100,
       "branch": 100
     },
+    "src/Deluno.Infrastructure/Storage/ConnectionNameRows.cs": {
+      "line": 100,
+      "branch": 75
+    },
+    "src/Deluno.Infrastructure/Storage/DataFolderCheck.cs": {
+      "line": 100,
+      "branch": null
+    },
     "src/Deluno.Infrastructure/Storage/DatabaseMaintenanceLog.cs": {
       "line": 100,
-      "branch": 50
+      "branch": 100
     },
     "src/Deluno.Infrastructure/Storage/DelunoStartupGate.cs": {
-      "line": 80,
-      "branch": 83.33
+      "line": 86.95,
+      "branch": 87.5
     },
     "src/Deluno.Infrastructure/Storage/DelunoStorageBootstrapService.cs": {
       "line": 100,
-      "branch": null
+      "branch": 86.36
     },
     "src/Deluno.Infrastructure/Storage/DelunoStorageLayout.cs": {
       "line": 100,
       "branch": null
     },
+    "src/Deluno.Infrastructure/Storage/DiskFull.cs": {
+      "line": 100,
+      "branch": 92.3
+    },
     "src/Deluno.Infrastructure/Storage/IndexerIdentity.cs": {
-      "line": 94.11,
-      "branch": 100
+      "line": 95.04,
+      "branch": 97.61
     },
     "src/Deluno.Infrastructure/Storage/MediaTagFilter.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Infrastructure/Storage/Migrations/IDelunoDatabaseMigration.cs": {
-      "line": 50,
-      "branch": null
-    },
-    "src/Deluno.Infrastructure/Storage/Migrations/SqliteDatabaseMigrator.cs": {
-      "line": 84,
-      "branch": 66.66
-    },
-    "src/Deluno.Infrastructure/Storage/Migrations/SqliteSqlMigration.cs": {
       "line": 100,
       "branch": null
     },
+    "src/Deluno.Infrastructure/Storage/Migrations/SqliteDatabaseMigrator.cs": {
+      "line": 95.68,
+      "branch": 86.36
+    },
+    "src/Deluno.Infrastructure/Storage/Migrations/SqliteSqlMigration.cs": {
+      "line": 100,
+      "branch": 100
+    },
+    "src/Deluno.Infrastructure/Storage/NewerDatabaseException.cs": {
+      "line": 100,
+      "branch": null
+    },
+    "src/Deluno.Infrastructure/Storage/ReferenceChecks.cs": {
+      "line": 93.18,
+      "branch": 90.32
+    },
     "src/Deluno.Infrastructure/Storage/SearchHistoryDetails.cs": {
       "line": 95.94,
-      "branch": 92.1
+      "branch": 93.42
     },
     "src/Deluno.Infrastructure/Storage/SqliteDatabaseConnectionFactory.cs": {
-      "line": 95.91,
-      "branch": 80
+      "line": 94.73,
+      "branch": 91.66
     },
     "src/Deluno.Infrastructure/Storage/SqliteLockRetry.cs": {
       "line": 100,
@@ -2783,15 +2879,19 @@
       "branch": 96.87
     },
     "src/Deluno.Infrastructure/Storage/StartupProgress.cs": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
+    },
+    "src/Deluno.Infrastructure/Storage/StoragePathOptions.cs": {
+      "line": 100,
+      "branch": null
     },
     "src/Deluno.Infrastructure/Storage/TitleWriteLog.cs": {
-      "line": 98.07,
+      "line": 96.36,
       "branch": 100
     },
     "src/Deluno.Infrastructure/Storage/VolumeSpace.cs": {
-      "line": 63.15,
+      "line": 69.23,
       "branch": 57.14
     },
     "src/Deluno.Infrastructure/SystemReadings/DefaultRouteAdapter.cs": {
@@ -2799,7 +2899,7 @@
       "branch": 78.57
     },
     "src/Deluno.Infrastructure/SystemReadings/HostMetricsReader.cs": {
-      "line": 96.62,
+      "line": 96.66,
       "branch": 94.82
     },
     "src/Deluno.Infrastructure/SystemReadings/HostReadingSources.cs": {
@@ -2807,16 +2907,16 @@
       "branch": 50
     },
     "src/Deluno.Infrastructure/SystemReadings/HostReadings.cs": {
-      "line": 90.9,
+      "line": 94.11,
       "branch": 75
     },
     "src/Deluno.Infrastructure/SystemReadings/LinuxHostReadingSource.cs": {
-      "line": 92.43,
-      "branch": 82.14
+      "line": 92.5,
+      "branch": 80.82
     },
     "src/Deluno.Infrastructure/SystemReadings/NetworkChecker.cs": {
-      "line": 100,
-      "branch": 83.33
+      "line": 98.52,
+      "branch": 84.61
     },
     "src/Deluno.Infrastructure/SystemReadings/OverviewHistory.cs": {
       "line": 100,
@@ -2827,8 +2927,8 @@
       "branch": 100
     },
     "src/Deluno.Infrastructure/SystemReadings/WindowsHostReadingSource.cs": {
-      "line": 18.18,
-      "branch": 18.75
+      "line": 17.24,
+      "branch": 18.51
     },
     "src/Deluno.Infrastructure/SystemReadings/WindowsNative.cs": {
       "line": 0,
@@ -2843,7 +2943,7 @@
       "branch": null
     },
     "src/Deluno.Intake/Contracts/IntakeListPreview.cs": {
-      "line": 55.55,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Intake/Contracts/IntakeMonitorModes.cs": {
@@ -2863,287 +2963,287 @@
       "branch": null
     },
     "src/Deluno.Intake/Data/SqliteIntakeRepository.cs": {
-      "line": 96.25,
-      "branch": 66.66
+      "line": 97.4,
+      "branch": 78.92
     },
     "src/Deluno.Intake/IntakeEndpointRouteBuilderExtensions.cs": {
-      "line": 98.14,
-      "branch": 46.87
+      "line": 93.23,
+      "branch": 96.87
     },
     "src/Deluno.Intake/IntakeServiceCollectionExtensions.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Intake/IntakeSourceAddressValidator.cs": {
-      "line": 68.75,
-      "branch": 54.7
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Intake/TmdbPersonSource.cs": {
-      "line": 94,
-      "branch": 63.15
+      "line": 94.23,
+      "branch": 62.5
     },
     "src/Deluno.Integrations/CacheSchemaInitializer.cs": {
-      "line": 100,
-      "branch": null
-    },
-    "src/Deluno.Integrations/DownloadClients/ClientCategoryMove.cs": {
-      "line": 100,
+      "line": 84.21,
       "branch": 50
     },
+    "src/Deluno.Integrations/DownloadClients/ClientCategoryMove.cs": {
+      "line": 85.18,
+      "branch": 75
+    },
     "src/Deluno.Integrations/DownloadClients/ClientCredentialsRefused.cs": {
-      "line": 83.87,
-      "branch": 58
+      "line": 94.28,
+      "branch": 68
     },
     "src/Deluno.Integrations/DownloadClients/ClientHeldFileProbe.cs": {
-      "line": 100,
-      "branch": null
+      "line": 58.33,
+      "branch": 80
     },
     "src/Deluno.Integrations/DownloadClients/ClientPaths.cs": {
       "line": 90.9,
       "branch": 92.3
     },
     "src/Deluno.Integrations/DownloadClients/ClientPauseGuard.cs": {
-      "line": 100,
-      "branch": null
+      "line": 87.17,
+      "branch": 87.5
     },
     "src/Deluno.Integrations/DownloadClients/ClientRemovalGuard.cs": {
-      "line": 82.95,
-      "branch": 88.15
+      "line": 88.4,
+      "branch": 90.35
     },
     "src/Deluno.Integrations/DownloadClients/ClientSaveFolders.cs": {
-      "line": 93.1,
-      "branch": 78.33
+      "line": 95.06,
+      "branch": 80.76
     },
     "src/Deluno.Integrations/DownloadClients/Clients/DelugeDownloadClient.cs": {
-      "line": 100,
-      "branch": 92.1
+      "line": 94.34,
+      "branch": 74.75
     },
     "src/Deluno.Integrations/DownloadClients/Clients/NzbGetDownloadClient.cs": {
-      "line": 91.83,
-      "branch": 70.34
+      "line": 94.02,
+      "branch": 75.96
     },
     "src/Deluno.Integrations/DownloadClients/Clients/QbittorrentDownloadClient.cs": {
-      "line": 94.64,
-      "branch": 92.68
+      "line": 93.97,
+      "branch": 76.2
     },
     "src/Deluno.Integrations/DownloadClients/Clients/RtorrentDownloadClient.cs": {
-      "line": 93.4,
-      "branch": 62.6
+      "line": 90.86,
+      "branch": 77.33
     },
     "src/Deluno.Integrations/DownloadClients/Clients/SabnzbdDownloadClient.cs": {
-      "line": 82.14,
-      "branch": 65.05
+      "line": 90.96,
+      "branch": 72.08
     },
     "src/Deluno.Integrations/DownloadClients/Clients/TransmissionDownloadClient.cs": {
-      "line": 98.36,
-      "branch": 92.18
+      "line": 96.8,
+      "branch": 78.57
     },
     "src/Deluno.Integrations/DownloadClients/Clients/UTorrentDownloadClient.cs": {
-      "line": 96.42,
-      "branch": 64.7
+      "line": 92.87,
+      "branch": 74.77
     },
     "src/Deluno.Integrations/DownloadClients/DownloadAttempts.cs": {
       "line": 97.14,
-      "branch": 87.5
+      "branch": 93.18
     },
     "src/Deluno.Integrations/DownloadClients/DownloadCleanupPreview.cs": {
-      "line": 100,
+      "line": 87.5,
       "branch": 47.5
     },
     "src/Deluno.Integrations/DownloadClients/DownloadClientBase.cs": {
-      "line": 79.74,
-      "branch": 75
+      "line": 82.27,
+      "branch": 90
     },
     "src/Deluno.Integrations/DownloadClients/DownloadClientCategoryModels.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Integrations/DownloadClients/DownloadClientEndpointRouteBuilderExtensions.cs": {
-      "line": 98.86,
-      "branch": null
+      "line": 96.98,
+      "branch": 88.88
     },
     "src/Deluno.Integrations/DownloadClients/DownloadClientGrabModels.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Integrations/DownloadClients/DownloadClientGrabService.cs": {
-      "line": 100,
-      "branch": 90
+      "line": 87.08,
+      "branch": 83.68
     },
     "src/Deluno.Integrations/DownloadClients/DownloadClientHelpers.cs": {
-      "line": 93.14,
-      "branch": 86.06
+      "line": 93.46,
+      "branch": 86.4
     },
     "src/Deluno.Integrations/DownloadClients/DownloadClientRegistry.cs": {
-      "line": 83.33,
-      "branch": 50
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Integrations/DownloadClients/DownloadClientTelemetryModels.cs": {
-      "line": 98.08,
+      "line": 97.84,
       "branch": 100
     },
     "src/Deluno.Integrations/DownloadClients/DownloadClientTelemetryService.cs": {
-      "line": 92.23,
-      "branch": 75.11
+      "line": 90.82,
+      "branch": 78.98
     },
     "src/Deluno.Integrations/DownloadClients/DownloadClientWebhookModels.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Integrations/DownloadClients/DownloadClientWebhookService.cs": {
-      "line": 81.81,
-      "branch": 20.51
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Integrations/DownloadClients/DownloadFilesGone.cs": {
       "line": 92.85,
-      "branch": 90
+      "branch": 86.36
     },
     "src/Deluno.Integrations/DownloadClients/DownloadFolderChangeNotice.cs": {
-      "line": 100,
-      "branch": null
+      "line": 92.78,
+      "branch": 89.28
     },
     "src/Deluno.Integrations/DownloadClients/DownloadHealthConnectivityCheck.cs": {
-      "line": 66.66,
-      "branch": null
+      "line": 100,
+      "branch": 87.5
     },
     "src/Deluno.Integrations/DownloadClients/DownloadQueueSummary.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Integrations/DownloadClients/DownloadTelemetrySnapshotStore.cs": {
-      "line": 92.78,
-      "branch": 87.5
+      "line": 92.68,
+      "branch": 77.58
     },
     "src/Deluno.Integrations/DownloadClients/FolderChain.cs": {
-      "line": 91.5,
-      "branch": 67.85
+      "line": 91.77,
+      "branch": 81.08
     },
     "src/Deluno.Integrations/DownloadClients/GrabAppearanceLookupService.cs": {
-      "line": 100,
-      "branch": 37.5
+      "line": 91.04,
+      "branch": 69.56
     },
     "src/Deluno.Integrations/DownloadClients/GrabLinkPreference.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Integrations/DownloadClients/IDownloadClient.cs": {
-      "line": 11.11,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Integrations/DownloadClients/IDownloadClientTelemetryService.cs": {
-      "line": 28.57,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Integrations/DownloadClients/IndexerTorrentFetcher.cs": {
-      "line": 100,
-      "branch": 97.5
+      "line": 97.97,
+      "branch": 94.73
     },
     "src/Deluno.Integrations/DownloadClients/KeepSeedingEndpoints.cs": {
-      "line": 100,
-      "branch": 84.61
+      "line": 99.31,
+      "branch": 86
     },
     "src/Deluno.Integrations/DownloadClients/LeftoverDownloadCleanupService.cs": {
-      "line": 60.71,
-      "branch": 45
+      "line": 80,
+      "branch": 65.62
     },
     "src/Deluno.Integrations/DownloadClients/LeftoverScanMemory.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Integrations/DownloadClients/LegacyItemIdUpgradeMemory.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Integrations/DownloadClients/OrphanedDownloadService.cs": {
-      "line": 88.7,
-      "branch": 75
+      "line": 93.92,
+      "branch": 84
     },
     "src/Deluno.Integrations/DownloadClients/OrphanedDownloads.cs": {
-      "line": 98.52,
-      "branch": 90.62
+      "line": 98.7,
+      "branch": 90
     },
     "src/Deluno.Integrations/DownloadClients/ProcessorHandoffQueueStatus.cs": {
       "line": 96,
       "branch": 96.66
     },
     "src/Deluno.Integrations/DownloadClients/RefusedDownloadCleanupService.cs": {
-      "line": 100,
-      "branch": 50
+      "line": 88.44,
+      "branch": 66.66
     },
     "src/Deluno.Integrations/DownloadClients/RefusedPayloadSweep.cs": {
-      "line": 87.5,
-      "branch": 81.25
+      "line": 86.07,
+      "branch": 86.76
     },
     "src/Deluno.Integrations/DownloadClients/SearchQueuePauseGate.cs": {
-      "line": 100,
-      "branch": 90.9
+      "line": 92.59,
+      "branch": 92.3
     },
     "src/Deluno.Integrations/DownloadClients/SeedLimitText.cs": {
       "line": 100,
       "branch": 96.42
     },
     "src/Deluno.Integrations/DownloadClients/TorrentInfoHash.cs": {
-      "line": 94.11,
+      "line": 94.16,
       "branch": 93.39
     },
     "src/Deluno.Integrations/DownloadClients/UsenetClientRetester.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Integrations/DownloadClients/UsenetProviderService.cs": {
-      "line": 100,
-      "branch": null
+      "line": 62.5,
+      "branch": 79.16
     },
     "src/Deluno.Integrations/IntegrationsServiceCollectionExtensions.cs": {
-      "line": 100,
+      "line": 98.16,
       "branch": null
     },
     "src/Deluno.Integrations/MediaServers/EmbyFamilyMediaServerClient.cs": {
-      "line": 100,
-      "branch": 86.9
+      "line": 96.2,
+      "branch": 81.14
     },
     "src/Deluno.Integrations/MediaServers/MediaServerContracts.cs": {
-      "line": 100,
-      "branch": null
+      "line": 96.59,
+      "branch": 100
     },
     "src/Deluno.Integrations/MediaServers/MediaServerEndpointRouteBuilderExtensions.cs": {
-      "line": 88.77,
-      "branch": 12.96
+      "line": 92.92,
+      "branch": 71.21
     },
     "src/Deluno.Integrations/MediaServers/MediaServerHttp.cs": {
-      "line": 95.12,
-      "branch": 81.08
+      "line": 98.27,
+      "branch": 85.71
     },
     "src/Deluno.Integrations/MediaServers/MediaServerLanguages.cs": {
       "line": 100,
       "branch": 90.47
     },
     "src/Deluno.Integrations/MediaServers/MediaServerRefreshNotifier.cs": {
-      "line": 96.87,
-      "branch": 81.25
+      "line": 96.74,
+      "branch": 93.58
     },
     "src/Deluno.Integrations/MediaServers/PlexMediaServerClient.cs": {
-      "line": 90.78,
-      "branch": 79.39
+      "line": 95.27,
+      "branch": 85.99
     },
     "src/Deluno.Integrations/Metadata/ArtworkCacheCleanupResult.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Integrations/Metadata/ArtworkCacheKeys.cs": {
-      "line": 85.71,
-      "branch": 55
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Integrations/Metadata/IMetadataProvider.cs": {
-      "line": 33.33,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Integrations/Metadata/MetadataCatalogueChoice.cs": {
       "line": 100,
-      "branch": 87.5
+      "branch": 91.66
     },
     "src/Deluno.Integrations/Metadata/MetadataEndpointRouteBuilderExtensions.cs": {
-      "line": 94.47,
+      "line": 97.69,
       "branch": null
     },
     "src/Deluno.Integrations/Metadata/MetadataLinkPolicy.cs": {
@@ -3151,51 +3251,51 @@
       "branch": 100
     },
     "src/Deluno.Integrations/Metadata/MetadataModels.cs": {
-      "line": 91.62,
-      "branch": 26.92
+      "line": 98.69,
+      "branch": 71.05
     },
     "src/Deluno.Integrations/Metadata/MetadataQueryYear.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Integrations/Metadata/MetadataSearchRanking.cs": {
-      "line": 84.93,
-      "branch": 83.33
+      "line": 86.3,
+      "branch": 84.84
     },
     "src/Deluno.Integrations/Metadata/MetadataServiceHealth.cs": {
-      "line": 93.93,
-      "branch": 77.77
+      "line": 100,
+      "branch": 86.36
     },
     "src/Deluno.Integrations/Metadata/NumberOrStringConverter.cs": {
-      "line": 60,
-      "branch": 25
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Integrations/Metadata/SceneMapping/ISceneMappingProvider.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Integrations/Metadata/SceneMapping/XemSceneMappingProvider.cs": {
-      "line": 91.66,
-      "branch": null
-    },
-    "src/Deluno.Integrations/Metadata/TmdbMetadataProvider.Translations.cs": {
-      "line": 100,
-      "branch": 92.04
-    },
-    "src/Deluno.Integrations/Metadata/TmdbMetadataProvider.Tvdb.cs": {
-      "line": 91.11,
+      "line": 96.22,
       "branch": 84.78
     },
+    "src/Deluno.Integrations/Metadata/TmdbMetadataProvider.Translations.cs": {
+      "line": 94.92,
+      "branch": 88.35
+    },
+    "src/Deluno.Integrations/Metadata/TmdbMetadataProvider.Tvdb.cs": {
+      "line": 90.05,
+      "branch": 89.54
+    },
     "src/Deluno.Integrations/Metadata/TmdbMetadataProvider.cs": {
-      "line": 80.05,
-      "branch": 70.63
+      "line": 86.77,
+      "branch": 74.64
     },
     "src/Deluno.Integrations/Metadata/TvdbDirectClient.cs": {
-      "line": 89.62,
-      "branch": 82.19
+      "line": 76.82,
+      "branch": 70.71
     },
     "src/Deluno.Integrations/Metadata/TvdbModels.cs": {
-      "line": 100,
+      "line": 97.29,
       "branch": null
     },
     "src/Deluno.Integrations/Migrations/V0001InitialSchema.cs": {
@@ -3203,16 +3303,16 @@
       "branch": null
     },
     "src/Deluno.Integrations/Processors/ProcessorConnectionService.cs": {
-      "line": 98.33,
-      "branch": 92.85
+      "line": 94.84,
+      "branch": 90.02
     },
     "src/Deluno.Integrations/Processors/ProcessorStatusEndpoints.cs": {
       "line": 100,
       "branch": 90
     },
     "src/Deluno.Integrations/Search/AcquisitionDecisionPipeline.cs": {
-      "line": 96.25,
-      "branch": 76.39
+      "line": 96.48,
+      "branch": 84.48
     },
     "src/Deluno.Integrations/Search/BoundedReleaseRankingModelService.cs": {
       "line": 97.22,
@@ -3227,28 +3327,28 @@
       "branch": null
     },
     "src/Deluno.Integrations/Search/FeedMediaSearchPlanner.cs": {
-      "line": 87.89,
-      "branch": 78.09
+      "line": 93.58,
+      "branch": 83.25
     },
     "src/Deluno.Integrations/Search/IndexerFeedReader.cs": {
-      "line": 100,
-      "branch": null
+      "line": 94.87,
+      "branch": 86.53
     },
     "src/Deluno.Integrations/Search/IndexerScoreboardCache.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Integrations/Search/IntelligentRoutingContracts.cs": {
-      "line": 39.02,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Integrations/Search/IntelligentRoutingService.cs": {
-      "line": 100,
-      "branch": 50
+      "line": 98.71,
+      "branch": 90.42
     },
     "src/Deluno.Integrations/Search/ManualSearchEndpointRouteBuilderExtensions.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Integrations/Search/MediaSearchCandidate.cs": {
       "line": 100,
@@ -3263,12 +3363,12 @@
       "branch": null
     },
     "src/Deluno.Integrations/Search/MlNetReleaseRankingModelService.cs": {
-      "line": 86.34,
-      "branch": 52.56
+      "line": 97.29,
+      "branch": 81.7
     },
     "src/Deluno.Integrations/Search/MonitoredEpisodeFilter.cs": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Integrations/Search/ProfileSearchRulesExtensions.cs": {
       "line": 100,
@@ -3279,64 +3379,64 @@
       "branch": null
     },
     "src/Deluno.Integrations/Search/RankingModelTrainingHostedService.cs": {
-      "line": 100,
-      "branch": null
+      "line": 88.63,
+      "branch": 81.25
     },
     "src/Deluno.Integrations/Search/ReleaseDecision.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Integrations/Search/ReleaseDecisionEngine.cs": {
-      "line": 95.7,
-      "branch": 91.02
+      "line": 97.63,
+      "branch": 94.39
     },
     "src/Deluno.Integrations/Search/ReleaseDecisionStatuses.cs": {
-      "line": 54.28,
-      "branch": 20.21
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Integrations/Search/ReleaseProfileRules.cs": {
-      "line": 100,
-      "branch": 94.44
+      "line": 98.48,
+      "branch": 92.3
     },
     "src/Deluno.Integrations/Search/ReleaseRankingTrainingDataSource.cs": {
-      "line": 62.06,
-      "branch": 0
+      "line": 100,
+      "branch": 73.07
     },
     "src/Deluno.Integrations/Search/ReleaseScoringModePolicy.cs": {
-      "line": 87.5,
-      "branch": 90
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Integrations/Search/SearchEndpointRouteBuilderExtensions.cs": {
-      "line": 92.6,
-      "branch": 63.46
+      "line": 98.98,
+      "branch": 79.23
     },
     "src/Deluno.Integrations/Search/SeasonPackDetector.cs": {
-      "line": 50,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Integrations/Search/Trackers/CloudflareHelper.cs": {
-      "line": 100,
-      "branch": 71.42
+      "line": 93.15,
+      "branch": 83.67
     },
     "src/Deluno.Integrations/Search/Trackers/CloudflareHelperSessionCleanupService.cs": {
-      "line": 100,
-      "branch": null
+      "line": 96.77,
+      "branch": 50
     },
     "src/Deluno.Integrations/Search/Trackers/GitHubTrackerDefinitionSource.cs": {
       "line": 100,
-      "branch": null
+      "branch": 89.47
     },
     "src/Deluno.Integrations/Search/Trackers/ReleaseNameText.cs": {
-      "line": 95.23,
-      "branch": 78.57
+      "line": 100,
+      "branch": 93.75
     },
     "src/Deluno.Integrations/Search/Trackers/SqliteTrackerDefinitionUpdateStore.cs": {
       "line": 100,
-      "branch": 50
+      "branch": 85.29
     },
     "src/Deluno.Integrations/Search/Trackers/TrackerCategories.cs": {
-      "line": 97.77,
-      "branch": 66.66
+      "line": 100,
+      "branch": 96.42
     },
     "src/Deluno.Integrations/Search/Trackers/TrackerCertificates.cs": {
       "line": 100,
@@ -3344,54 +3444,54 @@
     },
     "src/Deluno.Integrations/Search/Trackers/TrackerDates.cs": {
       "line": 87.14,
-      "branch": 69.23
+      "branch": 71.79
     },
     "src/Deluno.Integrations/Search/Trackers/TrackerDefinition.cs": {
-      "line": 97.12,
-      "branch": 85.18
+      "line": 97.95,
+      "branch": 81.52
     },
     "src/Deluno.Integrations/Search/Trackers/TrackerDefinitionAutoUpdateHostedService.cs": {
-      "line": 80,
-      "branch": null
+      "line": 85.71,
+      "branch": 50
     },
     "src/Deluno.Integrations/Search/Trackers/TrackerDefinitionCatalog.cs": {
-      "line": 99.03,
-      "branch": 95.83
+      "line": 99.13,
+      "branch": 93.33
     },
     "src/Deluno.Integrations/Search/Trackers/TrackerDefinitionNames.cs": {
       "line": 100,
-      "branch": 50
+      "branch": 100
     },
     "src/Deluno.Integrations/Search/Trackers/TrackerDefinitionUpdateContracts.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Integrations/Search/Trackers/TrackerDefinitionUpdateService.cs": {
-      "line": 93.02,
-      "branch": 76.66
+      "line": 94.91,
+      "branch": 90.27
     },
     "src/Deluno.Integrations/Search/Trackers/TrackerDefinitionValidator.cs": {
-      "line": 82.14,
-      "branch": 75
+      "line": 93.75,
+      "branch": 93.93
     },
     "src/Deluno.Integrations/Search/Trackers/TrackerEngine.cs": {
-      "line": 90.28,
-      "branch": 83.33
+      "line": 89.9,
+      "branch": 80.04
     },
     "src/Deluno.Integrations/Search/Trackers/TrackerFilters.cs": {
-      "line": 75.23,
-      "branch": 52.71
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Integrations/Search/Trackers/TrackerIndexers.cs": {
-      "line": 98.57,
-      "branch": 92.5
+      "line": 92.76,
+      "branch": 78.35
     },
     "src/Deluno.Integrations/Search/Trackers/TrackerJson.cs": {
-      "line": 41.25,
-      "branch": 32.95
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Integrations/Search/Trackers/TrackerRelease.cs": {
-      "line": 100,
+      "line": 96.29,
       "branch": 100
     },
     "src/Deluno.Integrations/Search/Trackers/TrackerResponseParser.cs": {
@@ -3403,80 +3503,84 @@
       "branch": 92.78
     },
     "src/Deluno.Integrations/Search/Trackers/TrackerSiteMapping.cs": {
-      "line": 100,
-      "branch": 100
+      "line": 93.33,
+      "branch": 91.66
     },
     "src/Deluno.Integrations/Search/Trackers/TrackerTemplate.cs": {
-      "line": 84.26,
+      "line": 84.37,
       "branch": 66.76
     },
     "src/Deluno.Integrations/Search/Trackers/TrackerVariables.cs": {
-      "line": 92.42,
+      "line": 92.53,
       "branch": 66.66
     },
-    "src/Deluno.Integrations/Seerr/SeerrClient.cs": {
+    "src/Deluno.Integrations/Seerr/ISeerrAcquisitionService.cs": {
       "line": 100,
-      "branch": 65
+      "branch": null
+    },
+    "src/Deluno.Integrations/Seerr/SeerrClient.cs": {
+      "line": 96.92,
+      "branch": 85.96
     },
     "src/Deluno.Integrations/Seerr/SeerrEndpointRouteBuilderExtensions.cs": {
-      "line": 86.53,
-      "branch": 16.12
+      "line": 99.54,
+      "branch": 83.87
     },
     "src/Deluno.Integrations/Subtitles/Providers/Addic7edSubtitleProvider.cs": {
-      "line": 52.38,
-      "branch": 7.84
+      "line": 100,
+      "branch": 97.59
     },
     "src/Deluno.Integrations/Subtitles/Providers/AssrtSubtitleProvider.cs": {
-      "line": 96.29,
-      "branch": 55
+      "line": 100,
+      "branch": 91.37
     },
     "src/Deluno.Integrations/Subtitles/Providers/GestdownSubtitleProvider.cs": {
-      "line": 29.16,
-      "branch": 0
+      "line": 100,
+      "branch": 89.47
     },
     "src/Deluno.Integrations/Subtitles/Providers/KtuvitSubtitleProvider.cs": {
-      "line": 82.35,
-      "branch": 40.9
+      "line": 100,
+      "branch": 97.29
     },
     "src/Deluno.Integrations/Subtitles/Providers/OpenSubtitlesSubtitleProvider.cs": {
-      "line": 40.74,
-      "branch": null
+      "line": 100,
+      "branch": 89.13
     },
     "src/Deluno.Integrations/Subtitles/Providers/PodnapisiSubtitleProvider.cs": {
-      "line": 33.33,
-      "branch": 0
+      "line": 100,
+      "branch": 94.11
     },
     "src/Deluno.Integrations/Subtitles/Providers/SubDlSubtitleProvider.cs": {
-      "line": 38.88,
-      "branch": null
+      "line": 100,
+      "branch": 96.66
     },
     "src/Deluno.Integrations/Subtitles/Providers/SubSourceSubtitleProvider.cs": {
-      "line": 35,
-      "branch": null
+      "line": 100,
+      "branch": 92.1
     },
     "src/Deluno.Integrations/Subtitles/Providers/Subf2mSubtitleProvider.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Integrations/Subtitles/Providers/SupersubtitlesSubtitleProvider.cs": {
-      "line": 90.9,
-      "branch": 50
+      "line": 93.22,
+      "branch": 86.66
     },
     "src/Deluno.Integrations/Subtitles/Providers/TitloviSubtitleProvider.cs": {
-      "line": 82.14,
-      "branch": 10
+      "line": 98.75,
+      "branch": 91.3
     },
     "src/Deluno.Integrations/Subtitles/SubtitleArchive.cs": {
-      "line": 72.97,
-      "branch": 68.42
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Integrations/Subtitles/SubtitleContentModifier.cs": {
-      "line": 99.3,
-      "branch": 87.03
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Integrations/Subtitles/SubtitleFetchService.cs": {
-      "line": 98.92,
-      "branch": 80
+      "line": 92.97,
+      "branch": 81.57
     },
     "src/Deluno.Integrations/Subtitles/SubtitleMatch.cs": {
       "line": 100,
@@ -3484,35 +3588,35 @@
     },
     "src/Deluno.Integrations/Subtitles/SubtitleProviderContracts.cs": {
       "line": 91.17,
-      "branch": 41.66
+      "branch": 100
     },
     "src/Deluno.Integrations/Subtitles/SubtitleProviderEndpointRouteBuilderExtensions.cs": {
-      "line": 96.21,
-      "branch": 42.3
+      "line": 88.29,
+      "branch": 70
     },
     "src/Deluno.Integrations/Subtitles/SubtitleProviderHttp.cs": {
-      "line": 85.18,
-      "branch": 75
+      "line": 97.05,
+      "branch": 96.15
     },
     "src/Deluno.Integrations/Subtitles/SubtitleProviderRegistry.cs": {
       "line": 100,
-      "branch": 50
+      "branch": 100
     },
     "src/Deluno.Integrations/Trakt/ITraktTokenProvider.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Integrations/Trakt/TraktClient.cs": {
-      "line": 100,
-      "branch": null
+      "line": 98.48,
+      "branch": 75
     },
     "src/Deluno.Integrations/Trakt/TraktEndpointRouteBuilderExtensions.cs": {
-      "line": 100,
+      "line": 80.23,
       "branch": null
     },
     "src/Deluno.Jobs/Contracts/ActivityEventItem.cs": {
       "line": 100,
-      "branch": 83.33
+      "branch": 100
     },
     "src/Deluno.Jobs/Contracts/ActivityStatsSnapshot.cs": {
       "line": 100,
@@ -3523,7 +3627,7 @@
       "branch": null
     },
     "src/Deluno.Jobs/Contracts/DispatchMetrics.cs": {
-      "line": 100,
+      "line": 78.57,
       "branch": null
     },
     "src/Deluno.Jobs/Contracts/DispatchTimelineEvent.cs": {
@@ -3546,12 +3650,16 @@
       "line": 100,
       "branch": null
     },
+    "src/Deluno.Jobs/Contracts/IDispatchProblemLog.cs": {
+      "line": 100,
+      "branch": null
+    },
     "src/Deluno.Jobs/Contracts/ImportResolutionItem.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Jobs/Contracts/IndexerQueryStats.cs": {
-      "line": 100,
+      "line": 94.73,
       "branch": null
     },
     "src/Deluno.Jobs/Contracts/JobDeferredException.cs": {
@@ -3560,14 +3668,14 @@
     },
     "src/Deluno.Jobs/Contracts/JobQueueItem.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Jobs/Contracts/KeptSeedingDispatches.cs": {
       "line": 100,
       "branch": 75
     },
     "src/Deluno.Jobs/Contracts/LibraryAutomationPlanItem.cs": {
-      "line": 100,
+      "line": 97.05,
       "branch": null
     },
     "src/Deluno.Jobs/Contracts/LibraryAutomationScope.cs": {
@@ -3583,7 +3691,7 @@
       "branch": null
     },
     "src/Deluno.Jobs/Contracts/MetadataStalenessWindow.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Jobs/Contracts/RecordSearchCycleRunRequest.cs": {
@@ -3595,7 +3703,7 @@
       "branch": null
     },
     "src/Deluno.Jobs/Contracts/SearchRetryWindowItem.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Jobs/Contracts/SeasonSearchPlanItem.cs": {
@@ -3607,51 +3715,63 @@
       "branch": 100
     },
     "src/Deluno.Jobs/Data/ActivityDisplaySettingsStore.cs": {
-      "line": 86.66,
-      "branch": 75
+      "line": 93.33,
+      "branch": 90
     },
     "src/Deluno.Jobs/Data/AttentionDismissalStore.cs": {
       "line": 100,
-      "branch": 50
+      "branch": 100
     },
     "src/Deluno.Jobs/Data/CircuitBreakerDownloadDispatchPollingService.cs": {
-      "line": 37.5,
-      "branch": 0
+      "line": 68.29,
+      "branch": 50
     },
     "src/Deluno.Jobs/Data/ConnectionCheckRecorder.cs": {
-      "line": 93.33,
-      "branch": 66.66
+      "line": 89.65,
+      "branch": 82.14
     },
     "src/Deluno.Jobs/Data/ConnectionUseReporter.cs": {
-      "line": 100,
-      "branch": null
+      "line": 97,
+      "branch": 93.75
     },
     "src/Deluno.Jobs/Data/ConnectionVersionStore.cs": {
+      "line": 91.66,
+      "branch": 89.28
+    },
+    "src/Deluno.Jobs/Data/DispatchCoverage.cs": {
       "line": 100,
-      "branch": 100
+      "branch": 88.46
+    },
+    "src/Deluno.Jobs/Data/DispatchLinkLookup.cs": {
+      "line": 100,
+      "branch": 75
     },
     "src/Deluno.Jobs/Data/DispatchNotesTrimmer.cs": {
       "line": 81.08,
       "branch": 86.36
     },
     "src/Deluno.Jobs/Data/DispatchSendGate.cs": {
-      "line": 94.44,
-      "branch": 90
+      "line": 84.37,
+      "branch": 78.57
+    },
+    "src/Deluno.Jobs/Data/DispatchStartedByResolver.cs": {
+      "line": 96.61,
+      "branch": 91.66
     },
     "src/Deluno.Jobs/Data/DownloadDispatchPollingHostedService.cs": {
-      "line": 100,
-      "branch": null
+      "line": 94.64,
+      "branch": 87.5
     },
     "src/Deluno.Jobs/Data/DownloadDispatchPollingService.cs": {
-      "line": 100,
-      "branch": null
+      "line": 91,
+      "branch": 84.48
     },
     "src/Deluno.Jobs/Data/IActivityFeedRepository.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Jobs/Data/IBlockedReleaseRepository.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Jobs/Data/IDownloadDispatchPollingService.cs": {
@@ -3659,15 +3779,23 @@
       "branch": null
     },
     "src/Deluno.Jobs/Data/IDownloadDispatchesRepository.cs": {
-      "line": 92.3,
-      "branch": 100
+      "line": 84.84,
+      "branch": 90
     },
     "src/Deluno.Jobs/Data/IImportResolutionsRepository.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Jobs/Data/IJobQueueRepository.cs": {
-      "line": 0,
+      "line": 100,
+      "branch": null
+    },
+    "src/Deluno.Jobs/Data/ISystemOverviewStore.cs": {
+      "line": 100,
+      "branch": null
+    },
+    "src/Deluno.Jobs/Data/ITurnedDownReleaseRecorder.cs": {
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Jobs/Data/JobLaneSignal.cs": {
@@ -3676,63 +3804,67 @@
     },
     "src/Deluno.Jobs/Data/JobsSchemaInitializer.cs": {
       "line": 100,
-      "branch": null
+      "branch": 75
+    },
+    "src/Deluno.Jobs/Data/MediaServerTell.cs": {
+      "line": 80,
+      "branch": 66.66
     },
     "src/Deluno.Jobs/Data/RecoveryCaseProblems.cs": {
-      "line": 100,
-      "branch": null
+      "line": 95.65,
+      "branch": 96.15
     },
     "src/Deluno.Jobs/Data/ReplacementSearchQueuer.cs": {
-      "line": 90,
-      "branch": 91.66
+      "line": 95.83,
+      "branch": 92.85
     },
     "src/Deluno.Jobs/Data/SqliteBlockedReleaseRepository.cs": {
       "line": 100,
-      "branch": null
+      "branch": 98.64
     },
     "src/Deluno.Jobs/Data/SqliteDispatchMetricsRepository.cs": {
-      "line": 100,
-      "branch": null
+      "line": 98.23,
+      "branch": 96.87
     },
     "src/Deluno.Jobs/Data/SqliteDispatchProblemLog.cs": {
-      "line": 90.47,
-      "branch": 66.66
+      "line": 96.66,
+      "branch": 85.13
     },
     "src/Deluno.Jobs/Data/SqliteDownloadDispatchesRepository.cs": {
-      "line": 94.26,
-      "branch": 92.53
+      "line": 93.63,
+      "branch": 90.04
     },
     "src/Deluno.Jobs/Data/SqliteDownloadThroughputRepository.cs": {
       "line": 100,
-      "branch": null
+      "branch": 91.66
     },
     "src/Deluno.Jobs/Data/SqliteImportFailureRuleRepository.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Jobs/Data/SqliteImportResolutionsRepository.cs": {
-      "line": 100,
-      "branch": 50
+      "line": 63.13,
+      "branch": 38
     },
     "src/Deluno.Jobs/Data/SqliteIndexerQueryStatsRepository.cs": {
-      "line": 88,
-      "branch": 71.42
+      "line": 98.08,
+      "branch": 89.33
     },
     "src/Deluno.Jobs/Data/SqliteJobStore.cs": {
-      "line": 87,
-      "branch": 83.96
+      "line": 96.55,
+      "branch": 91.07
     },
     "src/Deluno.Jobs/Data/SqliteMachineTelemetryRepository.cs": {
       "line": 100,
-      "branch": 90
+      "branch": 96.15
     },
     "src/Deluno.Jobs/Data/SqliteSystemOverviewStore.cs": {
-      "line": 100,
-      "branch": 50
+      "line": 98.92,
+      "branch": 92.3
     },
     "src/Deluno.Jobs/Data/SqliteTurnedDownReleaseRecorder.cs": {
-      "line": 100,
-      "branch": 100
+      "line": 98.97,
+      "branch": 94.44
     },
     "src/Deluno.Jobs/Decisions/DecisionExplanationActivity.cs": {
       "line": 95.08,
@@ -3743,12 +3875,12 @@
       "branch": 75
     },
     "src/Deluno.Jobs/JobActivityQuiet.cs": {
-      "line": 81.81,
-      "branch": 83.33
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Jobs/JobsEndpointRouteBuilderExtensions.cs": {
-      "line": 97.84,
-      "branch": 40
+      "line": 100,
+      "branch": 90.62
     },
     "src/Deluno.Jobs/JobsServiceCollectionExtensions.cs": {
       "line": 100,
@@ -3915,8 +4047,8 @@
       "branch": null
     },
     "src/Deluno.Jobs/Migrations/V0041CollapseRepeatedActivity.cs": {
-      "line": 94.73,
-      "branch": null
+      "line": 98.52,
+      "branch": 100
     },
     "src/Deluno.Jobs/Migrations/V0042TurnedDownReleases.cs": {
       "line": 100,
@@ -3951,8 +4083,8 @@
       "branch": null
     },
     "src/Deluno.Jobs/Migrations/V0050HistoryHoldsEarlierTurnedDown.cs": {
-      "line": 90.9,
-      "branch": 50
+      "line": 98.66,
+      "branch": 68.18
     },
     "src/Deluno.Jobs/Migrations/V0051ConnectionVersions.cs": {
       "line": 100,
@@ -3970,6 +4102,10 @@
       "line": 100,
       "branch": null
     },
+    "src/Deluno.Libraries/Contracts/CreateLibraryPairRequest.cs": {
+      "line": 100,
+      "branch": null
+    },
     "src/Deluno.Libraries/Contracts/CreateLibraryRequest.cs": {
       "line": 100,
       "branch": null
@@ -3981,6 +4117,10 @@
     "src/Deluno.Libraries/Contracts/DestinationRuleItem.cs": {
       "line": 100,
       "branch": null
+    },
+    "src/Deluno.Libraries/Contracts/DestinationRuleKinds.cs": {
+      "line": 100,
+      "branch": 83.33
     },
     "src/Deluno.Libraries/Contracts/LibraryDownloadClientLinkItem.cs": {
       "line": 100,
@@ -4011,11 +4151,11 @@
       "branch": 100
     },
     "src/Deluno.Libraries/Contracts/UpdateDestinationRuleRequest.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Libraries/Contracts/UpdateLibraryAutomationRequest.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Libraries/Contracts/UpdateLibraryDetailsRequest.cs": {
@@ -4023,6 +4163,14 @@
       "branch": null
     },
     "src/Deluno.Libraries/Contracts/UpdateLibraryDownloadClientLinkRequest.cs": {
+      "line": 100,
+      "branch": null
+    },
+    "src/Deluno.Libraries/Contracts/UpdateLibraryMediaPlanRequest.cs": {
+      "line": 100,
+      "branch": null
+    },
+    "src/Deluno.Libraries/Contracts/UpdateLibraryQualityProfileRequest.cs": {
       "line": 100,
       "branch": null
     },
@@ -4047,7 +4195,7 @@
       "branch": null
     },
     "src/Deluno.Libraries/Data/ILibrarySubtitlePreferences.cs": {
-      "line": 100,
+      "line": 75,
       "branch": null
     },
     "src/Deluno.Libraries/Data/PolicySetLibraryApplier.cs": {
@@ -4055,52 +4203,56 @@
       "branch": null
     },
     "src/Deluno.Libraries/Data/SqliteLibrariesRepository.cs": {
-      "line": 88.67,
-      "branch": 58.33
+      "line": 99.01,
+      "branch": 83.73
     },
     "src/Deluno.Libraries/Data/SqliteLibraryImportRunsRepository.cs": {
-      "line": 77.77,
-      "branch": 75
+      "line": 96.21,
+      "branch": 94.64
     },
     "src/Deluno.Libraries/LibrariesEndpointRouteBuilderExtensions.cs": {
-      "line": 95.54,
-      "branch": 50
+      "line": 96.13,
+      "branch": 91.66
     },
     "src/Deluno.Libraries/LibrariesServiceCollectionExtensions.cs": {
       "line": 100,
       "branch": null
     },
+    "src/Deluno.Libraries/LibraryFolderLayout.cs": {
+      "line": 95.16,
+      "branch": 96.55
+    },
     "src/Deluno.Libraries/Routing/LibraryRoutingResolver.cs": {
-      "line": 95.65,
-      "branch": 75
+      "line": 92.75,
+      "branch": 76.66
     },
     "src/Deluno.Media/AcquisitionBlockerGatherer.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Media/AcquisitionBlockerReader.cs": {
-      "line": 94.21,
-      "branch": 89.28
+      "line": 94.26,
+      "branch": 88.37
     },
     "src/Deluno.Media/AcquisitionBlockerSources.cs": {
-      "line": 100,
-      "branch": null
+      "line": 96.51,
+      "branch": 73.8
     },
     "src/Deluno.Media/AcquisitionOverrideService.cs": {
-      "line": 96.87,
-      "branch": 87.5
+      "line": 81.76,
+      "branch": 73.07
     },
     "src/Deluno.Media/ActiveDownloadChecks.cs": {
-      "line": 0,
-      "branch": null
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Media/ActiveDownloadResponse.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Media/AutoTaggingService.cs": {
-      "line": 96.29,
-      "branch": 70.83
+      "line": 92.81,
+      "branch": 79.26
     },
     "src/Deluno.Media/CatalogueConformanceMigrationSql.cs": {
       "line": 100,
@@ -4108,7 +4260,7 @@
     },
     "src/Deluno.Media/CatalogueDecisionFacts.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Media/CatalogueFactsMigrationSql.cs": {
       "line": 100,
@@ -4144,39 +4296,39 @@
     },
     "src/Deluno.Media/DownloadStateReconciler.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Media/GrabbedTitles.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Media/HeldReleaseReader.cs": {
-      "line": 82.25,
-      "branch": 78.94
+      "line": 95.47,
+      "branch": 80.59
     },
     "src/Deluno.Media/ImportRecoveryKeyDetails.cs": {
-      "line": 84.21,
-      "branch": 84.61
+      "line": 100,
+      "branch": 92.3
     },
     "src/Deluno.Media/LiveDownloadLookup.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Media/MediaBulkSearchHandler.cs": {
-      "line": 0,
-      "branch": null
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Media/MediaGrabHandler.cs": {
-      "line": 91.66,
-      "branch": 83.33
+      "line": 95.13,
+      "branch": 82.75
     },
     "src/Deluno.Media/MediaLibraryChoice.cs": {
       "line": 100,
-      "branch": 87.5
+      "branch": 83.33
     },
     "src/Deluno.Media/MediaSearchHandler.cs": {
-      "line": 100,
-      "branch": null
+      "line": 97.05,
+      "branch": 85.84
     },
     "src/Deluno.Media/MediaStateContracts.cs": {
       "line": 100,
@@ -4184,10 +4336,10 @@
     },
     "src/Deluno.Media/MediaStateLibraryPresence.cs": {
       "line": 100,
-      "branch": 90
+      "branch": 94.44
     },
     "src/Deluno.Media/MediaSubtitleContracts.cs": {
-      "line": 100,
+      "line": 99.14,
       "branch": null
     },
     "src/Deluno.Media/MediaTableMap.cs": {
@@ -4204,58 +4356,66 @@
     },
     "src/Deluno.Media/NoAcceptableReleaseReader.cs": {
       "line": 100,
-      "branch": null
+      "branch": 75
     },
     "src/Deluno.Media/PreferenceEvaluationMigrationSql.cs": {
       "line": 100,
       "branch": null
     },
+    "src/Deluno.Media/RecoveryCaseActivity.cs": {
+      "line": 100,
+      "branch": 100
+    },
     "src/Deluno.Media/RecoveryCaseRetry.cs": {
-      "line": 87.5,
-      "branch": 91.66
+      "line": 91.32,
+      "branch": 64.78
     },
     "src/Deluno.Media/SearchHistoryTrimMigration.cs": {
-      "line": 88.88,
-      "branch": null
+      "line": 97.05,
+      "branch": 100
     },
     "src/Deluno.Media/SeriesRungWriter.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Media/SqliteMediaStateRepository.cs": {
-      "line": 96.04,
-      "branch": 78.33
+      "line": 99.49,
+      "branch": 88.05
     },
     "src/Deluno.Media/SqliteMediaSubtitleRepository.cs": {
-      "line": 91.22,
-      "branch": 77.77
+      "line": 91.48,
+      "branch": 80.7
     },
     "src/Deluno.Media/SqliteMediaTagStore.cs": {
-      "line": 75,
-      "branch": null
+      "line": 91.61,
+      "branch": 93.18
     },
     "src/Deluno.Media/SubtitleLanguageOverride.cs": {
       "line": 100,
-      "branch": 80
-    },
-    "src/Deluno.Media/TitleQualityProfile.cs": {
-      "line": 100,
       "branch": 100
     },
+    "src/Deluno.Media/SubtitleRejection.cs": {
+      "line": 80,
+      "branch": 100
+    },
+    "src/Deluno.Media/TitleQualityProfile.cs": {
+      "line": 91.3,
+      "branch": 87.5
+    },
     "src/Deluno.Media/TitleRemoval.cs": {
-      "line": 100,
-      "branch": 90
+      "line": 99.7,
+      "branch": 96.55
     },
     "src/Deluno.Media/TitleSnapshot.cs": {
-      "line": 65.71,
-      "branch": 68
+      "line": 92.05,
+      "branch": 88.48
     },
     "src/Deluno.Media/WantedStateReevaluator.cs": {
-      "line": 100,
-      "branch": 75
+      "line": 83.33,
+      "branch": 73.68
     },
     "src/Deluno.Movies/Contracts/BulkMovieRequest.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Movies/Contracts/CreateMovieImportRecoveryCaseRequest.cs": {
@@ -4270,6 +4430,10 @@
       "line": 100,
       "branch": null
     },
+    "src/Deluno.Movies/Contracts/LibraryCollectionItem.cs": {
+      "line": 100,
+      "branch": null
+    },
     "src/Deluno.Movies/Contracts/MetadataRatingItem.cs": {
       "line": 100,
       "branch": null
@@ -4279,7 +4443,7 @@
       "branch": null
     },
     "src/Deluno.Movies/Contracts/MovieCollectionItem.cs": {
-      "line": 89.74,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Movies/Contracts/MovieFileGoneOutcome.cs": {
@@ -4311,7 +4475,7 @@
       "branch": null
     },
     "src/Deluno.Movies/Contracts/MovieTrackedFileItem.cs": {
-      "line": 100,
+      "line": 88.88,
       "branch": null
     },
     "src/Deluno.Movies/Contracts/MovieWantedItem.cs": {
@@ -4323,7 +4487,7 @@
       "branch": null
     },
     "src/Deluno.Movies/Contracts/MovieWorkflowDecision.cs": {
-      "line": 100,
+      "line": 71.42,
       "branch": null
     },
     "src/Deluno.Movies/Contracts/UpdateMovieMonitoringRequest.cs": {
@@ -4331,44 +4495,44 @@
       "branch": null
     },
     "src/Deluno.Movies/Data/CollectionExclusionMigrationHostedService.cs": {
-      "line": 53.84,
-      "branch": 0
+      "line": 98.59,
+      "branch": 80
     },
     "src/Deluno.Movies/Data/IMovieCatalogRepository.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Movies/Data/MovieDispatchRecoveryHandler.cs": {
-      "line": 100,
-      "branch": null
+      "line": 92.85,
+      "branch": 50
     },
     "src/Deluno.Movies/Data/MovieDispatchTitleUnmonitorService.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Movies/Data/MovieHandoffClosedListener.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Movies/Data/MovieRungRepairReportService.cs": {
-      "line": 62.5,
-      "branch": null
+      "line": 95.34,
+      "branch": 87.5
     },
     "src/Deluno.Movies/Data/MoviesSchemaInitializer.cs": {
-      "line": 100,
-      "branch": null
+      "line": 84.21,
+      "branch": 50
     },
     "src/Deluno.Movies/Data/SqliteMovieCatalogRepository.cs": {
-      "line": 96.54,
-      "branch": 86.19
+      "line": 94.3,
+      "branch": 86.5
     },
     "src/Deluno.Movies/Data/SqliteMovieCollectionsRepository.cs": {
-      "line": 100,
-      "branch": 75
+      "line": 93.53,
+      "branch": 87.69
     },
     "src/Deluno.Movies/Migration/MovieMigrationCatalogImporter.cs": {
       "line": 100,
-      "branch": 50
+      "branch": 100
     },
     "src/Deluno.Movies/Migrations/V0001InitialSchema.cs": {
       "line": 100,
@@ -4568,30 +4732,38 @@
     },
     "src/Deluno.Movies/MovieRemoval.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Movies/MoviesEndpointRouteBuilderExtensions.cs": {
-      "line": 96.37,
-      "branch": 10.71
+      "line": 93.84,
+      "branch": 60.78
     },
     "src/Deluno.Movies/MoviesServiceCollectionExtensions.cs": {
       "line": 100,
       "branch": null
     },
+    "src/Deluno.Movies/Services/LibraryCollectionsService.cs": {
+      "line": 95.17,
+      "branch": 90.9
+    },
     "src/Deluno.Movies/Services/MovieCollectionService.cs": {
-      "line": 100,
-      "branch": null
+      "line": 95.69,
+      "branch": 90.38
     },
     "src/Deluno.Movies/Services/MovieFileRelocationPlanner.cs": {
-      "line": 100,
-      "branch": null
+      "line": 96.55,
+      "branch": 85.71
     },
     "src/Deluno.Movies/Services/MovieWorkflowService.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Movies/Testing/MoviesLargeLibrarySeedEndpoints.cs": {
-      "line": 0,
+      "line": 45.26,
+      "branch": 0
+    },
+    "src/Deluno.Notifications/Contracts/NotificationPreferences.cs": {
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Notifications/Contracts/NotificationProviders.cs": {
@@ -4603,32 +4775,48 @@
       "branch": null
     },
     "src/Deluno.Notifications/Contracts/NotificationWebhookItem.cs": {
-      "line": 100,
+      "line": 94.11,
       "branch": null
+    },
+    "src/Deluno.Notifications/Data/NotificationSecrets.cs": {
+      "line": 81.08,
+      "branch": 81.03
+    },
+    "src/Deluno.Notifications/Data/NotificationSecretsUpgradeService.cs": {
+      "line": 25,
+      "branch": 0
     },
     "src/Deluno.Notifications/Data/SqliteNotificationRepository.cs": {
-      "line": 95.45,
-      "branch": 75
+      "line": 99.3,
+      "branch": 94.11
     },
     "src/Deluno.Notifications/NotificationEndpointRouteBuilderExtensions.cs": {
-      "line": 100,
+      "line": 95.4,
       "branch": null
+    },
+    "src/Deluno.Notifications/NotificationOutboundDispatch.cs": {
+      "line": 95,
+      "branch": 87.5
     },
     "src/Deluno.Notifications/NotificationsServiceCollectionExtensions.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Notifications/OutboundNotificationService.cs": {
-      "line": 75.2,
-      "branch": 58.92
+      "line": 91.99,
+      "branch": 82.38
     },
     "src/Deluno.Notifications/SqliteNotificationService.cs": {
+      "line": 100,
+      "branch": 87.5
+    },
+    "src/Deluno.Platform/AutomaticJobs.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Platform/Connectivity/ConnectivityMonitor.cs": {
-      "line": 94.11,
-      "branch": 60
+      "line": 99.15,
+      "branch": 94.44
     },
     "src/Deluno.Platform/Contracts/BulkConnectionTagsRequest.cs": {
       "line": 100,
@@ -4639,11 +4827,15 @@
       "branch": 100
     },
     "src/Deluno.Platform/Contracts/ColonReplacementModes.cs": {
-      "line": 72.72,
-      "branch": 75
+      "line": 100,
+      "branch": 100
+    },
+    "src/Deluno.Platform/Contracts/ConnectivityOutageWindow.cs": {
+      "line": 100,
+      "branch": null
     },
     "src/Deluno.Platform/Contracts/CreateSharingRuleRequest.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Platform/Contracts/CreateTagRequest.cs": {
@@ -4654,13 +4846,25 @@
       "line": 100,
       "branch": null
     },
+    "src/Deluno.Platform/Contracts/DeferAutomationRequest.cs": {
+      "line": 100,
+      "branch": null
+    },
     "src/Deluno.Platform/Contracts/DownloadHealthRecord.cs": {
-      "line": 98.46,
-      "branch": 87.65
+      "line": 98.48,
+      "branch": 90.12
     },
     "src/Deluno.Platform/Contracts/DownloadSharingState.cs": {
       "line": 100,
       "branch": null
+    },
+    "src/Deluno.Platform/Contracts/GivenUpDownloadRemoval.cs": {
+      "line": 100,
+      "branch": null
+    },
+    "src/Deluno.Platform/Contracts/MetadataLocaleCodes.cs": {
+      "line": 100,
+      "branch": 70
     },
     "src/Deluno.Platform/Contracts/MigrationAuditReport.cs": {
       "line": 100,
@@ -4684,18 +4888,18 @@
     },
     "src/Deluno.Platform/Contracts/PlatformSettingsPatchMerger.cs": {
       "line": 100,
-      "branch": 91.44
+      "branch": 93.63
     },
     "src/Deluno.Platform/Contracts/PlatformSettingsSnapshot.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Platform/Contracts/ProcessorConnectionItem.cs": {
-      "line": 93.22,
+      "line": 93.84,
       "branch": 100
     },
     "src/Deluno.Platform/Contracts/ProcessorEventRequest.cs": {
-      "line": 100,
+      "line": 88.23,
       "branch": null
     },
     "src/Deluno.Platform/Contracts/ProcessorFailureReports.cs": {
@@ -4703,15 +4907,19 @@
       "branch": 100
     },
     "src/Deluno.Platform/Contracts/ProcessorHandoffItem.cs": {
-      "line": 100,
+      "line": 92.85,
       "branch": null
     },
+    "src/Deluno.Platform/Contracts/ProcessorHandoffRemovalReasons.cs": {
+      "line": 100,
+      "branch": 91.66
+    },
     "src/Deluno.Platform/Contracts/ProcessorHandoffSending.cs": {
-      "line": 85.71,
+      "line": 87.5,
       "branch": 100
     },
     "src/Deluno.Platform/Contracts/ProcessorHandoffStatus.cs": {
-      "line": 97.46,
+      "line": 97.67,
       "branch": 84.33
     },
     "src/Deluno.Platform/Contracts/ProcessorHandoffTitle.cs": {
@@ -4720,11 +4928,15 @@
     },
     "src/Deluno.Platform/Contracts/ProcessorHealthRules.cs": {
       "line": 100,
-      "branch": 75
+      "branch": 100
     },
     "src/Deluno.Platform/Contracts/ProcessorNotTaken.cs": {
       "line": 100,
       "branch": 100
+    },
+    "src/Deluno.Platform/Contracts/ProcessorOutputImports.cs": {
+      "line": 100,
+      "branch": null
     },
     "src/Deluno.Platform/Contracts/ProcessorPathMappingItem.cs": {
       "line": 100,
@@ -4736,7 +4948,11 @@
     },
     "src/Deluno.Platform/Contracts/ProcessorRetryHolds.cs": {
       "line": 100,
-      "branch": 100
+      "branch": 66.66
+    },
+    "src/Deluno.Platform/Contracts/ProcessorUnreachable.cs": {
+      "line": 85.71,
+      "branch": 76.66
     },
     "src/Deluno.Platform/Contracts/ReleaseAcquisitionProfileContracts.cs": {
       "line": 100,
@@ -4759,8 +4975,12 @@
       "branch": 83.33
     },
     "src/Deluno.Platform/Contracts/SharingRuleItem.cs": {
-      "line": 96.66,
-      "branch": 0
+      "line": 100,
+      "branch": 100
+    },
+    "src/Deluno.Platform/Contracts/SkipNextAutomationRequest.cs": {
+      "line": 100,
+      "branch": null
     },
     "src/Deluno.Platform/Contracts/TagItem.cs": {
       "line": 100,
@@ -4770,12 +4990,16 @@
       "line": 100,
       "branch": null
     },
-    "src/Deluno.Platform/Contracts/UpdatePlatformSettingsRequest.cs": {
+    "src/Deluno.Platform/Contracts/UpdateGlobalAutomationRequest.cs": {
       "line": 100,
       "branch": null
     },
+    "src/Deluno.Platform/Contracts/UpdatePlatformSettingsRequest.cs": {
+      "line": 99.1,
+      "branch": null
+    },
     "src/Deluno.Platform/Contracts/UpdateSharingRuleRequest.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Platform/Contracts/UpdateTagRequest.cs": {
@@ -4795,135 +5019,139 @@
       "branch": null
     },
     "src/Deluno.Platform/Data/IProcessorRepository.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Platform/Data/PlatformSchemaInitializer.cs": {
-      "line": 100,
-      "branch": null
+      "line": 85.71,
+      "branch": 50
     },
     "src/Deluno.Platform/Data/ProblemTwins.cs": {
-      "line": 81.25,
-      "branch": 91.66
+      "line": 93.18,
+      "branch": 90
     },
     "src/Deluno.Platform/Data/RetentionStepTags.cs": {
       "line": 98.21,
-      "branch": 96.42
+      "branch": 97.61
+    },
+    "src/Deluno.Platform/Data/SearchPlanPreferences.cs": {
+      "line": 100,
+      "branch": null
     },
     "src/Deluno.Platform/Data/SqliteAutoTagRuleStore.cs": {
       "line": 100,
-      "branch": 50
+      "branch": 91.3
     },
     "src/Deluno.Platform/Data/SqliteAutomationIdempotencyStore.cs": {
-      "line": 100,
-      "branch": 50
+      "line": 98.76,
+      "branch": 82.14
     },
     "src/Deluno.Platform/Data/SqliteConnectivityOutageRepository.cs": {
-      "line": 27.27,
-      "branch": 0
+      "line": 96.15,
+      "branch": 91.66
     },
     "src/Deluno.Platform/Data/SqliteDownloadHealthRepository.cs": {
-      "line": 89.28,
-      "branch": 87.5
+      "line": 94.94,
+      "branch": 90.75
     },
     "src/Deluno.Platform/Data/SqliteDownloadSharingRepository.cs": {
-      "line": 100,
-      "branch": null
+      "line": 93.87,
+      "branch": 90
     },
     "src/Deluno.Platform/Data/SqliteForceImportAttemptsRepository.cs": {
-      "line": 100,
-      "branch": null
+      "line": 96.36,
+      "branch": 83.33
     },
     "src/Deluno.Platform/Data/SqliteHealthCheckRepository.cs": {
-      "line": 100,
-      "branch": 100
+      "line": 99.43,
+      "branch": 97.61
     },
     "src/Deluno.Platform/Data/SqliteKeepSeedingStore.cs": {
-      "line": 100,
-      "branch": null
+      "line": 92.98,
+      "branch": 90
     },
     "src/Deluno.Platform/Data/SqliteKeptDownloadsRepository.cs": {
-      "line": 100,
-      "branch": null
+      "line": 84.21,
+      "branch": 75
     },
     "src/Deluno.Platform/Data/SqliteMigrationAuditRepository.cs": {
       "line": 100,
-      "branch": 62.5
+      "branch": 87.5
     },
     "src/Deluno.Platform/Data/SqlitePlatformSettingsRepository.cs": {
-      "line": 96.36,
-      "branch": 83.98
+      "line": 97.24,
+      "branch": 91.08
     },
     "src/Deluno.Platform/Data/SqliteProcessorRepository.cs": {
-      "line": 98.86,
-      "branch": 93.75
+      "line": 97.79,
+      "branch": 92.56
     },
     "src/Deluno.Platform/Data/SqliteReleaseProfileRepository.cs": {
-      "line": 100,
-      "branch": 72.72
+      "line": 97.2,
+      "branch": 84.25
     },
     "src/Deluno.Platform/Data/SqliteRssSyncStateRepository.cs": {
-      "line": 0,
-      "branch": null
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Platform/Data/SqliteSharingRulesRepository.cs": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Platform/Data/SqliteTagReferenceStore.cs": {
-      "line": 100,
-      "branch": 50
+      "line": 97.67,
+      "branch": 88.04
     },
     "src/Deluno.Platform/Data/SqliteUnifiedExclusionRepository.cs": {
       "line": 100,
-      "branch": 78.57
+      "branch": 91.66
     },
     "src/Deluno.Platform/Data/TitleTagService.cs": {
-      "line": 100,
-      "branch": null
+      "line": 95,
+      "branch": 75
     },
     "src/Deluno.Platform/ExistingLibraryImportActivity.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Platform/ExternalIntegrationEndpointRouteBuilderExtensions.cs": {
-      "line": 95.5,
-      "branch": 62.35
+      "line": 98.7,
+      "branch": 90.26
     },
     "src/Deluno.Platform/FileNameSanitizer.cs": {
-      "line": 95.74,
-      "branch": 96.72
+      "line": 100,
+      "branch": 98.36
     },
     "src/Deluno.Platform/FolderMoveRecovery.cs": {
-      "line": 40,
-      "branch": 12.5
+      "line": 53.33,
+      "branch": 37.5
     },
     "src/Deluno.Platform/LibraryActionEndpointRouteBuilderExtensions.cs": {
-      "line": 93.61,
+      "line": 96.34,
       "branch": null
     },
     "src/Deluno.Platform/LibraryMediaDeletion.cs": {
-      "line": 82.5,
-      "branch": 80
+      "line": 91.66,
+      "branch": 95.83
     },
     "src/Deluno.Platform/Migration/GuideRuleMigrationService.cs": {
-      "line": 100,
-      "branch": 100
+      "line": 92.4,
+      "branch": 85
     },
     "src/Deluno.Platform/Migration/IMigrationBackupService.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Platform/Migration/IMigrationCatalogImporter.cs": {
-      "line": 100,
+      "line": 92.3,
       "branch": null
     },
     "src/Deluno.Platform/Migration/MigrationAssistantService.cs": {
-      "line": 91.01,
-      "branch": 71.82
+      "line": 92.41,
+      "branch": 77.76
     },
     "src/Deluno.Platform/MigrationEndpointRouteBuilderExtensions.cs": {
-      "line": 100,
+      "line": 95.18,
       "branch": null
     },
     "src/Deluno.Platform/Migrations/V0001InitialSchema.cs": {
@@ -5455,16 +5683,16 @@
       "branch": null
     },
     "src/Deluno.Platform/Migrations/V0133ConnectionNamesFollowTheirAddress.cs": {
-      "line": 90.9,
-      "branch": 100
+      "line": 98.33,
+      "branch": 75
     },
     "src/Deluno.Platform/Migrations/V0134IndexerDiscoveredName.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Platform/Migrations/V0135IndexerProxyNamesFollowTheirAddress.cs": {
-      "line": 90,
-      "branch": null
+      "line": 96.42,
+      "branch": 83.33
     },
     "src/Deluno.Platform/Migrations/V0136LiveConnectionDayIndexes.cs": {
       "line": 100,
@@ -5478,41 +5706,57 @@
       "line": 100,
       "branch": null
     },
-    "src/Deluno.Platform/NamingTemplateRenderer.cs": {
-      "line": 99.01,
-      "branch": 80
-    },
-    "src/Deluno.Platform/OutboundThrottleWatcher.cs": {
-      "line": 85.71,
+    "src/Deluno.Platform/Migrations/V0139IntakeImdbListsRetired.cs": {
+      "line": 100,
       "branch": null
     },
+    "src/Deluno.Platform/Migrations/V0140ConnectionChecksAlwaysOn.cs": {
+      "line": 100,
+      "branch": null
+    },
+    "src/Deluno.Platform/Migrations/V0141RecoveryCodes.cs": {
+      "line": 100,
+      "branch": null
+    },
+    "src/Deluno.Platform/Migrations/V0142LibraryPairs.cs": {
+      "line": 100,
+      "branch": null
+    },
+    "src/Deluno.Platform/NamingTemplateRenderer.cs": {
+      "line": 100,
+      "branch": 95.6
+    },
+    "src/Deluno.Platform/OutboundThrottleWatcher.cs": {
+      "line": 100,
+      "branch": 100
+    },
     "src/Deluno.Platform/PlatformEndpointRouteBuilderExtensions.cs": {
-      "line": 97.14,
-      "branch": 59.21
+      "line": 96.8,
+      "branch": 90.9
     },
     "src/Deluno.Platform/PlatformServiceCollectionExtensions.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Platform/Processing/ProcessorEventAnswerLog.cs": {
-      "line": 86.36,
-      "branch": 84
+      "line": 83.87,
+      "branch": 83.33
     },
     "src/Deluno.Platform/Processing/ProcessorEventLimits.cs": {
       "line": 100,
-      "branch": 100
+      "branch": 87.5
     },
     "src/Deluno.Platform/Processing/ProcessorMainVideoJudgement.cs": {
-      "line": 91.66,
-      "branch": 70.83
+      "line": 93.47,
+      "branch": 80.76
     },
     "src/Deluno.Platform/Processing/ProcessorOutputLayout.cs": {
       "line": 87.09,
-      "branch": 80.76
+      "branch": 82.92
     },
     "src/Deluno.Platform/Processing/ProcessorOutputPathPolicy.cs": {
-      "line": 81.42,
-      "branch": 81.81
+      "line": 86.48,
+      "branch": 88.46
     },
     "src/Deluno.Platform/Processing/ProcessorPathMappingTranslator.cs": {
       "line": 100,
@@ -5520,39 +5764,43 @@
     },
     "src/Deluno.Platform/ProcessorAutoNames.cs": {
       "line": 100,
-      "branch": 100
+      "branch": 93.75
     },
     "src/Deluno.Platform/ProcessorHandoffCancellation.cs": {
-      "line": 100,
-      "branch": null
+      "line": 97.91,
+      "branch": 93.75
     },
     "src/Deluno.Platform/ProcessorOutcomeDelivery.cs": {
       "line": 100,
-      "branch": 96.42
+      "branch": 96.15
     },
     "src/Deluno.Platform/RecycleBin.cs": {
-      "line": 86.87,
-      "branch": 78.26
+      "line": 93.29,
+      "branch": 89.88
     },
     "src/Deluno.Platform/RenamePreviewOutcome.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Platform/TitleFolderGuard.cs": {
-      "line": 98.95,
-      "branch": 92.85
+      "line": 100,
+      "branch": 95.83
     },
     "src/Deluno.Platform/TitleFolderNeighbours.cs": {
-      "line": 100,
-      "branch": 75
+      "line": 97.29,
+      "branch": 96.15
+    },
+    "src/Deluno.Platform/TitleOwnFiles.cs": {
+      "line": 93.06,
+      "branch": 88.15
     },
     "src/Deluno.Quality/AllowedQualityGate.cs": {
-      "line": 90,
-      "branch": 75
+      "line": 100,
+      "branch": 90
     },
     "src/Deluno.Quality/AudioLanguageMatch.cs": {
-      "line": 92.3,
-      "branch": 50
+      "line": 100,
+      "branch": 75
     },
     "src/Deluno.Quality/Contracts/CreateCustomFormatRequest.cs": {
       "line": 100,
@@ -5563,6 +5811,10 @@
       "branch": null
     },
     "src/Deluno.Quality/Contracts/CreateQualityProfileRequest.cs": {
+      "line": 100,
+      "branch": null
+    },
+    "src/Deluno.Quality/Contracts/CustomFormatDryRunRequest.cs": {
       "line": 100,
       "branch": null
     },
@@ -5579,11 +5831,11 @@
       "branch": 97.36
     },
     "src/Deluno.Quality/Contracts/MediaPlanRollbackContracts.cs": {
-      "line": 87.87,
-      "branch": 64.7
+      "line": 89.39,
+      "branch": 73.52
     },
     "src/Deluno.Quality/Contracts/MediaPlanVersionContracts.cs": {
-      "line": 78.15,
+      "line": 85.36,
       "branch": 84.37
     },
     "src/Deluno.Quality/Contracts/PolicySetItem.cs": {
@@ -5595,11 +5847,11 @@
       "branch": null
     },
     "src/Deluno.Quality/Contracts/ReleasePreferencePlanReference.cs": {
-      "line": 81.48,
-      "branch": 56.25
+      "line": 96.29,
+      "branch": 75
     },
     "src/Deluno.Quality/Contracts/UpdateCustomFormatRequest.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Quality/Contracts/UpdatePolicySetRequest.cs": {
@@ -5610,33 +5862,37 @@
       "line": 100,
       "branch": null
     },
+    "src/Deluno.Quality/Data/IQualityRepository.cs": {
+      "line": 100,
+      "branch": null
+    },
     "src/Deluno.Quality/Data/IReleasePreferencePlanRepository.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Quality/Data/SqliteQualityRepository.cs": {
-      "line": 96.07,
-      "branch": 62.5
+      "line": 93.81,
+      "branch": 81.66
     },
     "src/Deluno.Quality/Data/SqliteReleasePreferencePlanRepository.cs": {
-      "line": 88.88,
-      "branch": 50
+      "line": 98.8,
+      "branch": 94.44
     },
     "src/Deluno.Quality/Guides/GuideCapabilityInventory.cs": {
-      "line": 93.04,
-      "branch": 76.61
+      "line": 91.3,
+      "branch": 76.51
     },
     "src/Deluno.Quality/Guides/GuideCatalogueUpgrade.cs": {
-      "line": 100,
-      "branch": null
+      "line": 93.47,
+      "branch": 78.57
     },
     "src/Deluno.Quality/Guides/GuideFormatConditions.cs": {
       "line": 94.11,
-      "branch": 81.81
+      "branch": 79.16
     },
     "src/Deluno.Quality/Guides/GuidePackageCatalog.cs": {
-      "line": 86.97,
-      "branch": 65.67
+      "line": 95.23,
+      "branch": 84
     },
     "src/Deluno.Quality/Guides/GuidePackageContracts.cs": {
       "line": 100,
@@ -5644,23 +5900,23 @@
     },
     "src/Deluno.Quality/Guides/GuidePackageStoreContracts.cs": {
       "line": 100,
-      "branch": 50
+      "branch": 100
     },
     "src/Deluno.Quality/Guides/GuidePackageSyncContracts.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Quality/Guides/GuidePackageSyncService.cs": {
-      "line": 25,
-      "branch": null
+      "line": 95.45,
+      "branch": 94.44
     },
     "src/Deluno.Quality/Guides/GuidePlanCompiler.cs": {
-      "line": 93.28,
-      "branch": 77.94
+      "line": 95.75,
+      "branch": 86.3
     },
     "src/Deluno.Quality/Guides/GuideRuleMigrationPlanner.cs": {
-      "line": 97.74,
-      "branch": 88.23
+      "line": 96.99,
+      "branch": 88.57
     },
     "src/Deluno.Quality/Guides/GuideSourceInventoryCatalog.cs": {
       "line": 100,
@@ -5675,32 +5931,32 @@
       "branch": null
     },
     "src/Deluno.Quality/Guides/GuideUpdateCheckHostedService.cs": {
-      "line": 80,
-      "branch": null
+      "line": 90.47,
+      "branch": 50
     },
     "src/Deluno.Quality/Guides/GuideUpdateCheckService.cs": {
-      "line": 95.18,
-      "branch": 55
+      "line": 98.06,
+      "branch": 80.76
     },
     "src/Deluno.Quality/Guides/GuideUpstreamSourceInventoryBuilder.cs": {
-      "line": 93.02,
+      "line": 93.07,
       "branch": 79.54
     },
     "src/Deluno.Quality/Guides/GuideUpstreamTreeClient.cs": {
-      "line": 100,
-      "branch": 50
+      "line": 95.57,
+      "branch": 85.13
     },
     "src/Deluno.Quality/Guides/LegacyGuideCatalogue.cs": {
-      "line": 100,
+      "line": 90,
       "branch": 75
     },
     "src/Deluno.Quality/Guides/SqliteGuidePackageStore.cs": {
-      "line": 78.02,
-      "branch": 63.51
+      "line": 91.41,
+      "branch": 79.71
     },
     "src/Deluno.Quality/Guides/SqliteGuideUpdateCheckStore.cs": {
       "line": 100,
-      "branch": 87.5
+      "branch": 100
     },
     "src/Deluno.Quality/IQualityRankSink.cs": {
       "line": 100,
@@ -5708,7 +5964,7 @@
     },
     "src/Deluno.Quality/LibraryQualityDecider.cs": {
       "line": 100,
-      "branch": 50
+      "branch": 100
     },
     "src/Deluno.Quality/LibraryQualityDecision.cs": {
       "line": 100,
@@ -5720,23 +5976,23 @@
     },
     "src/Deluno.Quality/MediaFileFacts.cs": {
       "line": 100,
-      "branch": 96.66
+      "branch": 98.43
     },
     "src/Deluno.Quality/MediaProbedFacts.cs": {
       "line": 91.02,
-      "branch": 88.69
+      "branch": 88.23
     },
     "src/Deluno.Quality/PlainQualityChoices.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Quality/Presets/QualityProfilePresets.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Quality/ProfileAcquisitionRules.cs": {
       "line": 100,
-      "branch": 89.28
+      "branch": 92.85
     },
     "src/Deluno.Quality/ProfileFormatIntents.cs": {
       "line": 100,
@@ -5748,27 +6004,27 @@
     },
     "src/Deluno.Quality/ProfileScoreLimits.cs": {
       "line": 100,
-      "branch": 92.3
+      "branch": 96.15
     },
     "src/Deluno.Quality/ProfileSizeRules.cs": {
       "line": 96.22,
-      "branch": 91.66
+      "branch": 96.42
     },
     "src/Deluno.Quality/QualityEndpointRouteBuilderExtensions.cs": {
-      "line": 96.37,
-      "branch": 44.11
+      "line": 96.85,
+      "branch": 93.26
     },
     "src/Deluno.Quality/QualityModelContracts.cs": {
       "line": 100,
       "branch": 50
     },
     "src/Deluno.Quality/QualityModelService.cs": {
-      "line": 88.4,
-      "branch": 65.9
+      "line": 98.34,
+      "branch": 94.04
     },
     "src/Deluno.Quality/QualityProfileResolver.cs": {
-      "line": 100,
-      "branch": 50
+      "line": 94.54,
+      "branch": 90.47
     },
     "src/Deluno.Quality/QualityServiceCollectionExtensions.cs": {
       "line": 100,
@@ -5776,19 +6032,23 @@
     },
     "src/Deluno.Quality/QualityTypicalSizes.cs": {
       "line": 100,
-      "branch": 66.66
+      "branch": 100
     },
     "src/Deluno.Quality/ReleaseNameQuality.cs": {
-      "line": 82.97,
-      "branch": 71.42
+      "line": 89.36,
+      "branch": 82.14
+    },
+    "src/Deluno.Quality/ReleaseNameWords.cs": {
+      "line": 96.66,
+      "branch": 95.83
     },
     "src/Deluno.Quality/ReleasePreferences/CustomFormatDefinitionMatcher.cs": {
-      "line": 87.76,
-      "branch": 68.47
+      "line": 90.75,
+      "branch": 75.25
     },
     "src/Deluno.Quality/ReleasePreferences/CustomFormatPreferenceTraits.cs": {
-      "line": 100,
-      "branch": 75
+      "line": 95.83,
+      "branch": 59.09
     },
     "src/Deluno.Quality/ReleasePreferences/DraftProfileJudgement.cs": {
       "line": 100,
@@ -5796,71 +6056,79 @@
     },
     "src/Deluno.Quality/ReleasePreferences/InstalledPreferenceEvaluationFactory.cs": {
       "line": 95.63,
-      "branch": 83.01
+      "branch": 82.75
     },
     "src/Deluno.Quality/ReleasePreferences/LegacyReleasePreferenceTranslator.cs": {
-      "line": 88.51,
-      "branch": 64.7
+      "line": 87.16,
+      "branch": 66.66
     },
     "src/Deluno.Quality/ReleasePreferences/PreferenceTraitRegistry.cs": {
-      "line": 93.59,
-      "branch": 86.19
+      "line": 95.66,
+      "branch": 92.47
     },
     "src/Deluno.Quality/ReleasePreferences/ProperRepackAcquisitionModes.cs": {
-      "line": 83.33,
-      "branch": 83.33
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Quality/ReleasePreferences/ReleaseEpisodeClassifier.cs": {
-      "line": 83.63,
-      "branch": 57.69
+      "line": 98.18,
+      "branch": 96.15
     },
     "src/Deluno.Quality/ReleasePreferences/ReleasePreferenceContracts.cs": {
-      "line": 90.9,
-      "branch": 74.11
+      "line": 92.77,
+      "branch": 79.28
     },
     "src/Deluno.Quality/ReleasePreferences/ReleasePreferenceEvaluator.cs": {
-      "line": 92.67,
-      "branch": 86.54
+      "line": 98.02,
+      "branch": 94.33
     },
     "src/Deluno.Quality/ReleasePreferences/ReleasePreferenceFactFactory.cs": {
       "line": 99.58,
-      "branch": 78.57
+      "branch": 96.9
     },
     "src/Deluno.Quality/ReleasePreferences/ReleasePreferenceFormatEvidenceFactory.cs": {
-      "line": 84.9,
-      "branch": 76.56
+      "line": 82.07,
+      "branch": 78.57
     },
     "src/Deluno.Quality/ReleasePreferences/ReleasePreferencePlanApiContracts.cs": {
-      "line": 37.5,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Quality/ReleasePreferences/ReleasePreferencePlanCodec.cs": {
-      "line": 100,
-      "branch": 95.45
+      "line": 79.77,
+      "branch": 75
     },
     "src/Deluno.Quality/ReleasePreferences/ReleasePreferencePlanFactory.cs": {
-      "line": 95.77,
-      "branch": 94.44
+      "line": 99.69,
+      "branch": 95.65
     },
     "src/Deluno.Quality/ReleasePreferences/ReleasePreferencePreviewContracts.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Quality/ReleaseTermPattern.cs": {
-      "line": 82.6,
-      "branch": 81.81
+      "line": 83.69,
+      "branch": 83.87
     },
     "src/Deluno.Quality/Scenarios/MediaPlanScenarioContracts.cs": {
       "line": 100,
-      "branch": 84.84
+      "branch": 88.88
     },
     "src/Deluno.Quality/VersionedMediaPolicyEngine.cs": {
-      "line": 97.57,
-      "branch": 84.37
+      "line": 99.47,
+      "branch": 98.43
+    },
+    "src/Deluno.Quality/WantedDecisionInputs.cs": {
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Realtime/Hubs/ActivityHub.cs": {
-      "line": 96.87,
-      "branch": 100
+      "line": 100,
+      "branch": 97.5
+    },
+    "src/Deluno.Realtime/RealtimeEnvelope.cs": {
+      "line": 100,
+      "branch": null
     },
     "src/Deluno.Realtime/RealtimeGroups.cs": {
       "line": 100,
@@ -5868,7 +6136,7 @@
     },
     "src/Deluno.Realtime/RealtimePositionHeader.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Realtime/RealtimeServiceCollectionExtensions.cs": {
       "line": 100,
@@ -5879,31 +6147,31 @@
       "branch": 100
     },
     "src/Deluno.Realtime/SignalRRealtimeEventPublisher.cs": {
-      "line": 82.33,
-      "branch": 94.94
+      "line": 97.79,
+      "branch": 98.61
     },
     "src/Deluno.Realtime/TitleChangeNotifier.cs": {
-      "line": 73.33,
-      "branch": null
+      "line": 95.27,
+      "branch": 96.42
     },
     "src/Deluno.Recovery/Contracts/IDispatchCleanupService.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Recovery/Policies/DownloadHealthEvaluator.cs": {
-      "line": 96.68,
-      "branch": 96.05
+      "line": 100,
+      "branch": 99.39
     },
     "src/Deluno.Recovery/Policies/SharingFootprint.cs": {
       "line": 83.33,
       "branch": 83.33
     },
     "src/Deluno.Recovery/Policies/SharingPolicyEvaluator.cs": {
-      "line": 94.59,
+      "line": 94.73,
       "branch": 88.54
     },
     "src/Deluno.Recovery/Policies/SharingRuleMatcher.cs": {
-      "line": 97.36,
+      "line": 97.43,
       "branch": 92.85
     },
     "src/Deluno.Recovery/RecoveryServiceCollectionExtensions.cs": {
@@ -5912,90 +6180,90 @@
     },
     "src/Deluno.Recovery/Services/CompositeDispatchRecoveryHandler.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Recovery/Services/CompositeDispatchTitleUnmonitorService.cs": {
-      "line": 50,
-      "branch": null
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Recovery/Services/DeletedThingCleanupService.cs": {
-      "line": 100,
-      "branch": 50
+      "line": 97.93,
+      "branch": 87.5
     },
     "src/Deluno.Recovery/Services/DispatchCleanupService.cs": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Recovery/Services/ImportRecoveryRetentionService.cs": {
-      "line": 87.5,
-      "branch": null
+      "line": 87.27,
+      "branch": 80
     },
     "src/Deluno.Recovery/Services/SharingReclaimService.cs": {
-      "line": 95.52,
-      "branch": 75
+      "line": 82.05,
+      "branch": 58.57
     },
     "src/Deluno.Retention/RetentionAnswers.cs": {
-      "line": 84.19,
-      "branch": 67.29
+      "line": 84.31,
+      "branch": 68.02
     },
     "src/Deluno.Retention/RetentionCollectionService.cs": {
-      "line": 100,
-      "branch": 50
+      "line": 91.22,
+      "branch": 88.88
     },
     "src/Deluno.Retention/RetentionContracts.cs": {
-      "line": 80.82,
-      "branch": 84.61
+      "line": 98.71,
+      "branch": 92.3
     },
     "src/Deluno.Retention/RetentionEndpoints.cs": {
-      "line": 98.47,
-      "branch": null
+      "line": 93.09,
+      "branch": 50
     },
     "src/Deluno.Retention/RetentionEpisodeMath.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Retention/RetentionEvaluator.cs": {
-      "line": 83.33,
-      "branch": 59.7
+      "line": 89.96,
+      "branch": 70.94
     },
     "src/Deluno.Retention/RetentionFields.cs": {
-      "line": 99.26,
-      "branch": 89.65
+      "line": 100,
+      "branch": 95
     },
     "src/Deluno.Retention/RetentionSeerr.cs": {
-      "line": 96.55,
-      "branch": 41.66
+      "line": 91.12,
+      "branch": 84.37
     },
     "src/Deluno.Retention/RetentionServerIndex.cs": {
-      "line": 91.56,
-      "branch": 81.81
+      "line": 91.76,
+      "branch": 81.57
     },
     "src/Deluno.Retention/RetentionService.cs": {
-      "line": 99.42,
-      "branch": 85.24
+      "line": 93.08,
+      "branch": 83.14
     },
     "src/Deluno.Retention/RetentionSteps.cs": {
-      "line": 84.21,
-      "branch": 50
+      "line": 86.04,
+      "branch": 75
     },
     "src/Deluno.Retention/RetentionUnits.cs": {
-      "line": 98.64,
-      "branch": 70
+      "line": 95.59,
+      "branch": 67.94
     },
     "src/Deluno.Retention/SqliteRetentionRepository.cs": {
-      "line": 74.57,
-      "branch": 50
+      "line": 100,
+      "branch": 88
     },
     "src/Deluno.Security/AllowedHostMatcher.cs": {
       "line": 100,
-      "branch": 87.5
+      "branch": 90.62
     },
     "src/Deluno.Security/ApiKeyScopeTemplates.cs": {
-      "line": 98.85,
+      "line": 100,
       "branch": 100
     },
     "src/Deluno.Security/Contracts/AllowedHostsSettings.cs": {
-      "line": 16.66,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Security/Contracts/ApiKeyItem.cs": {
@@ -6015,7 +6283,7 @@
       "branch": null
     },
     "src/Deluno.Security/Contracts/ChangePasswordRequest.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Security/Contracts/CreateApiKeyRequest.cs": {
@@ -6034,57 +6302,73 @@
       "line": 100,
       "branch": null
     },
+    "src/Deluno.Security/Contracts/RecoveryContracts.cs": {
+      "line": 100,
+      "branch": null
+    },
     "src/Deluno.Security/Contracts/UserItem.cs": {
       "line": 100,
       "branch": null
     },
+    "src/Deluno.Security/CurrentPasswordGate.cs": {
+      "line": 100,
+      "branch": 100
+    },
+    "src/Deluno.Security/Data/DelunoAlreadyConfiguredException.cs": {
+      "line": 0,
+      "branch": null
+    },
     "src/Deluno.Security/Data/SqliteAllowedHostsRepository.cs": {
-      "line": 71.42,
-      "branch": 50
+      "line": 96.07,
+      "branch": 87.5
     },
     "src/Deluno.Security/Data/SqliteLocalNetworkAuthRepository.cs": {
-      "line": 83.33,
-      "branch": 50
+      "line": 96.77,
+      "branch": 93.75
     },
     "src/Deluno.Security/Data/SqliteSecurityRepository.cs": {
-      "line": 84.9,
-      "branch": 62.5
+      "line": 92.9,
+      "branch": 84.05
     },
     "src/Deluno.Security/DataProtectionSecretProtector.cs": {
-      "line": 83.33,
-      "branch": 75
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Security/DelunoAuthenticationHandler.cs": {
-      "line": 100,
-      "branch": 50
+      "line": 97.05,
+      "branch": 85.71
     },
     "src/Deluno.Security/DelunoAuthorizationPolicies.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Security/DelunoAuthorizationResultHandler.cs": {
-      "line": 100,
-      "branch": null
+      "line": 94.28,
+      "branch": 92.85
     },
     "src/Deluno.Security/DelunoBadRequestAnswers.cs": {
-      "line": 86.02,
-      "branch": 75
+      "line": 84.84,
+      "branch": 75.53
     },
     "src/Deluno.Security/DelunoScopeRequirement.cs": {
       "line": 100,
-      "branch": 77.77
+      "branch": 80.76
     },
     "src/Deluno.Security/DelunoSignInGate.cs": {
-      "line": 100,
+      "line": 94.28,
       "branch": 92.85
     },
     "src/Deluno.Security/Hardening/AllowedHostsCandidateProvider.cs": {
-      "line": 0,
-      "branch": 0
+      "line": 87.5,
+      "branch": 100
+    },
+    "src/Deluno.Security/Hardening/AllowedHostsEndpoints.cs": {
+      "line": 100,
+      "branch": 87.5
     },
     "src/Deluno.Security/Hardening/AllowedHostsSettingsCache.cs": {
-      "line": 66.66,
-      "branch": null
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Security/Hardening/Backends/FileBackedSecretProtector.cs": {
       "line": 91.89,
@@ -6100,27 +6384,27 @@
     },
     "src/Deluno.Security/Hardening/DelunoAllowedHostsMiddleware.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Security/Hardening/ForwardedHostTracker.cs": {
       "line": 100,
       "branch": 50
     },
     "src/Deluno.Security/Hardening/ILocalNetworkAuthChangeNotifier.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Security/Hardening/LocalNetworkAuthEndpoints.cs": {
       "line": 100,
-      "branch": 75
+      "branch": 94.11
     },
     "src/Deluno.Security/Hardening/LocalNetworkAuthSettingsCache.cs": {
-      "line": 66.66,
-      "branch": null
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Security/Hardening/SecretProtectorFactory.cs": {
       "line": 80.72,
-      "branch": 65.9
+      "branch": 68.18
     },
     "src/Deluno.Security/Hardening/SecretValueMigrator.cs": {
       "line": 100,
@@ -6136,30 +6420,46 @@
     },
     "src/Deluno.Security/Hardening/TrustedProxyClientAddressResolver.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Security/ISecretProtector.cs": {
       "line": 100,
       "branch": 75
     },
+    "src/Deluno.Security/IntegrationRouteScopes.cs": {
+      "line": 100,
+      "branch": 95.45
+    },
     "src/Deluno.Security/LocalNetworkMatcher.cs": {
       "line": 98.46,
       "branch": 95
     },
+    "src/Deluno.Security/Recovery/AccountRecovery.cs": {
+      "line": 100,
+      "branch": 91.66
+    },
+    "src/Deluno.Security/Recovery/RecoveryCodeFormat.cs": {
+      "line": 100,
+      "branch": 100
+    },
+    "src/Deluno.Security/Recovery/RecoveryGuard.cs": {
+      "line": 94.73,
+      "branch": 100
+    },
     "src/Deluno.Security/SecurityEndpointRouteBuilderExtensions.cs": {
-      "line": 93.67,
-      "branch": 20
+      "line": 95.14,
+      "branch": 100
     },
     "src/Deluno.Security/SecurityServiceCollectionExtensions.cs": {
-      "line": 96,
+      "line": 96.66,
       "branch": null
     },
     "src/Deluno.Security/UserAuthorization.cs": {
-      "line": 94.61,
-      "branch": 82.35
+      "line": 94.79,
+      "branch": 85.29
     },
     "src/Deluno.Series/Contracts/BulkSeriesRequest.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Series/Contracts/CatalogueEpisodeItem.cs": {
@@ -6179,11 +6479,11 @@
       "branch": null
     },
     "src/Deluno.Series/Contracts/EpisodeSearchEligibilityItem.cs": {
-      "line": 100,
+      "line": 85.71,
       "branch": null
     },
     "src/Deluno.Series/Contracts/EpisodeWorkflowDecision.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Series/Contracts/ExistingSeriesImportRequest.cs": {
@@ -6195,11 +6495,11 @@
       "branch": null
     },
     "src/Deluno.Series/Contracts/ImportedEpisodeNumberingItem.cs": {
-      "line": 100,
+      "line": 81.81,
       "branch": null
     },
     "src/Deluno.Series/Contracts/ImportedSeasonPackItem.cs": {
-      "line": 100,
+      "line": 60,
       "branch": null
     },
     "src/Deluno.Series/Contracts/MetadataRatingItem.cs": {
@@ -6207,7 +6507,7 @@
       "branch": null
     },
     "src/Deluno.Series/Contracts/RelinkedEpisodeFile.cs": {
-      "line": 100,
+      "line": 57.14,
       "branch": null
     },
     "src/Deluno.Series/Contracts/SearchSeriesEpisodesRequest.cs": {
@@ -6226,6 +6526,10 @@
       "line": 100,
       "branch": null
     },
+    "src/Deluno.Series/Contracts/SeriesFileGoneRequest.cs": {
+      "line": 100,
+      "branch": null
+    },
     "src/Deluno.Series/Contracts/SeriesImportRecoveryCase.cs": {
       "line": 100,
       "branch": null
@@ -6236,7 +6540,7 @@
     },
     "src/Deluno.Series/Contracts/SeriesInventoryDetail.cs": {
       "line": 100,
-      "branch": null
+      "branch": 75
     },
     "src/Deluno.Series/Contracts/SeriesListItem.cs": {
       "line": 100,
@@ -6247,8 +6551,8 @@
       "branch": 100
     },
     "src/Deluno.Series/Contracts/SeriesNumberingContracts.cs": {
-      "line": 96.86,
-      "branch": 87.09
+      "line": 97.21,
+      "branch": 84.41
     },
     "src/Deluno.Series/Contracts/SeriesSearchHistoryItem.cs": {
       "line": 100,
@@ -6259,7 +6563,7 @@
       "branch": null
     },
     "src/Deluno.Series/Contracts/SeriesTrackedFileItem.cs": {
-      "line": 100,
+      "line": 91.66,
       "branch": null
     },
     "src/Deluno.Series/Contracts/SeriesUpcomingEpisodeItem.cs": {
@@ -6279,11 +6583,11 @@
       "branch": null
     },
     "src/Deluno.Series/Contracts/UpdateSeriesMonitoringRequest.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Series/Contracts/WantedEpisodeItem.cs": {
-      "line": 100,
+      "line": 92.3,
       "branch": null
     },
     "src/Deluno.Series/Contracts/WrongEpisodeFileLinkRepair.cs": {
@@ -6291,32 +6595,32 @@
       "branch": null
     },
     "src/Deluno.Series/Data/ISeriesCatalogRepository.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Series/Data/SeriesDispatchRecoveryHandler.cs": {
-      "line": 100,
-      "branch": null
+      "line": 37.5,
+      "branch": 18.75
     },
     "src/Deluno.Series/Data/SeriesDispatchTitleUnmonitorService.cs": {
-      "line": 100,
-      "branch": 75
+      "line": 72.72,
+      "branch": 62.5
     },
     "src/Deluno.Series/Data/SeriesHandoffClosedListener.cs": {
-      "line": 100,
-      "branch": null
+      "line": 42.85,
+      "branch": 75
     },
     "src/Deluno.Series/Data/SeriesSchemaInitializer.cs": {
-      "line": 100,
-      "branch": null
+      "line": 84.21,
+      "branch": 50
     },
     "src/Deluno.Series/Data/SqliteSeriesCatalogRepository.cs": {
-      "line": 84.84,
-      "branch": 77.06
+      "line": 93.83,
+      "branch": 83.17
     },
     "src/Deluno.Series/Migration/SeriesMigrationCatalogImporter.cs": {
       "line": 100,
-      "branch": 50
+      "branch": 100
     },
     "src/Deluno.Series/Migrations/V0001InitialSchema.cs": {
       "line": 100,
@@ -6527,36 +6831,36 @@
       "branch": null
     },
     "src/Deluno.Series/SeriesEndpointRouteBuilderExtensions.cs": {
-      "line": 96.09,
-      "branch": 15.68
+      "line": 93.6,
+      "branch": 70.1
     },
     "src/Deluno.Series/SeriesRemoval.cs": {
       "line": 100,
-      "branch": null
+      "branch": 83.33
     },
     "src/Deluno.Series/SeriesSearchBaselineResolver.cs": {
-      "line": 98.3,
-      "branch": 83.33
+      "line": 98.91,
+      "branch": 95
     },
     "src/Deluno.Series/SeriesServiceCollectionExtensions.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Series/Services/EpisodeGroupRefreshHostedService.cs": {
-      "line": 71.42,
-      "branch": null
+      "line": 88.23,
+      "branch": 90
     },
     "src/Deluno.Series/Services/EpisodeGroupRefreshService.cs": {
-      "line": 100,
-      "branch": null
+      "line": 98.76,
+      "branch": 84.37
     },
     "src/Deluno.Series/Services/EpisodeImportRecoveryService.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Series/Services/EpisodeWorkflowService.cs": {
-      "line": 0,
-      "branch": null
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Series/Services/IEpisodeGroupRefreshService.cs": {
       "line": 100,
@@ -6568,102 +6872,102 @@
     },
     "src/Deluno.Series/Services/MissingEpisodeSearches.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Series/Services/SceneMappingRefreshHostedService.cs": {
-      "line": 71.42,
-      "branch": null
+      "line": 93.87,
+      "branch": 87.5
     },
     "src/Deluno.Series/Services/SceneMappingRefreshService.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Series/Services/SeasonSearchExecutor.cs": {
-      "line": 89.47,
-      "branch": 75
+      "line": 96.75,
+      "branch": 83.5
     },
     "src/Deluno.Series/Services/SeasonSearchPlanner.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Series/Services/SeriesCatalogueChoice.cs": {
-      "line": 93.54,
-      "branch": 90
+      "line": 94.84,
+      "branch": 85.41
     },
     "src/Deluno.Series/Services/SeriesFolderRelocationPlanner.cs": {
       "line": 92.5,
       "branch": 84.37
     },
     "src/Deluno.Series/Services/SeriesManualSendGuard.cs": {
-      "line": 79.31,
-      "branch": 62.5
+      "line": 100,
+      "branch": 97.22
     },
     "src/Deluno.Worker/ApiParity/CommandEndpoints.cs": {
-      "line": 97.76,
-      "branch": 73.68
+      "line": 97.53,
+      "branch": 78
     },
     "src/Deluno.Worker/ApiParity/DiskSpaceAndLookupEndpoints.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Worker/ApiParity/QueueHistoryWantedEndpoints.cs": {
-      "line": 100,
-      "branch": 100
+      "line": 99.09,
+      "branch": 89.58
     },
     "src/Deluno.Worker/ApiParity/SystemStatusEndpoints.cs": {
-      "line": 100,
-      "branch": 50
+      "line": 97.14,
+      "branch": 66.66
     },
     "src/Deluno.Worker/Attention/AttentionEndpoints.cs": {
-      "line": 97.74,
-      "branch": null
+      "line": 98.4,
+      "branch": 100
     },
     "src/Deluno.Worker/Attention/AttentionSummary.cs": {
-      "line": 95.75,
-      "branch": 71.26
+      "line": 96.12,
+      "branch": 75
     },
     "src/Deluno.Worker/Attention/AttentionSummaryService.cs": {
       "line": 100,
-      "branch": null
+      "branch": 80
     },
     "src/Deluno.Worker/Automation/AutomationContracts.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Worker/Automation/AutomationEndpointRouteBuilderExtensions.cs": {
-      "line": 74.8,
-      "branch": 0
+      "line": 95.04,
+      "branch": 91.37
     },
     "src/Deluno.Worker/Companions/InstalledComponentWiring.cs": {
-      "line": 93.33,
-      "branch": 89.06
+      "line": 94.16,
+      "branch": 93.27
     },
     "src/Deluno.Worker/Companions/WeirHealthAddressBackfill.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Worker/Connections/ConnectionHealthTester.cs": {
-      "line": 100,
-      "branch": null
+      "line": 75.59,
+      "branch": 54.05
     },
     "src/Deluno.Worker/Connections/RegularConnectionCheckService.cs": {
-      "line": 71.42,
-      "branch": null
+      "line": 93.47,
+      "branch": 83.33
     },
     "src/Deluno.Worker/Dashboard/AsyncValueCache.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Worker/Dashboard/DashboardCountsStore.cs": {
-      "line": 100,
-      "branch": null
+      "line": 99.24,
+      "branch": 88.46
     },
     "src/Deluno.Worker/Dashboard/DashboardLiveExtras.cs": {
-      "line": 98.48,
-      "branch": 92.85
+      "line": 98.21,
+      "branch": 88.46
     },
     "src/Deluno.Worker/Dashboard/DashboardSummaryContracts.cs": {
-      "line": 86.69,
+      "line": 95.73,
       "branch": null
     },
     "src/Deluno.Worker/Dashboard/DashboardSummaryEndpoints.cs": {
@@ -6671,24 +6975,24 @@
       "branch": null
     },
     "src/Deluno.Worker/Dashboard/DashboardSummaryService.cs": {
-      "line": 65.57,
-      "branch": 57.97
+      "line": 94.58,
+      "branch": 85.51
     },
     "src/Deluno.Worker/Dashboard/DashboardVolumeCache.cs": {
-      "line": 95.34,
-      "branch": 66.66
+      "line": 95.09,
+      "branch": 80
     },
     "src/Deluno.Worker/DelunoApplicationComposition.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Worker/DelunoApplicationEndpointMapping.cs": {
-      "line": 96.92,
-      "branch": 50
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/DelunoRequestPipeline.cs": {
-      "line": 98.61,
-      "branch": 70
+      "line": 100,
+      "branch": 95
     },
     "src/Deluno.Worker/DelunoStaticFileCaching.cs": {
       "line": 100,
@@ -6696,15 +7000,15 @@
     },
     "src/Deluno.Worker/ExternalFileChangedEndpoints.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Worker/ExternalRedownload.cs": {
-      "line": 100,
-      "branch": null
+      "line": 99.28,
+      "branch": 88.63
     },
     "src/Deluno.Worker/HealthChecks/Checks/AllowedHostsHealthCheck.cs": {
       "line": 100,
-      "branch": null
+      "branch": 75
     },
     "src/Deluno.Worker/HealthChecks/Checks/BackgroundServiceHealthCheck.cs": {
       "line": 100,
@@ -6712,215 +7016,227 @@
     },
     "src/Deluno.Worker/HealthChecks/Checks/ClientDownloadFolderFreeSpaceHealthCheck.cs": {
       "line": 100,
-      "branch": null
+      "branch": 92.85
     },
     "src/Deluno.Worker/HealthChecks/Checks/ClientScriptFailureHealthCheck.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/CloudflareHelperHealthCheck.cs": {
-      "line": 100,
-      "branch": null
+      "line": 78.26,
+      "branch": 83.33
     },
     "src/Deluno.Worker/HealthChecks/Checks/DangerousFileCheckHealthCheck.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
+    },
+    "src/Deluno.Worker/HealthChecks/Checks/DatabaseIntegrityHealthCheck.cs": {
+      "line": 100,
+      "branch": 83.33
     },
     "src/Deluno.Worker/HealthChecks/Checks/DispatchRecoveryPollerHealthCheck.cs": {
-      "line": 10,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/DownloadClientHealthCheck.cs": {
       "line": 100,
-      "branch": null
+      "branch": 77.27
     },
     "src/Deluno.Worker/HealthChecks/Checks/DownloadHardlinkHealthCheck.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Worker/HealthChecks/Checks/ExternalServiceHealthCheck.cs": {
-      "line": 91.66,
-      "branch": 50
-    },
-    "src/Deluno.Worker/HealthChecks/Checks/HttpProxyReachabilityTester.cs": {
-      "line": 92.3,
-      "branch": 66.66
-    },
-    "src/Deluno.Worker/HealthChecks/Checks/IndexerHealthCheck.cs": {
-      "line": 50,
-      "branch": null
-    },
-    "src/Deluno.Worker/HealthChecks/Checks/KeepSeedingProblemHealthCheck.cs": {
-      "line": 100,
-      "branch": null
-    },
-    "src/Deluno.Worker/HealthChecks/Checks/LibraryFolderChainHealthCheck.cs": {
-      "line": 15.21,
-      "branch": 13.63
-    },
-    "src/Deluno.Worker/HealthChecks/Checks/LibraryRootHealthCheck.cs": {
-      "line": 100,
-      "branch": 50
-    },
-    "src/Deluno.Worker/HealthChecks/Checks/LocalNetworkAuthHealthCheck.cs": {
-      "line": 100,
-      "branch": null
-    },
-    "src/Deluno.Worker/HealthChecks/Checks/MachineHealthChecks.cs": {
-      "line": 100,
-      "branch": 90
-    },
-    "src/Deluno.Worker/HealthChecks/Checks/MediaServerRefreshHealthCheck.cs": {
-      "line": 100,
-      "branch": null
-    },
-    "src/Deluno.Worker/HealthChecks/Checks/MetadataProviderHealthCheck.cs": {
-      "line": 100,
-      "branch": null
-    },
-    "src/Deluno.Worker/HealthChecks/Checks/ProcessorHandoffHoldHealthCheck.cs": {
-      "line": 100,
-      "branch": null
-    },
-    "src/Deluno.Worker/HealthChecks/Checks/ProcessorHealthCheck.cs": {
-      "line": 81.81,
-      "branch": 83.33
-    },
-    "src/Deluno.Worker/HealthChecks/Checks/ProcessorOutputImportIssueHealthCheck.cs": {
-      "line": 91.17,
-      "branch": 66.66
-    },
-    "src/Deluno.Worker/HealthChecks/Checks/ProcessorOutputSafetyNetHealthCheck.cs": {
-      "line": 85.71,
-      "branch": 75.86
-    },
-    "src/Deluno.Worker/HealthChecks/Checks/ProxyHealthCheck.cs": {
-      "line": 100,
-      "branch": null
-    },
-    "src/Deluno.Worker/HealthChecks/Checks/RemotePathMappingHealthCheck.cs": {
-      "line": 71.42,
-      "branch": 81.25
-    },
-    "src/Deluno.Worker/HealthChecks/Checks/SearchQueuePauseHealthCheck.cs": {
-      "line": 100,
-      "branch": null
-    },
-    "src/Deluno.Worker/HealthChecks/Checks/SystemDiskSpaceHealthCheck.cs": {
-      "line": 4.76,
-      "branch": 0
-    },
-    "src/Deluno.Worker/HealthChecks/Checks/SystemTimeHealthCheck.cs": {
-      "line": 100,
-      "branch": 50
-    },
-    "src/Deluno.Worker/HealthChecks/Checks/TagRoutingHealthCheck.cs": {
-      "line": 95.12,
-      "branch": 68.75
-    },
-    "src/Deluno.Worker/HealthChecks/Checks/TrackerSiteHealthCheck.cs": {
-      "line": 100,
-      "branch": null
-    },
-    "src/Deluno.Worker/HealthChecks/HealthCheckHostedService.cs": {
-      "line": 100,
-      "branch": null
-    },
-    "src/Deluno.Worker/HealthChecks/HealthCheckRunner.cs": {
-      "line": 96.55,
-      "branch": 87.5
-    },
-    "src/Deluno.Worker/HealthChecks/Machine/KeepAwakeService.cs": {
-      "line": 50,
-      "branch": null
-    },
-    "src/Deluno.Worker/HealthChecks/Machine/MachineReaders.cs": {
-      "line": 55.55,
-      "branch": 63.23
-    },
-    "src/Deluno.Worker/Intake/IIntakeSyncService.cs": {
-      "line": 100,
-      "branch": null
-    },
-    "src/Deluno.Worker/Intake/IntakeSyncService.cs": {
-      "line": 56.76,
-      "branch": 39.07
-    },
-    "src/Deluno.Worker/Jobs/DownloadClientRetryGrabJobHandler.cs": {
-      "line": 100,
-      "branch": null
-    },
-    "src/Deluno.Worker/Jobs/EpisodeSearchJobHandler.cs": {
       "line": 100,
       "branch": 100
     },
-    "src/Deluno.Worker/Jobs/FilesystemImportExecuteJobHandler.cs": {
+    "src/Deluno.Worker/HealthChecks/Checks/HttpProxyReachabilityTester.cs": {
       "line": 100,
-      "branch": 50
+      "branch": 96.42
+    },
+    "src/Deluno.Worker/HealthChecks/Checks/IProxyReachabilityTester.cs": {
+      "line": 100,
+      "branch": null
+    },
+    "src/Deluno.Worker/HealthChecks/Checks/IndexerHealthCheck.cs": {
+      "line": 100,
+      "branch": 100
+    },
+    "src/Deluno.Worker/HealthChecks/Checks/KeepSeedingProblemHealthCheck.cs": {
+      "line": 100,
+      "branch": 100
+    },
+    "src/Deluno.Worker/HealthChecks/Checks/LibraryFolderChainHealthCheck.cs": {
+      "line": 92.72,
+      "branch": 89.28
+    },
+    "src/Deluno.Worker/HealthChecks/Checks/LibraryFolderOverlapHealthCheck.cs": {
+      "line": 100,
+      "branch": 100
+    },
+    "src/Deluno.Worker/HealthChecks/Checks/LibraryRootHealthCheck.cs": {
+      "line": 97.56,
+      "branch": 95.65
+    },
+    "src/Deluno.Worker/HealthChecks/Checks/LocalNetworkAuthHealthCheck.cs": {
+      "line": 100,
+      "branch": 62.5
+    },
+    "src/Deluno.Worker/HealthChecks/Checks/MachineHealthChecks.cs": {
+      "line": 100,
+      "branch": 97.82
+    },
+    "src/Deluno.Worker/HealthChecks/Checks/MediaServerRefreshHealthCheck.cs": {
+      "line": 100,
+      "branch": 100
+    },
+    "src/Deluno.Worker/HealthChecks/Checks/MetadataProviderHealthCheck.cs": {
+      "line": 100,
+      "branch": 83.33
+    },
+    "src/Deluno.Worker/HealthChecks/Checks/ProcessorHandoffHoldHealthCheck.cs": {
+      "line": 100,
+      "branch": 70
+    },
+    "src/Deluno.Worker/HealthChecks/Checks/ProcessorHealthCheck.cs": {
+      "line": 75.47,
+      "branch": 73.21
+    },
+    "src/Deluno.Worker/HealthChecks/Checks/ProcessorOutputImportIssueHealthCheck.cs": {
+      "line": 93.02,
+      "branch": 75
+    },
+    "src/Deluno.Worker/HealthChecks/Checks/ProcessorOutputSafetyNetHealthCheck.cs": {
+      "line": 90.54,
+      "branch": 86.44
+    },
+    "src/Deluno.Worker/HealthChecks/Checks/ProxyHealthCheck.cs": {
+      "line": 100,
+      "branch": 100
+    },
+    "src/Deluno.Worker/HealthChecks/Checks/RemotePathMappingHealthCheck.cs": {
+      "line": 75.39,
+      "branch": 68.75
+    },
+    "src/Deluno.Worker/HealthChecks/Checks/SearchQueuePauseHealthCheck.cs": {
+      "line": 100,
+      "branch": 100
+    },
+    "src/Deluno.Worker/HealthChecks/Checks/SystemDiskSpaceHealthCheck.cs": {
+      "line": 100,
+      "branch": 100
+    },
+    "src/Deluno.Worker/HealthChecks/Checks/SystemTimeHealthCheck.cs": {
+      "line": 100,
+      "branch": 100
+    },
+    "src/Deluno.Worker/HealthChecks/Checks/TagRoutingHealthCheck.cs": {
+      "line": 97.46,
+      "branch": 86.11
+    },
+    "src/Deluno.Worker/HealthChecks/Checks/TrackerSiteHealthCheck.cs": {
+      "line": 100,
+      "branch": 100
+    },
+    "src/Deluno.Worker/HealthChecks/HealthCheckHostedService.cs": {
+      "line": 83.05,
+      "branch": 91.66
+    },
+    "src/Deluno.Worker/HealthChecks/HealthCheckRunner.cs": {
+      "line": 98.11,
+      "branch": 92.85
+    },
+    "src/Deluno.Worker/HealthChecks/Machine/KeepAwakeService.cs": {
+      "line": 7.69,
+      "branch": 0
+    },
+    "src/Deluno.Worker/HealthChecks/Machine/MachineReaders.cs": {
+      "line": 52.67,
+      "branch": 53.75
+    },
+    "src/Deluno.Worker/Intake/IIntakeSyncService.cs": {
+      "line": 90.9,
+      "branch": null
+    },
+    "src/Deluno.Worker/Intake/IntakeSyncService.cs": {
+      "line": 83.9,
+      "branch": 65.11
+    },
+    "src/Deluno.Worker/Jobs/DownloadClientRetryGrabJobHandler.cs": {
+      "line": 93.06,
+      "branch": 66.66
+    },
+    "src/Deluno.Worker/Jobs/EpisodeSearchJobHandler.cs": {
+      "line": 89.76,
+      "branch": 96.32
+    },
+    "src/Deluno.Worker/Jobs/FilesystemImportExecuteJobHandler.cs": {
+      "line": 89.23,
+      "branch": 72.22
     },
     "src/Deluno.Worker/Jobs/IntakeSyncJobHandler.cs": {
       "line": 100,
-      "branch": null
+      "branch": 75
     },
     "src/Deluno.Worker/Jobs/JobHandlerRegistry.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Worker/Jobs/JobPayloads.cs": {
-      "line": 96.55,
+      "line": 93.96,
       "branch": 75
     },
     "src/Deluno.Worker/Jobs/LibraryImportExistingJobHandler.cs": {
-      "line": 50,
-      "branch": 0
+      "line": 100,
+      "branch": 87.5
     },
     "src/Deluno.Worker/Jobs/LibraryMediaProbeJobHandler.cs": {
-      "line": 90.32,
-      "branch": 50
+      "line": 95.97,
+      "branch": 91.89
     },
     "src/Deluno.Worker/Jobs/LibrarySearchJobHandler.cs": {
-      "line": 83.54,
-      "branch": 58.33
+      "line": 91.7,
+      "branch": 88.7
     },
     "src/Deluno.Worker/Jobs/LibrarySearchJobHandlers.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Worker/Jobs/LibrarySubtitleScanJobHandler.cs": {
-      "line": 47.22,
-      "branch": 12.5
+      "line": 80.85,
+      "branch": 63.79
     },
     "src/Deluno.Worker/Jobs/LibrarySubtitleSearchJobHandler.cs": {
-      "line": 71.42,
-      "branch": 16.66
+      "line": 99.11,
+      "branch": 88.23
     },
     "src/Deluno.Worker/Jobs/MediaServerRefreshJobHandler.cs": {
-      "line": 100,
-      "branch": null
+      "line": 90,
+      "branch": 75
     },
     "src/Deluno.Worker/Jobs/MediaServerRefreshRetryJobHandler.cs": {
-      "line": 100,
-      "branch": null
+      "line": 91.66,
+      "branch": 83.33
     },
     "src/Deluno.Worker/Jobs/MovieCollectionSyncJobHandler.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Worker/Jobs/MoviesCatalogRefreshJobHandler.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Worker/Jobs/MoviesMetadataRefreshJobHandler.cs": {
-      "line": 100,
-      "branch": null
+      "line": 98.68,
+      "branch": 91.17
     },
     "src/Deluno.Worker/Jobs/MoviesQualityRecalculateJobHandler.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Worker/Jobs/SearchExecutionSupport.cs": {
-      "line": 88.88,
-      "branch": 70
+      "line": 95.45,
+      "branch": 83.33
     },
     "src/Deluno.Worker/Jobs/SearchProfileBundles.cs": {
       "line": 100,
@@ -6928,190 +7244,198 @@
     },
     "src/Deluno.Worker/Jobs/SeasonSearchJobHandler.cs": {
       "line": 100,
-      "branch": null
+      "branch": 94.44
     },
     "src/Deluno.Worker/Jobs/SeriesCatalogRefreshJobHandler.cs": {
       "line": 100,
-      "branch": null
+      "branch": 87.5
     },
     "src/Deluno.Worker/Jobs/SeriesMetadataRefreshJobHandler.cs": {
-      "line": 100,
-      "branch": null
+      "line": 96.83,
+      "branch": 83.33
     },
     "src/Deluno.Worker/Jobs/SeriesQualityRecalculateJobHandler.cs": {
       "line": 100,
-      "branch": null
+      "branch": 100
     },
     "src/Deluno.Worker/Jobs/SubtitleSyncJobHandler.cs": {
-      "line": 86.2,
-      "branch": 50
+      "line": 95.52,
+      "branch": 75
     },
     "src/Deluno.Worker/Jobs/SubtitleTitleSearchJobHandler.cs": {
-      "line": 87.5,
-      "branch": 50
+      "line": 74.76,
+      "branch": 55
+    },
+    "src/Deluno.Worker/Jobs/TitleSearchJobHandlers.cs": {
+      "line": 95.68,
+      "branch": 80.95
     },
     "src/Deluno.Worker/MediaLibraryMembershipEndpoints.cs": {
       "line": 100,
-      "branch": 100
+      "branch": 94.44
     },
     "src/Deluno.Worker/RequestBodyLimits.cs": {
-      "line": 100,
-      "branch": 92.21
+      "line": 98.9,
+      "branch": 92.91
+    },
+    "src/Deluno.Worker/Security/ActivityAccountResetReporter.cs": {
+      "line": 75,
+      "branch": null
     },
     "src/Deluno.Worker/Security/ActivityLocalNetworkAuthChangeNotifier.cs": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/Seerr/SeerrAcquisitionService.cs": {
-      "line": 65.9,
-      "branch": null
+      "line": 98.9,
+      "branch": 93.39
     },
     "src/Deluno.Worker/Services/AnotherCopySearch.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Worker/Services/ArtworkRemoteUrls.cs": {
-      "line": 100,
-      "branch": null
+      "line": 10,
+      "branch": 0
     },
     "src/Deluno.Worker/Services/BackgroundServiceFailureMonitor.cs": {
-      "line": 98.03,
-      "branch": 86.36
+      "line": 82.91,
+      "branch": 82
     },
     "src/Deluno.Worker/Services/ContentBlocklistRemoteRefreshService.cs": {
-      "line": 100,
-      "branch": null
+      "line": 87.8,
+      "branch": 92.85
     },
     "src/Deluno.Worker/Services/DelunoHeartbeatWorker.cs": {
-      "line": 17.91,
-      "branch": 0
+      "line": 93.69,
+      "branch": 81.08
     },
     "src/Deluno.Worker/Services/DownloadClientReclaimGateway.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Worker/Services/DownloadProgressPublisher.cs": {
-      "line": 100,
-      "branch": 70
+      "line": 97.75,
+      "branch": 79.16
     },
     "src/Deluno.Worker/Services/DownloadThroughputSampler.cs": {
-      "line": 100,
-      "branch": null
+      "line": 95.91,
+      "branch": 100
     },
     "src/Deluno.Worker/Services/EpisodeFileLinkRepairService.cs": {
-      "line": 75,
-      "branch": null
-    },
-    "src/Deluno.Worker/Services/GivenUpDownloadRemoval.cs": {
-      "line": 100,
-      "branch": null
-    },
-    "src/Deluno.Worker/Services/HandledProblemsSettler.cs": {
-      "line": 87.09,
-      "branch": 50
-    },
-    "src/Deluno.Worker/Services/HandoffFileSelection.cs": {
-      "line": 100,
-      "branch": 50
-    },
-    "src/Deluno.Worker/Services/HistoryRetentionWorker.cs": {
-      "line": 80,
-      "branch": null
-    },
-    "src/Deluno.Worker/Services/ImportedDownloads.cs": {
       "line": 100,
       "branch": 100
+    },
+    "src/Deluno.Worker/Services/GivenUpDownloadRemoval.cs": {
+      "line": 93.33,
+      "branch": 66.66
+    },
+    "src/Deluno.Worker/Services/HandledProblemsSettler.cs": {
+      "line": 98.03,
+      "branch": 86.27
+    },
+    "src/Deluno.Worker/Services/HandoffFileSelection.cs": {
+      "line": 95.12,
+      "branch": 82.14
+    },
+    "src/Deluno.Worker/Services/HistoryRetentionWorker.cs": {
+      "line": 94.11,
+      "branch": 83.33
+    },
+    "src/Deluno.Worker/Services/ImportedDownloads.cs": {
+      "line": 96.15,
+      "branch": 72.22
     },
     "src/Deluno.Worker/Services/JobLaneStateBoard.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Worker/Services/JobLanes.cs": {
-      "line": 100,
-      "branch": null
+      "line": 99.39,
+      "branch": 100
     },
     "src/Deluno.Worker/Services/LaneRunner.cs": {
-      "line": 100,
-      "branch": null
+      "line": 96.38,
+      "branch": 94.73
     },
     "src/Deluno.Worker/Services/LaneSupervisor.cs": {
-      "line": 100,
-      "branch": 94.44
+      "line": 96.15,
+      "branch": 93.33
     },
     "src/Deluno.Worker/Services/MachineTelemetrySampler.cs": {
-      "line": 66.66,
-      "branch": null
+      "line": 94.33,
+      "branch": 92.85
     },
     "src/Deluno.Worker/Services/MislabelledEpisodeFileRepairService.cs": {
-      "line": 77.77,
-      "branch": 58.33
+      "line": 91.44,
+      "branch": 80
     },
     "src/Deluno.Worker/Services/ProcessorFailureReportHandler.cs": {
-      "line": 100,
-      "branch": null
+      "line": 94.93,
+      "branch": 80.95
     },
     "src/Deluno.Worker/Services/ProcessorHandoffSender.cs": {
-      "line": 100,
-      "branch": null
+      "line": 88.63,
+      "branch": 55.26
     },
     "src/Deluno.Worker/Services/ProcessorHandoffSubmission.cs": {
       "line": 100,
-      "branch": null
+      "branch": 93.75
     },
     "src/Deluno.Worker/Services/ProcessorHandoffTitleResolver.cs": {
-      "line": 100,
-      "branch": 83.33
+      "line": 92,
+      "branch": 71.73
     },
     "src/Deluno.Worker/Services/ProcessorHandoffWatcher.cs": {
-      "line": 100,
-      "branch": 90
+      "line": 95,
+      "branch": 91.47
     },
     "src/Deluno.Worker/Services/ProcessorHealthWatcher.cs": {
-      "line": 100,
-      "branch": null
+      "line": 93.18,
+      "branch": 95.23
     },
     "src/Deluno.Worker/Services/ProcessorOutcomeReporter.cs": {
-      "line": 100,
-      "branch": 100
+      "line": 85.24,
+      "branch": 62.5
     },
     "src/Deluno.Worker/Services/ProcessorOutputImportQueue.cs": {
-      "line": 78.43,
-      "branch": 55
+      "line": 93.72,
+      "branch": 81.94
     },
     "src/Deluno.Worker/Services/ProcessorOutputReadiness.cs": {
       "line": 100,
       "branch": null
     },
     "src/Deluno.Worker/Services/ProcessorOutputSweep.cs": {
-      "line": 80,
-      "branch": 75
+      "line": 84.82,
+      "branch": 80.88
     },
     "src/Deluno.Worker/Services/QbittorrentBlocklistSyncService.cs": {
-      "line": 87.5,
-      "branch": null
+      "line": 68.08,
+      "branch": 79.16
     },
     "src/Deluno.Worker/Services/ReleaseNameParser.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Worker/Services/RssSyncService.cs": {
-      "line": 92.85,
-      "branch": 50
+      "line": 98.56,
+      "branch": 86.66
     },
     "src/Deluno.Worker/Services/SharingTrackedFileCache.cs": {
-      "line": 100,
-      "branch": null
+      "line": 92.3,
+      "branch": 85.71
     },
     "src/Deluno.Worker/Services/SourceGoneRule.cs": {
-      "line": 100,
-      "branch": 100
+      "line": 95,
+      "branch": 90.62
     },
     "src/Deluno.Worker/Services/WorkPlanner.cs": {
-      "line": 43.8,
-      "branch": 60.27
+      "line": 90.8,
+      "branch": 78
     },
     "src/Deluno.Worker/SystemReadings/SlowValue.cs": {
-      "line": 93.33,
+      "line": 100,
       "branch": 100
     },
     "src/Deluno.Worker/SystemReadings/SystemOverviewEndpoints.cs": {
@@ -7119,19 +7443,27 @@
       "branch": null
     },
     "src/Deluno.Worker/SystemReadings/SystemOverviewFacts.cs": {
-      "line": 94.11,
-      "branch": 80
+      "line": 80,
+      "branch": 61.53
     },
     "src/Deluno.Worker/SystemReadings/SystemOverviewSampler.cs": {
-      "line": 88.23,
-      "branch": 100
+      "line": 93.65,
+      "branch": 91.66
     },
     "src/Deluno.Worker/SystemReadings/SystemOverviewService.cs": {
       "line": 100,
-      "branch": 69.11
+      "branch": 75
     },
     "src/Deluno.Worker/Testing/RealtimePushTestEndpoints.cs": {
-      "line": 0,
+      "line": 96.22,
+      "branch": 50
+    },
+    "src/Deluno.Worker/Testing/SeriesSeedTestEndpoints.cs": {
+      "line": 42,
+      "branch": null
+    },
+    "src/Deluno.Worker/Testing/TransfersSeedTestEndpoints.cs": {
+      "line": 49.13,
       "branch": 0
     },
     "src/Deluno.Worker/WorkerServiceCollectionExtensions.cs": {
