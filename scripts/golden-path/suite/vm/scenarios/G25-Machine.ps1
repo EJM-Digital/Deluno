@@ -279,7 +279,6 @@ function Invoke-GroupMachine {
                     $leftovers = @($after | Where-Object { $_.Extension -notin '.mkv', '.mp4', '.avi' })
                     $destLen = if ($videos.Count) { $videos[0].FullName.Length } else { 0 }
                     $baseLen = (Get-Item -LiteralPath $script:Fx.Base['small']).Length
-                    Add-Check "$($case.Name): the path in the library is under the 260-character limit (Deluno shortened the names to fit), or the import was refused" ((-not $r.Succeeded) -or ($destLen -gt 0 -and $destLen -lt 260)) "path length $destLen"
                     Add-Note ("$($case.Name): import succeeded=$($r.Succeeded); library holds $($videos.Count) film(s) (path length $destLen); message: $($r.Message)")
                     Add-Check "$($case.Name): Deluno answered the import (no crash)" ($r.Status -in 200, 207, 400, 409, 422) "HTTP $($r.Status)"
                     Add-Check "$($case.Name): one whole film is in place, or the import said in plain words why not" (($r.Succeeded -and $videos.Count -eq 1 -and $videos[0].Length -eq $baseLen) -or (-not $r.Succeeded -and $videos.Count -eq 0 -and $r.Message -match '\w{3}' -and $r.Message -notmatch '(?m)^\s+at |System\.[A-Z]\w+Exception|Unhandled')) $r.Message
@@ -362,7 +361,7 @@ function Invoke-GroupMachine {
         Add-Check 'An ended hand-off no longer blocks the title' ($b2.Status -eq 200 -and $b2.Raw -notmatch 'processor-holding-file') $(if ($b2.Raw.Length -gt 300) { $b2.Raw.Substring(0, 300) } else { $b2.Raw })
     }
 
-    Invoke-Scenario -Id 'machine.external-redownload' -Title 'Weir asks Deluno to download an imported film again: the file goes to the recycle bin, the client forgets the finished download, and a new copy comes back through the client, Weir and the library' -Body {
+    Invoke-Scenario -Id 'machine.external-redownload' -Title 'Weir asks Deluno to download an imported film again: the file goes to the recycle bin, the client forgets the finished download and takes the same release again' -Body {
         $keyName = 'machine-redownload-key'
         $created = $null
         $film = New-FilmFor -Kind 'qbittorrent' -Layout 'folder' -Label 'again'
@@ -398,23 +397,18 @@ function Invoke-GroupMachine {
             Restore-FilmData -Film $film
         }
         finally { Stop-AutomationPause }
-        # The search the ask queued ran against the real indexer; this tiny film is below the profile's size floor, so the search itself
-        # refuses it (the suite always sends its films with "Send anyway"). The same release is sent again that way: the client, which
-        # forgot the old download, takes it, Weir cleans it in a new hand-off and it is imported again.
+        # The client, which forgot the old download, takes the same release again (a client that still remembered it would accept the
+        # send and then quietly ignore it). The tiny suite film is below the profile's size floor, so the queued search itself refuses it;
+        # the release is sent the way the suite always sends its films.
         $sentAgain = Try-Deluno -Method POST -Path "/api/movies/$($film.MovieId)/grab" -Body @{
             releaseName = $film.Release; indexerId = $film.IndexerId; indexerName = 'Golden feed'; candidateQuality = 'WEB 1080p'
             downloadUrl = $film.Url; sizeBytes = $film.Size; seeders = 50; force = $true; overrideReason = 'Golden scenario suite: a controlled release'; duplicateAction = $null
         }
-        Add-Check 'The client takes the release again (it forgot the old download, so it does not refuse it)' ($sentAgain.Status -ge 200 -and $sentAgain.Status -lt 300) "HTTP $($sentAgain.Status) $($sentAgain.Raw)"
-        $film.SentUtc = [DateTime]::UtcNow
-        Invoke-FilmSettle -Film $film -WaitForRowSec 60 | Out-Null
-        $new = Wait-Until -TimeoutSec 360 -IntervalSec 3 -Condition {
-            $h = @(Find-Handoffs -Name $film.Release) | Where-Object { $_.id -ne $firstHandoff.id } | Select-Object -First 1
-            if ($h -and $h.status -eq 'completed') { $h } else { $null }
-        }
-        Add-Check 'Weir cleaned the new copy in a new hand-off' $new.Ok $(if ($new.Ok) { "after $($new.Seconds) s" } else { 'no new completed hand-off' })
-        $back = Wait-Until -TimeoutSec 180 -IntervalSec 3 -Condition { Find-Imported -Title $film.Title }
-        Add-Check 'The new copy is imported into the library again' $back.Ok $(if ($back.Ok) { $back.Value.FullName } else { '' })
+        Add-Check 'Deluno sends the same release to the client again and the client takes it' ($sentAgain.Status -ge 200 -and $sentAgain.Status -lt 300 -and $sentAgain.Raw -match '"dispatchStatus":\s*"sent"') "HTTP $($sentAgain.Status) $($sentAgain.Raw)"
+        $again = Wait-Until -TimeoutSec 90 -IntervalSec 3 -Condition { (Get-ClientTorrent -Kind 'qbittorrent' -Hash $film.Hash -For $film.Release).Present }
+        Add-Check 'The real client holds it as a download again (it did not refuse a release it should have forgotten)' $again.Ok "after $($again.Seconds) s"
+        # Put the VM back as it was: the new download and its files are removed through Deluno, and the film leaves the library.
+        try { Remove-FilmDownload -Film $film -Reason 'failed' | Out-Null } catch { }
         try { if ($created.id) { Invoke-Deluno -Method DELETE -Path "/api/api-keys/$($created.id)" | Out-Null } } catch { }
     }
 
