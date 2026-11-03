@@ -28,6 +28,10 @@ public sealed partial class ComponentSetupTests
         public bool Installed { get; set; } = true;
         public bool Marker { get; set; }
         public bool Running { get; set; }
+        public bool SessionZero { get; set; }
+        /// <summary>Whether running the install makes the service; false models session 0, where SABnzbd-console runs as a service host and exits with error 1063.</summary>
+        public bool InstallMakesService { get; set; } = true;
+        public bool InSessionZero() => SessionZero;
         public bool StopsWhenAsked { get; set; } = true;
         public bool ServiceExists() => Exists;
         public string? StartMode() => Mode;
@@ -46,9 +50,17 @@ public sealed partial class ComponentSetupTests
     {
         public List<string> Lines { get; } = [];
 
-        public void Run(string fileName, string arguments)
+        public List<string> WorkingDirectories { get; } = [];
+
+        public void Run(string fileName, string arguments, string? workingDirectory = null)
         {
             Lines.Add($"{fileName} {arguments}");
+            WorkingDirectories.Add(workingDirectory ?? "");
+            if (env is { InstallMakesService: true } && arguments.EndsWith(" install", StringComparison.Ordinal))
+            {
+                env.Exists = true;
+            }
+
             env?.Events.Add($"ran {fileName} {arguments}");
         }
     }
@@ -67,6 +79,57 @@ public sealed partial class ComponentSetupTests
 
         Assert.Equal([SabInstallLine, "sc.exe config SABnzbd start= auto", "sc.exe start SABnzbd"], runner.Lines);
         Assert.True(env.Marker);
+    }
+
+    [Fact]
+    public void The_install_runs_in_SABnzbds_own_folder_because_pywin32_finds_pythonservice_exe_relative_to_it()
+    {
+        var env = new FakeSabnzbdEnvironment();
+        var runner = new RecordingCommands(env);
+
+        Assert.True(Sab(runner, env).Register());
+
+        // Run from System32 it fails with "Can't find pythonservice.exe" (golden VM, 4 Nov 2026).
+        Assert.Equal(SabInstall, runner.WorkingDirectories[runner.Lines.IndexOf(SabInstallLine)]);
+    }
+
+    [Fact]
+    public void An_install_that_made_no_service_writes_no_marker_says_so_and_reports_failure()
+    {
+        var env = new FakeSabnzbdEnvironment { InstallMakesService = false };
+        var runner = new RecordingCommands(env);
+        var sab = Sab(runner, env);
+
+        Assert.False(sab.Register());
+
+        Assert.False(env.Marker);
+        Assert.Equal([SabInstallLine], runner.Lines); // no sc config or start for a service that is not there
+        Assert.Contains(env.Events, e => e.StartsWith("log: ", StringComparison.Ordinal) && e.Contains("could not be set up as a Windows service", StringComparison.Ordinal) && e.Contains("signed-in", StringComparison.Ordinal));
+        Assert.Equal(SabnzbdService.NotSetUpMessage, sab.Problem);
+    }
+
+    [Fact]
+    public void In_session_0_the_install_is_not_even_run_because_SABnzbd_cannot_install_itself_from_there()
+    {
+        var env = new FakeSabnzbdEnvironment { SessionZero = true };
+        var runner = new RecordingCommands(env);
+        var sab = Sab(runner, env);
+
+        Assert.False(sab.Register());
+
+        Assert.Empty(runner.Lines);
+        Assert.False(env.Marker);
+        Assert.Contains(env.Events, e => e.StartsWith("log: ", StringComparison.Ordinal) && e.Contains("signed-in", StringComparison.Ordinal));
+        Assert.Equal(SabnzbdService.NotSetUpMessage, sab.Problem);
+    }
+
+    [Fact]
+    public void A_failed_set_up_is_handed_back_to_the_caller_to_show_the_person()
+    {
+        var env = new FakeSabnzbdEnvironment { SessionZero = true };
+        var sab = Sab(new RecordingCommands(env), env);
+
+        Assert.Equal(SabnzbdService.NotSetUpMessage, ServiceManager.ApplySabnzbd(ServiceMode.ServiceLocalSystem, sab));
     }
 
     [Fact]
