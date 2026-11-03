@@ -25,7 +25,14 @@ function Invoke-TorrentScenario {
     if (-not $ver) { Add-Missing "$App : it did not answer its version call"; return }
     $A.Ver = $ver
     Save-State $App $ver 'version' 'The client''s own version call.' @($v)
-    Save-State $App $ver 'idle' 'Nothing added: the list of torrents when empty.' @((& $A.List $null))
+    $idleList = & $A.List $null
+    $idleExchanges = @($idleList)
+    # qBittorrent: Deluno asks each listed torrent for its trackers, so a client that already holds torrents also records those answers.
+    if ($App -eq 'qbittorrent') {
+        $held = @(Get-ReplyJson $idleList)
+        foreach ($t in $held) { if ($t.hash) { $idleExchanges += Send-Recorded -Client $global:QbClient -Path "/api/v2/torrents/trackers?hash=$($t.hash)" } }
+    }
+    Save-State $App $ver 'idle' 'Nothing added: the list of torrents when empty, and the trackers of each torrent the client already holds.' $idleExchanges
     $workDir = "C:\golden\recorded\$App\save"
     New-Item -ItemType Directory -Force -Path $workDir | Out-Null
 
