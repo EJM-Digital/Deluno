@@ -29,7 +29,7 @@ function Get-ScenarioPlan {
         @{ Name = 'subtitleswanted'; Function = 'Invoke-GroupSubtitlesWanted'; Ids = @('subtitleswanted.paging') }
         @{ Name = 'volumes'; Function = 'Invoke-GroupVolumes'; Ids = @('volumes.second-drive', 'volumes.exfat-volume', 'volumes.smb-share', 'volumes.dead-share') }
         @{ Name = 'importfaults'; Function = 'Invoke-GroupImportFaults'; Ids = @('importfaults.bad-files', 'importfaults.kill-mid-copy') }
-        @{ Name = 'machine'; Function = 'Invoke-GroupMachine'; Ids = @('machine.system-readings', 'machine.guide-contract', 'machine.browse-errors', 'machine.browse-unc-large', 'machine.picker-timeout', 'machine.long-path', 'machine.automation-off', 'machine.hub-pushes') }
+        @{ Name = 'machine'; Function = 'Invoke-GroupMachine'; Ids = @('machine.system-readings', 'machine.guide-contract', 'machine.browse-errors', 'machine.browse-unc-large', 'machine.picker-timeout', 'machine.long-path', 'machine.automation-off', 'machine.processor-hold', 'machine.external-redownload', 'machine.hub-pushes') }
         @{ Name = 'firewall'; Function = 'Invoke-GroupFirewall'; Ids = @('firewall.first-run-rule', 'firewall.screen-allow', 'firewall.screen-declined', 'firewall.tray-allow-and-revoke') }
         @{ Name = 'tray'; Function = 'Invoke-GroupTray'; Ids = @('tray.menu-actions', 'tray.change-port', 'tray.allowed-hosts-recovery', 'tray.red-when-host-fails', 'tray.serves-front-end') }
         @{ Name = 'traystates'; Function = 'Invoke-GroupTrayStates'; Ids = @('tray.dot-and-hover', 'tray.starting-dot', 'tray.menu-details', 'tray.quit') }

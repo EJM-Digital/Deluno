@@ -9,8 +9,9 @@
       machine.browse-unc-large  the folder browser on a share (\\localhost\...), a share that refuses the account, a mapped drive whose
                                 share has gone, and a folder of 5000 sub-folders
       machine.picker-timeout    a folder window nobody answers is closed after 90 s with 408 and the next ask is not refused as "already open"
-      machine.long-path         a destination that is longer than 260 characters, and one whose folder name is longer than 255, are each
-                                either imported whole or refused in plain words, with nothing half-copied left and the source whole
+      machine.long-path         with Windows long paths turned off (and Deluno started again), a destination of about 390 characters, and
+                                a title at the 195-character limit, are each either imported whole or refused in plain words, with nothing
+                                half-copied left and the source whole
       machine.automation-off    with automatic jobs off, a finished download sits in the client untouched (no hand-off, no import) and is
                                 taken as soon as they are switched on again
 #>
@@ -174,14 +175,14 @@ function Invoke-GroupMachine {
             $unc = Try-Deluno -Path ('/api/filesystem/directories?path=' + [uri]::EscapeDataString("\\localhost\$good"))
             Add-Check 'A share (\\localhost\...) lists its sub-folders' ($unc.Status -eq 200 -and @($unc.Data.entries).Count -eq 3) ("HTTP $($unc.Status), {0} entries in {1:N1} s" -f @($unc.Data.entries).Count, $t.Elapsed.TotalSeconds)
             $diagOk = Try-Deluno -Method POST -Path '/api/filesystem/path-diagnostics' -Body @{ path = "\\localhost\$good" }
-            Add-Check 'The path check on the share reads it and says it is a UNC path that needs the account to hold share permission' ($diagOk.Status -eq 200 -and $diagOk.Raw -match 'UNC path' -and $diagOk.Data.canRead) $diagOk.Raw
+            Add-Check 'The path check on the share reads it and says it is a UNC path that needs the account to hold share permission' ($diagOk.Status -eq 200 -and $diagOk.Raw -match 'UNC path' -and $diagOk.Data.readable) $diagOk.Raw
 
             $t.Restart()
             $no = Try-Deluno -Path ('/api/filesystem/directories?path=' + [uri]::EscapeDataString("\\localhost\$bad")) -TimeoutSec 60
             Add-Note ('The share that refuses the account answered HTTP ' + $no.Status + ' in ' + [math]::Round($t.Elapsed.TotalSeconds, 1) + ' s: ' + $no.Raw)
             Add-Check 'A share that refuses the account is not listed, and is a plain 403 or 404 in words, within 30 s (never a 500 or a hang)' ($no.Status -in 403, 404 -and $t.Elapsed.TotalSeconds -lt 30) ("HTTP $($no.Status) in {0:N1} s" -f $t.Elapsed.TotalSeconds)
             $diagNo = Try-Deluno -Method POST -Path '/api/filesystem/path-diagnostics' -Body @{ path = "\\localhost\$bad" }
-            Add-Check 'The path check on it says it cannot be read and points at network-share permission' ($diagNo.Status -eq 200 -and $diagNo.Data.canRead -eq $false -and $diagNo.Raw -match '(?i)UNC path|share') $diagNo.Raw
+            Add-Check 'The path check on it says it cannot be read and points at network-share permission' ($diagNo.Status -eq 200 -and $diagNo.Data.readable -eq $false -and $diagNo.Data.isUncPath -and $diagNo.Raw -match '(?i)UNC permissions|network-share permissions') $diagNo.Raw
 
             # A mapped drive whose share goes away.
             $free = [char[]]'ZYXWVUTSRQP' | Where-Object { -not (Test-Path "${_}:\") } | Select-Object -First 1
@@ -246,32 +247,38 @@ function Invoke-GroupMachine {
         finally { Remove-Job $job2 -Force -ErrorAction SilentlyContinue }
     }
 
-    Invoke-Scenario -Id 'machine.long-path' -Title 'A destination longer than 260 characters, and one with a folder name longer than 255, are imported whole or refused in plain words, never left half-copied' -Body {
+    Invoke-Scenario -Id 'machine.long-path' -Title 'With Windows long paths off, a destination over 260 characters is imported whole or refused in plain words, never left half-copied' -Body {
         $token = New-FilmToken
         $srcRoot = Join-Path $script:VolDir "src_Long$token"
         $libRoot = "C:\Media\Long$token"
+        $key = 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem'
+        $was = (Get-ItemProperty $key -Name LongPathsEnabled -ErrorAction SilentlyContinue).LongPathsEnabled
         $lib = $null
         try {
+            # The setting is read when a program starts, so Deluno is started again with it off.
+            Set-ItemProperty -Path $key -Name LongPathsEnabled -Value 0 -Type DWord
+            Get-Process -Name 'Deluno' -ErrorAction SilentlyContinue | Stop-Process -Force
+            Wait-Until -TimeoutSec 30 -IntervalSec 1 -Condition { -not (Get-Process -Name 'Deluno' -ErrorAction SilentlyContinue) } | Out-Null
+            Add-Check 'Windows long paths are off for the run, and Deluno started again' ((-not (Get-ItemProperty $key -Name LongPathsEnabled).LongPathsEnabled) -and (Restore-DelunoTray)) "was $was"
             $lib = New-VolumeLibrary -Name "Long $token" -Root $libRoot
-            $long = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled -ErrorAction SilentlyContinue).LongPathsEnabled
-            Add-Note "Windows' LongPathsEnabled setting: $long"
             foreach ($case in @(
-                    @{ Name = 'over 260 in all'; Pad = 120 },
-                    @{ Name = 'a folder name over 255'; Pad = 300 })) {
-                $title = ("Long $token " + ('Word' * [int]($case.Pad / 4))).Trim()
-                $src = New-VolumeSource -Folder $srcRoot -Title ('Src' + $token + $case.Pad)
+                    @{ Name = 'a path of about 390 characters'; Words = 40 },
+                    @{ Name = 'a title at the 195-character limit'; Words = 46 })) {
+                $title = ("Long $token " + ('Word' * $case.Words)).Trim()
+                $src = New-VolumeSource -Folder $srcRoot -Title ('Src' + $token + $case.Words)
                 $movie = New-VolumeMovie -Title $title -Library $lib
                 try {
                     $r = Invoke-VolumeImport -Source $src -Library $lib -Title $title -Mode 'copy' -Fallback $true
-                    $after = @(Get-ChildItem -LiteralPath ('\\?\' + $libRoot) -Recurse -File -Force -ErrorAction SilentlyContinue)
+                    $after = @(Get-ChildItem -LiteralPath ('\?\' + $libRoot) -Recurse -File -Force -ErrorAction SilentlyContinue)
                     $videos = @($after | Where-Object { $_.Extension -in '.mkv', '.mp4', '.avi' })
                     $leftovers = @($after | Where-Object { $_.Extension -notin '.mkv', '.mp4', '.avi' })
                     $destLen = if ($videos.Count) { $videos[0].FullName.Length } else { 0 }
+                    $baseLen = (Get-Item -LiteralPath $script:Fx.Base['small']).Length
                     Add-Note ("$($case.Name): import succeeded=$($r.Succeeded); library holds $($videos.Count) film(s) (path length $destLen); message: $($r.Message)")
                     Add-Check "$($case.Name): Deluno answered the import (no crash)" ($r.Status -in 200, 207, 400, 409, 422) "HTTP $($r.Status)"
-                    Add-Check "$($case.Name): the import either put one whole film in place or said in plain words why not" (($r.Succeeded -and $videos.Count -eq 1 -and $videos[0].Length -eq (Get-Item -LiteralPath $script:Fx.Base['small']).Length) -or (-not $r.Succeeded -and $videos.Count -eq 0 -and $r.Message -match '\w{3}' -and $r.Message -notmatch '(?m)^\s+at |System\.[A-Z]\w+Exception|Unhandled')) $r.Message
+                    Add-Check "$($case.Name): one whole film is in place, or the import said in plain words why not" (($r.Succeeded -and $videos.Count -eq 1 -and $videos[0].Length -eq $baseLen) -or (-not $r.Succeeded -and $videos.Count -eq 0 -and $r.Message -match '\w{3}' -and $r.Message -notmatch '(?m)^\s+at |System\.[A-Z]\w+Exception|Unhandled')) $r.Message
                     Add-Check "$($case.Name): no staging file or half-copy is left in the library" ($leftovers.Count -eq 0) (($leftovers | ForEach-Object { $_.Name }) -join '; ')
-                    Add-Check "$($case.Name): a refused import leaves the source file whole" ($r.Succeeded -or ((Test-Path -LiteralPath $src) -and (Get-Item -LiteralPath $src).Length -eq (Get-Item -LiteralPath $script:Fx.Base['small']).Length)) $(if ($r.Succeeded) { 'imported, so the copy import removed its checked original as it always does' } else { $src })
+                    Add-Check "$($case.Name): a refused import leaves the source file whole" ($r.Succeeded -or ((Test-Path -LiteralPath $src) -and (Get-Item -LiteralPath $src).Length -eq $baseLen)) $(if ($r.Succeeded) { 'imported, so the copy import removed its checked original as it always does' } else { $src })
                     $alive = Try-Deluno -Path '/api/system/health'
                     Add-Check "$($case.Name): Deluno still answers" ($alive.Status -eq 200) "HTTP $($alive.Status)"
                 }
@@ -280,7 +287,11 @@ function Invoke-GroupMachine {
         }
         finally {
             Remove-VolumeLibrary -Library $lib
-            Remove-Item -LiteralPath ('\\?\' + $libRoot), $srcRoot -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath ('\?\' + $libRoot), $srcRoot -Recurse -Force -ErrorAction SilentlyContinue
+            if ($null -ne $was) { Set-ItemProperty -Path $key -Name LongPathsEnabled -Value $was -Type DWord }
+            Get-Process -Name 'Deluno' -ErrorAction SilentlyContinue | Stop-Process -Force
+            Wait-Until -TimeoutSec 30 -IntervalSec 1 -Condition { -not (Get-Process -Name 'Deluno' -ErrorAction SilentlyContinue) } | Out-Null
+            Restore-DelunoTray | Out-Null
         }
     }
 
@@ -288,7 +299,7 @@ function Invoke-GroupMachine {
         $film = $null
         try {
             Start-AutomationPause
-            $film = Send-Film -Film (New-FilmFor -Kind 'qbittorrent' -Layout 'folder' -Label 'idle') -Kind 'qbittorrent'
+            $film = Send-Film -Film (New-FilmFor -Kind 'qbittorrent' -Layout 'file' -Label 'idle') -Kind 'qbittorrent'
             $fin = Wait-FilmFinished -Film $film -TimeoutSec 240
             Add-Check 'The real client finished the download' $fin.Ok "after $($fin.Seconds) s"
             Start-Sleep -Seconds 100 # reason: the quiet is the behaviour under test; the import pass runs every 15 s, so this is more than six passes
@@ -302,6 +313,89 @@ function Invoke-GroupMachine {
             Add-Check 'Switched on again, the same download is handed to Weir and imported' ($r.HandedOff -and $r.Settled -and $r.Imported) "handed $($r.HandedOff), settled $($r.Settled), imported $($r.Imported)"
         }
         finally { Stop-AutomationPause }
+    }
+
+    Invoke-Scenario -Id 'machine.processor-hold' -Title 'A hand-off still with Weir is named as what holds the file and can be cleared; Force a re-download resets it to waiting and keeps its record; once the hand-off ends it is no longer a blocker' -Body {
+        $film = New-FilmFor -Kind 'qbittorrent' -Layout 'file' -Size 'big' -Label 'hold'
+        Set-WeirPause -Paused $true
+        try {
+            $film = Send-Film -Film $film -Kind 'qbittorrent'
+            Wait-FilmFinished -Film $film -TimeoutSec 240 | Out-Null
+            $w = Wait-Until -TimeoutSec 180 -IntervalSec 1 -Condition {
+                $h = Get-FilmHandoff -Film $film
+                if ($h -and $h.status -in 'waiting', 'submitted', 'accepted', 'started') { $h } else { $null }
+            }
+            Add-Check 'A hand-off is in flight, held by the paused Weir' $w.Ok $(if ($w.Ok) { "status $($w.Value.status)" } else { 'none' })
+            if (-not $w.Ok) { return }
+            $handoff = $w.Value
+            $b = Try-Deluno -Path "/api/movies/$($film.MovieId)/acquisition-blockers"
+            Save-Evidence -Name 'machine-processor-hold-blockers.json' -Text $b.Raw
+            Add-Check 'The title''s blockers name the processor holding the file, in words, and say it can be cleared' ($b.Status -eq 200 -and $b.Raw -match 'processor-holding-file' -and $b.Raw -match '(?i)weir' -and $b.Raw -match 'still has this file') $(if ($b.Raw.Length -gt 400) { $b.Raw.Substring(0, 400) } else { $b.Raw })
+            $holder = @($b.Data.blockers | Where-Object { $_.kind -eq 'processor-holding-file' }) | Select-Object -First 1
+            if (-not $holder) { $holder = @($b.Data | Where-Object { $_.kind -eq 'processor-holding-file' }) | Select-Object -First 1 }
+            Add-Check 'It is marked clearable' ($holder -and $holder.canClear -eq $true) $(if ($holder) { "canClear $($holder.canClear)" } else { 'no such blocker' })
+            # Force a re-download clears it: the hand-off goes back to waiting, and its record stays.
+            $f = Try-Deluno -Method POST -Path "/api/movies/$($film.MovieId)/force-redownload"
+            Save-Evidence -Name 'machine-processor-hold-force.json' -Text $f.Raw
+            Add-Check 'Force a re-download answers and says it reset the hand-off' ($f.Status -eq 200 -and $f.Raw -match '(?i)reset the .* hand-off') $(if ($f.Raw.Length -gt 400) { $f.Raw.Substring(0, 400) } else { $f.Raw })
+            $after = @(Find-Handoffs -Name $film.Release)
+            Add-Check 'The hand-off record was kept, not deleted (the same record is still there)' (@($after | Where-Object { $_.id -eq $handoff.id }).Count -eq 1) "records: $($after.Count)"
+        }
+        finally { try { Set-WeirPause -Paused $false } catch { Write-SuiteLog "   could not resume Weir: $($_.Exception.Message)" } }
+        # Weir works again: the hand-off ends one way or another, and an ended hand-off is no blocker.
+        $end = Wait-Until -TimeoutSec 300 -IntervalSec 3 -Condition {
+            $h = @(Find-Handoffs -Name $film.Release) | Where-Object { $_.id -eq $handoff.id } | Select-Object -First 1
+            if ($h -and $h.status -in 'completed', 'failed', 'rejected', 'lost', 'timed-out', 'stalled', 'cancelled', 'released') { $h } else { $null }
+        }
+        Add-Check 'The hand-off ended once Weir worked again' $end.Ok $(if ($end.Ok) { "status $($end.Value.status)" } else { 'still open' })
+        $b2 = Try-Deluno -Path "/api/movies/$($film.MovieId)/acquisition-blockers"
+        Add-Check 'An ended hand-off no longer blocks the title' ($b2.Status -eq 200 -and $b2.Raw -notmatch 'processor-holding-file') $(if ($b2.Raw.Length -gt 300) { $b2.Raw.Substring(0, 300) } else { $b2.Raw })
+    }
+
+    Invoke-Scenario -Id 'machine.external-redownload' -Title 'Weir asks Deluno to download an imported film again: the file goes to the recycle bin, the client forgets the finished download, and the new copy comes back through the workflow and Weir' -Body {
+        $keyName = 'machine-redownload-key'
+        $created = $null
+        $film = New-FilmFor -Kind 'qbittorrent' -Layout 'folder' -Label 'again'
+        $film = Send-Film -Film $film -Kind 'qbittorrent'
+        $r = Wait-FilmImported -Film $film
+        Add-Check 'The film came in the normal way first (client, Weir, library)' ($r.Imported -and $r.Settled) "imported $($r.Imported)"
+        if (-not $r.Imported) { return }
+        $path = $r.File.FullName
+        $firstHandoff = Get-FilmHandoff -Film $film
+        $before = Get-ClientTorrent -Kind 'qbittorrent' -Hash $film.Hash -For $film.Release
+        Add-Check 'The real client still remembers the finished download' ([bool]$before.Present) ''
+        try {
+            $created = Invoke-Deluno -Method POST -Path '/api/api-keys' -Body @{ name = $keyName; scopes = 'read,imports' }
+            $script:S.Secrets['machine-redownload-key'] = [string]$created.apiKey
+            ($script:S.Secrets | ConvertTo-Json) | Set-Content -Path $script:S.SecretFile -Encoding ascii
+            # The search must not run before the film's data is back where the client looks for it, so automatic jobs wait.
+            Start-AutomationPause
+            $body = @{ path = $path; reason = 'Keep another audio track (suite)'; tool = 'Weir' } | ConvertTo-Json
+            $resp = $null; $status = 0
+            try { $resp = Invoke-WebRequest -Uri "$($script:S.DelunoUrl)/api/integrations/external/redownload" -Method Post -Headers @{ 'X-Api-Key' = (Get-SuiteSecret 'machine-redownload-key') } -ContentType 'application/json' -Body $body -UseBasicParsing -TimeoutSec 60; $status = [int]$resp.StatusCode }
+            catch { $status = [int]$_.Exception.Response.StatusCode; $resp = $_.Exception.Response }
+            $raw = if ($resp -is [Microsoft.PowerShell.Commands.WebResponseObject]) { [string]$resp.Content } else { '' }
+            Save-Evidence -Name 'machine-redownload-answer.json' -Text $raw
+            Add-Check 'Deluno answers 202 with the file removed and a search queued' ($status -eq 202 -and $raw -match '"fileRemoved":\s*true' -and $raw -match '"searchJobId":\s*"') "HTTP $status $raw"
+            Add-Check 'The file is out of the library (in the recycle bin)' (-not (Test-Path -LiteralPath $path)) $path
+            $bin = Try-Deluno -Path '/api/recycle-bin?take=200'
+            Add-Check 'The recycle bin lists it' ($bin.Status -eq 200 -and $bin.Raw -match [regex]::Escape($film.Title)) "HTTP $($bin.Status)"
+            $gone = Wait-Until -TimeoutSec 60 -IntervalSec 2 -Condition { -not (Get-ClientTorrent -Kind 'qbittorrent' -Hash $film.Hash -For $film.Release).Present }
+            Add-Check 'The real client forgot the finished download it still remembered' $gone.Ok "after $($gone.Seconds) s"
+            $said = Wait-Until -TimeoutSec 30 -IntervalSec 2 -Condition { @(Get-ActivityText | Where-Object { $_ -match 'Weir asked Deluno to download' -and $_ -match [regex]::Escape($film.Title) }).Count -gt 0 }
+            Add-Check 'Activity says Weir asked for a new download, the file is in the recycle bin and a search has started' $said.Ok ''
+            # The data is put back where the client looks for it, as a fresh download would find it; then the queued search may run.
+            Restore-FilmData -Film $film
+        }
+        finally { Stop-AutomationPause }
+        $new = Wait-Until -TimeoutSec 360 -IntervalSec 3 -Condition {
+            $h = @(Find-Handoffs -Name $film.Release) | Where-Object { $_.id -ne $firstHandoff.id } | Select-Object -First 1
+            if ($h -and $h.status -eq 'completed') { $h } else { $null }
+        }
+        Add-Check 'The search found the release again, the client downloaded it and Weir processed it in a new hand-off' $new.Ok $(if ($new.Ok) { "after $($new.Seconds) s" } else { 'no new completed hand-off' })
+        $back = Wait-Until -TimeoutSec 180 -IntervalSec 3 -Condition { Find-Imported -Title $film.Title }
+        Add-Check 'The new copy is imported into the library again' $back.Ok $(if ($back.Ok) { $back.Value.FullName } else { '' })
+        try { if ($created.id) { Invoke-Deluno -Method DELETE -Path "/api/api-keys/$($created.id)" | Out-Null } } catch { }
     }
 
     Invoke-Scenario -Id 'machine.hub-pushes' -Title 'A real grab, download and import push what a person sees to a browser connected to the hub, in order: the journey stages, the progress and Activity' -Body {
