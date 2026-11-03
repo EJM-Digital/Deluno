@@ -264,13 +264,7 @@ test("a workflow with no permissions block, a write grant at the top, or a job w
 test("only the release workflow's publish jobs hold a write permission or a registry login", () => {
   for (const name of readdirSync(path.join(root, ".github", "workflows")).filter((file) => file.endsWith(".yml") && file !== "release.yml")) {
     const text = read(`.github/workflows/${name}`);
-    if (name === "copy-former-images.yml") {
-      // The one-off copy of the former package to the current name (PLAN-ORG-MOVE.md): by hand only, and it may write packages.
-      assert.match(text, /on:\s+workflow_dispatch:\s+permissions:/, `${name} must run by hand only`);
-      assert.doesNotMatch(text, /push:|pull_request|schedule:/, `${name} must run by hand only`);
-    } else {
-      assert.doesNotMatch(text, /packages: write/, `${name} must not publish a package`);
-    }
+    assert.doesNotMatch(text, /packages: write/, `${name} must not publish a package`);
     assert.doesNotMatch(text, /docker\/login-action/, `${name} must not log in to a registry`);
   }
   const release = read(".github/workflows/release.yml");
@@ -366,7 +360,7 @@ test("every skip in a smoke spec says why, and each reason is one of the few tha
 
 test("the dependency audit runs weekly, fails when an installed NuGet package or a production npm package has a known advisory", () => {
   const audit = read(".github/workflows/audit.yml");
-  assert.match(audit, /schedule:\s*\n\s*#.*\n\s*- cron: "[^"]+ \* \* 1"/, "weekly, on a Monday");
+  assert.match(audit, /schedule:\s*\n\s*#.*\n\s*- cron: "[^"]+ \* \* 0"/, "weekly, on a Sunday (Sunday night in Sydney)");
   assert.match(audit, /dotnet list Deluno\.slnx package --vulnerable --include-transitive/);
   assert.match(audit, /grep -q "has the following vulnerable packages" audit\.txt[\s\S]*?exit 1/, "the report is read, because the command exits 0 either way");
   assert.match(audit, /npm audit --omit=dev --audit-level=high/);

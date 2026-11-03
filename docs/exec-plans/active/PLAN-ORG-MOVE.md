@@ -64,7 +64,7 @@ Do these in one commit on `main` and push once:
 
 1. The owner transfers `jampat000/Deluno` to `EJM-Digital/Deluno`.
 2. Set the remotes (step 6) and push the flip commit once.
-3. Run `copy-former-images.yml` (Actions, "Run workflow"). It prints a table of every tag and digest and fails on any missing or
+3. Done 23 Oct 2026: `copy-former-images.yml` ran and passed; the workflow was removed on 1 Nov 2026 (it held `packages: write` and had no further use). It prints a table of every tag and digest and fails on any missing or
    different one.
 4. Verify: pull a few tags by the new name (an old release, a release candidate, a `sha256-*` attestation tag) and compare digests
    with the old name.

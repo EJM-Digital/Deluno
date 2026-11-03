@@ -34,7 +34,9 @@ $ErrorActionPreference = "Stop"
 
 # The pin.
 $url = "https://www.rarlab.com/rar/unrarw64.exe"
-$pinnedSha256 = "fecc0aa6d3f5434113bc32d4d151c2e9e0938155f71c356ed150bcecf3770f21"
+# Pinned 1 Nov 2026 after checking the Authenticode signature (valid, win.rar GmbH, Berlin). rarlab has no versioned
+# address for this file (only the current unrarw64.exe; the other versioned files are the DLL beta and the source).
+$pinnedSha256 = "89276cb1155b70ce8a1678311b78ce72485c9bebe7127882358da7ed48b85a9c"
 
 if ($RuntimeIdentifier -ne "win-x64") {
     throw "fetch-unrar.ps1 only knows win-x64; $RuntimeIdentifier needs its own download."

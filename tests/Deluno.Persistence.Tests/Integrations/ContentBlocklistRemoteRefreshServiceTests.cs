@@ -105,13 +105,17 @@ public sealed class ContentBlocklistRemoteRefreshServiceTests
             ContentBlocklistSettings.Default with { Enabled = true, RemoteUrl = "https://example.test/blocklist.txt" },
             CancellationToken.None);
         var handler = new CountingHandler("*.exe\n");
-        using var service = CreateService(health, handler, clock);
+        var timers = new TimerWatchingTimeProvider(clock);
+        using var service = CreateService(health, handler, timers);
 
         await service.StartAsync(CancellationToken.None);
         try
         {
             Assert.True(await handler.NextFetch());
             Assert.Equal(1, handler.Fetches);
+            // The service answers the fetch, saves it, and only then sets its four-hour wait. Moving the clock before that wait is
+            // set would start the four hours from the moved time, so the test waits for the wait to be set.
+            Assert.True(await timers.NextTimer());
 
             clock.Advance(TimeSpan.FromHours(3) + TimeSpan.FromMinutes(59));
             // reason: proving that nothing more is fetched needs a short real wait; the clock is fake and cannot be waited on.
@@ -121,6 +125,7 @@ public sealed class ContentBlocklistRemoteRefreshServiceTests
             clock.Advance(TimeSpan.FromMinutes(1));
             Assert.True(await handler.NextFetch());
             Assert.Equal(2, handler.Fetches);
+            Assert.True(await timers.NextTimer());
         }
         finally
         {
@@ -138,6 +143,26 @@ public sealed class ContentBlocklistRemoteRefreshServiceTests
             new SingleScopeFactory(provider),
             new Factory(handler),
             time);
+    }
+
+    /// <summary>A clock that tells the test each time the service sets a wait on it, so the test never races the service.</summary>
+    private sealed class TimerWatchingTimeProvider(FakeTimeProvider inner) : TimeProvider
+    {
+        private readonly SemaphoreSlim _created = new(0);
+
+        public override DateTimeOffset GetUtcNow() => inner.GetUtcNow();
+        public override long GetTimestamp() => inner.GetTimestamp();
+        public override long TimestampFrequency => inner.TimestampFrequency;
+        public override TimeZoneInfo LocalTimeZone => inner.LocalTimeZone;
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = inner.CreateTimer(callback, state, dueTime, period);
+            _created.Release();
+            return timer;
+        }
+
+        public Task<bool> NextTimer() => _created.WaitAsync(TimeSpan.FromSeconds(30));
     }
 
     private sealed class SingleScopeFactory(IServiceProvider services) : IServiceScopeFactory

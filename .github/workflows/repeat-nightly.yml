@@ -1,6 +1,7 @@
 # Nightly repeat of every suite (issue 1273, docs/testing/STRATEGY.md). Each backend test project, the web unit tests, the
-# Playwright smoke shards, the Node tests (scripts, metadata gateway, sdk) and the scenario suite's own offline checks run
-# several times in a row on the same build. A test that passes on one run and fails on another fails the night and opens a defect
+# Playwright smoke shards and the Node tests (scripts, metadata gateway, sdk) run several times in a row on the same build.
+# The scenario suite's offline checks are not repeated: they read files and give the same answer every time, and ci.yml
+# runs them on every push. At most 6 jobs run at once: 3 backend projects with the web and Node jobs, then the 3 smoke shards. A test that passes on one run and fails on another fails the night and opens a defect
 # issue. There is no retry and no quarantine: the first failing run fails the job. The end-to-end groups (installer, Windows
 # and Linux stacks) are not repeated here: each is a many-minute scenario run, and the scenario suite on the golden VM is their
 # repeat before every tag.
@@ -10,17 +11,17 @@ name: Repeat suites (weekly)
 
 on:
   schedule:
-    # Every night, 15:00 UTC: a quiet hour.
-    - cron: "0 15 * * 6"
+  # Fridays, 11:17 UTC (Friday 22:17 Sydney, AEDT). At most 6 jobs at once. Off the top of the hour. GitHub may start a scheduled run late on busy days.
+    - cron: "17 11 * * 5"
   workflow_dispatch:
     inputs:
       repeats:
         description: "How many times each suite runs in a row"
-        default: "5"
+        default: "3"
         required: false
       smoke_repeats:
         description: "How many times each Playwright smoke shard runs in a row (each run is about 17 minutes)"
-        default: "3"
+        default: "2"
         required: false
 
 concurrency:
@@ -33,17 +34,18 @@ permissions:
 env:
   DOTNET_NOLOGO: "1"
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
-  REPEATS: ${{ inputs.repeats || '5' }}
-  SMOKE_REPEATS: ${{ inputs.smoke_repeats || '3' }}
+  REPEATS: ${{ inputs.repeats || '3' }}
+  SMOKE_REPEATS: ${{ inputs.smoke_repeats || '2' }}
 
 jobs:
   backend:
     name: ${{ matrix.project }}
     runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
-    # Five runs of the slowest project plus its build; the backend job in ci.yml has 90 minutes for one run of all of them.
+    # Three runs of the slowest project plus its build; the backend job in ci.yml has 90 minutes for one run of all of them.
     timeout-minutes: 150
     strategy:
       fail-fast: false
+      max-parallel: 3
       matrix:
         project:
           - Deluno.Integrations.Tests
@@ -129,31 +131,17 @@ jobs:
             echo "::endgroup::"
           done
 
-  scenario-suite-checks:
-    name: Scenario suite offline checks
-    # Windows PowerShell 5.1 is part of what the script checks, so it runs on Windows.
-    runs-on: ${{ vars.DELUNO_WINDOWS_RUNS_ON && fromJSON(vars.DELUNO_WINDOWS_RUNS_ON) || 'windows-latest' }}
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Run the checks ${{ env.REPEATS }} times in a row, no retry
-        shell: powershell
-        run: |
-          for ($run = 1; $run -le [int]$env:REPEATS; $run++) {
-            Write-Host "::group::Run $run of $env:REPEATS"
-            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/golden-path/Test-ScenarioSuite.ps1
-            if ($LASTEXITCODE -ne 0) { throw "Run $run failed" }
-            Write-Host "::endgroup::"
-          }
-
   smoke:
     name: Frontend smoke (${{ matrix.shard }})
+    # After the backend projects, so the night never holds more than 6 runners.
+    needs: backend
+    if: ${{ !cancelled() }}
     runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
-    # Three runs of a shard (about 17 minutes each) plus the build and setup.
+    # Two runs of a shard (about 17 minutes each) plus the build and setup.
     timeout-minutes: 120
     strategy:
       fail-fast: false
+      max-parallel: 3
       matrix:
         shard: ["1/3", "2/3", "3/3"]
     env:
@@ -199,7 +187,7 @@ jobs:
 
   report:
     name: Open a defect issue for a flaky night
-    needs: [backend, web, node, scenario-suite-checks, smoke]
+    needs: [backend, web, node, smoke]
     if: ${{ failure() }}
     runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 5

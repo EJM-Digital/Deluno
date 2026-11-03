@@ -330,7 +330,11 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
     }
     if (!stage) continue;
     if (stage === "importing" && !landed && state.tone !== "bad" && importingNow.has(releaseKey(item.releaseName))) state = { tone: "info", label: IMPORTING_NOW };
+    // The client's name for the download may differ from the one Deluno sent it under (a file extension, a folder): the sent
+    // record and the hand-off name the same download, so neither draws a second card for it.
     seenReleases.add(releaseKey(item.releaseName));
+    if (dispatch) seenReleases.add(releaseKey(dispatch.releaseName));
+    if (handoff) seenReleases.add(releaseKey(handoff.releaseName));
     const entity = entityOf(dispatch);
     if (stage === "processor" && handoff && (isProcessorFailure(handoff.status) || Boolean(handoff.failureMessage)) && !reason) reason = handoff.failureMessage;
     const moving = stage === "downloading" && !stuck && item.status === "downloading";
@@ -416,11 +420,14 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
     const release = releaseKey(dispatch.releaseName);
     if (seenReleases.has(release) || endedReleases.has(release)) continue;
     if (dispatchByRelease.get(release) !== dispatch) continue;
+    // The client's card for this torrent has this key already (found under another name): the board holds one card per key.
+    const key = dispatch.downloadClientId && dispatch.torrentHashOrItemId ? `${dispatch.downloadClientId}:${dispatch.torrentHashOrItemId}` : `sent:${dispatch.id}`;
+    if (cards.some((card) => card.key.toLowerCase() === key.toLowerCase())) continue;
     seenReleases.add(release);
     const entity = entityOf(dispatch);
     const client = short(dispatch.downloadClientName);
     cards.push({
-      key: dispatch.downloadClientId && dispatch.torrentHashOrItemId ? `${dispatch.downloadClientId}:${dispatch.torrentHashOrItemId}` : `sent:${dispatch.id}`,
+      key,
       stage: "grabbed",
       title: titleFromRelease(dispatch.releaseName),
       release: dispatch.releaseName,
