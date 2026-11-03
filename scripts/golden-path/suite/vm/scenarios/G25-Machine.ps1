@@ -255,6 +255,7 @@ function Invoke-GroupMachine {
         $token = New-FilmToken
         $srcRoot = Join-Path $script:VolDir "src_Long$token"
         $libRoot = "C:\Media\Long$token"
+        $longPrefix = ([string][char]92) * 2 + '?' + [char]92 # the extended-length prefix
         $key = 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem'
         $was = (Get-ItemProperty $key -Name LongPathsEnabled -ErrorAction SilentlyContinue).LongPathsEnabled
         $lib = $null
@@ -273,7 +274,7 @@ function Invoke-GroupMachine {
                 $movie = New-VolumeMovie -Title $title -Library $lib
                 try {
                     $r = Invoke-VolumeImport -Source $src -Library $lib -Title $title -Mode 'copy' -Fallback $true
-                    $after = @(Get-ChildItem -LiteralPath ('\?\' + $libRoot) -Recurse -File -Force -ErrorAction SilentlyContinue)
+                    $after = @(try { [System.IO.Directory]::EnumerateFiles($longPrefix + $libRoot, '*', [System.IO.SearchOption]::AllDirectories) | ForEach-Object { New-Object System.IO.FileInfo $_ } } catch { })
                     $videos = @($after | Where-Object { $_.Extension -in '.mkv', '.mp4', '.avi' })
                     $leftovers = @($after | Where-Object { $_.Extension -notin '.mkv', '.mp4', '.avi' })
                     $destLen = if ($videos.Count) { $videos[0].FullName.Length } else { 0 }
@@ -291,7 +292,8 @@ function Invoke-GroupMachine {
         }
         finally {
             Remove-VolumeLibrary -Library $lib
-            Remove-Item -LiteralPath ('\?\' + $libRoot), $srcRoot -Recurse -Force -ErrorAction SilentlyContinue
+            try { [System.IO.Directory]::Delete($longPrefix + $libRoot, $true) } catch { }
+            Remove-Item -LiteralPath $srcRoot -Recurse -Force -ErrorAction SilentlyContinue
             if ($null -ne $was) { Set-ItemProperty -Path $key -Name LongPathsEnabled -Value $was -Type DWord }
             Get-Process -Name 'Deluno' -ErrorAction SilentlyContinue | Stop-Process -Force
             Wait-Until -TimeoutSec 30 -IntervalSec 1 -Condition { -not (Get-Process -Name 'Deluno' -ErrorAction SilentlyContinue) } | Out-Null
