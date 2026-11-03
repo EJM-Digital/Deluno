@@ -37,7 +37,7 @@
 [data-live-grid="shared"] .lb-now { height: 100%; grid-template-rows: minmax(0, 1fr); }
 [data-live-grid="shared"] .lb-now > .lb-tile { height: 100%; }
 .lb-tile .lb-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; }
-.lb-label { color: var(--lb-muted); }
+.lb-label { color: var(--lb-muted); line-height: calc(var(--type-micro) * 16 / 11); }
 a.lb-label:hover { color: hsl(var(--foreground)); }
 .lb-aside { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lb-aside a { color: inherit; }

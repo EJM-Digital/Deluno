@@ -1207,7 +1207,7 @@ html,
     the eyebrow line above the title pushes the title down by its own height, so half of that, plus the 1.75px between
     the title's line box and its letters (the owner, 2 Oct 2026: "aligned to the heading"). Used from lg up.
   */
-  --title-line-shift: calc(var(--section-eyebrow-size) * 1.35 / 2 + 1.75px);
+  --title-line-shift: calc(var(--section-eyebrow-size) * 14 / 11 / 2 + 1.75px);
   --section-subtitle-size: calc(14px * var(--font-scale));
 }
 

@@ -809,7 +809,7 @@ function SidebarItem({
 
 function TopbarTitle({ as: Tag, children }: { as: "h1" | "p"; children: React.ReactNode }) {
   return (
-    <Tag className="mt-0.5 font-display text-(length:--type-title-sm) font-semibold leading-[1.15] tracking-tight text-foreground sm:mt-1 sm:text-(length:--type-title-md)">
+    <Tag className="mt-0.5 font-display text-(length:--type-title-sm) font-semibold leading-[1.15] tracking-[-0.03em] text-foreground sm:mt-1 sm:text-(length:--type-title-md)">
       {children}
     </Tag>
   );
@@ -856,7 +856,7 @@ function ContentTopbar({
         <div id="topbar-main" className="flex min-w-0 flex-1 items-center gap-[calc(var(--grid-gap)*2)]">
         <div className="min-w-0 flex-1">
           {/* One line, always: with the page's buttons beside it a long one wrapped to three and the header grew. */}
-          <p title={typeof subtitle === "string" ? subtitle : undefined} className="truncate max-md:whitespace-normal max-md:break-words text-(length:--section-eyebrow-size) font-bold uppercase leading-[1.35] tracking-[0.14em] text-muted-foreground">{subtitle}</p>
+          <p title={typeof subtitle === "string" ? subtitle : undefined} className="truncate max-md:whitespace-normal max-md:break-words text-(length:--section-eyebrow-size) font-bold uppercase leading-[calc(var(--section-eyebrow-size)*14/11)] tracking-[0.14em] text-muted-foreground">{subtitle}</p>
           {/* The topbar is the page heading everywhere except a detail route, where
               it names the section and the page's own title is the h1. Two h1s on one
               document is what this avoids. A page that has tabs (the Dashboard) puts them on the title's own line,
