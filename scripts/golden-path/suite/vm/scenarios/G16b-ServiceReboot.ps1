@@ -31,6 +31,14 @@ function Invoke-ServiceRebootScenario {
         $trayFile = Join-Path $env:LOCALAPPDATA 'DelunoConfig\deluno.json'
         New-Item -ItemType Directory -Force -Path $shared | Out-Null
         if (Test-Path $trayFile) { Copy-Item -LiteralPath $trayFile -Destination (Join-Path $shared 'deluno.json') -Force }
+        # The service reads this copy to find the person's data. The tray file can be missing or name another folder than the one the
+        # install used (rc.30.37 run, 3 Nov: it said C:\ProgramData\Deluno\data while the install, and the list of clients to start, were under
+        # DelunoData, so the service looked in an empty folder and started no client). What the Run as a Windows service dialog shares is
+        # the folder in use, so the copy names the folder the clients' list was read from.
+        $sharedFile = Join-Path $shared 'deluno.json'
+        $sharedSettings = if (Test-Path $sharedFile) { Get-Content -Raw $sharedFile | ConvertFrom-Json } else { [pscustomobject]@{ port = $port } }
+        $sharedSettings | Add-Member -NotePropertyName dataRoot -NotePropertyValue $dataRoot -Force
+        Set-Content -Path $sharedFile -Value ($sharedSettings | ConvertTo-Json) -Encoding utf8
         $null = Quit-DelunoFromTray
         & $exe.FullName --install-service | Out-Null
         $up = Wait-Until -TimeoutSec 240 -IntervalSec 3 -Condition { Test-DelunoAnswering }
