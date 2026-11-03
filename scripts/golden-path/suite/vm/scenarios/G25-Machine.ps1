@@ -26,6 +26,61 @@ function New-ManyFolders {
     for ($i = 1; $i -le $Count; $i++) { [void][System.IO.Directory]::CreateDirectory((Join-Path $Root ('folder{0:D5}' -f $i))) }
 }
 
+# ---------------------------------------------------------------- the live hub, read the way the browser reads it
+
+# Opens Deluno's SignalR hub (JSON protocol) over a WebSocket with the signed-in token, joins the subjects and returns the connection.
+function Open-HubConnection {
+    param([string[]] $Subjects = @('live', 'queue', 'activity'))
+    $neg = Try-Deluno -Method POST -Path '/hubs/deluno/negotiate?negotiateVersion=1'
+    if ($neg.Status -ne 200) { throw "The hub's negotiate answered $($neg.Status). $($neg.Raw)" }
+    $id = if ($neg.Data.connectionToken) { $neg.Data.connectionToken } else { $neg.Data.connectionId }
+    $wsUrl = ($script:S.DelunoUrl -replace '^http', 'ws') + '/hubs/deluno?id=' + [uri]::EscapeDataString($id) + '&access_token=' + [uri]::EscapeDataString($script:S.Token)
+    $ws = New-Object System.Net.WebSockets.ClientWebSocket
+    $ws.ConnectAsync([uri]$wsUrl, [Threading.CancellationToken]::None).Wait(15000) | Out-Null
+    $conn = [pscustomobject]@{ Ws = $ws; Buffer = (New-Object byte[] 65536); Pending = $null; Text = (New-Object Text.StringBuilder); Messages = (New-Object System.Collections.ArrayList); Handshaken = $false }
+    Send-HubText -Connection $conn -Text '{"protocol":"json","version":1}'
+    $deadline = (Get-Date).AddSeconds(15)
+    while ((Get-Date) -lt $deadline -and -not $conn.Handshaken) { Read-HubMessages -Connection $conn -WaitMs 300 }
+    Send-HubText -Connection $conn -Text ('{"type":1,"invocationId":"1","target":"Subscribe","arguments":[[' + (($Subjects | ForEach-Object { '"' + $_ + '"' }) -join ',') + ']]}')
+    $conn
+}
+
+function Send-HubText {
+    param([Parameter(Mandatory)] $Connection, [Parameter(Mandatory)] [string] $Text)
+    $bytes = [Text.Encoding]::UTF8.GetBytes($Text + [char]0x1e)
+    $seg = New-Object 'System.ArraySegment[byte]' -ArgumentList (, $bytes)
+    $Connection.Ws.SendAsync($seg, [System.Net.WebSockets.WebSocketMessageType]::Text, $true, [Threading.CancellationToken]::None).Wait(10000) | Out-Null
+}
+
+# Reads whatever the hub has pushed in the next WaitMs; each complete message is added, with the time it arrived, to Connection.Messages.
+function Read-HubMessages {
+    param([Parameter(Mandatory)] $Connection, [int] $WaitMs = 300)
+    if ($Connection.Ws.State -ne 'Open') { return }
+    if (-not $Connection.Pending) {
+        $seg = New-Object 'System.ArraySegment[byte]' -ArgumentList (, $Connection.Buffer)
+        $Connection.Pending = $Connection.Ws.ReceiveAsync($seg, [Threading.CancellationToken]::None)
+    }
+    if (-not $Connection.Pending.Wait($WaitMs)) { return }
+    $r = $Connection.Pending.Result
+    $Connection.Pending = $null
+    [void]$Connection.Text.Append([Text.Encoding]::UTF8.GetString($Connection.Buffer, 0, $r.Count))
+    $parts = $Connection.Text.ToString().Split([char]0x1e)
+    [void]$Connection.Text.Clear()
+    [void]$Connection.Text.Append($parts[$parts.Count - 1])
+    for ($i = 0; $i -lt $parts.Count - 1; $i++) {
+        if ($parts[$i] -eq '{}') { $Connection.Handshaken = $true; continue }
+        $m = $null
+        try { $m = $parts[$i] | ConvertFrom-Json } catch { continue }
+        [void]$Connection.Messages.Add([pscustomobject]@{ At = [DateTime]::UtcNow; Type = $m.type; Target = $m.target; Args = $m.arguments })
+    }
+}
+
+function Close-HubConnection {
+    param($Connection)
+    try { if ($Connection -and $Connection.Ws.State -eq 'Open') { $Connection.Ws.CloseAsync('NormalClosure', 'done', [Threading.CancellationToken]::None).Wait(5000) | Out-Null } } catch { }
+    try { if ($Connection) { $Connection.Ws.Dispose() } } catch { }
+}
+
 function Invoke-GroupMachine {
     Invoke-Scenario -Id 'machine.system-readings' -Title 'The System overview agrees with Windows: operating system, uptime, memory, drives and a pending reboot; the temperature is a number or absent' -Body {
         $o = Try-Deluno -Path '/api/system/overview'
@@ -243,5 +298,38 @@ function Invoke-GroupMachine {
             Add-Check 'Switched on again, the same download is handed to Weir and imported' ($r.HandedOff -and $r.Settled -and $r.Imported) "handed $($r.HandedOff), settled $($r.Settled), imported $($r.Imported)"
         }
         finally { Stop-AutomationPause }
+    }
+
+    Invoke-Scenario -Id 'machine.hub-pushes' -Title 'A real grab, download and import push what a person sees to a browser connected to the hub, in order: the journey stages, the progress and Activity' -Body {
+        $hub = $null
+        try {
+            $hub = Open-HubConnection -Subjects @('live', 'queue', 'activity')
+            Add-Check 'The hub accepted the sign-in token and the connection is open' ($hub.Ws.State -eq 'Open') "$($hub.Ws.State)"
+            $film = Send-Film -Film (New-FilmFor -Kind 'qbittorrent' -Layout 'folder' -Label 'push') -Kind 'qbittorrent'
+            $until = (Get-Date).AddMinutes(9)
+            $done = $false
+            while ((Get-Date) -lt $until -and -not $done) {
+                Read-HubMessages -Connection $hub -WaitMs 500
+                $done = @($hub.Messages | Where-Object { $_.Target -eq 'ActivityEventAdded' -and "$($_.Args[0].message)" -match [regex]::Escape($film.Title) -and "$($_.Args[0].message)" -match 'Imported into the library' }).Count -gt 0
+            }
+            for ($i = 0; $i -lt 10; $i++) { Read-HubMessages -Connection $hub -WaitMs 300 } # the last pushes of the import
+            $mine = @($hub.Messages | Where-Object { $_.Type -eq 1 })
+            $names = ($mine | Group-Object Target | ForEach-Object { "$($_.Name) x$($_.Count)" }) -join ', '
+            Add-Note "Everything pushed while the film ran: $names"
+            Save-Evidence -Name 'machine-hub-pushes.json' -Text (($mine | Select-Object -First 400 | ForEach-Object { [pscustomobject]@{ at = $_.At.ToString('o'); target = $_.Target; args = $_.Args } }) | ConvertTo-Json -Depth 6)
+            $stages = @($mine | Where-Object { $_.Target -eq 'JourneyStageChanged' -and "$($_.Args[0].releaseName)" -eq $film.Release })
+            Add-Check 'The Live board was told of at least three steps of this film''s journey' ($stages.Count -ge 3) (($stages | ForEach-Object { $_.Args[0].stage }) -join ' > ')
+            $times = @($stages | ForEach-Object { [DateTimeOffset]::Parse($_.Args[0].at) })
+            Add-Check 'Those steps arrived in the order they happened (their own times never go backwards)' ($times.Count -ge 2 -and ((($times | Sort-Object) -join ',') -eq ($times -join ','))) ''
+            Add-Check 'The last step it was told is the import' ($stages.Count -gt 0 -and "$($stages[-1].Args[0].stage)" -match '(?i)import') $(if ($stages.Count) { "$($stages[-1].Args[0].stage)" } else { 'no steps' })
+            $prog = @($mine | Where-Object { $_.Target -eq 'DownloadProgress' -or $_.Target -eq 'DownloadSpeedSample' })
+            Add-Check 'Download progress was pushed while the client worked' ($prog.Count -ge 1) "$($prog.Count) pushes"
+            $ho = @($mine | Where-Object { $_.Target -eq 'ProcessorHandoffChanged' -and "$($_.Args[0].releaseName)" -eq $film.Release })
+            Add-Check 'The hand-off to Weir was pushed as it moved, ending completed' ($ho.Count -ge 1 -and "$($ho[-1].Args[0].state)" -match 'completed|passed') (($ho | ForEach-Object { $_.Args[0].state }) -join ' > ')
+            $acts = @($mine | Where-Object { $_.Target -eq 'ActivityEventAdded' -and "$($_.Args[0].message)" -match [regex]::Escape($film.Title) })
+            $idx = @('Sent to the download client', 'Sent to the processor', 'Imported into the library') | ForEach-Object { $p = $_; $k = -1; for ($j = 0; $j -lt $acts.Count; $j++) { if ("$($acts[$j].Args[0].message)" -match $p) { $k = $j; break } }; $k }
+            Add-Check 'Activity pushed "Sent to the download client", "Sent to the processor" and "Imported into the library", in that order' (($idx -notcontains -1) -and $idx[0] -lt $idx[1] -and $idx[1] -lt $idx[2]) ("positions: " + ($idx -join ', '))
+        }
+        finally { Close-HubConnection -Connection $hub }
     }
 }
