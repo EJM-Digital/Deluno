@@ -342,9 +342,11 @@ function Invoke-UpdatePreferencesAndBackgroundCheck {
             $up3 = Wait-Until -TimeoutSec 240 -IntervalSec 2 -Condition { Test-DelunoAnswering }
             Add-Check 'Deluno is started again with nothing downloaded' $up3.Ok ''
             Connect-Deluno
-            $chk = Try-Deluno -Method POST -Path '/api/updates/check' -TimeoutSec 120
+            # Right after a start the first check can be answered before the updater is ready; ask again until it answers.
+            $got = Wait-Until -TimeoutSec 90 -IntervalSec 3 -Condition { $x = Try-Deluno -Method POST -Path '/api/updates/check' -TimeoutSec 120; if ($x.Status -eq 200 -and $x.Data.status) { $x } else { $null } }
+            $chk = if ($got.Ok) { $got.Value } else { Try-Deluno -Method POST -Path '/api/updates/check' -TimeoutSec 120 }
             $st = $chk.Data.status
-            $words = "$($chk.Data.message) $($st.message)"
+            $words = "$($chk.Data.message) $($st.message) HTTP $($chk.Status)"
             Add-Check 'The in-app check says why it failed in the Updates page''s words, and offers nothing to restart' ($chk.Status -eq 200 -and $words -match "Couldn't check for updates" -and -not $st.restartRequired) $words
         }
         finally { Stop-UpdateFeed $feed }
