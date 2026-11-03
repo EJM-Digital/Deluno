@@ -457,7 +457,7 @@ public sealed class SignalRRealtimeEventPublisher(
             payload);
 
         // A full queue that drops its oldest event still accepts this one, so TryWrite says true: the overflow is seen by the count.
-        var overflowing = _events.Reader.CanCount && _events.Reader.Count >= OutboundQueueSlots;
+        var overflowing = _events.Reader.Count >= OutboundQueueSlots; // a bounded channel always counts
         if (!_events.Writer.TryWrite(envelope) || overflowing)
         {
             DelunoObservability.RealtimeEventsDropped.Add(
