@@ -347,7 +347,11 @@ function Invoke-UpdatePreferencesAndBackgroundCheck {
             $words = "$($chk.Data.message) $($st.message)"
             Add-Check 'The in-app check says why it failed in the Updates page''s words, and offers nothing to restart' ($chk.Status -eq 200 -and $words -match "Couldn't check for updates" -and -not $st.restartRequired) $words
             $before = Get-ToastTextCount -Text "Couldn't check for updates"
-            $pressed = Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Check for updates'
+            $pressed = $false
+            for ($try = 1; $try -le 3 -and -not $pressed; $try++) {
+                $pressed = Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Check for updates'
+                if (-not $pressed) { Start-Sleep -Seconds 10 } # reason: a retry pause before opening the tray menu again; no event says it is ready
+            }
             Add-Check 'The tray''s Check for updates item is pressed' $pressed $script:TrayMenuMiss
             Add-Check 'The tray tells the person in a balloon ("Couldn''t check for updates")' (Wait-ToastShown -Text "Couldn't check for updates" -Before $before -TimeoutSec 60) ''
             $line = @(Get-TrayMenuStates | Where-Object { $_.Name -match "Couldn't check" })
@@ -662,7 +666,7 @@ function Invoke-CompanionsInstallFromThePage {
         $installerFolder = Join-Path $env:ProgramFiles 'Deluno installer'
         # Asked in the wrong order on purpose.
         # The state the update scenarios give Deluno holds a qBittorrent connection that goes nowhere; with it the page would say qBittorrent is already connected and leave it alone.
-        foreach ($c in @(Get-DownloadClients | Where-Object { $_.name -eq 'Update scenario client' })) { Try-Deluno -Method DELETE -Path "/api/download-clients/$($c.id)" | Out-Null }
+        foreach ($c in @(Get-DownloadClients | Where-Object { $_.protocol -eq 'qbittorrent' })) { Try-Deluno -Method DELETE -Path "/api/download-clients/$($c.id)" | Out-Null }
         $ask = Try-Deluno -Method POST -Path '/api/companion-tools/install' -Body @{ toolIds = @('weir', 'qbittorrent', 'sabnzbd') }
         Add-Check 'Asking for the three tools is accepted (HTTP 202)' ($ask.Status -eq 202) "HTTP $($ask.Status) $($ask.Raw)"
         if ($ask.Status -ne 202) { return }
