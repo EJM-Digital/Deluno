@@ -21,6 +21,7 @@ $here = $PSScriptRoot
 . (Join-Path $here 'Initialize-Environment.ps1')
 . (Join-Path $here 'Update.Lib.ps1')
 . (Join-Path $here 'UpdatePaths.Lib.ps1')
+. (Join-Path $here 'scenarios\G24-PlatformExtras.ps1')
 
 Initialize-Suite -Root $Root
 $flag = Join-Path $Root 'results\done.flag'
@@ -38,6 +39,14 @@ try {
         'update.setup-over-stopped' { Invoke-UpdateSetupOverStopped -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
         'update.service-mode' { Invoke-UpdateServiceMode -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
         'uninstall.keeps-data' { Invoke-UninstallKeepsData }
+        'update.preferences-and-background-check' { Invoke-UpdatePreferencesAndBackgroundCheck -CandidateVersion $CandidateVersion }
+        'update.killed-mid-apply' { Invoke-UpdateKilledMidApply -CandidateVersion $CandidateVersion }
+        'update.older-build-newer-database' { Invoke-UpdateOlderBuildNewerDatabase -CandidateVersion $CandidateVersion }
+        'uninstall.leaves-nothing-behind' { Invoke-UninstallLeavesNothingBehind }
+        'uninstall.removes-the-sign-in-entry' { Invoke-UninstallRemovesTheSignInEntry }
+        'uninstall.removes-the-windows-service' { Invoke-UninstallRemovesTheWindowsService }
+        'install.silent-first-install' { Invoke-InstallSilentFirstInstall -CandidateVersion $CandidateVersion }
+        'companions.install-from-the-page' { Invoke-CompanionsInstallFromThePage }
         'update.tray-menu' { Invoke-UpdateTrayMenu -CandidateVersion $CandidateVersion }
         default { throw "Unknown update scenario '$Scenario'." }
     }

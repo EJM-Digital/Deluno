@@ -338,21 +338,7 @@ function Invoke-GroupWeirConnection {
 # ---------------------------------------------------------------- the ways Deluno is started (Windows service modes)
 
 # Opens the tray's Startup Mode dialog the way a person does (Advanced > Run as a Windows service...) and returns its window, or $null.
-function Show-StartupModeDialog {
-    Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Advanced$' | Out-Null
-    $uia = [System.Windows.Automation.AutomationElement]
-    $cond = New-Object System.Windows.Automation.PropertyCondition($uia::ControlTypeProperty, [System.Windows.Automation.ControlType]::MenuItem)
-    $dlg = $null
-    for ($try = 1; $try -le 3 -and -not $dlg; $try++) {
-        if ($try -gt 1) { Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Advanced$' | Out-Null }
-        Wait-Until -TimeoutSec 5 -IntervalSec 0.3 -Condition { Get-OpenMenuItems | Where-Object { $_ -match '^Run as a Windows service' } | Select-Object -First 1 } | Out-Null
-        foreach ($el in $uia::RootElement.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)) {
-            if ($el.Current.Name -match '^Run as a Windows service') { $r = $el.Current.BoundingRectangle; Send-Click -X ([int]($r.X + $r.Width / 2)) -Y ([int]($r.Y + $r.Height / 2)); break }
-        }
-        $dlg = Wait-DesktopWindow -NamePattern '^Startup Mode$' -Process 'Deluno' -TimeoutSec 10
-    }
-    $dlg
-}
+function Show-StartupModeDialog { Open-StartupModeDialog }
 
 function Get-SignInEntryValue {
     $p = Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue

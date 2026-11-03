@@ -151,8 +151,10 @@ public static class ServiceHost
     /// (<see cref="ComponentAutoStarter"/>). A client the person turned off is not in the list, and one already answering is left alone.
     /// </summary>
     public static Task<IReadOnlyList<string>> StartComponentsAsync(
-        IStartedComponentsRegistry registry, IPortProbe portProbe, IProcessStarter starter, Action<string>? log, CancellationToken cancellationToken)
-        => new ComponentAutoStarter(registry, portProbe, starter, log).RunAsync(BundledComponents.Load(), cancellationToken);
+        IStartedComponentsRegistry registry, IPortProbe portProbe, IProcessStarter starter, Action<string>? log, CancellationToken cancellationToken,
+        bool sabnzbdRunsAsService = false)
+        => new ComponentAutoStarter(registry, portProbe, starter, log, kind => sabnzbdRunsAsService && kind.Equals("sabnzbd", StringComparison.OrdinalIgnoreCase))
+            .RunAsync(BundledComponents.Load(), cancellationToken);
 
     private static async Task StartComponentsInBackgroundAsync(string dataRoot, CancellationToken cancellationToken)
     {
@@ -175,7 +177,8 @@ public static class ServiceHost
                         // Best-effort.
                     }
                 },
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                sabnzbdRunsAsService: SabnzbdService.ForThisComputer(dataRoot).IsRegistered()).ConfigureAwait(false);
         }
         catch
         {

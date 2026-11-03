@@ -33,6 +33,14 @@ function Remove-DelunoServiceNow {
     Wait-Until -TimeoutSec 60 -IntervalSec 1 -Condition { -not (Get-CimInstance Win32_Service -Filter "Name='Deluno'" -ErrorAction SilentlyContinue) } | Out-Null
 }
 
+# SABnzbd cannot run as a plain process in session 0 (it stops in its own Windows-service check), so while Deluno is a service SABnzbd
+# runs as its own Windows service "SABnzbd" (#1452). Null when it is not registered.
+function Get-SabnzbdServiceFacts {
+    $svc = Get-CimInstance Win32_Service -Filter "Name='SABnzbd'" -ErrorAction SilentlyContinue
+    if (-not $svc) { return $null }
+    [pscustomobject]@{ State = [string]$svc.State; StartMode = [string]$svc.StartMode; Account = [string]$svc.StartName; ProcessId = [int]$svc.ProcessId }
+}
+
 # Starts the tray again as the suite's session user (elevated, as the install left it) and waits until Deluno answers with the suite's login.
 function Restore-DelunoTray {
     if (-not (Get-Process -Name 'Deluno' -ErrorAction SilentlyContinue)) {
@@ -55,22 +63,8 @@ function Invoke-GroupService {
             $item = (Wait-Until -TimeoutSec 5 -IntervalSec 0.3 -Condition { Get-OpenMenuItems | Where-Object { $_ -match '^Run as a Windows service' } | Select-Object -First 1 }).Value
             Add-Check 'Advanced shows "Run as a Windows service..."' ($adv -and $null -ne $item) $item
             if (-not $item) { return }
-            # A dialog opens from the next item, so it is pressed with the mouse (Invoke would not return until the dialog closed).
-            # A click that lands while the submenu is still moving into place closes the menu and opens nothing (rc.30.36 run,
-            # 28 Oct), so the menu is opened and the item pressed again, up to three times, until the dialog is up.
-            $uia = [System.Windows.Automation.AutomationElement]
-            $cond = New-Object System.Windows.Automation.PropertyCondition($uia::ControlTypeProperty, [System.Windows.Automation.ControlType]::MenuItem)
-            $dlg = $null
-            for ($try = 1; $try -le 3 -and -not $dlg; $try++) {
-                if ($try -gt 1) {
-                    Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Advanced$' | Out-Null
-                    Wait-Until -TimeoutSec 5 -IntervalSec 0.3 -Condition { Get-OpenMenuItems | Where-Object { $_ -match '^Run as a Windows service' } | Select-Object -First 1 } | Out-Null
-                }
-                foreach ($el in $uia::RootElement.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)) {
-                    if ($el.Current.Name -match '^Run as a Windows service') { $r = $el.Current.BoundingRectangle; Send-Click -X ([int]($r.X + $r.Width / 2)) -Y ([int]($r.Y + $r.Height / 2)); break }
-                }
-                $dlg = Wait-DesktopWindow -NamePattern '^Startup Mode$' -Process 'Deluno' -TimeoutSec 10
-            }
+            # A dialog opens from the next item, so it is pressed with the mouse (see Open-StartupModeDialog).
+            $dlg = Open-StartupModeDialog
             Add-Check 'The "Startup Mode" dialog opens with the three ways to start' ($null -ne $dlg -and (Get-WindowText -Window $dlg) -match 'Start at login' -and (Get-WindowText -Window $dlg) -match 'Local System' -and (Get-WindowText -Window $dlg) -match 'Run as user') $(if ($dlg) { Get-WindowText -Window $dlg } else { Format-DesktopWindows })
             if (-not $dlg) { return }
             $credLabel = { param($w) @(Get-WindowControls -Window $w | Where-Object { $_.Name -match '^Windows account credentials' -and -not $_.Offscreen }).Count }
@@ -109,6 +103,11 @@ function Invoke-GroupService {
             Add-Check 'It runs "Deluno.exe --service" as LocalSystem, named "Deluno Media Manager"' ($facts -and $facts.Path -match '--service' -and $facts.Account -eq 'LocalSystem' -and $facts.Display -eq 'Deluno Media Manager') "$($facts.Account) | $($facts.Display)"
             Add-Check 'It has its description' ($facts.Description -match 'media acquisition') ($facts.Description -replace '\s+', ' ')
             Add-Check 'Windows restarts it after a failure: restart after 60 s three times, reset after a day, also for a stop with an error code' ($facts.Failure -match '86400' -and ([regex]::Matches($facts.Failure, 'RESTART -- Delay = 60000').Count -ge 3) -and $facts.FailureFlag -match 'TRUE') (($facts.Failure -replace '\s+', ' ') + ' | ' + ($facts.FailureFlag -replace '\s+', ' '))
+            if (Test-Path 'C:\Program Files\SABnzbd\SABnzbd-console.exe') {
+                $sab = (Wait-Until -TimeoutSec 120 -IntervalSec 2 -Condition { $x = Get-SabnzbdServiceFacts; if ($x -and $x.State -eq 'Running') { $x } else { $null } }).Value
+                if (-not $sab) { $sab = Get-SabnzbdServiceFacts }
+                Add-Check 'SABnzbd runs as its own Windows service ("SABnzbd"), starting automatically' ($sab -and $sab.StartMode -eq 'Auto' -and $sab.State -eq 'Running') $(if ($sab) { "$($sab.State) / $($sab.StartMode) / $($sab.Account)" } else { 'no SABnzbd service' })
+            }
             $run = Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue
             Add-Check 'The tray''s sign-in entry is removed (the service starts Deluno now)' (-not ($run -and ($run.PSObject.Properties | Where-Object { [string]$_.Value -match 'Deluno\.exe' }))) ''
 
@@ -134,6 +133,7 @@ function Invoke-GroupService {
         finally {
             Remove-DelunoServiceNow
             Add-Check '--uninstall-service removes the service' (-not (Get-DelunoServiceFacts)) ''
+            Add-Check '--uninstall-service removes SABnzbd''s service too' (-not (Get-SabnzbdServiceFacts)) ''
             Add-Check 'The tray starts again and Deluno answers with its own data' (Restore-DelunoTray) ''
         }
     }

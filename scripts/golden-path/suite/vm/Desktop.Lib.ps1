@@ -228,6 +228,29 @@ function Initialize-DelunoUnelevated {
     $r.Elevated -eq $false
 }
 
+# Opens the tray's Startup Mode dialog the way a person does (Advanced > Run as a Windows service...) and returns its window, or $null.
+# The scenario waits for the dialog itself (a window named "Startup Mode" owned by Deluno), not for a fixed time. A click that
+# lands while the submenu is still moving, or on a menu left open by an earlier scenario, closes the menu and opens nothing
+# (rc.30.36 run 28 Oct; rc.30.37 candidate run 3 Nov, where three tries in 34 s saw no dialog and the same scenario passed alone and
+# after its predecessor). So every try starts from a closed menu (Escape), opens the menu afresh, waits for the item, presses it,
+# and gives the dialog 15 s to appear before the next try; five tries.
+function Open-StartupModeDialog {
+    $uia = [System.Windows.Automation.AutomationElement]
+    $cond = New-Object System.Windows.Automation.PropertyCondition($uia::ControlTypeProperty, [System.Windows.Automation.ControlType]::MenuItem)
+    $dlg = Get-DesktopWindows | Where-Object { $_.Name -match '^Startup Mode$' -and $_.Process -eq 'Deluno' } | Select-Object -First 1
+    for ($try = 1; $try -le 5 -and -not $dlg; $try++) {
+        if ($try -gt 1) { [System.Windows.Forms.SendKeys]::SendWait('{ESC}{ESC}'); Start-Sleep -Milliseconds 500 } # reason: let the closed menu leave the screen; Windows raises no event for it
+        # A caller may already have the submenu open (G16 checks its text first); pressing Advanced again would close it.
+        if ($try -gt 1 -or -not (Get-OpenMenuItems | Where-Object { $_ -match '^Run as a Windows service' })) { Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Advanced$' | Out-Null }
+        Wait-Until -TimeoutSec 5 -IntervalSec 0.3 -Condition { Get-OpenMenuItems | Where-Object { $_ -match '^Run as a Windows service' } | Select-Object -First 1 } | Out-Null
+        foreach ($el in $uia::RootElement.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)) {
+            if ($el.Current.Name -match '^Run as a Windows service') { $r = $el.Current.BoundingRectangle; Send-Click -X ([int]($r.X + $r.Width / 2)) -Y ([int]($r.Y + $r.Height / 2)); break }
+        }
+        $dlg = Wait-DesktopWindow -NamePattern '^Startup Mode$' -Process 'Deluno' -TimeoutSec 15
+    }
+    $dlg
+}
+
 # ---------------------------------------------------------------- tray balloons
 # A tray balloon becomes a Windows notification. No window of this server's desktop shows it, but Windows keeps every one in its
 # notification database (wpndatabase.db and its write-ahead log) with the title and text in it. A balloon is told by the count of

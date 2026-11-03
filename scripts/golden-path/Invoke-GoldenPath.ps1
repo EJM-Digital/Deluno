@@ -268,6 +268,18 @@ try {
     if (-not $ready) { Add-Result 'VM answers over PowerShell Direct' 'failed' "No answer within 15 minutes (last error: $lastErr)."; throw 'VM did not come up.' }
     $os = Invoke-InVm { (Get-CimInstance Win32_OperatingSystem).Caption }
     Add-Result 'VM answers over PowerShell Direct' 'passed' $os
+    # A restored running checkpoint wakes the guest with the network address it had when it was saved. When two VMs were made from
+    # one another, that is a second computer with the same address as the first one's (the same MAC and the same DHCP lease), and the
+    # network drops both (the rc.30.37 run on a second VM could not reach github.com). The adapter is cycled so it takes the MAC the
+    # host gave this VM and asks for its own address.
+    try {
+        $hostMac = (Invoke-Command -Session $rig -ArgumentList $VmName -ScriptBlock { param($n) (Get-VMNetworkAdapter -VMName $n | Select-Object -First 1).MacAddress })
+        $guestMac = Invoke-InVm { ((Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1).MacAddress) -replace '-', '' }
+        if ($hostMac -and $guestMac -and $hostMac -ne $guestMac) {
+            Invoke-InVm { Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Restart-NetAdapter; Start-Sleep -Seconds 15 } | Out-Null # reason: the adapter needs time to ask for an address; nothing signals it
+            Add-Result 'VM network address' 'passed' "The guest still had the MAC it was saved with ($guestMac); its adapter was restarted and took the host's ($hostMac)."
+        }
+    } catch { Add-Result 'VM network address' 'failed' $_.Exception.Message }
     # A checkpoint keeps the clock it was taken with, and the host's time service can leave a restored VM hours out for the whole install:
     # the copy of the Hyper-V host used on 3 Nov 2026 started 19 hours ahead, and a saved "ready" state then held dates in the future that
     # stopped Deluno reading its clients once the clock was right. The guest's clock is set from the host's now, before anything installs.

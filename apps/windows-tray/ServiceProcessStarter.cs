@@ -17,7 +17,17 @@ public sealed class ServiceProcessStarter(string dataRoot) : IProcessStarter
     {
         try
         {
-            var info = new ProcessStartInfo(path, arguments ?? string.Empty)
+            var plan = ServiceClientLaunch.Plan(path, arguments, dataRoot);
+            if (plan.SeedFrom is not null && plan.SeedTo is not null
+                && ServiceClientLaunch.ShouldSeed(
+                    File.Exists(plan.SeedFrom) ? File.GetLastWriteTimeUtc(plan.SeedFrom) : null,
+                    File.Exists(plan.SeedTo) ? File.GetLastWriteTimeUtc(plan.SeedTo) : null))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(plan.SeedTo)!);
+                File.Copy(plan.SeedFrom, plan.SeedTo, overwrite: true);
+            }
+
+            var info = new ProcessStartInfo(path, plan.Arguments)
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,

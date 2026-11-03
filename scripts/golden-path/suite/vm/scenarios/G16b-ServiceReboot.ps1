@@ -22,7 +22,7 @@ function Invoke-ServiceRebootScenario {
         $dataRoot = Join-Path $env:LOCALAPPDATA 'DelunoData'
         $remembered = @()
         $choicesFile = Join-Path $dataRoot 'config\started-components.json'
-        if (Test-Path $choicesFile) { $remembered = @(Get-Content -Raw $choicesFile | ConvertFrom-Json) }
+        if (Test-Path $choicesFile) { $remembered = @(foreach ($c in (Get-Content -Raw $choicesFile | ConvertFrom-Json)) { $c }) } # Windows PowerShell 5.1 hands a JSON array over as ONE object; the foreach unrolls it
         $expected = @($remembered | Where-Object { $script:ClientPorts.ContainsKey([string]$_) } | ForEach-Object { [pscustomobject]@{ kind = [string]$_; port = [int]$script:ClientPorts[[string]$_] } })
         Add-Check 'The install left the clients the person chose in the list Deluno starts again (so there is something to prove)' ($expected.Count -gt 0) ((@($remembered)) -join ', ')
 
@@ -31,6 +31,14 @@ function Invoke-ServiceRebootScenario {
         $trayFile = Join-Path $env:LOCALAPPDATA 'DelunoConfig\deluno.json'
         New-Item -ItemType Directory -Force -Path $shared | Out-Null
         if (Test-Path $trayFile) { Copy-Item -LiteralPath $trayFile -Destination (Join-Path $shared 'deluno.json') -Force }
+        # The service reads this copy to find the person's data. The tray file can be missing or name another folder than the one the
+        # install used (rc.30.37 run, 3 Nov: it said C:\ProgramData\Deluno\data while the install, and the list of clients to start, were under
+        # DelunoData, so the service looked in an empty folder and started no client). What the Run as a Windows service dialog shares is
+        # the folder in use, so the copy names the folder the clients' list was read from.
+        $sharedFile = Join-Path $shared 'deluno.json'
+        $sharedSettings = if (Test-Path $sharedFile) { Get-Content -Raw $sharedFile | ConvertFrom-Json } else { [pscustomobject]@{ port = $port } }
+        $sharedSettings | Add-Member -NotePropertyName dataRoot -NotePropertyValue $dataRoot -Force
+        Set-Content -Path $sharedFile -Value ($sharedSettings | ConvertTo-Json) -Encoding utf8
         $null = Quit-DelunoFromTray
         & $exe.FullName --install-service | Out-Null
         $up = Wait-Until -TimeoutSec 240 -IntervalSec 3 -Condition { Test-DelunoAnswering }
@@ -40,7 +48,7 @@ function Invoke-ServiceRebootScenario {
         # The checks after the restart, made by a startup task running as SYSTEM, which exists before anyone signs in.
         $results = Join-Path (Get-SuiteRoot) 'results'
         $verify = Join-Path $results 'after-reboot.ps1'
-        $expectedJson = ($expected | ConvertTo-Json -Compress -AsArray)
+        $expectedJson = ('[' + ((@($expected) | ForEach-Object { $_ | ConvertTo-Json -Compress }) -join ',') + ']')  # Windows PowerShell 5.1 has no -AsArray
         $lines = @(
             '$resultsFile = ''' + $results + '\results.json'''
             '$expected = ''' + $expectedJson + ''' | ConvertFrom-Json'
@@ -52,7 +60,15 @@ function Invoke-ServiceRebootScenario {
             '    while (-not (Test-Port $w.port) -and (Get-Date) -lt $deadline) { [Threading.Thread]::Sleep(5000) }'
             '    $checks += [ordered]@{ name = "After the restart, $($w.kind) answers on port $($w.port) with nobody signed in"; ok = (Test-Port $w.port); detail = ''''; atUtc = [DateTime]::UtcNow.ToString(''o'') }'
             '}'
+            # What the service said after the restart, kept for the run's record: the tail of every log under the data folder and the install's logs.
+            '$ev = ''' + $results + '\evidence'''
+            'New-Item -ItemType Directory -Force -Path $ev | Out-Null'
+            ('foreach ($d in @(''' + $dataRoot + '\logs'', ''' + (Join-Path $env:LOCALAPPDATA 'Deluno\logs') + ''', ''' + (Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Deluno\data\logs') + ''', ''' + (Join-Path $env:windir 'System32\config\systemprofile\AppData\Local\DelunoData\logs') + ''', ''' + (Join-Path $env:windir 'System32\config\systemprofile\AppData\Local\Deluno\logs') + ''')) { foreach ($f in @(Get-ChildItem -LiteralPath $d -File -ErrorAction SilentlyContinue)) { Get-Content -LiteralPath $f.FullName -Tail 300 -ErrorAction SilentlyContinue | Set-Content -Path (Join-Path $ev (''after-reboot-'' + $f.Name + ''.txt'')) -Encoding utf8 } }')
+            # Which data folder the service opened on (the log's "storage initialized at" line) and the settings it was given, so a service that came up on an empty folder is seen at once.
+            ('foreach ($f in @(''' + (Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Deluno\data\deluno.json') + ''', ''' + (Join-Path $env:LOCALAPPDATA 'DelunoConfig\deluno.json') + ''', ''' + $choicesFile + ''')) { if (Test-Path -LiteralPath $f) { Copy-Item -LiteralPath $f -Destination (Join-Path $ev (''settings-'' + (Split-Path (Split-Path $f -Parent) -Leaf) + ''-'' + (Split-Path $f -Leaf) + ''.txt'')) -Force } }')
             '$svc = Get-CimInstance Win32_Service -Filter "Name=''Deluno''"'
+            '$sab = Get-CimInstance Win32_Service -Filter "Name=''SABnzbd''"'
+            '$checks += [ordered]@{ name = ''SABnzbd is running as its own Windows service (it cannot run as a plain process with nobody signed in)''; ok = ($null -ne $sab -and $sab.State -eq ''Running'' -and $sab.StartMode -eq ''Auto''); detail = "$($sab.State) / $($sab.StartMode)"; atUtc = [DateTime]::UtcNow.ToString(''o'') }'
             '$checks += [ordered]@{ name = ''It is the Windows service that is running Deluno''; ok = ($null -ne $svc -and $svc.State -eq ''Running''); detail = "$($svc.State)"; atUtc = [DateTime]::UtcNow.ToString(''o'') }'
             '$json = Get-Content -Raw $resultsFile | ConvertFrom-Json'
             'foreach ($r in @($json.scenarios)) {'
