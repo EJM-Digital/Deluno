@@ -40,7 +40,7 @@ function Invoke-ServiceRebootScenario {
         # The checks after the restart, made by a startup task running as SYSTEM, which exists before anyone signs in.
         $results = Join-Path (Get-SuiteRoot) 'results'
         $verify = Join-Path $results 'after-reboot.ps1'
-        $expectedJson = ($expected | ConvertTo-Json -Compress -AsArray)
+        $expectedJson = ('[' + ((@($expected) | ForEach-Object { $_ | ConvertTo-Json -Compress }) -join ',') + ']')  # Windows PowerShell 5.1 has no -AsArray
         $lines = @(
             '$resultsFile = ''' + $results + '\results.json'''
             '$expected = ''' + $expectedJson + ''' | ConvertFrom-Json'
