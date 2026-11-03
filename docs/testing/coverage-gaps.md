@@ -1011,16 +1011,17 @@ Issue #1296. Closed by a test for each uncovered retention branch.
 | src/Deluno.Retention/RetentionUnits.cs | 95.6% | 67.9% |
 | src/Deluno.Retention/SqliteRetentionRepository.cs | 100.0% | 88.0% |
 
-## src/Deluno.Security: 26 of 51 files
+## src/Deluno.Security: 27 of 51 files
 
 Issue #1302. Closed by a test for each uncovered sign-in and key branch.
 
 | File | Line | Branch |
 | --- | ---: | ---: |
 | src/Deluno.Security/AllowedHostMatcher.cs | 100.0% | 90.6% |
+| src/Deluno.Security/Data/DelunoAlreadyConfiguredException.cs | 0.0% | n/a |
 | src/Deluno.Security/Data/SqliteAllowedHostsRepository.cs | 96.1% | 87.5% |
 | src/Deluno.Security/Data/SqliteLocalNetworkAuthRepository.cs | 96.8% | 93.8% |
-| src/Deluno.Security/Data/SqliteSecurityRepository.cs | 93.1% | 84.8% |
+| src/Deluno.Security/Data/SqliteSecurityRepository.cs | 92.9% | 84.0% |
 | src/Deluno.Security/DelunoAuthenticationHandler.cs | 97.0% | 85.7% |
 | src/Deluno.Security/DelunoAuthorizationResultHandler.cs | 94.3% | 92.8% |
 | src/Deluno.Security/DelunoBadRequestAnswers.cs | 84.8% | 75.5% |
@@ -1040,7 +1041,7 @@ Issue #1302. Closed by a test for each uncovered sign-in and key branch.
 | src/Deluno.Security/LocalNetworkMatcher.cs | 98.5% | 95.0% |
 | src/Deluno.Security/Recovery/AccountRecovery.cs | 100.0% | 91.7% |
 | src/Deluno.Security/Recovery/RecoveryGuard.cs | 94.7% | 100.0% |
-| src/Deluno.Security/SecurityEndpointRouteBuilderExtensions.cs | 96.5% | 100.0% |
+| src/Deluno.Security/SecurityEndpointRouteBuilderExtensions.cs | 95.1% | 100.0% |
 | src/Deluno.Security/SecurityServiceCollectionExtensions.cs | 96.7% | n/a |
 | src/Deluno.Security/UserAuthorization.cs | 94.8% | 85.3% |
 
@@ -1134,7 +1135,7 @@ Issue #1296. Closed by a test for each uncovered worker branch.
 | src/Deluno.Worker/Jobs/MediaServerRefreshJobHandler.cs | 90.0% | 75.0% |
 | src/Deluno.Worker/Jobs/MediaServerRefreshRetryJobHandler.cs | 91.7% | 83.3% |
 | src/Deluno.Worker/Jobs/MoviesMetadataRefreshJobHandler.cs | 98.7% | 91.2% |
-| src/Deluno.Worker/Jobs/SearchExecutionSupport.cs | 95.5% | 85.7% |
+| src/Deluno.Worker/Jobs/SearchExecutionSupport.cs | 95.5% | 83.3% |
 | src/Deluno.Worker/Jobs/SeasonSearchJobHandler.cs | 100.0% | 94.4% |
 | src/Deluno.Worker/Jobs/SeriesCatalogRefreshJobHandler.cs | 100.0% | 87.5% |
 | src/Deluno.Worker/Jobs/SeriesMetadataRefreshJobHandler.cs | 96.8% | 83.3% |

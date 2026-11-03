@@ -6315,7 +6315,7 @@
       "branch": 100
     },
     "src/Deluno.Security/Data/DelunoAlreadyConfiguredException.cs": {
-      "line": 100,
+      "line": 0,
       "branch": null
     },
     "src/Deluno.Security/Data/SqliteAllowedHostsRepository.cs": {
@@ -6327,8 +6327,8 @@
       "branch": 93.75
     },
     "src/Deluno.Security/Data/SqliteSecurityRepository.cs": {
-      "line": 93.11,
-      "branch": 84.78
+      "line": 92.9,
+      "branch": 84.05
     },
     "src/Deluno.Security/DataProtectionSecretProtector.cs": {
       "line": 100,
@@ -6447,7 +6447,7 @@
       "branch": 100
     },
     "src/Deluno.Security/SecurityEndpointRouteBuilderExtensions.cs": {
-      "line": 96.49,
+      "line": 95.14,
       "branch": 100
     },
     "src/Deluno.Security/SecurityServiceCollectionExtensions.cs": {
@@ -7236,7 +7236,7 @@
     },
     "src/Deluno.Worker/Jobs/SearchExecutionSupport.cs": {
       "line": 95.45,
-      "branch": 85.71
+      "branch": 83.33
     },
     "src/Deluno.Worker/Jobs/SearchProfileBundles.cs": {
       "line": 100,
