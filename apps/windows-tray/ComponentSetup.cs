@@ -154,7 +154,8 @@ public sealed class ComponentAutoStarter(
     IStartedComponentsRegistry registry,
     IPortProbe portProbe,
     IProcessStarter starter,
-    Action<string>? log = null)
+    Action<string>? log = null,
+    Func<string, bool>? startedElsewhere = null)
 {
     public async Task<IReadOnlyList<string>> RunAsync(IEnumerable<BundledComponentSpec> specs, CancellationToken cancellationToken)
     {
@@ -163,6 +164,12 @@ public sealed class ComponentAutoStarter(
         foreach (var spec in specs)
         {
             if (!spec.RestartsAtSignIn || !remembered.Contains(spec.Kind, StringComparer.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            // A client that runs as a Windows service of its own is started by Windows; a second copy would fight it for the port.
+            if (startedElsewhere?.Invoke(spec.Kind) == true)
             {
                 continue;
             }

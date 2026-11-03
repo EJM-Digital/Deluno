@@ -33,6 +33,23 @@ public static class ServiceManager
     {
         RemoveService();
         RemoveTrayStartup();
+        ApplySabnzbd(ServiceMode.Tray, SabnzbdService.ForThisComputer());
+    }
+
+    /// <summary>
+    /// SABnzbd follows the way Deluno starts (#1452): in a service mode it runs as its own Windows service (so it comes back after a restart
+    /// with nobody signed in); in the tray's mode that service is removed and the tray starts SABnzbd as before.
+    /// </summary>
+    internal static void ApplySabnzbd(ServiceMode mode, SabnzbdService sabnzbd)
+    {
+        if (mode == ServiceMode.Tray)
+        {
+            sabnzbd.Remove();
+        }
+        else
+        {
+            sabnzbd.Register();
+        }
     }
 
     public static void Apply(ServiceMode mode, string? username, string? password)
@@ -45,6 +62,7 @@ public static class ServiceManager
 
         RemoveService();
         RemoveTrayStartup();
+        ApplySabnzbd(mode, SabnzbdService.ForThisComputer());
 
         switch (mode)
         {
