@@ -56,6 +56,19 @@ public sealed class AppSettingsTests : IDisposable
         Assert.False(File.Exists(Path.Combine(_root, "local", "DelunoConfig", "deluno.json")));
     }
 
+    // An empty machine-wide folder is not Deluno's data: taking it opened Deluno on no account and no libraries once the folder
+    // appeared (the named-account service scenario on the golden VM, rc.30.37 build 560d7419d).
+    [Fact]
+    public void An_empty_machine_wide_data_folder_is_not_taken_for_the_persons_data()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "common", "Deluno", "data"));
+
+        var settings = AppSettings.Load();
+
+        Assert.Equal(Path.Combine(_root, "local", "DelunoData"), settings.DataRoot);
+        Assert.False(File.Exists(Path.Combine(_root, "local", "DelunoConfig", "deluno.json")));
+    }
+
     // #1361: a fresh install does not look for updates on its own until the setup guide asks and the person says yes.
     [Fact]
     public void A_fresh_install_has_the_background_update_check_off()

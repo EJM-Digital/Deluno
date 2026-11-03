@@ -398,12 +398,9 @@ public sealed class AppSettings
     {
         try
         {
-            if (!Directory.Exists(legacyDataRoot))
-            {
-                return false;
-            }
-
-            return true;
+            // Only a folder that holds Deluno's databases is the person's data; an empty one (made by anything that writes the
+            // service's shared settings there) would open Deluno on no account and no libraries.
+            return DataFolderMove.HoldsData(legacyDataRoot);
         }
         catch
         {
