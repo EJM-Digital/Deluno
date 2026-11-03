@@ -1,5 +1,6 @@
 using Deluno.Api;
 using Deluno.Api.Backup;
+using Deluno.Api.Network;
 using Deluno.Filesystem;
 using Deluno.Infrastructure;
 using Deluno.Infrastructure.Observability;
@@ -122,6 +123,8 @@ public static class ServiceHost
         // reports a refusal (or is cleared) from that answer (#1080, #1256).
         app.Lifetime.ApplicationStarted.Register(() => progress.Enter(Deluno.Infrastructure.Storage.StartupPhase.Ready));
         app.Lifetime.ApplicationStarted.Register(() => _ = ReportFailureActionsAsync(failureActions, app));
+        // After a reboot nobody signs in, so the tray never starts the bundled clients (#1452): the service does, the same way.
+        app.Lifetime.ApplicationStarted.Register(() => _ = StartComponentsInBackgroundAsync(settings.DataRoot, app.Lifetime.ApplicationStopping));
 
         // The request pipeline every Deluno host shares (#1176). The service ran
         // its own copy with no routing, no allowed hosts and no forwarded headers.
@@ -140,6 +143,43 @@ public static class ServiceHost
         finally
         {
             watchStop.Cancel();
+        }
+    }
+
+    /// <summary>
+    /// Starts the download clients Deluno started at install: the same starter and the same stored choices as the tray's start
+    /// (<see cref="ComponentAutoStarter"/>). A client the person turned off is not in the list, and one already answering is left alone.
+    /// </summary>
+    public static Task<IReadOnlyList<string>> StartComponentsAsync(
+        IStartedComponentsRegistry registry, IPortProbe portProbe, IProcessStarter starter, Action<string>? log, CancellationToken cancellationToken)
+        => new ComponentAutoStarter(registry, portProbe, starter, log).RunAsync(BundledComponents.Load(), cancellationToken);
+
+    private static async Task StartComponentsInBackgroundAsync(string dataRoot, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await StartComponentsAsync(
+                new FileStartedComponentsRegistry(),
+                new LoopbackPortProbe(),
+                new ServiceProcessStarter(dataRoot),
+                message =>
+                {
+                    try
+                    {
+                        var logDir = Path.Combine(dataRoot, "logs");
+                        Directory.CreateDirectory(logDir);
+                        CappedLog.Append(Path.Combine(logDir, "component-startup.log"), $"{DateTimeOffset.Now:O} {message}{Environment.NewLine}");
+                    }
+                    catch
+                    {
+                        // Best-effort.
+                    }
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // A client that could not be started is still startable by hand; Deluno itself keeps running.
         }
     }
 

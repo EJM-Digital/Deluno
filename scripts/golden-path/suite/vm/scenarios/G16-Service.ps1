@@ -5,6 +5,8 @@
                                     its host and leaves, the service "Deluno" exists (auto start, description, restart-on-failure actions, runs as
                                     LocalSystem), answers on the port with the same sign-in rules, comes back by itself after it is killed, and
                                     --uninstall-service removes it. The tray is then started again, as a person would.
+    service.let-any-address-in      With no tray: Allowed Hosts turns an address away, allowedHostsForceDisabled in the service's settings file lets it in after a
+                                    service restart without touching the saved choice, and removing it turns the address away again.
     service.wrong-password          --install-service with a named user and a wrong password: the service is created but does not run.
 
     Deluno runs elevated in the suite VM, so the service manager's permission prompts (one per sc.exe call when the tray is not elevated)
@@ -133,6 +135,91 @@ function Invoke-GroupService {
             Remove-DelunoServiceNow
             Add-Check '--uninstall-service removes the service' (-not (Get-DelunoServiceFacts)) ''
             Add-Check 'The tray starts again and Deluno answers with its own data' (Restore-DelunoTray) ''
+        }
+    }
+
+    Invoke-Scenario -Id 'service.let-any-address-in' -Title "With no tray, an address Allowed Hosts turns away is let in again by the service's settings file (allowedHostsForceDisabled), and Allowed Hosts comes back when the override is removed" -Body {
+        if (Get-DelunoServiceFacts) { Remove-DelunoServiceNow }
+        $exe = Get-DelunoExe
+        $foreign = 'golden-suite.example.test'
+        $shared = Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Deluno\data'
+        $sharedFile = Join-Path $shared 'deluno.json'
+        $hadShared = Test-Path $sharedFile
+        # The service runs as LocalSystem, so the settings file it reads (and is copied forward to on its first start) is the system profile's.
+        $sysFile = Join-Path $env:windir 'System32\config\systemprofile\AppData\Local\DelunoConfig\deluno.json'
+        $hadSys = Test-Path $sysFile
+        $sysBefore = if ($hadSys) { Get-Content -Raw $sysFile } else { $null }
+        $sharedBefore = if ($hadShared) { Get-Content -Raw $sharedFile } else { $null }
+        $trayFile = Join-Path $env:LOCALAPPDATA 'DelunoConfig\deluno.json'
+        $port = Get-LanPort
+        $savedEnabled = $null; $savedHosts = @()
+        try {
+            $quit = [bool](Quit-DelunoFromTray)
+            Add-Check 'The tray is quit first: nothing but the service will be running Deluno' ($quit -and @(Get-Process -Name 'Deluno' -ErrorAction SilentlyContinue).Count -eq 0) ''
+            New-Item -ItemType Directory -Force -Path $shared | Out-Null
+            # What the tray's Run as a Windows service dialog does first: the service runs as another account, so it is told where this person's data is.
+            if (Test-Path $trayFile) { Copy-Item -LiteralPath $trayFile -Destination $sharedFile -Force }
+            else { Set-Content -Path $sharedFile -Value (@{ port = $port; dataRoot = (Join-Path $env:LOCALAPPDATA 'DelunoData') } | ConvertTo-Json) -Encoding utf8 }
+            & $exe.FullName --install-service | Out-Null
+            $svc = Wait-Until -TimeoutSec 180 -IntervalSec 2 -Condition { $s = Get-CimInstance Win32_Service -Filter "Name='Deluno'" -ErrorAction SilentlyContinue; if ($s -and $s.State -eq 'Running' -and $s.ProcessId -gt 0) { $s } else { $null } }
+            Add-Check 'Deluno runs as the Windows service, with no tray icon' ($svc.Ok -and -not (Find-TrayIcon -Icon 'Deluno')) ''
+            if (-not $svc.Ok) { return }
+            $up = Wait-Until -TimeoutSec 240 -IntervalSec 3 -Condition { Test-DelunoAnswering }
+            Add-Check 'The service answers' $up.Ok ''
+            if (-not $up.Ok) { return }
+            Connect-Deluno
+            $expectVersion = ($exe.VersionInfo.ProductVersion -split '\+')[0]
+            $svcVersion = (Try-Deluno -Path '/api/system/status').Data.version
+            Add-Check 'The service reports the installed version, a real one (never 0.0.0)' ($svcVersion -and "$svcVersion" -notmatch '^0\.0\.0' -and "$svcVersion" -like "$expectVersion*") "reported '$svcVersion', installed '$expectVersion'"
+            $overview = Invoke-Deluno -Path '/api/security/allowed-hosts'
+            $savedEnabled = [bool]$overview.enabled; $savedHosts = @($overview.allowedHosts)
+            $put = Try-Deluno -Method PUT -Path '/api/security/allowed-hosts' -Body @{ enabled = $true; allowedHosts = @('localhost', '127.0.0.1') }
+            Add-Check 'Allowed Hosts is turned on with only this PC listed' ($put.Status -in 200, 204) "HTTP $($put.Status)"
+            $refused = Wait-Until -TimeoutSec 20 -IntervalSec 1 -Condition { (Get-StatusWithHostHeader -HostHeader $foreign -Port $port) -ne 200 }
+            Add-Check 'The service turns the unlisted address away, and this PC still gets in' ($refused.Ok -and (Get-StatusWithHostHeader -HostHeader "localhost:$port" -Port $port) -eq 200) "status $(Get-StatusWithHostHeader -HostHeader $foreign -Port $port)"
+
+            # What a person without a tray does: put the override in the settings file the service reads, and restart the service.
+            Stop-Service -Name 'Deluno' -Force
+            $effective = if (Test-Path $sysFile) { $sysFile } else { $sharedFile }
+            Add-Check 'The service has a settings file of its own to edit' (Test-Path $effective) $effective
+            $stopped = Wait-Until -TimeoutSec 90 -IntervalSec 1 -Condition { (Get-Service -Name 'Deluno').Status -eq 'Stopped' }
+            Add-Check 'The service is stopped for the edit' $stopped.Ok ''
+            $json = Get-Content -Raw $effective | ConvertFrom-Json
+            $json | Add-Member -NotePropertyName 'allowedHostsForceDisabled' -NotePropertyValue $true -Force
+            Set-Content -Path $effective -Value ($json | ConvertTo-Json -Depth 6) -Encoding utf8
+            Start-Service -Name 'Deluno'
+            $again = Wait-Until -TimeoutSec 240 -IntervalSec 3 -Condition { Test-DelunoAnswering }
+            Add-Check 'The service starts again and answers' $again.Ok ''
+            $in = Wait-Until -TimeoutSec 60 -IntervalSec 2 -Condition { (Get-StatusWithHostHeader -HostHeader $foreign -Port $port) -eq 200 }
+            Add-Check 'With the override in the settings file the unlisted address is answered again' $in.Ok "status $(Get-StatusWithHostHeader -HostHeader $foreign -Port $port)"
+            Connect-Deluno
+            $kept = Invoke-Deluno -Path '/api/security/allowed-hosts'
+            Add-Check 'The saved Allowed Hosts choice is untouched (still on, still this PC only)' ([bool]$kept.enabled -eq $true -and (@($kept.allowedHosts) -join ',') -eq 'localhost,127.0.0.1') ((@($kept.allowedHosts)) -join ',')
+
+            # Remove the override: the saved list is enforced again.
+            Stop-Service -Name 'Deluno' -Force
+            Wait-Until -TimeoutSec 90 -IntervalSec 1 -Condition { (Get-Service -Name 'Deluno').Status -eq 'Stopped' } | Out-Null
+            $json2 = Get-Content -Raw $effective | ConvertFrom-Json
+            $json2.PSObject.Properties.Remove('allowedHostsForceDisabled')
+            Set-Content -Path $effective -Value ($json2 | ConvertTo-Json -Depth 6) -Encoding utf8
+            Start-Service -Name 'Deluno'
+            Wait-Until -TimeoutSec 240 -IntervalSec 3 -Condition { Test-DelunoAnswering } | Out-Null
+            $back = Wait-Until -TimeoutSec 60 -IntervalSec 2 -Condition { (Get-StatusWithHostHeader -HostHeader $foreign -Port $port) -ne 200 }
+            Add-Check 'Without the override the unlisted address is turned away again' $back.Ok "status $(Get-StatusWithHostHeader -HostHeader $foreign -Port $port)"
+        }
+        finally {
+            if ($null -ne $savedEnabled) {
+                Connect-Deluno
+                Try-Deluno -Method PUT -Path '/api/security/allowed-hosts' -Body @{ enabled = $savedEnabled; allowedHosts = $savedHosts } | Out-Null
+            }
+            if (Get-DelunoServiceFacts) { Remove-DelunoServiceNow }
+            if ($hadShared) { Set-Content -Path $sharedFile -Value $sharedBefore -Encoding utf8 } else { Remove-Item -LiteralPath $sharedFile -ErrorAction SilentlyContinue }
+            if ($hadSys) { Set-Content -Path $sysFile -Value $sysBefore -Encoding utf8 } else { Remove-Item -LiteralPath $sysFile -ErrorAction SilentlyContinue }
+            Add-Check 'The service is gone, the files are as found, and the tray''s Deluno answers' (-not (Get-DelunoServiceFacts) -and (Restore-DelunoTray)) ((Get-Process -Name 'Deluno' -ErrorAction SilentlyContinue | ForEach-Object { "Deluno process $($_.Id)" }) -join ', ')
+            try {
+                $trayVersion = (Try-Deluno -Path '/api/system/status').Data.version
+                Add-Check 'The tray''s Deluno reports the installed version too, a real one' ($trayVersion -and "$trayVersion" -notmatch '^0\.0\.0' -and "$trayVersion" -like "$((($exe.VersionInfo.ProductVersion -split '\+')[0]))*") "reported '$trayVersion'"
+            } catch { Add-Check 'The tray''s Deluno reports the installed version too, a real one' $false $_.Exception.Message }
         }
     }
 

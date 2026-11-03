@@ -37,6 +37,7 @@ try {
         'update.setup-interactive' { Invoke-UpdateSetupInteractive -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
         'update.setup-over-stopped' { Invoke-UpdateSetupOverStopped -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
         'update.service-mode' { Invoke-UpdateServiceMode -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
+        'uninstall.keeps-data' { Invoke-UninstallKeepsData }
         'update.tray-menu' { Invoke-UpdateTrayMenu -CandidateVersion $CandidateVersion }
         default { throw "Unknown update scenario '$Scenario'." }
     }

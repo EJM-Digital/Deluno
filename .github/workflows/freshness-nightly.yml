@@ -5,8 +5,8 @@ name: Recording freshness (weekly)
 
 on:
   schedule:
-    # Every night, 15:30 UTC: a quiet hour.
-    - cron: "30 15 * * 6"
+  # Fridays, 10:47 UTC (Friday 21:47 Sydney, AEDT). Off the top of the hour. GitHub may start a scheduled run late on busy days.
+    - cron: "47 10 * * 5"
   workflow_dispatch:
 
 concurrency:

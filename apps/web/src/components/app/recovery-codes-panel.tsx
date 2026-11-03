@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Download } from "lucide-react";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 
 /**
- * The ten recovery codes, shown once (#1392): a plain note to keep them safe, a way to copy them, and the person's
- * word that they are saved before the screen moves on.
+ * The ten recovery codes, shown once (#1392): a plain note to keep them safe, a way to copy them or save them as a text
+ * file (#1456), and the person's word that they are saved before the screen moves on.
  */
 export function RecoveryCodesPanel({
   codes,
@@ -28,6 +28,17 @@ export function RecoveryCodesPanel({
     }
   }
 
+  // Saved as a plain text file, as Weir offers its own codes (#1456).
+  function download() {
+    const text = ["Deluno recovery codes", "Each code works once. Keep this file somewhere safe.", "", ...codes, ""].join("\r\n");
+    const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "deluno-recovery-codes.txt";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="space-y-3">
       <p className="text-(length:--type-body-sm) text-muted-foreground">
@@ -41,10 +52,16 @@ export function RecoveryCodesPanel({
           <li key={code}>{code}</li>
         ))}
       </ol>
-      <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => void copy()}>
-        {copied ? <Check className="h-4 w-4" strokeWidth={2} /> : <Copy className="h-4 w-4" strokeWidth={1.75} />}
-        {copied ? "Copied" : "Copy codes"}
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => void copy()}>
+          {copied ? <Check className="h-4 w-4" strokeWidth={2} /> : <Copy className="h-4 w-4" strokeWidth={1.75} />}
+          {copied ? "Copied" : "Copy codes"}
+        </Button>
+        <Button type="button" variant="outline" size="sm" className="gap-2" onClick={download}>
+          <Download className="h-4 w-4" strokeWidth={1.75} />
+          Download as a text file
+        </Button>
+      </div>
       <label className="flex cursor-pointer items-center gap-2.5 text-(length:--type-body-sm) text-foreground">
         <Checkbox checked={saved} onCheckedChange={setSaved} />
         I have saved these codes

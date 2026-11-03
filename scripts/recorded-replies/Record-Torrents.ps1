@@ -98,10 +98,13 @@ function Invoke-TorrentScenario {
     if ($doneB) {
         Start-Sleep -Seconds 20
         Save-State $App $ver 'finished-tracker-error' 'A complete torrent whose tracker does not answer.' @($addB, (& $A.List $relB.InfoHash))
-        Remove-Item -LiteralPath $fileB -Force
+        # A client that holds its file open (uTorrent on Windows) will not let it be removed: the recheck is then recorded on the intact file.
+        $held = $false
+        try { Remove-Item -LiteralPath $fileB -Force -ErrorAction Stop } catch { $held = $true }
         $recheck = & $A.Recheck $relB.InfoHash
         Start-Sleep -Seconds 8
-        Save-State $App $ver 'failed' 'The torrent''s file removed behind the client''s back, then a recheck: the client reports it cannot find its data.' @($recheck, (& $A.List $relB.InfoHash))
+        if ($held) { Save-State $App $ver 'rechecked' 'A recheck of a complete torrent (the client holds its file open, so the file could not be removed first): the reply, then the list.' @($recheck, (& $A.List $relB.InfoHash)) }
+        else { Save-State $App $ver 'failed' 'The torrent''s file removed behind the client''s back, then a recheck: the client reports it cannot find its data.' @($recheck, (& $A.List $relB.InfoHash)) }
     } else { Add-Missing "$App finished-tracker-error / failed: the dead-tracker film torrent was not complete after 3 minutes" }
     $null = & $A.Remove $relB.InfoHash $true
 

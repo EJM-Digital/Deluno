@@ -40,8 +40,14 @@ export type StallDecision =
   | { state: "waiting"; finding: DownloadHealthFinding; strike: number; limit: number }
   | null;
 
+/**
+ * Readings the server shows but never counts (DownloadHealthRecord.LowAvailability): a note on the swarm, not a
+ * problem with the download. Seen on the rig at strike 0 a minute after a grab, where it made the card read Stuck.
+ */
+const NOTES = ["low-availability"];
+
 export function stallDecision(item: DownloadQueueItem, now = Date.now()): StallDecision {
-  const findings = (item.healthFindings ?? []).filter((finding) => !isIgnored(finding, now));
+  const findings = (item.healthFindings ?? []).filter((finding) => !isIgnored(finding, now) && !NOTES.includes(finding.kind.toLowerCase()));
   const counting = findings.filter((finding) => isStrikeKind(finding.kind));
   const decided = counting.find(findingDecided);
   if (decided) return { state: "stuck", finding: decided };

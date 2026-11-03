@@ -79,6 +79,9 @@ describe("the unsaved-changes registry", () => {
     entry.value.saveRef.current = async () => { api.unregister("a"); };
     act(() => api.register(entry.value));
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Save and continue" })); });
+    // The save goes on polling every 50 ms until it sees the editor gone; let it end inside the test, or its last state
+    // update lands after the test environment is torn down.
+    await act(async () => { await new Promise<void>((resolve) => window.setTimeout(resolve, 120)); });
     expect(screen.queryByText("Mind the gap.")).toBeNull();
     expect(entry.proceed).not.toHaveBeenCalled();
   });

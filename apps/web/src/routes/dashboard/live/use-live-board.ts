@@ -6,7 +6,7 @@
  * also tells the server this screen is watching, so it reads the clients every
  * second while something downloads.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { queryClient } from "../../../lib/route-cache";
 import { sharedSources } from "../../../lib/shared-sources";
 import { useLiveEvent } from "../../../lib/use-signalr";
@@ -79,5 +79,6 @@ export function useLiveBoardEvents(): LiveBoardState {
     if (event.state === "failed") void queryClient.invalidateQueries({ queryKey: sharedSources.failedJobs.key, exact: true });
   }, []));
 
-  return { searches, jobs };
+  // One object while neither changed: the board is worked out again from it, so a new object on every render would redo all of it on every render.
+  return useMemo(() => ({ searches, jobs }), [searches, jobs]);
 }

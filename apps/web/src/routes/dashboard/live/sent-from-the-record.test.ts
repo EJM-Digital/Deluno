@@ -56,9 +56,67 @@ describe("a release just sent is a Grabbed card from the sent record (#1442)", (
     expect(frames).toEqual([1, 2, 1, 1]);
   });
 
+  it("is one card, with one key, when the client names the download differently from the sent record and the hand-off (#1459)", () => {
+    // CI run 41247553280: the client lists the torrent without the file extension the sent record and the hand-off carry.
+    const named = `${RELEASE}.mkv`;
+    const handoff = { id: "h1", libraryId: "l", mediaType: "movies", clientId: "qb", queueItemId: "abc123", releaseName: named, sourcePath: "", processorName: "Weir", status: "started", outputPath: null, importJobId: null, failureMessage: null, createdUtc: iso(-20_000), updatedUtc: iso(-5_000) } as never;
+    for (const handoffs of [[], [handoff]]) {
+      for (const status of ["downloading", "waitingForProcessor", "completed"]) {
+        const cards = buildJourney({ ...base, dispatches: [dispatch({ releaseName: named })], queue: [queue({ status, progress: status === "downloading" ? 40 : 100, sizeBytes: 1e6 })], handoffs });
+        expect(cards.map((card) => card.key), `${status}, ${handoffs.length} hand-off`).toEqual(["qb:abc123"]);
+      }
+    }
+  });
+
   it("draws nothing for a refused send, one sent long ago, or one that was imported", () => {
     for (const record of [dispatch({ grabStatus: "failed" }), dispatch({ grabAttemptedUtc: iso(-10 * 60_000), createdUtc: iso(-10 * 60_000) }), dispatch({ importStatus: "imported" })]) {
       expect(byStage(buildJourney({ ...base, dispatches: [record] })).grabbed).toHaveLength(0);
     }
+  });
+});
+
+describe("one card per download, whatever name each record uses (#1459)", () => {
+  const named = `${RELEASE}.mkv`;
+  const grabWork = (release: string) => ({ key: "grab:1", kind: "grab", text: "Sending", release, to: "/queue" }) as never;
+  const handoff = { id: "h1", libraryId: "l", mediaType: "movies", clientId: "qb", queueItemId: "abc123", releaseName: named, sourcePath: "", processorName: "Weir", status: "started", outputPath: null, importJobId: null, failureMessage: null, createdUtc: iso(-20_000), updatedUtc: iso(-5_000) } as never;
+
+  it("does not draw a work card for a grab the client already lists under its own name", () => {
+    const cards = buildJourney({ ...base, queue: [queue()], work: [grabWork(RELEASE)] });
+    expect(cards.map((card) => card.key)).toEqual(["qb:abc123"]);
+  });
+
+  it("does not draw a work card for a grab named as the sent record names it", () => {
+    const cards = buildJourney({ ...base, queue: [queue()], dispatches: [dispatch({ releaseName: named })], work: [grabWork(named)] });
+    expect(cards.map((card) => card.key)).toEqual(["qb:abc123"]);
+  });
+
+  it("does not draw a work card for a grab named as the hand-off names it", () => {
+    const cards = buildJourney({ ...base, queue: [queue()], handoffs: [handoff], work: [grabWork(named)] });
+    expect(cards.map((card) => card.key)).toEqual(["qb:abc123"]);
+  });
+
+  it("draws one card for an older sent record of the same torrent under another name", () => {
+    const older = dispatch({ id: "d0", releaseName: named, createdUtc: iso(-9_000), grabAttemptedUtc: iso(-9_000) });
+    expect(buildJourney({ ...base, dispatches: [dispatch(), older] }).map((card) => card.key)).toEqual(["qb:abc123"]);
+    // The torrent id is written in another case by one record: still the same card.
+    const upper = dispatch({ id: "d0", releaseName: named, torrentHashOrItemId: "ABC123", createdUtc: iso(-9_000), grabAttemptedUtc: iso(-9_000) });
+    expect(buildJourney({ ...base, dispatches: [dispatch(), upper] }).map((card) => card.key)).toHaveLength(1);
+  });
+
+  it("keeps two sent records that have no torrent id yet as two cards, each keyed by its own record", () => {
+    const first = dispatch({ id: "d1", torrentHashOrItemId: null });
+    const second = dispatch({ id: "d2", releaseName: `Another.Film.2001.1080p.BluRay.x264-GRP`, torrentHashOrItemId: null });
+    const keys = buildJourney({ ...base, dispatches: [first, second] }).map((card) => card.key).sort();
+    expect(keys).toEqual(["sent:d1", "sent:d2"]);
+    const noClient = buildJourney({ ...base, dispatches: [dispatch({ id: "d3", downloadClientId: "", torrentHashOrItemId: "abc123" })] }).map((card) => card.key);
+    expect(noClient).toEqual(["sent:d3"]);
+  });
+
+  it("draws a sent release once: from its newest record, and not again from a grab under way", () => {
+    const older = dispatch({ id: "d0", torrentHashOrItemId: null, createdUtc: iso(-9_000), grabAttemptedUtc: iso(-9_000) });
+    const newest = dispatch({ id: "d1", torrentHashOrItemId: null });
+    expect(buildJourney({ ...base, dispatches: [older, newest] }).map((card) => card.key)).toEqual(["sent:d1"]);
+    const withWork = buildJourney({ ...base, dispatches: [newest], work: [grabWork(RELEASE)] });
+    expect(withWork.map((card) => card.key)).toEqual(["sent:d1"]);
   });
 });

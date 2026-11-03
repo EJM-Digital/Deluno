@@ -1,0 +1,76 @@
+{
+  "app": "utorrent",
+  "version": "3.6.0.47254",
+  "state": "rechecked",
+  "recordedAt": "2026-10-31T01:18:53Z",
+  "note": "A recheck of a complete torrent (the client holds its file open, so the file could not be removed first): the reply, then the list.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&action=recheck&hash=7587a7e4a0e79de005e343bd792dca337b2ef62f"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&list=1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254,
+          "torrents": [
+            [
+              "7587A7E4A0E79DE005E343BD792DCA337B2EF62F",
+              201,
+              "Recorded.utorrent.B.mkv",
+              6291456,
+              1000,
+              0,
+              0,
+              0,
+              0,
+              0,
+              -1,
+              "",
+              0,
+              0,
+              0,
+              0,
+              65536,
+              -1,
+              0,
+              "",
+              "",
+              "Seeding 100.0 %",
+              "9",
+              1793409502,
+              1793409503,
+              "",
+              "C:\\golden\\recorded\\utorrent",
+              0,
+              "A3BF2B01"
+            ]
+          ],
+          "label": [],
+          "torrentc": "1555229599",
+          "rssfeeds": [],
+          "rssfilters": []
+        }
+      }
+    }
+  ]
+}

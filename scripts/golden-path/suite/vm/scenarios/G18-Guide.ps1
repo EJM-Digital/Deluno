@@ -148,9 +148,21 @@ function Invoke-GroupGuide {
                             Start-Sleep -Seconds 1 # reason: the account panel opens; the page has no ready signal
                             Set-PageInputAt -Page $page -Selector '[aria-label="Your Weir account"] input' -Index 0 -Value (Get-SuiteSecret 'weir-username') | Out-Null
                             Set-PageInputAt -Page $page -Selector '[aria-label="Your Weir account"] input' -Index 1 -Value (Get-SuiteSecret 'weir-password') | Out-Null
+                            # The page counts the connect requests it sends, to show what was and was not sent (never the passwords themselves).
+                            Invoke-CdpEval -Page $page -Script "(function(){window.__weirConnects=0;var f=window.fetch;window.fetch=function(u,o){try{if(String(u).indexOf('/bundled-components/weir/connect')>=0&&o&&o.method==='POST'){window.__weirConnects++;}}catch(e){}return f.apply(this,arguments);};return true;})()" | Out-Null
+                            # Two different passwords are refused in words, and nothing is sent.
+                            Set-PageInputAt -Page $page -Selector '[aria-label="Your Weir account"] input' -Index 2 -Value ((Get-SuiteSecret 'weir-password') + 'x') | Out-Null
+                            Click-PageText -Page $page -Pattern '^Create Weir account and connect$' -TimeoutSec 20 | Out-Null
+                            $mismatch = Wait-Until -TimeoutSec 15 -IntervalSec 0.5 -Condition { if ((Get-PageText -Page $page) -match 'The two passwords do not match\.') { $true } else { $null } }
+                            $sentOnMismatch = [int](Invoke-CdpEval -Page $page -Script 'window.__weirConnects')
+                            Add-Check 'Two different passwords are refused with "The two passwords do not match." and nothing is sent' ($mismatch.Ok -and $sentOnMismatch -eq 0) "words shown: $($mismatch.Ok); connect requests sent: $sentOnMismatch"
                             Set-PageInputAt -Page $page -Selector '[aria-label="Your Weir account"] input' -Index 2 -Value (Get-SuiteSecret 'weir-password') | Out-Null
                             Click-PageText -Page $page -Pattern '^Create Weir account and connect$' -TimeoutSec 20 | Out-Null
                             Wait-Until -TimeoutSec 300 -IntervalSec 3 -Condition { $t = Get-PageText -Page $page; if ($t -match 'Weir is connected to Deluno both ways') { $t } else { $null } } | Out-Null
+                            $sentOnce = [int](Invoke-CdpEval -Page $page -Script 'window.__weirConnects')
+                            $leftOnPage = [bool](Invoke-CdpEval -Page $page -Script "(function(){return [].slice.call(document.querySelectorAll('input[type=password]')).some(function(e){return e.value&&e.value.length>0});})()")
+                            $pwInText = (Get-PageText -Page $page).Contains((Get-SuiteSecret 'weir-password'))
+                            Add-Check 'After Create Weir account and connect the account was sent once, and no password field holds a password and none is on the screen' ($sentOnce -eq 1 -and -not $leftOnPage -and -not $pwInText) "connect requests sent: $sentOnce; password left in a field: $leftOnPage; password in the page text: $pwInText"
                         }
                         Save-Evidence -Name 'guide-connect-weir.txt' -Text (Get-PageText -Page $page)
                         foreach ($line in (Answer-StepQuestions -Page $page -YesStarts @('Movies: Clean files with Weir', 'TV: Clean files with Weir'))) { [void]$asked.Add("$name | $line") }
@@ -199,6 +211,15 @@ function Invoke-GroupGuide {
         # The two Usenet clients have no news provider on a fresh install, which Deluno says in words (degraded); nothing is unreachable.
         $down = @($clients | Where-Object { $_.healthStatus -notin 'healthy', 'degraded' })
         Add-Check 'The five download clients the picker installed are connected, and none is unreachable' ($missingKinds.Count -eq 0 -and $down.Count -eq 0) (($clients | ForEach-Object { "$($_.protocol)=$($_.healthStatus)" }) -join ', ')
+        # Each client was added with its own port and categories, and no password comes back from the API.
+        $ports = @{ qbittorrent = 8081; transmission = 9091; deluge = 8112; sabnzbd = 8080; nzbget = 6789 }
+        $wrongPort = @($clients | Where-Object { $ports.ContainsKey("$($_.protocol)") -and [int]$_.port -ne $ports["$($_.protocol)"] } | ForEach-Object { "$($_.protocol) on $($_.port)" })
+        $qb = $clients | Where-Object { $_.protocol -eq 'qbittorrent' } | Select-Object -First 1
+        $tr = $clients | Where-Object { $_.protocol -eq 'transmission' } | Select-Object -First 1
+        Add-Check 'Each installed client was added on its own port (qBittorrent 8081, Transmission 9091, Deluge 8112, SABnzbd 8080, NZBGet 6789)' ($wrongPort.Count -eq 0) (($clients | ForEach-Object { "$($_.protocol):$($_.port)" }) -join ', ')
+        Add-Check 'qBittorrent has the deluno-movies and deluno-tv categories and Transmission has Movies and TV' ($qb -and $qb.moviesCategory -eq 'deluno-movies' -and $qb.tvCategory -eq 'deluno-tv' -and $tr -and $tr.moviesCategory -eq 'Movies' -and $tr.tvCategory -eq 'TV') "qBittorrent $($qb.moviesCategory)/$($qb.tvCategory); Transmission $($tr.moviesCategory)/$($tr.tvCategory)"
+        $raw = (Try-Deluno -Path '/api/download-clients').Raw
+        Add-Check 'No client reply carries a password' ($raw -notmatch '"password"\s*:\s*"[^"]+') ''
         $conn = @(Invoke-Deluno -Path '/api/integrations/processors/connections') | Where-Object { $_.isEnabled -and $_.name -match 'weir' } | Select-Object -First 1
         Add-Check 'Weir is connected as a processor and healthy' ($null -ne $conn -and $conn.healthStatus -eq 'healthy') ($conn.name)
         $wanted = @{ $movies.id = 'C:\Weir\Ready\Movies'; $tv.id = 'C:\Weir\Ready\TV' }
@@ -219,5 +240,16 @@ function Invoke-GroupGuide {
         Save-Evidence -Name 'guide-health.json' -Text $health.Raw
         $chain = @($health.Data.checks | Where-Object { $_.status -ne 'ok' -and "$($_.name) $($_.message)" -match 'category and save path|Folder chain|download folder' })
         Add-Check 'The folder chain is green: Health names no library whose client category and save path disagree' ($health.Status -eq 200 -and $chain.Count -eq 0) (($chain | ForEach-Object { $_.name }) -join '; ')
+
+        # The installer's sign-in is kept while the app is installed: delete the qBittorrent connection and Connect works again with no login asked.
+        if ($qb) {
+            $del = Try-Deluno -Method DELETE -Path "/api/download-clients/$($qb.id)"
+            Add-Check 'A connection can be deleted' ($del.Status -in 200, 204) "HTTP $($del.Status)"
+            $gone = @(Get-DownloadClients | Where-Object { $_.protocol -eq 'qbittorrent' }).Count -eq 0
+            Add-Check 'qBittorrent is no longer connected' $gone ''
+            $again = Try-Deluno -Method POST -Path '/api/system/bundled-components/qbittorrent/connect' -TimeoutSec 120
+            Add-Check 'Connect works again with the kept sign-in: no login was asked or sent, and qBittorrent is connected and answering' ($again.Status -eq 200 -and $again.Data.healthy -eq $true -and @(Get-DownloadClients | Where-Object { $_.protocol -eq 'qbittorrent' -and $_.healthStatus -in 'healthy', 'degraded' }).Count -eq 1) "HTTP $($again.Status) healthy $($again.Data.healthy)"
+            Add-Check 'The connect reply carries no password' ($again.Raw -notmatch '"password"\s*:\s*"[^"]+') ''
+        }
     }
 }

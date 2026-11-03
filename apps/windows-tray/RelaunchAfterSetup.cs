@@ -56,10 +56,10 @@ internal static class RelaunchAfterSetup
         Func<RunningMark, bool> isRunning,
         Func<bool> serviceInstalled,
         Func<int?> setupProcessId,
-        Func<TimeSpan?> heartbeatAge,
         string logPath,
         Action<ProcessStartInfo> start,
-        Action<string> log)
+        Action<string> log,
+        Func<ExitReason?>? exitReason = null)
     {
         // The tray's mark is taken in either case, so a second hook of the same Setup finds nothing left to answer.
         var tray = marks.TakeLeftBy(RunningKind.Tray, executable, isRunning);
@@ -73,13 +73,18 @@ internal static class RelaunchAfterSetup
 
         var kind = service is not null ? RelaunchKind.Service : tray is not null ? RelaunchKind.Tray : RelaunchKind.None;
         var target = (service ?? tray)?.Executable;
-        if (kind == RelaunchKind.None && heartbeatAge() is { } age && HeartbeatEvidence.IsRecent(age))
+        var ended = kind == RelaunchKind.None ? exitReason?.Invoke() : null;
+        if (ended == ExitReason.Quit)
         {
-            // No mark: a build from before the marks. Its job worker wrote to the jobs database a moment ago, which a
-            // Deluno that was running does and a stopped one does not.
+            log("The person quit Deluno while the update installed, so it is left stopped.");
+            return RelaunchKind.None;
+        }
+
+        if (ended == ExitReason.Restart)
+        {
             kind = serviceInstalled() ? RelaunchKind.Service : RelaunchKind.Tray;
             target = executable;
-            log($"No record that Deluno was running, but its jobs database was written {age.TotalSeconds:0} seconds before this hook ran (its worker writes every 15 seconds), so it is taken to have been running. If it was closed in the last {HeartbeatEvidence.Window.TotalSeconds:0} seconds it is started anyway.");
+            log("Deluno was restarted to apply the update, so it starts again.");
         }
 
         if (kind == RelaunchKind.None || target is null)
@@ -151,10 +156,10 @@ internal static class RelaunchAfterSetup
                 mark => mark.IsRunning(),
                 ServiceManager.IsInstalled,
                 ParentProcess.Id,
-                HeartbeatEvidence.AgeOnThisMachine,
                 logPath,
                 info => Process.Start(info)?.Dispose(),
-                LogDecision),
+                LogDecision,
+                () => ExitReasonNote.Read()),
             HookBudget,
             TimeProvider.System,
             LogDecision);

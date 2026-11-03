@@ -152,6 +152,22 @@ describe("In progress: what is happening now (#1448)", () => {
     expect(screen.getByText("Finished, still in the client (3)")).toBeVisible();
   });
 
+  it("the Downloading tile counts the rows under it, a stalled one included, and says how many are not moving", () => {
+    // The rig on 31 Oct: His Girl Friday stalled at 98% and The General moving; the tile read 1 over two rows.
+    showQueue([
+      item("His.Girl.Friday.1940.1080p-GRP", { status: "stalled", progress: 98 }),
+      item("The.General.1926.1080p-GRP"),
+      ...seeding.slice(0, 2)
+    ]);
+
+    const help = screen.getByText(/1 not moving/);
+    // The tile is the smallest box holding its label, its number and this line.
+    let tile: HTMLElement | null = help;
+    while (tile && !/^Downloading/.test(tile.textContent ?? "")) tile = tile.parentElement;
+    expect(tile?.textContent).toMatch(/^Downloading2/);
+    expect(screen.getByText("2 happening now · 0 importing")).toBeVisible();
+  });
+
   it("releases waiting for a yes are Needs action, never in flight", () => {
     queueLoaderData.heldReleases = [held(1), held(2)];
     showQueue([]);

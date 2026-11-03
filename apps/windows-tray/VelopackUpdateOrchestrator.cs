@@ -132,6 +132,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
             () =>
             {
                 UpdateAppliedNote.WriteBeforeApply(_currentVersion, pending.Version.ToString());
+                ExitReasonNote.Write(ExitReason.Quit);
                 manager.WaitExitThenApplyUpdates(pending, silent: true, restart: false);
             });
     }
@@ -178,6 +179,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
             () =>
             {
                 UpdateAppliedNote.WriteBeforeApply(_currentVersion, pending.Version.ToString());
+                ExitReasonNote.Write(ExitReason.Restart);
                 manager.ApplyUpdatesAndRestart(pending);
             },
             progress,
@@ -370,6 +372,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
                     }
 
                     UpdateAppliedNote.WriteBeforeApply(_currentVersion, toApply.Version.ToString());
+                    ExitReasonNote.Write(ExitReason.Restart);
                     manager.ApplyUpdatesAndRestart(toApply);
                 }
                 catch (Exception ex)

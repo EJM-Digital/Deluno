@@ -78,7 +78,7 @@ public sealed class RelaunchWiringTests
         marks.Set(RunningKind.Tray, RunningMark.ThisProcess());
         var started = 0;
 
-        var kind = RelaunchAfterSetup.Schedule(marks, Environment.ProcessPath!, mark => mark.IsRunning(), () => false, () => 1234, () => null, "x.log", _ => started++, _ => { });
+        var kind = RelaunchAfterSetup.Schedule(marks, Environment.ProcessPath!, mark => mark.IsRunning(), () => false, () => 1234, "x.log", _ => started++, _ => { });
 
         Assert.Equal(RelaunchKind.None, kind);
         Assert.Equal(0, started);
@@ -92,7 +92,7 @@ public sealed class RelaunchWiringTests
         marks.Clear(RunningKind.Tray, Environment.ProcessId);
         var started = 0;
 
-        var kind = RelaunchAfterSetup.Schedule(marks, Environment.ProcessPath!, _ => false, () => false, () => 1234, () => null, "x.log", _ => started++, _ => { });
+        var kind = RelaunchAfterSetup.Schedule(marks, Environment.ProcessPath!, _ => false, () => false, () => 1234, "x.log", _ => started++, _ => { });
 
         Assert.Equal(RelaunchKind.None, kind);
         Assert.Equal(0, started);

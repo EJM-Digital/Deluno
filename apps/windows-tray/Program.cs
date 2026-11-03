@@ -184,6 +184,7 @@ internal static class Program
 
             // Left behind only when something other than an orderly exit ends this Deluno (Setup stops it before any hook of
             // the new version runs), which is how the install hook knows it was running (#1256).
+            ExitReasonNote.Clear();
             MarkRunning(RunningKind.Tray);
 
             EnsureWinFormsBootstrap();
