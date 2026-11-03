@@ -40,7 +40,7 @@ function Invoke-ServiceRebootScenario {
         $sharedSettings | Add-Member -NotePropertyName dataRoot -NotePropertyValue $dataRoot -Force
         Set-Content -Path $sharedFile -Value ($sharedSettings | ConvertTo-Json) -Encoding utf8
         $null = Quit-DelunoFromTray
-        Invoke-InDesktopSession -Path $exe.FullName -Arguments '--install-service'
+        & $exe.FullName --install-service | Out-Null
         $up = Wait-Until -TimeoutSec 240 -IntervalSec 3 -Condition { Test-DelunoAnswering }
         Add-Check 'Deluno runs as the Windows service before the restart' ($up.Ok -and [bool](Get-DelunoServiceFacts)) ''
         if (-not $up.Ok) { return }

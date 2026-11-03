@@ -396,27 +396,6 @@ function Stop-WeirApp {
     [pscustomobject]@{ ViaTray = $quit; At = [DateTime]::UtcNow; GoneAt = $goneAt }
 }
 
-# Runs a program in the signed-in desktop session (a one-shot Interactive task, elevated) and waits for it to finish. SABnzbd's own service
-# install only works outside session 0 (its frozen exe takes the run-as-a-service path there and fails with error 1063), and PowerShell Direct,
-# WinRM and the Deluno service are all session 0, so every --install-service the suite makes goes through here (#1452).
-function Invoke-InDesktopSession {
-    param([Parameter(Mandatory)] [string] $Path, [string] $Arguments = '', [int] $TimeoutSec = 600)
-    $user = "$env:USERDOMAIN\$env:USERNAME"
-    $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Highest
-    $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromSeconds($TimeoutSec)) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-    $name = 'GoldenSuiteDesktopCommand'
-    $action = if ($Arguments) { New-ScheduledTaskAction -Execute $Path -Argument $Arguments } else { New-ScheduledTaskAction -Execute $Path }
-    Register-ScheduledTask -TaskName $name -Action $action -Principal $principal -Settings $settings -Force | Out-Null
-    try {
-        Start-ScheduledTask -TaskName $name
-        $done = Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 1 -Condition { $t = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue; if ($t -and $t.State -ne 'Running') { $true } else { $null } }
-        if (-not $done.Ok) { throw "$Path $Arguments did not finish in the desktop session within $TimeoutSec seconds." }
-    }
-    finally {
-        Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue
-    }
-}
-
 # Starts Weir again, in the signed-in desktop session (it is a tray app), as a person double-clicking it would.
 function Start-WeirApp {
     $exe = Get-WeirExe

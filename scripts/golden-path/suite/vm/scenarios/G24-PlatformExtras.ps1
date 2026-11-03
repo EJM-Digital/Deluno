@@ -45,7 +45,7 @@ function Install-DelunoServiceNow {
     if (Test-Path $trayFile) { Copy-Item -LiteralPath $trayFile -Destination (Join-Path $shared 'deluno.json') -Force }
     else { Set-Content -Path (Join-Path $shared 'deluno.json') -Value (@{ port = $port; dataRoot = (Join-Path $env:LOCALAPPDATA 'DelunoData') } | ConvertTo-Json) -Encoding utf8 }
     $null = Quit-DelunoFromTray
-    Invoke-InDesktopSession -Path $exe.FullName -Arguments '--install-service'
+    & $exe.FullName --install-service | Out-Null
     $up = Wait-Until -TimeoutSec 240 -IntervalSec 3 -Condition { Test-DelunoAnswering }
     if ($up.Ok) { Connect-Deluno }
     $up.Ok
@@ -549,7 +549,7 @@ function Invoke-UninstallRemovesTheWindowsService {
         New-Item -ItemType Directory -Force -Path $shared | Out-Null
         $trayFile = Join-Path $env:LOCALAPPDATA 'DelunoConfig\deluno.json'
         if (Test-Path $trayFile) { Copy-Item -LiteralPath $trayFile -Destination (Join-Path $shared 'deluno.json') -Force }
-        Invoke-InDesktopSession -Path $exe2.FullName -Arguments '--install-service'
+        & $exe2.FullName --install-service | Out-Null
         $svcUp = Wait-Until -TimeoutSec 240 -IntervalSec 3 -Condition { $x = Get-CimInstance Win32_Service -Filter "Name='Deluno'" -ErrorAction SilentlyContinue; if ($x -and $x.State -eq 'Running') { $x } else { $null } }
         Add-Check 'Deluno runs as a Windows service before the uninstall' $svcUp.Ok ''
         if (-not $svcUp.Ok) { return }
@@ -732,7 +732,7 @@ function Invoke-GroupPlatformExtrasNamedUser {
             New-Item -ItemType Directory -Force -Path $shared | Out-Null
             if (Test-Path $trayFile) { Copy-Item -LiteralPath $trayFile -Destination (Join-Path $shared 'deluno.json') -Force }
             $null = Quit-DelunoFromTray
-            Invoke-InDesktopSession -Path $exe.FullName -Arguments ("--install-service --username `".\$user`" --password `"$pw`"")
+            & $exe.FullName --install-service --username ".\$user" --password $pw | Out-Null
             $up = Wait-Until -TimeoutSec 300 -IntervalSec 3 -Condition { $x = Get-DelunoServiceFacts; if ($x -and $x.State -eq 'Running' -and $x.ProcessId -gt 0) { $x } else { $null } }
             $f = Get-DelunoServiceFacts
             Add-Check 'The service is created to log on as the named user' ($f -and $f.Account -match $user) $f.Account

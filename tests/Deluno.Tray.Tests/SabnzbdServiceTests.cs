@@ -50,9 +50,12 @@ public sealed partial class ComponentSetupTests
     {
         public List<string> Lines { get; } = [];
 
-        public void Run(string fileName, string arguments)
+        public List<string> WorkingDirectories { get; } = [];
+
+        public void Run(string fileName, string arguments, string? workingDirectory = null)
         {
             Lines.Add($"{fileName} {arguments}");
+            WorkingDirectories.Add(workingDirectory ?? "");
             if (env is { InstallMakesService: true } && arguments.EndsWith(" install", StringComparison.Ordinal))
             {
                 env.Exists = true;
@@ -76,6 +79,18 @@ public sealed partial class ComponentSetupTests
 
         Assert.Equal([SabInstallLine, "sc.exe config SABnzbd start= auto", "sc.exe start SABnzbd"], runner.Lines);
         Assert.True(env.Marker);
+    }
+
+    [Fact]
+    public void The_install_runs_in_SABnzbds_own_folder_because_pywin32_finds_pythonservice_exe_relative_to_it()
+    {
+        var env = new FakeSabnzbdEnvironment();
+        var runner = new RecordingCommands(env);
+
+        Assert.True(Sab(runner, env).Register());
+
+        // Run from System32 it fails with "Can't find pythonservice.exe" (golden VM, 4 Nov 2026).
+        Assert.Equal(SabInstall, runner.WorkingDirectories[runner.Lines.IndexOf(SabInstallLine)]);
     }
 
     [Fact]

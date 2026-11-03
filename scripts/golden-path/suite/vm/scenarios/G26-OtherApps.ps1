@@ -359,13 +359,13 @@ function Invoke-GroupServiceModes {
             # ---- the sign-in entry is set, then a service is chosen: the entry goes first, the service is made
             Set-ItemProperty -Path $runKey -Name 'Deluno' -Value ('"{0}"' -f $exe.FullName)
             Add-Check 'Before: the sign-in entry is set (the tray''s own mode)' ([bool](Get-SignInEntryValue)) ''
-            Invoke-InDesktopSession -Path $exe.FullName -Arguments '--install-service'
+            & $exe.FullName --install-service | Out-Null
             $made = Wait-Until -TimeoutSec 90 -IntervalSec 2 -Condition { Get-DelunoServiceFacts }
             Add-Check 'Local System: the service exists, starts automatically, runs as LocalSystem, and the sign-in entry was removed first' ($made.Ok -and $made.Value.StartMode -eq 'Auto' -and $made.Value.Account -eq 'LocalSystem' -and -not (Get-SignInEntryValue)) $(if ($made.Ok) { "$($made.Value.StartMode) / $($made.Value.Account); entry: $(Get-SignInEntryValue)" } else { 'no service' })
 
             # ---- a second choice replaces the first: the old service is removed, a new one is made for the named account
             $idBefore = (Get-CimInstance Win32_Service -Filter "Name='Deluno'").ProcessId
-            Invoke-InDesktopSession -Path $exe.FullName -Arguments ("--install-service --username `".\$account`" --password `"$pw`"")
+            & $exe.FullName --install-service --username ".\$account" --password $pw | Out-Null
             $named = Wait-Until -TimeoutSec 90 -IntervalSec 2 -Condition { $f = Get-DelunoServiceFacts; if ($f -and $f.Account -match $account) { $f } else { $null } }
             Add-Check 'Run as user: the existing service is removed and a new one logs on as the account that was named (and the sign-in entry stays off)' ($named.Ok -and -not (Get-SignInEntryValue)) $(if ($named.Ok) { "$($named.Value.Account) / $($named.Value.StartMode)" } else { "account now: $((Get-DelunoServiceFacts).Account)" })
             Add-Check 'There is one service, not two' (@(Get-CimInstance Win32_Service -Filter "Name='Deluno'").Count -eq 1) ''
@@ -387,7 +387,7 @@ function Invoke-GroupServiceModes {
             Restore-DelunoTray | Out-Null
 
             # ---- and --uninstall-service from a service: it is removed and the sign-in entry is cleared
-            Invoke-InDesktopSession -Path $exe.FullName -Arguments '--install-service'
+            & $exe.FullName --install-service | Out-Null
             Wait-Until -TimeoutSec 90 -IntervalSec 2 -Condition { Get-DelunoServiceFacts } | Out-Null
             Set-ItemProperty -Path $runKey -Name 'Deluno' -Value ('"{0}"' -f $exe.FullName)
             & $exe.FullName --uninstall-service | Out-Null

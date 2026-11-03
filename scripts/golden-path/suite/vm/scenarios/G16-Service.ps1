@@ -160,7 +160,7 @@ function Invoke-GroupService {
             # What the tray's Run as a Windows service dialog does first: the service runs as another account, so it is told where this person's data is.
             if (Test-Path $trayFile) { Copy-Item -LiteralPath $trayFile -Destination $sharedFile -Force }
             else { Set-Content -Path $sharedFile -Value (@{ port = $port; dataRoot = (Join-Path $env:LOCALAPPDATA 'DelunoData') } | ConvertTo-Json) -Encoding utf8 }
-            Invoke-InDesktopSession -Path $exe.FullName -Arguments '--install-service'
+            & $exe.FullName --install-service | Out-Null
             $svc = Wait-Until -TimeoutSec 180 -IntervalSec 2 -Condition { $s = Get-CimInstance Win32_Service -Filter "Name='Deluno'" -ErrorAction SilentlyContinue; if ($s -and $s.State -eq 'Running' -and $s.ProcessId -gt 0) { $s } else { $null } }
             Add-Check 'Deluno runs as the Windows service, with no tray icon' ($svc.Ok -and -not (Find-TrayIcon -Icon 'Deluno')) ''
             if (-not $svc.Ok) { return }
@@ -231,7 +231,7 @@ function Invoke-GroupService {
         try {
             $proc = Get-Process -Name 'Deluno' -ErrorAction SilentlyContinue | Select-Object -First 1
             # The tray holds the port; the service is created and started with a password that is not the account's.
-            Invoke-InDesktopSession -Path $exe.FullName -Arguments ("--install-service --username `".\$user`" --password Gp-Wrong-9")
+            & $exe.FullName --install-service --username ".\$user" --password 'Gp-Wrong-9' | Out-Null
             $made = Wait-Until -TimeoutSec 60 -IntervalSec 2 -Condition { Get-DelunoServiceFacts }
             Add-Check 'The service is created' $made.Ok ''
             Start-Sleep -Seconds 10 # reason: gives Windows time to try the logon and fail; there is no event to wait on

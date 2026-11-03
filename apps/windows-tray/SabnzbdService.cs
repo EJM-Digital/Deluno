@@ -7,18 +7,18 @@ namespace Deluno.Tray;
 /// <summary>Runs a program elevated, for the service commands (the tray's way of doing what an administrator would do in a console).</summary>
 public interface IServiceCommandRunner
 {
-    void Run(string fileName, string arguments);
+    void Run(string fileName, string arguments, string? workingDirectory = null);
 }
 
 public sealed class ElevatedCommandRunner : IServiceCommandRunner
 {
     private static readonly TimeSpan Limit = TimeSpan.FromMinutes(2);
 
-    public void Run(string fileName, string arguments)
+    public void Run(string fileName, string arguments, string? workingDirectory = null)
     {
         try
         {
-            using var p = Process.Start(new ProcessStartInfo { FileName = fileName, Arguments = arguments, UseShellExecute = true, Verb = "runas", CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden });
+            using var p = Process.Start(new ProcessStartInfo { FileName = fileName, Arguments = arguments, UseShellExecute = true, WorkingDirectory = workingDirectory ?? "", Verb = "runas", CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden });
             p?.WaitForExit(Limit);
         }
         catch (System.ComponentModel.Win32Exception)
@@ -110,7 +110,7 @@ public sealed class SabnzbdService(IServiceCommandRunner runner, ISabnzbdService
         }
 
         StopRunningSabnzbd();
-        runner.Run(console, $"-f \"{iniPath}\" install");
+        runner.Run(console, $"-f \"{iniPath}\" install", installDir.TrimEnd('\\'));
         if (!environment.ServiceExists())
         {
             return NotSetUp();
