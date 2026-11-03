@@ -194,7 +194,15 @@ function Invoke-GroupPlatformExtras {
             New-Item -ItemType Directory -Force -Path (Split-Path $readd) | Out-Null
             Set-Content -Path $readd -Encoding utf8 -Value (@{ CreatedUtc = [DateTime]::UtcNow.ToString('o'); DaemonNeedsRestart = $false; Torrents = @(); Summary = $null } | ConvertTo-Json -Compress) # the names the app itself writes (its files are read with the exact names)
             New-Item -ItemType Directory -Force -Path (Split-Path $pending) | Out-Null
-            $at = [DateTime]::UtcNow.AddHours(2).ToString('o') # in the future: once the wait is over the tray offers the picker by itself
+            # First GitHub's limit has lifted (the wait written is already over): the tray says so in a balloon, and the app stays on its list.
+            $lifted = Get-ToastTextCount -Text "GitHub's limit has lifted"
+            $over = [DateTime]::UtcNow.AddMinutes(-5).ToString('o')
+            Set-Content -Path $pending -Encoding utf8 -Value (@{ Kinds = @('weir'); RetryAfterUtc = $over; AskedByPerson = $false; Reason = "GitHub's hourly limit on looking up releases was used up." } | ConvertTo-Json -Compress)
+            Add-Check 'When the wait is over the tray tells the person in a balloon ("GitHub''s limit has lifted")' (Wait-ToastShown -Text "GitHub's limit has lifted" -Before $lifted -TimeoutSec 150) ''
+            $offered = @(Get-TrayMenuStates | Where-Object { $_.Name -match '^Try again: install ' })
+            Add-Check 'The app stays on the list and the menu offers "Try again: install Weir..."' ($offered.Count -eq 1 -and $offered[0].Name -match '^Try again: install Weir\.\.\.$') (($offered | ForEach-Object { $_.Name }) -join ' | ')
+            # Then a wait that is still to come, in the menu's words.
+            $at = [DateTime]::UtcNow.AddHours(2).ToString('o')
             Set-Content -Path $pending -Encoding utf8 -Value (@{ Kinds = @('weir'); RetryAfterUtc = $at; AskedByPerson = $false; Reason = "GitHub's hourly limit on looking up releases was used up." } | ConvertTo-Json -Compress)
             $shown = Wait-Until -TimeoutSec 20 -IntervalSec 1 -Condition {
                 $names = @(Get-TrayMenuStates | ForEach-Object { $_.Name })
@@ -322,12 +330,19 @@ function Invoke-UpdatePreferencesAndBackgroundCheck {
 
             # ---- a check that cannot reach the feed
             Try-Deluno -Method PUT -Path '/api/updates/preferences' -Body @{ mode = 'notify-only'; autoCheck = $false } | Out-Null
-            Clear-DownloadedUpdates
             Stop-UpdateFeed $feed; $feed = $null
+            # Started again with nothing downloaded and the feed gone, so the menu's update item reads "Check for updates" (a downloaded update turns it into "Restart to update").
+            $null = Quit-DelunoFromTray
+            Clear-DownloadedUpdates
+            $exe3 = Get-InstalledDelunoExe
+            Start-ProgramUnelevated -Path $exe3.FullName -WorkingDirectory $exe3.DirectoryName -Elevated
+            $up3 = Wait-Until -TimeoutSec 240 -IntervalSec 2 -Condition { Test-DelunoAnswering }
+            Add-Check 'Deluno is started again with nothing downloaded' $up3.Ok ''
+            Connect-Deluno
             $chk = Try-Deluno -Method POST -Path '/api/updates/check' -TimeoutSec 120
             $st = $chk.Data.status
             $words = "$($chk.Data.message) $($st.message)"
-            Add-Check 'The in-app check says why it failed in the Updates page''s words, and claims no update' ($chk.Status -eq 200 -and $words -match "Couldn't check for updates" -and -not $st.updateAvailable) $words
+            Add-Check 'The in-app check says why it failed in the Updates page''s words, and offers nothing to restart' ($chk.Status -eq 200 -and $words -match "Couldn't check for updates" -and -not $st.restartRequired) $words
             $before = Get-ToastTextCount -Text "Couldn't check for updates"
             $pressed = Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Check for updates'
             Add-Check 'The tray''s Check for updates item is pressed' $pressed $script:TrayMenuMiss
@@ -589,5 +604,67 @@ function Invoke-GroupPlatformExtrasPicker {
             Add-Check 'No installer ran: the install log gained no download, checksum or install line' ($newText -notmatch 'installer .* sha256|SHA-256|Installed:') $newText
         }
         finally { Remove-Item -LiteralPath $pending -ErrorAction SilentlyContinue }
+    }
+}
+
+function Invoke-CompanionsInstallFromThePage {
+    Invoke-Scenario -Id 'companions.install-from-the-page' -Title 'The Companion Tools page installs SABnzbd, qBittorrent and Weir on a machine that has none of them: one after another in a fixed order whatever order they were asked in, each through the elevated installer, with the clients set up for this PC only and their logins stored the way each app reads them' -Body {
+        $ctx = Start-PreviousForUpdate -CandidateVersion 'no-candidate-here'
+        if (-not $ctx) { return }
+        $list = Try-Deluno -Path '/api/companion-tools'
+        Add-Check 'The Companion Tools list answers and Deluno can install tools here' ($list.Status -eq 200 -and $list.Data.availability.available) "HTTP $($list.Status)"
+        $before = @($list.Data.tools | ForEach-Object { "$($_.id)=$($_.state)" })
+        Add-Note ('Before: ' + ($before -join ', '))
+        $installerFolder = Join-Path $env:ProgramFiles 'Deluno installer'
+        # Asked in the wrong order on purpose.
+        $ask = Try-Deluno -Method POST -Path '/api/companion-tools/install' -Body @{ toolIds = @('weir', 'qbittorrent', 'sabnzbd') }
+        Add-Check 'Asking for the three tools is accepted (HTTP 202)' ($ask.Status -eq 202) "HTTP $($ask.Status) $($ask.Raw)"
+        if ($ask.Status -ne 202) { return }
+        $again = Try-Deluno -Method POST -Path '/api/companion-tools/install' -Body @{ toolIds = @('sabnzbd') }
+        Add-Check 'Asking again while they are being set up is refused: "Tools are already being set up"' ($again.Status -eq 409 -and $again.Raw -match 'already being set up') "HTTP $($again.Status) $($again.Raw)"
+
+        $order = New-Object System.Collections.ArrayList
+        $seenStates = @{}
+        $final = $null
+        $deadline = (Get-Date).AddMinutes(25)
+        while ((Get-Date) -lt $deadline) {
+            $r = Try-Deluno -Path '/api/companion-tools'
+            if ($r.Status -eq 200) {
+                foreach ($t in @($r.Data.tools | Where-Object { $_.job })) {
+                    if (-not $seenStates.ContainsKey($t.id)) { $seenStates[$t.id] = New-Object System.Collections.ArrayList }
+                    $st = [string]$t.job.status
+                    if ($seenStates[$t.id].Count -eq 0 -or $seenStates[$t.id][-1] -ne $st) { [void]$seenStates[$t.id].Add($st) }
+                    if ($st -eq 'running' -and $t.id -notin $order) { [void]$order.Add($t.id) }
+                }
+                $jobs = @($r.Data.tools | Where-Object { $_.job })
+                if ($jobs.Count -eq 3 -and @($jobs | Where-Object { $_.job.status -in 'queued', 'running' }).Count -eq 0) { $final = $r.Data; break }
+            }
+            Start-Sleep -Seconds 3 # reason: polling the install's progress; the page reads it the same way
+        }
+        Add-Check 'All three finish within 25 minutes' ($null -ne $final) ''
+        if (-not $final) { return }
+        Save-Evidence -Name 'companion-tools-after-install.json' -Text ($final | ConvertTo-Json -Depth 6)
+        Add-Check 'They ran one after another in the fixed order: SABnzbd, qBittorrent, Weir' (($order -join ',') -eq 'sabnzbd,qbittorrent,weir') ($order -join ',')
+        Add-Check 'Each showed queued, then running, then done (nothing skipped a state)' (@('sabnzbd', 'qbittorrent', 'weir' | Where-Object { $s = $seenStates[$_]; -not ($s -and $s -contains 'running' -and $s[-1] -eq 'done') }).Count -eq 0) ((@('sabnzbd', 'qbittorrent', 'weir') | ForEach-Object { "$_ : $(@($seenStates[$_]) -join ' > ')" }) -join '; ')
+        foreach ($t in $final.tools) { if ($t.job -and $t.job.status -ne 'done') { Add-Note "$($t.id): $($t.job.status) - $($t.job.step) - $($t.job.message)" } }
+
+        $ports = [ordered]@{ sabnzbd = 8080; qbittorrent = 8081; weir = 9347 }
+        foreach ($k in $ports.Keys) {
+            $listen = @(Get-NetTCPConnection -State Listen -LocalPort $ports[$k] -ErrorAction SilentlyContinue | ForEach-Object { $_.LocalAddress } | Select-Object -Unique)
+            Add-Check "$k answers on port $($ports[$k]) and only on this PC" ($listen.Count -gt 0 -and @($listen | Where-Object { $_ -notin '127.0.0.1', '::1' }).Count -eq 0) ($listen -join ', ')
+        }
+        # qBittorrent's own settings file: the login is a PBKDF2 hash, never the password.
+        $qini = @(Get-ChildItem -Path (Join-Path $env:APPDATA 'qBittorrent') -Filter 'qBittorrent.ini' -ErrorAction SilentlyContinue | Select-Object -First 1)
+        $qtext = if ($qini.Count) { Get-Content -Raw $qini[0].FullName } else { '' }
+        Add-Check 'qBittorrent''s settings hold a PBKDF2 hash of the login (salt:key, base64), a username, and the web UI on 127.0.0.1' ($qtext -match 'WebUI\\Password_PBKDF2="@ByteArray\([A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+\)"' -and $qtext -match 'WebUI\\Username=\S+' -and $qtext -match 'WebUI\\Address=127\.0\.0\.1') $(if ($qini.Count) { $qini[0].FullName } else { 'no qBittorrent.ini' })
+        $sini = @(Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'sabnzbd') -Filter 'sabnzbd.ini' -ErrorAction SilentlyContinue | Select-Object -First 1)
+        $stext = if ($sini.Count) { Get-Content -Raw $sini[0].FullName } else { '' }
+        Add-Check 'SABnzbd''s settings hold a generated api key, a username and password, and the web UI on 127.0.0.1' ($stext -match '(?m)^\s*api_key\s*=\s*\w{16,}' -and $stext -match '(?m)^\s*username\s*=\s*\S+' -and $stext -match '(?m)^\s*password\s*=\s*\S+' -and $stext -match '(?m)^\s*host\s*=\s*127\.0\.0\.1') $(if ($sini.Count) { $sini[0].FullName } else { 'no sabnzbd.ini' })
+        Add-Check 'The elevated installer left nothing behind: no "Deluno installer" folder in Program Files' (-not (Test-Path $installerFolder)) $installerFolder
+        # Deluno was given the clients.
+        $clients = @(Get-DownloadClients | ForEach-Object { "$($_.protocol)|$($_.name)" })
+        Add-Check 'Deluno has qBittorrent and SABnzbd connected as download clients' (@($clients | Where-Object { $_ -match '^qbittorrent' }).Count -ge 1 -and @($clients | Where-Object { $_ -match '^sabnzbd' }).Count -ge 1) ($clients -join '; ')
+        $after = Try-Deluno -Path '/api/companion-tools'
+        Add-Check 'The list now shows none of the three as not installed' (@($after.Data.tools | Where-Object { $_.state -eq 'not-installed' }).Count -eq 0) ((@($after.Data.tools | ForEach-Object { "$($_.id)=$($_.state)" })) -join ', ')
     }
 }
