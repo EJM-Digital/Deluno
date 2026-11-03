@@ -188,6 +188,7 @@ function Get-VmFileBundle {
         $map[('suite\' + $rel)] = Get-Content -Raw $f.FullName
     }
     $map['suite\ScenarioPlan.ps1'] = Get-Content -Raw (Join-Path $suiteDir 'ScenarioPlan.ps1')
+    $map['scripts\test-guide-package-contract.ps1'] = Get-Content -Raw (Join-Path $PSScriptRoot '..\test-guide-package-contract.ps1')
     foreach ($f in Get-ChildItem -Path (Join-Path $PSScriptRoot 'torznab-feed') -File -Filter '*.ps1') { $map[('feed\' + $f.Name)] = Get-Content -Raw $f.FullName }
     $map
 }

@@ -15,7 +15,7 @@
  */
 import type { DownloadDispatchItem, DownloadQueueItem, ProcessorHandoffItem } from "../../../lib/api";
 import type { DashboardSummary } from "../../../lib/api/types/operations";
-import { dispatchImportEnded } from "../../../lib/dispatch-final-state";
+import { dispatchImportEnded, dispatchStanding } from "../../../lib/dispatch-final-state";
 import { stuckNextStep, waitingWords } from "../../../lib/download-wait";
 import { handoffStatusLabel, isProcessorFailure, isWithProcessor, queueItemNeedsAttention } from "../../../lib/needs-action";
 import type { Tone } from "../../../lib/status-tones";
@@ -183,8 +183,9 @@ export const JUST_SENT_MS = 5 * 60_000;
 
 /** The release was sent to a client a moment ago (and not refused), so the title is on its way even before the client says so. */
 function isJustSent(dispatch: DownloadDispatchItem, now: number): boolean {
-  if ((dispatch.grabStatus ?? "").toLowerCase() === "failed" || dispatch.failure || dispatch.importStatus) return false;
-  if ((dispatch.grabStatus ?? "").toLowerCase() !== "succeeded" && (dispatch.status ?? "").toLowerCase() !== "sent") return false;
+  // Refused, blocked, removed, failed, contained or imported, as the send's own record says (#1460): nothing is waiting to start.
+  if (dispatchStanding(dispatch)?.status !== "in-progress") return false;
+  if (dispatch.failure || dispatch.importStatus || dispatch.importFailureCode || dispatch.importFailureMessage) return false;
   const sentAt = Date.parse(dispatch.grabAttemptedUtc ?? dispatch.createdUtc);
   return Number.isFinite(sentAt) && now - sentAt >= 0 && now - sentAt < JUST_SENT_MS;
 }

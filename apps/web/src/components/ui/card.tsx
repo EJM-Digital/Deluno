@@ -33,7 +33,7 @@ export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHead
   return (
     <h3
       className={cn(
-        "text-(length:--type-card-title) font-semibold leading-snug tracking-tight text-foreground",
+        "text-(length:--type-card-title) font-semibold leading-[calc(var(--type-card-title)*23/15)] tracking-tight text-foreground",
         className
       )}
       {...props}

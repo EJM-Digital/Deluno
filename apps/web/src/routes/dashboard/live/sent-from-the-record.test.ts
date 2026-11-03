@@ -1,7 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import { sharedSources } from "../../../lib/shared-sources";
-import { buildJourney, byStage } from "./journey";
+import { buildJourney, byStage, JUST_SENT_MS } from "./journey";
 import { applyJourneyStage, applySearchesInFlight } from "./realtime";
 import { liveSources } from "../sources";
 import { fullSummary } from "../downloads-fixtures";
@@ -118,5 +118,57 @@ describe("one card per download, whatever name each record uses (#1459)", () => 
     expect(buildJourney({ ...base, dispatches: [older, newest] }).map((card) => card.key)).toEqual(["sent:d1"]);
     const withWork = buildJourney({ ...base, dispatches: [newest], work: [grabWork(RELEASE)] });
     expect(withWork.map((card) => card.key)).toEqual(["sent:d1"]);
+  });
+});
+
+describe("a sent release that something has happened to is not waiting to start (#1460)", () => {
+  it("draws nothing once the check blocked and removed it, whichever record shows it", () => {
+    // The rig, 3 Nov: sent, the client lists it, the download check blocks and removes it, the sent record is still young.
+    const listed = byStage(buildJourney({ ...base, dispatches: [dispatch()], queue: [queue()] }));
+    expect(listed.downloading).toHaveLength(1);
+    const refused = [
+      { importStatus: "failed", importCompletedUtc: iso(-1_000), importFailureCode: "download-integrity-failed", importFailureMessage: "It was not what it claimed to be." },
+      { importFailureCode: "download-integrity-failed", importFailureMessage: "It was not what it claimed to be." },
+      { importCompletedUtc: iso(-1_000) },
+      { status: "archived" },
+      { status: "removed" },
+      { status: "vanished" },
+      { status: "cancelled" },
+      { grabStatus: "refused" },
+      { grabStatus: "blocked" },
+      { status: "blocked" },
+      { importFailureCode: "handed-over-elsewhere" }
+    ];
+    for (const change of refused) {
+      expect(byStage(buildJourney({ ...base, dispatches: [dispatch(change)] })).grabbed, JSON.stringify(change)).toHaveLength(0);
+    }
+  });
+
+  it("still draws a plain young send with nothing recorded against it", () => {
+    expect(byStage(buildJourney({ ...base, dispatches: [dispatch({ importStatus: null, importCompletedUtc: null })] })).grabbed).toHaveLength(1);
+  });
+});
+
+describe("when a sent record counts as just sent (#1460)", () => {
+  const grabbed = (change: Record<string, unknown>) => byStage(buildJourney({ ...base, dispatches: [dispatch(change)] })).grabbed.length;
+  it("needs a plain sent record: a failed grab, a failure, a planned or unsent one is not drawn", () => {
+    expect(grabbed({})).toBe(1);
+    expect(grabbed({ grabStatus: "FAILED" })).toBe(0);
+    expect(grabbed({ grabStatus: "pending" })).toBe(1);
+    expect(grabbed({ failure: { code: "x" } })).toBe(0);
+    expect(grabbed({ importStatus: "pending" })).toBe(0);
+    expect(grabbed({ importFailureMessage: "no" })).toBe(0);
+    expect(grabbed({ status: "planned" })).toBe(0);
+    expect(grabbed({ status: "SENT" })).toBe(1);
+  });
+  it("is drawn only for under five minutes, counted from the grab, else from the record", () => {
+    expect(grabbed({ grabAttemptedUtc: iso(0), createdUtc: iso(0) })).toBe(1);
+    expect(grabbed({ grabAttemptedUtc: iso(1_000), createdUtc: iso(1_000) })).toBe(0);
+    expect(grabbed({ grabAttemptedUtc: iso(-JUST_SENT_MS + 1), createdUtc: iso(-JUST_SENT_MS + 1) })).toBe(1);
+    expect(grabbed({ grabAttemptedUtc: iso(-JUST_SENT_MS), createdUtc: iso(-JUST_SENT_MS) })).toBe(0);
+    expect(grabbed({ grabAttemptedUtc: iso(-1_000), createdUtc: iso(-JUST_SENT_MS * 2) })).toBe(1);
+    expect(grabbed({ grabAttemptedUtc: null, createdUtc: iso(-1_000) })).toBe(1);
+    expect(grabbed({ grabAttemptedUtc: null, createdUtc: iso(-JUST_SENT_MS * 2) })).toBe(0);
+    expect(grabbed({ grabAttemptedUtc: "not a date", createdUtc: iso(-1_000) })).toBe(0);
   });
 });

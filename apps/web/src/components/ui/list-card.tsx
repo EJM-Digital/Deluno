@@ -63,7 +63,7 @@ export function ListCard({ title, count, titleCase = true, info, filter, actions
   return (
     <section aria-labelledby={titleId} className={cn("overflow-hidden rounded-2xl border border-hairline bg-card shadow-card dark:border-white/[0.07]", className)}>
       <header className="flex min-h-(--list-header-height) flex-wrap items-center gap-x-3 gap-y-2 border-b border-hairline px-(--card-pad-x) py-2">
-        <h2 id={titleId} className="text-(length:--type-card-title) font-semibold leading-none text-foreground">{typeof title === "string" && titleCase ? titleCaseLabel(title) : title}</h2>
+        <h2 id={titleId} className="text-(length:--type-card-title) font-semibold leading-[calc(var(--type-card-title)*23/15)] text-foreground">{typeof title === "string" && titleCase ? titleCaseLabel(title) : title}</h2>
         {info ? <InfoHintButton about={typeof title === "string" ? title : "this section"} open={hint.open} onToggle={hint.toggle} describes={hint.bodyId} /> : null}
         {count ? <span className="text-(length:--type-caption) text-muted-foreground">{count}</span> : null}
         <span className="flex-1" />

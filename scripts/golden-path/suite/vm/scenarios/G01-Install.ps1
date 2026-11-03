@@ -41,6 +41,12 @@ function Invoke-GroupInstall {
         $picker = 'C:\golden\picker.log'
         $pk = if (Test-Path $picker) { Get-Content -Raw $picker } else { '' }
         Add-Check 'The picker finished with every row installed, Weir included' ($pk -match 'Finished\.' -and $pk -match 'Weir' -and $pk -notmatch 'FAILED') ''
+        # Each of the five clients and Weir, by name: the whole picker log matching is not the same as each one having installed.
+        foreach ($app in @(@('qbittorrent', 'qBittorrent'), @('transmission', 'Transmission'), @('deluge', 'Deluge'), @('sabnzbd', 'SABnzbd'), @('nzbget', 'NZBGet'), @('weir', 'Weir'))) {
+            Add-Check "$($app[1]) is reported installed in the install log (component '$($app[0])')" ($hookText -match "component '$($app[0])': (Installed|AlreadyInstalled|InstalledNeedsSetup):") ''
+        }
+        # What the picker showed when it opened, before it was driven: nothing ticked by default, every component listed with its licence.
+        Add-Check 'The picker said nothing is ticked by default, listed six components each with its licence, and every row was off before the driver ticked it' ($pk -match 'Nothing is ticked by default' -and $pk -match 'rows: 6: qBittorrent \(GPL-3\.0\) \| Transmission \([^)]+\) \| Deluge \([^)]+\) \| SABnzbd \([^)]+\) \| NZBGet \([^)]+\) \| Weir \([^)]+\)' -and ([regex]::Matches($pk, 'was Off, now On')).Count -eq 6 -and ([regex]::Matches($pk, 'was On')).Count -eq 0) ''
         Save-Evidence -Name 'picker.log' -Text $pk
     }
 

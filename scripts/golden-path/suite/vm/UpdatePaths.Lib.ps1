@@ -580,6 +580,19 @@ function Invoke-UninstallKeepsData {
         Add-Check 'The data folder holds databases, a backup and the protection keys' (@($kept | Where-Object { $_ -match '\.db$' }).Count -ge 3 -and @($kept | Where-Object { $_ -match '\.zip$' }).Count -ge 1 -and @($kept | Where-Object { $_ -match 'protection-keys' }).Count -ge 1) "$($kept.Count) files"
         $configBefore = if (Test-Path $config) { (Get-FileHash $config -Algorithm SHA256).Hash } else { $null }
         $installFolder = Join-Path $env:LOCALAPPDATA 'Deluno'
+        # Two firewall rules for Deluno's port: Deluno's own (the first run adds it) and another program's. The uninstall removes only the first.
+        $savedPort = 7879
+        try { $cfg = Get-Content -Raw $config | ConvertFrom-Json; if ($cfg.port) { $savedPort = [int]$cfg.port } } catch { }
+        $ownRule = "Deluno (port $savedPort)"
+        $foreignRule = "Golden other program (port $savedPort)"
+        & netsh.exe advfirewall firewall delete rule name="$ownRule" | Out-Null
+        & netsh.exe advfirewall firewall add rule name="$ownRule" dir=in action=allow protocol=TCP localport=$savedPort profile=any | Out-Null
+        & netsh.exe advfirewall firewall add rule name="$foreignRule" dir=in action=allow protocol=TCP localport=$savedPort profile=any | Out-Null
+        $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+        # The person had chosen Start with Windows: the entry is there when the uninstall runs.
+        Set-ItemProperty -Path $runKey -Name 'Deluno' -Value ('"{0}"' -f (Join-Path $env:LOCALAPPDATA 'Deluno\current\Deluno.exe'))
+        $signInBefore = [bool](Get-ItemProperty -Path $runKey -ErrorAction SilentlyContinue | ForEach-Object { $_.PSObject.Properties | Where-Object { [string]$_.Value -match 'Deluno\.exe' } })
+        Add-Check 'Before: Deluno''s own rule and another program''s rule are both there for its port' (@(Get-NetFirewallRule -DisplayName $ownRule -ErrorAction SilentlyContinue).Count -ge 1 -and @(Get-NetFirewallRule -DisplayName $foreignRule -ErrorAction SilentlyContinue).Count -ge 1) "port $savedPort"
         $r = Invoke-DelunoUninstall
         Add-Check 'The uninstaller (Update.exe --uninstall --silent) finished' $r.Ok $r.Detail
         $gone = Wait-Until -TimeoutSec 120 -IntervalSec 2 -Condition { -not (Test-Path (Join-Path $installFolder 'current\Deluno.exe')) }
@@ -590,5 +603,15 @@ function Invoke-UninstallKeepsData {
         Add-Check 'The settings file is kept as it was' ($null -ne $configBefore -and (Test-Path $config) -and (Get-FileHash $config -Algorithm SHA256).Hash -eq $configBefore) ''
         $listed = @(Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'Deluno*' })
         Add-Check 'Deluno is no longer listed in Apps' ($listed.Count -eq 0) (($listed | ForEach-Object { $_.DisplayName }) -join ', ')
+        # The firewall: only Deluno's own rule goes; the other program's stays.
+        $ownLeft = @(Get-NetFirewallRule -DisplayName $ownRule -ErrorAction SilentlyContinue).Count
+        $foreignLeft = @(Get-NetFirewallRule -DisplayName $foreignRule -ErrorAction SilentlyContinue).Count
+        Add-Check 'The uninstall removed Deluno''s own firewall rule and left the other program''s rule for the same port' ($ownLeft -eq 0 -and $foreignLeft -ge 1) "own rule left: $ownLeft, other program's rule left: $foreignLeft"
+        & netsh.exe advfirewall firewall delete rule name="$foreignRule" | Out-Null
+        # What else is left behind is recorded, so it is known and no longer a guess: the sign-in entry (Deluno does not own the person's choice to start with Windows).
+        $signInAfter = [bool](Get-ItemProperty -Path $runKey -ErrorAction SilentlyContinue | ForEach-Object { $_.PSObject.Properties | Where-Object { [string]$_.Value -match 'Deluno\.exe' } })
+        Add-Note ("After the uninstall the sign-in entry is {0} (it was {1} before)." -f $(if ($signInAfter) { 'still there' } else { 'gone' }), $(if ($signInBefore) { 'there' } else { 'not set' }))
+        $settingsKept = Test-Path $config
+        Add-Check 'What is left behind is the person''s: the data folder and the settings file (no program, no firewall rule of Deluno''s)' ($settingsKept -and (Test-Path $data) -and $ownLeft -eq 0) ''
     }
 }

@@ -48,6 +48,14 @@ function Initialize-UpdateState {
         name = 'Update scenario client'; protocol = 'qbittorrent'; host = '127.0.0.1'; port = 18081; username = 'x'; password = 'y'
         moviesCategory = 'deluno-movies'; tvCategory = 'deluno-tv'; priority = 1; isEnabled = $false
     } | Out-Null
+    # A plan (a media plan: a policy set on the quality profile), a processor connection with a saved secret, and a film file in the library,
+    # so the update has each of them to keep (#1278). The processor is switched off: nothing is to ask it anything.
+    Try-Deluno -Method POST -Path '/api/policy-sets' -Body @{ name = 'Update scenario plan'; mediaType = 'movies'; qualityProfileId = $profile.id; customFormatIds = ''; upgradeUntilCutoff = $true; isEnabled = $true; notes = 'kept through the update' } | Out-Null
+    Try-Deluno -Method POST -Path '/api/integrations/processors/connections' -Body @{ name = 'Update scenario processor'; provider = 'generic'; submissionUrl = 'http://127.0.0.1:19347/hook'; authHeaderName = 'Authorization'; secret = 'update-scenario-secret'; isEnabled = $false } | Out-Null
+    $filmFolder = 'C:\Media\Movies\Update Scenario Film (2026)'
+    New-Item -ItemType Directory -Force -Path $filmFolder | Out-Null
+    $bytes = New-Object byte[] (300KB); (New-Object System.Random 4242).NextBytes($bytes)
+    [IO.File]::WriteAllBytes((Join-Path $filmFolder 'Update Scenario Film (2026).mkv'), $bytes)
     # Settings changes are written to Activity; switching automation on and off leaves rows to keep.
     Invoke-Deluno -Method PUT -Path '/api/settings/automation' -Body @{ isEnabled = $true } | Out-Null
     Invoke-Deluno -Method PUT -Path '/api/settings/automation' -Body @{ isEnabled = $false } | Out-Null
@@ -69,7 +77,17 @@ function Get-DelunoStateSummary {
     $rules = 0
     try { $rules = @(Get-NetFirewallRule -Direction Inbound -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'Deluno*' }).Count } catch { }
     $answering = @(8081, 9091, 8112, 8080, 6789, 9347 | Where-Object { Get-NetTCPConnection -State Listen -LocalPort $_ -ErrorAction SilentlyContinue })
-    [pscustomobject]@{ Clients = $clients; Libraries = $libs; Activity = $activity; Profiles = $profiles; Titles = $titles; StartsWithWindows = $startsWithWindows; FirewallRules = $rules; AnsweringPorts = $answering }
+    # And the plans, the processor connections with whether their saved secret can still be read, the saved download client keys, the
+    # library's details and the media files on disk (name and size), the protection key's hash (what the saved secrets are sealed with).
+    $plans = @(); $processors = @(); $clientKeys = @(); $libraryDetails = @(); $mediaFiles = @(); $keyHash = ''
+    try { $plans = @(Invoke-Deluno -Path '/api/policy-sets' | ForEach-Object { "$($_.id)|$($_.name)|$($_.qualityProfileId)" } | Sort-Object) } catch { }
+    try { $processors = @(Invoke-Deluno -Path '/api/integrations/processors/connections' | ForEach-Object { "$($_.id)|$($_.name)|$($_.submissionUrl)|$($_.authHeaderName)|configured=$($_.secretConfigured)|unreadable=$($_.secretUnreadable)" } | Sort-Object) } catch { }
+    try { $clientKeys = @(Get-DownloadClients | ForEach-Object { "$($_.id)|unreadable=$($_.secretUnreadable)" } | Sort-Object) } catch { }
+    try { $libraryDetails = @(Invoke-Deluno -Path '/api/libraries' | ForEach-Object { "$($_.id)|$($_.name)|$($_.rootPath)|$($_.downloadsPath)|$($_.qualityProfileId)|$($_.defaultPolicySetId)|$($_.importWorkflow)" } | Sort-Object) } catch { }
+    try { $mediaFiles = @(Get-ChildItem -LiteralPath 'C:\Media' -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { "$($_.FullName)|$($_.Length)" } | Sort-Object) } catch { }
+    try { $keyFile = Join-Path $env:LOCALAPPDATA 'DelunoData\secrets\master.key'; if (Test-Path $keyFile) { $keyHash = (Get-FileHash -LiteralPath $keyFile -Algorithm SHA256).Hash } } catch { }
+    [pscustomobject]@{ Clients = $clients; Libraries = $libs; Activity = $activity; Profiles = $profiles; Titles = $titles; StartsWithWindows = $startsWithWindows; FirewallRules = $rules; AnsweringPorts = $answering
+        Plans = $plans; Processors = $processors; ClientKeys = $clientKeys; LibraryDetails = $libraryDetails; MediaFiles = $mediaFiles; KeyHash = $keyHash }
 }
 
 # The start log's lines written at or after $Since. Lines are picked by their own timestamp, not by counting the lines that
@@ -177,6 +195,12 @@ function Invoke-UpdateScenario {
             Add-Check 'The download clients are the same' (($after.Clients -join ';') -eq ($before.Clients -join ';')) ("before {0}, after {1}" -f $before.Clients.Count, $after.Clients.Count)
             Add-Check 'The libraries are the same' (($after.Libraries -join ';') -eq ($before.Libraries -join ';')) ("before {0}, after {1}" -f $before.Libraries.Count, $after.Libraries.Count)
             Add-Check 'Activity kept its history' ($after.Activity -ge $before.Activity) ("before {0}, after {1}" -f $before.Activity, $after.Activity)
+            Add-Check 'The previous release held a plan, a processor connection with a saved secret and a film file to keep' (@($before.Plans).Count -gt 0 -and @($before.Processors).Count -gt 0 -and @($before.MediaFiles | Where-Object { $_ -match 'Update Scenario Film' }).Count -eq 1) ("{0} plan(s), {1} processor connection(s), {2} media file(s)" -f @($before.Plans).Count, @($before.Processors).Count, @($before.MediaFiles).Count)
+            Add-Check 'The plans are the same' (($after.Plans -join ';') -eq ($before.Plans -join ';')) ("before {0}, after {1}" -f @($before.Plans).Count, @($after.Plans).Count)
+            Add-Check 'The processor connections are the same, with their saved secrets still readable' ((($after.Processors -join ';') -eq ($before.Processors -join ';')) -and @($after.Processors | Where-Object { $_ -match 'unreadable=True' }).Count -eq 0 -and @($after.Processors | Where-Object { $_ -match 'configured=True' }).Count -eq @($before.Processors | Where-Object { $_ -match 'configured=True' }).Count) ($after.Processors -join ' ; ')
+            Add-Check 'The saved download client keys are the same and can still be read (the protection key is byte for byte the same)' ((($after.ClientKeys -join ';') -eq ($before.ClientKeys -join ';')) -and @($after.ClientKeys | Where-Object { $_ -match 'unreadable=True' }).Count -eq 0 -and $after.KeyHash -eq $before.KeyHash) ("keys before {0}, after {1}; key file hash equal: {2}" -f @($before.ClientKeys).Count, @($after.ClientKeys).Count, ($after.KeyHash -eq $before.KeyHash))
+            Add-Check 'Each library keeps its folders, quality profile, plan and import workflow' (($after.LibraryDetails -join ';') -eq ($before.LibraryDetails -join ';')) ("before {0}, after {1}" -f @($before.LibraryDetails).Count, @($after.LibraryDetails).Count)
+            Add-Check 'The media library files are the same (same names, same sizes)' (($after.MediaFiles -join ';') -eq ($before.MediaFiles -join ';')) ("before {0} file(s), after {1}" -f @($before.MediaFiles).Count, @($after.MediaFiles).Count)
             $missingPorts = @($before.AnsweringPorts | Where-Object { $_ -notin @($after.AnsweringPorts) })
             Add-Check 'The quality profiles, the titles, the sign-in entry, the firewall rule and every installed client and Weir that was answering are kept' ((($after.Profiles -join ';') -eq ($before.Profiles -join ';')) -and (($after.Titles -join ';') -eq ($before.Titles -join ';')) -and $after.StartsWithWindows -eq $before.StartsWithWindows -and $after.FirewallRules -ge $before.FirewallRules -and $missingPorts.Count -eq 0) ("profiles {0}->{1}, titles {2}->{3}, starts with Windows {4}->{5}, firewall rules {6}->{7}, no longer answering: [{8}]" -f $before.Profiles.Count, $after.Profiles.Count, $before.Titles.Count, $after.Titles.Count, $before.StartsWithWindows, $after.StartsWithWindows, $before.FirewallRules, $after.FirewallRules, ($missingPorts -join ','))
         }

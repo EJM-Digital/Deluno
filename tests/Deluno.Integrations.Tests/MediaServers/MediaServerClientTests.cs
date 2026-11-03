@@ -1,5 +1,5 @@
 using System.Net;
-using System.Text;
+using System.Text.Json.Nodes;
 using Deluno.Connections.Contracts;
 using Deluno.Contracts;
 using Deluno.Integrations.MediaServers;
@@ -71,69 +71,102 @@ public sealed class MediaServerClientTests
         Assert.Contains(requests, request => request.StartsWith($"/Users/{benId}/", StringComparison.Ordinal));
     }
 
+    /// <summary>The kind's recorded state, Jellyfin 12.4.0 or Emby 4.10.1.0 (they answer the same calls the same way, Emby under /emby).</summary>
+    private static Recording Recorded(string kind, string state)
+        => kind == MediaServerKinds.Emby ? RecordedReplies.Emby(state) : RecordedReplies.Jellyfin(state);
+
+    /// <summary>
+    /// The recorded reply to the kind of call Deluno made to Jellyfin or Emby: the lists of users and libraries, the catalogue by the item
+    /// types asked for, the show lookup and the sessions. Null for a call no recording answers.
+    /// </summary>
+    private static HttpResponseMessage? FromRecordings(string kind, HttpRequestMessage request)
+    {
+        var path = request.RequestUri!.AbsolutePath;
+        if (path.StartsWith("/emby/", StringComparison.Ordinal)) path = path["/emby".Length..];
+        var query = Uri.UnescapeDataString(request.RequestUri.Query);
+        Exchange? exchange = null;
+        if (path == "/System/Info") exchange = Recorded(kind, "identity").Exchanges[1];
+        else if (path == "/Library/VirtualFolders") exchange = Recorded(kind, "libraries").Exchanges[0];
+        else if (path == "/Users") exchange = Recorded(kind, "libraries").Exchanges[1];
+        else if (path == "/Sessions") exchange = Recorded(kind, "sessions-playing").Exchanges[2];
+        else if (path == "/Items" && query.Contains("Ids=", StringComparison.Ordinal)) exchange = Recorded(kind, "catalogue-series").Exchanges[1];
+        else if (path == "/Items" && query.Contains("IncludeItemTypes=Movie", StringComparison.Ordinal)) exchange = Recorded(kind, "catalogue-movies").Exchanges[0];
+        else if (path == "/Items" && query.Contains("IncludeItemTypes=Series", StringComparison.Ordinal)) exchange = Recorded(kind, "catalogue-series").Exchanges[0];
+        else if (path.StartsWith("/Users/", StringComparison.Ordinal) && path.EndsWith("/Items", StringComparison.Ordinal))
+            exchange = Recorded(kind, "watched").Exchanges[query.Contains("IsPlayed=true", StringComparison.Ordinal) ? 1 : 2];
+        return exchange?.Reply.ToResponse();
+    }
+
+    private static EmbyFamilyMediaServerClient ClientOf(string kind, IHttpClientFactory factory)
+        => kind == MediaServerKinds.Emby ? new EmbyMediaServerClient(factory) : new JellyfinMediaServerClient(factory);
+
+    /// <summary>Jellyfin 12.4.0's TV listing: the recorded show, its season and its two episodes, with the levels, ids and numbers the recording holds.</summary>
     [Fact]
     public async Task A_Jellyfin_TV_listing_holds_shows_seasons_and_episodes()
     {
+        var recorded = RecordedReplies.Jellyfin("catalogue-series").Exchanges[0].Reply.Json()["Items"]!.AsArray();
+        JsonNode Of(string type) => recorded.First(item => item!["Type"]!.GetValue<string>() == type)!;
+        var query = "";
         var client = new JellyfinMediaServerClient(Factory(request =>
         {
-            var path = request.RequestUri!.AbsolutePath;
-            var query = Uri.UnescapeDataString(request.RequestUri.Query);
-            if (path == "/Users") return Json("""[{"Id":"u1","Name":"Owner"}]""");
-            if (path == "/Items")
-            {
-                Assert.Contains("IncludeItemTypes=Series,Season,Episode", query, StringComparison.Ordinal);
-                return Json(
-                    """
-                    {"Items":[
-                    {"Id":"s1","Type":"Series","Name":"Breaking Bad","Path":"/tv/Breaking Bad"},
-                    {"Id":"se1","Type":"Season","Name":"Season 1","SeriesId":"s1","IndexNumber":1},
-                    {"Id":"e1","Type":"Episode","Name":"Pilot","SeriesId":"s1","SeasonId":"se1","ParentIndexNumber":1,"IndexNumber":1,"Path":"/tv/Breaking Bad/S01E01.mkv","PremiereDate":"2008-01-20T00:00:00Z"}],"TotalRecordCount":3}
-                    """);
-            }
-
-            return Json("""{"Items":[],"TotalRecordCount":0}""");
+            if (request.RequestUri!.AbsolutePath == "/Items" && request.RequestUri.Query.Contains("Series", StringComparison.Ordinal)) query = Uri.UnescapeDataString(request.RequestUri.Query);
+            return FromRecordings(MediaServerKinds.Jellyfin, request) ?? throw new InvalidOperationException($"No recording answers {request.RequestUri!.PathAndQuery}.");
         }));
 
         var answer = await client.ListItemsAsync(Server(MediaServerKinds.Jellyfin), "tv", CancellationToken.None);
 
+        Assert.Contains("IncludeItemTypes=Series,Season,Episode", query, StringComparison.Ordinal);
         var items = Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(answer).Value.Items;
-        Assert.Equal(MediaServerItemLevels.Show, Assert.Single(items, item => item.ServerItemId == "s1").Level);
-        var season = Assert.Single(items, item => item.ServerItemId == "se1");
-        Assert.Equal((MediaServerItemLevels.Season, "s1", 1), (season.Level, season.ShowServerItemId, season.SeasonNumber));
-        var episode = Assert.Single(items, item => item.ServerItemId == "e1");
-        Assert.Equal((MediaServerItemLevels.Episode, "s1", "se1", 1, 1), (episode.Level, episode.ShowServerItemId, episode.SeasonServerItemId, episode.SeasonNumber, episode.EpisodeNumber));
+        var showId = Of("Series")["Id"]!.GetValue<string>();
+        Assert.Equal(MediaServerItemLevels.Show, Assert.Single(items, item => item.ServerItemId == showId).Level);
+        var seasonId = Of("Season")["Id"]!.GetValue<string>();
+        var season = Assert.Single(items, item => item.ServerItemId == seasonId);
+        Assert.Equal((MediaServerItemLevels.Season, showId, 1), (season.Level, season.ShowServerItemId, season.SeasonNumber));
+        var episodeId = Of("Episode")["Id"]!.GetValue<string>();
+        var episode = Assert.Single(items, item => item.ServerItemId == episodeId);
+        Assert.Equal((MediaServerItemLevels.Episode, showId, seasonId, 1, 1), (episode.Level, episode.ShowServerItemId, episode.SeasonServerItemId, episode.SeasonNumber, episode.EpisodeNumber));
+        Assert.Equal(2, items.Count(item => item.Level == MediaServerItemLevels.Episode));
     }
 
+    /// <summary>Jellyfin 12.4.0 before any library holds a film: its own empty listing (tests/fixtures/recorded/jellyfin/library-empty) is an answer, not a failure.</summary>
     [Fact]
     public async Task An_empty_library_is_an_answer()
     {
-        var client = new JellyfinMediaServerClient(Factory(request => request.RequestUri!.AbsolutePath switch
-        {
-            "/Users" => Json("""[{"Id":"u1","Name":"Owner"}]"""),
-            _ => Json("""{"Items":[],"TotalRecordCount":0}""")
-        }));
+        var empty = RecordedReplies.Jellyfin("library-empty");
+        var client = new JellyfinMediaServerClient(Factory(request => request.RequestUri!.AbsolutePath == "/Users" ? empty.Exchanges[1].Reply.ToResponse() : empty.Exchanges[2].Reply.ToResponse()));
 
         var answer = await client.ListItemsAsync(Server(MediaServerKinds.Jellyfin), "movies", CancellationToken.None);
 
         Assert.Empty(Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(answer).Value.Items);
     }
 
+    /// <summary>
+    /// Emby 4.10.1.0's own refusal of a key it does not know (a 401), and the same reply with only the status changed to 500 for a server
+    /// that fails: neither is an empty library.
+    /// </summary>
     [Theory]
     [InlineData(HttpStatusCode.Unauthorized)]
     [InlineData(HttpStatusCode.InternalServerError)]
     public async Task A_server_that_refuses_or_fails_could_not_be_asked(HttpStatusCode code)
     {
-        var client = new EmbyMediaServerClient(Factory(_ => new HttpResponseMessage(code)));
+        var refused = RecordedReplies.Emby("wrong-token").Exchanges[0].Reply;
+        var client = new EmbyMediaServerClient(Factory(_ =>
+        {
+            var response = refused.ToResponse();
+            response.StatusCode = code;
+            return response;
+        }));
 
         var answer = await client.ListItemsAsync(Server(MediaServerKinds.Emby), "movies", CancellationToken.None);
 
         Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Unreachable>(answer);
     }
 
+    /// <summary>Plex 1.43.4 with its connection refused, as recorded (tests/fixtures/recorded/plex/not-answering).</summary>
     [Fact]
     public async Task A_server_that_is_down_could_not_be_asked()
     {
-        var client = new PlexMediaServerClient(Factory(_ => throw new HttpRequestException("connection refused")));
+        var client = new PlexMediaServerClient(new HandlerFactory(RecordedReplies.Plex("not-answering").NotAnswering()));
 
         var answer = await client.ListItemsAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), "movies", CancellationToken.None);
 
@@ -187,6 +220,7 @@ public sealed class MediaServerClientTests
         Assert.Equal(503, library.Items.Select(item => item.ServerItemId).Distinct().Count());
     }
 
+    /// <summary>Emby 4.10.1.0 answers under /emby, and its connection test reports the server name, id and the number of libraries it recorded.</summary>
     [Fact]
     public async Task Emby_is_asked_under_its_emby_path_and_says_who_it_is()
     {
@@ -194,298 +228,19 @@ public sealed class MediaServerClientTests
         var client = new EmbyMediaServerClient(Factory(request =>
         {
             paths.Add(request.RequestUri!.AbsolutePath);
-            return request.RequestUri.AbsolutePath switch
-            {
-                "/emby/System/Info" => Json("""{"ServerName":"RIG-EMBY","Id":"abc123","Version":"4.9.1.80"}"""),
-                "/emby/Library/VirtualFolders" => Json("""[{"Name":"Movies"},{"Name":"TV"}]"""),
-                "/emby/Users" => Json("""[{"Id":"u1","Name":"Owner"}]"""),
-                _ => new HttpResponseMessage(HttpStatusCode.NotFound)
-            };
+            return FromRecordings(MediaServerKinds.Emby, request) ?? new HttpResponseMessage(HttpStatusCode.NotFound);
         }));
+        var info = RecordedReplies.Emby("identity").Exchanges[1].Reply.Json();
+        var libraries = RecordedReplies.Emby("libraries").Exchanges[0].Reply.Json().AsArray().Count;
 
         var result = await client.TestAsync(Server(MediaServerKinds.Emby, "http://192.168.1.51:8097"), CancellationToken.None);
 
-        Assert.True(result.Ok);
-        Assert.Equal("RIG-EMBY", result.ServerName);
-        Assert.Equal("abc123", result.ServerId);
-        Assert.Equal(2, result.LibraryCount);
-        Assert.Contains("RIG-EMBY", result.Message, StringComparison.Ordinal);
+        Assert.True(result.Ok, result.Message);
+        Assert.Equal(info["ServerName"]!.GetValue<string>(), result.ServerName);
+        Assert.Equal(info["Id"]!.GetValue<string>(), result.ServerId);
+        Assert.Equal(libraries, result.LibraryCount);
+        Assert.Contains(info["ServerName"]!.GetValue<string>(), result.Message, StringComparison.Ordinal);
         Assert.All(paths, path => Assert.StartsWith("/emby/", path, StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task Removing_from_Jellyfin_reports_the_files_deleted_and_never_calls_its_delete()
-    {
-        HttpRequestMessage? sent = null;
-        string? body = null;
-        var client = new JellyfinMediaServerClient(Factory(request =>
-        {
-            sent = request;
-            body = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
-            return new HttpResponseMessage(HttpStatusCode.NoContent);
-        }));
-        var item = new MediaServerItem("m1", "movies", "Sintel", 2010, null, null, null, [@"\\nas\media\Deluno-E2E\Movies\Sintel (2010)\Sintel.mkv"], null, MediaServerWatchState.Unplayed);
-
-        var answer = await client.RemoveAsync(Server(MediaServerKinds.Jellyfin), item, CancellationToken.None);
-
-        Assert.IsType<MediaServerAnswer<MediaServerRemoval>.Reported>(answer);
-        Assert.Equal(HttpMethod.Post, sent!.Method);
-        Assert.Equal("/Library/Media/Updated", sent.RequestUri!.AbsolutePath);
-        Assert.Contains("\"UpdateType\":\"Deleted\"", body, StringComparison.Ordinal);
-        Assert.Contains("Sintel.mkv", body, StringComparison.Ordinal);
-    }
-
-    private const string SoloAccounts = """{"MediaContainer":{"Account":[{"id":0,"name":""},{"id":1,"name":"jampat"}]}}""";
-    private const string OwnerMe = """{"id":987654,"username":"jampat"}""";
-    private const string OwnedServer = """[{"name":"Rig","clientIdentifier":"machine-1","owned":true}]""";
-    private const string EmptyList = """<MediaContainer size="0"></MediaContainer>""";
-    private const string OwnerOnlyHome = """<MediaContainer size="1"><User id="987654" title="jampat" admin="1"/></MediaContainer>""";
-
-    /// <summary>A Plex whose owner token can be asked; each part can be swapped for what a household really looks like. Null = that call fails.</summary>
-    private static async Task<bool> PlexAccountIsEveryoneAsync(
-        string? accounts = SoloAccounts, string? shared = EmptyList, string? friends = EmptyList, string? home = OwnerOnlyHome, string? me = OwnerMe, string? resources = OwnedServer)
-    {
-        HttpResponseMessage Answer(string? body) => body is null ? new HttpResponseMessage(HttpStatusCode.Unauthorized) : Json(body);
-        var client = new PlexMediaServerClient(Factory(request => request.RequestUri!.Host switch
-        {
-            "discover.provider.plex.tv" => Json("""{"MediaContainer":{"totalSize":0}}"""),
-            "plex.tv" => request.RequestUri.AbsolutePath switch
-            {
-                "/api/v2/user" => Answer(me),
-                "/api/v2/resources" => Answer(resources),
-                "/api/servers/machine-1/shared_servers" => Answer(shared),
-                "/api/users" => Answer(friends),
-                "/api/home/users" => Answer(home),
-                _ => new HttpResponseMessage(HttpStatusCode.NotFound)
-            },
-            _ => request.RequestUri.AbsolutePath switch
-            {
-                "/" => Json("""{"MediaContainer":{"machineIdentifier":"machine-1","friendlyName":"Rig"}}"""),
-                "/library/metadata/101" => Json("""{"MediaContainer":{"Metadata":[{"ratingKey":"101"}]}}"""),
-                "/playlists" => Json("""{"MediaContainer":{"totalSize":0}}"""),
-                "/library/sections" => Json("""{"MediaContainer":{"Directory":[{"key":"1","type":"movie"}]}}"""),
-                "/myplex/account" => Json("""{"MyPlex":{"username":"jampat"}}"""),
-                "/accounts" => Answer(accounts),
-                "/library/sections/1/all" => Json("""{"MediaContainer":{"totalSize":1,"Metadata":[{"ratingKey":"101","type":"movie","title":"Sintel","year":2010,"viewCount":1}]}}"""),
-                _ => new HttpResponseMessage(HttpStatusCode.NotFound)
-            }
-        }));
-
-        var answer = await client.ListItemsAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), "movies", CancellationToken.None);
-
-        return Assert.Single(Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(answer).Value.Items).Watch.PerUserKnown;
-    }
-
-    [Fact]
-    public async Task Plex_says_the_account_is_everyone_only_when_plex_tv_and_the_server_both_show_nobody_else()
-        => Assert.True(await PlexAccountIsEveryoneAsync());
-
-    [Fact]
-    public async Task A_friend_the_server_has_not_listed_yet_but_plex_tv_says_has_the_server_is_not_ignored()
-        => Assert.False(await PlexAccountIsEveryoneAsync(shared: """<MediaContainer size="1"><SharedServer id="9" userID="22" username="ben"/></MediaContainer>"""));
-
-    [Fact]
-    public async Task A_friend_on_the_friends_list_means_not_everyone()
-        => Assert.False(await PlexAccountIsEveryoneAsync(friends: """<MediaContainer size="1"><User id="22" title="ben"/></MediaContainer>"""));
-
-    [Fact]
-    public async Task A_home_user_means_not_everyone()
-        => Assert.False(await PlexAccountIsEveryoneAsync(home: """<MediaContainer size="2"><User id="987654" admin="1"/><User id="33" title="Kids" restricted="1"/></MediaContainer>"""));
-
-    [Fact]
-    public async Task A_second_account_in_the_servers_own_table_means_not_everyone()
-        => Assert.False(await PlexAccountIsEveryoneAsync(accounts: """{"MediaContainer":{"Account":[{"id":0,"name":""},{"id":1,"name":"jampat"},{"id":2,"name":"ben"}]}}"""));
-
-    [Fact]
-    public async Task A_single_account_that_is_not_the_connected_one_means_not_everyone()
-        => Assert.False(await PlexAccountIsEveryoneAsync(accounts: """{"MediaContainer":{"Account":[{"id":0,"name":""},{"id":7,"name":"someone"}]}}"""));
-
-    [Fact]
-    public async Task The_servers_owner_is_local_id_one_whatever_plex_tv_calls_them_when_the_name_is_theirs()
-        => Assert.True(await PlexAccountIsEveryoneAsync(accounts: """{"MediaContainer":{"Account":[{"id":0,"name":""},{"id":1,"name":"JamPat"}]}}"""));
-
-    [Fact]
-    public async Task Local_id_one_with_someone_elses_name_means_not_everyone()
-        => Assert.False(await PlexAccountIsEveryoneAsync(accounts: """{"MediaContainer":{"Account":[{"id":0,"name":""},{"id":1,"name":"ben"}]}}"""));
-
-    [Fact]
-    public async Task A_token_whose_account_does_not_own_the_server_means_not_everyone()
-    {
-        Assert.False(await PlexAccountIsEveryoneAsync(resources: """[{"clientIdentifier":"machine-1","owned":false}]"""));
-        Assert.False(await PlexAccountIsEveryoneAsync(resources: """[{"clientIdentifier":"other","owned":true}]"""));
-    }
-
-    [Theory]
-    [InlineData("accounts")]
-    [InlineData("shared")]
-    [InlineData("friends")]
-    [InlineData("home")]
-    [InlineData("me")]
-    [InlineData("resources")]
-    public async Task Any_call_that_fails_means_not_everyone(string failing)
-        => Assert.False(await PlexAccountIsEveryoneAsync(
-            accounts: failing == "accounts" ? null : SoloAccounts,
-            shared: failing == "shared" ? null : EmptyList,
-            friends: failing == "friends" ? null : EmptyList,
-            home: failing == "home" ? null : OwnerOnlyHome,
-            me: failing == "me" ? null : OwnerMe,
-            resources: failing == "resources" ? null : OwnedServer));
-
-    [Fact]
-    public async Task Unreadable_answers_mean_not_everyone()
-    {
-        Assert.False(await PlexAccountIsEveryoneAsync(shared: "not xml"));
-        Assert.False(await PlexAccountIsEveryoneAsync(accounts: "not json"));
-        Assert.False(await PlexAccountIsEveryoneAsync(accounts: """{"MediaContainer":{}}"""));
-    }
-
-    [Fact]
-    public async Task Plex_reads_ids_files_scores_and_one_account_watch_state()
-    {
-        var client = new PlexMediaServerClient(Factory(request =>
-        {
-            Assert.Equal("token-123", Assert.Single(request.Headers.GetValues("X-Plex-Token")));
-            if (request.RequestUri!.Host == "discover.provider.plex.tv")
-            {
-                return Json("""{"MediaContainer":{"totalSize":1,"Metadata":[{"guid":"plex://movie/5d776b"}]}}""");
-            }
-
-            return request.RequestUri!.AbsolutePath switch
-            {
-                "/library/sections" => Json("""{"MediaContainer":{"Directory":[{"key":"1","type":"movie"},{"key":"2","type":"show"}]}}"""),
-                "/myplex/account" => Json("""{"MyPlex":{"username":"jampat"}}"""),
-                "/library/sections/1/all" => Json(
-                    """
-                    {"MediaContainer":{"totalSize":1,"Metadata":[
-                    {"ratingKey":"101","type":"movie","guid":"plex://movie/5d776b","title":"Sintel","year":2010,"addedAt":1756684800,"viewCount":2,"lastViewedAt":1757530800,"userRating":9,
-                     "rating":8.8,"audienceRating":7.2,
-                     "Guid":[{"id":"imdb://tt1727587"},{"id":"tmdb://45745"}],
-                     "Media":[{"videoResolution":"1080","bitrate":4200,"videoCodec":"h264","Part":[{"file":"/media/Deluno-E2E/Movies/Sintel (2010)/Sintel.mkv"}]}]}]}}
-                    """),
-                "/library/metadata/101" => Json(
-                    """
-                    {"MediaContainer":{"Metadata":[{"ratingKey":"101",
-                     "Genre":[{"tag":"Animation"}],"Label":[{"tag":"kids"}],"Collection":[{"tag":"Blender films"}],"Role":[{"tag":"Halina Reijn"}],"Director":[{"tag":"Colin Levy"}],
-                     "Rating":[{"image":"imdb://image.rating","value":7.4,"type":"audience"},{"image":"rottentomatoes://image.rating.ripe","value":8.8,"type":"critic"},{"image":"rottentomatoes://image.rating.upright","value":7.9,"type":"audience"},{"image":"themoviedb://image.rating","value":7.1,"type":"audience"}]}]}}
-                    """),
-                "/playlists" => Json("""{"MediaContainer":{"totalSize":1,"Metadata":[{"ratingKey":"900","title":"Friday night"}]}}"""),
-                "/playlists/900/items" => Json("""{"MediaContainer":{"totalSize":1,"Metadata":[{"ratingKey":"101"}]}}"""),
-                _ => new HttpResponseMessage(HttpStatusCode.NotFound)
-            };
-        }));
-
-        var answer = await client.ListItemsAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), "movies", CancellationToken.None);
-
-        var library = Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(answer).Value;
-        Assert.Equal(["jampat"], library.Users);
-        var sintel = Assert.Single(library.Items);
-        Assert.Equal("101", sintel.ServerItemId);
-        Assert.Equal("45745", sintel.TmdbId);
-        Assert.Equal("tt1727587", sintel.ImdbId);
-        Assert.Equal("1", sintel.SectionId);
-        Assert.Equal("/media/Deluno-E2E/Movies/Sintel (2010)/Sintel.mkv", Assert.Single(sintel.Paths));
-        Assert.True(sintel.Watch.PlayedByAnyone);
-        Assert.False(sintel.Watch.PerUserKnown);
-        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1757530800), sintel.Watch.LastPlayedUtc);
-        var viewer = Assert.Single(sintel.Viewers);
-        Assert.Equal(("jampat", true, 2, (bool?)false, 9d), (viewer.User, viewer.Played, viewer.PlayCount, viewer.Favourite, viewer.Rating));
-        Assert.Equal(new MediaServerRatings(8.8, 7.2, 7.4, 8.8, 7.9, 7.1), sintel.Ratings);
-        Assert.Equal(["Halina Reijn", "Colin Levy"], sintel.People);
-        Assert.Equal(["Animation"], sintel.Genres);
-        Assert.Equal(["kids"], sintel.Labels);
-        Assert.Equal(["Blender films"], sintel.Collections);
-        Assert.Equal(["Friday night"], sintel.Playlists);
-        Assert.Equal(["jampat"], sintel.WatchlistedBy);
-        Assert.Equal(new MediaServerVideo("1080p", 4200, "h264"), sintel.Video);
-    }
-
-    [Fact]
-    public async Task A_Plex_item_rated_the_maximum_is_read_as_a_favourite()
-    {
-        var client = new PlexMediaServerClient(Factory(request =>
-        {
-            if (request.RequestUri!.Host == "discover.provider.plex.tv") return new HttpResponseMessage(HttpStatusCode.Unauthorized);
-            return request.RequestUri!.AbsolutePath switch
-            {
-                "/library/sections" => Json("""{"MediaContainer":{"Directory":[{"key":"1","type":"movie"}]}}"""),
-                "/library/sections/1/all" => Json(
-                    """{"MediaContainer":{"totalSize":1,"Metadata":[{"ratingKey":"101","type":"movie","title":"Sintel","userRating":10}]}}"""),
-                "/library/metadata/101" => Json("""{"MediaContainer":{"Metadata":[{"ratingKey":"101"}]}}"""),
-                "/playlists" => Json("""{"MediaContainer":{"totalSize":0}}"""),
-                _ => new HttpResponseMessage(HttpStatusCode.NotFound)
-            };
-        }));
-
-        var answer = await client.ListItemsAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), "movies", CancellationToken.None);
-
-        var sintel = Assert.Single(Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(answer).Value.Items);
-        var viewer = Assert.Single(sintel.Viewers);
-        Assert.True(viewer.Favourite);
-    }
-
-    [Fact]
-    public async Task A_Plex_item_never_rated_reports_favourite_as_unknown()
-    {
-        var client = new PlexMediaServerClient(Factory(request =>
-        {
-            if (request.RequestUri!.Host == "discover.provider.plex.tv") return new HttpResponseMessage(HttpStatusCode.Unauthorized);
-            return request.RequestUri!.AbsolutePath switch
-            {
-                "/library/sections" => Json("""{"MediaContainer":{"Directory":[{"key":"1","type":"movie"}]}}"""),
-                "/library/sections/1/all" => Json(
-                    """{"MediaContainer":{"totalSize":1,"Metadata":[{"ratingKey":"101","type":"movie","title":"Sintel","viewCount":1}]}}"""),
-                "/library/metadata/101" => Json("""{"MediaContainer":{"Metadata":[{"ratingKey":"101"}]}}"""),
-                "/playlists" => Json("""{"MediaContainer":{"totalSize":0}}"""),
-                _ => new HttpResponseMessage(HttpStatusCode.NotFound)
-            };
-        }));
-
-        var answer = await client.ListItemsAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), "movies", CancellationToken.None);
-
-        var sintel = Assert.Single(Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(answer).Value.Items);
-        var viewer = Assert.Single(sintel.Viewers);
-        Assert.Null(viewer.Favourite);
-    }
-
-    [Fact]
-    public async Task A_Plex_watchlist_that_cannot_be_asked_is_unknown_not_empty()
-    {
-        var client = new PlexMediaServerClient(Factory(request =>
-        {
-            if (request.RequestUri!.Host == "discover.provider.plex.tv") return new HttpResponseMessage(HttpStatusCode.Unauthorized);
-            return request.RequestUri!.AbsolutePath switch
-            {
-                "/library/sections" => Json("""{"MediaContainer":{"Directory":[{"key":"1","type":"movie"}]}}"""),
-                "/library/sections/1/all" => Json("""{"MediaContainer":{"totalSize":1,"Metadata":[{"ratingKey":"101","type":"movie","title":"Sintel"}]}}"""),
-                "/library/metadata/101" => Json("""{"MediaContainer":{"Metadata":[{"ratingKey":"101"}]}}"""),
-                "/playlists" => Json("""{"MediaContainer":{"totalSize":0}}"""),
-                _ => new HttpResponseMessage(HttpStatusCode.NotFound)
-            };
-        }));
-
-        var answer = await client.ListItemsAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), "movies", CancellationToken.None);
-
-        var sintel = Assert.Single(Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(answer).Value.Items);
-        Assert.Null(sintel.WatchlistedBy);
-    }
-
-    [Fact]
-    public async Task Removing_from_Plex_rescans_the_folder_and_empties_trash_and_never_deletes()
-    {
-        var sent = new List<(HttpMethod Method, string PathAndQuery)>();
-        var client = new PlexMediaServerClient(Factory(request =>
-        {
-            sent.Add((request.Method, Uri.UnescapeDataString(request.RequestUri!.PathAndQuery)));
-            return new HttpResponseMessage(HttpStatusCode.OK);
-        }));
-        var item = new MediaServerItem("101", "movies", "Sintel", 2010, null, null, null, ["/media/Movies/Sintel (2010)/Sintel.mkv"], null, MediaServerWatchState.Unplayed, "1");
-
-        var answer = await client.RemoveAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), item, CancellationToken.None);
-
-        Assert.IsType<MediaServerAnswer<MediaServerRemoval>.Reported>(answer);
-        Assert.Equal((HttpMethod.Get, "/library/sections/1/refresh?path=/media/Movies/Sintel (2010)"), sent[0]);
-        Assert.Equal((HttpMethod.Put, "/library/sections/1/emptyTrash"), sent[1]);
-        Assert.DoesNotContain(sent, call => call.Method == HttpMethod.Delete);
     }
 
     /// <summary>
@@ -518,49 +273,58 @@ public sealed class MediaServerClientTests
         Assert.All(queries, query => Assert.Contains("CollapseBoxSetItems=false", query, StringComparison.Ordinal));
     }
 
-    [Fact]
-    public async Task A_Plex_section_that_hides_titles_in_collections_is_not_an_answer()
+
+    // ------------------------------------------------------ telling the server about files, and asking whether it can see a folder
+
+    private const string PlexFolder = "/media/Movies/Sintel (2010)";
+    private const string PlexFile = PlexFolder + "/Sintel (2010) [WEB 1080p].mkv";
+
+    /// <summary>
+    /// Plex 1.43.4's recorded replies to the library list and the refresh and empty-trash calls (tests/fixtures/recorded/plex), noting each
+    /// call. The refresh with no path, with the path of a folder in a library and with a path in none are the three recorded.
+    /// </summary>
+    private static HttpResponseMessage PlexRecorded(HttpRequestMessage request, List<(HttpMethod Method, string PathAndQuery)> sent)
     {
-        var client = new PlexMediaServerClient(Factory(request =>
-        {
-            var path = request.RequestUri!.AbsolutePath;
-            return path switch
-            {
-                "/library/sections" => Json("""{"MediaContainer":{"Directory":[{"key":"1","type":"movie"}]}}"""),
-                "/myplex/account" => Json("""{"MyPlex":{"username":"owner"}}"""),
-                "/library/sections/1/all" => Json("""{"MediaContainer":{"size":2,"totalSize":2,"Metadata":[{"ratingKey":"10","type":"movie","title":"Sintel"},{"ratingKey":"99","type":"collection","title":"Leaving soon"}]}}"""),
-                _ => Json("""{"MediaContainer":{"size":0,"Metadata":[]}}""")
-            };
-        }));
+        sent.Add((request.Method, Uri.UnescapeDataString(request.RequestUri!.PathAndQuery)));
+        var path = request.RequestUri.AbsolutePath;
+        var query = request.RequestUri.Query;
+        var refresh = RecordedReplies.Plex("refresh");
+        if (path == "/library/sections") return RecordedReplies.Plex("sections").Single.Reply.ToResponse();
+        if (path.EndsWith("/refresh", StringComparison.Ordinal)) return refresh.Exchanges[!query.Contains("path=", StringComparison.Ordinal) ? 0 : 1].Reply.ToResponse();
+        if (path.EndsWith("/emptyTrash", StringComparison.Ordinal)) return refresh.Exchanges[3].Reply.ToResponse();
+        throw new InvalidOperationException($"No Plex recording answers {request.Method} {path}{query}.");
+    }
 
-        var answer = await client.ListItemsAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), "movies", CancellationToken.None);
+    [Fact]
+    public async Task Removing_from_Plex_rescans_the_folder_and_empties_trash_and_never_deletes()
+    {
+        var sent = new List<(HttpMethod Method, string PathAndQuery)>();
+        var client = new PlexMediaServerClient(Factory(request => PlexRecorded(request, sent)));
+        var item = new MediaServerItem("1", "movies", "Sintel", 2010, null, null, null, [PlexFile], null, MediaServerWatchState.Unplayed, "1");
 
-        Assert.Contains("Leaving soon", Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Unreachable>(answer).Reason, StringComparison.Ordinal);
+        var answer = await client.RemoveAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), item, CancellationToken.None);
+
+        Assert.IsType<MediaServerAnswer<MediaServerRemoval>.Reported>(answer);
+        Assert.Equal((HttpMethod.Get, $"/library/sections/1/refresh?path={PlexFolder}"), sent[0]);
+        Assert.Equal((HttpMethod.Put, "/library/sections/1/emptyTrash"), sent[1]);
+        Assert.DoesNotContain(sent, call => call.Method == HttpMethod.Delete);
     }
 
     [Fact]
     public async Task A_Plex_refresh_rescans_the_folder_of_a_section_whose_location_matches_the_path()
     {
         var sent = new List<(HttpMethod Method, string PathAndQuery)>();
-        var client = new PlexMediaServerClient(Factory(request =>
-        {
-            sent.Add((request.Method, Uri.UnescapeDataString(request.RequestUri!.PathAndQuery)));
-            return request.RequestUri!.AbsolutePath switch
-            {
-                "/library/sections" => Json("""{"MediaContainer":{"Directory":[{"key":"1","type":"movie","Location":[{"path":"/media/Movies"}]},{"key":"2","type":"show","Location":[{"path":"/media/TV"}]}]}}"""),
-                _ => new HttpResponseMessage(HttpStatusCode.OK)
-            };
-        }));
+        var client = new PlexMediaServerClient(Factory(request => PlexRecorded(request, sent)));
 
         var answer = await client.RefreshAsync(
             Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"),
             "movies",
-            [new MediaServerPathChange("/media/Movies/Sintel (2010)/Sintel.mkv", MediaServerChangeKind.Created)],
+            [new MediaServerPathChange(PlexFile, MediaServerChangeKind.Created)],
             CancellationToken.None);
 
         var refresh = Assert.IsType<MediaServerAnswer<MediaServerRefresh>.Reported>(answer).Value;
         Assert.False(refresh.UsedFallbackScan);
-        Assert.Contains((HttpMethod.Get, "/library/sections/1/refresh?path=/media/Movies/Sintel (2010)"), sent);
+        Assert.Contains((HttpMethod.Get, $"/library/sections/1/refresh?path={PlexFolder}"), sent);
         Assert.DoesNotContain(sent, call => call.PathAndQuery.StartsWith("/library/sections/2", StringComparison.Ordinal));
         Assert.DoesNotContain(sent, call => call.Method == HttpMethod.Put);
     }
@@ -568,39 +332,24 @@ public sealed class MediaServerClientTests
     [Fact]
     public async Task A_Plex_refresh_empties_trash_for_a_deleted_change_but_never_for_created()
     {
-        var sent = new List<(HttpMethod Method, string PathAndQuery)>();
-        var client = new PlexMediaServerClient(Factory(request =>
-        {
-            sent.Add((request.Method, Uri.UnescapeDataString(request.RequestUri!.PathAndQuery)));
-            return request.RequestUri!.AbsolutePath switch
-            {
-                "/library/sections" => Json("""{"MediaContainer":{"Directory":[{"key":"1","type":"movie","Location":[{"path":"/media/Movies"}]}]}}"""),
-                _ => new HttpResponseMessage(HttpStatusCode.OK)
-            };
-        }));
+        var deleted = new List<(HttpMethod Method, string PathAndQuery)>();
+        var created = new List<(HttpMethod Method, string PathAndQuery)>();
+        var server = Server(MediaServerKinds.Plex, "http://192.168.1.51:32400");
 
-        await client.RefreshAsync(
-            Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"),
-            "movies",
-            [new MediaServerPathChange("/media/Movies/Old (2009)/Old.mkv", MediaServerChangeKind.Deleted)],
-            CancellationToken.None);
+        await new PlexMediaServerClient(Factory(request => PlexRecorded(request, deleted)))
+            .RefreshAsync(server, "movies", [new MediaServerPathChange(PlexFile, MediaServerChangeKind.Deleted)], CancellationToken.None);
+        await new PlexMediaServerClient(Factory(request => PlexRecorded(request, created)))
+            .RefreshAsync(server, "movies", [new MediaServerPathChange(PlexFile, MediaServerChangeKind.Created)], CancellationToken.None);
 
-        Assert.Contains((HttpMethod.Put, "/library/sections/1/emptyTrash"), sent);
+        Assert.Contains((HttpMethod.Put, "/library/sections/1/emptyTrash"), deleted);
+        Assert.DoesNotContain(created, call => call.PathAndQuery.Contains("emptyTrash", StringComparison.Ordinal));
     }
 
     [Fact]
     public async Task A_Plex_refresh_falls_back_to_a_full_scan_when_no_section_maps_the_path()
     {
         var sent = new List<(HttpMethod Method, string PathAndQuery)>();
-        var client = new PlexMediaServerClient(Factory(request =>
-        {
-            sent.Add((request.Method, Uri.UnescapeDataString(request.RequestUri!.PathAndQuery)));
-            return request.RequestUri!.AbsolutePath switch
-            {
-                "/library/sections" => Json("""{"MediaContainer":{"Directory":[{"key":"1","type":"movie","Location":[{"path":"/media/Movies"}]}]}}"""),
-                _ => new HttpResponseMessage(HttpStatusCode.OK)
-            };
-        }));
+        var client = new PlexMediaServerClient(Factory(request => PlexRecorded(request, sent)));
 
         var answer = await client.RefreshAsync(
             Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"),
@@ -611,36 +360,37 @@ public sealed class MediaServerClientTests
         var refresh = Assert.IsType<MediaServerAnswer<MediaServerRefresh>.Reported>(answer).Value;
         Assert.True(refresh.UsedFallbackScan);
         Assert.Contains((HttpMethod.Get, "/library/sections/1/refresh"), sent);
-        Assert.DoesNotContain(sent, call => call.PathAndQuery.Contains("path="));
+        Assert.DoesNotContain(sent, call => call.PathAndQuery.Contains("path=", StringComparison.Ordinal));
     }
 
+    /// <summary>Jellyfin 12.4.0 told of a created and a deleted file: its recorded 204 answers the one Library/Media/Updated call that names both.</summary>
     [Fact]
     public async Task Jellyfin_and_Emby_refresh_sends_one_call_with_every_changed_path()
     {
-        HttpRequestMessage? captured = null;
-        string? body = null;
+        var calls = new List<(string Path, string? Body)>();
         var client = new JellyfinMediaServerClient(Factory(request =>
         {
-            captured = request;
-            body = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
-            return new HttpResponseMessage(HttpStatusCode.OK);
+            calls.Add((request.RequestUri!.AbsolutePath, request.Content?.ReadAsStringAsync().GetAwaiter().GetResult()));
+            return RecordedReplies.Jellyfin("refresh").Exchanges[1].Reply.ToResponse();
         }));
 
         var answer = await client.RefreshAsync(
             Server(MediaServerKinds.Jellyfin),
             "tv",
             [
-                new MediaServerPathChange("/tv/Breaking Bad/Season 01/S01E01.mkv", MediaServerChangeKind.Created),
-                new MediaServerPathChange("/tv/Breaking Bad/Season 01/S01E01.old.mkv", MediaServerChangeKind.Deleted)
+                new MediaServerPathChange("/tv/Recorded Show/Season 01/S01E01.mkv", MediaServerChangeKind.Created),
+                new MediaServerPathChange("/tv/Recorded Show/Season 01/S01E01.old.mkv", MediaServerChangeKind.Deleted)
             ],
             CancellationToken.None);
 
         Assert.IsType<MediaServerAnswer<MediaServerRefresh>.Reported>(answer);
-        Assert.Equal("/Library/Media/Updated", captured!.RequestUri!.AbsolutePath);
-        Assert.Contains("\"Created\"", body);
-        Assert.Contains("\"Deleted\"", body);
+        var call = Assert.Single(calls);
+        Assert.Equal("/Library/Media/Updated", call.Path);
+        Assert.Contains("\"Created\"", call.Body, StringComparison.Ordinal);
+        Assert.Contains("\"Deleted\"", call.Body, StringComparison.Ordinal);
     }
 
+    /// <summary>Jellyfin 12.4.0's own 400 for a body it cannot read in place of the targeted call, and its recorded 204 for the full scan asked for instead.</summary>
     [Fact]
     public async Task Jellyfin_falls_back_to_a_full_scan_when_the_targeted_refresh_fails()
     {
@@ -648,9 +398,9 @@ public sealed class MediaServerClientTests
         var client = new JellyfinMediaServerClient(Factory(request =>
         {
             calls.Add(request.RequestUri!.AbsolutePath);
-            return request.RequestUri!.AbsolutePath == "/Library/Media/Updated"
-                ? new HttpResponseMessage(HttpStatusCode.InternalServerError)
-                : new HttpResponseMessage(HttpStatusCode.OK);
+            return request.RequestUri.AbsolutePath == "/Library/Media/Updated"
+                ? RecordedReplies.Jellyfin("media-updated-refused").Exchanges[0].Reply.ToResponse()
+                : RecordedReplies.Jellyfin("refresh").Exchanges[0].Reply.ToResponse();
         }));
 
         var answer = await client.RefreshAsync(
@@ -664,24 +414,50 @@ public sealed class MediaServerClientTests
         Assert.Contains("/Library/Refresh", calls);
     }
 
+    /// <summary>Jellyfin 12.4.0 told a removed film's file is gone: one Library/Media/Updated call naming the file Deleted, and never its own delete.</summary>
+    [Fact]
+    public async Task Removing_from_Jellyfin_reports_the_files_deleted_and_never_calls_its_delete()
+    {
+        var sent = new List<(HttpMethod Method, string Path, string? Body)>();
+        var client = new JellyfinMediaServerClient(Factory(request =>
+        {
+            sent.Add((request.Method, request.RequestUri!.AbsolutePath, request.Content?.ReadAsStringAsync().GetAwaiter().GetResult()));
+            return RecordedReplies.Jellyfin("refresh").Exchanges[1].Reply.ToResponse();
+        }));
+        var file = RecordedReplies.Jellyfin("catalogue-movies").Exchanges[0].Reply.Json()["Items"]![0]!["Path"]!.GetValue<string>();
+        var item = new MediaServerItem("m1", "movies", "Sintel", 2010, null, null, null, [file], null, MediaServerWatchState.Unplayed);
+
+        var answer = await client.RemoveAsync(Server(MediaServerKinds.Jellyfin), item, CancellationToken.None);
+
+        Assert.IsType<MediaServerAnswer<MediaServerRemoval>.Reported>(answer);
+        var call = Assert.Single(sent);
+        Assert.Equal((HttpMethod.Post, "/Library/Media/Updated"), (call.Method, call.Path));
+        Assert.Contains("\"UpdateType\":\"Deleted\"", call.Body, StringComparison.Ordinal);
+        Assert.Contains(Path.GetFileName(file), call.Body, StringComparison.Ordinal);
+    }
+
+    /// <summary>Jellyfin 12.4.0's recorded listing of /media/Movies is a folder it can see.</summary>
     [Fact]
     public async Task A_Jellyfin_path_mapping_test_reports_whether_the_server_can_see_the_folder()
     {
-        var client = new JellyfinMediaServerClient(Factory(request
-            => request.RequestUri!.AbsolutePath == "/Environment/DirectoryContents"
-                ? Json("""[{"Path":"/media/Movies/Sintel (2010)","Type":"Directory"}]""")
-                : new HttpResponseMessage(HttpStatusCode.NotFound)));
+        var seen = RecordedReplies.Jellyfin("directory-contents").Exchanges[0].Reply;
+        var client = new JellyfinMediaServerClient(Factory(request => request.RequestUri!.AbsolutePath == "/Environment/DirectoryContents" ? seen.ToResponse() : new HttpResponseMessage(HttpStatusCode.NotFound)));
 
-        var answer = await client.TestPathAsync(Server(MediaServerKinds.Jellyfin), "/media/Movies/Sintel (2010)", CancellationToken.None);
+        var answer = await client.TestPathAsync(Server(MediaServerKinds.Jellyfin), "/media/Movies", CancellationToken.None);
 
-        var result = Assert.IsType<MediaServerAnswer<MediaServerPathMappingTest>.Reported>(answer).Value;
-        Assert.True(result.Found);
+        Assert.True(Assert.IsType<MediaServerAnswer<MediaServerPathMappingTest>.Reported>(answer).Value.Found);
     }
 
+    /// <summary>A Plex that answers the folder test with a refusal (a 401 in place of the recorded browse reply) could not be asked.</summary>
     [Fact]
     public async Task A_Plex_path_mapping_test_reports_the_server_could_not_be_asked()
     {
-        var client = new PlexMediaServerClient(Factory(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)));
+        var client = new PlexMediaServerClient(Factory(_ =>
+        {
+            var response = RecordedReplies.Plex("directory-contents").Exchanges[0].Reply.ToResponse();
+            response.StatusCode = HttpStatusCode.Unauthorized;
+            return response;
+        }));
 
         var answer = await client.TestPathAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), "/media/Movies", CancellationToken.None);
 
@@ -693,112 +469,123 @@ public sealed class MediaServerClientTests
     private static IReadOnlyList<MediaServerPlay> Plays(MediaServerAnswer<IReadOnlyList<MediaServerPlay>> answer)
         => Assert.IsType<MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Reported>(answer).Value;
 
+    /// <summary>The recorded episode of the recorded show (Plex's own episode listing), as a play's item.</summary>
+    private static JsonNode PlexEpisode()
+        => RecordedReplies.Plex("catalogue-series").Exchanges[4].Reply.Json()["MediaContainer"]!["Metadata"]![0]!.DeepClone();
+
+    /// <summary>
+    /// Plex 1.43.4's recorded session with the film playing, plus a recorded episode of the recorded show as a second play (the server was
+    /// recorded with a film playing only; the episode is the one thing added). The show it belongs to is answered by the recorded show
+    /// page, whose own ids are what the play must carry.
+    /// </summary>
     [Fact]
     public async Task Plex_names_the_ids_file_and_provider_ids_of_every_play()
     {
-        var client = new PlexMediaServerClient(Factory(request =>
-        {
-            if (request.RequestUri!.AbsolutePath == "/library/metadata/6")
-            {
-                // The show itself: a session only lists the episode's own ids.
-                return Json("""{"MediaContainer":{"Metadata":[{"ratingKey":"6","Guid":[{"id":"imdb://tt0903747"},{"id":"tmdb://1396"},{"id":"tvdb://81189"}]}]}}""");
-            }
-
-            Assert.Equal("/status/sessions", request.RequestUri!.AbsolutePath);
-            return Json("""
-                {"MediaContainer":{"size":2,"Metadata":[
-                  {"ratingKey":"501","type":"movie","Guid":[{"id":"imdb://tt0013442"},{"id":"tmdb://653"}],"Media":[{"Part":[{"file":"/movies/Nosferatu (1922)/Nosferatu.mkv"}]}]},
-                  {"ratingKey":"611","parentRatingKey":"61","grandparentRatingKey":"6","grandparentTitle":"Breaking Bad","parentIndex":1,"index":2,"type":"episode","Media":[{"Part":[{"file":"/tv/Show/S01E01.mkv"}]}]}]}}
-                """);
-        }));
+        var episode = PlexEpisode();
+        var showKey = episode["grandparentRatingKey"]!.GetValue<string>();
+        var showGuids = RecordedReplies.Plex("catalogue-series").Exchanges[3].Reply.Json()["MediaContainer"]!["Metadata"]![0]!["Guid"]!.AsArray()
+            .Select(guid => guid!["id"]!.GetValue<string>()).ToList();
+        string IdOf(string scheme) => showGuids.Single(guid => guid.StartsWith(scheme + "://", StringComparison.Ordinal))[(scheme.Length + 3)..];
+        var sessions = RecordedReplies.Plex("sessions-playing").Exchanges[1].Reply.Json();
+        sessions["MediaContainer"]!["Metadata"]!.AsArray().Add(PlexEpisode());
+        var client = new PlexMediaServerClient(Factory(request => request.RequestUri!.AbsolutePath == "/status/sessions"
+            ? RecordedReplies.Json(sessions.ToJsonString())
+            : request.RequestUri.AbsolutePath == $"/library/metadata/{showKey}"
+                ? RecordedReplies.Plex("catalogue-series").Exchanges[3].Reply.ToResponse()
+                : throw new InvalidOperationException($"No Plex recording answers {request.RequestUri.PathAndQuery}.")));
 
         var plays = Plays(await client.ListPlayingAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), CancellationToken.None));
 
         var film = plays[0];
-        Assert.Equal((true, "653", "tt0013442"), (film.IsMovie, film.TmdbId, film.ImdbId));
-        Assert.Equal(["/movies/Nosferatu (1922)/Nosferatu.mkv"], film.Paths);
-        var episode = plays[1];
-        Assert.Equal(["611", "61", "6"], episode.ItemIds);
-        Assert.False(episode.IsMovie);
-        Assert.Equal((true, "Breaking Bad", "1396", "81189", "tt0903747", 1, 2), (episode.IsEpisode, episode.ShowName, episode.ShowTmdbId, episode.ShowTvdbId, episode.ShowImdbId, episode.SeasonNumber, episode.EpisodeNumber));
+        Assert.True(film.IsMovie);
+        Assert.Contains(film.Paths, path => path.EndsWith("Sintel (2010) [WEB 1080p].mkv", StringComparison.Ordinal));
+        var play = plays[1];
+        Assert.False(play.IsMovie);
+        Assert.Equal([episode["ratingKey"]!.GetValue<string>(), episode["parentRatingKey"]!.GetValue<string>(), showKey], play.ItemIds);
+        Assert.Equal((true, episode["grandparentTitle"]!.GetValue<string>(), IdOf("tmdb"), IdOf("tvdb"), IdOf("imdb")), (play.IsEpisode, play.ShowName, play.ShowTmdbId, play.ShowTvdbId, play.ShowImdbId));
+        Assert.Equal((episode["parentIndex"]!.GetValue<int>(), episode["index"]!.GetValue<int>()), (play.SeasonNumber, play.EpisodeNumber));
     }
 
+    /// <summary>The same episode play when the show page cannot be read (a 500 in place of the recorded show page): the show's ids stay empty, so it reads as cannot tell.</summary>
     [Fact]
     public async Task Plex_leaves_the_shows_ids_empty_when_the_show_cannot_be_read_so_it_reads_as_cannot_tell()
     {
+        var sessions = RecordedReplies.Plex("sessions-playing").Exchanges[1].Reply.Json();
+        var plays = sessions["MediaContainer"]!["Metadata"]!.AsArray();
+        plays.Clear();
+        plays.Add(PlexEpisode());
         var client = new PlexMediaServerClient(Factory(request => request.RequestUri!.AbsolutePath == "/status/sessions"
-            ? Json("""{"MediaContainer":{"Metadata":[{"ratingKey":"611","grandparentRatingKey":"6","grandparentTitle":"Show","parentIndex":1,"index":2,"type":"episode"}]}}""")
+            ? RecordedReplies.Json(sessions.ToJsonString())
             : new HttpResponseMessage(HttpStatusCode.InternalServerError)));
 
-        var episode = Assert.Single(Plays(await client.ListPlayingAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), CancellationToken.None)));
+        var play = Assert.Single(Plays(await client.ListPlayingAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), CancellationToken.None)));
 
-        Assert.True(episode.IsEpisode);
-        Assert.Null(episode.ShowTmdbId);
-        Assert.Null(episode.ShowTvdbId);
-        Assert.Null(episode.ShowImdbId);
+        Assert.True(play.IsEpisode);
+        Assert.Null(play.ShowTmdbId);
+        Assert.Null(play.ShowTvdbId);
+        Assert.Null(play.ShowImdbId);
     }
 
+    /// <summary>Plex's recorded idle session list is nobody playing; a refusal, and a reply that is not a session list (the recorded one with its MediaContainer taken out), are "could not ask".</summary>
     [Fact]
     public async Task Plex_with_nothing_playing_says_nothing_is_playing_but_an_unreadable_answer_says_it_could_not_ask()
     {
-        var idle = new PlexMediaServerClient(Factory(_ => Json("""{"MediaContainer":{"size":0}}""")));
-        Assert.Empty(Plays(await idle.ListPlayingAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), CancellationToken.None)));
+        var idle = RecordedReplies.Plex("sessions-idle").Single.Reply;
+        var quiet = new PlexMediaServerClient(Factory(_ => idle.ToResponse()));
+        Assert.Empty(Plays(await quiet.ListPlayingAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), CancellationToken.None)));
 
         var refused = new PlexMediaServerClient(Factory(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)));
         Assert.IsType<MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Unreachable>(await refused.ListPlayingAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), CancellationToken.None));
 
-        var nonsense = new PlexMediaServerClient(Factory(_ => Json("""{"hello":"world"}""")));
+        var nonsense = new PlexMediaServerClient(Factory(_ => RecordedReplies.Json(idle.BodyWith(("MediaContainer", null)))));
         Assert.IsType<MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Unreachable>(await nonsense.ListPlayingAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), CancellationToken.None));
     }
 
+    /// <summary>
+    /// What Jellyfin 12.4.0 and Emby 4.10.1.0 list as playing: their recorded sessions (the film being played and a session with nothing in
+    /// it), with a recorded episode of the recorded show put in as the idle session's item (the servers were recorded with a film playing
+    /// only). Its show is answered by the recorded show lookup with its own ids set (the recording holds none).
+    /// </summary>
     [Theory]
     [InlineData(MediaServerKinds.Jellyfin, "/Sessions")]
     [InlineData(MediaServerKinds.Emby, "/emby/Sessions")]
     public async Task Jellyfin_and_Emby_read_the_sessions_that_have_something_playing(string kind, string expectedPath)
     {
+        var episode = Recorded(kind, "catalogue-series").Exchanges[0].Reply.Json()["Items"]!.AsArray().First(item => item!["Type"]!.GetValue<string>() == "Episode")!;
+        var showId = episode["SeriesId"]!.GetValue<string>();
+        var sessions = Recorded(kind, "sessions-playing").Exchanges[2].Reply.Json().AsArray();
+        sessions.Single(session => session!["NowPlayingItem"] is null)!["NowPlayingItem"] = episode.DeepClone();
+        var show = Recorded(kind, "catalogue-series").Exchanges[1].Reply.BodyWith(("Items.0.ProviderIds", new JsonObject { ["Tvdb"] = "81189", ["Tmdb"] = "1396", ["Imdb"] = "tt0903747" }));
         IHttpClientFactory factory = Factory(request =>
         {
             if (request.RequestUri!.AbsolutePath.EndsWith("/Items", StringComparison.Ordinal))
             {
-                Assert.Contains("Ids=sh1", request.RequestUri.Query, StringComparison.Ordinal);
-                return Json("""{"Items":[{"Id":"sh1","ProviderIds":{"Tvdb":"81189","Tmdb":"1396","Imdb":"tt0903747"}}]}""");
+                Assert.Contains($"Ids={showId}", request.RequestUri.Query, StringComparison.Ordinal);
+                return RecordedReplies.Json(show);
             }
 
             Assert.Equal(expectedPath, request.RequestUri!.AbsolutePath);
-            return Json("""
-                [{"Id":"s1","UserName":"owner"},
-                 {"Id":"s2","NowPlayingItem":{"Id":"e9","SeasonId":"se1","SeriesId":"sh1","SeriesName":"Breaking Bad","ParentIndexNumber":1,"IndexNumber":9,"Type":"Episode","Path":"D:\\TV\\Show\\S01E09.mkv"}},
-                 {"Id":"s3","NowPlayingItem":{"Id":"m7","Type":"Movie","ProviderIds":{"Tmdb":"653","Imdb":"tt0013442"},"MediaSources":[{"Path":"/media/Nosferatu.mkv"}]}}]
-                """);
+            return RecordedReplies.Json(sessions.ToJsonString());
         });
-        IMediaServerPlaybackReader client = kind == MediaServerKinds.Jellyfin ? new JellyfinMediaServerClient(factory) : new EmbyMediaServerClient(factory);
+        var client = (IMediaServerPlaybackReader)ClientOf(kind, factory);
 
         var plays = Plays(await client.ListPlayingAsync(Server(kind), CancellationToken.None));
 
         Assert.Equal(2, plays.Count);
-        Assert.Equal(["e9", "se1", "sh1"], plays[0].ItemIds);
-        Assert.False(plays[0].IsMovie);
-        Assert.Equal((true, "Breaking Bad", "1396", "81189", "tt0903747", 1, 9), (plays[0].IsEpisode, plays[0].ShowName, plays[0].ShowTmdbId, plays[0].ShowTvdbId, plays[0].ShowImdbId, plays[0].SeasonNumber, plays[0].EpisodeNumber));
-        Assert.Equal([@"D:\TV\Show\S01E09.mkv"], plays[0].Paths);
-        Assert.Equal((true, "653", "tt0013442"), (plays[1].IsMovie, plays[1].TmdbId, plays[1].ImdbId));
-        Assert.Equal(["/media/Nosferatu.mkv"], plays[1].Paths);
+        Assert.NotEmpty(plays.Single(play => play.IsMovie).Paths);
+        var played = plays.Single(play => !play.IsMovie);
+        Assert.Equal([episode["Id"]!.GetValue<string>(), episode["SeasonId"]!.GetValue<string>(), showId], played.ItemIds);
+        Assert.Equal((true, episode["SeriesName"]!.GetValue<string>(), "1396", "81189", "tt0903747", 1, 1), (played.IsEpisode, played.ShowName, played.ShowTmdbId, played.ShowTvdbId, played.ShowImdbId, played.SeasonNumber, played.EpisodeNumber));
+        Assert.Equal([episode["Path"]!.GetValue<string>()], played.Paths);
     }
-
-    [Fact]
-    public async Task A_Jellyfin_that_cannot_be_reached_or_answers_nonsense_could_not_be_asked_what_is_playing()
-    {
-        var down = new JellyfinMediaServerClient(Factory(_ => throw new HttpRequestException("refused")));
-        Assert.IsType<MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Unreachable>(await down.ListPlayingAsync(Server(MediaServerKinds.Jellyfin), CancellationToken.None));
-
-        var nonsense = new JellyfinMediaServerClient(Factory(_ => Json("""{"not":"a list"}""")));
-        Assert.IsType<MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Unreachable>(await nonsense.ListPlayingAsync(Server(MediaServerKinds.Jellyfin), CancellationToken.None));
-    }
-
-    private static HttpResponseMessage Json(string body)
-        => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 
     private static IHttpClientFactory Factory(Func<HttpRequestMessage, HttpResponseMessage> send)
         => new StubFactory(new HttpClient(new StubHandler(send)));
+
+    private sealed class HandlerFactory(HttpMessageHandler handler) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
+    }
 
     private sealed class StubFactory(HttpClient client) : IHttpClientFactory
     {

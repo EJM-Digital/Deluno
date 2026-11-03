@@ -145,10 +145,39 @@ internal static class InstallHooks
         }
     }
 
-    /// <summary>Before uninstall: removes the rule Deluno added, so nothing is left behind.</summary>
-    public static void OnBeforeUninstall()
+    /// <summary>Before uninstall: removes the rule Deluno added and the Start with Windows entry, so nothing is left behind.</summary>
+    public static void OnBeforeUninstall() => OnBeforeUninstall(Firewall, new RunKeySignInEntry());
+
+    /// <summary>The same, with the firewall and the sign-in entry given, so a test never touches the machine's.</summary>
+    internal static void OnBeforeUninstall(Func<WindowsFirewallLanAccess> firewallFactory, ISignInEntry signIn)
     {
-        var firewall = Firewall();
+        // The per-user sign-in entry first: it is one registry value, and left behind it would have Windows start a Deluno.exe
+        // that is gone at every sign-in. The data, the settings and the apps the person installed through the picker stay (they
+        // are the person's own); only what Deluno itself put on the computer to start itself goes.
+        try
+        {
+            if (signIn.IsEnabled())
+            {
+                signIn.Disable();
+                LogHook("The Start with Windows entry was removed.");
+            }
+        }
+        catch (Exception ex)
+        {
+            LogHook($"The Start with Windows entry could not be removed: {ex.Message}");
+        }
+
+        WindowsFirewallLanAccess firewall;
+        try
+        {
+            firewall = firewallFactory();
+        }
+        catch (Exception ex)
+        {
+            LogHook($"The firewall rule could not be looked for: {ex.Message}");
+            return;
+        }
+
         try
         {
             using var budget = new CancellationTokenSource(UninstallBudget);

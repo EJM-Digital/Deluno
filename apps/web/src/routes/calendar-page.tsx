@@ -386,7 +386,7 @@ function CalendarPageBody({ data: loaderData }: { data: CalendarLoaderData }) {
       {effectiveView === "grid" ? (
         <Card as="section" className="dark:border-white/[0.07]">
           <header className="flex min-h-(--list-header-height) flex-wrap items-center gap-x-3 gap-y-2 border-b border-hairline px-(--card-pad-x) py-2">
-            <h2 className="text-(length:--type-card-title) font-semibold leading-none text-foreground">{range.label}</h2>
+            <h2 className="text-(length:--type-card-title) font-semibold leading-[calc(var(--type-card-title)*23/15)] text-foreground">{range.label}</h2>
             <span className="text-(length:--type-caption) text-muted-foreground">
               {plural(visible.length, "thing")}
             </span>
