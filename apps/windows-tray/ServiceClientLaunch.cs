@@ -3,7 +3,8 @@ namespace Deluno.Tray;
 /// <summary>
 /// How the Windows service launches a bundled client so it reads the settings the install set up (#1452). Qt (qBittorrent) asks Windows for
 /// the Roaming folder and ignores the APPDATA the service sets, so under LocalSystem qBittorrent opened a fresh profile in the system
-/// profile (Web UI off, no login) and never answered; SABnzbd is told its settings file outright.
+/// profile (Web UI off, no login) and never answered. SABnzbd is not changed here: in session 0 it stops in its own Windows-service check
+/// whatever the arguments (see the tests), so it needs a different way to start.
 /// </summary>
 public static class ServiceClientLaunch
 {
@@ -16,7 +17,7 @@ public static class ServiceClientLaunch
         if (string.Equals(exe, "qbittorrent.exe", StringComparison.OrdinalIgnoreCase))
         {
             // qBittorrent keeps <profile>\qBittorrent\config\qBittorrent.ini under --profile, not where it keeps it by default, so the
-            // person's settings (Web UI on, port, login, folders) are copied there once, when it has no file yet.
+            // person's settings (Web UI on, port, login, folders) are copied there at each start when they are newer than the profile's.
             var profile = dataRoot.TrimEnd('\\', '/') + @"\service-profiles\qbittorrent";
             return new Launch(
                 Join(arguments, $"--profile={profile}"),
@@ -24,13 +25,12 @@ public static class ServiceClientLaunch
                 profile + @"\qBittorrent\config\qBittorrent.ini");
         }
 
-        if (string.Equals(exe, "SABnzbd.exe", StringComparison.OrdinalIgnoreCase) && folders is { } sab)
-        {
-            return new Launch(Join(arguments, $"-f \"{sab.LocalAppData}\\sabnzbd\\sabnzbd.ini\""), null, null);
-        }
-
         return new Launch(arguments ?? string.Empty, null, null);
     }
+
+    /// <summary>True when the person's settings file exists and the service profile has none or an older one.</summary>
+    public static bool ShouldSeed(DateTime? personWrittenUtc, DateTime? profileWrittenUtc)
+        => personWrittenUtc is { } person && (profileWrittenUtc is null || person > profileWrittenUtc);
 
     private static string Join(string? arguments, string extra)
         => string.IsNullOrWhiteSpace(arguments) ? extra : arguments + " " + extra;
