@@ -405,7 +405,7 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
             })
             .ToArray();
 
-        var result = await SendAsync(
+        Task<MediaServerCallResult> TellAsync() => SendAsync(
             httpClientFactory,
             HttpMethod.Post,
             Address(connection, "/Library/Media/Updated"),
@@ -413,6 +413,15 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
             connection.Name,
             cancellationToken,
             SizedJson.Create(new { Updates = updates }, options: DocumentedNames));
+
+        var result = await TellAsync();
+
+        // A call that got no answer at all (a pooled connection the server had already closed) was never refused, so it is
+        // made once more before asking for a scan of the whole library (#1396). A refusal (any HTTP status) is not repeated.
+        if (!result.Ok && result.StatusCode is null)
+        {
+            result = await TellAsync();
+        }
 
         if (result.Ok)
         {

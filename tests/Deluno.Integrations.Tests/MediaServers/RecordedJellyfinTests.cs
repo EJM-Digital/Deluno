@@ -162,6 +162,31 @@ public sealed class RecordedJellyfinTests
     }
 
     [Fact]
+    public async Task A_targeted_call_that_never_reached_Jellyfin_is_tried_once_more_before_a_full_library_scan_is_asked_for()
+    {
+        // #1396: on one CI night the import's Created call never arrived (a pooled connection already closed by the server) and Deluno
+        // asked for a whole-library scan instead of telling Jellyfin about the one file. A dropped connection is not a refusal.
+        var calls = new List<string>();
+        var dropped = false;
+        var client = Client((request, _) =>
+        {
+            calls.Add($"{request.Method} {request.RequestUri!.AbsolutePath}");
+            if (request.RequestUri.AbsolutePath == "/Library/Media/Updated" && !dropped)
+            {
+                dropped = true;
+                throw new HttpRequestException("The connection was closed before the response.");
+            }
+
+            return FromRecordings(request, string.Empty);
+        });
+
+        var answer = await client.RefreshAsync(Server(), "movies", [new Deluno.Contracts.MediaServerPathChange("/media/Movies/X/X.mkv", Deluno.Contracts.MediaServerChangeKind.Created)], CancellationToken.None);
+
+        Assert.False(Assert.IsType<MediaServerAnswer<MediaServerRefresh>.Reported>(answer).Value.UsedFallbackScan);
+        Assert.Equal(["POST /Library/Media/Updated", "POST /Library/Media/Updated"], calls);
+    }
+
+    [Fact]
     public void A_collection_taken_off_the_home_screen_is_answered_with_the_state_IsFavorite_false()
     {
         var reply = RecordedReplies.Jellyfin("collection-unfavourited").Single;
