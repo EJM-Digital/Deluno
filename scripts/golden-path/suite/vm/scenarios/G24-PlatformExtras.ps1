@@ -53,6 +53,7 @@ function Install-DelunoServiceNow {
 
 function Invoke-GroupPlatformExtras {
     Invoke-GroupPlatformExtrasPicker
+    Invoke-GroupPlatformExtrasNamedUser
     Invoke-Scenario -Id 'service.stop-and-clean-shutdown' -Title 'Stop from the service manager ends the Deluno service by itself and cleanly: exit code 0, no unexpected-termination event, every database closed, no process left' -Body {
         if (Get-DelunoServiceFacts) { Remove-DelunoServiceNow }
         $dataRoot = Join-Path $env:LOCALAPPDATA 'DelunoData'
@@ -707,5 +708,41 @@ function Invoke-CompanionsInstallFromThePage {
         Add-Check 'Deluno has qBittorrent and SABnzbd connected as download clients' (@($clients | Where-Object { $_ -match '^qbittorrent' }).Count -ge 1 -and @($clients | Where-Object { $_ -match '^sabnzbd' }).Count -ge 1) ($clients -join '; ')
         $after = Try-Deluno -Path '/api/companion-tools'
         Add-Check 'The list now shows none of the three as not installed' (@($after.Data.tools | Where-Object { $_.state -eq 'not-installed' }).Count -eq 0) ((@($after.Data.tools | ForEach-Object { "$($_.id)=$($_.state)" })) -join ', ')
+    }
+}
+
+# Inside the group: the service run as a named person.
+function Invoke-GroupPlatformExtrasNamedUser {
+    Invoke-Scenario -Id 'service.named-user-runs' -Title '--install-service with a named user and the right password makes the service run as that user (Windows gives the account the right to log on as a service), and it answers' -Body {
+        if (Get-DelunoServiceFacts) { Remove-DelunoServiceNow }
+        $exe = Get-DelunoExe
+        $user = 'goldensvc2'
+        $pw = 'Gp-Right-2x3y'
+        & net.exe user $user $pw /add | Out-Null
+        try {
+            $shared = Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Deluno\data'
+            $trayFile = Join-Path $env:LOCALAPPDATA 'DelunoConfig\deluno.json'
+            New-Item -ItemType Directory -Force -Path $shared | Out-Null
+            if (Test-Path $trayFile) { Copy-Item -LiteralPath $trayFile -Destination (Join-Path $shared 'deluno.json') -Force }
+            $null = Quit-DelunoFromTray
+            & $exe.FullName --install-service --username ".\$user" --password $pw | Out-Null
+            $up = Wait-Until -TimeoutSec 300 -IntervalSec 3 -Condition { $x = Get-DelunoServiceFacts; if ($x -and $x.State -eq 'Running' -and $x.ProcessId -gt 0) { $x } else { $null } }
+            $f = Get-DelunoServiceFacts
+            Add-Check 'The service is created to log on as the named user' ($f -and $f.Account -match $user) $f.Account
+            Add-Check 'It runs (so Windows let that account log on as a service)' $up.Ok $(if ($f) { "state $($f.State)" } else { 'no service' })
+            if ($up.Ok) {
+                $owner = (Get-CimInstance Win32_Process -Filter "ProcessId=$($f.ProcessId)" | Invoke-CimMethod -MethodName GetOwner)
+                Add-Check 'The Deluno process belongs to that user, not to SYSTEM or the signed-in account' ($owner.User -eq $user) "$($owner.Domain)\$($owner.User)"
+                $answers = Wait-Until -TimeoutSec 240 -IntervalSec 3 -Condition { Test-DelunoAnswering }
+                Add-Check 'It answers on the port' $answers.Ok ''
+            }
+            $secret = Get-Content -Raw (Join-Path $shared 'deluno.json') -ErrorAction SilentlyContinue
+            Add-Check 'The password is not written in the shared settings file or the service''s command line' (($secret -notmatch [regex]::Escape($pw)) -and ($f.Path -notmatch [regex]::Escape($pw))) ''
+        }
+        finally {
+            Remove-DelunoServiceNow
+            & net.exe user $user /delete | Out-Null
+            Add-Check 'The test account and the service are gone, and the tray''s Deluno answers' (-not (Get-DelunoServiceFacts) -and (Restore-DelunoTray)) ''
+        }
     }
 }
