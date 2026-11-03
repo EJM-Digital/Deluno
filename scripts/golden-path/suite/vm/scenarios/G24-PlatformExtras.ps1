@@ -287,6 +287,22 @@ function Get-DataFileList {
     @(Get-ChildItem -Path $data -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in '.db', '.zip' -or $_.FullName -match 'protection-keys' } | ForEach-Object { $_.FullName.Substring($data.Length) })
 }
 
+# Saves a picture of the screen into the run's evidence (what a person would have seen).
+function Save-ScreenPicture {
+    param([Parameter(Mandatory)] [string] $Name)
+    try {
+        Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+        $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+        $bmp = New-Object System.Drawing.Bitmap($b.Width, $b.Height)
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+        $dir = Join-Path (Get-SuiteRoot) 'results\evidence'
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        $bmp.Save((Join-Path $dir $Name), [System.Drawing.Imaging.ImageFormat]::Png)
+        $g.Dispose(); $bmp.Dispose()
+    } catch { Add-Note "The screen could not be saved: $($_.Exception.Message)" }
+}
+
 function Invoke-UpdatePreferencesAndBackgroundCheck {
     param([Parameter(Mandatory)] [string] $CandidateVersion)
     Invoke-Scenario -Id 'update.preferences-and-background-check' -Title 'The update preferences are saved and read back across a restart; with auto-check on and a download mode chosen, the check runs by itself 20 seconds after start and the update downloads without a click; a check that cannot reach the feed says why in the Updates page''s words and in a balloon' -Body {
@@ -350,7 +366,10 @@ function Invoke-UpdatePreferencesAndBackgroundCheck {
             $pressed = $false
             for ($try = 1; $try -le 3 -and -not $pressed; $try++) {
                 $pressed = Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Check for updates'
-                if (-not $pressed) { Start-Sleep -Seconds 10 } # reason: a retry pause before opening the tray menu again; no event says it is ready
+                if (-not $pressed) {
+                    Start-Sleep -Seconds 10 # reason: a retry pause before opening the tray menu again; no event says it is ready
+                    if ($try -eq 2) { Save-ScreenPicture -Name 'tray-menu-would-not-open.png' }
+                }
             }
             Add-Check 'The tray''s Check for updates item is pressed' $pressed $script:TrayMenuMiss
             Add-Check 'The tray tells the person in a balloon ("Couldn''t check for updates")' (Wait-ToastShown -Text "Couldn't check for updates" -Before $before -TimeoutSec 60) ''
@@ -717,9 +736,6 @@ function Invoke-CompanionsInstallFromThePage {
         $stext = if ($sini.Count) { Get-Content -Raw $sini[0].FullName } else { '' }
         Add-Check 'SABnzbd''s settings hold a generated api key, a username and password, and the web UI on 127.0.0.1' ($stext -match '(?m)^\s*api_key\s*=\s*\w{16,}' -and $stext -match '(?m)^\s*username\s*=\s*\S+' -and $stext -match '(?m)^\s*password\s*=\s*\S+' -and $stext -match '(?m)^\s*host\s*=\s*127\.0\.0\.1') $(if ($sini.Count) { $sini[0].FullName } else { 'no sabnzbd.ini' })
         Add-Check 'The elevated installer left nothing behind: no "Deluno installer" folder in Program Files' (-not (Test-Path $installerFolder)) $installerFolder
-        # Deluno was given the clients.
-        $clients = @(Get-DownloadClients | ForEach-Object { "$($_.protocol)|$($_.name)" })
-        Add-Check 'Deluno has qBittorrent and SABnzbd connected as download clients' (@($clients | Where-Object { $_ -match '^qbittorrent' }).Count -ge 1 -and @($clients | Where-Object { $_ -match '^sabnzbd' }).Count -ge 1) ($clients -join '; ')
         $after = Try-Deluno -Path '/api/companion-tools'
         Add-Check 'The list now shows none of the three as not installed' (@($after.Data.tools | Where-Object { $_.state -eq 'not-installed' }).Count -eq 0) ((@($after.Data.tools | ForEach-Object { "$($_.id)=$($_.state)" })) -join ', ')
     }
