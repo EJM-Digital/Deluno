@@ -317,13 +317,15 @@ function Invoke-UpdatePreferencesAndBackgroundCheck {
             $quit = Quit-DelunoFromTray
             Add-Check 'Deluno is quit from its tray menu' ($quit -and @(Get-DelunoProcess).Count -eq 0) ''
             $exe = Get-InstalledDelunoExe
+            $launchedAt = [DateTime]::UtcNow.AddSeconds(-2)
             Start-ProgramUnelevated -Path $exe.FullName -WorkingDirectory $exe.DirectoryName -Elevated
             $asked = Wait-Until -TimeoutSec 240 -IntervalSec 1 -Condition { @(Get-UpdateFeedRequests | Where-Object { $_ -match 'releases\.|RELEASES' }).Count -gt 0 }
-            $procStart = (Get-DelunoProcess | Select-Object -First 1).StartTime.ToUniversalTime()
+            $procStart = @(Get-DelunoProcess | ForEach-Object { $_.StartTime.ToUniversalTime() } | Where-Object { $_ -ge $launchedAt } | Sort-Object)[0]
             $first = if ($asked.Ok) { [DateTime]::Parse((@(Get-UpdateFeedRequests | Where-Object { $_ -match 'releases\.|RELEASES' })[0] -split ' ')[0]).ToUniversalTime() } else { $null }
             $after = if ($first) { ($first - $procStart).TotalSeconds } else { -1 }
             Add-Check 'With auto-check on, Deluno asks the feed for its release list by itself after it starts' $asked.Ok $(if ($asked.Ok) { "{0:N0} s after the process started" -f $after } else { 'the feed was never asked' })
             Add-Check 'It waits about 20 seconds first (not at once, and soon after the host is up)' ($asked.Ok -and $after -ge 19 -and $after -le 120) ("{0:N0} s after the process started" -f $after)
+            $null = Wait-Until -TimeoutSec 240 -IntervalSec 2 -Condition { Test-DelunoAnswering }
             Connect-Deluno
             $got = Wait-Until -TimeoutSec 300 -IntervalSec 3 -Condition { $s = Get-UpdateStatus; if ($s -and $s.restartRequired -and $s.latestVersion -like "*$CandidateVersion*") { $s } else { $null } }
             Add-Check 'In a download mode the update is downloaded by itself and waits to be applied, with nobody pressing Download' $got.Ok $(if ($got.Ok) { "state $($got.Value.state), after $($got.Seconds) s" } else { "status: $((Get-UpdateStatus | ConvertTo-Json -Compress -Depth 3))" })
@@ -659,6 +661,8 @@ function Invoke-CompanionsInstallFromThePage {
         Add-Note ('Before: ' + ($before -join ', '))
         $installerFolder = Join-Path $env:ProgramFiles 'Deluno installer'
         # Asked in the wrong order on purpose.
+        # The state the update scenarios give Deluno holds a qBittorrent connection that goes nowhere; with it the page would say qBittorrent is already connected and leave it alone.
+        foreach ($c in @(Get-DownloadClients | Where-Object { $_.name -eq 'Update scenario client' })) { Try-Deluno -Method DELETE -Path "/api/download-clients/$($c.id)" | Out-Null }
         $ask = Try-Deluno -Method POST -Path '/api/companion-tools/install' -Body @{ toolIds = @('weir', 'qbittorrent', 'sabnzbd') }
         Add-Check 'Asking for the three tools is accepted (HTTP 202)' ($ask.Status -eq 202) "HTTP $($ask.Status) $($ask.Raw)"
         if ($ask.Status -ne 202) { return }
@@ -681,7 +685,7 @@ function Invoke-CompanionsInstallFromThePage {
                 $jobs = @($r.Data.tools | Where-Object { $_.job })
                 if ($jobs.Count -eq 3 -and @($jobs | Where-Object { $_.job.status -in 'queued', 'running' }).Count -eq 0) { $final = $r.Data; break }
             }
-            Start-Sleep -Seconds 3 # reason: polling the install's progress; the page reads it the same way
+            Start-Sleep -Seconds 1 # reason: polling the install's progress; the page reads it the same way
         }
         Add-Check 'All three finish within 25 minutes' ($null -ne $final) ''
         if (-not $final) { return }
@@ -690,7 +694,13 @@ function Invoke-CompanionsInstallFromThePage {
         Add-Check 'Each showed queued, then running, then done (nothing skipped a state)' (@('sabnzbd', 'qbittorrent', 'weir' | Where-Object { $s = $seenStates[$_]; -not ($s -and $s -contains 'running' -and $s[-1] -eq 'done') }).Count -eq 0) ((@('sabnzbd', 'qbittorrent', 'weir') | ForEach-Object { "$_ : $(@($seenStates[$_]) -join ' > ')" }) -join '; ')
         foreach ($t in $final.tools) { if ($t.job -and $t.job.status -ne 'done') { Add-Note "$($t.id): $($t.job.status) - $($t.job.step) - $($t.job.message)" } }
 
-        $ports = [ordered]@{ sabnzbd = 8080; qbittorrent = 8081; weir = 9347 }
+        # The ports are the ones each app's own settings say (the page takes the first free one from 8080).
+        $iniText = { param($dir, $name) $f = @(Get-ChildItem -Path $dir -Filter $name -ErrorAction SilentlyContinue | Select-Object -First 1); if ($f.Count) { Get-Content -Raw $f[0].FullName } else { '' } }
+        $sabText = & $iniText (Join-Path $env:LOCALAPPDATA 'sabnzbd') 'sabnzbd.ini'
+        $qbText = & $iniText (Join-Path $env:APPDATA 'qBittorrent') 'qBittorrent.ini'
+        $sabPort = if ($sabText -match '(?m)^\s*port\s*=\s*(\d+)') { [int]$Matches[1] } else { 0 }
+        $qbPort = if ($qbText -match 'WebUI\\Port=(\d+)') { [int]$Matches[1] } else { 0 }
+        $ports = [ordered]@{ sabnzbd = $sabPort; qbittorrent = $qbPort; weir = 9347 }
         foreach ($k in $ports.Keys) {
             $listen = @(Get-NetTCPConnection -State Listen -LocalPort $ports[$k] -ErrorAction SilentlyContinue | ForEach-Object { $_.LocalAddress } | Select-Object -Unique)
             Add-Check "$k answers on port $($ports[$k]) and only on this PC" ($listen.Count -gt 0 -and @($listen | Where-Object { $_ -notin '127.0.0.1', '::1' }).Count -eq 0) ($listen -join ', ')
