@@ -538,9 +538,15 @@ function Invoke-UninstallRemovesTheSignInEntry {
 }
 
 function Invoke-UninstallRemovesTheWindowsService {
+    param([Parameter(Mandatory)] [string] $CandidateSetup, [Parameter(Mandatory)] [string] $CandidateVersion)
     Invoke-Scenario -Id 'uninstall.removes-the-windows-service' -Title 'Uninstall while Deluno runs as a Windows service does not leave the service behind pointing at a program that is gone' -Body {
-        $ctx = Start-PreviousForUpdate -CandidateVersion 'no-candidate-here'
+        $ctx = Start-PreviousForUpdate -CandidateVersion $CandidateVersion
         if (-not $ctx) { return }
+        # The uninstall hook under test is the CANDIDATE's: an older release has no hook for the service. Update to the candidate first.
+        $p = Start-Process -FilePath $CandidateSetup -ArgumentList '--silent' -PassThru
+        $done = $p.WaitForExit(600000)
+        Add-Check 'Setup.exe --silent over the previous release finished' ($done -and $p.ExitCode -eq 0) "exit $(if ($done) { $p.ExitCode } else { 'none' })"
+        if (-not (Test-CameBackAsCandidate -Context $ctx -CandidateVersion $CandidateVersion)) { return }
         $installFolder = Join-Path $env:LOCALAPPDATA 'Deluno'
         $null = Quit-DelunoFromTray
         $exe2 = Get-InstalledDelunoExe
@@ -553,13 +559,21 @@ function Invoke-UninstallRemovesTheWindowsService {
         $svcUp = Wait-Until -TimeoutSec 240 -IntervalSec 3 -Condition { $x = Get-CimInstance Win32_Service -Filter "Name='Deluno'" -ErrorAction SilentlyContinue; if ($x -and $x.State -eq 'Running') { $x } else { $null } }
         Add-Check 'Deluno runs as a Windows service before the uninstall' $svcUp.Ok ''
         if (-not $svcUp.Ok) { return }
-        $r2 = Invoke-DelunoUninstall
-        Add-Check 'The uninstaller finished with exit code 0 over the running service' $r2.Ok $r2.Detail
-        Start-Sleep -Seconds 20 # reason: a service whose process was ended is started again by Windows after its restart delay; nothing signals it
+        # The uninstall deletes the install folder, hook log included, so the log is copied out while the uninstaller runs.
+        $hookLog = Join-Path $env:LOCALAPPDATA 'Deluno\logs\install-hook.log'
+        $hookCopy = Join-Path $env:TEMP 'golden-uninstall-hook-copy.log'
+        Remove-Item -LiteralPath $hookCopy -ErrorAction SilentlyContinue
+        $copier = Start-Job -ScriptBlock { param($from, $to) while ($true) { try { if (Test-Path -LiteralPath $from) { $t = [IO.File]::ReadAllText($from); if ($t) { [IO.File]::WriteAllText($to, $t) } } } catch { } Start-Sleep -Milliseconds 100 } } -ArgumentList $hookLog, $hookCopy
+        try {
+            $r2 = Invoke-DelunoUninstall
+            Add-Check 'The uninstaller finished with exit code 0 over the running service' $r2.Ok $r2.Detail
+            Start-Sleep -Seconds 20 # reason: a service whose process was ended is started again by Windows after its restart delay; nothing signals it
+        }
+        finally { Stop-Job $copier -ErrorAction SilentlyContinue; Remove-Job $copier -Force -ErrorAction SilentlyContinue }
         $left = Get-CimInstance Win32_Service -Filter "Name='Deluno'" -ErrorAction SilentlyContinue
         Add-Check 'No Deluno service is left behind pointing at the deleted program' (-not $left) $(if ($left) { "left: $($left.State), $($left.PathName)" } else { 'removed' })
-        $hookLog = Join-Path $env:LOCALAPPDATA 'Deluno\logs\install-hook.log'
-        $hookText = if (Test-Path $hookLog) { Get-Content -Raw $hookLog } else { '' }
+        $hookText = if (Test-Path $hookCopy) { Get-Content -Raw $hookCopy } else { '' }
+        Save-Evidence -Name 'uninstall-hook-log.txt' -Text $hookText
         Add-Check 'The uninstall log says the Windows service was removed (and names a leftover with its removal command if one stayed)' ($hookText -match "Windows service was removed" -or $hookText -match 'sc\.exe delete Deluno') ''
         Add-Check 'No SABnzbd service Deluno made is left behind' (-not (Get-CimInstance Win32_Service -Filter "Name='SABnzbd'" -ErrorAction SilentlyContinue) -or -not (Test-Path (Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Deluno\data\config\sabnzbd-service.registered-by-deluno'))) ''
         if ($left) { & sc.exe delete Deluno | Out-Null }
@@ -732,11 +746,13 @@ function Invoke-GroupPlatformExtrasNamedUser {
             New-Item -ItemType Directory -Force -Path $shared | Out-Null
             if (Test-Path $trayFile) { Copy-Item -LiteralPath $trayFile -Destination (Join-Path $shared 'deluno.json') -Force }
             $null = Quit-DelunoFromTray
+            $installedAt = (Get-Date).AddSeconds(-5)
             & $exe.FullName --install-service --username ".\$user" --password $pw | Out-Null
             $up = Wait-Until -TimeoutSec 300 -IntervalSec 3 -Condition { $x = Get-DelunoServiceFacts; if ($x -and $x.State -eq 'Running' -and $x.ProcessId -gt 0) { $x } else { $null } }
             $f = Get-DelunoServiceFacts
             Add-Check 'The service is created to log on as the named user' ($f -and $f.Account -match $user) $f.Account
             Add-Check 'It runs (so Windows let that account log on as a service)' $up.Ok $(if ($f) { "state $($f.State)" } else { 'no service' })
+            if (-not $up.Ok) { $cause = Get-ServiceNotRunningCause -Since $installedAt; Save-Evidence -Name 'named-user-not-running.txt' -Text $cause; Add-Note $cause }
             if ($up.Ok) {
                 $owner = (Get-CimInstance Win32_Process -Filter "ProcessId=$($f.ProcessId)" | Invoke-CimMethod -MethodName GetOwner)
                 Add-Check 'The Deluno process belongs to that user, not to SYSTEM or the signed-in account' ($owner.User -eq $user) "$($owner.Domain)\$($owner.User)"

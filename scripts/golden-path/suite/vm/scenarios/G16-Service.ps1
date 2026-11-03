@@ -27,6 +27,25 @@ function Get-DelunoServiceFacts {
     }
 }
 
+# Why a service did not run: its exit codes, the Service Control Manager events since the install began, and the tail of Deluno's logs.
+function Get-ServiceNotRunningCause {
+    param([Parameter(Mandatory)] [datetime] $Since, [string] $Name = 'Deluno')
+    $parts = New-Object System.Collections.Generic.List[string]
+    $svc = Get-CimInstance Win32_Service -Filter "Name='$Name'" -ErrorAction SilentlyContinue
+    if ($svc) { $parts.Add("service: state $($svc.State), Win32ExitCode $($svc.ExitCode), ServiceSpecificExitCode $($svc.ServiceSpecificExitCode), account $($svc.StartName)") }
+    try {
+        $ev = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Service Control Manager'; Id = 7000, 7038, 7041, 7024, 7034, 7031, 7009, 7011; StartTime = $Since } -ErrorAction Stop)
+        foreach ($e in $ev) { $parts.Add("SCM $($e.Id) at $($e.TimeCreated.ToString('HH:mm:ss')): $(($e.Message -replace '\s+', ' '))") }
+        if ($ev.Count -eq 0) { $parts.Add('no Service Control Manager events since the install') }
+    } catch { $parts.Add("event log not readable: $($_.Exception.Message)") }
+    $logRoots = @((Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Deluno'), (Join-Path $env:LOCALAPPDATA 'Deluno\logs'), (Join-Path $env:LOCALAPPDATA 'DelunoData\logs'))
+    foreach ($root in $logRoots) {
+        $files = @(Get-ChildItem -Path $root -Recurse -File -Include *.log, *.txt -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -ge $Since.AddMinutes(-1) } | Sort-Object LastWriteTime -Descending | Select-Object -First 3)
+        foreach ($f in $files) { $parts.Add("log $($f.FullName):`n" + ((Get-Content -LiteralPath $f.FullName -Tail 25 -ErrorAction SilentlyContinue) -join "`n")) }
+    }
+    $parts -join "`n"
+}
+
 function Remove-DelunoServiceNow {
     $exe = Get-DelunoExe
     if ($exe) { & $exe.FullName --uninstall-service | Out-Null }

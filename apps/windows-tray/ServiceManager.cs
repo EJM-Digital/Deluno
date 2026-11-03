@@ -114,6 +114,7 @@ public static class ServiceManager
         if (!string.IsNullOrEmpty(username))
         {
             GiveLogonRight(username);
+            GiveFolderAccess(username);
         }
 
         var binPath = $"\"{ExePath}\" --service";
@@ -139,6 +140,29 @@ public static class ServiceManager
 
         // Start immediately
         RunSc($"start {ServiceName}");
+    }
+
+    /// <summary>Test seam: lets an account use a folder with the rights; returns the reason in plain words when it could not.</summary>
+    internal static Func<string, string, System.Security.AccessControl.FileSystemRights, string?> FolderAccessGranter { get; set; } = ServiceFolderAccess.Grant;
+
+    /// <summary>The folder holding the program (the install folder above "current" for an installed copy).</summary>
+    internal static string ProgramFolder()
+    {
+        var here = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return string.Equals(Path.GetFileName(here), "current", StringComparison.OrdinalIgnoreCase) && Path.GetDirectoryName(here) is { } parent ? parent : here;
+    }
+
+    /// <summary>Lets the account read the program and change the data folder, or says why it could not (the service would stop at once with "Access is denied").</summary>
+    internal static void GiveFolderAccess(string account) => GiveFolderAccess(account, ProgramFolder(), AppSettings.Load().DataRoot);
+
+    internal static void GiveFolderAccess(string account, string programFolder, string dataFolder)
+    {
+        var problem = FolderAccessGranter(account, programFolder, System.Security.AccessControl.FileSystemRights.ReadAndExecute | System.Security.AccessControl.FileSystemRights.Synchronize)
+            ?? FolderAccessGranter(account, dataFolder, System.Security.AccessControl.FileSystemRights.Modify | System.Security.AccessControl.FileSystemRights.Synchronize);
+        if (problem is not null)
+        {
+            throw new InvalidOperationException($"Deluno could not let {account} run a Windows service: {problem}");
+        }
     }
 
     /// <summary>Test seam: gives an account the right to log on as a service; returns the reason in plain words when it could not.</summary>
