@@ -134,29 +134,29 @@ either is out of date, so they cannot drift from the baseline. `coverage-areas.j
 | apps/web | 411 | 98 | 313 | 73.5% | 62.8% | #1329 |
 | scripts | 14 | 1 | 13 | 78.9% | 85.9% | #1268 |
 | src | 4 | 1 | 3 | 94.3% | 88.5% | #1268 |
-| src/Deluno.Api | 47 | 23 | 24 | 95.2% | 72.2% | #1297 |
-| src/Deluno.Companions | 10 | 1 | 9 | 68.1% | 50.7% | #1295 |
-| src/Deluno.Connections | 46 | 21 | 25 | 88.7% | 79.8% | #1301 |
-| src/Deluno.Contracts | 98 | 32 | 66 | 90.8% | 84.4% | #1296 |
-| src/Deluno.Filesystem | 37 | 7 | 30 | 76.9% | 64.1% | #1296 |
-| src/Deluno.Host | 1 | 0 | 1 | 0.0% | 0.0% | #1302 |
-| src/Deluno.Infrastructure | 44 | 11 | 33 | 85.9% | 73.8% | #1296 |
-| src/Deluno.Intake | 12 | 7 | 5 | 92.7% | 66.3% | #1296 |
-| src/Deluno.Integrations | 157 | 41 | 116 | 87.6% | 69.8% | #1301 |
-| src/Deluno.Jobs | 114 | 86 | 28 | 93.8% | 74.5% | #1296 |
-| src/Deluno.Libraries | 27 | 21 | 6 | 91.0% | 76.4% | #1296 |
-| src/Deluno.Media | 45 | 24 | 21 | 92.2% | 87.9% | #1296 |
-| src/Deluno.Movies | 85 | 75 | 10 | 95.3% | 44.4% | #1296 |
-| src/Deluno.Notifications | 8 | 5 | 3 | 95.8% | 76.1% | #1301 |
-| src/Deluno.Platform | 230 | 180 | 50 | 96.0% | 79.5% | #1302 |
-| src/Deluno.Quality | 78 | 19 | 59 | 90.0% | 74.9% | #1296 |
-| src/Deluno.Realtime | 7 | 4 | 3 | 93.2% | 98.3% | #1296 |
-| src/Deluno.Recovery | 12 | 2 | 10 | 75.4% | 69.4% | #1296 |
-| src/Deluno.Retention | 13 | 1 | 12 | 91.6% | 69.2% | #1296 |
-| src/Deluno.Security | 43 | 15 | 28 | 84.0% | 66.3% | #1302 |
-| src/Deluno.Series | 110 | 92 | 18 | 94.2% | 75.0% | #1296 |
-| src/Deluno.Worker | 135 | 68 | 67 | 88.5% | 65.3% | #1296 |
-| **All** | 1788 | 835 | 953 | 87.1% | 69.8% | |
+| src/Deluno.Api | 51 | 18 | 33 | 94.8% | 82.3% | #1297 |
+| src/Deluno.Companions | 10 | 1 | 9 | 79.4% | 62.5% | #1295 |
+| src/Deluno.Connections | 48 | 23 | 25 | 97.1% | 91.6% | #1301 |
+| src/Deluno.Contracts | 109 | 57 | 52 | 98.0% | 91.2% | #1296 |
+| src/Deluno.Filesystem | 38 | 9 | 29 | 88.8% | 83.2% | #1296 |
+| src/Deluno.Host | 2 | 0 | 2 | 16.7% | 0.0% | #1302 |
+| src/Deluno.Infrastructure | 50 | 19 | 31 | 92.1% | 83.4% | #1296 |
+| src/Deluno.Intake | 12 | 9 | 3 | 98.7% | 87.7% | #1296 |
+| src/Deluno.Integrations | 158 | 46 | 112 | 95.4% | 86.7% | #1301 |
+| src/Deluno.Jobs | 121 | 84 | 37 | 97.9% | 86.8% | #1296 |
+| src/Deluno.Libraries | 32 | 25 | 7 | 98.6% | 90.8% | #1296 |
+| src/Deluno.Media | 47 | 23 | 24 | 97.2% | 90.5% | #1296 |
+| src/Deluno.Movies | 87 | 74 | 13 | 98.2% | 78.0% | #1296 |
+| src/Deluno.Notifications | 12 | 3 | 9 | 89.8% | 75.3% | #1301 |
+| src/Deluno.Platform | 246 | 184 | 62 | 98.6% | 89.4% | #1302 |
+| src/Deluno.Quality | 82 | 30 | 52 | 96.9% | 86.0% | #1296 |
+| src/Deluno.Realtime | 8 | 5 | 3 | 99.1% | 98.5% | #1296 |
+| src/Deluno.Recovery | 12 | 5 | 7 | 95.2% | 89.0% | #1296 |
+| src/Deluno.Retention | 13 | 1 | 12 | 93.5% | 80.7% | #1296 |
+| src/Deluno.Security | 51 | 25 | 26 | 96.0% | 87.9% | #1302 |
+| src/Deluno.Series | 111 | 87 | 24 | 96.7% | 83.7% | #1296 |
+| src/Deluno.Worker | 142 | 42 | 100 | 93.3% | 84.3% | #1296 |
+| **All** | 1871 | 870 | 1001 | 91.5% | 79.1% | |
 
 Averages are per file, from the checked-in baseline (the floor the ratchet holds each file to), not weighted by size.
 
