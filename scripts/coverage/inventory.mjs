@@ -414,7 +414,8 @@ export const FAMILIES = [
   { id: 'tray-release-feed', file: 'apps/windows-tray/ReleaseFeedUpdateSource.cs' },
   { id: 'tray-component-install', file: 'apps/windows-tray/ComponentInstallService.cs' },
   { id: 'tray-download-client-setup', file: 'apps/windows-tray/DownloadClientSetup.cs' },
-  { id: 'tray-component-data-folder', file: 'apps/windows-tray/ComponentDataFolder.cs' }
+  { id: 'tray-component-data-folder', file: 'apps/windows-tray/ComponentDataFolder.cs' },
+  { id: 'tray-sabnzbd-service', file: 'apps/windows-tray/SabnzbdService.cs' }
 ];
 
 // Outbound HTTP users that are plumbing, not an integration: registration, logging, shared helpers, the endpoints that call a client.
