@@ -29,6 +29,12 @@ function Test-PortAnswers {
     try { $c = New-Object Net.Sockets.TcpClient; $c.Connect('127.0.0.1', $Port); $c.Close(); $true } catch { $false }
 }
 
+# The Service Control Manager's events about Deluno written after a record number of the System log (read by number: the VM's clock is set again after a checkpoint is restored).
+function Read-DelunoServiceEvents {
+    param([long] $After)
+    @(Get-WinEvent -LogName System -FilterXPath "*[System[Provider[@Name='Service Control Manager'] and EventRecordID>$After]]" -ErrorAction SilentlyContinue | Where-Object { $_.Message -match 'Deluno' })
+}
+
 # The settings file the tray's Run as a Windows service dialog copies to where the service (another account) reads it, then the service.
 function Install-DelunoServiceNow {
     $exe = Get-DelunoExe
@@ -69,9 +75,8 @@ function Invoke-GroupPlatformExtras {
             Add-Check 'The service process is gone: nothing is left holding the databases' $left.Ok ''
             $svc = Get-CimInstance Win32_Service -Filter "Name='Deluno'" -ErrorAction SilentlyContinue
             Add-Check 'It stopped with exit code 0 (a clean stop, so the restart-on-failure actions do not run)' ($svc -and [int]$svc.ExitCode -eq 0) "exit code $($svc.ExitCode)"
-            $readEvents = { @(Get-WinEvent -LogName System -FilterXPath "*[System[Provider[@Name='Service Control Manager'] and EventRecordID>$lastRecord]]" -ErrorAction SilentlyContinue | Where-Object { $_.Message -match 'Deluno' }) }
-            $null = Wait-Until -TimeoutSec 30 -IntervalSec 1 -Condition { @(& $readEvents | Where-Object { $_.Id -eq 7036 -and $_.Message -match 'stopped' }).Count -gt 0 } # the log line follows the stop by a moment
-            $events = @(& $readEvents)
+            $null = Wait-Until -TimeoutSec 30 -IntervalSec 1 -Condition { @(Read-DelunoServiceEvents -After $lastRecord | Where-Object { $_.Id -eq 7036 -and $_.Message -match 'stopped' }).Count -gt 0 } # the log line follows the stop by a moment
+            $events = @(Read-DelunoServiceEvents -After $lastRecord)
             $bad = @($events | Where-Object { $_.Id -in 7031, 7034 })
             $good = @($events | Where-Object { $_.Id -eq 7036 -and $_.Message -match 'stopped' })
             Add-Check 'Windows logged the service entering the stopped state, and no "terminated unexpectedly" or "terminated with an error"' ($good.Count -ge 1 -and $bad.Count -eq 0) "stopped events $($good.Count), unexpected-termination events $($bad.Count), after record $lastRecord, all Deluno events: $((($events | ForEach-Object { "$($_.Id)" }) -join ','))"
@@ -204,12 +209,15 @@ function Invoke-GroupPlatformExtras {
             }
 
             # Pressing the first: Transmission is read, nothing needs adding, and the note goes.
-            $said = Get-ToastTextCount -Text 'Transmission had no torrents to add back'
             $pressed = Invoke-TrayMenuItem -Icon 'Deluno' -Item "^Add Transmission's torrents back"
             Add-Check 'The first line can be pressed' $pressed $script:TrayMenuMiss
             $gone = Wait-Until -TimeoutSec 60 -IntervalSec 1 -Condition { -not (Test-Path $readd) }
             Add-Check 'It reads Transmission, adds back what it holds and removes the note' $gone.Ok ''
-            Add-Check 'It says what it did in a notice, in words' (Wait-ToastShown -Text 'Transmission had no torrents to add back' -Before $said -TimeoutSec 20) ''
+            # The answer is a message box named Deluno (it holds the tray until it is closed).
+            $box = Wait-DesktopWindow -NamePattern '^Deluno$' -Process 'Deluno' -TimeoutSec 30
+            $boxText = if ($box) { Get-WindowText -Window $box } else { '' }
+            Add-Check 'It says what it did, in words, in a message box' ($null -ne $box -and $boxText -match 'torrents') $boxText
+            if ($box) { Click-WindowButton -Window $box -NamePattern '^OK$' | Out-Null }
             $after = @(Get-TrayMenuStates | ForEach-Object { $_.Name })
             Add-Check 'The first line is gone from the menu and the second stays' (@($after | Where-Object { $_ -match "^Add Transmission" }).Count -eq 0 -and @($after | Where-Object { $_ -match '^Try again: install ' }).Count -eq 1) ($after -join ' | ')
 
@@ -477,6 +485,25 @@ function Invoke-UninstallLeavesNothingBehind {
         Add-Check 'It finds the old data: the account is there and first-run setup is not asked again' ($boot.Status -eq 200 -and $boot.Data.requiresSetup -eq $false) $boot.Raw
         $connected = $false; try { Connect-Deluno; $connected = $true } catch { }
         Add-Check 'The old sign-in works and the old libraries are there' ($connected -and @(Get-Library).Count -gt 0) ''
+
+        # Uninstalled again while Deluno runs as a Windows service: the service must not be left behind pointing at a program that is gone.
+        $null = Quit-DelunoFromTray
+        $exe2 = Get-InstalledDelunoExe
+        $shared = Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Deluno\data'
+        New-Item -ItemType Directory -Force -Path $shared | Out-Null
+        $trayFile = Join-Path $env:LOCALAPPDATA 'DelunoConfig\deluno.json'
+        if (Test-Path $trayFile) { Copy-Item -LiteralPath $trayFile -Destination (Join-Path $shared 'deluno.json') -Force }
+        & $exe2.FullName --install-service | Out-Null
+        $svcUp = Wait-Until -TimeoutSec 240 -IntervalSec 3 -Condition { $x = Get-CimInstance Win32_Service -Filter "Name='Deluno'" -ErrorAction SilentlyContinue; if ($x -and $x.State -eq 'Running') { $x } else { $null } }
+        Add-Check 'Deluno runs as a Windows service before the second uninstall' $svcUp.Ok ''
+        if ($svcUp.Ok) {
+            $r2 = Invoke-DelunoUninstall
+            Add-Check 'The uninstaller finished with exit code 0 over the running service' $r2.Ok $r2.Detail
+            Start-Sleep -Seconds 20 # reason: a service whose process was ended is started again by Windows after its restart delay; nothing signals it
+            $left = Get-CimInstance Win32_Service -Filter "Name='Deluno'" -ErrorAction SilentlyContinue
+            Add-Check 'No Deluno service is left behind pointing at the deleted program' (-not $left) $(if ($left) { "left: $($left.State), $($left.PathName)" } else { 'removed' })
+            if ($left) { & sc.exe delete Deluno | Out-Null }
+        }
     }
 }
 
