@@ -268,6 +268,14 @@ try {
     if (-not $ready) { Add-Result 'VM answers over PowerShell Direct' 'failed' "No answer within 15 minutes (last error: $lastErr)."; throw 'VM did not come up.' }
     $os = Invoke-InVm { (Get-CimInstance Win32_OperatingSystem).Caption }
     Add-Result 'VM answers over PowerShell Direct' 'passed' $os
+    # A checkpoint keeps the clock it was taken with, and the host's time service can leave a restored VM hours out for the whole install:
+    # the copy of the Hyper-V host used on 3 Nov 2026 started 19 hours ahead, and a saved "ready" state then held dates in the future that
+    # stopped Deluno reading its clients once the clock was right. The guest's clock is set from the host's now, before anything installs.
+    try {
+        $hostUtc = Invoke-Command -Session $rig -ScriptBlock { (Get-Date).ToUniversalTime().ToString('o') }
+        $offset = Invoke-InVm { param($utc) $target = [DateTime]::Parse($utc, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind); $was = ($target - (Get-Date).ToUniversalTime()).TotalMinutes; Set-Date -Date $target.ToLocalTime() | Out-Null; [math]::Round($was, 1) } -ArgumentList @($hostUtc)
+        Add-Result 'VM clock set from the host' 'passed' "The VM's clock was $offset minutes out."
+    } catch { Add-Result 'VM clock set from the host' 'failed' $_.Exception.Message }
     if ($AfterVmReady) {
         try { & $AfterVmReady $rig $VmName $vmCred $AfterVmReadyContext; Add-Result 'Hook after the VM is ready' 'passed' 'Ran.' }
         catch { Add-Result 'Hook after the VM is ready' 'failed' $_.Exception.Message }

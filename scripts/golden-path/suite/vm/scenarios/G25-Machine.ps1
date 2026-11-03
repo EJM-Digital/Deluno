@@ -115,6 +115,10 @@ function Invoke-GroupMachine {
         $cReal = New-Object System.IO.DriveInfo('C')
         Add-Check 'The drive that holds Deluno is listed with its real size (within 1%)' ($c -and [math]::Abs($c.totalBytes - $cReal.TotalSize) -le ($cReal.TotalSize * 0.01)) $(if ($c) { "Windows {0:N1} GB, Deluno {1:N1} GB" -f ($cReal.TotalSize / 1GB), ($c.totalBytes / 1GB) } else { 'no C: in ' + (($o.Data.drives | ForEach-Object { "$($_.path)" }) -join ', ') })
         Add-Check 'Its free space is the real free space (within 1% of the drive)' ($c -and [math]::Abs($c.freeBytes - $cReal.AvailableFreeSpace) -le ($cReal.TotalSize * 0.01)) $(if ($c) { "Windows {0:N1} GB, Deluno {1:N1} GB" -f ($cReal.AvailableFreeSpace / 1GB), ($c.freeBytes / 1GB) } else { '' })
+        $disk = $null
+        try { $part = Get-Partition -DriveLetter C -ErrorAction Stop; $disk = Get-PhysicalDisk | Where-Object { $_.DeviceId -eq "$($part.DiskNumber)" } | Select-Object -First 1 } catch { }
+        $realHealth = if ($disk) { "$($disk.HealthStatus)" } else { 'unknown' }
+        Add-Check 'The drive''s health is what Windows says of the disk under it (Healthy reads "good"; a reading it cannot make reads "unknown", never "good" by default)' ($c -and (($realHealth -eq 'Healthy' -and $c.health -in 'good', 'unknown') -or ($realHealth -ne 'Healthy' -and $c.health -ne 'good'))) "Windows '$realHealth', Deluno '$($c.health)'"
         Add-Check 'Deluno reports the address it listens on and that it runs as the app or a service' ($o.Data.instance.address -and $o.Data.instance.runsAs) "$($o.Data.instance.address), $($o.Data.instance.runsAs)"
     }
 
