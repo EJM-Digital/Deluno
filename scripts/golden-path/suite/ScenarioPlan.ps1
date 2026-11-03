@@ -38,7 +38,7 @@ function Get-ScenarioPlan {
         @{ Name = 'traystates'; Function = 'Invoke-GroupTrayStates'; Ids = @('tray.dot-and-hover', 'tray.starting-dot', 'tray.menu-details', 'tray.quit') }
         @{ Name = 'trayplatform'; Function = 'Invoke-GroupTrayPlatform'; Ids = @('tray.clicks-and-second-launch') }
         @{ Name = 'service'; Function = 'Invoke-GroupService'; Ids = @('service.install-run-uninstall', 'service.let-any-address-in', 'service.wrong-password') }
-        @{ Name = 'platformextras'; Function = 'Invoke-GroupPlatformExtras'; Ids = @('service.stop-and-clean-shutdown', 'service.updates-in-service-mode', 'tray.restarts-clients-at-start', 'tray.waiting-work-menu-lines', 'install.loopback-and-hook-log') }
+        @{ Name = 'platformextras'; Function = 'Invoke-GroupPlatformExtras'; Ids = @('service.stop-and-clean-shutdown', 'service.updates-in-service-mode', 'tray.restarts-clients-at-start', 'tray.waiting-work-menu-lines', 'install.loopback-and-hook-log', 'install.second-picker-leaves-installed-apps') }
         @{ Name = 'desktop'; Function = 'Invoke-GroupDesktop'; Ids = @('companions.tray-install-picker', 'filesystem.native-folder-picker') }
         @{ Name = 'weirconnection'; Function = 'Invoke-GroupWeirConnection'; Ids = @('weir.test-connection', 'weir.credential-own-host', 'weir.health-findings') }
         @{ Name = 'servicemodes'; Function = 'Invoke-GroupServiceModes'; Ids = @('service.mode-switching') }

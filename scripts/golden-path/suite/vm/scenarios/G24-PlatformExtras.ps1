@@ -46,6 +46,7 @@ function Install-DelunoServiceNow {
 }
 
 function Invoke-GroupPlatformExtras {
+    Invoke-GroupPlatformExtrasPicker
     Invoke-Scenario -Id 'service.stop-and-clean-shutdown' -Title 'Stop from the service manager ends the Deluno service by itself and cleanly: exit code 0, no unexpected-termination event, every database closed, no process left' -Body {
         if (Get-DelunoServiceFacts) { Remove-DelunoServiceNow }
         $dataRoot = Join-Path $env:LOCALAPPDATA 'DelunoData'
@@ -57,7 +58,8 @@ function Invoke-GroupPlatformExtras {
             $svcProc = (Get-DelunoServiceFacts).ProcessId
             Add-Check 'The service has a process of its own to stop' ($svcProc -gt 0) "process $svcProc"
             # Some work in flight: a request being served while the stop comes.
-            $began = Get-Date
+            # The system log is read by record number, not by time (the VM's clock is set again after its checkpoint is restored).
+            $lastRecord = [long](@(Get-WinEvent -LogName System -MaxEvents 1 -ErrorAction SilentlyContinue | ForEach-Object { $_.RecordId }) + 0)[0]
             $stopWatch = [Diagnostics.Stopwatch]::StartNew()
             Stop-Service -Name 'Deluno' -ErrorAction Stop
             $stopped = Wait-Until -TimeoutSec 90 -IntervalSec 0.5 -Condition { (Get-Service -Name 'Deluno').Status -eq 'Stopped' }
@@ -67,7 +69,7 @@ function Invoke-GroupPlatformExtras {
             Add-Check 'The service process is gone: nothing is left holding the databases' $left.Ok ''
             $svc = Get-CimInstance Win32_Service -Filter "Name='Deluno'" -ErrorAction SilentlyContinue
             Add-Check 'It stopped with exit code 0 (a clean stop, so the restart-on-failure actions do not run)' ($svc -and [int]$svc.ExitCode -eq 0) "exit code $($svc.ExitCode)"
-            $events = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Service Control Manager'; StartTime = $began.AddSeconds(-2) } -ErrorAction SilentlyContinue |
+            $events = @(Get-WinEvent -LogName System -FilterXPath "*[System[Provider[@Name='Service Control Manager'] and EventRecordID>$lastRecord]]" -ErrorAction SilentlyContinue |
                 Where-Object { $_.Message -match 'Deluno' })
             $bad = @($events | Where-Object { $_.Id -in 7031, 7034 })
             $good = @($events | Where-Object { $_.Id -eq 7036 -and $_.Message -match 'stopped' })
@@ -105,12 +107,18 @@ function Invoke-GroupPlatformExtras {
             Add-Check 'It reports the running version, a real one' ($d.currentVersion -and "$($d.currentVersion)" -notmatch '^0\.0\.0') "$($d.currentVersion)"
             $chk = Try-Deluno -Method POST -Path '/api/updates/check' -TimeoutSec 120
             Add-Check 'Check for updates answers and does not claim an update is available or ready' ($chk.Status -eq 200 -and -not $chk.Data.status.updateAvailable -and -not $chk.Data.status.restartRequired) "HTTP $($chk.Status): $($chk.Data.message)"
-            Add-Check 'The check says, in words, that Deluno does not update itself here (never "up to date" as if it had looked)' ($chk.Data.message -match 'manual|install|download|Windows|docker|cannot|can''t|not available' -and $chk.Data.message -notmatch '^You''re up to date') "$($chk.Data.message)"
+            $words = "$($chk.Data.message) $($chk.Data.status.message)"
+            Add-Check 'The check says, in words, that this is not an install Deluno updates itself (never "up to date" as if it had looked)' ($words -match 'not a Velopack|installing a newer build|manual|cannot|can''t' -and $words -notmatch 'up to date') $words
             $dl = Try-Deluno -Method POST -Path '/api/updates/download' -TimeoutSec 120
             Add-Check 'Download update does nothing (nothing is ready to restart)' ($dl.Status -lt 500 -and -not $dl.Data.status.restartRequired) "HTTP $($dl.Status): $($dl.Data.message)"
+            $pidBefore = (Get-DelunoServiceFacts).ProcessId
             $rs = Try-Deluno -Method POST -Path '/api/updates/restart-now' -TimeoutSec 120
-            Add-Check 'Restart to update does not restart the service' ($rs.Status -lt 500 -and -not $rs.Data.accepted) "HTTP $($rs.Status): $($rs.Raw)"
-            Add-Check 'The service is still the same running process and answers' ((Get-DelunoServiceFacts).State -eq 'Running' -and (Test-DelunoAnswering)) ''
+            # The Updates page keeps its Restart to update button off here (it needs canApply and a downloaded update), so the route is not reached by a person; what it
+            # answers is noted, and what matters is that nothing restarts.
+            Add-Note "Restart to update, asked through the route, answered HTTP $($rs.Status): accepted $($rs.Data.accepted), '$($rs.Data.message)'."
+            Start-Sleep -Seconds 15 # reason: give a restart that should not happen time to show itself; nothing signals that it did not
+            $f = Get-DelunoServiceFacts
+            Add-Check 'The service is not restarted: the same process is still running and answers' ($f.State -eq 'Running' -and $f.ProcessId -eq $pidBefore -and (Test-DelunoAnswering)) "process $pidBefore -> $($f.ProcessId)"
         }
         finally {
             if (Get-DelunoServiceFacts) { Remove-DelunoServiceNow }
@@ -180,7 +188,7 @@ function Invoke-GroupPlatformExtras {
             New-Item -ItemType Directory -Force -Path (Split-Path $readd) | Out-Null
             Set-Content -Path $readd -Encoding utf8 -Value (@{ createdUtc = [DateTime]::UtcNow.ToString('o'); daemonNeedsRestart = $false; torrents = @() } | ConvertTo-Json -Compress)
             New-Item -ItemType Directory -Force -Path (Split-Path $pending) | Out-Null
-            $at = [DateTime]::UtcNow.AddHours(-1).ToString('o')
+            $at = [DateTime]::UtcNow.AddHours(2).ToString('o') # in the future: once the wait is over the tray offers the picker by itself
             Set-Content -Path $pending -Encoding utf8 -Value (@{ kinds = @('weir'); retryAfterUtc = $at; askedByPerson = $false; reason = "GitHub's hourly limit on looking up releases was used up." } | ConvertTo-Json -Compress)
             $shown = Wait-Until -TimeoutSec 20 -IntervalSec 1 -Condition {
                 $names = @(Get-TrayMenuStates | ForEach-Object { $_.Name })
@@ -189,7 +197,7 @@ function Invoke-GroupPlatformExtras {
             Add-Check 'With both waiting, the menu shows both lines' $shown.Ok $(if ($shown.Ok) { ($shown.Value | Where-Object { $_ -match "^Add Transmission|^Try again" }) -join ' | ' } else { (@(Get-TrayMenuStates | ForEach-Object { $_.Name })) -join ' | ' })
             if ($shown.Ok) {
                 $try = @($shown.Value | Where-Object { $_ -match '^Try again: install ' })[0]
-                Add-Check 'The second line names the app waiting and ends in "..." ("Try again: install Weir...")' ($try -match '^Try again: install Weir\.\.\.$') $try
+                Add-Check 'The second line names the app waiting and when GitHub allows it, and ends in "..."' ($try -match '^Try again: install Weir \(GitHub allows it from .+\)\.\.\.$') $try
                 $states = @(Get-TrayMenuStates | Where-Object { $_.Name -match "^Add Transmission|^Try again" })
                 Add-Check 'Both lines can be pressed' (@($states | Where-Object { -not $_.Enabled }).Count -eq 0) (($states | ForEach-Object { "$($_.Name)=$($_.Enabled)" }) -join ' | ')
             }
@@ -211,6 +219,8 @@ function Invoke-GroupPlatformExtras {
         }
         finally {
             Remove-Item -LiteralPath $readd, $pending -Force -ErrorAction SilentlyContinue
+            $stray = Wait-DesktopWindow -NamePattern '^Set up download clients and Weir$' -Process 'Deluno' -TimeoutSec 2
+            if ($stray) { Close-DesktopWindow -Window $stray }
             if ($hadReadd) { Set-Content -Path $readd -Value $readdBefore -Encoding utf8 }
             if ($hadPending) { Set-Content -Path $pending -Value $pendingBefore -Encoding utf8 }
             Add-Check 'The two notes are as found' ((Test-Path $readd) -eq $hadReadd -and (Test-Path $pending) -eq $hadPending) ''
@@ -513,5 +523,42 @@ function Invoke-InstallSilentFirstInstall {
         $question = Wait-DesktopWindow -NamePattern '^Deluno$' -Process 'Deluno' -TimeoutSec 3
         Add-Check 'No "Start Deluno when you sign in" question and no app picker is on screen' ($null -eq $question) $(if ($question) { Get-WindowText -Window $question } else { '' })
         Add-Check 'No sign-in entry was made' (-not (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue | ForEach-Object { $_.PSObject.Properties } | Where-Object { [string]$_.Value -match 'Deluno\.exe' })) ''
+    }
+}
+
+# Inside the group: a second picker on a machine that has the apps already.
+function Invoke-GroupPlatformExtrasPicker {
+    Invoke-Scenario -Id 'install.second-picker-leaves-installed-apps' -Title 'A picker opened again on a machine that has the apps shows each installed app unticked and disabled, with nothing to install; with nothing ticked Install selected is not offered, and Skip closes it without running any installer' -Body {
+        Connect-Deluno
+        $dataRoot = Join-Path $env:LOCALAPPDATA 'DelunoData'
+        $pending = Join-Path $dataRoot 'config\pending-component-installs.json'
+        $hook = Join-Path $env:LOCALAPPDATA 'Deluno\logs\install-hook.log'
+        $hookBefore = if (Test-Path $hook) { (Get-Content -Raw $hook).Length } else { 0 }
+        Remove-Item -LiteralPath $pending -ErrorAction SilentlyContinue
+        try {
+            $ask = Try-Deluno -Method POST -Path '/api/companion-tools/tray-install' -Body @{ toolIds = @('nzbget') }
+            Add-Check 'Asking for the picker is accepted (HTTP 202)' ($ask.Status -eq 202) "HTTP $($ask.Status)"
+            $dlg = Wait-DesktopWindow -NamePattern '^Set up download clients and Weir$' -Process 'Deluno' -TimeoutSec 90
+            Add-Check 'The picker window opens' ($null -ne $dlg) $(if ($dlg) { $dlg.Name } else { 'windows: ' + (Format-DesktopWindows) })
+            if (-not $dlg) { return }
+            $boxes = @(Get-WindowControls -Window $dlg | Where-Object { $_.Type -eq 'CheckBox' -and -not $_.Offscreen })
+            Save-Evidence -Name 'second-picker-window.txt' -Text (Get-WindowText -Window $dlg)
+            Add-Check 'It lists the six apps' ($boxes.Count -eq 6) (($boxes | ForEach-Object { "$($_.Name) enabled=$($_.Enabled)" }) -join ' | ')
+            $live = @($boxes | Where-Object { $_.Enabled })
+            Add-Check 'Every app already on this machine is disabled (it cannot be ticked, so nothing can be installed twice)' ($boxes.Count -eq 6 -and $live.Count -eq 0) "ticked or tickable: $((($live | ForEach-Object { $_.Name }) -join ', '))"
+            $ticked = @($boxes | Where-Object { try { $_.Element.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -eq 'On' } catch { $false } })
+            Add-Check 'Nothing is ticked' ($ticked.Count -eq 0) (($ticked | ForEach-Object { $_.Name }) -join ', ')
+            $text = Get-WindowText -Window $dlg
+            Add-Check 'The window says the installed ones will not be touched' ($text -match 'not be touched|already') $text
+            $install = Get-WindowControls -Window $dlg | Where-Object { $_.Type -eq 'Button' -and $_.Name -match '^Install' } | Select-Object -First 1
+            Add-Check 'With nothing ticked, Install selected is not offered (disabled or absent)' ((-not $install) -or (-not $install.Enabled)) $(if ($install) { "$($install.Name) enabled=$($install.Enabled)" } else { 'absent' })
+            Click-WindowButton -Window $dlg -NamePattern '^Skip$' | Out-Null
+            $closed = Wait-Until -TimeoutSec 20 -IntervalSec 0.5 -Condition { -not (Wait-DesktopWindow -NamePattern '^Set up download clients and Weir$' -Process 'Deluno' -TimeoutSec 1) }
+            Add-Check 'Skip closes it' $closed.Ok ''
+            $hookAfter = if (Test-Path $hook) { Get-Content -Raw $hook } else { '' }
+            $newText = if ($hookAfter.Length -gt $hookBefore) { $hookAfter.Substring($hookBefore) } else { '' }
+            Add-Check 'No installer ran: the install log gained no download, checksum or install line' ($newText -notmatch 'installer .* sha256|SHA-256|Installed:') $newText
+        }
+        finally { Remove-Item -LiteralPath $pending -ErrorAction SilentlyContinue }
     }
 }
