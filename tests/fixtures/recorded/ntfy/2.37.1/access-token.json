@@ -1,14 +1,14 @@
 {
   "app": "ntfy",
-  "version": "2.34.0",
+  "version": "2.37.1",
   "state": "access-token",
-  "recordedAt": "2026-10-27T04:35:30Z",
-  "note": "A server that refuses everyone without a login: a message with a valid access token as a Bearer value (accepted), with none (refused) and with a wrong one (refused) (ntfy 2.34.0 in Docker).",
+  "recordedAt": "2026-11-03T04:11:46Z",
+  "note": "A server that refuses everyone without a login: a message with a valid access token as a Bearer value (accepted), with none (refused) and with a wrong one (refused) (ntfy 2.37.1 in Docker).",
   "exchanges": [
     {
       "request": {
         "method": "POST",
-        "path": "/deluno-faf7cc-auth",
+        "path": "/deluno-ffe062-auth",
         "bodyText": "Sintel (2010) was imported from Sintel.2010.WEB.1080p using copy.",
         "headers": {
           "content-type": "text/plain; charset=utf-8",
@@ -21,11 +21,11 @@
           "content-type": "application/json"
         },
         "body": {
-          "id": "gg7wQifDrZjB",
-          "time": 1793075730,
-          "expires": 1793118930,
+          "id": "3Nfbp1uyecIH",
+          "time": 1793679106,
+          "expires": 1793722306,
           "event": "message",
-          "topic": "deluno-faf7cc-auth",
+          "topic": "deluno-ffe062-auth",
           "title": "Import completed: Sintel (2010)",
           "message": "Sintel (2010) was imported from Sintel.2010.WEB.1080p using copy."
         }
@@ -34,7 +34,7 @@
     {
       "request": {
         "method": "POST",
-        "path": "/deluno-faf7cc-auth",
+        "path": "/deluno-ffe062-auth",
         "bodyText": "Sintel (2010) was imported from Sintel.2010.WEB.1080p using copy.",
         "headers": {
           "content-type": "text/plain; charset=utf-8",
@@ -57,7 +57,7 @@
     {
       "request": {
         "method": "POST",
-        "path": "/deluno-faf7cc-auth",
+        "path": "/deluno-ffe062-auth",
         "bodyText": "Sintel (2010) was imported from Sintel.2010.WEB.1080p using copy.",
         "headers": {
           "content-type": "text/plain; charset=utf-8",

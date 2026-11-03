@@ -11,7 +11,7 @@ namespace Deluno.Persistence.Tests.Api;
 
 /// <summary>
 /// How a delivery to a notification connection is kept and retried, on the whole application with its own database and a receiver
-/// that answers as the real ntfy 2.34.0 did (tests/fixtures/recorded/ntfy): the delivery is written as pending before the send,
+/// that answers as the real ntfy 2.37.1 did (tests/fixtures/recorded/ntfy): the delivery is written as pending before the send,
 /// with what a replay needs; a refusal is retried at once, after 2 s and after 5 s whatever the status; and a cancelled send is
 /// not swallowed or turned into a failed delivery.
 /// </summary>

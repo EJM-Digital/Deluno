@@ -1,18 +1,18 @@
 {
   "app": "ntfy",
-  "version": "2.34.0",
-  "state": "title-encoded",
-  "recordedAt": "2026-10-27T04:35:30Z",
-  "note": "A message whose Title header is the RFC 2047 encoding of a title with an accent, then the topic read back: ntfy keeps the accent (ntfy 2.34.0 in Docker).",
+  "version": "2.37.1",
+  "state": "delivered",
+  "recordedAt": "2026-11-03T04:11:46Z",
+  "note": "A message published to a topic the way Deluno sends one (POST, text body, Title header), then the topic read back to show what ntfy kept (ntfy 2.37.1 in Docker).",
   "exchanges": [
     {
       "request": {
         "method": "POST",
-        "path": "/deluno-faf7cc-accent",
+        "path": "/deluno-ffe062",
         "bodyText": "Sintel (2010) was imported from Sintel.2010.WEB.1080p using copy.",
         "headers": {
           "content-type": "text/plain; charset=utf-8",
-          "title": "=?UTF-8?B?SW1wb3J0IGNvbXBsZXRlZDogQW3DqWxpZSAoMjAwMSk=?="
+          "title": "Import completed: Sintel (2010)"
         }
       },
       "reply": {
@@ -21,12 +21,12 @@
           "content-type": "application/json"
         },
         "body": {
-          "id": "NO3rWiuuegzQ",
-          "time": 1793075730,
-          "expires": 1793118930,
+          "id": "UfbeAj7XHqOM",
+          "time": 1793679106,
+          "expires": 1793722306,
           "event": "message",
-          "topic": "deluno-faf7cc-accent",
-          "title": "Import completed: Amélie (2001)",
+          "topic": "deluno-ffe062",
+          "title": "Import completed: Sintel (2010)",
           "message": "Sintel (2010) was imported from Sintel.2010.WEB.1080p using copy."
         }
       }
@@ -34,7 +34,7 @@
     {
       "request": {
         "method": "GET",
-        "path": "/deluno-faf7cc-accent/json?poll=1"
+        "path": "/deluno-ffe062/json?poll=1"
       },
       "reply": {
         "status": 200,
@@ -42,12 +42,12 @@
           "content-type": "application/x-ndjson; charset=utf-8"
         },
         "body": {
-          "id": "NO3rWiuuegzQ",
-          "time": 1793075730,
-          "expires": 1793118930,
+          "id": "UfbeAj7XHqOM",
+          "time": 1793679106,
+          "expires": 1793722306,
           "event": "message",
-          "topic": "deluno-faf7cc-accent",
-          "title": "Import completed: Amélie (2001)",
+          "topic": "deluno-ffe062",
+          "title": "Import completed: Sintel (2010)",
           "message": "Sintel (2010) was imported from Sintel.2010.WEB.1080p using copy."
         }
       }
