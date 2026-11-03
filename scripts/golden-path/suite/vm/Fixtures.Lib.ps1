@@ -727,6 +727,19 @@ function Invoke-FilmSettle {
         if (-not $IfChanged) { Write-SuiteLog ("   {0}: the client is not told to check yet: {1}" -f $Film.Release, $p.Text) }
         return $false
     }
+    if ($IfChanged -and $p.Info.Checking -and $Film.ClientKind -eq 'qbittorrent' -and $p.Info.Progress -le 0) {
+        # A check that has not moved for 45 s is told again: the full run of 3 Nov (resend.during.qbittorrent) left qBittorrent in
+        # checkingUP at 0.0% for 180 s after the data had moved under its first check, and the scenario passed alone and when run again.
+        # The data is verified at the folder the client looks in (above), so a fresh Re-check can only help; it is sent at most once per 45 s.
+        if (-not $Film.PSObject.Properties['CheckingSince']) { $Film | Add-Member -NotePropertyName CheckingSince -NotePropertyValue ([DateTime]::UtcNow) -Force }
+        if (([DateTime]::UtcNow - $Film.CheckingSince).TotalSeconds -lt 45) { return $false }
+        $Film.CheckingSince = [DateTime]::UtcNow
+        $again = $false
+        try { $again = [bool](Invoke-Recheck -Film $Film) } catch { }
+        Write-SuiteLog ("   {0}: still checking at 0.0% after 45 s; Re-check sent again={1}" -f $Film.Release, $again)
+        return $again
+    }
+    if ($Film.PSObject.Properties['CheckingSince'] -and -not $p.Info.Checking) { $Film.PSObject.Properties.Remove('CheckingSince') }
     if ($IfChanged -and ($p.Info.Checking -or $p.Key -eq $Film.SettleKey)) { return $false }
     $ok = $false
     try {
