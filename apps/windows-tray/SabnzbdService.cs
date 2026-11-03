@@ -69,6 +69,9 @@ public sealed class SabnzbdService(IServiceCommandRunner runner, ISabnzbdService
 
     public bool IsRegistered() => environment.ServiceExists();
 
+    /// <summary>True when the SABnzbd service is there and Deluno registered it; the person's own service is not ours.</summary>
+    public bool MadeByDeluno() => environment.ServiceExists() && environment.MarkerExists();
+
     /// <summary>True when a SABnzbd service will bring SABnzbd back (Deluno's or the person's own); false, and nothing run, when SABnzbd is not installed.</summary>
     public bool Register()
     {

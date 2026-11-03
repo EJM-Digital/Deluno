@@ -148,21 +148,12 @@ internal static class InstallHooks
     /// <summary>Before uninstall: removes the rule Deluno added and the Start with Windows entry, so nothing is left behind.</summary>
     public static void OnBeforeUninstall() => OnBeforeUninstall(Firewall, new RunKeySignInEntry());
 
-    /// <summary>The same, with the firewall and the sign-in entry given, so a test never touches the machine's.</summary>
-    internal static void OnBeforeUninstall(Func<WindowsFirewallLanAccess> firewallFactory, ISignInEntry signIn, SabnzbdService? sabnzbd = null)
+    /// <summary>The same, with the firewall, the sign-in entry and the services given, so a test never touches the machine's.</summary>
+    internal static void OnBeforeUninstall(Func<WindowsFirewallLanAccess> firewallFactory, ISignInEntry signIn, IServiceUninstallEnvironment? services = null)
     {
-        // SABnzbd's own Windows service, which Deluno registered when it became a service, goes with Deluno (#1452).
-        try
-        {
-            if ((sabnzbd ?? SabnzbdService.ForThisComputer()).Remove())
-            {
-                LogHook("SABnzbd's Windows service was removed.");
-            }
-        }
-        catch (Exception ex)
-        {
-            LogHook($"SABnzbd's Windows service could not be removed: {ex.Message}");
-        }
+        // Deluno's Windows service, and the SABnzbd one Deluno registered for it (#1452), go with Deluno: one elevated run of
+        // --uninstall-service, and only when there is a service to remove (#1462).
+        ServiceUninstall.Run(services ?? new RealServiceUninstallEnvironment());
 
         // The per-user sign-in entry first: it is one registry value, and left behind it would have Windows start a Deluno.exe
         // that is gone at every sign-in. The data, the settings and the apps the person installed through the picker stay (they

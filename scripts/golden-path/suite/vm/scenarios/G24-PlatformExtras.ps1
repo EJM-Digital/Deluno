@@ -558,6 +558,10 @@ function Invoke-UninstallRemovesTheWindowsService {
         Start-Sleep -Seconds 20 # reason: a service whose process was ended is started again by Windows after its restart delay; nothing signals it
         $left = Get-CimInstance Win32_Service -Filter "Name='Deluno'" -ErrorAction SilentlyContinue
         Add-Check 'No Deluno service is left behind pointing at the deleted program' (-not $left) $(if ($left) { "left: $($left.State), $($left.PathName)" } else { 'removed' })
+        $hookLog = Join-Path $env:LOCALAPPDATA 'Deluno\logs\install-hook.log'
+        $hookText = if (Test-Path $hookLog) { Get-Content -Raw $hookLog } else { '' }
+        Add-Check 'The uninstall log says the Windows service was removed (and names a leftover with its removal command if one stayed)' ($hookText -match "Windows service was removed" -or $hookText -match 'sc\.exe delete Deluno') ''
+        Add-Check 'No SABnzbd service Deluno made is left behind' (-not (Get-CimInstance Win32_Service -Filter "Name='SABnzbd'" -ErrorAction SilentlyContinue) -or -not (Test-Path (Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Deluno\data\config\sabnzbd-service.registered-by-deluno'))) ''
         if ($left) { & sc.exe delete Deluno | Out-Null }
     }
 }
