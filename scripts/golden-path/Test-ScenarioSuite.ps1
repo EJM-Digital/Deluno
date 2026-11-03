@@ -391,7 +391,7 @@ if ($script:Trace.Count -ne 0) { $ksBad += "with no keep-seeding scenario chosen
 Set-ScenarioSelection -Ids @()
 Check 'each keep-seeding scenario chosen alone sets up only its own client, film, indexer and choices; none chosen does nothing' ($ksBad.Count -eq 0) ($ksBad -join '; ')
 # Choosing nothing runs the whole group as before, with the same sends.
-$sendsFull = @{ films = 5; removal = 0; resend = 5; stuck = 15; keepseeding = 6; tryagain = 5; vanish = 10; outage = 0; problems = 0; install = 0; nzbgetsetup = 0; seasonpack = 0; layout = 0; github = 0; firewall = 0; tray = 0; service = 0; desktop = 0; traystates = 0; trayplatform = 0; volumes = 0; importfaults = 0 }
+$sendsFull = @{ films = 5; removal = 0; resend = 5; stuck = 15; keepseeding = 6; tryagain = 5; vanish = 10; outage = 0; problems = 0; install = 0; nzbgetsetup = 0; seasonpack = 0; layout = 0; subtitleswanted = 0; github = 0; firewall = 0; tray = 0; service = 0; desktop = 0; traystates = 0; trayplatform = 0; volumes = 0; importfaults = 0 }
 $fullBad = @()
 foreach ($g in $groupFunctions) {
     $script:Trace.Clear(); $script:Made.Clear()
@@ -824,6 +824,12 @@ Check 'the old files are hashed before the pack and compared after, and looked f
 Check 'Deluno''s own words are looked for in its log, for this show, once for each file' ($spText -match 'because no library matched it; nothing was deleted' -and $spText -match 'Get-DelunoLogFiles' -and $spText -match 'ge 2')
 Check 'the show and the library are removed afterwards, whatever happened' ($spText -match 'finally' -and $spText -match '/api/series/bulk' -and $spText -match "Method DELETE -Path ""/api/libraries/")
 Check 'the words the scenario looks for are the words the product writes' ((Get-Content -Raw (Join-Path $root '..\..\src\Deluno.Filesystem\ImportPipelineService.cs')) -match 'because no library matched it; nothing was deleted' -and (Get-Content -Raw (Join-Path $root '..\..\src\Deluno.Filesystem\ImportPipelineService.cs')) -match '\.deluno-pack-backup')
+
+# The Subtitles wanted paging scenario.
+$swText = Get-Content -Raw (Join-Path $suite 'vm\scenarios\G23-SubtitlesWanted.ps1')
+Check 'the Subtitles wanted scenario makes real tiny films with ffmpeg, takes them in with Import existing and sets a wanted language' ($swText -match 'testsrc2' -and $swText -match '/import-existing' -and $swText -match 'languages = @')
+Check 'it checks the total, the 100-title first page, every title reachable once, Load more and Search all on the screen and the API' ($swText -match 'short of a language' -and $swText -match 'Showing 100 of' -and $swText -match 'Load more' -and $swText -match 'all = \$true' -and $swText -match 'Queued \$expected searches')
+Check 'it drives the VM''s Edge over DevTools and removes the titles, library and files afterwards' ($swText -match 'Start-Edge' -and $swText -match "operation = 'remove'" -and $swText -match 'Method DELETE -Path "/api/libraries/' -and $swText -match 'Remove-Item -LiteralPath \$root')
 
 # The 390 layout scenario.
 $lyText = Get-Content -Raw (Join-Path $suite 'vm\scenarios\G12-Layout.ps1')
