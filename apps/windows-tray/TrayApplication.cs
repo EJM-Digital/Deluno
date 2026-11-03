@@ -1246,7 +1246,12 @@ public sealed class TrayApplication : ApplicationContext
         Change(s => s with { State = TrayState.Updating });
         _supervisor.Cancel();
         await StopHostAsync("running as a service");
-        ServiceManager.Apply(dialog.SelectedMode, dialog.ServiceUsername, dialog.ServicePassword);
+        var sabnzbdProblem = ServiceManager.Apply(dialog.SelectedMode, dialog.ServiceUsername, dialog.ServicePassword);
+        if (sabnzbdProblem is not null)
+        {
+            MessageBox.Show(sabnzbdProblem, "Deluno", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+
         // The tray is not disposed after Application.Run, so an icon left showing stays in the notification area, dead.
         _notify.Visible = false;
         Application.Exit();

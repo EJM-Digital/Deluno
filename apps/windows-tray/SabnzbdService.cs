@@ -38,6 +38,9 @@ public interface ISabnzbdServiceEnvironment
 
     bool FileExists(string path);
 
+    /// <summary>True when this process is in Windows session 0 (a service, PowerShell Direct or WinRM): SABnzbd's service install only works from a signed-in session.</summary>
+    bool InSessionZero();
+
     /// <summary>Deluno's record, in its data folder, that Deluno registered the service. Without it the service is the person's own.</summary>
     bool MarkerExists();
 
@@ -67,6 +70,13 @@ public sealed class SabnzbdService(IServiceCommandRunner runner, ISabnzbdService
 {
     public const string Name = "SABnzbd";
 
+    public const string NotSetUpMessage =
+        "SABnzbd could not be set up as a Windows service, so it will not come back after a restart with nobody signed in. "
+        + "Set this up again from a signed-in Windows session (choose the service option in the Deluno tray menu there).";
+
+    /// <summary>Plain words saying why the last <see cref="Register"/> did not set SABnzbd up as a service; null when it did or had nothing to do.</summary>
+    public string? Problem { get; private set; }
+
     public bool IsRegistered() => environment.ServiceExists();
 
     /// <summary>True when the SABnzbd service is there and Deluno registered it; the person's own service is not ours.</summary>
@@ -75,6 +85,7 @@ public sealed class SabnzbdService(IServiceCommandRunner runner, ISabnzbdService
     /// <summary>True when a SABnzbd service will bring SABnzbd back (Deluno's or the person's own); false, and nothing run, when SABnzbd is not installed.</summary>
     public bool Register()
     {
+        Problem = null;
         var console = installDir.TrimEnd('\\') + @"\SABnzbd-console.exe";
         if (!environment.FileExists(console))
         {
@@ -92,12 +103,30 @@ public sealed class SabnzbdService(IServiceCommandRunner runner, ISabnzbdService
             Remove();
         }
 
+        if (environment.InSessionZero())
+        {
+            // SABnzbd-console takes its run-as-a-service path in session 0 whatever the arguments, so the install cannot work from here.
+            return NotSetUp();
+        }
+
         StopRunningSabnzbd();
         runner.Run(console, $"-f \"{iniPath}\" install");
+        if (!environment.ServiceExists())
+        {
+            return NotSetUp();
+        }
+
         environment.WriteMarker();
         runner.Run("sc.exe", $"config {Name} start= auto");
         runner.Run("sc.exe", $"start {Name}");
         return true;
+    }
+
+    private bool NotSetUp()
+    {
+        Problem = NotSetUpMessage;
+        environment.Log(NotSetUpMessage);
+        return false;
     }
 
     /// <summary>Stops and deletes the service Deluno made. False (and nothing run) when it is not there or is the person's own.</summary>
@@ -245,6 +274,12 @@ internal sealed class RealSabnzbdEnvironment(string dataRoot, string iniPath, IS
     }
 
     public bool FileExists(string path) => File.Exists(path);
+
+    public bool InSessionZero()
+    {
+        using var me = Process.GetCurrentProcess();
+        return me.SessionId == 0;
+    }
 
     public bool MarkerExists() => File.Exists(MarkerPath);
 

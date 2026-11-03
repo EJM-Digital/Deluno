@@ -481,7 +481,7 @@ function Invoke-UpdateServiceMode {
             $shared = Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Deluno\data'
             New-Item -ItemType Directory -Force -Path $shared | Out-Null
             Copy-Item -LiteralPath (Join-Path $env:LOCALAPPDATA 'DelunoConfig\deluno.json') -Destination (Join-Path $shared 'deluno.json') -Force
-            & $exe.FullName --install-service | Out-Null
+            Invoke-InDesktopSession -Path $exe.FullName -Arguments '--install-service'
             $svc = Wait-Until -TimeoutSec 180 -IntervalSec 2 -Condition { $s = Get-CimInstance Win32_Service -Filter "Name='Deluno'" -ErrorAction SilentlyContinue; if ($s -and $s.State -eq 'Running' -and $s.ProcessId -gt 0) { $s } else { $null } }
             Add-Check 'The previous release runs as the Windows service "Deluno"' $svc.Ok $(if ($svc.Ok) { "pid $($svc.Value.ProcessId), $($svc.Value.StartName)" } else { 'the service never reached Running' })
             if (-not $svc.Ok) { return }
