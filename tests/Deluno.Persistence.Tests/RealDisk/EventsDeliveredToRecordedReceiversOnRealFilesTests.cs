@@ -378,8 +378,10 @@ public sealed class EventsDeliveredToRecordedReceiversOnRealFilesTests
         var queued = (await world.App.Services.GetRequiredService<Deluno.Jobs.Data.IJobQueueRepository>().ListAsync(200, CancellationToken.None))
             .Where(job => job.JobType == Deluno.Contracts.MediaServerJobTypes.Refresh)
             .Select(job => $"{job.Source}:{job.Status}:{job.Attempts}:{job.LastError}");
-        Assert.True(told.Contains("Created"), $"told {string.Join(",", told)}; calls {string.Join(" | ", jellyfin.Requests)}; refresh jobs {string.Join(" | ", queued)}");
+        Assert.True(told.Contains("Created"), $"told {string.Join(",", told)}; calls {string.Join(" | ", jellyfin.Requests)}; refresh jobs {string.Join(" | ", queued)}; job results {string.Join(" | ", RefreshResults.ToArray())}");
     }
+
+    private static readonly List<string> RefreshResults = [];
 
     private static async Task RunRefreshesAsync(ApplicationTestHost app)
     {
@@ -387,7 +389,8 @@ public sealed class EventsDeliveredToRecordedReceiversOnRealFilesTests
         var handler = app.Services.GetServices<Deluno.Worker.Jobs.IJobHandler>().Single(candidate => candidate.JobType == Deluno.Contracts.MediaServerJobTypes.Refresh);
         foreach (var job in jobs.Where(job => job.JobType == Deluno.Contracts.MediaServerJobTypes.Refresh))
         {
-            await handler.HandleAsync(job, CancellationToken.None);
+            var result = await handler.HandleAsync(job, CancellationToken.None);
+            lock (RefreshResults) RefreshResults.Add($"{job.Source} -> {result}");
         }
     }
 

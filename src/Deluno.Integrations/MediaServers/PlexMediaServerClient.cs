@@ -546,12 +546,21 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
         }
 
         string? problem = null;
+        string? retriedProblem = null;
         var usedFallback = false;
         var touchedSections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var (key, folder) in resolved)
         {
             var refresh = await GetAsync(connection, $"/library/sections/{Uri.EscapeDataString(key)}/refresh?path={Uri.EscapeDataString(folder)}", cancellationToken);
+
+            // A call that got no answer at all was never refused, so it is made once more; the first problem is kept (#1396).
+            if (!refresh.Ok && refresh.StatusCode is null)
+            {
+                retriedProblem ??= refresh.Problem;
+                refresh = await GetAsync(connection, $"/library/sections/{Uri.EscapeDataString(key)}/refresh?path={Uri.EscapeDataString(folder)}", cancellationToken);
+            }
+
             if (refresh.Ok)
             {
                 touchedSections.Add(key);
@@ -602,7 +611,7 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
         return new MediaServerAnswer<MediaServerRefresh>.Reported(new MediaServerRefresh(
             usedFallback
                 ? $"{connection.Name} could not map every changed path to a library, so its {sectionType} libraries were fully rescanned instead."
-                : $"{connection.Name} was told about {folders.Length} changed folder{(folders.Length == 1 ? string.Empty : "s")}.",
+                : $"{connection.Name} was told about {folders.Length} changed folder{(folders.Length == 1 ? string.Empty : "s")}.{(retriedProblem is null ? string.Empty : $" A first attempt failed ({retriedProblem}) and was made again.")}",
             usedFallback));
     }
 

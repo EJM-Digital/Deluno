@@ -28,7 +28,7 @@ public sealed class MediaServerRefreshJobHandlerTests
         notifier
             .Setup(service => service.NotifyAsync("movies", It.IsAny<IReadOnlyList<MediaServerPathChange>>(), It.IsAny<CancellationToken>()))
             .Callback<string, IReadOnlyList<MediaServerPathChange>, CancellationToken>((_, changes, _) => passed = changes)
-            .Returns(Task.CompletedTask);
+            .ReturnsAsync([]);
         var handler = new MediaServerRefreshJobHandler(notifier.Object);
 
         var payload = new MediaServerRefreshJobPayload(

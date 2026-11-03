@@ -418,15 +418,17 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
 
         // A call that got no answer at all (a pooled connection the server had already closed) was never refused, so it is
         // made once more before asking for a scan of the whole library (#1396). A refusal (any HTTP status) is not repeated.
+        string? firstProblem = null;
         if (!result.Ok && result.StatusCode is null)
         {
+            firstProblem = result.Problem;
             result = await TellAsync();
         }
 
         if (result.Ok)
         {
             return new MediaServerAnswer<MediaServerRefresh>.Reported(new MediaServerRefresh(
-                $"{connection.Name} was told about {updates.Length} changed file{(updates.Length == 1 ? string.Empty : "s")}.", false));
+                $"{connection.Name} was told about {updates.Length} changed file{(updates.Length == 1 ? string.Empty : "s")}.{(firstProblem is null ? string.Empty : $" The first attempt failed ({firstProblem}) and the second was answered.")}", false));
         }
 
         // The targeted call failed. Rather than leave the server never told at
@@ -435,7 +437,7 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
         var fallback = await SendAsync(httpClientFactory, HttpMethod.Post, Address(connection, "/Library/Refresh"), Headers(connection), connection.Name, cancellationToken);
         return fallback.Ok
             ? new MediaServerAnswer<MediaServerRefresh>.Reported(new MediaServerRefresh(
-                $"{connection.Name} could not take a targeted refresh ({result.Problem}), so a full library scan was requested instead.", true))
+                $"{connection.Name} could not take a targeted refresh ({(firstProblem is null ? result.Problem : $"{firstProblem} then {result.Problem}")}), so a full library scan was requested instead.", true))
             : new MediaServerAnswer<MediaServerRefresh>.Unreachable(result.Problem!);
     }
 

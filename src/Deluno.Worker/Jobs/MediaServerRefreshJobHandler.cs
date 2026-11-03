@@ -27,7 +27,8 @@ public sealed class MediaServerRefreshJobHandler(IMediaServerRefreshNotifier not
             return "Media server refresh skipped because no changed files were given.";
         }
 
-        await notifier.NotifyAsync(payload.MediaType, payload.Changes, cancellationToken);
-        return $"Told every configured media server about {payload.Changes.Count} changed file{(payload.Changes.Count == 1 ? string.Empty : "s")}.";
+        var notes = await notifier.NotifyAsync(payload.MediaType, payload.Changes, cancellationToken);
+        return $"Told every configured media server about {payload.Changes.Count} changed file{(payload.Changes.Count == 1 ? string.Empty : "s")}." +
+            (notes is { Count: > 0 } ? " " + string.Join(" ", notes) : string.Empty);
     }
 }

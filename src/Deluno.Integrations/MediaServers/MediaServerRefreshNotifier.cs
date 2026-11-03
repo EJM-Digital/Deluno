@@ -27,7 +27,8 @@ namespace Deluno.Integrations.MediaServers;
 /// </summary>
 public interface IMediaServerRefreshNotifier
 {
-    Task NotifyAsync(string mediaType, IReadOnlyList<MediaServerPathChange> changes, CancellationToken cancellationToken);
+    /// <returns>What each server answered, in plain words, so the job's result carries a first failed attempt's problem (#1396).</returns>
+    Task<IReadOnlyList<string>> NotifyAsync(string mediaType, IReadOnlyList<MediaServerPathChange> changes, CancellationToken cancellationToken);
 
     /// <summary>
     /// One server and media type's own retry (#920): sends everything still
@@ -46,17 +47,18 @@ public sealed class MediaServerRefreshNotifier(
     IActivityFeedRepository? activityFeed = null,
     IConnectionUseReporter? connectionUses = null) : IMediaServerRefreshNotifier
 {
-    public async Task NotifyAsync(string mediaType, IReadOnlyList<MediaServerPathChange> changes, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<string>> NotifyAsync(string mediaType, IReadOnlyList<MediaServerPathChange> changes, CancellationToken cancellationToken)
     {
+        var notes = new List<string>();
         if (changes.Count == 0)
         {
-            return;
+            return notes;
         }
 
         var servers = (await repository.ListAsync(cancellationToken)).Where(server => server.IsEnabled).ToArray();
         if (servers.Length == 0)
         {
-            return;
+            return notes;
         }
 
         var mappings = await repository.ListPathMappingsAsync(null, cancellationToken);
@@ -79,8 +81,10 @@ public sealed class MediaServerRefreshNotifier(
             var owed = backlog is null ? null : await backlog.FindAsync(server.Id, mediaType, cancellationToken);
             var toSend = Merge(owed?.Changes, changes);
 
-            await AttemptAsync(server, mediaType, serverMappings, toSend, owed is not null, cancellationToken);
+            await AttemptAsync(server, mediaType, serverMappings, toSend, owed is not null, cancellationToken, notes);
         }
+
+        return notes;
     }
 
     public async Task<bool> RetryAsync(string mediaServerId, string mediaType, CancellationToken cancellationToken)
@@ -125,7 +129,8 @@ public sealed class MediaServerRefreshNotifier(
         IReadOnlyList<MediaServerPathMappingItem> serverMappings,
         IReadOnlyList<MediaServerPathChange> toSend,
         bool wasFailing,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        List<string>? notes = null)
     {
         var translated = toSend.Select(change => change with { Path = TranslatePath(change.Path, serverMappings) }).ToArray();
 
@@ -145,6 +150,8 @@ public sealed class MediaServerRefreshNotifier(
             MediaServerAnswer<MediaServerRefresh>.NotSupported notSupported => (false, "degraded", notSupported.Reason),
             _ => (false, "degraded", $"{server.Name} could not be asked to refresh.")
         };
+
+        notes?.Add(message);
 
         var wasFlagged = server.HealthStatus is "unreachable" or "degraded";
         if (!ok || wasFlagged)

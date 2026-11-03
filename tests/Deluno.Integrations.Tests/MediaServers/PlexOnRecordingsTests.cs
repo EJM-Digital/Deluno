@@ -254,6 +254,30 @@ public sealed class PlexOnRecordingsTests
     }
 
     [Fact]
+    public async Task A_folder_refresh_that_got_no_answer_is_tried_once_more_and_the_message_names_the_first_problem()
+    {
+        // #1396: a call that never reached the server was a lost notice. It is made once more, and the first problem is kept in the job's result.
+        var dropped = false;
+        var plex = new Plex(request =>
+        {
+            if (!dropped && request.RequestUri!.AbsolutePath == "/library/sections/1/refresh")
+            {
+                dropped = true;
+                throw new HttpRequestException("The connection was closed before the response.");
+            }
+
+            return null;
+        });
+
+        var answer = await plex.Client().RefreshAsync(Server(), "movies", [new MediaServerPathChange(File, MediaServerChangeKind.Created)], CancellationToken.None);
+
+        var refresh = Assert.IsType<MediaServerAnswer<MediaServerRefresh>.Reported>(answer).Value;
+        Assert.False(refresh.UsedFallbackScan);
+        Assert.Equal(2, plex.Calls.Count(call => call.Contains("GET /library/sections/1/refresh?path=", StringComparison.Ordinal)));
+        Assert.Contains("could not reach Plex", refresh.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_changed_folder_no_library_holds_falls_back_to_a_full_rescan_of_the_libraries_of_that_kind()
     {
         var plex = new Plex();

@@ -182,7 +182,9 @@ public sealed class RecordedJellyfinTests
 
         var answer = await client.RefreshAsync(Server(), "movies", [new Deluno.Contracts.MediaServerPathChange("/media/Movies/X/X.mkv", Deluno.Contracts.MediaServerChangeKind.Created)], CancellationToken.None);
 
-        Assert.False(Assert.IsType<MediaServerAnswer<MediaServerRefresh>.Reported>(answer).Value.UsedFallbackScan);
+        var refresh = Assert.IsType<MediaServerAnswer<MediaServerRefresh>.Reported>(answer).Value;
+        Assert.False(refresh.UsedFallbackScan);
+        Assert.Contains("could not reach Jellyfin", refresh.Message, StringComparison.Ordinal);
         Assert.Equal(["POST /Library/Media/Updated", "POST /Library/Media/Updated"], calls);
     }
 
