@@ -569,7 +569,16 @@ $mockScript = {
 $ps = [powershell]::Create()
 [void]$ps.AddScript($mockScript).AddArgument($port)
 $async = $ps.BeginInvoke()
-Start-Sleep -Milliseconds 700 # reason: lets the in-process mock listener start; no event to wait on
+# Waits until the mock listener accepts a connection (up to 20 s: a busy CI runner was seen taking longer than the
+# 700 ms this once waited, and the first sign-in then could not connect).
+$mockUp = $false
+$mockDeadline = [DateTime]::UtcNow.AddSeconds(20)
+while (-not $mockUp -and [DateTime]::UtcNow -lt $mockDeadline) {
+    $probe = New-Object System.Net.Sockets.TcpClient
+    try { $mockUp = $probe.ConnectAsync('127.0.0.1', $port).Wait(500) -and $probe.Connected } catch { } finally { $probe.Dispose() }
+    if (-not $mockUp) { Start-Sleep -Milliseconds 100 } # reason: polling a port; a listener raises no event when it starts
+}
+if (-not $mockUp) { throw "The mock Deluno did not start listening on port $port within 20 s." }
 try {
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ('suite-test-' + [guid]::NewGuid().ToString('N'))
     Initialize-Suite -Root $tmp -DelunoUrl "http://127.0.0.1:$port" -WeirUrl "http://127.0.0.1:1"
