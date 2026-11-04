@@ -200,7 +200,10 @@ public sealed class ComponentPickerDialog : Form
     {
         var sab = IsTicked("sabnzbd");
         var nzb = IsTicked("nzbget");
-        _usenetPanel.Visible = sab || nzb;
+        // The answer is kept here, not read back from Visible: a control reports not visible while its window has not been shown, which
+        // left the panel with no height when the picker opened with an app already ticked (an ask, a retry) and the boxes out of reach (#1468).
+        var showUsenet = sab || nzb;
+        _usenetPanel.Visible = showUsenet;
 
         var same = sab && nzb;
         _sameLogin.Visible = same;
@@ -229,7 +232,7 @@ public sealed class ComponentPickerDialog : Form
             y += 26;
         }
 
-        var extra = _usenetPanel.Visible ? y + 6 : 0;
+        var extra = showUsenet ? y + 6 : 0;
         _usenetPanel.Height = extra;
         _status.Top = 426 + extra;
         _btnInstall.Top = 462 + extra;
