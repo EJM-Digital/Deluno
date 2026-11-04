@@ -505,6 +505,30 @@
       "line": 557,
       "replacement": ";",
       "reason": "The early return stops a second flush loop starting while one runs. Without it the extra loop only waits on a timer, finds the batch already taken, and ends; the pushes and the resting flag are the same, so no test can reach a difference."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/checkbox.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 20,
+      "replacement": "true",
+      "reason": "Equivalent: the caller's props are spread onto the input after these two attributes, so the caller's own value wins whatever key is read here; and the ref is set once the input has mounted, so its check is always true by the time the effect runs."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/checkbox.tsx",
+      "mutator": "StringLiteral",
+      "line": 31,
+      "replacement": "\"\"",
+      "reason": "Equivalent: the caller's props are spread onto the input after these two attributes, so the caller's own value wins whatever key is read here; and the ref is set once the input has mounted, so its check is always true by the time the effect runs."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/checkbox.tsx",
+      "mutator": "StringLiteral",
+      "line": 32,
+      "replacement": "\"\"",
+      "reason": "Equivalent: the caller's props are spread onto the input after these two attributes, so the caller's own value wins whatever key is read here; and the ref is set once the input has mounted, so its check is always true by the time the effect runs."
     }
   ]
 }
