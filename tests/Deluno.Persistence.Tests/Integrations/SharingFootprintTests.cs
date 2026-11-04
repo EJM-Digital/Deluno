@@ -84,4 +84,42 @@ public sealed class SharingFootprintTests
         Assert.False(SharingFootprint.SharesOneCopy(downloadPath, libraryPath, useHardlinks: true));
         Assert.Null(SharingFootprint.Describe(downloadPath, libraryPath, useHardlinks: true));
     }
+
+    // #1464: on Linux and in the container, /downloads and /media are separate mounts under one "/" root. The mounts are made
+    // with Path.GetFullPath so the same test reads the same way on Windows, where these become folders under the system drive.
+    private static readonly string Downloads = Path.GetFullPath("/downloads");
+    private static readonly string Media = Path.GetFullPath("/media");
+    private static readonly string[] ContainerMounts = [Path.GetFullPath("/"), Downloads, Media];
+
+    [Fact]
+    public void Separate_download_and_media_mounts_cannot_share_one_copy_and_the_note_names_both()
+    {
+        var download = "/downloads/Sintel.mkv";
+        var library = "/media/Movies";
+
+        Assert.False(SharingFootprint.SharesOneCopy(download, library, useHardlinks: true, ContainerMounts));
+        Assert.Equal(
+            $"Your downloads land on {Downloads} and your library is on {Media}, so each one Deluno is still sharing takes its own space.",
+            SharingFootprint.Describe(download, library, useHardlinks: true, ContainerMounts));
+    }
+
+    [Fact]
+    public void Two_folders_on_one_mount_share_one_copy_when_links_are_on()
+    {
+        var download = "/media/downloads/Sintel.mkv";
+        var library = "/media/Movies";
+
+        Assert.True(SharingFootprint.SharesOneCopy(download, library, useHardlinks: true, ContainerMounts));
+        Assert.Null(SharingFootprint.Describe(download, library, useHardlinks: true, ContainerMounts));
+    }
+
+    [Fact]
+    public void A_folder_no_mount_holds_falls_back_to_its_own_root()
+    {
+        var download = "/downloads/Sintel.mkv";
+        var library = "/media/Movies";
+
+        // No mounts known: both fall back to the path's own root, which is one root.
+        Assert.True(SharingFootprint.SharesOneCopy(download, library, useHardlinks: true, []));
+    }
 }

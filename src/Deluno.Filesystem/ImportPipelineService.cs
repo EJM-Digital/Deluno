@@ -5877,8 +5877,8 @@ public sealed partial class ImportPipelineService(
         {
             var source = VolumeRootOf(Path.GetFullPath(sourcePath), mountedRoots);
             var destination = VolumeRootOf(Path.GetFullPath(destinationPath), mountedRoots);
-            return !string.IsNullOrWhiteSpace(source) &&
-                   string.Equals(source, destination, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+            // A full path always has a root, so both volumes are named.
+            return string.Equals(source, destination, MountedVolumes.PathComparison);
         }
         catch
         {
