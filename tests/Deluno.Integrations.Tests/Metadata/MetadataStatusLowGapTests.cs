@@ -89,7 +89,7 @@ public sealed class MetadataStatusLowGapTests : IDisposable
 
         var request = Assert.Single(asked);
         Assert.Equal(searchAddress, request.GetLeftPart(UriPartial.Path));
-        Assert.Equal("?mediaType=movies&query=Dune&year=2021", request.Query);
+        Assert.Equal("?mediaType=movies&query=Dune&year=2021&page=1", request.Query);
     }
 
     [Fact]

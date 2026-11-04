@@ -76,6 +76,12 @@ public sealed partial class TmdbMetadataProvider
         MetadataLookupRequest request,
         CancellationToken cancellationToken)
     {
+        // TheTVDB's search has no pages: it adds its hits to the first page only, so a later page is TMDb's alone (#1473).
+        if (request.Page > 1)
+        {
+            return await SearchTmdbAsync(request, cancellationToken);
+        }
+
         var tmdbTask = SearchTmdbAsync(request, cancellationToken);
         var tvdbTask = FindTvdbHitsAsync(request, cancellationToken);
 
@@ -334,7 +340,7 @@ public sealed partial class TmdbMetadataProvider
 
         merged.AddRange(tmdbResults.Where(result => !used.Contains(result.ProviderId)));
         var ranked = RankSearchResults(request, merged);
-        return await LocalizeArtworkAsync(ranked.Take(12).ToArray(), cancellationToken);
+        return await LocalizeArtworkAsync(ranked.Take(MetadataSearchPaging.PageSize).ToArray(), cancellationToken);
     }
 
     private static bool IsRealMatch(TvdbSeriesRecord hit, string typed)

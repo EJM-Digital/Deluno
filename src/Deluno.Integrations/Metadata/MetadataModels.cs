@@ -376,7 +376,27 @@ public sealed record MetadataLookupRequest(
     /// title-search path. An id search is an identity assertion: it returns
     /// the single matching title or nothing, never a fuzzy result list.
     /// </summary>
-    string? IdSource = null);
+    string? IdSource = null,
+    /// <summary>
+    /// Which page of the title search to return, from 1. A page is
+    /// <see cref="MetadataSearchPaging.PageSize"/> matches, TMDb's own page.
+    /// </summary>
+    int Page = 1);
+
+/// <summary>
+/// The size of one page of title-search matches, in one place (#1473). It is TMDb's
+/// page of twenty: the broker, the direct TMDb path and the Add screen all show a
+/// whole page and ask for the next one, so no layer cuts a page short.
+/// </summary>
+public static class MetadataSearchPaging
+{
+    public const int PageSize = 20;
+
+    /// <summary>TMDb refuses a search page past 500.</summary>
+    public const int MaxPage = 500;
+
+    public static int Clamp(int? page) => Math.Clamp(page ?? 1, 1, MaxPage);
+}
 
 /// <summary>
 /// The result of resolving a title Deluno has already linked to a provider.

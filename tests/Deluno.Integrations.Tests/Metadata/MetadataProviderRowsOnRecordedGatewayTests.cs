@@ -340,12 +340,12 @@ public sealed class MetadataProviderRowsOnRecordedGatewayTests : IDisposable
     // ---- the search cache: limit and lifetime ----
 
     [Fact]
-    public async Task A_broker_answer_with_more_than_12_results_lists_12_and_the_answer_is_kept_for_12_hours_then_asked_again()
+    public async Task A_broker_answer_with_more_than_a_page_lists_the_whole_page_of_20_and_the_answer_is_kept_for_12_hours_then_asked_again()
     {
         var calls = 0;
         var clock = new FakeTimeProvider(DateTimeOffset.Parse("2026-10-29T00:00:00Z"));
-        // The recorded Sintel search, with its one result copied up to 13 (the only value changed): a gateway answering with more than Deluno shows.
-        var thirteen = R("search-movie").Body("", ("+results", 13));
+        // The recorded Sintel search, with its one result copied up to 21 (the only value changed): a gateway answering with more than a page, which Deluno cuts at the page size.
+        var thirteen = R("search-movie").Body("", ("+results", 21));
         var rig = await RigAsync(request =>
         {
             if (!IsGateway(request)) return Gateway(request);
@@ -354,7 +354,7 @@ public sealed class MetadataProviderRowsOnRecordedGatewayTests : IDisposable
         }, clock: clock);
 
         var first = await rig.SearchAsync(Lookup("Sintel Twelve", "movies", 2010), CancellationToken.None);
-        Assert.Equal(12, first.Count);
+        Assert.Equal(MetadataSearchPaging.PageSize, first.Count);
         var afterFirst = calls;
 
         clock.Advance(TimeSpan.FromHours(11));

@@ -367,7 +367,7 @@ public sealed class TmdbMetadataProviderTests : IDisposable
         var handler = new StubHttpMessageHandler(request =>
         {
             Assert.Equal(
-                "https://metadata.deluno.test/metadata/search?mediaType=movies&query=Interstellar&year=2014",
+                "https://metadata.deluno.test/metadata/search?mediaType=movies&query=Interstellar&year=2014&page=1",
                 request.RequestUri?.ToString());
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
