@@ -1064,7 +1064,7 @@ jobs:
         with:
           node-version: 24
 
-      # scripts/platform-docker.test.mjs starts the Deluno image and runs in the "Container image" job, which builds it.
+      # scripts/platform-docker.test.mjs and scripts/docker-container.test.mjs start the Deluno image and run in the "Container image" job, which builds it.
       - name: Run the scripts' tests with coverage
         run: |
           mkdir -p coverage-node
@@ -1072,7 +1072,7 @@ jobs:
             --test-coverage-include="scripts/**/*.mjs" --test-coverage-exclude="**/*.test.mjs" \
             --test-reporter=spec --test-reporter-destination=stdout \
             --test-reporter=lcov --test-reporter-destination=coverage-node/scripts.lcov \
-            $(find scripts -name '*.test.mjs' ! -name platform-docker.test.mjs | sort)
+            $(find scripts -name '*.test.mjs' ! -name platform-docker.test.mjs ! -name docker-container.test.mjs | sort)
 
       - name: Run the metadata gateway's tests with coverage
         working-directory: services/metadata-gateway

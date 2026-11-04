@@ -11,7 +11,9 @@ import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { test } from "node:test";
 
-const image = process.env.DELUNO_DOCKER_IMAGE ?? "deluno:dev";
+const image = process.env.DELUNO_DOCKER_IMAGE;
+// Only where an image was built and named: the "Container image" job of ci.yml sets DELUNO_DOCKER_IMAGE. Anywhere else the tests are skipped, with this reason.
+const skip = image ? false : "DELUNO_DOCKER_IMAGE names no image: these tests start the image the Container image job builds.";
 const unique = `${process.pid}-${randomBytes(3).toString("hex")}`;
 
 function docker(args, input) {
@@ -81,7 +83,7 @@ function reachableFromAnotherContainer(address, port) {
   return result.out === "200";
 }
 
-test("container configuration reaches the app: the server port, the data root and the master key are honoured, nothing secret comes back, and AllowLan decides whether another device can reach it", () => {
+test("container configuration reaches the app: the server port, the data root and the master key are honoured, nothing secret comes back, and AllowLan decides whether another device can reach it", { skip }, () => {
   const masterKey = randomBytes(32).toString("base64");
   const tmdbKey = `tmdb-${randomBytes(8).toString("hex")}`;
   const lan = `deluno-cfg-lan-${unique}`;
@@ -124,7 +126,7 @@ test("container configuration reaches the app: the server port, the data root an
   }
 });
 
-test("separate /downloads and /media mounts: the health row says they are different volumes, the preview promises no hard link across them, and the import lands the whole film", () => {
+test("separate /downloads and /media mounts: the health row says they are different volumes, the preview promises no hard link across them, and the import lands the whole film", { skip }, () => {
   const name = `deluno-mounts-${unique}`;
   const volume = `${name}-data`;
   const mounts = [

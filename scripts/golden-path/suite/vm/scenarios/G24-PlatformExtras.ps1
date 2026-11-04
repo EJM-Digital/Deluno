@@ -881,6 +881,12 @@ function Invoke-UninstallCustomDataRoot {
     }
 }
 
+# The ports of the list that something is listening on.
+function Get-ListeningPorts {
+    param([int[]] $Ports = @())
+    @($Ports | Where-Object { Get-NetTCPConnection -State Listen -LocalPort $_ -ErrorAction SilentlyContinue })
+}
+
 function Get-ClientConfigLines {
     $qb = Join-Path $env:APPDATA 'qBittorrent\qBittorrent.ini'
     $sab = @(Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'sabnzbd') -Filter 'sabnzbd.ini' -ErrorAction SilentlyContinue | Select-Object -First 1)
@@ -913,16 +919,15 @@ function Invoke-UpdateWithBundledClients {
         if (-not $final) { return }
         $cfgBefore = @(Get-ClientConfigLines)
         $wanted = @($cfgBefore | ForEach-Object { if ($_ -match '^qb:WebUI\\Port=(\d+)') { [int]$Matches[1] } elseif ($_ -match '^sab:port\s*=\s*(\d+)') { [int]$Matches[1] } })
-        $portsOf = { @($wanted | Where-Object { Get-NetTCPConnection -State Listen -LocalPort $_ -ErrorAction SilentlyContinue }) }
-        $listenBefore = @(& $portsOf)
+        $listenBefore = @(Get-ListeningPorts -Ports $wanted)
         Add-Check 'Before the update both answer and have settings to keep' ($wanted.Count -eq 2 -and $listenBefore.Count -eq 2 -and ($cfgBefore | Where-Object { $_ -like 'qb:*' }).Count -ge 1 -and ($cfgBefore | Where-Object { $_ -like 'sab:*' }).Count -ge 1) ("ports: $($listenBefore -join ','); $($cfgBefore.Count) settings lines")
         $ctx.Before = Get-DelunoStateSummary
         $p = Start-Process -FilePath $CandidateSetup -ArgumentList '--silent' -PassThru
         $done = $p.WaitForExit(600000)
         Add-Check 'Setup.exe --silent over the running previous release finished' ($done -and $p.ExitCode -eq 0) "exit $(if ($done) { $p.ExitCode } else { 'none' })"
         if (-not (Test-CameBackAsCandidate -Context $ctx -CandidateVersion $CandidateVersion)) { return }
-        $back = Wait-Until -TimeoutSec 240 -IntervalSec 5 -Condition { $now = @(& $portsOf); if (@($listenBefore | Where-Object { $_ -notin $now }).Count -eq 0) { $now } else { $null } }
-        Add-Check 'SABnzbd and qBittorrent answer again on the same ports (they survived or were started again)' $back.Ok "before $($listenBefore -join ','), now $((@(& $portsOf)) -join ',')"
+        $back = Wait-Until -TimeoutSec 240 -IntervalSec 5 -Condition { $now = @(Get-ListeningPorts -Ports $wanted); if (@($listenBefore | Where-Object { $_ -notin $now }).Count -eq 0) { $now } else { $null } }
+        Add-Check 'SABnzbd and qBittorrent answer again on the same ports (they survived or were started again)' $back.Ok "before $($listenBefore -join ','), now $((@(Get-ListeningPorts -Ports $wanted)) -join ',')"
         $cfgAfter = @(Get-ClientConfigLines)
         Add-Check 'Their settings are the same: web port, address, login and key' (($cfgAfter -join "`n") -eq ($cfgBefore -join "`n")) $(if (($cfgAfter -join "`n") -eq ($cfgBefore -join "`n")) { "$($cfgAfter.Count) lines" } else { 'changed: ' + (@(Compare-Object $cfgBefore $cfgAfter | ForEach-Object { ($_.InputObject -replace '(password|api_key|Password_PBKDF2)(=|\s*=\s*).*', '$1 ...') }) -join ' | ') })
     }
@@ -1040,8 +1045,7 @@ function Invoke-UninstallKeepsBundledApps {
         if (-not (Test-CameBackAsCandidate -Context $ctx -CandidateVersion $CandidateVersion)) { return }
         $cfgBefore = @(Get-ClientConfigLines)
         $wanted = @($cfgBefore | ForEach-Object { if ($_ -match '^qb:WebUI\\Port=(\d+)') { [int]$Matches[1] } elseif ($_ -match '^sab:port\s*=\s*(\d+)') { [int]$Matches[1] } })
-        $portsOf = { @($wanted | Where-Object { Get-NetTCPConnection -State Listen -LocalPort $_ -ErrorAction SilentlyContinue }) }
-        $up = Wait-Until -TimeoutSec 240 -IntervalSec 5 -Condition { if (@(& $portsOf).Count -eq 2 -and $wanted.Count -eq 2) { $true } else { $null } }
+        $up = Wait-Until -TimeoutSec 240 -IntervalSec 5 -Condition { if (@(Get-ListeningPorts -Ports $wanted).Count -eq 2 -and $wanted.Count -eq 2) { $true } else { $null } }
         Add-Check 'Before the uninstall both answer on their ports' $up.Ok "ports $($wanted -join ',')"
         if (-not $up.Ok) { return }
         $qbFolder = Join-Path $env:APPDATA 'qBittorrent'
@@ -1052,7 +1056,7 @@ function Invoke-UninstallKeepsBundledApps {
         Add-Check 'Deluno is removed' $gone.Ok ''
         $null = Wait-Until -TimeoutSec 90 -IntervalSec 2 -Condition { -not (Get-Process -Name 'Update' -ErrorAction SilentlyContinue) }
         Start-Sleep -Seconds 20 # reason: an app that the uninstall was going to stop would be stopped some seconds after Deluno goes; nothing signals that it will not
-        Add-Check 'SABnzbd and qBittorrent still answer on the same ports' (@(& $portsOf).Count -eq 2) "now $((@(& $portsOf)) -join ',')"
+        Add-Check 'SABnzbd and qBittorrent still answer on the same ports' (@(Get-ListeningPorts -Ports $wanted).Count -eq 2) "now $((@(Get-ListeningPorts -Ports $wanted)) -join ',')"
         Add-Check 'Their settings folders and files are still there, as they were' ((Test-Path $qbFolder) -and (Test-Path $sabFolder) -and (@(Get-ClientConfigLines) -join "`n") -eq ($cfgBefore -join "`n")) ''
         $apps = @(Get-Process -Name 'qbittorrent', 'SABnzbd', 'SABnzbd-console' -ErrorAction SilentlyContinue)
         Add-Check 'Their programs are still running' ($apps.Count -ge 1) (($apps | ForEach-Object { $_.ProcessName }) -join ', ')
