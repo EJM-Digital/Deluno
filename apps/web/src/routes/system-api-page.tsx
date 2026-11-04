@@ -119,10 +119,10 @@ export function SystemApiPage() {
     if (!revokeTarget) return;
     const item = revokeTarget;
     setRevokeTarget(null);
-    const currentPassword = await ask("Revoking an API key needs your password.");
-    if (!currentPassword) return;
-    setDeletingId(item.id);
     try {
+      const currentPassword = await ask("Revoking an API key needs your password.");
+      if (!currentPassword) return;
+      setDeletingId(item.id);
       const response = await authedFetch(`/api/api-keys/${item.id}`, { method: "DELETE", headers: withCurrentPassword(currentPassword) });
       if (!response.ok) {
         throw new Error(await refusalSentence(response, "API key could not be revoked."));

@@ -1,4 +1,6 @@
 import { settleFormAfterSave } from "../lib/settle-form-after-save";
+import { toast } from "../components/shell/toaster";
+import { refusalSentence } from "../components/app/password-prompt";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
@@ -395,12 +397,18 @@ export function RetentionPage() {
   async function toggle(rule: RetentionRule, isEnabled: boolean) {
     setBusy(`toggle:${rule.id}`);
     try {
-      await authedFetch(`/api/retention/rules/${rule.id}`, {
+      const response = await authedFetch(`/api/retention/rules/${rule.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...payload(formFrom(rule)), isEnabled })
       });
+      if (!response.ok) {
+        toast.error(await refusalSentence(response, `${rule.name} could not be switched ${isEnabled ? "on" : "off"} (HTTP ${response.status}).`));
+        return;
+      }
       revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : `${rule.name} could not be switched ${isEnabled ? "on" : "off"}.`);
     } finally {
       setBusy(null);
     }

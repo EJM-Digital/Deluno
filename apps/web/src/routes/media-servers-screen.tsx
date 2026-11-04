@@ -1,4 +1,6 @@
 import { settleFormAfterSave } from "../lib/settle-form-after-save";
+import { toast } from "../components/shell/toaster";
+import { refusalSentence } from "../components/app/password-prompt";
 import { toneSortValue } from "../lib/status-tones";
 import { SecretUnreadableNotice } from "../components/app/secret-unreadable-notice";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
@@ -293,12 +295,18 @@ export function MediaServersPage() {
   async function toggle(server: MediaServerConnection, isEnabled: boolean) {
     setBusy(`toggle:${server.id}`);
     try {
-      await authedFetch(`/api/media-servers/${server.id}`, {
+      const response = await authedFetch(`/api/media-servers/${server.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ kind: server.kind, name: server.name, baseUrl: server.baseUrl, token: "", isEnabled, leavingSoonOnHome: server.leavingSoonOnHome ?? false })
       });
+      if (!response.ok) {
+        toast.error(await refusalSentence(response, `${server.name} could not be switched ${isEnabled ? "on" : "off"} (HTTP ${response.status}).`));
+        return;
+      }
       revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : `${server.name} could not be switched ${isEnabled ? "on" : "off"}.`);
     } finally {
       setBusy(null);
     }
