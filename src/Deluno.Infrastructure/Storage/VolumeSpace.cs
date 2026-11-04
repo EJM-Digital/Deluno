@@ -1,5 +1,3 @@
-using System.Runtime.InteropServices;
-
 namespace Deluno.Infrastructure.Storage;
 
 /// <summary>Free and total bytes of the drive a folder lives on.</summary>
@@ -36,18 +34,34 @@ public static class VolumeSpace
         return parts.Length < 2 ? null : @"\\" + parts[0] + @"\" + parts[1];
     }
 
-    [DllImport("kernel32.dll", EntryPoint = "GetDiskFreeSpaceExW", CharSet = CharSet.Unicode, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetDiskFreeSpaceEx(string directory, out ulong freeToCaller, out ulong total, out ulong totalFree);
+    /// <summary>What a drive says about itself.</summary>
+    public sealed record DriveFacts(bool IsReady, long TotalSize, long AvailableFreeSpace, string DriveFormat);
 
-    /// <summary>
-    /// The reading for the drive holding <paramref name="path"/>, or null when it
-    /// cannot be read (not a real drive, a network share the OS will not size,
-    /// nothing mounted). A folder that does not exist yet is read through its
-    /// nearest folder that does, because a library root that is not created
-    /// still lives on a drive.
-    /// </summary>
-    public static VolumeSpaceReading? TryRead(string? path)
+    /// <summary>Every question TryRead asks the system, so each can be answered by a test on any system.</summary>
+    public sealed record VolumeProbes(
+        bool IsWindows,
+        Func<string, string> FullPath,
+        Func<string, bool> DirectoryExists,
+        Func<string, DriveFacts> DriveOf,
+        Func<string, (ulong Free, ulong Total)?> ShareSpace)
+    {
+        public static VolumeProbes ThisSystem { get; } = new(
+            OperatingSystem.IsWindows(),
+            Path.GetFullPath,
+            Directory.Exists,
+            probe =>
+            {
+                var drive = new DriveInfo(probe);
+                return drive.IsReady
+                    ? new DriveFacts(true, drive.TotalSize, drive.AvailableFreeSpace, drive.DriveFormat)
+                    : new DriveFacts(false, 0, 0, string.Empty);
+            },
+            WindowsDiskFreeSpace.TryRead);
+    }
+
+    public static VolumeSpaceReading? TryRead(string? path) => TryRead(path, VolumeProbes.ThisSystem);
+
+    public static VolumeSpaceReading? TryRead(string? path, VolumeProbes system)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -56,13 +70,13 @@ public static class VolumeSpace
 
         try
         {
-            var probe = Path.GetFullPath(path);
-            if (OperatingSystem.IsWindows() && NetworkShareRoot(probe) is { } share)
+            var probe = system.FullPath(path);
+            if (system.IsWindows && NetworkShareRoot(probe) is { } share)
             {
-                return TryReadShare(share, probe);
+                return TryReadShare(share, probe, system);
             }
 
-            while (!Directory.Exists(probe))
+            while (!system.DirectoryExists(probe))
             {
                 var parent = Path.GetDirectoryName(probe);
                 if (string.IsNullOrEmpty(parent))
@@ -73,7 +87,7 @@ public static class VolumeSpace
                 probe = parent;
             }
 
-            var drive = new DriveInfo(probe);
+            var drive = system.DriveOf(probe);
             if (!drive.IsReady || drive.TotalSize <= 0)
             {
                 return null;
@@ -82,7 +96,7 @@ public static class VolumeSpace
             // On Windows a drive letter names a volume. Elsewhere any path is a
             // drive, so two folders share one only when the drive says the same
             // thing about itself.
-            var key = OperatingSystem.IsWindows()
+            var key = system.IsWindows
                 ? (Path.GetPathRoot(probe) ?? probe).ToUpperInvariant()
                 : $"{drive.DriveFormat}:{drive.TotalSize}";
             return new VolumeSpaceReading(key, drive.AvailableFreeSpace, drive.TotalSize);
@@ -93,11 +107,11 @@ public static class VolumeSpace
         }
     }
 
-    private static VolumeSpaceReading? TryReadShare(string share, string path)
+    private static VolumeSpaceReading? TryReadShare(string share, string path, VolumeProbes system)
     {
         // A folder that is not there yet is read through the nearest one that is, down to the share itself.
         var probe = path;
-        while (!Directory.Exists(probe))
+        while (!system.DirectoryExists(probe))
         {
             var parent = Path.GetDirectoryName(probe);
             if (string.IsNullOrEmpty(parent) || parent.Length < share.Length)
@@ -108,11 +122,11 @@ public static class VolumeSpace
             probe = parent;
         }
 
-        if (!GetDiskFreeSpaceEx(probe, out var free, out var total, out _) || total == 0)
+        if (system.ShareSpace(probe) is not { } space || space.Total == 0)
         {
             return null;
         }
 
-        return new VolumeSpaceReading(share.ToUpperInvariant(), (long)Math.Min(free, long.MaxValue), (long)Math.Min(total, long.MaxValue));
+        return new VolumeSpaceReading(share.ToUpperInvariant(), (long)Math.Min(space.Free, long.MaxValue), (long)Math.Min(space.Total, long.MaxValue));
     }
 }
