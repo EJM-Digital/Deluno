@@ -419,6 +419,7 @@ function Invoke-UpdateSetupInteractive {
     Invoke-Scenario -Id 'update.setup-interactive' -Title 'The candidate''s Setup run the way a person runs it (not silent) over a running previous release leaves one Deluno running, as the candidate, with its state' -Body {
         $ctx = Start-PreviousForUpdate -CandidateVersion $CandidateVersion
         if (-not $ctx) { return }
+        $backupsBefore = @(Get-BackupFiles)
         $began = Get-Date
         $p = Start-Process -FilePath $CandidateSetup -PassThru
         $done = $p.WaitForExit(90000)
@@ -441,6 +442,9 @@ function Invoke-UpdateSetupInteractive {
         $procs = @(Get-DelunoProcess)
         Add-Check 'Exactly one Deluno is running (Setup''s launch and the install hook did not start two)' ($procs.Count -eq 1) "$($procs.Count) process(es): $(($procs | ForEach-Object { $_.Id }) -join ', ')"
         Add-Check 'The previous release''s process is gone' (@($procs | Where-Object { $_.Id -in $ctx.OldPids }).Count -eq 0) ''
+        # Setup run by hand over a running copy takes no pre-update backup (only the in-app update does): this pins that down (#1278).
+        $backupsNew = @(Get-BackupFiles | Where-Object { $_ -notin $backupsBefore -and $_ -match 'pre-update' })
+        Add-Check 'Setup run by hand over a running copy takes no pre-update backup (only the in-app update does)' ($backupsNew.Count -eq 0) $(if ($backupsNew.Count) { 'new: ' + ($backupsNew -join ', ') } else { "$($backupsBefore.Count) backup(s) before, none added" })
     }
 }
 
@@ -466,6 +470,13 @@ function Invoke-UpdateSetupOverStopped {
         Start-ProgramUnelevated -Path $e.FullName -WorkingDirectory $e.DirectoryName -Elevated
         Test-CameBackAsCandidate -Context $ctx -CandidateVersion $CandidateVersion | Out-Null
     }
+}
+
+# The Deluno service as the service manager reports it: state, process, failure actions and the failure flag.
+function Get-UpdateServiceFacts {
+    $svc = Get-CimInstance Win32_Service -Filter "Name='Deluno'" -ErrorAction SilentlyContinue
+    if (-not $svc) { return $null }
+    [pscustomobject]@{ State = [string]$svc.State; ProcessId = [int]$svc.ProcessId; Failure = (& sc.exe qfailure Deluno | Out-String); FailureFlag = (& sc.exe qfailureflag Deluno | Out-String) }
 }
 
 function Invoke-UpdateServiceMode {
@@ -504,6 +515,15 @@ function Invoke-UpdateServiceMode {
             Add-Check 'Setup started no tray: the only Deluno process is the service''s' (@(Get-DelunoProcess | Where-Object { $_.Id -ne $back.Value.ProcessId }).Count -eq 0) ((Get-DelunoProcess | ForEach-Object { $_.Id }) -join ', ')
             Test-CameBackAsCandidate -Context $ctx -CandidateVersion $CandidateVersion | Out-Null
             Add-Check 'It is still a service that starts automatically' ((Get-CimInstance Win32_Service -Filter "Name='Deluno'").StartMode -eq 'Auto') ''
+            # After the upgrade the failure actions are still the ones the service was made with (restart after 60 s three times, a stop with an error code counts), and a killed worker comes back (#1278).
+            $factsAfter = Get-UpdateServiceFacts
+            Add-Check 'After the update Windows still restarts it after a failure: restart after 60 s three times, reset after a day, also for a stop with an error code' ($factsAfter -and $factsAfter.Failure -match '86400' -and ([regex]::Matches($factsAfter.Failure, 'RESTART -- Delay = 60000').Count -ge 3) -and $factsAfter.FailureFlag -match 'TRUE') $(if ($factsAfter) { (($factsAfter.Failure -replace '\s+', ' ') + ' | ' + ($factsAfter.FailureFlag -replace '\s+', ' ')) } else { 'no service' })
+            $pidAfter = if ($factsAfter) { $factsAfter.ProcessId } else { 0 }
+            if ($pidAfter) {
+                Stop-Process -Id $pidAfter -Force
+                $again = Wait-Until -TimeoutSec 240 -IntervalSec 5 -Condition { $x = Get-UpdateServiceFacts; if ($x -and $x.State -eq 'Running' -and $x.ProcessId -ne 0 -and $x.ProcessId -ne $pidAfter) { $x } else { $null } }
+                Add-Check 'After the update a killed worker is started again by Windows (a new process within four minutes)' $again.Ok $(if ($again.Ok) { "process $pidAfter -> $($again.Value.ProcessId) after $($again.Seconds) s" } else { 'still ' + (Get-UpdateServiceFacts).State })
+            }
         }
         finally {
             $e2 = Get-InstalledDelunoExe
