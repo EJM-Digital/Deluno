@@ -148,7 +148,7 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
                 && document.RootElement.TryGetProperty("error", out var error)
                 && error.ValueKind == JsonValueKind.String)
             {
-                var text = error.GetString()?.Trim();
+                var text = error.GetString()!.Trim();
                 return string.IsNullOrEmpty(text) ? "it gave no reason" : text;
             }
         }
@@ -614,7 +614,7 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
         }
     }
 
-    private static string AsString(JsonElement value) => value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.ToString();
+    private static string AsString(JsonElement value) => value.ValueKind == JsonValueKind.String ? value.GetString()! : value.ToString();
     private static double AsDouble(JsonElement value) => value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var parsed) ? parsed : double.TryParse(value.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out parsed) ? parsed : 0;
     private static long AsInt64(JsonElement value) => value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var parsed) ? parsed : long.TryParse(value.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed) ? parsed : 0;
     private sealed record UTorrentListResponse([property: JsonPropertyName("torrents")] IReadOnlyList<IReadOnlyList<JsonElement>>? Torrents);

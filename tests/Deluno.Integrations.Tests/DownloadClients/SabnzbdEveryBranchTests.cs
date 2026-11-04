@@ -218,4 +218,30 @@ public sealed class SabnzbdEveryBranchTests
         Assert.False(string.IsNullOrWhiteSpace(new SabnzbdDownloadClient(new Factory(new HttpClientHandler())).NormalizeStatus(null, null)));
         _ = JsonNode.Parse("{}");
     }
+
+    [Fact]
+    public async Task No_question_throws_when_one_mode_in_turn_is_answered_with_less_than_the_rest()
+    {
+        var body = PopulatedBody();
+        var degraded = new[]
+        {
+            "null", "{}", "{\"status\":false}", "{\"status\":false,\"error\":\"boom\"}", "{\"queue\":null,\"history\":null}", "{\"queue\":{\"slots\":null}}",
+            "{\"history\":{\"slots\":null}}", "{\"history\":{\"slots\":[{\"nzo_id\":\"SABnzbd_nzo_abc123\",\"status\":\"Failed\",\"fail_message\":\"x\"}]},\"queue\":{\"slots\":[]}}",
+            "{\"queue\":{\"slots\":[{\"nzo_id\":\"SABnzbd_nzo_abc123\",\"status\":\"Paused\"}]},\"history\":{\"slots\":[]}}", "{\"version\":\"5.1.3\"}", "{\"version\":null}",
+            "{\"config\":{\"misc\":{\"complete_dir\":5},\"categories\":[]},\"categories\":[]}", "{\"config\":null}", "{\"config\":{\"misc\":{},\"categories\":[{\"name\":\"movies\"}]}}"
+        };
+        var asks = new List<Task>();
+        foreach (var mode in new[] { "queue", "history", "version", "get_config", "get_files", "warnings", "resume", "pause", "set_config", "addurl", "delete", "change_cat", "get_cats" })
+        {
+            foreach (var reply in degraded)
+            {
+                foreach (var hash in new[] { Hash, "SABnzbd_nzo_2", "nothing" })
+                {
+                    asks.Add(EveryCallOnAnOddReply.AskAsync(Answering(request => RecordedReplies.Json(Mode(request) == mode ? reply : body), out _), Item(), usenet: true, hash));
+                }
+            }
+        }
+
+        await Task.WhenAll(asks);
+    }
 }

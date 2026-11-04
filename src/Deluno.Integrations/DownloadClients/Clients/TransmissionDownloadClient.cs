@@ -202,7 +202,7 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
     /// </summary>
     internal static object? RpcId(string queueItemId)
     {
-        var value = queueItemId?.Trim();
+        var value = queueItemId.Trim();
         if (string.IsNullOrEmpty(value))
         {
             return null;

@@ -354,7 +354,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
             using var response = await http.GetAsync(new Uri(baseUri, $"api?mode=warnings&output=json&apikey={Uri.EscapeDataString(apiKey)}"), cancellationToken);
             if (!response.IsSuccessStatusCode) return [];
             using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
-            if (!document.RootElement.TryGetProperty("warnings", out var warnings) || warnings.ValueKind != JsonValueKind.Array)
+            if (document.RootElement.ValueKind != JsonValueKind.Object || !document.RootElement.TryGetProperty("warnings", out var warnings) || warnings.ValueKind != JsonValueKind.Array)
             {
                 return [];
             }
@@ -1124,7 +1124,9 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
     private static string? ReadMiscFolder(JsonElement root, string name)
         => root.ValueKind == JsonValueKind.Object
            && root.TryGetProperty("config", out var config)
+           && config.ValueKind == JsonValueKind.Object
            && config.TryGetProperty("misc", out var misc)
+           && misc.ValueKind == JsonValueKind.Object
            && misc.TryGetProperty(name, out var dir)
            && dir.ValueKind == JsonValueKind.String
             ? dir.GetString()
@@ -1133,7 +1135,9 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
     private static string? ReadCompleteDir(JsonElement root)
         => root.ValueKind == JsonValueKind.Object
            && root.TryGetProperty("config", out var config)
+           && config.ValueKind == JsonValueKind.Object
            && config.TryGetProperty("misc", out var misc)
+           && misc.ValueKind == JsonValueKind.Object
            && misc.TryGetProperty("complete_dir", out var dir)
            && dir.ValueKind == JsonValueKind.String
             ? dir.GetString()
@@ -1143,6 +1147,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
     {
         if (root.ValueKind != JsonValueKind.Object ||
             !root.TryGetProperty("config", out var config) ||
+            config.ValueKind != JsonValueKind.Object ||
             !config.TryGetProperty("categories", out var categories) ||
             categories.ValueKind != JsonValueKind.Array)
         {
@@ -1172,7 +1177,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
 
     private static IReadOnlyList<string> ReadCategoryNames(JsonElement root)
     {
-        if (!root.TryGetProperty("categories", out var categories))
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("categories", out var categories))
         {
             return [];
         }

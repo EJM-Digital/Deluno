@@ -45,6 +45,61 @@ public sealed class DelugeEveryBranchTests
     }
 
     [Fact]
+    public async Task Nothing_is_asked_without_an_address()
+    {
+        var client = ClientAnswering(_ => RecordedReplies.Json("null"), out var calls);
+        var noAddress = Item() with { Host = null, EndpointUrl = null };
+
+        var grab = await client.GrabAsync(noAddress, EveryCallOnAnOddReply.GrabRequests(false).First(), CancellationToken.None);
+        var snapshot = await client.GetSnapshotAsync(noAddress, DateTimeOffset.UtcNow, CancellationToken.None);
+        var action = await client.ExecuteActionAsync(noAddress, DownloadClientActions.Pause, Hash, CancellationToken.None);
+        var set = await client.SetCategoryAsync(noAddress, Hash, "seeding", "movies", CancellationToken.None);
+        var files = await client.GetFilesAsync(noAddress, Hash, CancellationToken.None);
+        var noId = await client.GetFilesAsync(Item(), " ", CancellationToken.None);
+
+        Assert.False(grab.Succeeded);
+        Assert.Contains("address", snapshot!.LastHealthMessage);
+        Assert.False(action.Succeeded);
+        Assert.False(set.Succeeded);
+        Assert.Null(files);
+        Assert.Null(noId);
+        Assert.Empty(calls.Log);
+    }
+
+    [Fact]
+    public async Task A_sign_in_the_client_does_not_answer_is_refused_and_a_web_ui_that_does_not_say_whether_it_is_connected_is_asked_for_its_hosts()
+    {
+        foreach (var login in new[] { "null", "{\"id\":1,\"result\":false,\"error\":null}" })
+        {
+            var refused = new Calls("deluge", [RecordedReplies.Deluge("sign-in")], (_, body) => body.Contains("\"auth.login\"", StringComparison.Ordinal) ? RecordedReplies.Json(login) : null);
+            var result = await new DelugeDownloadClient(new Factory(refused.Build())).ExecuteActionAsync(Item(), DownloadClientActions.Recheck, Hash, CancellationToken.None);
+            Assert.False(result.Succeeded);
+        }
+
+        foreach (var hosts in new[] { "null", "{\"id\":3,\"result\":null,\"error\":null}", "{\"id\":3,\"result\":{},\"error\":null}" })
+        {
+            var none = new Calls("deluge", [RecordedReplies.Deluge("sign-in")], (_, body) =>
+                body.Contains("\"web.connected\"", StringComparison.Ordinal) ? RecordedReplies.Json("null")
+                : body.Contains("\"web.get_hosts\"", StringComparison.Ordinal) ? RecordedReplies.Json(hosts) : null);
+            Assert.Null(await new DelugeDownloadClient(new Factory(none.Build())).GetFilesAsync(Item(), Hash, CancellationToken.None));
+        }
+    }
+
+    [Fact]
+    public async Task A_grab_with_no_label_to_set_leaves_the_torrent_unlabelled()
+    {
+        var calls = new Calls("deluge", [RecordedReplies.Deluge("sign-in")], (_, body) =>
+            body.Contains("\"auth.login\"", StringComparison.Ordinal) || body.Contains("\"web.connected\"", StringComparison.Ordinal) ? null
+            : RecordedReplies.Json(Full(System.Text.RegularExpressions.Regex.Match(body, "\"method\"\\s*:\\s*\"([^\"]+)\"").Groups[1].Value, body)));
+        var unlabelled = Item() with { MoviesCategory = "", TvCategory = "" };
+
+        var result = await new DelugeDownloadClient(new Factory(calls.Build())).GrabAsync(unlabelled, EveryCallOnAnOddReply.GrabRequests(false).ElementAt(2) with { Category = null }, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.False(calls.Sent("label."));
+    }
+
+    [Fact]
     public async Task A_web_ui_with_no_daemon_connected_is_connected_to_the_first_host_or_refused_when_it_has_none()
     {
         var hosts = "{\"id\":3,\"result\":[[\"c0ffee\",\"127.0.0.1\",58846,\"localhost\"]],\"error\":null}";
@@ -115,5 +170,76 @@ public sealed class DelugeEveryBranchTests
 
         Assert.NotNull(result);
         Assert.False(calls.Sent("label.set_torrent"));
+    }
+
+    // ---- a client that answers fully, then fails one call at a time ----
+
+    private const string FullTorrent = "{\"name\":\"Example.Movie\",\"state\":\"Seeding\",\"progress\":100,\"download_payload_rate\":5,\"upload_payload_rate\":2,\"eta\":10,\"total_size\":1000,\"total_done\":1000,\"num_peers\":3,\"num_seeds\":2,"
+        + "\"time_added\":1700000000,\"label\":\"movies\",\"message\":\"Error: disk full\",\"save_path\":\"/incomplete\",\"move_completed\":true,\"move_completed_path\":\"/final\",\"ratio\":1.5,\"seeding_time\":120,"
+        + "\"tracker_status\":\"Error: Unregistered torrent\",\"trackers\":[{\"url\":\"http://t.example/a\"},{}],\"private\":true,\"queue\":0,\"stop_at_ratio\":true,\"stop_ratio\":2.0,\"remove_at_ratio\":true}";
+
+    private static string Full(string method, string body) => method switch
+    {
+        "web.update_ui" => "{\"id\":2,\"result\":{\"torrents\":{\"d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c\":" + FullTorrent
+            + ",\"e\":{\"state\":\"Seeding\",\"progress\":100,\"label\":\"movies\"},\"b\":{\"name\":\"Moving\",\"state\":\"Moving\",\"progress\":100,\"label\":\"tv\",\"save_path\":\"/x\",\"move_completed\":true,\"move_completed_path\":\"/y\"},\"c\":{},\"d\":{\"state\":\"Paused\",\"progress\":3,\"label\":\"movies\",\"message\":\"OK\"}}},\"error\":null}",
+        "core.get_free_space" => "{\"id\":8,\"result\":123456789,\"error\":null}",
+        "daemon.info" or "daemon.get_version" => "{\"id\":9,\"result\":\"2.2.0\",\"error\":null}",
+        "core.get_torrent_status" => body.Contains("\"files\"", StringComparison.Ordinal) && body.Contains("\"label\"", StringComparison.Ordinal) ? "{\"id\":2,\"result\":{\"label\":\"movies\"},\"error\":null}" : "{\"id\":2,\"result\":{\"files\":[{\"path\":\"a/b.mkv\"},{}],\"label\":\"movies\"},\"error\":null}",
+        "label.get_labels" => "{\"id\":5,\"result\":[\"movies\",\"tv\",\"seeding\"],\"error\":null}",
+        "label.get_options" => "{\"id\":12,\"result\":{\"apply_move_completed\":true,\"move_completed\":true,\"move_completed_path\":\"/labelfolder\"},\"error\":null}",
+        "core.get_config_values" => "{\"id\":10,\"result\":{\"download_location\":\"/incomplete\",\"move_completed\":true,\"move_completed_path\":\"/final\"},\"error\":null}",
+        "core.get_session_state" => "{\"id\":9,\"result\":[\"d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c\"],\"error\":null}",
+        "core.add_torrent_file" or "core.add_torrent_magnet" or "core.add_torrent_url" => "{\"id\":2,\"result\":\"d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c\",\"error\":null}",
+        "core.remove_torrent" => "{\"id\":3,\"result\":true,\"error\":null}",
+        _ => "{\"id\":3,\"result\":null,\"error\":null}"
+    };
+
+    private static readonly string[] Methods =
+    [
+        "web.update_ui", "core.get_free_space", "daemon.info", "daemon.get_version", "core.get_torrent_status", "label.get_labels", "label.get_options", "label.add", "label.set_torrent",
+        "core.get_config_values", "core.get_session_state", "core.add_torrent_file", "core.add_torrent_magnet", "core.add_torrent_url", "core.remove_torrent", "core.pause_torrent",
+        "core.resume_torrent", "core.force_recheck", "core.queue_top", "core.set_torrent_options"
+    ];
+
+    private static string Degraded(string how, string method, string body) => how switch
+    {
+        "nullbody" => "null",
+        "string" => "{\"id\":2,\"result\":\"x\",\"error\":null}",
+        "odd" => "{\"id\":2,\"result\":{\"move_completed\":\"yes\",\"move_completed_path\":5,\"apply_move_completed\":0,\"label\":5,\"download_location\":5,\"files\":null,\"torrents\":null},\"error\":null}",
+        "nomessage" => "{\"id\":2,\"result\":null,\"error\":{\"code\":4}}",
+        "blankmessage" => "{\"id\":2,\"result\":null,\"error\":{\"message\":\"\",\"code\":4}}",
+        "error" => "{\"id\":2,\"result\":null,\"error\":{\"message\":\"Torrent already in session (D725BF5A29BCF10E3F7D2B8EBBB221B1FE0E783C)\",\"code\":4}}",
+        "keyerror" => "{\"id\":2,\"result\":null,\"error\":{\"message\":\"KeyError: 'x'\",\"code\":4}}",
+        "refused" => "{\"id\":2,\"result\":null,\"error\":{\"message\":\"Plugin not enabled\",\"code\":4}}",
+        "null" => "{\"id\":2,\"result\":null,\"error\":null}",
+        "false" => "{\"id\":2,\"result\":false,\"error\":null}",
+        "empty" => "{\"id\":2,\"result\":{},\"error\":null}",
+        _ => Full(method, body)
+    };
+
+    [Fact]
+    public async Task No_question_throws_when_one_call_in_turn_fails_in_each_way_and_the_rest_answer_fully()
+    {
+        // Side by side: a half-answered removal waits for the client to let go of the torrent.
+        var asks = new List<Task>();
+        foreach (var target in Methods)
+        {
+            foreach (var how in new[] { "error", "keyerror", "refused", "null", "false", "drop", "empty", "full", "nullbody", "string", "odd", "nomessage", "blankmessage" })
+            {
+                foreach (var hash in new[] { Hash, "unknown" })
+                {
+                    var calls = new Calls("deluge", [RecordedReplies.Deluge("sign-in")], (_, body) =>
+                    {
+                        var method = System.Text.RegularExpressions.Regex.Match(body, "\"method\"\\s*:\\s*\"([^\"]+)\"").Groups[1].Value;
+                        if (method is "auth.login" or "web.connected") return null;
+                        if (method != target) return RecordedReplies.Json(Full(method, body));
+                        return how == "drop" ? throw new HttpRequestException("The connection dropped.") : RecordedReplies.Json(Degraded(how, method, body));
+                    });
+                    asks.Add(EveryCallOnAnOddReply.AskAsync(new DelugeDownloadClient(new Factory(calls.Build())), Item(), usenet: false, hash));
+                }
+            }
+        }
+
+        await Task.WhenAll(asks);
     }
 }

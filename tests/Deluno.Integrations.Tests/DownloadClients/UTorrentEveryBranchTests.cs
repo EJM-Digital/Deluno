@@ -105,4 +105,148 @@ public sealed class UTorrentEveryBranchTests
 
         Assert.Equal(DownloadClientCategoryStatuses.Unreachable, check.Status);
     }
+
+    // ---- a grab, step by step ----
+
+    private static string ListHaving() => RecordedReplies.UtorrentList([Hash]);
+
+    private static string AddedReply(string error) => RecordedReplies.Utorrent("add-refused").Body("action=add-file", ("error", error));
+
+    /// <summary>A uTorrent that lists nothing before the add and the torrent from then on, answering the add and the stop and label calls as given.</summary>
+    private static HttpMessageHandler Adding(Func<HttpRequestMessage, string, HttpResponseMessage?> others)
+    {
+        var lists = 0;
+        return Answering((request, body) =>
+        {
+            if (others(request, body) is { } own) return own;
+            if (request.RequestUri!.Query.Contains("list=1", StringComparison.Ordinal)) return RecordedReplies.Json(++lists == 1 ? RecordedReplies.UtorrentList([]) : ListHaving());
+            return RecordedReplies.Json(RecordedReplies.Utorrent("label-set").Body("action=setprops"));
+        });
+    }
+
+    private static DownloadClientGrabRequest Magnet() => EveryCallOnAnOddReply.GrabRequests(false).First() with { SaveFolder = null };
+
+    private static bool Action(HttpRequestMessage request, string name) => request.RequestUri!.Query.Contains("action=" + name, StringComparison.Ordinal);
+
+    [Fact]
+    public async Task A_torrent_added_paused_is_stopped_and_a_stop_that_fails_or_drops_is_said()
+    {
+        var stopped = await new UTorrentDownloadClient(() => Adding((r, _) => Action(r, "stop") ? RecordedReplies.Json("{\"build\":1}") : null))
+            .GrabAsync(Item() with { AddPaused = true }, Magnet(), CancellationToken.None);
+        var refused = await new UTorrentDownloadClient(() => Adding((r, _) => Action(r, "stop") ? new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError) : null))
+            .GrabAsync(Item() with { AddPaused = true }, Magnet(), CancellationToken.None);
+        var dropped = await new UTorrentDownloadClient(() => Adding((r, _) => Action(r, "stop") ? throw new HttpRequestException("The connection dropped.") : null))
+            .GrabAsync(Item() with { AddPaused = true }, Magnet(), CancellationToken.None);
+
+        Assert.Contains("added stopped", stopped.Message);
+        Assert.Contains("would not stop it", refused.Message);
+        Assert.Contains("would not stop it", dropped.Message);
+    }
+
+    [Fact]
+    public async Task A_label_that_cannot_be_set_never_fails_the_grab()
+    {
+        var result = await new UTorrentDownloadClient(() => Adding((r, _) => Action(r, "setprops") ? throw new HttpRequestException("The connection dropped.") : null))
+            .GrabAsync(Item(), Magnet(), CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+    }
+
+    [Theory]
+    [InlineData("Can't add torrent: ", "Can't add")]
+    [InlineData("   ", "no reason")]
+    public async Task A_refused_add_is_said_with_its_reason_or_that_it_gave_none(string error, string expected)
+    {
+        var result = await new UTorrentDownloadClient(() => Adding((r, _) => Action(r, "add-url") ? RecordedReplies.Json(AddedReply(error)) : null))
+            .GrabAsync(Item(), Magnet(), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(expected, result.Message);
+    }
+
+    [Fact]
+    public async Task An_add_answered_with_something_that_is_not_json_or_has_no_error_is_taken_as_accepted()
+    {
+        foreach (var reply in new[] { "OK", "[]", "{\"build\":1,\"error\":5}" })
+        {
+            var result = await new UTorrentDownloadClient(() => Adding((r, _) => Action(r, "add-url") ? RecordedReplies.Json(reply) : null))
+                .GrabAsync(Item(), Magnet(), CancellationToken.None);
+
+            Assert.True(result.Succeeded, reply + ": " + result.Message);
+        }
+    }
+
+    [Fact]
+    public async Task A_torrent_whose_list_cannot_be_read_is_still_followed_by_its_hash()
+    {
+        var result = await new UTorrentDownloadClient(() => Answering((r, _) =>
+                Action(r, "add-url") ? RecordedReplies.Json("{\"build\":1}")
+                : r.RequestUri!.Query.Contains("list=1", StringComparison.Ordinal) ? new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError)
+                : RecordedReplies.Json("{\"build\":1}")))
+            .GrabAsync(Item(), Magnet(), CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+    }
+
+    // ---- reading ----
+
+    [Fact]
+    public async Task A_row_with_numbers_where_text_belongs_and_text_where_numbers_belong_is_still_read()
+    {
+        var list = RecordedReplies.UtorrentList([Hash], ("torrents.0.0", 12345), ("torrents.0.2", 77), ("torrents.0.3", "4096"), ("torrents.0.4", "x"), ("torrents.0.5", "12"), ("torrents.0.9", "7"), ("torrents.0.11", 5));
+        var handler = Answering((r, _) => r.RequestUri!.Query.Contains("list=1", StringComparison.Ordinal) ? RecordedReplies.Json(list)
+            : Action(r, "getprops") ? RecordedReplies.Json("{\"build\":1}") : RecordedReplies.Json("{\"build\":1}"));
+
+        var snapshot = await new UTorrentDownloadClient(() => handler).GetSnapshotAsync(Item(), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Single(snapshot!.Queue);
+    }
+
+    [Fact]
+    public async Task A_seeding_time_answer_that_is_nothing_leaves_the_torrent_listed()
+    {
+        var list = ListHaving();
+        var handler = Answering((r, _) => r.RequestUri!.Query.Contains("list=1", StringComparison.Ordinal) ? RecordedReplies.Json(list) : RecordedReplies.Json("null"));
+
+        var snapshot = await new UTorrentDownloadClient(() => handler).GetSnapshotAsync(Item(), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Single(snapshot!.Queue);
+    }
+
+    [Fact]
+    public async Task A_seeding_time_that_cannot_be_read_leaves_the_torrent_listed()
+    {
+        var list = ListHaving();
+        var handler = Answering((r, _) => r.RequestUri!.Query.Contains("list=1", StringComparison.Ordinal) ? RecordedReplies.Json(list)
+            : throw new HttpRequestException("The connection dropped."));
+
+        var snapshot = await new UTorrentDownloadClient(() => handler).GetSnapshotAsync(Item(), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.NotNull(snapshot);
+    }
+
+    [Fact]
+    public async Task Setting_a_label_the_client_turns_down_is_said_with_its_status()
+    {
+        var list = ListHaving();
+        var handler = Answering((r, _) => Action(r, "setprops") ? new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError)
+            : r.RequestUri!.Query.Contains("list=1", StringComparison.Ordinal) ? RecordedReplies.Json(list) : RecordedReplies.Json("{\"build\":1}"));
+
+        var result = await new UTorrentDownloadClient(() => handler).SetCategoryAsync(Item(), Hash, "seeding", "movies", CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+    }
+
+    [Theory]
+    [InlineData("201")]
+    [InlineData("Seeding")]
+    [InlineData("  ")]
+    [InlineData(null)]
+    public void A_status_is_a_bit_field_or_a_word(string? status)
+    {
+        var client = new UTorrentDownloadClient();
+
+        Assert.False(string.IsNullOrWhiteSpace(client.NormalizeStatus(status, 0.5)));
+        Assert.Equal("utorrent", client.Protocol);
+    }
 }

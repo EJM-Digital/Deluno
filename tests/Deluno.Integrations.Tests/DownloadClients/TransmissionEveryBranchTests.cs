@@ -35,8 +35,22 @@ public sealed class TransmissionEveryBranchTests
         "{\"result\":\"success\",\"arguments\":{\"torrent-added\":{},\"torrent-duplicate\":{},\"torrents\":[{\"id\":7,\"hashString\":\"d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c\",\"status\":4,\"percentDone\":0.5,\"labels\":[\"\",\"movies\"],\"files\":[{\"name\":\"a/b.mkv\"},{}],\"trackerStats\":[{}],\"error\":3}]}}",
         "{\"result\":\"success\",\"arguments\":{\"rpc-version\":18,\"version\":\"4.1.3 (abc)\",\"download-dir\":\"/downloads\",\"size-bytes\":500,\"alt-speed-enabled\":true,\"torrents\":[{\"id\":7,\"hashString\":\"d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c\",\"name\":\"x\",\"status\":0,\"labels\":[],\"files\":[]}]}}",
         "{\"result\":\"success\",\"arguments\":{\"rpc-version\":18,\"torrents\":[{\"id\":7,\"hashString\":\"other\",\"status\":6,\"percentDone\":1}]}}",
-        "{\"result\":\"no such torrent\"}"
+        "{\"result\":\"no such torrent\"}",
+        "{\"result\":\"success\",\"arguments\":{\"torrent-added\":{\"id\":3,\"hashString\":\" ABCDEF \"}}}",
+        "{\"result\":\"success\",\"arguments\":{\"torrent-added\":{\"id\":3}}}",
+        "{\"result\":\"success\",\"arguments\":{\"torrent-duplicate\":{\"hashString\":\"abc\"}}}",
+        "{\"result\":\"success\",\"arguments\":{\"torrent-added\":{\"id\":3,\"hashString\":\"  \"}}}",
+        "{\"result\":5,\"arguments\":{\"rpc-version\":18}}",
+        Rich,
+        Rich.Replace("\"result\":\"success\"", "\"result\":\"too many\"", StringComparison.Ordinal)
     ];
+
+    private const string Rich = "{\"result\":\"success\",\"arguments\":{\"rpc-version\":18,\"version\":\"4.1.3 (abc)\",\"download-dir\":\"/downloads\",\"incomplete-dir\":\"/incomplete\",\"incomplete-dir-enabled\":true,\"alt-speed-enabled\":true,\"size-bytes\":500,"
+        + "\"torrent-added\":{\"id\":3,\"hashString\":\"d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c\"},"
+        + "\"torrents\":[{\"id\":7,\"hashString\":\"d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c\",\"name\":\"n\",\"status\":4,\"percentDone\":0.5,\"rateDownload\":5,\"rateUpload\":2,\"eta\":100,\"totalSize\":1000,\"downloadedEver\":500,\"peersConnected\":3,"
+        + "\"addedDate\":1700000000,\"downloadDir\":\"/d\",\"labels\":[\"movies\",\"seeding\"],\"error\":3,\"errorString\":\"x\",\"peersSendingToUs\":2,\"isStalled\":true,\"uploadRatio\":1.5,\"secondsSeeding\":120,\"isPrivate\":true,"
+        + "\"trackerStats\":[{\"lastAnnounceResult\":\"Unregistered\",\"lastAnnounceSucceeded\":false,\"hasAnnounced\":true,\"announce\":\"http://t.example/a\"}],\"activityDate\":1,\"doneDate\":2,\"queuePosition\":1,\"seedRatioMode\":1,\"seedRatioLimit\":2.0,\"seedIdleMode\":1,\"seedIdleLimit\":30,\"files\":[{\"name\":\"a.mkv\"}]},"
+        + "{\"id\":8,\"hashString\":\"other\",\"status\":6,\"percentDone\":1,\"error\":1,\"trackerStats\":[{\"hasAnnounced\":true,\"lastAnnounceSucceeded\":true}]},{}]}}";
 
     [Fact]
     public async Task No_question_throws_when_the_client_answers_every_call_with_a_reply_that_says_little()
@@ -106,11 +120,62 @@ public sealed class TransmissionEveryBranchTests
     }
 
     [Fact]
-    public async Task A_client_that_drops_the_connection_answers_a_snapshot_free_space_and_name_lookup_with_nothing()
-    {
-        var client = ClientAnswering((_, body) => body.Contains("session-get", StringComparison.Ordinal) || body.Contains("free-space", StringComparison.Ordinal) || body.Contains("\"torrent-get\"", StringComparison.Ordinal)
-            ? throw new HttpRequestException("The connection dropped.") : RecordedReplies.Json("{\"result\":\"success\"}"), out _);
+    public async Task No_question_throws_when_the_client_drops_the_connection_for_each_call_in_turn()
+        => await Task.WhenAll(new[] { "session-get", "free-space", "torrent-get", "torrent-add", "torrent-set", "torrent-remove", "torrent-start", "torrent-stop", "torrent-verify", "queue-move-top" }.Select(dropped =>
+            EveryCallOnAnOddReply.AskAsync(ClientAnswering((_, body) => body.Contains("\"" + dropped + "\"", StringComparison.Ordinal)
+                ? throw new HttpRequestException("The connection dropped.") : RecordedReplies.Json(Rich), out _), Item(), usenet: false, Hash)));
 
-        await EveryCallOnAnOddReply.AskAsync(client, Item(), usenet: false, Hash);
+    [Fact]
+    public async Task A_client_on_another_machine_does_not_have_its_free_space_measured_here()
+    {
+        var local = ClientAnswering((_, body) => RecordedReplies.Json(body.Contains("free-space", StringComparison.Ordinal) ? "{\"result\":\"success\",\"arguments\":{}}" : Rich), out _);
+
+        var onThisMachine = await local.GetSnapshotAsync(Item(), DateTimeOffset.UtcNow, CancellationToken.None);
+        var elsewhere = await local.GetSnapshotAsync(Item() with { Host = "nas.example.lan", EndpointUrl = null }, DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.NotNull(onThisMachine);
+        Assert.Null(elsewhere!.FreeSpaceBytes);
+    }
+
+    [Fact]
+    public async Task No_question_throws_when_one_call_in_turn_is_answered_with_less_than_the_rest()
+    {
+        var degraded = new[]
+        {
+            "null",
+            "{\"result\":\"success\"}",
+            "{\"result\":\"success\",\"arguments\":{}}",
+            "{\"result\":\"success\",\"arguments\":{\"torrents\":[]}}",
+            "{\"result\":\"success\",\"arguments\":{\"torrents\":[{}]}}",
+            "{\"result\":\"success\",\"arguments\":{\"torrents\":[{\"id\":99,\"hashString\":\"x\"},{\"id\":98,\"hashString\":\"y\"}],\"rpc-version\":3}}",
+            "{\"result\":5}",
+            "{\"arguments\":{\"rpc-version\":18}}"
+        };
+        var asks = new List<Task>();
+        foreach (var target in new[] { "session-get", "free-space", "torrent-get", "torrent-add", "torrent-set", "torrent-remove", "torrent-stop", "torrent-verify" })
+        {
+            foreach (var reply in degraded)
+            {
+                foreach (var hash in new[] { Hash, "7", "unknown" })
+                {
+                    asks.Add(EveryCallOnAnOddReply.AskAsync(ClientAnswering((_, body) =>
+                        RecordedReplies.Json(body.Contains("\"" + target + "\"", StringComparison.Ordinal) ? reply : Rich), out _), Item(), usenet: false, hash));
+                }
+            }
+        }
+
+        await Task.WhenAll(asks);
+    }
+
+    [Fact]
+    public async Task A_category_check_needs_a_name()
+    {
+        var client = ClientAnswering((_, _) => RecordedReplies.Json(Rich), out _);
+
+        var blank = await client.CheckCategoryAsync(Item(), " ", CancellationToken.None);
+        var noAddress = await client.CheckKeepSeedingCategoryAsync(Item() with { Host = null, EndpointUrl = null }, "seeding", CancellationToken.None);
+
+        Assert.Contains("Enter a category", blank.Message);
+        Assert.Contains("address", noAddress.Message);
     }
 }

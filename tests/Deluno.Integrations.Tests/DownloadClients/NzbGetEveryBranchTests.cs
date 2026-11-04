@@ -194,4 +194,39 @@ public sealed class NzbGetEveryBranchTests
         Assert.Equal(3 * 1_048_576L, NzbGetDownloadClient.SizeBytes(0, null, 3));
         Assert.Equal(2L << 32, NzbGetDownloadClient.SizeBytes(2, null, null));
     }
+
+    private static string Degraded(string how, string method) => how switch
+    {
+        "null" => "null",
+        "nullresult" => "{\"version\":\"1.1\",\"result\":null}",
+        "empty" => "{\"version\":\"1.1\",\"result\":" + Empty(method) + "}",
+        "false" => "{\"version\":\"1.1\",\"result\":false}",
+        "error" => "{\"version\":\"1.1\",\"error\":{\"code\":1,\"message\":\"Invalid procedure\"}}",
+        "nomessage" => "{\"version\":\"1.1\",\"error\":{\"code\":1}}",
+        _ => "{\"version\":\"1.1\",\"result\":" + Populated(method) + "}"
+    };
+
+    [Fact]
+    public async Task No_question_throws_when_one_call_in_turn_is_answered_with_less_than_the_rest()
+    {
+        var asks = new List<Task>();
+        foreach (var target in new[] { "listgroups", "history", "status", "config", "log", "listfiles", "append", "version", "editqueue", "saveconfig", "reload" })
+        {
+            foreach (var how in new[] { "null", "nullresult", "empty", "false", "error", "nomessage", "drop" })
+            {
+                foreach (var hash in new[] { Hash, "9", "x" })
+                {
+                    var made = new Calls("nzbget", [RecordedReplies.Nzbget("settings")], (_, body) =>
+                    {
+                        var method = Regex.Match(body, "\"method\"\\s*:\\s*\"([^\"]+)\"").Groups[1].Value;
+                        if (method != target) return RecordedReplies.Json(Degraded("full", method));
+                        return how == "drop" ? throw new HttpRequestException("The connection dropped.") : RecordedReplies.Json(Degraded(how, method));
+                    });
+                    asks.Add(EveryCallOnAnOddReply.AskAsync(new NzbGetDownloadClient(new Factory(made.Build()), TimeSpan.Zero, TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(10)), Item(), usenet: true, hash));
+                }
+            }
+        }
+
+        await Task.WhenAll(asks);
+    }
 }
