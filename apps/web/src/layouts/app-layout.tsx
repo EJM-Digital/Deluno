@@ -1,7 +1,6 @@
 import { RecoveryCodesPrompt } from "../components/app/recovery-codes-prompt";
 import {
   ChevronDown,
-  ChevronRight,
   HelpCircle,
   LoaderCircle,
   LogOut,
@@ -50,8 +49,6 @@ interface NavArea {
   label: string;
   icon: DelunoNavGlyphKind;
   to: string;
-  tabsInToolbar: boolean;
-  items: readonly { to: string; label: string; end: boolean }[];
 }
 
 /**
@@ -623,23 +620,11 @@ export function DesktopSidebar({
 }
 
 /**
- * One row per area. An area whose pages all carry a `PageToolbar` shows no
- * children here — the toolbar tabs are the way between siblings, and listing
- * them twice made the sidebar and the page argue about the same job.
+ * One row per area. Every area's pages carry a `PageToolbar`, whose tabs are the way between siblings, so the
+ * sidebar lists no children: listing them twice made the sidebar and the page argue about the same job.
  */
-function AreaRow({
-  area,
-  pathname,
-  open,
-  onToggle
-}: {
-  area: NavArea;
-  pathname: string;
-  open: boolean;
-  onToggle: () => void;
-}) {
+function AreaRow({ area, pathname }: { area: NavArea; pathname: string }) {
   const rail = useContext(SidebarRailContext);
-  const showChildren = !rail && !area.tabsInToolbar && area.items.some((item) => item.to !== area.to);
   const areaIsActive = area.match(pathname);
 
   return (
@@ -671,81 +656,26 @@ function AreaRow({
             {rail ? null : <span className="min-w-0 flex-1 whitespace-nowrap">{area.label}</span>}
           </>; }}
         </NavLink>
-        {showChildren ? (
-          <button
-            type="button"
-            aria-label={`${open ? "Collapse" : "Expand"} ${area.label}`}
-            aria-expanded={open}
-            onClick={onToggle}
-            className="flex h-(--shell-pill-height) w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-muted/50 hover:text-foreground"
-          >
-            <ChevronRight className={cn("h-4 w-4 transition-transform duration-200", open && "rotate-90 text-(--nav-accent)")} />
-          </button>
-        ) : null}
       </div>
-      {showChildren && open ? (
-        <div className="ml-[calc((var(--shell-nav-pad-x)*0.55)+1rem)] mt-0.5 space-y-0.5 pl-2">
-          {area.items.filter((item) => item.to !== area.to).map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              title={item.label}
-              {...prefetchHandlers(item.to)}
-              className={({ isActive, isPending }) => cn(
-                "flex min-h-7 min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-[length:calc(var(--shell-nav-size)*0.9)] font-medium transition",
-                isActive || isPending ? "text-(--nav-accent)" : "text-muted-foreground hover:text-(--nav-accent)"
-              )}
-            >
-              {({ isActive: active, isPending }) => { const isActive = active || isPending; return <>
-                <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", isActive ? "bg-(--nav-accent)" : "bg-muted-foreground/35")} />
-                <span className="min-w-0 truncate">{item.label}</span>
-              </>; }}
-            </NavLink>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }
 
-function useAreaTree(areas: readonly NavArea[], pathname: string) {
-  const activeArea = areas.find((area) => area.match(pathname));
-  const [openAreas, setOpenAreas] = useState<Set<string>>(() => new Set(activeArea ? [activeArea.label] : []));
-
-  useEffect(() => {
-    if (activeArea) setOpenAreas((current) => new Set([...current, activeArea.label]));
-  }, [activeArea?.label]);
-
-  return {
-    openAreas,
-    toggleArea: (label: string) =>
-      setOpenAreas((current) => {
-        const next = new Set(current);
-        if (next.has(label)) next.delete(label);
-        else next.add(label);
-        return next;
-      })
-  };
-}
-
 function ConfigurationSidebarTree({ pathname }: { pathname: string }) {
-  const { openAreas, toggleArea } = useAreaTree(configurationNavAreas, pathname);
   return (
     <div className="space-y-1">
       {configurationNavAreas.map((area) => (
-        <AreaRow key={area.label} area={area} pathname={pathname} open={openAreas.has(area.label)} onToggle={() => toggleArea(area.label)} />
+        <AreaRow key={area.label} area={area} pathname={pathname} />
       ))}
     </div>
   );
 }
 
 function MaintenanceSidebarTree({ pathname }: { pathname: string }) {
-  const { openAreas, toggleArea } = useAreaTree(maintenanceNavItems, pathname);
   return (
     <div className="space-y-1">
       {maintenanceNavItems.map((area) => (
-        <AreaRow key={area.label} area={area} pathname={pathname} open={openAreas.has(area.label)} onToggle={() => toggleArea(area.label)} />
+        <AreaRow key={area.label} area={area} pathname={pathname} />
       ))}
     </div>
   );
