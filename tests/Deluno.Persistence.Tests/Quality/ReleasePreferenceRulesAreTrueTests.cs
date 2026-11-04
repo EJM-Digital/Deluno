@@ -35,7 +35,7 @@ public sealed class ReleasePreferenceRulesAreTrueTests
         var present = ReleasePreferenceEvaluator.Evaluate(plan, [good, Fact("audio.format.dts", PreferenceFactState.Present)]);
 
         Assert.Equal(PreferenceEvaluationStatus.NeedsReview, unknown.Status);
-        Assert.Contains(unknown.Reasons, reason => reason == "We cannot tell whether it matches DTS, which this profile never takes.");
+        Assert.Contains(unknown.Reasons, reason => reason == "Deluno cannot tell whether it matches DTS, which this profile never takes.");
         Assert.Equal(PreferenceEvaluationStatus.MeetsPlan, absent.Status);
         Assert.Equal(PreferenceEvaluationStatus.Missing, present.Status);
     }

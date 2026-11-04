@@ -86,7 +86,7 @@ internal sealed class PreferenceTraitWords
     public string RequiredUnknown(string traitId)
     {
         var name = Phrase(traitId, out var wantMatch, required: true);
-        return $"We cannot tell whether it matches {name}, which this profile {(wantMatch ? "requires" : "never takes")}.";
+        return $"Deluno cannot tell whether it matches {name}, which this profile {(wantMatch ? "requires" : "never takes")}.";
     }
 
     /// <summary>A forbidden trait that is proven present.</summary>
@@ -100,7 +100,7 @@ internal sealed class PreferenceTraitWords
     public string ForbiddenUnknown(string traitId)
     {
         var name = Phrase(traitId, out var wantMatch, required: false);
-        return $"We cannot tell whether it matches {name}, which this profile {(wantMatch ? "requires" : "never takes")}.";
+        return $"Deluno cannot tell whether it matches {name}, which this profile {(wantMatch ? "requires" : "never takes")}.";
     }
 
     public string GroupList(IEnumerable<string> traitIds)
@@ -119,5 +119,5 @@ internal sealed class PreferenceTraitWords
         => $"The evidence conflicts on whether it matches any of {GroupList(traitIds)}, and this profile needs at least one.";
 
     public string GroupIncomplete(IEnumerable<string> traitIds)
-        => $"We cannot yet tell whether it matches any of {GroupList(traitIds)}, and this profile needs at least one.";
+        => $"Deluno cannot yet tell whether it matches any of {GroupList(traitIds)}, and this profile needs at least one.";
 }

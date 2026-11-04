@@ -63,7 +63,7 @@ public sealed class ReleasePreferenceTraitWordsTests
     {
         var reasons = Reasons(Plan(forbidden: [Matched]), Fact(Matched, PreferenceFactState.Unknown));
 
-        Assert.Contains("We cannot tell whether it matches your custom format \"x265 (no HDR)\", which this profile never takes.", reasons);
+        Assert.Contains("Deluno cannot tell whether it matches your custom format \"x265 (no HDR)\", which this profile never takes.", reasons);
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public sealed class ReleasePreferenceTraitWordsTests
     {
         var reasons = Reasons(Plan(required: [Matched]), Fact(Matched, PreferenceFactState.Unknown));
 
-        Assert.Contains("We cannot tell whether it matches your custom format \"x265 (no HDR)\", which this profile requires.", reasons);
+        Assert.Contains("Deluno cannot tell whether it matches your custom format \"x265 (no HDR)\", which this profile requires.", reasons);
     }
 
     [Fact]
@@ -136,7 +136,7 @@ public sealed class ReleasePreferenceTraitWordsTests
             Fact("video.codec.hevc", PreferenceFactState.Unknown),
             Fact("video.codec.av1", PreferenceFactState.Absent));
 
-        Assert.Contains("We cannot yet tell whether it matches any of HEVC, AV1, and this profile needs at least one.", reasons);
+        Assert.Contains("Deluno cannot yet tell whether it matches any of HEVC, AV1, and this profile needs at least one.", reasons);
     }
 
     [Fact]

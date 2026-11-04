@@ -39,10 +39,10 @@ public sealed class TurnedDownReasonsTests
     [InlineData("This release is for something else: its name does not give the title \"Say Yes to the Dress\".", TurnedDownGroups.Fake)]
     [InlineData("This release is from 2012; The Kid is from 1921.", TurnedDownGroups.Fake)]
     // language
-    [InlineData("We cannot tell whether it matches the language English, which this profile requires.", TurnedDownGroups.Language)]
+    [InlineData("Deluno cannot tell whether it matches the language English, which this profile requires.", TurnedDownGroups.Language)]
     [InlineData("It does not match the language English, which this profile requires.", TurnedDownGroups.Language)]
     [InlineData("It matches the language Dubbed, which this profile never takes.", TurnedDownGroups.Language)]
-    [InlineData("We cannot yet tell whether it matches any of the language English, the language Original, and this profile needs at least one.", TurnedDownGroups.Language)]
+    [InlineData("Deluno cannot yet tell whether it matches any of the language English, the language Original, and this profile needs at least one.", TurnedDownGroups.Language)]
     [InlineData("It matches none of the language English, and this profile needs at least one.", TurnedDownGroups.Language)]
     // a custom format or built-in trait the profile rules on
     [InlineData("It matches your custom format \"x265 (no HDR)\", which this profile never takes.", TurnedDownGroups.Rules)]
