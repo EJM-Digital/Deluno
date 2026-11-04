@@ -33,7 +33,8 @@ export function useSystemOverview(): SystemOverview | null {
     queryFn: async (): Promise<SystemOverview | null> => {
       try {
         const overview = await fetchJson<SystemOverview>("/api/system/overview");
-        return overview && typeof overview === "object" && overview.instance ? overview : null;
+        // An empty or non-object answer has no `instance` (or throws on null), and the catch below turns both into null.
+        return overview.instance ? overview : null;
       } catch {
         return null;
       }

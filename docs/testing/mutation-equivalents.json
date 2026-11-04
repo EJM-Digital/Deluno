@@ -753,6 +753,30 @@
       "line": 54,
       "replacement": "\"\"",
       "reason": "The sort key of a running search with no next time: an empty key parses to NaN, which a sort comparator treats as equal, and a running search never has to move past a timed one that follows it, so the order comes out the same."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/system/data.ts",
+      "mutator": "ArrayDeclaration",
+      "line": 46,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list that is constant either way: the callback uses only the query client and a constant key, so an empty list and a list of one fixed string both keep one callback for the life of the hook."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/system/data.ts",
+      "mutator": "ArrayDeclaration",
+      "line": 82,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list that is constant either way: the callback uses only the query client and a constant key, so an empty list and a list of one fixed string both keep one callback for the life of the hook."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/system/data.ts",
+      "mutator": "ArrayDeclaration",
+      "line": 103,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list that is constant either way: the callback uses only the query client and a constant key, so an empty list and a list of one fixed string both keep one callback for the life of the hook."
     }
   ]
 }
