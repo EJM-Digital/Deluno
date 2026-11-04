@@ -331,6 +331,45 @@ public sealed class FolderChainTests
     private static JsonElement Link(JsonElement report, string step)
         => report.GetProperty("clients")[0].GetProperty("links").EnumerateArray().First(link => link.GetProperty("step").GetString() == step);
 
+    [Fact]
+    public async Task A_library_that_does_not_exist_has_no_folder_chain()
+    {
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => Use(services, new FakeClient()));
+
+        var response = await app.Client.GetAsync("/api/libraries/no-such-library/folder-chain");
+
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_client_whose_kind_Deluno_cannot_read_is_said_to_be_unreadable_instead_of_checked()
+    {
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services =>
+        {
+            services.RemoveAll<IDownloadClientRegistry>();
+            services.AddSingleton<IDownloadClientRegistry>(new UnknownKindsRegistry());
+        });
+        var scene = await SceneAsync(app, processor: false);
+
+        var report = await ChainAsync(app, scene.LibraryId);
+
+        var category = report.GetProperty("clients")[0].GetProperty("links")[0];
+        Assert.Equal("category", category.GetProperty("step").GetString());
+        Assert.Equal("unknown", category.GetProperty("status").GetString());
+        Assert.Equal("Deluno cannot read qbittorrent settings.", category.GetProperty("message").GetString());
+    }
+
+    private sealed class UnknownKindsRegistry : IDownloadClientRegistry
+    {
+        public IReadOnlyCollection<string> KnownProtocols => [];
+
+        public bool TryGet(string? protocol, out IDownloadClient found)
+        {
+            found = null!;
+            return false;
+        }
+    }
+
     private static async Task<JsonElement> ChainAsync(ApplicationTestHost app, string libraryId)
     {
         var response = await app.Client.GetAsync($"/api/libraries/{libraryId}/folder-chain");
