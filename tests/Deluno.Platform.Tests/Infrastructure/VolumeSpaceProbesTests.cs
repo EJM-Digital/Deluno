@@ -14,7 +14,7 @@ public sealed class VolumeSpaceProbesTests
             windows,
             fullPath ?? (path => path),
             exists ?? (_ => true),
-            drive ?? (_ => new VolumeSpace.DriveFacts(true, 1000, 400, "ext4")),
+            drive ?? (_ => new VolumeSpace.DriveFacts(1000, 400, "ext4")),
             share ?? (_ => null));
 
     private static string Slashed(string path) => path.Replace((char)92, '/');
@@ -51,7 +51,7 @@ public sealed class VolumeSpaceProbesTests
             System(exists: path => Slashed(path) == "/films", drive: path =>
             {
                 asked.Add(path);
-                return new VolumeSpace.DriveFacts(true, 10, 5, "xfs");
+                return new VolumeSpace.DriveFacts(10, 5, "xfs");
             }));
 
         Assert.Equal(["/films"], asked.Select(Slashed));
@@ -63,11 +63,10 @@ public sealed class VolumeSpaceProbesTests
         => Assert.Null(VolumeSpace.TryRead("/films/new", System(exists: _ => false)));
 
     [Theory]
-    [InlineData(false, 100)]
-    [InlineData(true, 0)]
-    [InlineData(true, -5)]
-    public void A_drive_that_is_not_ready_or_has_no_size_has_no_reading(bool ready, long total)
-        => Assert.Null(VolumeSpace.TryRead("/films", System(drive: _ => new VolumeSpace.DriveFacts(ready, total, 1, "ext4"))));
+    [InlineData(0)]
+    [InlineData(-5)]
+    public void A_drive_with_no_size_has_no_reading(long total)
+        => Assert.Null(VolumeSpace.TryRead("/films", System(drive: _ => new VolumeSpace.DriveFacts(total, 1, "ext4"))));
 
     [Theory]
     [InlineData(typeof(ArgumentException))]
@@ -152,6 +151,6 @@ public sealed class VolumeSpaceProbesTests
     {
         Assert.NotNull(VolumeSpace.TryRead(Path.GetTempPath()));
         Assert.NotNull(VolumeSpace.TryRead(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "not-yet")));
-        Assert.True(VolumeSpace.VolumeProbes.ThisSystem.DriveOf(Path.GetTempPath()).IsReady);
+        Assert.True(VolumeSpace.VolumeProbes.ThisSystem.DriveOf(Path.GetTempPath()).TotalSize > 0);
     }
 }

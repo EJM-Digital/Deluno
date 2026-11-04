@@ -35,7 +35,7 @@ public static class VolumeSpace
     }
 
     /// <summary>What a drive says about itself.</summary>
-    public sealed record DriveFacts(bool IsReady, long TotalSize, long AvailableFreeSpace, string DriveFormat);
+    public sealed record DriveFacts(long TotalSize, long AvailableFreeSpace, string DriveFormat);
 
     /// <summary>Every question TryRead asks the system, so each can be answered by a test on any system.</summary>
     public sealed record VolumeProbes(
@@ -52,9 +52,8 @@ public static class VolumeSpace
             probe =>
             {
                 var drive = new DriveInfo(probe);
-                return drive.IsReady
-                    ? new DriveFacts(true, drive.TotalSize, drive.AvailableFreeSpace, drive.DriveFormat)
-                    : new DriveFacts(false, 0, 0, string.Empty);
+                // A drive that is not ready refuses to say its size, which the catch below turns into no reading.
+                return new DriveFacts(drive.TotalSize, drive.AvailableFreeSpace, drive.DriveFormat);
             },
             WindowsDiskFreeSpace.TryRead);
     }
@@ -88,7 +87,7 @@ public static class VolumeSpace
             }
 
             var drive = system.DriveOf(probe);
-            if (!drive.IsReady || drive.TotalSize <= 0)
+            if (drive.TotalSize <= 0)
             {
                 return null;
             }
@@ -97,7 +96,7 @@ public static class VolumeSpace
             // drive, so two folders share one only when the drive says the same
             // thing about itself.
             var key = system.IsWindows
-                ? (Path.GetPathRoot(probe) ?? probe).ToUpperInvariant()
+                ? Path.GetPathRoot(probe)!.ToUpperInvariant()
                 : $"{drive.DriveFormat}:{drive.TotalSize}";
             return new VolumeSpaceReading(key, drive.AvailableFreeSpace, drive.TotalSize);
         }
