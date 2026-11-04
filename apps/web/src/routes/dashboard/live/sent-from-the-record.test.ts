@@ -172,3 +172,50 @@ describe("when a sent record counts as just sent (#1460)", () => {
     expect(grabbed({ grabAttemptedUtc: "not a date", createdUtc: iso(-1_000) })).toBe(0);
   });
 });
+
+describe("a download the check refused and removed is on no lane (#1467)", () => {
+  const handoff = (change: Record<string, unknown> = {}) => ({ id: "h1", libraryId: "l", mediaType: "movies", clientId: "qb", queueItemId: "abc123", releaseName: RELEASE, sourcePath: "", processorName: "Weir", status: "waiting", outputPath: null, importJobId: null, failureMessage: null, createdUtc: iso(-20_000), updatedUtc: iso(-5_000), ...change }) as never;
+  const ends = [
+    { importStatus: "failed", importFailureCode: "download-integrity-failed", importFailureMessage: "It was not what it claimed to be." },
+    { importFailureCode: "download-integrity-failed", importFailureMessage: "It was not what it claimed to be." },
+    { status: "removed" },
+    { status: "archived" },
+    { status: "vanished" },
+    { grabStatus: "refused" },
+    { importFailureCode: "handed-over-elsewhere" },
+    { importFailureMessage: "The download check found a file that would not open." }
+  ];
+  const lanes = (cards: ReturnType<typeof buildJourney>) => cards.map((card) => `${card.stage}:${card.state.label}`);
+
+  it("after the hand-off is recorded: the client no longer lists it, the hand-off still waits", () => {
+    expect(lanes(buildJourney({ ...base, dispatches: [dispatch()], handoffs: [handoff()] }))).toEqual(["processor:Waiting for the processor"]);
+    for (const change of ends) {
+      const cards = buildJourney({ ...base, dispatches: [dispatch(change)], handoffs: [handoff()] });
+      expect(lanes(cards), JSON.stringify(change)).toEqual([]);
+    }
+  });
+
+  it("while the client still lists it, in each state the hand-off can be in", () => {
+    for (const status of ["waitingForProcessor", "queued", "downloading", "processing"]) {
+      for (const change of ends) {
+        for (const handoffs of [[], [handoff()]]) {
+          const cards = buildJourney({ ...base, dispatches: [dispatch(change)], handoffs, queue: [queue({ status, progress: 100 })] });
+          expect(lanes(cards), `${status} ${JSON.stringify(change)} ${handoffs.length}`).toEqual([]);
+        }
+      }
+    }
+  });
+
+  it("before the hand-off is recorded: the client's card is gone, nothing is left", () => {
+    for (const change of ends) {
+      expect(buildJourney({ ...base, dispatches: [dispatch(change)] }), JSON.stringify(change)).toEqual([]);
+    }
+  });
+
+  it("looks next door: no other lane keeps a card for it", () => {
+    for (const change of ends) {
+      const everything = buildJourney({ ...base, dispatches: [dispatch(change)], handoffs: [handoff({ status: "started" })], queue: [queue({ status: "downloading", progress: 40 })] });
+      expect(lanes(everything), JSON.stringify(change)).toEqual([]);
+    }
+  });
+});

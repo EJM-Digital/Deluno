@@ -731,6 +731,46 @@
       "reason": "The title given to a drawer that has no job. The drawer is shut then and draws neither its title nor its description, so no test can see it."
     },
     {
+      "project": "Deluno.Integrations",
+      "file": "src/Deluno.Integrations/DownloadClients/ClientRemovalGuard.cs",
+      "mutator": "Conditional (false) mutation",
+      "line": 253,
+      "replacement": "(false?$\"{target} is still on disk after Deluno tried to delete it.\"\r\n:null)",
+      "reason": "After a delete that raised nothing, the path is still there only if the operating system lets a delete succeed and leave the file or folder in place. No filesystem a test can build does that, so the check that says so cannot be reached; it is the last safety net after a delete, not a guard before one."
+    },
+    {
+      "project": "Deluno.Integrations",
+      "file": "src/Deluno.Integrations/DownloadClients/ClientRemovalGuard.cs",
+      "mutator": "Logical mutation",
+      "line": 253,
+      "replacement": "File.Exists(target) && Directory.Exists(target)",
+      "reason": "After a delete that raised nothing, the path is still there only if the operating system lets a delete succeed and leave the file or folder in place. No filesystem a test can build does that, so the check that says so cannot be reached; it is the last safety net after a delete, not a guard before one."
+    },
+    {
+      "project": "Deluno.Integrations",
+      "file": "src/Deluno.Integrations/DownloadClients/ClientRemovalGuard.cs",
+      "mutator": "String mutation",
+      "line": 254,
+      "replacement": "$\"\"",
+      "reason": "After a delete that raised nothing, the path is still there only if the operating system lets a delete succeed and leave the file or folder in place. No filesystem a test can build does that, so the check that says so cannot be reached; it is the last safety net after a delete, not a guard before one."
+    },
+    {
+      "project": "Deluno.Integrations",
+      "file": "src/Deluno.Integrations/DownloadClients/ClientRemovalGuard.cs",
+      "mutator": "Equality mutation",
+      "line": 259,
+      "replacement": "DateTime.UtcNow > giveUp",
+      "reason": "The give-up time is compared to the clock in ticks; a clock reading exactly equal to it is not something a test can arrange, so greater-than and greater-or-equal answer alike."
+    },
+    {
+      "project": "Deluno.Integrations",
+      "file": "src/Deluno.Integrations/DownloadClients/ClientRemovalGuard.cs",
+      "mutator": "Statement mutation",
+      "line": 264,
+      "replacement": ";",
+      "reason": "The pause between two tries at a file another program holds only paces them; without it the same tries happen faster and end the same way at the same time, so nothing a test can read differs."
+    },
+    {
       "project": "web",
       "file": "apps/web/src/routes/dashboard/live/countdowns.tsx",
       "mutator": "ArrayDeclaration",

@@ -61,8 +61,18 @@ public static class UpdateChannels
 /// <summary>The update facts the tray menu words its update item from.</summary>
 public sealed record TrayUpdateSnapshot(bool IsInstalled, string State, string? LatestVersion, bool UpdateAvailable, bool RestartRequired);
 
-public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrator> logger, AppliedUpdateRecorder? appliedUpdates = null) : IUpdateOrchestrator
+public sealed class VelopackUpdateOrchestrator(
+    ILogger<VelopackUpdateOrchestrator> logger,
+    AppliedUpdateRecorder? appliedUpdates = null,
+    Deluno.Contracts.IRealtimeEventPublisher? realtime = null,
+    TimeProvider? clock = null) : IUpdateOrchestrator
 {
+    /// <summary>The state behind the status; tests drive the steps a real download would.</summary>
+    internal UpdateStateMachine Runtime => _runtime;
+
+    /// <summary>One download step: records the percent and tells the open page, at most about once a second.</summary>
+    internal void ReportDownloadProgress(int percent) => _pusher.ReportProgress(percent);
+
     private IReadOnlyList<AppliedUpdateEntry> _applied = [];
 
     /// <summary>Records an update that was just applied (once) and keeps the list the Updates card shows (#1376).</summary>
@@ -76,7 +86,8 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
 
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly string _currentVersion = Deluno.Api.DelunoVersion.Running;
-    private readonly UpdateStateMachine _runtime = new();
+    private readonly UpdateStatusPusher _pusher = new(realtime, clock ?? TimeProvider.System);
+    private UpdateStateMachine _runtime => _pusher.State;
     private UpdateManager? _manager;
     private string _managerKey = string.Empty;
     private UpdateInfo? _availableUpdate;
@@ -466,10 +477,7 @@ public sealed class VelopackUpdateOrchestrator(ILogger<VelopackUpdateOrchestrato
 
         _runtime.MarkDownloading();
 
-        await manager.DownloadUpdatesAsync(_availableUpdate, progress =>
-        {
-            _runtime.ReportProgress(progress);
-        }, cancellationToken);
+        await manager.DownloadUpdatesAsync(_availableUpdate, ReportDownloadProgress, cancellationToken);
 
         var restartRequired = manager.UpdatePendingRestart is not null || _availableUpdate is not null;
         _runtime.MarkDownloaded(DateTimeOffset.UtcNow, restartRequired);

@@ -338,8 +338,8 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
                 new KeyValuePair<string, string>("hashes", hash),
                 new KeyValuePair<string, string>("category", DownloadClientHelpers.ResolveCategory(client, request))
             };
-            using var response = await http.PostAsync("api/v2/torrents/setCategory", new FormUrlEncodedContent(pairs), cancellationToken);
-            response.EnsureSuccessStatusCode();
+            // A refusal is left alone below, so only the call itself matters here.
+            (await http.PostAsync("api/v2/torrents/setCategory", new FormUrlEncodedContent(pairs), cancellationToken)).Dispose();
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
         {
@@ -361,8 +361,8 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
                 new KeyValuePair<string, string>("hashes", hash),
                 new KeyValuePair<string, string>("enable", "true")
             };
-            using var response = await http.PostAsync("api/v2/torrents/setAutoManagement", new FormUrlEncodedContent(pairs), cancellationToken);
-            response.EnsureSuccessStatusCode();
+            // A refusal is left alone below, so only the call itself matters here.
+            (await http.PostAsync("api/v2/torrents/setAutoManagement", new FormUrlEncodedContent(pairs), cancellationToken)).Dispose();
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
         {
@@ -386,8 +386,8 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
                 new KeyValuePair<string, string>("hashes", hash),
                 new KeyValuePair<string, string>("location", client.Location!)
             };
-            using var response = await http.PostAsync("api/v2/torrents/setLocation", new FormUrlEncodedContent(pairs), cancellationToken);
-            response.EnsureSuccessStatusCode();
+            // A refusal is left alone below, so only the call itself matters here.
+            (await http.PostAsync("api/v2/torrents/setLocation", new FormUrlEncodedContent(pairs), cancellationToken)).Dispose();
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
         {
@@ -417,8 +417,8 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
                 // reached; an older qBittorrent ignores a field it does not know.
                 new KeyValuePair<string, string>("shareLimitAction", "Default")
             };
-            using var response = await http.PostAsync("api/v2/torrents/setShareLimits", new FormUrlEncodedContent(pairs), cancellationToken);
-            response.EnsureSuccessStatusCode();
+            // A refusal is left alone below, so only the call itself matters here.
+            (await http.PostAsync("api/v2/torrents/setShareLimits", new FormUrlEncodedContent(pairs), cancellationToken)).Dispose();
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
         {

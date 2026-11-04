@@ -289,14 +289,15 @@ internal static class DownloadFolderRemoval
 
         var parentTrimmed = parent.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var parentName = Path.GetFileName(parentTrimmed);
-        var grandparent = Path.GetDirectoryName(parentTrimmed);
-        if (string.IsNullOrEmpty(parentName) || string.IsNullOrEmpty(grandparent))
+        if (string.IsNullOrEmpty(parentName))
         {
             return null;
         }
 
-        // The completed area itself sits at least one level below a root, so the job folder has two parents' worth of path.
-        if (string.IsNullOrEmpty(Path.GetDirectoryName(grandparent.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))))
+        // The completed area itself sits at least one level below a root, so the job folder has two parents' worth of path
+        // (a parent with no folder above it has none).
+        var grandparent = Path.GetDirectoryName(parentTrimmed);
+        if (string.IsNullOrEmpty(Path.GetDirectoryName(grandparent?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))))
         {
             return null;
         }

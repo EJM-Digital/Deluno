@@ -237,6 +237,14 @@ export function destinationOf(entity: JourneyCard["entity"], mediaType: string |
 /** What a card in Importing says while its import is actually running (a finished download waiting its turn says "Downloaded"). */
 export const IMPORTING_NOW = "Importing now";
 
+/**
+ * The send is over: imported, refused, removed, contained or failed at the import (#1467). Nothing is waiting or in
+ * progress for it, so no lane may draw it, whatever the client or the hand-off still list.
+ */
+function dispatchClosed(dispatch: DownloadDispatchItem | null | undefined): boolean {
+  return dispatchImportEnded(dispatch) || (dispatch != null && (dispatchStanding(dispatch)?.status === "done" || Boolean(dispatch.importFailureCode || dispatch.importFailureMessage)));
+}
+
 /** Every card on the Live board, grouped by the caller with `byStage`. */
 export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapturedUtc, work = [] }: JourneyInput): JourneyCard[] {
   const cards: JourneyCard[] = [];
@@ -275,7 +283,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
     // while the client keeps seeding it. For a moment after the import finishes the card stays, full and green.
     const importedAt = Date.parse(dispatch?.importCompletedUtc ?? "");
     const landed = Number.isFinite(importedAt) && now - importedAt >= 0 && now - importedAt < LANDED_MS;
-    if (dispatchImportEnded(dispatch) && !landed) {
+    if (dispatchClosed(dispatch) && !landed) {
       // Its import has ended (in the library, or refused): the hand-off that brought it back must not draw it again.
       endedReleases.add(releaseKey(item.releaseName));
       continue;
@@ -380,7 +388,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
   for (const handoff of handoffs) {
     if (handoff.status.toLowerCase() === "dismissed" || seenReleases.has(releaseKey(handoff.releaseName))) continue;
     const dispatch = dispatchByRelease.get(releaseKey(handoff.releaseName));
-    if (dispatchImportEnded(dispatch) || endedReleases.has(releaseKey(handoff.releaseName)) || endedQueueItems.has(handoff.queueItemId) || ["imported", "not-imported"].includes(handoff.outcome?.outcome ?? "")) continue;
+    if (dispatchClosed(dispatch) || endedReleases.has(releaseKey(handoff.releaseName)) || endedQueueItems.has(handoff.queueItemId) || handoff.outcome?.outcome === "imported" || handoff.outcome?.outcome === "not-imported") continue;
     const updated = Date.parse(handoff.updatedUtc);
     const recent = Number.isFinite(updated) && now - updated < 6 * 3_600_000;
     let stage: Stage | null = null;
@@ -417,7 +425,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
   // A release Deluno has just sent, before the client lists it (#1442): the title goes straight from Searching to Grabbed
   // from the sent-download record, and becomes the client's card (same key) once the client lists it. Never a gap, never two.
   for (const dispatch of dispatches) {
-    if (!isJustSent(dispatch, now) || dispatchImportEnded(dispatch)) continue;
+    if (!isJustSent(dispatch, now) || dispatchClosed(dispatch)) continue;
     const release = releaseKey(dispatch.releaseName);
     if (seenReleases.has(release) || endedReleases.has(release)) continue;
     if (dispatchByRelease.get(release) !== dispatch) continue;
