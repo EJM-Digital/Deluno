@@ -459,6 +459,8 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
     if (!item.release || seenReleases.has(releaseKey(item.release))) continue;
     seenReleases.add(releaseKey(item.release));
     const dispatch = dispatchByRelease.get(releaseKey(item.release));
+    // A send that is over is not being sent or imported, whatever a start without its end still says (#1467).
+    if (dispatchClosed(dispatch)) continue;
     const entity = entityOf(dispatch);
     cards.push({
       key: `work:${item.key}`,

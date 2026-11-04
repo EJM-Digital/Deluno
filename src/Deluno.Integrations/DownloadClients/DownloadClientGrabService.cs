@@ -133,14 +133,19 @@ public sealed class DownloadClientGrabService(
         try
         {
             DownloadClientGrabResult grabResult;
+            // The key the Dashboard follows this send by, from its attempt to its end (#1467): the dispatch record's id when
+            // there is one, otherwise one of its own. The search paths write the record after the grab, and a shared
+            // "unknown" that never ended left "Sending to qBittorrent" on the board for ten minutes.
+            string? announcedAs = null;
             if (prepared.Failure is { } notSent)
             {
                 grabResult = notSent;
             }
             else
             {
+                announcedAs = string.IsNullOrWhiteSpace(request.DispatchId) ? $"grab-{Guid.NewGuid():N}" : request.DispatchId;
                 await realtimeEventPublisher.PublishDispatchGrabAttemptAsync(
-                    request.DispatchId ?? "unknown",
+                    announcedAs,
                     request.ReleaseName,
                     client.Id,
                     client.Name,
@@ -166,7 +171,7 @@ public sealed class DownloadClientGrabService(
                 if (result.CircuitOpen)
                 {
                     await realtimeEventPublisher.PublishDispatchGrabCompletedAsync(
-                        request.DispatchId ?? "unknown",
+                        announcedAs,
                         request.ReleaseName,
                         client.Id,
                         false,
@@ -232,9 +237,12 @@ public sealed class DownloadClientGrabService(
 
                 // The dispatch row is Deluno's record now; the reservation is spent.
                 await ReleaseReservationAsync(reservationId, cancellationToken);
+            }
 
+            if (announcedAs is not null)
+            {
                 await realtimeEventPublisher.PublishDispatchGrabCompletedAsync(
-                    request.DispatchId,
+                    announcedAs,
                     request.ReleaseName,
                     client.Id,
                     grabResult.Succeeded,

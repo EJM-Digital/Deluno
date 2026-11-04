@@ -242,6 +242,13 @@ describe("an open Dashboard keeps a refused download's record when the server sa
     expect(cards).toEqual([]);
   });
 
+  it("a grab whose start was heard but not its end draws no Sending card once the send is closed (golden VM, c10a3505a)", () => {
+    const work = [{ key: "grab:grab-1", kind: "grab", text: `Sending ${RELEASE} to qBittorrent`, release: RELEASE, client: "qBittorrent", to: "/queue" }] as never;
+    expect(buildJourney({ ...base, dispatches: [dispatch(refused)], work })).toEqual([]);
+    // While the send is open the start still shows, so a grab in flight is not hidden.
+    expect(buildJourney({ ...base, dispatches: [], work }).map((card) => card.state.label)).toEqual(["Sending to qBittorrent"]);
+  });
+
   it("an archived event for a row the board does not hold changes nothing", () => {
     const qc = new QueryClient();
     qc.setQueryData(liveSources.boardDispatches.key, [dispatch({ id: "other" })]);
