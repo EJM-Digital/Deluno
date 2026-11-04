@@ -1062,3 +1062,92 @@ function Invoke-UninstallKeepsBundledApps {
         Add-Check 'Their programs are still running' ($apps.Count -ge 1) (($apps | ForEach-Object { $_.ProcessName }) -join ', ')
     }
 }
+
+# A screenshot of the page, saved with the scenario's evidence.
+function Save-PageShot {
+    param($Page, [Parameter(Mandatory)] [string] $Name)
+    $r = Send-Cdp -Page $Page -Method 'Page.captureScreenshot' -Params @{ format = 'png' }
+    $dir = Join-Path $script:S.Root 'resultsevidence'
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    [IO.File]::WriteAllBytes((Join-Path $dir $Name), [Convert]::FromBase64String($r.data))
+}
+
+function Get-UpdatesStatusCard {
+    param($Page)
+    $t = (Get-PageText -Page $Page) -replace '\s+', ' '
+    if ($t -match 'How this works (.*?) Update behaviour') { $Matches[1] } else { $t }
+}
+
+function Invoke-UpdateUpdatesPageFollows {
+    param([Parameter(Mandatory)] [string] $CandidateVersion)
+    Invoke-Scenario -Id 'update.updates-page-follows' -Title 'The Updates page (System > Updates) says each step of an update in words and follows it without a reload: a check that cannot reach the feed, a check that finds the candidate, the download under way and the finished download' -Body {
+        Assert-UpdateFeedFiles | Out-Null
+        $ctx = Start-PreviousForUpdate -CandidateVersion $CandidateVersion
+        if (-not $ctx) { return }
+        $feed = $null
+        Start-Edge
+        $page = New-CdpPage 'about:blank'
+        try {
+            Set-UpdateSourceToFeed | Out-Null
+            Send-Cdp -Page $page -Method 'Emulation.setDeviceMetricsOverride' -Params @{ width = 1366; height = 900; deviceScaleFactor = 1; mobile = $false } | Out-Null
+            Open-DelunoPage -Page $page -Path '/system/updates' -Login $script:S.Login
+            $shown = Wait-Until -TimeoutSec 60 -IntervalSec 1 -Condition { if ((Get-PageText -Page $page) -match 'Check now') { $true } else { $null } }
+            Add-Check 'The Updates page opens with its Check now button' $shown.Ok ''
+            if (-not $shown.Ok) { return }
+            # A marker that a reload would wipe: the page is never reloaded from here on.
+            Invoke-CdpEval -Page $page -Script 'window.__noReload = "still-here-" + Date.now(); 1' | Out-Null
+            $marker = [string](Invoke-CdpEval -Page $page -Script 'window.__noReload')
+            Save-Evidence -Name 'updates-page-0-opened.txt' -Text (Get-UpdatesStatusCard -Page $page)
+            $log = New-Object System.Collections.ArrayList
+            $t0 = Get-Date
+            $note = { param($what) $c = Get-UpdatesStatusCard -Page $page; [void]$log.Add(("+{0:N1}s {1}: {2}" -f ((Get-Date) - $t0).TotalSeconds, $what, $c)) }
+
+            # 1. The feed is down and Check now is pressed: the page says in words that it could not check.
+            Click-PageText -Page $page -Pattern '^Check now$' -TimeoutSec 15 | Out-Null
+            $sawDown = Wait-Until -TimeoutSec 90 -IntervalSec 1 -Condition { $c = Get-UpdatesStatusCard -Page $page; if ($c -match "Couldn't check for updates|could not|Could not|couldn't") { $c } else { $null } }
+            & $note 'feed down, after Check now'
+            Add-Check 'Pressing Check now with the feed down says in words that the check could not be made' $sawDown.Ok $(if ($sawDown.Ok) { $sawDown.Value } else { (Get-UpdatesStatusCard -Page $page) })
+
+            # 2. The feed comes up; the check is made from outside (the API, not this page): does the open page follow by itself?
+            $feed = Start-UpdateFeed -Folder (Get-UpdateFeedFolder) -ThrottleMs 250
+            $api = Try-Deluno -Method POST -Path '/api/updates/check' -TimeoutSec 120
+            $followed = Wait-Until -TimeoutSec 60 -IntervalSec 1 -Condition { $c = Get-UpdatesStatusCard -Page $page; if ($c -match [regex]::Escape($CandidateVersion)) { $c } else { $null } }
+            & $note 'check made from outside'
+            # Recorded, not asserted: whether the open page follows a check made elsewhere is a finding for the owner, not a rule the page has stated.
+            Add-Note $(if ($followed.Ok) { 'A check made elsewhere showed on the open page by itself.' } else { 'A check made elsewhere (the API) did NOT show on the open page within 60 s; the page still read: ' + (Get-UpdatesStatusCard -Page $page) })
+            if (-not $followed.Ok) {
+                Click-PageText -Page $page -Pattern '^Check now$' -TimeoutSec 15 | Out-Null
+                $found = Wait-Until -TimeoutSec 120 -IntervalSec 1 -Condition { $c = Get-UpdatesStatusCard -Page $page; if ($c -match [regex]::Escape($CandidateVersion)) { $c } else { $null } }
+                & $note 'after pressing Check now'
+                Add-Check 'Check now finds the candidate and the page names its version' $found.Ok ''
+            }
+
+            # 3. Download: the status card is sampled every 300 ms and each new wording is kept with its time.
+            Click-PageText -Page $page -Pattern '^Download update$' -TimeoutSec 15 | Out-Null
+            $pressedAt = Get-Date
+            $words = New-Object System.Collections.ArrayList
+            $deadline = (Get-Date).AddSeconds(240)
+            $finished = $false
+            while ((Get-Date) -lt $deadline -and -not $finished) {
+                $c = Get-UpdatesStatusCard -Page $page
+                if ($words.Count -eq 0 -or $words[-1].Text -ne $c) { [void]$words.Add([pscustomobject]@{ At = [math]::Round(((Get-Date) - $pressedAt).TotalSeconds, 1); Text = $c }) }
+                if ($c -match 'Update downloaded\. Restart Deluno to apply it\.') { $finished = $true }
+                Start-Sleep -Milliseconds 300 # reason: the open page is read every 300 ms, as a person watching would see it change
+            }
+            Save-Evidence -Name 'updates-page-3-download-sequence.txt' -Text (($words | ForEach-Object { "+{0}s {1}" -f $_.At, $_.Text }) -join "`n")
+            Save-Evidence -Name 'updates-page-log.txt' -Text ($log -join "`n")
+            Add-Check 'The download ends on the open page with "Update downloaded. Restart Deluno to apply it."' $finished ("{0} distinct wordings in {1} s" -f $words.Count, $(if ($words.Count) { $words[-1].At } else { 0 }))
+            Add-Note ('Download wordings on the open page, with the seconds since Download update was pressed: ' + (($words | ForEach-Object { "+{0}s '{1}'" -f $_.At, ($_.Text.Substring(0, [math]::Min(110, $_.Text.Length))) }) -join ' -> '))
+            Add-Check 'The page changed from the download being asked for to the finished wording by itself (a changed card, no reload)' ($words.Count -ge 2) "$($words.Count) distinct wordings"
+            $restartButton = [bool](Invoke-CdpEval -Page $page -Script '[].slice.call(document.querySelectorAll("button")).some(function(b){return /Restart and apply/.test(b.innerText) && !b.disabled;})')
+            Add-Check 'Restart and apply is offered once the download is ready' $restartButton ''
+            Save-PageShot -Page $page -Name 'updates-page-after-download.png'
+            $after = [string](Invoke-CdpEval -Page $page -Script 'window.__noReload')
+            Add-Check 'The page was never reloaded through all of it (its marker is still there)' ($after -eq $marker -and $marker -ne '') "marker '$marker' / '$after'"
+        }
+        finally {
+            Close-CdpPage -Page $page
+            if ($feed) { Stop-UpdateFeed $feed }
+        }
+    }
+}

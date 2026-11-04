@@ -21,6 +21,7 @@ $here = $PSScriptRoot
 . (Join-Path $here 'Initialize-Environment.ps1')
 . (Join-Path $here 'Update.Lib.ps1')
 . (Join-Path $here 'UpdatePaths.Lib.ps1')
+. (Join-Path $here 'Cdp.Lib.ps1')
 . (Join-Path $here 'scenarios\G24-PlatformExtras.ps1')
 . (Join-Path $here 'scenarios\G22-TrayPlatform.ps1')
 . (Join-Path $here 'scenarios\G26-OtherApps.ps1')
@@ -54,7 +55,8 @@ try {
         'update.locked-install-folder' { Invoke-UpdateLockedInstallFolder -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
         'update.background-check-repeats' { Invoke-UpdateBackgroundCheckRepeats -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
         'uninstall.keeps-bundled-apps' { Invoke-UninstallKeepsBundledApps -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
-        'picker.usenet-login-and-subset' { Invoke-PickerUsenetLoginAndSubset -CandidateVersion $CandidateVersion }
+        'picker.usenet-login-and-subset' { Invoke-PickerUsenetLoginAndSubset -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
+        'update.updates-page-follows' { Invoke-UpdateUpdatesPageFollows -CandidateVersion $CandidateVersion }
         'update.tray-menu' { Invoke-UpdateTrayMenu -CandidateVersion $CandidateVersion }
         default { throw "Unknown update scenario '$Scenario'." }
     }
