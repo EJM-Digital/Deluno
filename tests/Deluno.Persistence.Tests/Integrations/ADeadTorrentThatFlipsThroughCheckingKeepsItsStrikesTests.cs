@@ -8,6 +8,7 @@ using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Recovery.Policies;
 using Deluno.Tests.Recorded;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Deluno.Persistence.Tests.Integrations;
@@ -253,6 +254,53 @@ public sealed class ADeadTorrentThatFlipsThroughCheckingKeepsItsStrikesTests
         Assert.Equal(kept, (await repository.ListDownloadHealthRecordsAsync(10, CancellationToken.None)).Count == 1);
     }
 
+    private sealed class Lines : ILogger<SqliteDownloadHealthRepository>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Messages.Add(formatter(state, exception));
+    }
+
+    [Fact]
+    public async Task The_log_says_each_strike_each_pause_each_restart_and_each_way_a_record_ends()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(Start);
+        var lines = new Lines();
+        var repository = await RepositoryAsync(storage, time, lines);
+        var torrent = RecordedTorrent("stalled");
+        var rules = new[] { NoProgressRule() };
+
+        await ReadAsync(repository, time, torrent, "stalled", rules);
+        time.Advance(Step);
+        await ReadAsync(repository, time, torrent, "stalled", rules);
+        time.Advance(Step);
+        await ReadAsync(repository, time, torrent, DownloadQueueStatuses.NotTransferring, rules);
+        Assert.Contains(lines.Messages, line => line.Contains("strike 1 of 3 added", StringComparison.Ordinal));
+        Assert.Contains(lines.Messages, line => line.Contains("strike 2 of 3 added", StringComparison.Ordinal));
+        Assert.Contains(lines.Messages, line => line.Contains("is paused at 2 strike(s)", StringComparison.Ordinal));
+
+        // Paused for longer than the 24 hour window, the spell starts again.
+        time.Advance(TimeSpan.FromHours(25));
+        await ReadAsync(repository, time, torrent, "stalled", rules);
+        Assert.Contains(lines.Messages, line => line.Contains("starts again", StringComparison.Ordinal));
+
+        // The client still lists it but the finding no longer applies, then it leaves the client.
+        time.Advance(Step);
+        await RecordAsync(repository, torrent, "downloading", []);
+        Assert.Contains(lines.Messages, line => line.Contains("the client lists it and the finding no longer applies", StringComparison.Ordinal));
+        await ReadAsync(repository, time, torrent, "stalled", rules);
+        time.Advance(Step);
+        await repository.RecordDownloadHealthObservationsAsync(
+            ClientId, [], [], Window, TimeSpan.FromHours(24), CancellationToken.None, everythingTheClientHolds: []);
+        Assert.Contains(lines.Messages, line => line.Contains("the download left the client", StringComparison.Ordinal));
+    }
+
     private static async Task ReadAsync(
         SqliteDownloadHealthRepository repository, FixedTimeProvider time, Torrent torrent, string status, DownloadHealthRule[] rules,
         IReadOnlyCollection<string>? held = null)
@@ -286,11 +334,11 @@ public sealed class ADeadTorrentThatFlipsThroughCheckingKeepsItsStrikesTests
             row["downloaded"]!.GetValue<long>(), row["size"]!.GetValue<long>());
     }
 
-    private static async Task<SqliteDownloadHealthRepository> RepositoryAsync(TestStorage storage, FixedTimeProvider time)
+    private static async Task<SqliteDownloadHealthRepository> RepositoryAsync(TestStorage storage, FixedTimeProvider time, ILogger<SqliteDownloadHealthRepository>? logger = null)
     {
         var migrator = new SqliteDatabaseMigrator(storage.Factory, time);
         await new PlatformSchemaInitializer(storage.Factory, migrator, NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
-        return new SqliteDownloadHealthRepository(storage.Factory, time);
+        return new SqliteDownloadHealthRepository(storage.Factory, time, logger: logger ?? NullLogger<SqliteDownloadHealthRepository>.Instance);
     }
 
     private static DownloadHealthRule NoProgressRule()
