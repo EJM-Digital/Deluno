@@ -56,23 +56,21 @@ public sealed class LibraryFolderChainHealthCheck(
             return HealthCheckOutcome.Ok(id, HealthCheckCategories.Library, name, "Every routed client's category and save path match this library's folders.");
         }
 
+        // Not every link is Ok, so there is at least one that is not.
         var problems = report.Clients
-            .SelectMany(client => client.Links.Select(link => (ClientName: client.ClientName, link)))
-            .Concat(report.LibraryLinks.Select(link => (ClientName: string.Empty, link)))
-            .Where(item => item.link.Status != FolderChainStatuses.Ok)
+            .SelectMany(client => client.Links)
+            .Concat(report.LibraryLinks)
+            .Where(link => link.Status != FolderChainStatuses.Ok)
             .ToArray();
 
-        var worst = problems.FirstOrDefault(item => item.link.Status == FolderChainStatuses.Problem, problems.FirstOrDefault());
-        var message = worst.link is null
-            ? "One or more links in this library's folder chain could not be confirmed."
-            : worst.link.Message;
+        var worst = problems.FirstOrDefault(link => link.Status == FolderChainStatuses.Problem, problems[0]);
 
-        return worst.link is { Status: FolderChainStatuses.Problem }
+        return worst.Status == FolderChainStatuses.Problem
             ? HealthCheckOutcome.Problem(
-                id, HealthCheckCategories.Library, name, message,
+                id, HealthCheckCategories.Library, name, worst.Message,
                 cause: $"A download client's category or save path no longer matches what the {report.LibraryName} library expects.",
                 fix: $"Open the {report.LibraryName} library's folder chain and fix the category or path it names.")
-            : HealthCheckOutcome.Unknown(id, HealthCheckCategories.Library, name, message);
+            : HealthCheckOutcome.Unknown(id, HealthCheckCategories.Library, name, worst.Message);
     }
 
     /// <summary>
@@ -112,14 +110,15 @@ public sealed class LibraryFolderChainHealthCheck(
             sameVolume = null;
         }
 
-        return sameVolume switch
+        if (sameVolume is null)
         {
-            true => HealthCheckOutcome.Ok(id, HealthCheckCategories.Library, name, "Downloads and the library share a volume, so imports can hardlink."),
-            false => HealthCheckOutcome.Unknown(
+            return HealthCheckOutcome.Unknown(id, HealthCheckCategories.Library, name, "Deluno could not tell whether downloads and this library share a volume.");
+        }
+
+        return sameVolume.Value
+            ? HealthCheckOutcome.Ok(id, HealthCheckCategories.Library, name, "Downloads and the library share a volume, so imports can hardlink.")
+            : HealthCheckOutcome.Unknown(
                 id, HealthCheckCategories.Library, name,
-                $"The {report.LibraryName} library's downloads folder and its library root are on different volumes, so Deluno cannot hardlink between them. Every import copies the file instead, using the space twice until the download is cleaned up.",
-                detailsJson: null),
-            null => null
-        } ?? HealthCheckOutcome.Unknown(id, HealthCheckCategories.Library, name, "Deluno could not tell whether downloads and this library share a volume.");
+                $"The {report.LibraryName} library's downloads folder and its library root are on different volumes, so Deluno cannot hardlink between them. Every import copies the file instead, using the space twice until the download is cleaned up.");
     }
 }

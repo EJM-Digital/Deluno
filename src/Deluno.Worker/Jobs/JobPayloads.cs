@@ -133,73 +133,26 @@ internal static class JobPayloads
         string? ImdbId,
         IReadOnlyList<CatalogRefreshPendingSearch>? PendingSearches = null);
 
-    internal static LibrarySearchPayload? ParseLibraryPayload(string? payloadJson)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<LibrarySearchPayload>(payloadJson ?? "{}", Options);
-        }
-        catch
-        {
-            return null;
-        }
-    }
+    internal static LibrarySearchPayload? ParseLibraryPayload(string? payloadJson) => Read<LibrarySearchPayload>(payloadJson);
 
-    internal static LibraryQualityPayload? ParseQualityPayload(string? payloadJson)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<LibraryQualityPayload>(payloadJson ?? "{}", Options);
-        }
-        catch
-        {
-            return null;
-        }
-    }
+    internal static LibraryQualityPayload? ParseQualityPayload(string? payloadJson) => Read<LibraryQualityPayload>(payloadJson);
 
-    internal static EpisodeSearchPayload? ParseEpisodeSearchPayload(string? payloadJson)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<EpisodeSearchPayload>(payloadJson ?? "{}", Options);
-        }
-        catch
-        {
-            return null;
-        }
-    }
+    internal static EpisodeSearchPayload? ParseEpisodeSearchPayload(string? payloadJson) => Read<EpisodeSearchPayload>(payloadJson);
 
-    internal static SeasonSearchPayload? ParseSeasonSearchPayload(string? payloadJson)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<SeasonSearchPayload>(payloadJson ?? "{}", Options);
-        }
-        catch
-        {
-            return null;
-        }
-    }
+    internal static SeasonSearchPayload? ParseSeasonSearchPayload(string? payloadJson) => Read<SeasonSearchPayload>(payloadJson);
 
-    internal static CatalogRefreshPayload? ParseCatalogRefreshPayload(string? payloadJson)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<CatalogRefreshPayload>(payloadJson ?? "{}", Options);
-        }
-        catch
-        {
-            return null;
-        }
-    }
+    internal static CatalogRefreshPayload? ParseCatalogRefreshPayload(string? payloadJson) => Read<CatalogRefreshPayload>(payloadJson);
 
-    internal static IntakeSyncPayload? ParseIntakeSyncPayload(string? payloadJson)
+    internal static IntakeSyncPayload? ParseIntakeSyncPayload(string? payloadJson) => Read<IntakeSyncPayload>(payloadJson);
+
+    /// <summary>A payload read as <typeparamref name="T"/>: a missing one reads as an empty object, text that is not JSON as nothing.</summary>
+    private static T? Read<T>(string? payloadJson) where T : class
     {
         try
         {
-            return JsonSerializer.Deserialize<IntakeSyncPayload>(payloadJson ?? "{}", Options);
+            return JsonSerializer.Deserialize<T>(payloadJson ?? "{}", Options);
         }
-        catch
+        catch (JsonException)
         {
             return null;
         }

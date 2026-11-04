@@ -3,6 +3,8 @@ using Deluno.Jobs.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Worker.Services;
+using Deluno.Worker.Tests.Support;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -105,6 +107,65 @@ public sealed class HistoryRetentionWorkerPruneTests
 
         activity.Verify(repository => repository.PruneActivityAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Once);
         Assert.True(worker.ExecuteTask is { IsCompleted: true });
+    }
+
+    private static (HistoryRetentionWorker Worker, Mock<IPlatformSettingsRepository> Settings, RecordingLogger<HistoryRetentionWorker> Log, ServiceProvider Provider) Build(
+        Microsoft.Extensions.Time.Testing.FakeTimeProvider clock, int pruned)
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repository => repository.GetAsync(It.IsAny<CancellationToken>())).ReturnsAsync(DefaultSettings(30));
+        var activity = new Mock<IActivityFeedRepository>();
+        activity.Setup(repository => repository.PruneActivityAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(pruned);
+        var health = new Mock<IDownloadHealthRepository>();
+        health.Setup(repository => repository.PruneDownloadHealthHistoryAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(0);
+        var services = new ServiceCollection();
+        services.AddSingleton(settings.Object);
+        services.AddSingleton(activity.Object);
+        services.AddSingleton(health.Object);
+        var provider = services.BuildServiceProvider();
+        var log = new RecordingLogger<HistoryRetentionWorker>();
+        return (new HistoryRetentionWorker(log, provider.GetRequiredService<IServiceScopeFactory>(), clock), settings, log, provider);
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(4, true)]
+    public async Task A_prune_that_removed_rows_says_so_and_one_that_removed_none_stays_quiet(int pruned, bool logged)
+    {
+        var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.Parse("2026-09-28T12:00:00Z"));
+        var (worker, settings, log, provider) = Build(clock, pruned);
+        await using var _ = provider;
+
+        await worker.StartAsync(CancellationToken.None);
+        await Deluno.Persistence.Tests.Support.Wait.UntilAsync(() => { clock.Advance(TimeSpan.FromMinutes(1)); return settings.Invocations.Count > 0; }, "the first prune");
+        await worker.StopAsync(CancellationToken.None);
+
+        var information = log.Entries.Where(entry => entry.Level == LogLevel.Information).ToList();
+        Assert.Equal(logged, information.Count == 1);
+        if (logged)
+        {
+            Assert.Equal("History retention pruned 4 Activity row(s) and 0 download-health history row(s) past 30 day(s).", information[0].Message);
+        }
+    }
+
+    [Fact]
+    public async Task Stopping_Deluno_while_a_prune_is_running_ends_the_loop_without_a_warning()
+    {
+        var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.Parse("2026-09-28T12:00:00Z"));
+        var (worker, settings, log, provider) = Build(clock, 0);
+        await using var _ = provider;
+        settings.Setup(repository => repository.GetAsync(It.IsAny<CancellationToken>())).Returns(async (CancellationToken token) =>
+        {
+            await Task.Delay(Timeout.Infinite, token);
+            return DefaultSettings(30);
+        });
+
+        await worker.StartAsync(CancellationToken.None);
+        await Deluno.Persistence.Tests.Support.Wait.UntilAsync(() => { clock.Advance(TimeSpan.FromMinutes(1)); return settings.Invocations.Count > 0; }, "the prune to start");
+        await worker.StopAsync(CancellationToken.None);
+
+        Assert.True(worker.ExecuteTask is { IsCompleted: true });
+        Assert.DoesNotContain(log.Entries, entry => entry.Level == LogLevel.Warning);
     }
 
     private static PlatformSettingsSnapshot DefaultSettings(int historyRetentionDays) => new(

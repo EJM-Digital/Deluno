@@ -66,4 +66,54 @@ public sealed class ProcessorHandoffHoldHealthCheckTests
 
         Assert.Empty(await check.RunAsync(CancellationToken.None));
     }
+
+    [Fact]
+    public async Task A_hand_off_with_no_reason_and_no_processor_name_says_so_in_plain_words_and_names_its_details()
+    {
+        var repository = new Mock<IProcessorRepository>();
+        repository
+            .Setup(repo => repo.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Handoff(ProcessorHandoffStatuses.TimedOut, null) with { ProcessorName = null }]);
+        var check = new ProcessorHandoffHoldHealthCheck(repository.Object);
+
+        var outcome = Assert.Single(await check.RunAsync(CancellationToken.None));
+
+        Assert.Equal("processor-handoff:handoff-1", outcome.Id);
+        Assert.Equal("Sintel.2010.1080p is held with its processor", outcome.Name);
+        Assert.Equal("Sintel.2010.1080p is being held rather than handed to import.", outcome.Message);
+        Assert.Equal("Import the original now, keep waiting, ask the processor again, or give up and search for another release.", outcome.Fix);
+        Assert.Contains("\"handoffId\":\"handoff-1\"", outcome.DetailsJson);
+        Assert.Contains("\"libraryId\":\"library-1\"", outcome.DetailsJson);
+        Assert.Contains("\"status\":\"" + ProcessorHandoffStatuses.TimedOut + "\"", outcome.DetailsJson);
+    }
+
+    [Fact]
+    public async Task An_empty_reason_is_not_shown_and_a_named_processor_is_in_the_title()
+    {
+        var repository = new Mock<IProcessorRepository>();
+        repository
+            .Setup(repo => repo.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Handoff(ProcessorHandoffStatuses.Stalled, string.Empty)]);
+        var check = new ProcessorHandoffHoldHealthCheck(repository.Object);
+
+        var outcome = Assert.Single(await check.RunAsync(CancellationToken.None));
+
+        Assert.Equal("Sintel.2010.1080p is held with Weir", outcome.Name);
+        Assert.Equal("Sintel.2010.1080p is being held rather than handed to import.", outcome.Message);
+    }
+
+    [Fact]
+    public async Task It_looks_for_exactly_the_stalled_timed_out_and_lost_hand_offs()
+    {
+        IReadOnlyList<string>? asked = null;
+        var repository = new Mock<IProcessorRepository>();
+        repository
+            .Setup(repo => repo.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .Callback((IReadOnlyList<string> statuses, CancellationToken _) => asked = statuses)
+            .ReturnsAsync([]);
+
+        await new ProcessorHandoffHoldHealthCheck(repository.Object).RunAsync(CancellationToken.None);
+
+        Assert.Equal([ProcessorHandoffStatuses.Stalled, ProcessorHandoffStatuses.TimedOut, ProcessorHandoffStatuses.Lost], asked);
+    }
 }

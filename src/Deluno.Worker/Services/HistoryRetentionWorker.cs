@@ -30,26 +30,16 @@ public sealed class HistoryRetentionWorker(
         // full day after every restart before ever pruning anything.
         var wait = TimeSpan.FromMinutes(5);
 
-        while (!stoppingToken.IsCancellationRequested)
+        // A stop cancels the wait or the pass and so ends the loop: the host treats that as a normal stop.
+        while (true)
         {
-            try
-            {
-                await Task.Delay(wait, timeProvider, stoppingToken);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
+            await Task.Delay(wait, timeProvider, stoppingToken);
 
             try
             {
                 await PruneAsync(stoppingToken);
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
-            catch (Exception exception)
+            catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
             {
                 logger.LogWarning(exception, "History retention pruning failed; it will try again on the next pass.");
             }

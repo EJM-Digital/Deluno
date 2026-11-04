@@ -32,11 +32,6 @@ public sealed class ProcessorHandoffHoldHealthCheck(IProcessorRepository process
     public async Task<IReadOnlyList<HealthCheckOutcome>> RunAsync(CancellationToken cancellationToken)
     {
         var held = await processors.ListProcessorHandoffsWithStatusAsync(HeldStatuses, cancellationToken);
-        if (held.Count == 0)
-        {
-            return [];
-        }
-
         return held.Select(handoff =>
         {
             var id = $"processor-handoff:{handoff.Id}";

@@ -57,4 +57,31 @@ public sealed class MetadataProviderHealthCheckTests
         Assert.Contains("TMDb", outcome.Message);
         Assert.NotNull(outcome.Fix);
     }
+
+    [Fact]
+    public async Task A_failure_names_the_service_and_says_which_provider_and_mode_it_was()
+    {
+        var failure = IntegrationFailureFactory.FromLegacy(
+            "metadata", "metadata:tmdb:reachability", "TMDb", "metadata.tmdb.reachability", "connectivity", "Timed out.");
+        var provider = new Mock<IMetadataProvider>();
+        provider.Setup(instance => instance.CheckReachabilityAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MetadataProviderStatus("tmdb", true, "direct", "ready", [], failure));
+
+        var outcome = Assert.Single(await new MetadataProviderHealthCheck(provider.Object).RunAsync(CancellationToken.None));
+
+        Assert.Equal($"Deluno could not reach its metadata provider: {failure.Summary}", outcome.Message);
+        Assert.Equal("{\"provider\":\"tmdb\",\"mode\":\"direct\"}", outcome.DetailsJson);
+    }
+
+    [Fact]
+    public async Task A_reachable_provider_carries_the_providers_own_message()
+    {
+        var provider = new Mock<IMetadataProvider>();
+        provider.Setup(instance => instance.CheckReachabilityAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MetadataProviderStatus("tmdb", true, "direct", "Ready to match titles.", []));
+
+        var outcome = Assert.Single(await new MetadataProviderHealthCheck(provider.Object).RunAsync(CancellationToken.None));
+
+        Assert.Equal("Ready to match titles.", outcome.Message);
+    }
 }
