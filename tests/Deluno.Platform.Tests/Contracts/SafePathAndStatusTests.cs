@@ -164,6 +164,13 @@ public sealed class SafePathAndStatusTests
         Assert.NotEqual(row, row with { Version = "5.2" });
         Assert.Equal(("5.1", true, read, "rate limited"), (item.LatestVersion, item.UpdateAvailable, item.LatestCheckPausedUntilUtc, item.LatestCheckProblem));
         Assert.Equal(new LatestRelease("1", null), new LatestRelease("1", null));
+        Assert.Equal(row.GetHashCode(), (row with { }).GetHashCode());
+        Assert.Equal(item.GetHashCode(), (item with { }).GetHashCode());
+        Assert.NotEqual(item, item with { UpdateAvailable = false });
+        Assert.Contains("c1", row.ToString());
+        Assert.Contains("5.1", item.ToString());
+        var (kind, id, project, version, readUtc, dismissed) = row;
+        Assert.Equal(("downloadClient", "c1", "qbittorrent", "5.0", read, (string?)null), (kind, id, project, version, readUtc, dismissed));
     }
 
     private sealed class PlainReleaseService : ILatestReleaseService
