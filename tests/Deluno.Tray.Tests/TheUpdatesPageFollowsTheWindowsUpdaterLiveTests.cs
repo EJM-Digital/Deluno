@@ -130,4 +130,25 @@ public sealed class TheUpdatesPageFollowsTheWindowsUpdaterLiveTests : IDisposabl
         // The first read of a copy that is not installed moves the state to "not supported" once; it never repeats.
         Assert.True(UpdatePushes() <= 1);
     }
+
+    [Fact]
+    public async Task The_status_can_be_read_while_a_download_holds_the_updater()
+    {
+        // Seen on the golden VM (#1469): the pushes arrived, but the page's read of the status waited behind the download
+        // (it took the same lock), so the page showed nothing between "Syncing" and 100%.
+        var orchestrator = Orchestrator();
+        var gate = (SemaphoreSlim)typeof(VelopackUpdateOrchestrator)
+            .GetField("_gate", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(orchestrator)!;
+        await gate.WaitAsync();
+        try
+        {
+            var read = orchestrator.GetStatusAsync(CancellationToken.None);
+            var finished = await Task.WhenAny(read, Task.Delay(TimeSpan.FromSeconds(5)));
+            Assert.Same(read, finished);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
 }
