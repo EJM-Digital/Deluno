@@ -131,7 +131,7 @@ function Parts({ parts }: { parts: Part[] }) {
 
 /** The status line: the percentage bold in the station's colour and the rest quiet; a stuck download is all amber, a failure plain red. */
 function StatusLine({ card, status }: { card: JourneyCard; status: CardStatus }) {
-  const lead = status.lead && status.text.startsWith(status.lead) ? status.lead : null;
+  const lead = status.lead ?? null;
   const tone = card.stuck || status.tone === "warn" ? "lj-s-warn" : status.tone === "bad" ? "lj-s-bad" : status.tone === "ok" ? "lj-s-ok" : undefined;
   return (
     <span className={cn("lj-s", tone)}>

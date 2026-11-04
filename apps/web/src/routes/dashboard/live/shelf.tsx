@@ -88,12 +88,12 @@ function rememberChoice(value: string): void {
 /** Where text cannot be measured, as in a test, the fullest short words are taken to fit. */
 const FITS_ANYTHING: MeasureText = () => 0;
 
-function Poster({ group, isNew, caption, tag, small, width, measure }: { group: ArrivalGroup; isNew: boolean; caption: CaptionTier; tag: { id: string; name: string; hue: number } | null; small: boolean; width: number | null; measure: MeasureText | null }) {
+function Poster({ group, isNew, caption, tag, small, width, measure }: { group: ArrivalGroup; isNew: boolean; caption: CaptionTier; tag: { id: string; name: string; hue: number } | null; small: boolean; width: number; measure: MeasureText | null }) {
   const { title, poster, to, upgrades, episodes } = group;
   const when = arrivedWhen(group.at);
   const status = posterStatus(group);
   // The tiny caption is the status line alone: the shortest of its words that fits under the poster, else the dot alone.
-  const statusWords = caption !== "tiny" ? status.words : width === null ? status.short[0] : lineWords(status.short, width - STATUS_MARK_PX, measure ?? FITS_ANYTHING);
+  const statusWords = caption !== "tiny" ? status.words : lineWords(status.short, width - STATUS_MARK_PX, measure ?? FITS_ANYTHING);
   const detailLine = posterDetail(group);
   const state = group.met === true ? "quality met" : group.met === false ? "can still be upgraded" : null;
   // The upgrade is said in the status line; the tooltip and the name say it in full.
@@ -185,8 +185,8 @@ export function Shelf({ items, titles, newest, heading, detail, latest = false, 
   useLayoutEffect(() => {
     const row = boxRef.current;
     if (!row || !onHeightNeed || !(row.clientHeight > 0)) return;
-    const card = row.closest<HTMLElement>(".lsh");
-    if (card) onHeightNeed(card.offsetHeight - row.clientHeight + shelfRowNeed(row.clientWidth));
+    const card = row.closest<HTMLElement>(".lsh")!;
+    onHeightNeed(card.offsetHeight - row.clientHeight + shelfRowNeed(row.clientWidth));
   }, [box.width, box.height, onHeightNeed, boxRef]);
   // A title whose poster is on its way has a slot that is closed or opening: the poster it pushes out is kept until it is gone.
   const slots = useOpenSlots(boxRef);
@@ -207,17 +207,10 @@ export function Shelf({ items, titles, newest, heading, detail, latest = false, 
   // The status line is measured in its own font, read before paint and again when the fonts arrive.
   const [measured, setMeasured] = useState<MeasureText | null>(null);
   useLayoutEffect(() => {
-    const host = boxRef.current;
-    if (!host) return undefined;
-    let live = true;
-    const read = () => {
-      if (live) setMeasured(() => canvasMeasure(statusFont(host)));
-    };
+    const host = boxRef.current!;
+    const read = () => setMeasured(() => canvasMeasure(statusFont(host)));
     read();
     void document.fonts?.ready.then(read);
-    return () => {
-      live = false;
-    };
   }, []);
 
   return (
@@ -227,7 +220,7 @@ export function Shelf({ items, titles, newest, heading, detail, latest = false, 
           const id = group.libraryId;
           const name = id ? names.get(id) ?? group.libraryName : null;
           const position = libraries.findIndex((entry) => entry.libraryId === id);
-          return <Poster key={group.key} group={group} isNew={group.items.some((item) => newest.has(item.key))} caption={posters?.caption ?? "compact"} tag={id && name ? { id, name, hue: libraryHue(position) } : null} small={small} width={posters?.width ?? null} measure={measured} />;
+          return <Poster key={group.key} group={group} isNew={group.items.some((item) => newest.has(item.key))} caption={posters?.caption ?? "compact"} tag={id && name ? { id, name, hue: libraryHue(position) } : null} small={small} width={posters?.width ?? 0} measure={measured} />;
         })}
       </ul>
     </Panel>
