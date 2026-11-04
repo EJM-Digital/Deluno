@@ -204,7 +204,7 @@ function emptyScoreboard(): IndexerScoreboardSnapshot {
 async function send(url: string, method: string, body?: unknown, failure = "Request failed.", signal?: AbortSignal) {
   const response = await authedFetch(url, { method, signal, headers: body === undefined ? undefined : { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
   if (!response.ok && response.status !== 204) {
-    const problem = await readValidationProblem(response.clone()).catch(() => null);
+    const problem = await readValidationProblem(response.clone());
     const detail = problem?.errors ? Object.values(problem.errors).flat()[0] : problem?.title;
     throw new Error(detail || failure);
   }
