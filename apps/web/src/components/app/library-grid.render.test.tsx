@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MediaItem } from "../../lib/media-types";
+import { DEFAULT_DISPLAY_PREFERENCES } from "../../lib/display-preferences";
 import { PosterArtwork, ProgressiveGrid, posterRowsFor } from "./library-grid";
 
 const virtual = vi.hoisted(() => ({ options: null as null | { count: number; overscan: number; estimateSize: () => number; getScrollElement: () => HTMLElement | null }, rows: [] as number[] | null, measure: vi.fn() }));
@@ -177,6 +178,9 @@ describe("the virtual shelf", () => {
     const firstStops = (rail.args?.[3] as unknown[]).length;
     view.rerenderWith({ items: Array.from({ length: 40 }, (_, index) => movie(String(index))) });
     expect(asked.mock.calls.length).toBeGreaterThan(before);
+    const stops = rail.args?.[3] as unknown[];
+    view.rerenderWith({ items: [movie("a", { title: "Aardvark" }), movie("b", { title: "Mango" }), movie("c", { title: "Zebra" })] });
+    expect(JSON.stringify(rail.args?.[3])).not.toBe(JSON.stringify(stops));
     expect((rail.args?.[3] as unknown[]).length).toBeGreaterThanOrEqual(firstStops);
     expect(rail.args?.[3]).not.toBe(undefined);
   });
@@ -228,6 +232,15 @@ describe("a poster", () => {
     expect(view.props.onSelect).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Deselect Film 2" }));
     expect(view.props.onToggle).toHaveBeenLastCalledWith("2");
+  });
+
+  it("keeps the toggle's classes apart, selected and not", () => {
+    grid({ selectedIds: ["2"] });
+    const selected = screen.getByRole("button", { name: "Deselect Film 2" }).className.split(/\s+/);
+    const plain = screen.getByRole("button", { name: "Select Film 1" }).className.split(/\s+/);
+    expect(selected).toEqual(expect.arrayContaining(["opacity-100", "scale-100", "text-primary-foreground"]));
+    expect(plain).toEqual(expect.arrayContaining(["opacity-0", "scale-90", "group-hover:opacity-100", "group-hover:scale-100", "backdrop-blur-md"]));
+    expect(plain).not.toContain("scale-100");
   });
 
   it("looks different when selected: a ring, a scrim and a checked toggle", () => {
@@ -364,6 +377,17 @@ describe("the rows a title has", () => {
     expect(rows["IMDb score"]).toBe("IMDb 8.1");
     expect(rows["RT score"]).toBe("RT 93%");
     expect(rows["Metacritic score"]).toBe("Metacritic 71%");
+  });
+
+  it("prints dates in the person's own date format and time zone, and never as Today or Tomorrow", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-31T12:00:00Z"));
+    const iso = { ...DEFAULT_DISPLAY_PREFERENCES, shortDateFormat: "iso" as const, showRelativeDates: true, timezone: "Pacific/Auckland" };
+    const rows = Object.fromEntries(posterRowsFor(movie("1", { added: "2026-10-31T10:00:00Z", digitalRelease: "2026-10-31T09:00:00Z", nextAirDateUtc: "2026-12-25T11:00:00Z" } as never), { showAdded: true, showDigitalRelease: true, showNextAiring: true } as never, iso).map((row) => [row.label, row.value]));
+    expect(rows["Added to your library"]).toBe("2026-10-31");
+    expect(rows["Digital"]).toBe("2026-10-31");
+    expect(rows["Next airing"]).toBe("2026-12-26");
+    vi.useRealTimers();
   });
 
   it("prints a date as a date, never as Today or Yesterday, and a release date the same way", () => {

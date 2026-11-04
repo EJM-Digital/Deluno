@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { arrivedWhen, SHELF_LIBRARY_KEY, Shelf } from "./shelf";
+import { arrivedDetail, arrivedHeading, arrivedWhen, libraryHue, LIBRARY_HUES, SHELF_LIBRARY_KEY, Shelf } from "./shelf";
 import { TILE_KEY_ATTRIBUTE, useSlideNeighbours, useTileArrivals } from "./shelf-motion";
 import { useOpenSlots } from "./shelf-slots";
 import { shelfRowNeed } from "./layout";
@@ -15,6 +15,12 @@ vi.mock("./hooks", async (importOriginal) => {
   return { ...(await importOriginal<typeof import("./hooks")>()), useElementSize: () => [createRef(), box] };
 });
 
+// The canvas the status line is measured on: a test sets the width of one character, or leaves it unmeasured (null).
+let charPx: number | null = null;
+vi.mock("./caption-fit", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./caption-fit")>();
+  return { ...original, statusFont: () => "600 12px sans-serif", canvasMeasure: () => (charPx === null ? null : (text: string) => text.length * charPx!) };
+});
 vi.mock("./shelf-motion", async (importOriginal) => {
   const real = await importOriginal<typeof import("./shelf-motion")>();
   return { ...real, useSlideNeighbours: vi.fn(real.useSlideNeighbours), useTileArrivals: vi.fn(real.useTileArrivals) };
@@ -25,7 +31,7 @@ vi.mock("./shelf-slots", async (importOriginal) => {
 });
 
 beforeEach(() => { localStorage.clear(); });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); box = { width: 900, height: 330 }; });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); box = { width: 900, height: 330 }; charPx = null; });
 
 const NOW = new Date("2026-10-31T12:00:00Z").getTime();
 const item = (key: string, extra: object = {}) => ({ key, entity: { kind: "movie", id: key }, fallbackTitle: `Film ${key} (2001)`, release: null, quality: "Bluray 1080p", previousQuality: null, upgraded: false, sizeBytes: null, at: new Date().toISOString(), requestedBy: null, to: `/movies/${key}`, qualityMet: null, libraryId: null, libraryName: null, ...extra }) as never;
@@ -319,5 +325,133 @@ describe("the height the shelf needs, again", () => {
     box = { width: 800, height: 300 };
     view.rerender(<MemoryRouter><Shelf items={[item("1")] as never[]} titles={NO_TITLES} newest={new Set()} heading="arrived today" onHeightNeed={need} /></MemoryRouter>);
     expect(need).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("the header and the colours", () => {
+  it("counts what arrived today, with thousands grouped", () => {
+    expect(arrivedHeading(12)).toBe("12 arrived today");
+    expect(arrivedHeading(1234)).toBe("1,234 arrived today");
+  });
+
+  it("adds up the titles, the upgrades and the size when there are some", () => {
+    expect(arrivedDetail(1, 0, 0)).toBe("1 title");
+    expect(arrivedDetail(12, 0, 0)).toBe("12 titles");
+    expect(arrivedDetail(12, 4, 0)).toBe("12 titles · 4 upgraded");
+    expect(arrivedDetail(12, 0, 54 * 1024 ** 3)).toBe("12 titles · 54 GB added");
+    expect(arrivedDetail(3, 1200, 2.5 * 1024 ** 3)).toBe("3 titles · 1,200 upgraded · 2.5 GB added");
+  });
+
+  it("gives each library a colour by its place, going round again after six, and the first for one it cannot place", () => {
+    expect(LIBRARY_HUES).toEqual([205, 265, 320, 188, 232, 290]);
+    expect([0, 1, 2, 3, 4, 5, 6, 7].map(libraryHue)).toEqual([205, 265, 320, 188, 232, 290, 205, 265]);
+    expect(libraryHue(-1)).toBe(205);
+    expect(SHELF_LIBRARY_KEY).toBe("deluno.live.shelfLibrary");
+  });
+
+  it("describes the card by its heading and what it adds up to, for a screen reader, when there are chips", () => {
+    show([item("1")], { library: section, heading: "2 arrived today", detail: "2 titles · 1 upgraded" });
+    const card = document.querySelector("section")!;
+    expect(document.getElementById(card.getAttribute("aria-describedby")!)).toHaveTextContent("2 arrived today: 2 titles · 1 upgraded");
+    cleanup();
+    show([item("1")], { library: section, heading: "2 arrived today" });
+    const bare = document.querySelector("section")!;
+    expect(document.getElementById(bare.getAttribute("aria-describedby")!)).toHaveTextContent("2 arrived today");
+    cleanup();
+    show([item("1")], { heading: "2 arrived today", detail: "2 titles" });
+    expect(document.querySelector("section")).not.toHaveAttribute("aria-describedby");
+  });
+
+  it("tags a poster with its library's name, its colour and an Open link", () => {
+    show([item("1", { libraryId: "kids", libraryName: "Kids" }), item("2", { libraryId: "hd", libraryName: "Movies HD" })], { library: section });
+    const kids = screen.getByRole("link", { name: "Kids" });
+    expect(kids).toHaveAttribute("title", "Open Kids in the library");
+    expect(kids.style.getPropertyValue("--tile-hue")).toBe(String(LIBRARY_HUES[1]));
+    expect(screen.getByRole("link", { name: "Movies HD" }).style.getPropertyValue("--tile-hue")).toBe(String(LIBRARY_HUES[0]));
+  });
+
+  it("gives a tag for a library the counts do not list the first colour", () => {
+    show([item("1", { libraryId: "elsewhere", libraryName: "Elsewhere" })], { library: section });
+    expect(screen.getByRole("link", { name: "Elsewhere" }).style.getPropertyValue("--tile-hue")).toBe(String(LIBRARY_HUES[0]));
+  });
+});
+
+describe("the caption tiers", () => {
+  const two = () => show([item("1", { qualityMet: true, sizeBytes: 2.5 * 1024 ** 3 }), item("2", { upgraded: true, previousQuality: "WEB 720p", qualityMet: false })]);
+  const words = () => Array.from(document.querySelectorAll(".lsh-cap .lsh-status > span")).map((node) => node.textContent);
+
+  it("is four level slots in the full tier", () => {
+    box = { width: 900, height: 340 };
+    two();
+    const caps = Array.from(document.querySelectorAll(".lsh-cap--full"));
+    expect(caps).toHaveLength(2);
+    for (const cap of caps) expect(Array.from(cap.children).map((child) => child.className)).toEqual(["lsh-title", "lsh-status", "lsh-detail", "lsh-when"]);
+    expect(caps[0].getAttribute("data-tier")).toBe("full");
+    expect(caps[0].querySelector(".lsh-detail")).toHaveTextContent("2.5 GB");
+    expect(caps[1].querySelector(".lsh-detail")).toHaveTextContent("from WEB 720p");
+    expect(caps[0].querySelector(".lsh-when")).toHaveTextContent(/now|ago/);
+    expect(caps[0].querySelector(".lsh-status")).toHaveAttribute("data-tone", "met");
+    expect(caps[1].querySelector(".lsh-status")).toHaveAttribute("data-tone", "upgradable");
+  });
+
+  it("is the title and the status in the compact tier", () => {
+    box = { width: 900, height: 200 };
+    two();
+    expect(document.querySelector(".lsh-cap--full")).toBeNull();
+    const cap = document.querySelector(".lsh-cap")!;
+    expect(cap.getAttribute("data-tier")).toBe("compact");
+    expect(Array.from(cap.children).map((child) => child.className)).toEqual(["lsh-title", "lsh-status"]);
+    expect(cap.className).toBe("lsh-cap");
+    expect(document.querySelector(".lsh-poster")).toHaveAttribute("data-caption", "compact");
+  });
+
+  it("is the status alone in the tiny tier, and nothing in the none tier", () => {
+    box = { width: 900, height: 140 };
+    two();
+    const tiny = document.querySelector(".lsh-cap")!;
+    expect(tiny.getAttribute("data-tier")).toBe("tiny");
+    expect(Array.from(tiny.children).map((child) => child.className)).toEqual(["lsh-status"]);
+    cleanup();
+    box = { width: 900, height: 60 };
+    two();
+    expect(document.querySelector(".lsh-cap")).toBeNull();
+    expect(document.querySelector(".lsh-poster")).toHaveAttribute("data-caption", "none");
+  });
+
+  it("says the shortest of its words that fits under the poster in the tiny tier, and the dot alone where none does", () => {
+    box = { width: 900, height: 140 };
+    charPx = 6;
+    two();
+    expect(words()).toEqual(["Met", "Upgraded"]);
+    cleanup();
+    charPx = 25;
+    two();
+    expect(words()).toEqual(["", ""]);
+    expect(document.querySelectorAll(".lsh-cap .lsh-dot")).toHaveLength(2);
+    cleanup();
+    charPx = null;
+    two();
+    expect(words()).toEqual(["Quality met", "Upgraded"]);
+  });
+
+  it("measures the status line in its own font again when the fonts arrive", async () => {
+    box = { width: 900, height: 140 };
+    charPx = 6;
+    const ready = Promise.resolve();
+    Object.defineProperty(document, "fonts", { configurable: true, value: { ready } });
+    two();
+    await ready;
+    expect(words()).toEqual(["Met", "Upgraded"]);
+    delete (document as unknown as { fonts?: unknown }).fonts;
+  });
+
+  it("draws small posters at under 64px wide and full ones from there", () => {
+    box = { width: 340, height: 200 };
+    two();
+    expect(document.querySelector(".lsh-poster")).toHaveAttribute("data-size", "small");
+    cleanup();
+    box = { width: 900, height: 330 };
+    two();
+    expect(document.querySelector(".lsh-poster")).toHaveAttribute("data-size", "full");
   });
 });

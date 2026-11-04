@@ -551,7 +551,7 @@ function nextAiringLabel(nextAirDateUtc: string, preferences: DisplayPreferences
 
   return days < 7
     ? formatWeekday(next, preferences)
-    : formatShortDate(next, { ...preferences, showRelativeDates: false });
+    : formatShortDate(next, preferences);
 }
 
 /**
