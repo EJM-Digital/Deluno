@@ -18,7 +18,7 @@ namespace Deluno.Api.SystemInfo;
 /// <summary>One line of Deluno's own log (#1098): when, how serious, what, and which part of Deluno said it.</summary>
 public sealed record SystemLogEntry(string Id, DateTimeOffset TimeUtc, string Level, string Message, string? Source);
 
-public sealed record SystemLogResponse(IReadOnlyList<SystemLogEntry> Entries, int ErrorsToday, int WarningsToday, string? LatestLogFile);
+public sealed record SystemLogResponse(IReadOnlyList<SystemLogEntry> Entries, int ErrorsToday, int WarningsToday, string? LatestLogFile, long DroppedLines);
 
 public sealed record SystemDatabaseItem(string Key, string Name, long SizeBytes);
 
@@ -45,6 +45,7 @@ public static class SystemLogAndDatabasesEndpointRouteBuilderExtensions
                 string? level,
                 int? take,
                 [FromServices] DelunoLogBuffer buffer,
+                [FromServices] IEnumerable<ILoggerProvider> loggerProviders,
                 IOptions<StoragePathOptions> storage,
                 IOptions<DelunoFileLogOptions> logOptions) =>
             {
@@ -73,7 +74,8 @@ public static class SystemLogAndDatabasesEndpointRouteBuilderExtensions
                     entries,
                     everything.Count(entry => entry.Level == "error"),
                     everything.Count(entry => entry.Level == "warning"),
-                    latest));
+                    latest,
+                    loggerProviders.OfType<DelunoFileLoggerProvider>().Sum(provider => provider.DroppedCount)));
             })
             .RequireAuthorization(DelunoAuthorizationPolicies.Read);
 

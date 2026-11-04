@@ -11,12 +11,28 @@ const log: SystemLogResponse = {
   errorsToday: 1,
   warningsToday: 2,
   latestLogFile: "deluno-20261001.jsonl",
+  droppedLines: 0,
   entries: [
     { id: "a", timeUtc: "2026-10-01T11:59:00Z", level: "error", message: "The backup folder is not writable.", source: "Backup" },
     { id: "b", timeUtc: "2026-10-01T11:58:00Z", level: "warning", message: "The indexer answered slowly.", source: "HealthCheck" },
     { id: "c", timeUtc: "2026-10-01T11:57:00Z", level: "info", message: "Backup complete.", source: "Backup" }
   ]
 };
+
+describe("Log card dropped lines (#1480)", () => {
+  it("says plainly how many lines were lost since start and the likely cause, and says nothing when none were", () => {
+    const { rerender } = render(<MemoryRouter><LogCard log={log} /></MemoryRouter>);
+    expect(screen.queryByRole("status")).toBeNull();
+
+    rerender(<MemoryRouter><LogCard log={{ ...log, droppedLines: 1 }} /></MemoryRouter>);
+    expect(screen.getByRole("status").textContent).toContain("1 log line could not be written since Deluno started");
+    rerender(<MemoryRouter><LogCard log={{ ...log, droppedLines: 15000 }} /></MemoryRouter>);
+    const notice = screen.getByRole("status").textContent ?? "";
+    expect(notice).toContain("15,000 log lines could not be written");
+    expect(notice).toContain("log folder may not be writable");
+    expect(notice).toContain("disk is too slow");
+  });
+});
 
 describe("Scheduled tasks", () => {
   it("says why a failed task failed, in its own words, under its name", () => {
