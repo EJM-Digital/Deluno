@@ -43,6 +43,7 @@ let titleReads: string[];
 let wholeReads: number;
 let countReads: number;
 let holdShelf: Promise<void> | null;
+let pageSize: number | null;
 let restoreLayout: () => void;
 
 const emit = async (event: string, ...ids: string[]) => { await act(async () => { for (const id of ids) for (const handler of mocks.handlers[event] ?? []) handler({ id }); }); };
@@ -62,6 +63,7 @@ beforeEach(async () => {
   wholeReads = 0;
   countReads = 0;
   holdShelf = null;
+  pageSize = null;
   mocks.fetchJson.mockImplementation(async (path: string) => {
     if (path.startsWith("/api/movies/page")) {
       const params = new URLSearchParams(path.split("?")[1]);
@@ -69,6 +71,11 @@ beforeEach(async () => {
       else {
         wholeReads += 1;
         if (holdShelf && wholeReads > 1) await holdShelf;
+      }
+      if (pageSize !== null && params.get("pageSize") !== "1") {
+        const from = Number(params.get("pageToken") ?? 0);
+        const items = shelf.slice(from, from + pageSize);
+        return { items, totalCount: shelf.length, nextPageToken: from + pageSize < shelf.length ? String(from + pageSize) : null, facets: { all: shelf.length, unmonitored: 0, covered: 0 } };
       }
       return { items: shelf, totalCount: shelf.length, nextPageToken: null, facets: { all: shelf.length, unmonitored: shelf.filter((entry) => !entry.monitored).length, covered: 0 } };
     }
@@ -187,6 +194,17 @@ describe("a change that needs the whole shelf read again", () => {
 
     await waitFor(() => expect(wholeReads).toBe(before + 1));
     await waitFor(() => expect(present("Alien")).toBeNull());
+  });
+
+  it("a shelf that takes more than one page to read is gathered whole before it replaces the one on screen", async () => {
+    await renderShelf();
+    pageSize = 2;
+    shelf = [...shelf, film("m9", "Zodiac"), film("m10", "Heat 2")];
+
+    await emit("LibraryChanged", "lib-a");
+
+    await waitFor(() => expect(present("Heat 2")).not.toBeNull());
+    expect(present("Zodiac")).not.toBeNull();
   });
 
   it("a read that fails leaves the shelf as it was", async () => {

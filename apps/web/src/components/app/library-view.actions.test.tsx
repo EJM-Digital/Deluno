@@ -209,6 +209,19 @@ describe("what the shelf says when it has nothing or cannot read", () => {
     expect(await screen.findByRole("button", { name: "Search these 0" })).toBeDisabled();
   });
 
+  it("a shelf longer than one page is filled slice by slice until no token is left", async () => {
+    pageFor = (params) => {
+      const token = params.get("pageToken");
+      if (token === "second") return page([ALL[1]], { totalCount: 3, nextPageToken: "third" });
+      if (token === "third") return page([ALL[2]], { totalCount: 3, nextPageToken: null });
+      return page([ALL[0]], { totalCount: 3, nextPageToken: "second" });
+    };
+    await renderShelf();
+
+    expect(await screen.findByRole("button", { name: "Search these 3" })).toBeEnabled();
+    expect(calls.filter((c) => c.url.includes("pageToken=")).length).toBe(2);
+  });
+
   it("a later slice that fails keeps what arrived and says the rest could not be loaded", async () => {
     pageFor = (params) => {
       if (params.get("pageToken")) throw new Error("down");
