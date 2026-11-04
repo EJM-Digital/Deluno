@@ -120,7 +120,7 @@ describe("the download client list, cell by cell", () => {
   it("sorts by Type, Categories, Now, Status and On, each reversed by a second press", () => {
     reset({
       clients: [
-        client({ id: "a", name: "Aa", protocol: "sabnzbd", moviesCategory: "zeta", tvCategory: "", isEnabled: false, healthStatus: "unhealthy" }),
+        client({ id: "a", name: "Aa", protocol: "sabnzbd", moviesCategory: "zeta", tvCategory: null, isEnabled: false, healthStatus: "unhealthy" }),
         client({ id: "b", name: "Bb", protocol: "qbittorrent", moviesCategory: null, categoryTemplate: "alpha", tvCategory: "tv" }),
         client({ id: "c", name: "Cc", protocol: "mystery", moviesCategory: "mid", tvCategory: "tv" })
       ],

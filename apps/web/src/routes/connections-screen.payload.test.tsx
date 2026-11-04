@@ -5,11 +5,11 @@ import { emptyClientForm, emptyIndexerForm } from "./connections/forms";
 // #1329: what Save and Test send for an indexer and a download client, field by field, filled and blank, new and saved.
 
 const filledIndexer = () => ({
-  ...emptyIndexerForm(), name: "  Alpha ", protocol: "torznab", baseUrl: " https://alpha.example ", apiKey: " key ", apiPath: " /api ", additionalParameters: " &x=1 ", animeCategories: " 5070 ",
+  ...emptyIndexerForm(), name: "  Alpha ", protocol: "torznab" as const, baseUrl: " https://alpha.example ", apiKey: " key ", apiPath: " /api ", additionalParameters: " &x=1 ", animeCategories: " 5070 ",
   priority: "3", requestIntervalSeconds: "4", minimumAgeMinutes: "5", retentionDays: "6", maximumSizeMb: "7", minimumSeeders: "8", preferIndexerFlags: " freeleech ",
-  requiredWords: " 1080p ", ignoredWords: " cam ", multiLanguages: " en ", vipExpiresUtc: "2026-12-31", queryLimit: "9", grabLimit: "10", limitsUnit: "hour", preferMagnetUrl: true,
-  seasonPackSearchMode: "packs", availabilityDelayDays: "11", rssEnabled: false, automaticSearchEnabled: false, interactiveSearchEnabled: false, proxyId: "p1",
-  categories: "2000,5000", tags: " hd ", scope: "tv", isEnabled: false, seasonPackSeedForHours: "12"
+  requiredWords: " 1080p ", ignoredWords: " cam ", multiLanguages: " en ", vipExpiresUtc: "2026-12-31", queryLimit: "9", grabLimit: "10", limitsUnit: "hour" as const, preferMagnetUrl: true,
+  seasonPackSearchMode: "season-packs-only" as const, availabilityDelayDays: "11", rssEnabled: false, automaticSearchEnabled: false, interactiveSearchEnabled: false, proxyId: "p1",
+  categories: "2000,5000", tags: " hd ", scope: "tv" as const, isEnabled: false, seasonPackSeedForHours: "12"
 });
 
 describe("what an indexer sends", () => {
@@ -21,8 +21,8 @@ describe("what an indexer sends", () => {
       priority: 3, requestIntervalSeconds: 4, clearRequestInterval: false, minimumAgeMinutes: 5, clearMinimumAge: false, retentionDays: 6, clearRetention: false,
       maximumSizeMb: 7, clearMaximumSize: false, minimumSeeders: 8, clearMinimumSeeders: false, preferIndexerFlags: "freeleech", clearPreferIndexerFlags: false,
       requiredWords: "1080p", clearRequiredWords: false, ignoredWords: "cam", clearIgnoredWords: false, multiLanguages: "en", clearMultiLanguages: false,
-      vipExpiresUtc: "2026-12-31T00:00:00.000Z", clearVipExpiry: false, queryLimit: 9, clearQueryLimit: false, grabLimit: 10, clearGrabLimit: false, limitsUnit: "hour",
-      preferMagnetUrl: true, seasonPackSearchMode: "packs", availabilityDelayDays: 11, clearAvailabilityDelay: false, rssEnabled: false, automaticSearchEnabled: false,
+      vipExpiresUtc: "2026-12-31T00:00:00.000Z", clearVipExpiry: false, queryLimit: 9, clearQueryLimit: false, grabLimit: 10, clearGrabLimit: false, limitsUnit: "hour" as const,
+      preferMagnetUrl: true, seasonPackSearchMode: "season-packs-only" as const, availabilityDelayDays: 11, clearAvailabilityDelay: false, rssEnabled: false, automaticSearchEnabled: false,
       interactiveSearchEnabled: false, proxyId: "p1", clearProxy: false, categories: "2000,5000", tags: "hd", mediaScope: "tv", isEnabled: false,
       seasonPackSeedForHours: 12, clearSeasonPackSeedForHours: false
     });
@@ -48,9 +48,9 @@ describe("what an indexer sends", () => {
   });
 
   it("a built-in tracker sends which one it is, its settings and only the secrets that were typed", () => {
-    const form = { ...emptyIndexerForm(), name: "T", protocol: "tracker", definitionId: "example", trackerSettings: { site: "a" }, trackerSecrets: { passkey: " abc ", cookie: "   ", empty: "" } };
+    const form = { ...emptyIndexerForm(), name: "T", protocol: "tracker" as const, definitionId: "example", trackerSettings: { site: "a" }, trackerSecrets: { passkey: " abc ", cookie: "   ", empty: "" } };
     expect(buildIndexerSavePayload(form, form, false)).toMatchObject({ definitionId: "example", definitionSettings: { site: "a" }, definitionSecrets: { passkey: " abc " } });
-    const plain = buildIndexerSavePayload({ ...form, protocol: "torznab" }, form, false);
+    const plain = buildIndexerSavePayload({ ...form, protocol: "torznab" as const }, form, false);
     expect(plain).not.toHaveProperty("definitionId");
     expect(plain).not.toHaveProperty("definitionSecrets");
   });

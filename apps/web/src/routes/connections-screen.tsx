@@ -73,7 +73,7 @@ import { useRowSelection } from "../lib/connection-tags";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { plural } from "../lib/plural";
 
-const TABS = configurationNavAreas.find((area) => area.to === "/indexers/indexers")?.items ?? [];
+const TABS = configurationNavAreas.find((area) => area.to === "/indexers/indexers")!.items;
 
 const PROXY_TYPE_LABELS: Record<string, string> = {
   http: "HTTP",
@@ -469,7 +469,6 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
   }
   async function bulkSetEnabled(isEnabled: boolean) {
     const ids = [...selectedIndexerIds];
-    if (!ids.length) return;
     setBulkBusy(true);
     try {
       await Promise.all(ids.map((id) => send(`/api/indexers/${id}`, "PUT", { isEnabled })));
@@ -484,7 +483,6 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
   }
   async function bulkSetScope(scope: IndexerBulkScope) {
     const ids = [...selectedIndexerIds];
-    if (!ids.length) return;
     setBulkBusy(true);
     try {
       await Promise.all(ids.map((id) => send(`/api/indexers/${id}`, "PUT", { mediaScope: scope })));
@@ -499,7 +497,6 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
   }
   async function bulkRemove() {
     const ids = [...selectedIndexerIds];
-    if (!ids.length) return;
     setBulkBusy(true);
     try {
       await Promise.all(ids.map((id) => send(`/api/indexers/${id}`, "DELETE")));
@@ -941,7 +938,6 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
     await run(`warnings:clear:${item.id}`, () => send(`/api/download-clients/${item.id}/warnings/clear`, "POST", undefined, `Could not clear ${item.name}'s warnings.`), `Cleared ${item.name}'s warnings`);
   }
   async function addMapping(clientId: string) {
-    if (!newMapping.remotePath.trim() || !newMapping.localPath.trim()) return;
     const ok = await run("mapping:add", () => send(`/api/download-clients/${clientId}/path-mappings`, "POST", { remotePath: newMapping.remotePath.trim(), localPath: newMapping.localPath.trim(), isEnabled: true, priority: 10 }, "File location link could not be saved."), "File location linked");
     if (ok) setNewMapping({ remotePath: "", localPath: "" });
   }
@@ -969,8 +965,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
   }
   async function saveSharedMapping() {
     const form = sharedMappingForm;
-    const anchorClientId = form.anchorClientId || clients[0]?.id;
-    if (!anchorClientId || !form.remotePath.trim() || !form.localPath.trim()) return;
+    const anchorClientId = form.anchorClientId || clients[0]!.id;
     const priority = Number(form.priority);
     const payload = {
       remotePath: form.remotePath.trim(),
@@ -1005,7 +1000,6 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
 
   async function checkCategory(clientId: string) {
     const category = routeCategories[clientId]?.trim();
-    if (!category) return;
     await run(`category:${clientId}`, async () => {
       const response = await send(
         `/api/download-clients/${clientId}/categories/check`,
@@ -1448,7 +1442,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
         }}
         title={
           drawer.kind === "indexer" ? editingIndexer?.name ?? (indexerForm.name || "New indexer")
-          : drawer.kind === "client" ? editingClient?.name ?? (clientForm.name || "New download client")
+          : drawer.kind === "client" ? editingClient?.name ?? clientForm.name
           : drawer.kind === "proxy" ? editingProxy?.name ?? "New proxy"
           : drawer.kind === "routing" ? routingLibrary?.name ?? "Library routing"
           : ""
