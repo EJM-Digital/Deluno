@@ -104,6 +104,9 @@ public sealed class DelunoFileLoggerProvider : ILoggerProvider, ISupportExternal
 
     public string LogDirectory { get; }
 
+    /// <summary>How an expired or surplus log file is removed. A test replaces it to make a removal fail.</summary>
+    public Action<FileInfo> Remover { get; init; } = static file => file.Delete();
+
     /// <summary>Lines lost because the queue was full, since Deluno started.</summary>
     public long DroppedCount => Interlocked.Read(ref dropped);
 
@@ -458,15 +461,12 @@ public sealed class DelunoFileLoggerProvider : ILoggerProvider, ISupportExternal
             {
                 if (file.LastWriteTimeUtc < cutoff)
                 {
-                    file.Delete();
+                    Remover(file);
                 }
             }
-            catch (IOException)
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                // Held open elsewhere; the next roll tries again.
-            }
-            catch (UnauthorizedAccessException)
-            {
+                // Held open elsewhere or not ours to remove; the next roll tries again.
             }
         }
     }
@@ -492,13 +492,11 @@ public sealed class DelunoFileLoggerProvider : ILoggerProvider, ISupportExternal
             try
             {
                 total -= files[index].Length;
-                files[index].Delete();
+                Remover(files[index]);
             }
-            catch (IOException)
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-            }
-            catch (UnauthorizedAccessException)
-            {
+                // Held open elsewhere or not ours to remove; the next roll tries again.
             }
         }
     }

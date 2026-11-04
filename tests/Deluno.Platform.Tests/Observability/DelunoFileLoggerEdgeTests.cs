@@ -144,6 +144,48 @@ public sealed class DelunoFileLoggerEdgeTests : IDisposable
         Assert.Equal(["a warning"], buffer.Recent("all", 10).Select(entry => entry.Message));
     }
 
+    public static TheoryData<Exception> Failures => new() { new IOException("held open"), new UnauthorizedAccessException("not ours") };
+
+    [Theory]
+    [MemberData(nameof(Failures))]
+    public void A_file_that_cannot_be_removed_is_left_for_the_next_roll_and_logging_goes_on(Exception failure)
+    {
+        Directory.CreateDirectory(LogDirectory);
+        var expired = Path.Combine(LogDirectory, "deluno-20200101.jsonl");
+        var surplusOld = Path.Combine(LogDirectory, "deluno-20990101.jsonl");
+        var surplusNew = Path.Combine(LogDirectory, "deluno-20990102.jsonl");
+        foreach (var file in new[] { expired, surplusOld, surplusNew })
+        {
+            File.WriteAllText(file, new string('x', 1000));
+        }
+
+        File.SetLastWriteTimeUtc(expired, DateTime.UtcNow.AddDays(-30));
+        File.SetLastWriteTimeUtc(surplusOld, DateTime.UtcNow.AddDays(-3));
+        File.SetLastWriteTimeUtc(surplusNew, DateTime.UtcNow.AddDays(-2));
+        var tried = new List<string>();
+
+        using (var provider = new DelunoFileLoggerProvider(
+                   Options.Create(new StoragePathOptions { DataRoot = dataRoot }),
+                   Options.Create(new DelunoFileLogOptions { RetainDays = 14, MaxTotalBytes = 1500 }),
+                   TimeProvider.System)
+               {
+                   Remover = file =>
+                   {
+                       tried.Add(file.Name);
+                       throw failure;
+                   }
+               })
+        using (var factory = LoggerFactory.Create(builder => builder.AddProvider(provider)))
+        {
+            factory.CreateLogger("Deluno.Test").LogInformation("started");
+        }
+
+        Assert.Contains("deluno-20200101.jsonl", tried);
+        Assert.Contains("deluno-20990101.jsonl", tried);
+        Assert.All(new[] { expired, surplusOld, surplusNew }, file => Assert.True(File.Exists(file)));
+        Assert.Contains(ReadLines(), line => line.Contains("started"));
+    }
+
     private string LogDirectory => Path.Combine(dataRoot, "logs");
 
     private DelunoFileLoggerProvider CreateProvider()
