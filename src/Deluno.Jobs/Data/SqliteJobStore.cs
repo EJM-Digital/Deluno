@@ -2858,7 +2858,9 @@ public sealed class SqliteJobStore(
                 libraryId,
                 seasonNumber = episode.SeasonNumber,
                 episodeNumber = episode.EpisodeNumber,
-                title = episode.Title
+                title = episode.Title,
+                // The download a replacement search was queued for is not a reason to hold back (#1482).
+                ignoreDispatchId = episode.IgnoreDispatchId
             });
             var idempotencyKey = $"episode.search:{episode.EpisodeId}:schedule";
             var dedupeKey = $"episode.search:{episode.EpisodeId}";

@@ -34,11 +34,13 @@ public static class DispatchCoverage
         IJobQueueRepository jobQueueRepository,
         string releaseName,
         IReadOnlyCollection<string> entityIds,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? ignoreDispatchId = null)
     {
         var inFlight = await jobQueueRepository.ListDownloadsInFlightAsync(InFlightLimit, cancellationToken) ?? [];
-        // One its client never showed is not on its way; sending it again is the retry.
-        var same = inFlight.Where(download => !download.NeverShown).FirstOrDefault(download =>
+        // One its client never showed is not on its way; sending it again is the retry. The download a replacement
+        // search was queued for is the one being replaced, so it is never a reason not to send another (#1482).
+        var same = inFlight.Where(download => !download.NeverShown && !IsIgnored(download, ignoreDispatchId)).FirstOrDefault(download =>
             entityIds.Contains(download.EntityId, StringComparer.Ordinal)
             || string.Equals(download.ReleaseName, releaseName, StringComparison.OrdinalIgnoreCase));
 
@@ -48,6 +50,13 @@ public static class DispatchCoverage
                 ? $"Not sent again: {releaseName} is already on its way."
                 : $"Not sent: {same.ReleaseName} is already on its way for this.";
     }
+
+    /// <summary>
+    /// Whether this in-flight download is the very dispatch a replacement search was queued to replace.
+    /// </summary>
+    public static bool IsIgnored(DownloadInFlight download, string? ignoreDispatchId)
+        => !string.IsNullOrEmpty(ignoreDispatchId)
+            && string.Equals(download.DispatchId, ignoreDispatchId, StringComparison.Ordinal);
 
     /// <summary>
     /// Why a release the search chose is not sent, when the library already holds this exact release for the title:

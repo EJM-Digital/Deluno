@@ -5,4 +5,5 @@ public sealed record EpisodeSearchPlanItem(
     string SeriesId,
     int SeasonNumber,
     int EpisodeNumber,
-    string Title);
+    string Title,
+    string? IgnoreDispatchId = null);
