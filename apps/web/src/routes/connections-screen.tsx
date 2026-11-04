@@ -623,7 +623,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
     if (!indexerToOpen) return;
     const match = indexers.find((item) => item.name.toLowerCase() === indexerToOpen.toLowerCase());
     if (match) openIndexer(match);
-    navigate({ pathname: location.pathname, search: "" }, { replace: true });
+    navigate(location.pathname, { replace: true });
     // Only ever consumed once, when the link brings a name -- not every time the list changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [indexerToOpen]);

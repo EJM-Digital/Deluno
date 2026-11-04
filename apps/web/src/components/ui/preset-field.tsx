@@ -29,7 +29,7 @@ interface PresetFieldProps {
 
 const CUSTOM = "__custom";
 
-export function PresetField({ value, onChange, options, customLabel = "Custom", customPlaceholder, allowCustom = true, inputType = "text", placeholder = "Choose…", disabled = false }: PresetFieldProps) {
+export function PresetField({ value, onChange, options, customLabel = "Custom", customPlaceholder, allowCustom = true, inputType, placeholder = "Choose…", disabled = false }: PresetFieldProps) {
   const [editingCustom, setEditingCustom] = useState(false);
   const customInputId = useId();
   const optionValues = useMemo(() => new Set(options.map((option) => option.value)), [options]);

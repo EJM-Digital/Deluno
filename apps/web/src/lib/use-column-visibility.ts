@@ -42,12 +42,10 @@ export function useColumnVisibility(storageKey: string, columns: readonly Column
 function readStored(storageKey: string, columns: readonly ColumnDefinition[]): Set<string> {
   const fallback = new Set(columns.filter((column) => column.defaultVisible).map((column) => column.key));
   try {
-    const raw = window.localStorage.getItem(storageKey);
-    if (!raw) return fallback;
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return fallback;
+    // Nothing saved, or saved text that is not a list of names, fails on the next lines and falls back.
+    const parsed = JSON.parse(window.localStorage.getItem(storageKey)!);
     const known = new Set(columns.map((column) => column.key));
-    return new Set(parsed.filter((value): value is string => typeof value === "string" && known.has(value)));
+    return new Set<string>(parsed.filter((value: string) => known.has(value)));
   } catch {
     return fallback;
   }

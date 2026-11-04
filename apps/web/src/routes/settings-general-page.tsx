@@ -109,7 +109,7 @@ export function SettingsGeneralPage() {
     try {
       await settingsMutation.mutate({
         cloudflareHelperUrl: form.cloudflareHelperUrl.trim(),
-        cloudflareHelperTimeoutSeconds: form.cloudflareHelperTimeoutSeconds.trim() ? Number(form.cloudflareHelperTimeoutSeconds) : 60,
+        cloudflareHelperTimeoutSeconds: form.cloudflareHelperTimeoutSeconds ? Number(form.cloudflareHelperTimeoutSeconds) : 60,
         cloudflareHelperKind: form.cloudflareHelperKind
       });
       setSavedForm(form);

@@ -36,7 +36,7 @@ export function BulkRemoveDialog({
   const [addImportListExclusion, setAddImportListExclusion] = useState(true);
 
   useEffect(() => {
-    if (open) setAddImportListExclusion(true);
+    setAddImportListExclusion(true);
   }, [open]);
 
   const noun = count === 1 ? mediaLabel : pluralWord(mediaLabel);

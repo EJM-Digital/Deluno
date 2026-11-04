@@ -60,7 +60,7 @@ export function FilterMenu({ active, children, className }: { /** How many filte
   }, [open]);
 
   useEffect(() => {
-    if (open && anchor) panelRef.current?.focus();
+    if (open && anchor) panelRef.current!.focus();
   }, [open, anchor]);
 
   return (

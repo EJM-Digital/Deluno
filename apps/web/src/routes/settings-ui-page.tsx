@@ -154,8 +154,7 @@ export function SettingsUiPage() {
               aria-label="Colour-impaired mode"
               value={colorModeDraft}
               onChange={(event) => {
-                const value = event.target.value;
-                if (!isColorMode(value)) return;
+                const value = event.target.value as ColorMode;
                 setColorModeDraft(value);
                 setColorMode(value);
               }}

@@ -41,7 +41,8 @@ export function spent(from: string | null | undefined, now: number): string | un
 
 export function detailLines(card: JourneyCard, indexers: number, now: number): DetailLine[] {
   const lines: DetailLine[] = [];
-  const size = card.sizeBytes != null && card.sizeBytes > 0 ? card.sizeBytes : undefined;
+  // No size line for a missing, zero or negative size.
+  const size = Math.max(card.sizeBytes ?? 0, 0) || undefined;
   const release = card.release ? ({ parts: [card.release], mono: true } satisfies DetailLine) : undefined;
   switch (card.stage) {
     case "searching": {
@@ -69,7 +70,7 @@ export function detailLines(card: JourneyCard, indexers: number, now: number): D
     case "processor": {
       if (card.processorStep) lines.push({ parts: [bold(card.processorStep)] });
       lines.push({ parts: size ? [bold(formatBytes(size)), " handed over"] : ["Handed over"], right: spent(card.handedOverUtc, now) });
-      if (card.processorQueuePosition != null && card.processorQueuePosition > 0) lines.push({ parts: [`Number ${card.processorQueuePosition.toLocaleString("en-AU")} in its line`] });
+      if ((card.processorQueuePosition ?? 0) > 0) lines.push({ parts: [`Number ${card.processorQueuePosition!.toLocaleString("en-AU")} in its line`] });
       if (release) lines.push(release);
       break;
     }

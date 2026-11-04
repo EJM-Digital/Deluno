@@ -313,7 +313,7 @@ export const settingsPageMeta = [
 export function SettingsWorkspaceLayout() {
   const location = useLocation();
   const meta = settingsPageMeta.find((item) => item.match(location.pathname)) ?? settingsPageMeta[0];
-  const bare = "chrome" in meta && meta.chrome === "none";
+  const bare = "chrome" in meta;
 
   if (bare) {
     return (

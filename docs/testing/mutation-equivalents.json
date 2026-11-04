@@ -45,10 +45,10 @@
     {
       "project": "web",
       "file": "apps/web/src/components/ui/filter-menu.tsx",
-      "mutator": "OptionalChaining",
-      "line": 24,
-      "replacement": "panelRef.current.contains",
-      "reason": "The ref is always set while this runs (the effect only runs once the button or panel is mounted), so ?. and . behave the same."
+      "mutator": "StringLiteral",
+      "line": 18,
+      "replacement": "\"\"",
+      "reason": "The button's own words already say Filter, so with no label its accessible name is the same."
     },
     {
       "project": "web",
@@ -56,7 +56,15 @@
       "mutator": "OptionalChaining",
       "line": 24,
       "replacement": "triggerRef.current.contains",
-      "reason": "The ref is always set while this runs (the effect only runs once the button or panel is mounted), so ?. and . behave the same."
+      "reason": "A press or key can arrive in the moment after the filter has closed or been removed, when React has already cleared this ref but has not yet removed the listener, so ?. is a real guard and no test lands in that moment."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/filter-menu.tsx",
+      "mutator": "OptionalChaining",
+      "line": 24,
+      "replacement": "panelRef.current.contains",
+      "reason": "A press or key can arrive in the moment after the filter has closed or been removed, when React has already cleared this ref but has not yet removed the listener, so ?. is a real guard and no test lands in that moment."
     },
     {
       "project": "web",
@@ -64,15 +72,7 @@
       "mutator": "OptionalChaining",
       "line": 31,
       "replacement": "triggerRef.current.focus",
-      "reason": "The ref is always set while this runs (the effect only runs once the button or panel is mounted), so ?. and . behave the same."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/ui/filter-menu.tsx",
-      "mutator": "StringLiteral",
-      "line": 18,
-      "replacement": "\"\"",
-      "reason": "A class list or search value with no effect a test can see: jsdom has no layout, and the entry is force-mounted so its filter value is never read."
+      "reason": "A press or key can arrive in the moment after the filter has closed or been removed, when React has already cleared this ref but has not yet removed the listener, so ?. is a real guard and no test lands in that moment."
     },
     {
       "project": "web",
@@ -80,31 +80,7 @@
       "mutator": "BooleanLiteral",
       "line": 37,
       "replacement": "false",
-      "reason": "Whether a listener is removed or added in the capture phase makes no observable difference to a test: the same listener is added and removed in pairs."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/ui/filter-menu.tsx",
-      "mutator": "OptionalChaining",
-      "line": 44,
-      "replacement": "triggerRef.current.getBoundingClientRect",
-      "reason": "The ref is always set while this runs (the effect only runs once the button or panel is mounted), so ?. and . behave the same."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/ui/filter-menu.tsx",
-      "mutator": "ConditionalExpression",
-      "line": 45,
-      "replacement": "false",
-      "reason": "Guarding code that runs only once the panel is open, where the guard's other branch cannot be reached by a test."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/ui/filter-menu.tsx",
-      "mutator": "ArithmeticOperator",
-      "line": 46,
-      "replacement": "window.innerWidth + 24",
-      "reason": "Guarding code that runs only once the panel is open, where the guard's other branch cannot be reached by a test."
+      "reason": "Whether the key listener is removed in the capture phase makes no observable difference to a test: the same listener is added and removed in a pair."
     },
     {
       "project": "web",
@@ -112,55 +88,23 @@
       "mutator": "ConditionalExpression",
       "line": 42,
       "replacement": "false",
-      "reason": "Guarding code that runs only once the panel is open, where the guard's other branch cannot be reached by a test."
+      "reason": "Measuring the button while the panel is shut only stores a position nobody sees."
     },
     {
       "project": "web",
       "file": "apps/web/src/components/ui/filter-menu.tsx",
-      "mutator": "BooleanLiteral",
-      "line": 56,
-      "replacement": "false",
-      "reason": "Whether a listener is removed or added in the capture phase makes no observable difference to a test: the same listener is added and removed in pairs."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/ui/filter-menu.tsx",
-      "mutator": "BooleanLiteral",
-      "line": 59,
-      "replacement": "false",
-      "reason": "Whether a listener is removed or added in the capture phase makes no observable difference to a test: the same listener is added and removed in pairs."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/ui/filter-menu.tsx",
-      "mutator": "ConditionalExpression",
-      "line": 64,
-      "replacement": "true",
-      "reason": "Guarding code that runs only once the panel is open, where the guard's other branch cannot be reached by a test."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/ui/filter-menu.tsx",
-      "mutator": "OptionalChaining",
-      "line": 64,
-      "replacement": "panelRef.current.focus",
-      "reason": "The ref is always set while this runs (the effect only runs once the button or panel is mounted), so ?. and . behave the same."
+      "mutator": "ArithmeticOperator",
+      "line": 45,
+      "replacement": "window.innerWidth + 24",
+      "reason": "The panel is at most 576 wide and the test window is wider than that, so the narrow-window width is never reached by a test."
     },
     {
       "project": "web",
       "file": "apps/web/src/components/ui/filter-menu.tsx",
       "mutator": "StringLiteral",
-      "line": 79,
+      "line": 78,
       "replacement": "\"\"",
-      "reason": "A class list or search value with no effect a test can see: jsdom has no layout, and the entry is force-mounted so its filter value is never read."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/ui/filter-menu.tsx",
-      "mutator": "LogicalOperator",
-      "line": 64,
-      "replacement": "open || anchor",
-      "reason": "Guarding code that runs only once the panel is open, where the guard's other branch cannot be reached by a test."
+      "reason": "The button's fixed focus-ring class list: emptying it changes only how the focus ring looks, which no test reads."
     },
     {
       "project": "web",
@@ -204,22 +148,6 @@
     },
     {
       "project": "web",
-      "file": "apps/web/src/routes/settings-ui-page.tsx",
-      "mutator": "ConditionalExpression",
-      "line": 158,
-      "replacement": "false",
-      "reason": "A type guard that narrows the dropdown's string to a colour mode; the dropdown offers only the two valid modes, so the guard never refuses and removing it changes nothing a person or test can reach."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/routes/connections-screen.tsx",
-      "mutator": "ObjectLiteral",
-      "line": 624,
-      "replacement": "{}",
-      "reason": "Navigating to an empty location object and navigating to the current path with an empty search both land on the current path with no query, so the address ends the same either way; no test can tell them apart."
-    },
-    {
-      "project": "web",
       "file": "apps/web/src/routes/setup-guide-page.tsx",
       "mutator": "StringLiteral",
       "line": 948,
@@ -254,33 +182,17 @@
       "project": "web",
       "file": "apps/web/src/components/app/password-prompt.tsx",
       "mutator": "StringLiteral",
-      "line": 46,
+      "line": 45,
       "replacement": "\"Stryker was here!\"",
-      "reason": "Inside the password question: the first state and the reset of the field are both set again by ask() before the question is shown, and the settle callback is always set while the question is open, so removing one of them changes nothing a person or test can reach."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/app/password-prompt.tsx",
-      "mutator": "OptionalChaining",
-      "line": 43,
-      "replacement": "settle.current(value)",
       "reason": "Inside the password question: the first state and the reset of the field are both set again by ask() before the question is shown, and the settle callback is always set while the question is open, so removing one of them changes nothing a person or test can reach."
     },
     {
       "project": "web",
       "file": "apps/web/src/components/app/password-prompt.tsx",
       "mutator": "ArrayDeclaration",
-      "line": 40,
+      "line": 39,
       "replacement": "[\"Stryker was here\"]",
       "reason": "A React dependency list that is constant either way: the callbacks it names never change, so the hook runs once with the list empty or filled."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/app/password-prompt.tsx",
-      "mutator": "StringLiteral",
-      "line": 31,
-      "replacement": "\"Stryker was here!\"",
-      "reason": "Inside the password question: the first state and the reset of the field are both set again by ask() before the question is shown, and the settle callback is always set while the question is open, so removing one of them changes nothing a person or test can reach."
     },
     {
       "project": "web",
@@ -432,39 +344,7 @@
       "mutator": "ConditionalExpression",
       "line": 38,
       "replacement": "true",
-      "reason": "The guided setup is opened twice on the way out of the codes step, by the Continue button and by the sign-in effect that sees the lock released; either alone gives the same result, so removing one part changes nothing a person or test can reach."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/routes/setup-page.tsx",
-      "mutator": "BooleanLiteral",
-      "line": 101,
-      "replacement": "true",
-      "reason": "The guided setup is opened twice on the way out of the codes step, by the Continue button and by the sign-in effect that sees the lock released; either alone gives the same result, so removing one part changes nothing a person or test can reach."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/routes/setup-page.tsx",
-      "mutator": "CallExpression",
-      "line": 102,
-      "replacement": ";",
-      "reason": "The guided setup is opened twice on the way out of the codes step, by the Continue button and by the sign-in effect that sees the lock released; either alone gives the same result, so removing one part changes nothing a person or test can reach."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/routes/setup-page.tsx",
-      "mutator": "ObjectLiteral",
-      "line": 103,
-      "replacement": "{}",
-      "reason": "The guided setup is opened twice on the way out of the codes step, by the Continue button and by the sign-in effect that sees the lock released; either alone gives the same result, so removing one part changes nothing a person or test can reach."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/routes/setup-page.tsx",
-      "mutator": "BooleanLiteral",
-      "line": 103,
-      "replacement": "false",
-      "reason": "The guided setup is opened twice on the way out of the codes step, by the Continue button and by the sign-in effect that sees the lock released; either alone gives the same result, so removing one part changes nothing a person or test can reach."
+      "reason": "While the recovery codes are on screen the creating flag is still set, which blocks the effect on its own; the codes check is only what makes the effect run again once the codes are let go."
     },
     {
       "project": "Deluno.Realtime",
@@ -636,38 +516,6 @@
     },
     {
       "project": "web",
-      "file": "apps/web/src/routes/dashboard/live/times.ts",
-      "mutator": "EqualityOperator",
-      "line": 25,
-      "replacement": "finishAt >= latest",
-      "reason": "Equivalent: the changed comparison gives the same answer for every value the code can hold, because a null or zero size, or an equal finish time, falls out at the next check anyway."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/routes/dashboard/live/detail.ts",
-      "mutator": "ConditionalExpression",
-      "line": 44,
-      "replacement": "true",
-      "reason": "Equivalent: the changed comparison gives the same answer for every value the code can hold, because a null or zero size, or an equal finish time, falls out at the next check anyway."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/routes/dashboard/live/detail.ts",
-      "mutator": "EqualityOperator",
-      "line": 44,
-      "replacement": "card.sizeBytes >= 0",
-      "reason": "Equivalent: the changed comparison gives the same answer for every value the code can hold, because a null or zero size, or an equal finish time, falls out at the next check anyway."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/routes/dashboard/live/detail.ts",
-      "mutator": "ConditionalExpression",
-      "line": 72,
-      "replacement": "true",
-      "reason": "Equivalent: the changed comparison gives the same answer for every value the code can hold, because a null or zero size, or an equal finish time, falls out at the next check anyway."
-    },
-    {
-      "project": "web",
       "file": "apps/web/src/routes/dashboard/live/arrival-groups.ts",
       "mutator": "Regex",
       "line": 118,
@@ -829,22 +677,6 @@
     {
       "project": "web",
       "file": "apps/web/src/components/app/settings-shell.tsx",
-      "mutator": "LogicalOperator",
-      "line": 316,
-      "replacement": "\"chrome\" in meta || meta.chrome === \"none\"",
-      "reason": "Every settings page that names a chrome names none, so \"has a chrome\" and \"has a chrome that is none\" give the same answer for every page there is."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/app/settings-shell.tsx",
-      "mutator": "ConditionalExpression",
-      "line": 316,
-      "replacement": "true",
-      "reason": "Every settings page that names a chrome names none, so \"has a chrome\" and \"has a chrome that is none\" give the same answer for every page there is."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/app/settings-shell.tsx",
       "mutator": "ArrowFunction",
       "line": 53,
       "replacement": "() => undefined",
@@ -873,22 +705,6 @@
       "line": 54,
       "replacement": "true",
       "reason": "Runs once while the module loads, before the test run can switch a mutant on; a missing area is proved by the test that loads the module without one."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/app/quality-build-steps.tsx",
-      "mutator": "OptionalChaining",
-      "line": 241,
-      "replacement": "rules.find(format => format.id === id).name",
-      "reason": "The ids come from the chosen list, which is filtered to the rules that exist, so the rule is always found and ?. and . behave the same."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/app/quality-build-steps.tsx",
-      "mutator": "UpdateOperator",
-      "line": 429,
-      "replacement": "--requestId.current",
-      "reason": "Request numbers are only compared with each other for equality, so counting down gives the same answer as counting up."
     },
     {
       "project": "web",
@@ -921,14 +737,6 @@
       "line": 214,
       "replacement": "[\"Stryker was here\"]",
       "reason": "A React dependency list of stable values (a ref, a function made once, or nothing): an empty list and a list of one fixed string both run the effect once and never again, so no test can tell them apart."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/routes/settings-general-page.tsx",
-      "mutator": "MethodExpression",
-      "line": 112,
-      "replacement": "form.cloudflareHelperTimeoutSeconds",
-      "reason": "The timeout box is a number box, which the browser never lets hold only spaces, so trimming it changes nothing a person or test can reach."
     },
     {
       "project": "web",
@@ -1004,14 +812,6 @@
     },
     {
       "project": "web",
-      "file": "apps/web/src/components/app/bulk-remove-dialog.tsx",
-      "mutator": "ConditionalExpression",
-      "line": 39,
-      "replacement": "true",
-      "reason": "The choice is only read while the dialog is open, so setting it on again when it closes changes nothing a person can reach."
-    },
-    {
-      "project": "web",
       "file": "apps/web/src/components/ui/choice-rows.tsx",
       "mutator": "ArrayDeclaration",
       "line": 41,
@@ -1020,107 +820,11 @@
     },
     {
       "project": "web",
-      "file": "apps/web/src/components/ui/column-picker.tsx",
-      "mutator": "OptionalChaining",
-      "line": 39,
-      "replacement": "menuRef.current.contains",
-      "reason": "The menu is only portalled after the button has measured itself, so the menu ref is always set when a press is judged; ?. and . behave the same."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/ui/column-picker.tsx",
-      "mutator": "StringLiteral",
-      "line": 54,
-      "replacement": "\"\"",
-      "reason": "Removing a listener under another event name leaves a listener that only ever closes a menu that is already closed, so no person or test can tell the difference."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/ui/columns-menu.tsx",
-      "mutator": "OptionalChaining",
-      "line": 36,
-      "replacement": "menuRef.current.contains",
-      "reason": "The menu is only portalled after the button has measured itself, so the menu ref is always set when a press is judged; ?. and . behave the same."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/ui/columns-menu.tsx",
-      "mutator": "StringLiteral",
-      "line": 49,
-      "replacement": "\"\"",
-      "reason": "Removing a listener under another event name leaves a listener that only ever closes a menu that is already closed, so no person or test can tell the difference."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/ui/columns-menu.tsx",
-      "mutator": "ConditionalExpression",
-      "line": 136,
-      "replacement": "true",
-      "reason": "The count is only above nothing when the line already exists, which the element check guards as well, so either check alone gives the same result."
-    },
-    {
-      "project": "web",
       "file": "apps/web/src/components/ui/menu-select.tsx",
       "mutator": "ArrayDeclaration",
       "line": 68,
       "replacement": "[\"Stryker was here\"]",
       "reason": "A React dependency list of stable values (a ref, a function made once, or nothing): an empty list and a list of one fixed string both run the effect once and never again, so no test can tell them apart."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/ui/menu-select.tsx",
-      "mutator": "StringLiteral",
-      "line": 43,
-      "replacement": "\"\"",
-      "reason": "Anything but \"end\" opens the list from the left edge, so a different default name changes nothing."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/ui/menu-select.tsx",
-      "mutator": "ConditionalExpression",
-      "line": 74,
-      "replacement": "false",
-      "reason": "Listening for presses while closed only ever closes a list that is already closed."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/ui/menu-select.tsx",
-      "mutator": "OptionalChaining",
-      "line": 79,
-      "replacement": "menuRef.current.contains",
-      "reason": "The menu is only portalled after the button has measured itself, so the menu ref is always set when a press is judged; ?. and . behave the same."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/ui/menu-select.tsx",
-      "mutator": "StringLiteral",
-      "line": 84,
-      "replacement": "\"\"",
-      "reason": "Removing a listener under another event name leaves a listener that only ever closes a menu that is already closed, so no person or test can tell the difference."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/ui/menu-select.tsx",
-      "mutator": "ArrowFunction",
-      "line": 84,
-      "replacement": "() => undefined",
-      "reason": "Removing a listener under another event name leaves a listener that only ever closes a menu that is already closed, so no person or test can tell the difference."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/ui/menu-select.tsx",
-      "mutator": "ConditionalExpression",
-      "line": 162,
-      "replacement": "default:",
-      "reason": "An empty default branch and no default branch do the same thing."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/ui/preset-field.tsx",
-      "mutator": "StringLiteral",
-      "line": 32,
-      "replacement": "\"\"",
-      "reason": "The text type of the custom box is the browser's own default type, so naming it or not gives the same box."
     },
     {
       "project": "web",
@@ -1164,67 +868,11 @@
     },
     {
       "project": "web",
-      "file": "apps/web/src/lib/use-column-visibility.ts",
-      "mutator": "ConditionalExpression",
-      "line": 46,
-      "replacement": "false",
-      "reason": "An empty remembered value fails to read as a list a line later and falls back the same way."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/lib/use-column-visibility.ts",
-      "mutator": "ConditionalExpression",
-      "line": 48,
-      "replacement": "false",
-      "reason": "Something that is not a list fails when it is filtered and falls back the same way."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/lib/use-column-visibility.ts",
-      "mutator": "ConditionalExpression",
-      "line": 50,
-      "replacement": "true",
-      "reason": "Only text is in the table of known columns, so asking whether a value is text first changes nothing."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/hooks/use-configured-providers.ts",
-      "mutator": "ArrayDeclaration",
-      "line": 24,
-      "replacement": "[\"Stryker was here\"]",
-      "reason": "A source list that is missing falls back to a list of text, which has no configured sources either, so both give nothing."
-    },
-    {
-      "project": "web",
       "file": "apps/web/src/hooks/use-configured-providers.ts",
       "mutator": "ArrayDeclaration",
       "line": 29,
       "replacement": "[\"Stryker was here\"]",
       "reason": "A React dependency list that is constant either way: an empty list and a list of one fixed string both run the hook once and never again, so no test can tell them apart."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/ui/confirm-dialog.tsx",
-      "mutator": "StringLiteral",
-      "line": 100,
-      "replacement": "\"\"",
-      "reason": "A decision's buttons are given their own height and padding, which win over the large size, so the size name changes nothing a person or test can read."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/ui/confirm-dialog.tsx",
-      "mutator": "StringLiteral",
-      "line": 113,
-      "replacement": "\"\"",
-      "reason": "A decision's buttons are given their own height and padding, which win over the large size, so the size name changes nothing a person or test can read."
-    },
-    {
-      "project": "web",
-      "file": "apps/web/src/components/ui/confirm-dialog.tsx",
-      "mutator": "StringLiteral",
-      "line": 127,
-      "replacement": "\"\"",
-      "reason": "A decision's buttons are given their own height and padding, which win over the large size, so the size name changes nothing a person or test can read."
     }
   ]
 }

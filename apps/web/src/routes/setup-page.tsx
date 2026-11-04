@@ -99,8 +99,8 @@ export function SetupPage() {
               codes={recoveryCodes}
               onSaved={() => {
                 creating.current = false;
+                // Letting go of the codes lets the sign-in effect above open the guided setup.
                 setRecoveryCodes(null);
-                navigate(guidePath, { replace: true });
               }}
             />
           </Card>

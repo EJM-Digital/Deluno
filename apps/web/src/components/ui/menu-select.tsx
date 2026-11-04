@@ -40,7 +40,7 @@ export function MenuSelect({
   options,
   onChange,
   label,
-  align = "start",
+  align,
   menuWidth,
   leading,
   className,
@@ -76,7 +76,7 @@ export function MenuSelect({
     function onPointerDown(event: PointerEvent) {
       const target = event.target as Node;
       // The menu is portalled out of this subtree, so "inside" means either.
-      if (rootRef.current!.contains(target) || menuRef.current?.contains(target)) return;
+      if (rootRef.current!.contains(target) || menuRef.current!.contains(target)) return;
       setOpen(false);
     }
 
@@ -158,8 +158,6 @@ export function MenuSelect({
         break;
       case "Tab":
         setOpen(false);
-        break;
-      default:
         break;
     }
   }

@@ -18,13 +18,8 @@ export function clockTime(ms: number): string {
 
 /** When every title on its way should be in: the latest finish time the clients' own readings give. Nothing when no reading says. */
 export function allInBy(cards: readonly JourneyCard[]): number | undefined {
-  let latest: number | undefined;
-  for (const card of cards) {
-    if (card.stage === "imported" || card.stuck || !Number.isFinite(card.finishAtMs)) continue;
-    const finishAt = card.finishAtMs as number;
-    if (latest === undefined || finishAt > latest) latest = finishAt;
-  }
-  return latest;
+  const finishes = cards.filter((card) => card.stage !== "imported" && !card.stuck && Number.isFinite(card.finishAtMs)).map((card) => card.finishAtMs as number);
+  return finishes.length > 0 ? Math.max(...finishes) : undefined;
 }
 
 /** "8 in progress · all done by about 2:28 pm"; the time is left off when no client gives a reading. */

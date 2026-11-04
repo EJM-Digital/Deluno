@@ -33,7 +33,7 @@ export function ColumnsButton({ onReset, className }: { onReset: () => void; cla
     if (!open) return;
     function onPointerDown(event: PointerEvent) {
       const target = event.target as Node;
-      if (rootRef.current!.contains(target) || menuRef.current?.contains(target)) return;
+      if (rootRef.current!.contains(target) || menuRef.current!.contains(target)) return;
       setOpen(false);
     }
     function onKeyDown(event: KeyboardEvent) {
@@ -133,7 +133,7 @@ export function useSharedColumnsHint(sortable: boolean): string {
   React.useEffect(() => {
     const count = sharedHints.get(id) ?? 0;
     sharedHints.set(id, count + 1);
-    if (count === 0 && !document.getElementById(id)) {
+    if (!document.getElementById(id)) {
       const element = document.createElement("p");
       element.id = id;
       element.className = "sr-only";

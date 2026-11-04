@@ -21,7 +21,7 @@ export function useConfiguredProviders() {
   useEffect(() => {
     void fetchJson<MetadataProviderStatus>("/api/metadata/status")
       .then((status) => {
-        setConfigured((status.sources ?? []).filter((source) => source.isConfigured).map((source) => source.source));
+        setConfigured(status.sources.filter((source) => source.isConfigured).map((source) => source.source));
       })
       .catch(() => {
         // Deliberately silent. See above.

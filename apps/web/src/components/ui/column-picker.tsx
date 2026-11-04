@@ -36,7 +36,7 @@ export function ColumnPicker({
 
     function onPointerDown(event: PointerEvent) {
       const target = event.target as Node;
-      if (rootRef.current!.contains(target) || menuRef.current?.contains(target)) return;
+      if (rootRef.current!.contains(target) || menuRef.current!.contains(target)) return;
       setOpen(false);
     }
 

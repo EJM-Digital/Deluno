@@ -97,7 +97,7 @@ export function ConfirmDialog({
               <Dialog.Close asChild>
                 <Button
                   variant="secondary"
-                  size={isDecision ? "lg" : "sm"}
+                  size={isDecision ? undefined : "sm"}
                   className={cn(
                     "w-full",
                     !isDecision && "sm:w-auto",
@@ -110,7 +110,7 @@ export function ConfirmDialog({
               </Dialog.Close>
               {secondaryLabel && onSecondary ? (
                 <Button
-                  size={isDecision ? "lg" : "sm"}
+                  size={isDecision ? undefined : "sm"}
                   variant={secondaryVariant}
                   className={cn(
                     "w-full",
@@ -124,7 +124,7 @@ export function ConfirmDialog({
                 </Button>
               ) : null}
               <Button
-                size={isDecision ? "lg" : "sm"}
+                size={isDecision ? undefined : "sm"}
                 className={cn(
                   "w-full",
                   !isDecision && "sm:w-auto",

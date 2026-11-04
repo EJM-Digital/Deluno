@@ -32,7 +32,6 @@ export function usePasswordPrompt(): { ask: (reason: string) => Promise<string |
   const settle = useRef<((value: string | null) => void) | null>(null);
 
   const ask = useCallback((why: string) => {
-    setPassword("");
     setReason(why);
     return new Promise<string | null>((resolve) => {
       settle.current = resolve;
@@ -40,7 +39,7 @@ export function usePasswordPrompt(): { ask: (reason: string) => Promise<string |
   }, []);
 
   function close(value: string | null) {
-    settle.current?.(value);
+    settle.current!(value);
     settle.current = null;
     setReason(null);
     setPassword("");

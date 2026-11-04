@@ -238,7 +238,7 @@ function CustomRulesRow({
   const bodyId = useId();
   const chosen = props.customFormatIds.filter((id) => rules.some((format) => format.id === id));
   const chosenNames = chosen
-    .map((id) => rules.find((format) => format.id === id)?.name)
+    .map((id) => rules.find((format) => format.id === id)!.name)
     .filter((name): name is string => Boolean(name));
   const answer = chosenNames.length === 0
     ? "No custom rules chosen"
@@ -390,7 +390,7 @@ function StepJudgement(props: QualityBuildStepsProps & { step: QualityStep }) {
   const [releaseName, setReleaseName] = useState(() => exampleFor(props.mediaType));
   const [verdict, setVerdict] = useState<DraftProfileJudgement | null>(null);
   const [failed, setFailed] = useState(false);
-  const requestId = useRef(0);
+  const requestId = useRef<object | null>(null);
 
   const body = useMemo(
     () => ({
@@ -426,7 +426,8 @@ function StepJudgement(props: QualityBuildStepsProps & { step: QualityStep }) {
 
     // Debounced, because this fires on every keystroke in the release name and
     // on every chip toggle above it.
-    const id = ++requestId.current;
+    const id = {};
+    requestId.current = id;
     const timer = window.setTimeout(async () => {
       try {
         const judgement = await judgeDraftProfile(body);
