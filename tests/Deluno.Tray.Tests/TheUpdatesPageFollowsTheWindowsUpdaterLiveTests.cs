@@ -143,7 +143,7 @@ public sealed class TheUpdatesPageFollowsTheWindowsUpdaterLiveTests : IDisposabl
         try
         {
             var read = orchestrator.GetStatusAsync(CancellationToken.None);
-            var finished = await Task.WhenAny(read, Task.Delay(TimeSpan.FromSeconds(5)));
+            var finished = await Task.WhenAny(read, Task.Delay(TimeSpan.FromSeconds(5))); // reason: the longest the read may take before it counts as waiting behind the download
             Assert.Same(read, finished);
         }
         finally
