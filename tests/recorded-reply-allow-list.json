@@ -2,6 +2,31 @@
   "comment": "Tests allowed to build an external app reply inline. \"deliberate\" needs a reason no real app reply would do; \"pending\" is a to-do that scripts/check-recorded-replies.mjs makes you delete (#1237). \"noBehaviour\" lists a recording no test replays because Deluno has no behaviour for the call it shows; scripts/check-recorded-replies.mjs fails for any other recording that no test names.",
   "entries": [
     {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/DelugeEveryBranchTests.cs",
+      "kind": "deliberate",
+      "reason": "Deluge replies that no working Deluge sends: a reply with nothing in it, with a field missing or of the wrong kind, or an error with no words. #1268 asks every line and branch of the adapter to be proven, and the branches left are what the adapter does with such a reply, so the test answers every call with one of them (after the sign-in or token page, which are recorded). The replies a working Deluge sends are tested from tests/fixtures/recorded/deluge in the other Deluge test classes."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/NzbGetEveryBranchTests.cs",
+      "kind": "deliberate",
+      "reason": "NZBGet replies that no working NZBGet sends: a reply with nothing in it, with a field missing or of the wrong kind, or an error with no words. #1268 asks every line and branch of the adapter to be proven, and the branches left are what the adapter does with such a reply, so the test answers every call with one of them (after the sign-in or token page, which are recorded). The replies a working NZBGet sends are tested from tests/fixtures/recorded/nzbget in the other NZBGet test classes."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/SabnzbdEveryBranchTests.cs",
+      "kind": "deliberate",
+      "reason": "SABnzbd replies that no working SABnzbd sends: a reply with nothing in it, with a field missing or of the wrong kind, or an error with no words. #1268 asks every line and branch of the adapter to be proven, and the branches left are what the adapter does with such a reply, so the test answers every call with one of them (after the sign-in or token page, which are recorded). The replies a working SABnzbd sends are tested from tests/fixtures/recorded/sabnzbd in the other SABnzbd test classes."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/TransmissionEveryBranchTests.cs",
+      "kind": "deliberate",
+      "reason": "Transmission replies that no working Transmission sends: a reply with nothing in it, with a field missing or of the wrong kind, or an error with no words. #1268 asks every line and branch of the adapter to be proven, and the branches left are what the adapter does with such a reply, so the test answers every call with one of them (after the sign-in or token page, which are recorded). The replies a working Transmission sends are tested from tests/fixtures/recorded/transmission in the other Transmission test classes."
+    },
+    {
+      "file": "tests/Deluno.Integrations.Tests/DownloadClients/UTorrentEveryBranchTests.cs",
+      "kind": "deliberate",
+      "reason": "uTorrent replies that no working uTorrent sends: a reply with nothing in it, with a field missing or of the wrong kind, or an error with no words. #1268 asks every line and branch of the adapter to be proven, and the branches left are what the adapter does with such a reply, so the test answers every call with one of them (after the sign-in or token page, which are recorded). The replies a working uTorrent sends are tested from tests/fixtures/recorded/utorrent in the other uTorrent test classes."
+    },
+    {
       "file": "tests/Deluno.Integrations.Tests/MediaServers/PlexTvAccountClientTests.cs",
       "kind": "deliberate",
       "reason": "plex.tv's account answers (the account, friends, shared servers and home users, an owner token, and the ratings, favourites and watchlist read with them) cannot be recorded: plex.tv answers them only to a claimed server and a token that names its owner, and the owner decided on 1 November 2026 not to create outside accounts (docs/testing/account-requests.md, 'Waived until an account exists'; #1343). Only plex.tv's own 401 with no token is recorded (tests/fixtures/recorded/plex plex-tv-no-token, replayed in PlexOnRecordingsTests); every other plex.tv answer in this file is written by the test. Plex, Jellyfin and Emby without the account are tested from their recordings (MediaServerClientTests, PlexOnRecordingsTests, EmbyOnRecordingsTests, RecordedJellyfinTests, JellyfinOperationsOnRecordingsTests)."
