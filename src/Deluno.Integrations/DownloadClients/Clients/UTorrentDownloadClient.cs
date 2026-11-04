@@ -114,8 +114,14 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
             var listed = await WaitForHashAsync(http, token, before, knownHash, cancellationToken);
             if (listed is not null)
             {
-                await TryLabelAsync(http, token, listed, DownloadClientHelpers.ResolveCategory(client, request), cancellationToken);
+                var labelRefusals = await TryLabelAsync(http, token, listed, DownloadClientHelpers.ResolveCategory(client, request), cancellationToken);
                 successMessage += await TryAddPausedAsync(http, token, listed, client, cancellationToken);
+                return DownloadClientHelpers.GrabSuccess(client, request, successMessage) with
+                {
+                    ExternalId = knownHash,
+                    FollowUpRefusals = labelRefusals.Count > 0 ? labelRefusals : null,
+                    FollowUpCallsSent = ["setprops"]
+                };
             }
 
             return DownloadClientHelpers.GrabSuccess(client, request, successMessage) with { ExternalId = knownHash };
@@ -130,9 +136,14 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
                 "uTorrent accepted the release, but Deluno could not tell which torrent it became, so it is not following it. Check uTorrent's list; if it is there, remove it and search again.");
         }
 
-        await TryLabelAsync(http, token, added, DownloadClientHelpers.ResolveCategory(client, request), cancellationToken);
+        var refusals = await TryLabelAsync(http, token, added, DownloadClientHelpers.ResolveCategory(client, request), cancellationToken);
         successMessage += await TryAddPausedAsync(http, token, added, client, cancellationToken);
-        return DownloadClientHelpers.GrabSuccess(client, request, successMessage) with { ExternalId = added.ToLowerInvariant() };
+        return DownloadClientHelpers.GrabSuccess(client, request, successMessage) with
+        {
+            ExternalId = added.ToLowerInvariant(),
+            FollowUpRefusals = refusals.Count > 0 ? refusals : null,
+            FollowUpCallsSent = ["setprops"]
+        };
     }
 
     /// <summary>
@@ -178,20 +189,29 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
     }
 
     /// <summary>
-    /// Best-effort: uTorrent already has the torrent at this point, so a failed
-    /// label set is not a grab failure, only an unlabeled item for
-    /// InferMediaType to fall back on.
+    /// Best-effort: uTorrent already has the torrent at this point, so a failed label set is not a grab failure, only an
+    /// unlabelled item. What uTorrent said is handed back (#1470): a refused status, an error in its reply, or no answer.
     /// </summary>
-    private static async Task TryLabelAsync(HttpClient http, string token, string hash, string category, CancellationToken cancellationToken)
+    private static async Task<IReadOnlyList<DownloadClientFollowUpRefusal>> TryLabelAsync(HttpClient http, string token, string hash, string category, CancellationToken cancellationToken)
     {
+        var what = $"the {category} label";
         try
         {
             using var labelResponse = await http.GetAsync(
                 $"gui/?token={Uri.EscapeDataString(token)}&action=setprops&hash={Uri.EscapeDataString(hash)}&s=label&v={Uri.EscapeDataString(category)}",
                 cancellationToken);
+            if (!labelResponse.IsSuccessStatusCode)
+            {
+                return await DownloadClientHelpers.RefusalOf(labelResponse, "setprops", what, true, cancellationToken);
+            }
+
+            return await ReadAddErrorAsync(labelResponse, cancellationToken) is { } error
+                ? [DownloadClientHelpers.Refusal("setprops", what, true, error)]
+                : [];
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
+            return [DownloadClientHelpers.Refusal("setprops", what, true, exception.Message)];
         }
     }
 

@@ -253,6 +253,7 @@ public sealed class DownloadClientGrabService(
             if (grabResult.Succeeded)
             {
                 await ConfirmSavePathAsync(client, request, cancellationToken);
+                await SayWhatTheClientRefusedAsync(client, request, grabResult, cancellationToken);
             }
 
             return grabResult;
@@ -476,6 +477,86 @@ public sealed class DownloadClientGrabService(
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             logger?.LogDebug(exception, "Could not confirm the save path for grab of {ReleaseName} to {ClientName}.", request.ReleaseName.ForLog(), client.Name.ForLog());
+        }
+    }
+
+    /// <summary>
+    /// #1470: a call Deluno sent after the grab (category, save folder, automatic management, share limits) that the client
+    /// refused is logged with the release, the call and the client's own words, written to Activity in plain words, and, when it
+    /// can stop the import (category or save folder), raised as a health problem with its fix until the same call is taken. The
+    /// grab itself stands. Best-effort.
+    /// </summary>
+    private async Task SayWhatTheClientRefusedAsync(
+        DownloadClientItem client,
+        DownloadClientGrabRequest request,
+        DownloadClientGrabResult grabResult,
+        CancellationToken cancellationToken)
+    {
+        var refusals = grabResult.FollowUpRefusals ?? [];
+        foreach (var refusal in refusals)
+        {
+            var text = $"{client.Name} did not take {refusal.What} for {request.ReleaseName}: {refusal.Reason}";
+            logger?.LogWarning(
+                "{Client} refused {Call} for {Release}: {Reason}",
+                client.Name.ForLog(), refusal.Call, request.ReleaseName.ForLog(), refusal.Reason.ForLog());
+            try
+            {
+                if (activityFeedRepository is not null)
+                {
+                    await activityFeedRepository.RecordActivityAsync(
+                        "download.follow-up.refused",
+                        refusal.CanStopImport ? $"{text} Deluno may not be able to import it until that is fixed." : text,
+                        null,
+                        null,
+                        "download_client",
+                        client.Id,
+                        cancellationToken);
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                logger?.LogWarning(exception, "Could not write the refused {Call} for {Release} to Activity.", refusal.Call, request.ReleaseName.ForLog());
+            }
+        }
+
+        if (healthCheckRepository is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var outcomes = new List<HealthCheckOutcome>();
+            foreach (var refusal in refusals.Where(refusal => refusal.CanStopImport))
+            {
+                outcomes.Add(HealthCheckOutcome.Problem(
+                    $"grab-follow-up:{client.Id}:{refusal.Call}",
+                    HealthCheckCategories.Grab,
+                    $"{client.Name} refused {refusal.What}",
+                    $"{client.Name} did not take {refusal.What} for {request.ReleaseName}: {refusal.Reason}",
+                    cause: $"Deluno sent {refusal.Call} after the grab and {client.Name} refused it, so the download may not land where Deluno looks for it.",
+                    fix: $"Fix it in {client.Name} (the category must exist and its folder must be writable), then grab again or move the download there yourself.",
+                    detailsJson: null));
+            }
+
+            var refused = refusals.Select(refusal => refusal.Call).ToHashSet(StringComparer.Ordinal);
+            foreach (var call in (grabResult.FollowUpCallsSent ?? []).Where(call => !refused.Contains(call)))
+            {
+                var id = $"grab-follow-up:{client.Id}:{call}";
+                if (await healthCheckRepository.GetAsync(id, cancellationToken) is { } earlier)
+                {
+                    outcomes.Add(HealthCheckOutcome.Ok(id, HealthCheckCategories.Grab, earlier.Name, $"{client.Name} took {call} for {request.ReleaseName}."));
+                }
+            }
+
+            if (outcomes.Count > 0)
+            {
+                await healthCheckRepository.UpsertResultsAsync(outcomes, cancellationToken);
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger?.LogWarning(exception, "Could not record the refused follow-up for {Release}.", request.ReleaseName.ForLog());
         }
     }
 
