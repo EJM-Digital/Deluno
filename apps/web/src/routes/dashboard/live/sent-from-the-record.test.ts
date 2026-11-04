@@ -182,7 +182,8 @@ describe("a download the check refused and removed is on no lane (#1467)", () =>
     { status: "archived" },
     { status: "vanished" },
     { grabStatus: "refused" },
-    { importFailureCode: "handed-over-elsewhere" }
+    { importFailureCode: "handed-over-elsewhere" },
+    { importFailureMessage: "The download check found a file that would not open." }
   ];
   const lanes = (cards: ReturnType<typeof buildJourney>) => cards.map((card) => `${card.stage}:${card.state.label}`);
 

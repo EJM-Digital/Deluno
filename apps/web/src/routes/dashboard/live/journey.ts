@@ -388,7 +388,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
   for (const handoff of handoffs) {
     if (handoff.status.toLowerCase() === "dismissed" || seenReleases.has(releaseKey(handoff.releaseName))) continue;
     const dispatch = dispatchByRelease.get(releaseKey(handoff.releaseName));
-    if (dispatchClosed(dispatch) || endedReleases.has(releaseKey(handoff.releaseName)) || endedQueueItems.has(handoff.queueItemId) || ["imported", "not-imported"].includes(handoff.outcome?.outcome ?? "")) continue;
+    if (dispatchClosed(dispatch) || endedReleases.has(releaseKey(handoff.releaseName)) || endedQueueItems.has(handoff.queueItemId) || handoff.outcome?.outcome === "imported" || handoff.outcome?.outcome === "not-imported") continue;
     const updated = Date.parse(handoff.updatedUtc);
     const recent = Number.isFinite(updated) && now - updated < 6 * 3_600_000;
     let stage: Stage | null = null;
