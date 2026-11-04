@@ -83,6 +83,14 @@ function New-UTorrentAdapter($p, [string] $Version, $Login) {
             Save-State utorrent $v 'label-set' 'A label put on a finished torrent (setprops s=label), then the list showing it (label is at index 11).' @($label, (& $global:UtCall 'list=1'))
             $unknown = & $global:UtCall "action=setprops&hash=$('0' * 40)&s=label&v=recorded-movies"
             Save-State utorrent $v 'label-unknown-hash' 'setprops s=label for a hash uTorrent never had.' @($unknown, (& $global:UtCall "action=getprops&hash=$('0' * 40)"))
+            # What uTorrent really answers to a label it is asked to put and will not (#1470): its answers, whatever they are, are the recording.
+            $refusedExchanges = @(
+                (& $global:UtCall "action=setprops&hash=$h&s=notasetting&v=x"),
+                (& $global:UtCall "action=setprops&s=label&v=recorded-movies"),
+                (& $global:UtCall "action=setprops&hash=$h&s=label&v=$([Uri]::EscapeDataString(('x' * 400)))"),
+                (Send-Recorded -Client $global:UtClient -Path "/gui/?action=setprops&hash=$h&s=label&v=recorded-movies"),
+                (& $global:UtCall 'list=1'))
+            Save-State utorrent $v 'label-refused' 'setprops s=label asked in ways uTorrent may refuse: an unknown property name, no hash, a 400-character label, and no token at all, then the list. The statuses and bodies are what uTorrent really answered (the existing label-unknown-hash records a hash it never had).' $refusedExchanges
             Save-State utorrent $v 'start-stop-force' 'stop, start and forcestart of a finished torrent, each followed by the list.' @(
                 (& $global:UtCall "action=stop&hash=$h"), (& $global:UtCall 'list=1'), (& $global:UtCall "action=start&hash=$h"), (& $global:UtCall 'list=1'), (& $global:UtCall "action=forcestart&hash=$h"), (& $global:UtCall 'list=1'))
             Save-State utorrent $v 'files-unknown-hash' 'getfiles for a hash uTorrent never had.' @((& $global:UtCall "action=getfiles&hash=$('0' * 40)"))

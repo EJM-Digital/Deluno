@@ -1,0 +1,124 @@
+{
+  "app": "utorrent",
+  "version": "3.6.0.47254",
+  "state": "label-refused",
+  "recordedAt": "2026-11-04T20:10:35Z",
+  "note": "setprops s=label asked in ways uTorrent may refuse: an unknown property name, no hash, a 400-character label, and no token at all, then the list. The statuses and bodies are what uTorrent really answered (the existing label-unknown-hash records a hash it never had).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&action=setprops&hash=A98842E0C3ACA43DB8A95EF3B21A3CA830CD413A&s=notasetting&v=x"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&action=setprops&s=label&v=recorded-movies"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&action=setprops&hash=A98842E0C3ACA43DB8A95EF3B21A3CA830CD413A&s=label&v=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?action=setprops&hash=A98842E0C3ACA43DB8A95EF3B21A3CA830CD413A&s=label&v=recorded-movies"
+      },
+      "reply": {
+        "status": 400,
+        "headers": {
+          "content-type": "text/html"
+        },
+        "bodyText": "\r\ninvalid request"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/gui/?token=<scrubbed>&list=1"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain"
+        },
+        "body": {
+          "build": 47254,
+          "torrents": [
+            [
+              "A98842E0C3ACA43DB8A95EF3B21A3CA830CD413A",
+              201,
+              "Recorded.utorrent.A.mkv",
+              815024,
+              1000,
+              0,
+              0,
+              0,
+              0,
+              0,
+              -1,
+              "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+              0,
+              0,
+              0,
+              0,
+              65536,
+              -1,
+              0,
+              "",
+              "",
+              "Seeding 100.0 %",
+              "5",
+              1793823034,
+              1793823035,
+              "",
+              "C:\\golden\\recorded\\utorrent",
+              0,
+              "5173F89E"
+            ]
+          ],
+          "label": [
+            [
+              "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+              1
+            ]
+          ],
+          "torrentc": "1109160421",
+          "rssfeeds": [],
+          "rssfilters": []
+        }
+      }
+    }
+  ]
+}
