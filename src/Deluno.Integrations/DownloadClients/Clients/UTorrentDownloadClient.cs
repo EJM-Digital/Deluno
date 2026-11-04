@@ -200,14 +200,9 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
             using var labelResponse = await http.GetAsync(
                 $"gui/?token={Uri.EscapeDataString(token)}&action=setprops&hash={Uri.EscapeDataString(hash)}&s=label&v={Uri.EscapeDataString(category)}",
                 cancellationToken);
-            if (!labelResponse.IsSuccessStatusCode)
-            {
-                return await DownloadClientHelpers.RefusalOf(labelResponse, "setprops", what, true, cancellationToken);
-            }
-
-            return await ReadAddErrorAsync(labelResponse, cancellationToken) is { } error
-                ? [DownloadClientHelpers.Refusal("setprops", what, true, error)]
-                : [];
+            // Only a refused status is a refusal: uTorrent answers 200 with its build number for a label it cannot use (an unknown
+            // property, no hash, a 400-character label; recorded in label-refused), and "invalid request" with 400 when the token is wrong.
+            return await DownloadClientHelpers.RefusalOf(labelResponse, "setprops", what, true, cancellationToken);
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {

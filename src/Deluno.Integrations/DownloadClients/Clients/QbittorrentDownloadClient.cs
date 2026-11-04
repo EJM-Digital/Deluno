@@ -365,8 +365,11 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
                 new KeyValuePair<string, string>("hashes", hash),
                 new KeyValuePair<string, string>("enable", "true")
             };
-            using var response = await http.PostAsync("api/v2/torrents/setAutoManagement", new FormUrlEncodedContent(pairs), cancellationToken);
-            return await DownloadClientHelpers.RefusalOf(response, "setAutoManagement", "automatic torrent management", false, cancellationToken);
+            // Only a call that leaves out "enable" is refused (400, recorded in auto-management-refused), and this one never
+            // does: qBittorrent answers 200 to enable=true for a torrent it holds and for one it never had. So only a failure
+            // to reach it is said.
+            (await http.PostAsync("api/v2/torrents/setAutoManagement", new FormUrlEncodedContent(pairs), cancellationToken)).Dispose();
+            return [];
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
         {
