@@ -9,6 +9,7 @@ using Deluno.Movies.Data;
 using Deluno.Persistence.Tests.Support;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 
 namespace Deluno.Persistence.Tests.Api;
 
@@ -214,7 +215,114 @@ public sealed class HeldReleasesOverHttpTests
         Assert.Empty((await app.Client.GetFromJsonAsync<JsonElement>("/api/attention/held-releases")).EnumerateArray());
     }
 
+    [Fact]
+    public async Task Approving_a_release_whose_only_client_is_not_answering_says_so_sends_nothing_keeps_the_row_and_is_logged()
+    {
+        // The real grab service, and a client that was saved but never passed a connection test: what the rig showed as
+        // "not answering". The reply used to be 200 and the row was dropped with nothing sent.
+        var logs = new LogCapture();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => services.AddSingleton<ILoggerProvider>(logs));
+        var libraryId = await LibraryWithAClientAsync(app);
+        await HeldMovieAsync(app, "Big Buck Bunny", "held", libraryId);
+        var historyId = await HistoryIdAsync(app);
+
+        for (var press = 0; press < 2; press++)
+        {
+            using var response = await app.Client.PostAsync($"/api/attention/held-releases/{historyId}/approve", content: null);
+            await AssertRefusedAsync(response, logs, " is not answering, so Deluno is holding grabs to it. Approve again once it passes, or send it to another client.", "Big.Buck.Bunny.2008.2160p.WEB-DL-GRP");
+        }
+
+        // The row is still there, still the same row, so a later press can work.
+        Assert.Equal(historyId, await HistoryIdAsync(app));
+    }
+
+    [Fact]
+    public async Task Approving_a_release_for_a_title_whose_library_has_no_client_linked_is_a_plain_409_that_says_to_link_one_and_is_logged()
+    {
+        var logs = new LogCapture();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => services.AddSingleton<ILoggerProvider>(logs));
+        var root = Directory.CreateDirectory(Path.Combine(app.DataRoot, "Films")).FullName;
+        var library = await app.Client.PostAsJsonAsync("/api/libraries", new { name = "Films", mediaType = "movies", rootPath = root });
+        var libraryId = (await library.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        await HeldMovieAsync(app, "Big Buck Bunny", "held", libraryId);
+        var historyId = await HistoryIdAsync(app);
+
+        using var response = await app.Client.PostAsync($"/api/attention/held-releases/{historyId}/approve", content: null);
+
+        await AssertRefusedAsync(response, logs, "Link a download client to this library", "Big.Buck.Bunny.2008.2160p.WEB-DL-GRP");
+        Assert.Equal(historyId, await HistoryIdAsync(app));
+    }
+
+    [Fact]
+    public async Task Approving_a_tv_release_that_replacement_protection_refuses_is_a_plain_409_that_names_why_and_is_logged()
+    {
+        var logs = new LogCapture();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => services.AddSingleton<ILoggerProvider>(logs));
+        var libraryId = await ApiScenes.CreateLibraryAsync(app, "tv");
+        var series = app.Services.GetRequiredService<Deluno.Series.Data.ISeriesCatalogRepository>();
+        await series.ImportExistingAsync(
+            libraryId, "The Twilight Zone", 1959, "covered", "Imported.", "Bluray-1080p", "Bluray-1080p", true, null, null,
+            [new Deluno.Series.Contracts.ImportedEpisodeItem(1, 2, HasFile: true, FilePath: Path.Combine(app.DataRoot, "x.mkv"), FileSizeBytes: 4),
+             new Deluno.Series.Contracts.ImportedEpisodeItem(1, 1, HasFile: false)],
+            CancellationToken.None);
+        var seriesId = (await series.ListAsync(CancellationToken.None)).Single().Id;
+        var episodeId = (await series.GetInventoryDetailAsync(seriesId, CancellationToken.None))!.Episodes.Single(e => e.EpisodeNumber == 1).EpisodeId;
+        var client = await app.Services.GetRequiredService<IConnectionsRepository>().CreateDownloadClientAsync(
+            new CreateDownloadClientRequest("Transmission", "transmission", "localhost", 1234, null, null, null, "movies", "tv", null, 1, true), CancellationToken.None);
+        var routed = await app.Client.PutAsJsonAsync($"/api/libraries/{libraryId}/routing", new
+        {
+            sources = Array.Empty<object>(),
+            downloadClients = new[] { new { downloadClientId = client.Id, priority = 1, category = (string?)null } }
+        });
+        Assert.True(routed.IsSuccessStatusCode);
+        const string Release = "The.Twilight.Zone.S01E01.Where.Is.Everybody.720p.AMZN.WEB-DL.DD.2.0.H.264-p";
+        var plan = HeldPlan.Replace("Big.Buck.Bunny.2008.2160p.WEB-DL-GRP", Release).Replace("WEB 2160p", "WEB 720p");
+        await series.RecordSearchAttemptAsync(seriesId, episodeId, libraryId, "automatic", "held", DateTimeOffset.UtcNow.AddHours(-1), null, "Held.", Release, "Nyaa", plan, CancellationToken.None);
+        var historyId = await HistoryIdAsync(app);
+
+        using var response = await app.Client.PostAsync($"/api/attention/held-releases/{historyId}/approve", content: null);
+
+        await AssertRefusedAsync(response, logs, "Replacement protection is enabled", Release);
+        Assert.Equal(historyId, await HistoryIdAsync(app));
+    }
+
     // ---------------------------------------------------------------- helpers
+
+    private static async Task AssertRefusedAsync(HttpResponseMessage response, LogCapture logs, string reason, string releaseName)
+    {
+        var text = await response.Content.ReadAsStringAsync();
+        Assert.True(response.StatusCode == HttpStatusCode.Conflict, $"{(int)response.StatusCode}: {text}");
+        var body = JsonDocument.Parse(text).RootElement;
+        Assert.Equal("held-release-refused", body.GetProperty("code").GetString());
+        Assert.Contains(reason, body.GetProperty("message").GetString());
+        Assert.Contains(logs.Lines, line => line.Contains(releaseName, StringComparison.Ordinal) && line.Contains(reason, StringComparison.Ordinal));
+    }
+
+    private sealed class LogCapture : ILoggerProvider
+    {
+        private readonly System.Collections.Concurrent.ConcurrentQueue<string> lines = new();
+
+        public IReadOnlyCollection<string> Lines => lines.ToArray();
+
+        public ILogger CreateLogger(string categoryName) => new Sink(categoryName, lines);
+
+        public void Dispose() { }
+
+        private sealed class Sink(string category, System.Collections.Concurrent.ConcurrentQueue<string> lines) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                if (logLevel == LogLevel.Information && category.EndsWith("HeldReleases", StringComparison.Ordinal))
+                {
+                    lines.Enqueue(formatter(state, exception));
+                }
+            }
+        }
+    }
 
     private static async Task<string> HistoryIdAsync(ApplicationTestHost app)
         => Assert.Single((await app.Client.GetFromJsonAsync<JsonElement>("/api/attention/held-releases")).EnumerateArray()).GetProperty("historyId").GetString()!;

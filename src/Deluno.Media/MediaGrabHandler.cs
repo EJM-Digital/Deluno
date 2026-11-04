@@ -65,7 +65,8 @@ public sealed record MediaGrabResult(
     string? OverrideReason,
     string? DispatchStatus,
     string? DispatchMessage,
-    ActiveDownloadConflict? ActiveDownload = null)
+    ActiveDownloadConflict? ActiveDownload = null,
+    string? DownloadClientName = null)
 {
     public static MediaGrabResult NotFoundResult()
         => new(true, null, null, null, false, null, null, null);
@@ -396,7 +397,8 @@ public static class MediaGrabHandler
             ForceOverride: forceOverride,
             OverrideReason: forceOverride ? overrideReason : null,
             DispatchStatus: grabResult.Status,
-            DispatchMessage: grabResult.Message);
+            DispatchMessage: grabResult.Message,
+            DownloadClientName: downloadClient.DownloadClientName);
     }
 
     public static Dictionary<string, string[]> ValidateReleaseGrab(MediaReleaseGrabRequest request)

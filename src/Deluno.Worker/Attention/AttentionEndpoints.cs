@@ -4,6 +4,7 @@ using Deluno.Media;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Logging;
 
 namespace Deluno.Worker.Attention;
 
@@ -158,8 +159,10 @@ public static class AttentionEndpoints
             Deluno.Quality.Data.IReleasePreferencePlanRepository releasePreferencePlanRepository,
             IMediaTagStore tagStore,
             Deluno.Integrations.DownloadClients.IDownloadClientTelemetryService downloadClientTelemetry,
+            ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
+            var logger = loggerFactory.CreateLogger("Deluno.Worker.Attention.HeldReleases");
             var check = await heldReader.CheckAsync(historyId, cancellationToken);
             if (check is null)
             {
@@ -168,7 +171,7 @@ public static class AttentionEndpoints
 
             if (check.Refusal is not null)
             {
-                return Results.Json(new { code = "held-release-refused", message = check.Refusal }, statusCode: StatusCodes.Status409Conflict);
+                return Refused(logger, check.Item.ReleaseName, check.Refusal);
             }
 
             var item = check.Item;
@@ -206,8 +209,12 @@ public static class AttentionEndpoints
                 downloadClientGrabService,
                 activityFeedRepository,
                 timeProvider,
+                // A send that did not go out must not write a newer search: that would make this held row out of date
+                // and take it off the screen, with the person none the wiser. Only a send that went is recorded.
                 (mediaId, libraryId, triggerKind, outcome, now, nextEligibleUtc, lastSearchResult, releaseName, indexerName, detailsJson, token) =>
-                    isMovie
+                    outcome != "matched"
+                    ? Task.CompletedTask
+                    : isMovie
                         ? movieRepository.RecordSearchAttemptAsync(mediaId, libraryId, triggerKind, outcome, now, nextEligibleUtc, lastSearchResult, releaseName, indexerName, detailsJson, token)
                         : seriesRepository.RecordSearchAttemptAsync(mediaId, null, libraryId, triggerKind, outcome, now, nextEligibleUtc, lastSearchResult, releaseName, indexerName, detailsJson, token),
                 cancellationToken,
@@ -229,7 +236,15 @@ public static class AttentionEndpoints
 
             if (result.ValidationErrors is not null)
             {
-                return Results.ValidationProblem(result.ValidationErrors);
+                // Every one of these is something the person can act on, so it is answered like the other refusals: 409
+                // with the reason in plain words, and a line in the log.
+                var reason = string.Join(" ", result.ValidationErrors.Values.SelectMany(messages => messages).Where(text => !string.IsNullOrWhiteSpace(text)));
+                return Refused(logger, item.ReleaseName, string.IsNullOrWhiteSpace(reason) ? $"{item.ReleaseName} could not be sent." : reason);
+            }
+
+            if (result.DispatchStatus != GrabStatuses.Sent)
+            {
+                return Refused(logger, item.ReleaseName, NotSentWords(result));
             }
 
             await dismissals.DismissAsync(AttentionDismissalStore.HeldReleaseKey(historyId), cancellationToken);
@@ -237,5 +252,26 @@ public static class AttentionEndpoints
         });
 
         return endpoints;
+    }
+
+    private static IResult Refused(ILogger logger, string releaseName, string message)
+    {
+        logger.LogInformation("Approving the held release {ReleaseName} was refused: {Reason}", releaseName, message);
+        return Results.Json(new { code = "held-release-refused", message }, statusCode: StatusCodes.Status409Conflict);
+    }
+
+    /// <summary>Why a send that reached the client layer did not go out, in words that say what to do next.</summary>
+    internal static string NotSentWords(MediaGrabResult result)
+    {
+        var client = string.IsNullOrWhiteSpace(result.DownloadClientName) ? "The download client" : result.DownloadClientName.Trim();
+        return result.DispatchStatus switch
+        {
+            GrabStatuses.Unready =>
+                $"{client} is not answering, so Deluno is holding grabs to it. Approve again once it passes, or send it to another client.",
+            GrabStatuses.Paused =>
+                $"{client} is switched off, so nothing can be sent to it. Switch it on in Download clients, then approve again.",
+            _ =>
+                $"{client} did not take this release. {result.DispatchMessage} Approve again once that is fixed, or send it to another client."
+        };
     }
 }
