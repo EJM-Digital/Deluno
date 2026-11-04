@@ -244,6 +244,18 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   });
 
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  /** Why Approve could not send a held release, kept on its row until the next thing done to that row. */
+  const [heldRefusals, setHeldRefusals] = useState<Record<string, string>>({});
+  const setHeldRefusal = (historyId: string, message: string | null) =>
+    setHeldRefusals((current) => {
+      if (message === null) {
+        if (!(historyId in current)) return current;
+        const rest = { ...current };
+        delete rest[historyId];
+        return rest;
+      }
+      return { ...current, [historyId]: message };
+    });
   /** Hand-offs sent again from here: shown as in progress until the processor's answer arrives by push (#1193). */
   const [resentHandoffIds, setResentHandoffIds] = useState<Set<string>>(new Set());
   const [drawer, setDrawer] = useState<DrawerMode>(null);
@@ -818,14 +830,23 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   }
 
   async function approveHeld(row: HeldReleaseRow) {
-    await run(`held:approve:${row.historyId}`, () => approveHeldRelease(row), `Sent ${row.releaseName} to your download client.`);
+    setHeldRefusal(row.historyId, null);
+    await run(
+      `held:approve:${row.historyId}`,
+      () => approveHeldRelease(row).catch((error: unknown) => {
+        setHeldRefusal(row.historyId, error instanceof Error ? error.message : `${row.releaseName} could not be sent to a download client.`);
+        throw error;
+      }),
+      `Sent ${row.releaseName} to your download client.`);
   }
 
   async function findAnotherHeld(row: HeldReleaseRow) {
+    setHeldRefusal(row.historyId, null);
     await run(`held:another:${row.historyId}`, () => findAnotherForHeldRelease(row), `${row.releaseName} will not be used again. Searching for another.`);
   }
 
   async function dismissHeld(row: HeldReleaseRow) {
+    setHeldRefusal(row.historyId, null);
     await run(`held:dismiss:${row.historyId}`, () => dismissHeldRelease(row), `${heldReleaseTitle(row)} dismissed`);
   }
 
@@ -1550,6 +1571,9 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                     <Button type="button" variant="outline" size="sm" aria-label={`Dismiss ${row.releaseName}`} onClick={() => void dismissHeld(row)} disabled={busyKey !== null}>
                       Dismiss
                     </Button>
+                    {heldRefusals[row.historyId] ? (
+                      <span role="alert" className="basis-full text-right text-xs text-destructive max-md:text-left">{heldRefusals[row.historyId]}</span>
+                    ) : null}
                   </span>
                 </ListCell>
               </ListRow>

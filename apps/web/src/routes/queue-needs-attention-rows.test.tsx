@@ -262,6 +262,32 @@ describe("Needs attention: a release held for approval", () => {
     expect(toastSuccess).not.toHaveBeenCalled();
   });
 
+  it("a refused Approve also says why on the row itself, keeps the row waiting, and clears the reason on the next action on that row (#1463)", async () => {
+    const why = "Transmission is not answering, so Deluno is holding grabs to it. Approve again once it passes, or send it to another client.";
+    authedFetchMock.mockImplementation(() => reply({ code: "held-release-refused", message: why }, false, 409));
+    open();
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve Dune.2021.2160p.WEB-DL-GROUP" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(why);
+    expect(screen.getByText("Waiting for your OK: Dune.2021.2160p.WEB-DL-GROUP")).toBeVisible();
+
+    // The reason stays after the toast is gone, and goes with the next action on the row.
+    authedFetchMock.mockImplementation(() => reply({}));
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss Dune.2021.2160p.WEB-DL-GROUP" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+
+  it("an old-style 400 validation answer still reaches the row as plain words", async () => {
+    authedFetchMock.mockImplementation(() => reply({ errors: { force: ["Replacement protection is enabled. Disable it to allow downgrades."] } }, false, 400));
+    open();
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve Dune.2021.2160p.WEB-DL-GROUP" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Replacement protection is enabled.");
+  });
+
   it("Dismiss posts the held release's dismiss and says the title is dismissed", async () => {
     open();
 
