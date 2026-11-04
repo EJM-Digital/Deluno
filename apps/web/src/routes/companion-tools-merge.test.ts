@@ -36,4 +36,14 @@ describe("the Companion Tools count covers every installed app", () => {
     expect(merged.tools.map((item) => item.id)).toEqual(["sabnzbd", "qbittorrent", "weir", "transmission", "deluge", "nzbget"]);
     expect(merged.tools.find((item) => item.id === "nzbget")).toMatchObject({ state: "not-installed", installedByTray: true });
   });
+
+  it("returns the page as it is when it already lists every installed app", () => {
+    const original = page([tool("sabnzbd", "connected")]);
+    expect(withInstalledApps(original, [app("sabnzbd", true, true)])).toBe(original);
+  });
+
+  it("describes an app that is connected but not detected as installed, as installed with Deluno", () => {
+    const merged = withInstalledApps(page([]), [app("deluge", false, true)]);
+    expect(merged.tools[0]).toMatchObject({ id: "deluge", state: "connected", description: "Installed with Deluno.", installedByInstaller: true, installedByTray: false, connectionName: "deluge" });
+  });
 });

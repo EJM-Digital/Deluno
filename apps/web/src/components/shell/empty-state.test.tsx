@@ -63,4 +63,49 @@ describe("the EmptyState card", () => {
     expect(full.container.firstElementChild!.className).toContain("py-14");
     expect(screen.getByRole("heading").className).toContain("text-lg");
   });
+
+  it("draws the icon on a tile for the custom variant, and nothing at all when it has neither icon nor art", () => {
+    const Icon = ({ className }: { className?: string }) => <svg data-testid="icon" className={className} />;
+    const withIcon = render(<EmptyState variant="custom" icon={Icon} title="Custom" />);
+    expect(screen.getByTestId("icon")).toBeTruthy();
+    expect(artOf(withIcon.container)).toContain("data-testid=\"icon\"");
+    withIcon.unmount();
+    const bare = render(<EmptyState variant="custom" title="Custom" />);
+    expect(bare.container.querySelector(".relative.mb-4")).toBeNull();
+  });
+
+  it("draws each illustration at the size of the card", () => {
+    const compact = render(<EmptyState size="compact" title="Compact" />);
+    expect(artOf(compact.container)).toBe(render(<EmptyLibraryArt size={112} />).container.innerHTML);
+    compact.unmount();
+    const small = render(<EmptyState size="sm" title="Small" />);
+    expect(artOf(small.container)).toBe(render(<EmptyLibraryArt size={88} />).container.innerHTML);
+  });
+
+  it("sets the padding and the title by the size of the card", () => {
+    const sizes = (size: "default" | "compact" | "sm") => {
+      const view = render(<EmptyState size={size} title="Sized" />);
+      const result = [view.container.firstElementChild!.className, screen.getByRole("heading", { name: "Sized" }).className];
+      view.unmount();
+      return result;
+    };
+    const [defaultCard, defaultTitle] = sizes("default");
+    const [compactCard, compactTitle] = sizes("compact");
+    const [smallCard, smallTitle] = sizes("sm");
+    expect(defaultCard).toContain("px-8 py-14");
+    expect(compactCard).toContain("px-6 py-10");
+    expect(smallCard).toContain("px-4 py-6");
+    expect(defaultTitle).toContain("text-lg");
+    expect(compactTitle).toContain("text-base");
+    expect(smallTitle).toContain("text-sm");
+  });
+
+  it("shows a secondary action alone, and leaves out the description and learn-more line it was not given", () => {
+    const { container } = render(<EmptyState title="Only secondary" secondaryAction={<a href="/x">Go</a>} className="extra" />);
+    expect(screen.getByRole("link", { name: "Go" })).toBeTruthy();
+    expect(container.querySelector("p")).toBeNull();
+    expect(container.firstElementChild!.className).toContain("extra");
+    const none = render(<EmptyState title="Nothing else" />);
+    expect(none.container.querySelectorAll(".mt-5, .mt-3")).toHaveLength(0);
+  });
 });
