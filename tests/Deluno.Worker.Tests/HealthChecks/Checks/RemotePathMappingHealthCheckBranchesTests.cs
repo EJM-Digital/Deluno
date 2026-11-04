@@ -25,12 +25,13 @@ public sealed class RemotePathMappingHealthCheckBranchesTests
 
         public IEnumerable<string> List(string path)
         {
+            // Like a real folder listing, it fails when the first entry is asked for, not when the listing is made.
             if (Refusing.TryGetValue(path, out var failure))
             {
                 throw failure;
             }
 
-            return [];
+            yield break;
         }
     }
 
@@ -424,6 +425,18 @@ public sealed class RemotePathMappingHealthCheckBranchesTests
 
         var save = Assert.Single(outcomes, item => item.Id.StartsWith("remote-path-mapping:save-path:", StringComparison.Ordinal));
         Assert.Equal("Test Client saves movies to /mnt/own, and Deluno can read it.", save.Message);
+    }
+
+    [Fact]
+    public async Task A_mapping_with_an_empty_host_is_not_shared_with_a_client_that_has_no_host()
+    {
+        var implementation = Implementation((_, category) => Result(category, "/downloads"));
+        var emptyHost = Mapping("/downloads", "/mnt/wrong", clientId: "other-client", host: "");
+
+        var outcomes = await Check([Client(host: " ")], [emptyHost], new Folders(), implementation.Object).RunAsync(CancellationToken.None);
+
+        var save = Assert.Single(outcomes, item => item.Id.StartsWith("remote-path-mapping:save-path:", StringComparison.Ordinal));
+        Assert.Equal("Test Client saves movies to /downloads, but that folder does not exist.", save.Message);
     }
 
     [Fact]

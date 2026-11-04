@@ -161,7 +161,6 @@ public sealed class LaneRunner
             // A job completed first. Cancelling the unused semaphore wait is cleanup, not a lane cancellation:
             // wait for it to end either way, and stop only when the lane itself was told to.
             waitCancellation.Cancel();
-            await Task.WhenAny(wakeTask);
             cancellationToken.ThrowIfCancellationRequested();
         }
         else

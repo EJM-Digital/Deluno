@@ -66,7 +66,7 @@ public sealed class HttpProxyReachabilityTester(IHttpClientFactory httpClientFac
 
     private async Task<ProxyReachabilityResult> TestForwardProxyAsync(ProxyItem proxy, CancellationToken cancellationToken)
     {
-        if (!TryParseHostAndPort(proxy, out var host, out var port))
+        if (ParseHostAndPort(proxy) is not var (host, port))
         {
             return new ProxyReachabilityResult(false, $"{proxy.Address} is not a usable proxy address (expected host:port).");
         }
@@ -94,24 +94,19 @@ public sealed class HttpProxyReachabilityTester(IHttpClientFactory httpClientFac
     /// <c>host:port</c>, defaulting the port to the usual one for HTTP or
     /// SOCKS when the address does not give one.
     /// </summary>
-    private static bool TryParseHostAndPort(ProxyItem proxy, out string host, out int port)
+    private static (string Host, int Port)? ParseHostAndPort(ProxyItem proxy)
     {
         var address = proxy.Address.Trim();
-        var withScheme = address.Contains("://", StringComparison.Ordinal) ? address : $"{NormalizedScheme(proxy.ProxyType)}://{address}";
+        // A bare host:port is read with a scheme that has no port of its own, so a port typed in is always kept.
+        var withScheme = address.Contains("://", StringComparison.Ordinal) ? address : $"socks5://{address}";
 
         if (Uri.TryCreate(withScheme, UriKind.Absolute, out var uri) && !string.IsNullOrWhiteSpace(uri.Host))
         {
-            host = uri.Host;
-            port = uri.IsDefaultPort ? DefaultPort(proxy.ProxyType) : uri.Port;
-            return true;
+            return (uri.Host, uri.IsDefaultPort ? DefaultPort(proxy.ProxyType) : uri.Port);
         }
 
-        host = string.Empty;
-        port = 0;
-        return false;
+        return null;
     }
-
-    private static string NormalizedScheme(string proxyType) => string.Equals(proxyType, ProxyTypes.Http, StringComparison.OrdinalIgnoreCase) ? "http" : "socks5";
 
     private static int DefaultPort(string proxyType) => string.Equals(proxyType, ProxyTypes.Http, StringComparison.OrdinalIgnoreCase) ? 8080 : 1080;
 

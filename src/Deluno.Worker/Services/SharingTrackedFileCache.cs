@@ -50,14 +50,11 @@ internal sealed class SharingTrackedFileCache(
             // own id): a representative file from the same show still
             // answers "did the library upgrade or delete what this download
             // shares", even though the download may hold several episodes.
+            // An episode Deluno cannot place in any show has no series id (the episode lookup above has already read
+            // the library), and a lookup by no key is empty.
             var seriesId = await CatalogueImportNaming.SeriesIdOfAsync(dispatch, seriesCatalogRepository, cancellationToken);
-            if (seriesId is null)
-            {
-                return null;
-            }
-
             var bySeries = await SeriesFilesAsync(libraryId, cancellationToken);
-            return bySeries[seriesId].FirstOrDefault();
+            return bySeries[seriesId!].FirstOrDefault();
         }
 
         return null;
@@ -82,22 +79,12 @@ internal sealed class SharingTrackedFileCache(
 
     private async Task<Dictionary<string, string>> EpisodesAsync(string libraryId, CancellationToken cancellationToken)
     {
-        if (_episodesByLibrary.TryGetValue(libraryId, out var cached))
-        {
-            return cached;
-        }
-
         await LoadSeriesAsync(libraryId, cancellationToken);
         return _episodesByLibrary[libraryId];
     }
 
     private async Task<ILookup<string, string>> SeriesFilesAsync(string libraryId, CancellationToken cancellationToken)
     {
-        if (_seriesFilesByLibrary.TryGetValue(libraryId, out var cached))
-        {
-            return cached;
-        }
-
         await LoadSeriesAsync(libraryId, cancellationToken);
         return _seriesFilesByLibrary[libraryId];
     }

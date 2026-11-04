@@ -125,11 +125,11 @@ public sealed class RemotePathMappingHealthCheck(
             return [];
         }
 
-        var clientHost = string.IsNullOrWhiteSpace(client.Host) ? null : client.Host.Trim().ToLowerInvariant();
+        var clientHost = client.Host?.Trim().ToLowerInvariant();
         var clientMappings = mappings
             .Where(item =>
                 string.Equals(item.DownloadClientId, client.Id, StringComparison.OrdinalIgnoreCase) ||
-                (clientHost is not null && item.Host is not null && string.Equals(item.Host, clientHost, StringComparison.OrdinalIgnoreCase)))
+                (clientHost is { Length: > 0 } && string.Equals(item.Host, clientHost, StringComparison.OrdinalIgnoreCase)))
             .ToArray();
 
         var categories = new[] { client.MoviesCategory, client.TvCategory }
@@ -234,12 +234,8 @@ public sealed class RemotePathMappingHealthCheck(
             return reportedPath;
         }
 
+        // A path equal to the mapped folder has no segments below it and is the local folder itself.
         var relative = normalizedReported[match.Remote.Length..].TrimStart('/');
-        if (relative.Length == 0)
-        {
-            return match.Mapping.LocalPath;
-        }
-
         var segments = relative.Split('/', StringSplitOptions.RemoveEmptyEntries);
         return segments.Aggregate(match.Mapping.LocalPath, Path.Combine);
     }

@@ -12,16 +12,20 @@ namespace Deluno.Worker.Tests.Jobs;
 /// <summary>#1442: the edges of the card a season search puts on Live: Specials, a job that names no show, and a handler with no lane to tell.</summary>
 public sealed class SeasonSearchSearchingLaneEdgesTests
 {
-    private static (SeasonSearchJobHandler Handler, List<string> LabelsSeen) Build(SearchesInFlight? searching)
+    private readonly List<SearchingTitle> _cards = [];
+
+    private (SeasonSearchJobHandler Handler, List<string> LabelsSeen) Build(SearchesInFlight? searching, List<(string TriggeredBy, string Clause)>? asked = null)
     {
         var labels = new List<string>();
         var executor = new Mock<ISeasonSearchExecutor>();
         executor
             .Setup(item => item.ExecuteAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Returns(() =>
+            .Returns((string _, int _, string triggeredBy, string clause, CancellationToken _) =>
             {
+                asked?.Add((triggeredBy, clause));
                 if (searching is not null)
                 {
+                    _cards.AddRange(searching.Snapshot());
                     labels.AddRange(searching.Snapshot().Select(card => card.Label));
                 }
 
@@ -59,17 +63,26 @@ public sealed class SeasonSearchSearchingLaneEdgesTests
         var searching = new SearchesInFlight(TimeProvider.System);
         var (handler, labels) = Build(searching);
 
-        try
-        {
-            await handler.HandleAsync(Job(payloadJson), CancellationToken.None);
-        }
-        catch (Exception)
-        {
-            // The executor's own reading of the payload is not what this test is about.
-        }
+        var message = await handler.HandleAsync(Job(payloadJson), CancellationToken.None);
+
+        Assert.Equal("Finished searching for season.", message);
 
         Assert.Empty(labels);
         Assert.Empty(searching.Snapshot());
+    }
+
+    [Fact]
+    public async Task The_search_is_asked_for_as_the_automatic_season_search_in_its_own_words_and_the_card_names_the_show()
+    {
+        var searching = new SearchesInFlight(TimeProvider.System);
+        var asked = new List<(string TriggeredBy, string Clause)>();
+        var (handler, _) = Build(searching, asked);
+
+        await handler.HandleAsync(Job(Payload("series-1", 2)), CancellationToken.None);
+
+        Assert.Equal([("automatic-season", "was searched by the automatic library cycle.")], asked);
+        var card = Assert.Single(_cards);
+        Assert.Equal(("series", "series-1", "Pioneer One", "missing", "Season 2"), (card.EntityType, card.EntityId, card.Title, card.StartedBy, card.Label));
     }
 
     [Fact]
