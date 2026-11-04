@@ -67,6 +67,12 @@ function hook(path: string, options: { enabled?: boolean } = {}) {
   return { ...view, onOpenEvent };
 }
 
+const cachedIds = () => {
+  const data = queryClient.getQueryCache().findAll({ queryKey: ["activity-history"] })[0].state.data as { pages: { items: { id: string }[] }[] };
+  return data.pages[0].items.map((item) => item.id);
+};
+/** Lets a read that should not happen show itself: the next page is asked for a few ticks after the first lands. */
+const lingerForUnwantedRead = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); }); // reason: a read that must not happen would show here
 const ids = (result: { current: { events: { id: string }[] } }) => result.current.events.map((event) => event.id);
 
 beforeEach(() => {
@@ -119,21 +125,21 @@ describe("a link to one event", () => {
     act(() => result.current.setFilters({ since: "today" }));
     await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(result.current.history.isFetching).toBe(false));
-    await act(async () => undefined);
+    await lingerForUnwantedRead();
     expect(onOpenEvent).toHaveBeenCalledTimes(1);
   });
 
   it("reads no older page when the address names no event", async () => {
     const { result } = hook("/activity");
     await waitFor(() => expect(result.current.history.hasNextPage).toBe(true));
-    await act(async () => undefined);
+    await lingerForUnwantedRead();
     expect(fetchPage).toHaveBeenCalledTimes(1);
   });
 
   it("reads each older page once and stops when the event is in none of them", async () => {
     const { onOpenEvent } = hook("/activity?event=missing");
     await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(2));
-    await act(async () => undefined);
+    await lingerForUnwantedRead();
     expect(fetchPage).toHaveBeenCalledTimes(2);
     expect(onOpenEvent).not.toHaveBeenCalled();
   });
@@ -148,14 +154,17 @@ describe("a link to one event", () => {
     fetchPage.mockResolvedValue(page(["a"], null));
     const { onOpenEvent } = hook("/activity?event=missing");
     await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(1));
-    await act(async () => undefined);
+    await lingerForUnwantedRead();
     expect(onOpenEvent).not.toHaveBeenCalled();
     expect(fetchPage).toHaveBeenCalledTimes(1);
   });
 
-  it("does not open it while the history is switched off", async () => {
+  it("does not open it while the history is switched off, even from what is already read", async () => {
+    const first = hook("/activity");
+    await waitFor(() => expect(ids(first.result)).toEqual(["a"]));
+    first.unmount();
     const { onOpenEvent } = hook("/activity?event=a", { enabled: false });
-    await act(async () => undefined);
+    await lingerForUnwantedRead();
     expect(onOpenEvent).not.toHaveBeenCalled();
   });
 });
@@ -179,6 +188,7 @@ describe("a new event pushed to the Activity history (#1179)", () => {
     const { result } = hook("/activity?type=other");
     await waitFor(() => expect(result.current.events).toHaveLength(1));
     act(() => pushed!(push("new")));
+    expect(cachedIds()).toEqual(["a"]);
     expect(ids(result)).toEqual(["a"]);
     expect(readAgain).not.toHaveBeenCalled();
   });
@@ -417,6 +427,19 @@ describe("measuring the room on the header's title line", () => {
     expect(await place(false)).toBe("header");
   });
 
+  it("watches the header even where the browser has no font loading to wait for", async () => {
+    const watched: Element[] = [];
+    vi.stubGlobal("ResizeObserver", class {
+      observe(element: Element) {
+        watched.push(element);
+      }
+      disconnect() {}
+    });
+    headerWith({});
+    expect(await place()).toBe("header");
+    expect(watched).toHaveLength(3);
+  });
+
   it("measures again when the header changes size or the fonts arrive", async () => {
     let measureAgain: (() => void) | undefined;
     const watched: Element[] = [];
@@ -435,9 +458,8 @@ describe("measuring the room on the header's title line", () => {
     let fontsReady: () => void = () => undefined;
     Object.defineProperty(document, "fonts", { configurable: true, value: { ready: new Promise<void>((resolve) => (fontsReady = resolve)) } });
     headerWith({});
-    document.getElementById("topbar-page-actions")!.remove();
     expect(await place()).toBe("header");
-    expect(watched.map((element) => element.id)).toEqual(["topbar-main", "topbar-title"]);
+    expect(watched.map((element) => element.id)).toEqual(["topbar-main", "topbar-title", "topbar-page-actions"]);
 
     document.getElementById("topbar-main")!.getBoundingClientRect = rect(300);
     await act(async () => measureAgain!());
