@@ -27,13 +27,16 @@ public sealed class SecretProtectorFactory
     private readonly IDataProtectionProvider _dataProtectionProvider;
     private readonly string _masterKeyFilePath;
     private readonly ILogger<SecretProtectorFactory> _logger;
+    private readonly SecretHostFacts _host;
 
     public SecretProtectorFactory(
         IConfiguration configuration,
         IDataProtectionProvider dataProtectionProvider,
         string masterKeyFilePath,
-        ILogger<SecretProtectorFactory> logger)
+        ILogger<SecretProtectorFactory> logger,
+        SecretHostFacts? host = null)
     {
+        _host = host ?? SecretHostFacts.ThisSystem;
         _configuration = configuration;
         _dataProtectionProvider = dataProtectionProvider;
         _masterKeyFilePath = masterKeyFilePath;
@@ -53,17 +56,9 @@ public sealed class SecretProtectorFactory
         bool hardened;
         switch (backend)
         {
-            case SecretsBackend.WindowsDpapi when OperatingSystem.IsWindows():
-                active = new WindowsDpapiSecretProtector();
-                hardened = true;
-                break;
             case SecretsBackend.WindowsDpapi:
-                // ResolveBackend already gates this case to Windows, but
-                // satisfy CA1416's flow analysis here too. Falls back
-                // gracefully if reached on a non-Windows host.
-                active = legacyDataProtection;
-                hardened = false;
-                warnings.Add("WindowsDpapi backend requested on non-Windows host; falling back to DataProtection.");
+                active = _host.CreateWindowsProtector();
+                hardened = true;
                 break;
 
             case SecretsBackend.FileBacked:
@@ -84,7 +79,7 @@ public sealed class SecretProtectorFactory
             case SecretsBackend.DataProtection:
             default:
                 active = legacyDataProtection;
-                hardened = OperatingSystem.IsWindows(); // DataProtection on Windows uses DPAPI under the hood; elsewhere it doesn't
+                hardened = _host.IsWindows; // DataProtection on Windows uses DPAPI under the hood; elsewhere it doesn't
                 if (!hardened)
                 {
                     warnings.Add(
@@ -116,25 +111,25 @@ public sealed class SecretProtectorFactory
     {
         if (string.IsNullOrEmpty(configured) || configured == "auto")
         {
-            if (OperatingSystem.IsWindows())
+            if (_host.IsWindows)
                 return (SecretsBackend.WindowsDpapi, "auto:Windows", null);
 
-            if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(FileBackedSecretProtector.EnvVarName)))
-                return (SecretsBackend.FileBacked, $"auto:{OsTag()}:{FileBackedSecretProtector.EnvVarName}", null);
+            if (!string.IsNullOrWhiteSpace(_host.KeyFromEnvironment()))
+                return (SecretsBackend.FileBacked, $"auto:{_host.OsTag}:{FileBackedSecretProtector.EnvVarName}", null);
 
-            if (File.Exists(_masterKeyFilePath))
-                return (SecretsBackend.FileBacked, $"auto:{OsTag()}:master.key", null);
+            if (_host.FileExists(_masterKeyFilePath))
+                return (SecretsBackend.FileBacked, $"auto:{_host.OsTag}:master.key", null);
 
             // No env var, no existing key — auto-pick FileBacked anyway
             // (it will generate a new key with a warning). This is a
             // deliberate choice over silently falling back to the
             // unhardened DataProtection path.
-            return (SecretsBackend.FileBacked, $"auto:{OsTag()}:no-key-fallback", null);
+            return (SecretsBackend.FileBacked, $"auto:{_host.OsTag}:no-key-fallback", null);
         }
 
         return configured switch
         {
-            "dpapi" when OperatingSystem.IsWindows() => (SecretsBackend.WindowsDpapi, "config:dpapi", null),
+            "dpapi" when _host.IsWindows => (SecretsBackend.WindowsDpapi, "config:dpapi", null),
             "dpapi" => (SecretsBackend.DataProtection, "config:dpapi:invalid-on-non-windows",
                 "Storage:SecretsBackend=dpapi requires Windows; falling back to DataProtection."),
             "filebacked" => (SecretsBackend.FileBacked, "config:filebacked", null),
@@ -142,14 +137,6 @@ public sealed class SecretProtectorFactory
             _ => (SecretsBackend.DataProtection, "config:unknown-fallback",
                 $"Unknown Storage:SecretsBackend value '{configured}'; falling back to DataProtection.")
         };
-    }
-
-    private static string OsTag()
-    {
-        if (OperatingSystem.IsLinux()) return "Linux";
-        if (OperatingSystem.IsMacOS()) return "macOS";
-        if (OperatingSystem.IsWindows()) return "Windows";
-        return "Unknown";
     }
 
     private void LogSelection(SecretsBackendInfo info)
