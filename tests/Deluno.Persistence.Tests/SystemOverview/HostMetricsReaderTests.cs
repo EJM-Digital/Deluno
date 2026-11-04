@@ -206,6 +206,55 @@ public sealed class HostMetricsReaderTests
         Assert.Equal(10, usage.CpuPercent);
     }
 
+    [Fact]
+    public void The_time_of_the_last_reading_is_the_minimum_until_there_is_one()
+    {
+        var clock = new FakeTimeProvider(Start);
+        var reader = new HostMetricsReader(new FakeHost(), clock);
+
+        Assert.Equal(DateTimeOffset.MinValue, reader.LastReadAt);
+        reader.Read([]);
+        Assert.Equal(Start, reader.LastReadAt);
+    }
+
+    [Fact]
+    public void A_window_whose_first_reading_lacked_processor_times_or_disks_reports_zero_for_them()
+    {
+        var clock = new FakeTimeProvider(Start);
+        var source = new FakeHost { Cpu = null };
+        source.SetDisks(machine: null);
+        var reader = new HostMetricsReader(source, clock);
+        reader.Read(["D:\\Downloads"]);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        source.Cpu = new CpuTimes(0, 200);
+        source.SetDisks(machine: new DiskCounters(5, 5, 5, 0, 10), ("D:", new DiskCounters(5, 5, 5, 0, 10)));
+
+        var metrics = reader.Read(["D:\\Downloads"]);
+
+        Assert.True(metrics.HasBaseline);
+        Assert.Equal(0, metrics.CpuPercent);
+        Assert.Equal(0, metrics.DiskIops);
+        Assert.Null(metrics.Drives["D:\\Downloads"]);
+    }
+
+    [Fact]
+    public void A_drive_that_has_since_lost_its_counters_is_null_and_a_window_with_no_time_in_it_has_no_busy_share()
+    {
+        var clock = new FakeTimeProvider(Start);
+        var source = new FakeHost();
+        source.SetDisks(machine: new DiskCounters(0, 0, 0, 0, 100), ("D:", new DiskCounters(0, 0, 0, 0, 100)));
+        var reader = new HostMetricsReader(source, clock);
+        reader.Read(["D:\\Downloads"]);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        source.SetDisks(machine: new DiskCounters(0, 0, 0, 0, 100));
+
+        var metrics = reader.Read(["D:\\Downloads"]);
+
+        Assert.Null(metrics.Drives["D:\\Downloads"]);
+        Assert.Equal(0, metrics.DiskBusyPercent);
+        Assert.Null(HostMetricsReader.BusyPercent(new DiskCounters(0, 0, 0, 5, 0), new DiskCounters(0, 0, 0, 1, 10)));
+    }
+
     /// <summary>A scriptable operating system.</summary>
     internal sealed class FakeHost : IHostReadingSource
     {
