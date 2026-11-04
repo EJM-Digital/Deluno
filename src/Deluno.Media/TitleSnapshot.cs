@@ -372,14 +372,13 @@ public sealed class TitleSnapshotService(
         string? episodeId = null;
         if (kind == MediaKind.Series)
         {
-            var code = System.Text.RegularExpressions.Regex.Match(fileName, @"[Ss](\d{1,3})[Ee](\d{1,4})");
-            if (code.Success)
+            if (EpisodeCodeOf(fileName) is { } code)
             {
                 using var find = connection.CreateCommand();
                 find.CommandText = "SELECT id, monitored FROM episode_entries WHERE series_id = @seriesId AND season_number = @season AND episode_number = @episode;";
                 AddParameter(find, "@seriesId", titleId);
-                AddParameter(find, "@season", int.Parse(code.Groups[1].Value));
-                AddParameter(find, "@episode", int.Parse(code.Groups[2].Value));
+                AddParameter(find, "@season", code.Season);
+                AddParameter(find, "@episode", code.Episode);
                 using var reader = await find.ExecuteReaderAsync(cancellationToken);
                 if (await reader.ReadAsync(cancellationToken))
                 {
@@ -391,6 +390,13 @@ public sealed class TitleSnapshotService(
 
         return new RecycleBinFileOwner(mediaType, kind == MediaKind.Series ? "series" : "movie", titleId, title, year, episodeId, monitored);
     }
+
+    /// <summary>
+    /// The season and episode a restored file's name gives, read by the one release-name reader every other part of Deluno
+    /// uses, so letters like "s7e0" inside a show's name are not taken for a code (#1472).
+    /// </summary>
+    public static (int Season, int Episode)? EpisodeCodeOf(string fileName)
+        => ReleaseNameReader.ReadEpisode(fileName) is { } marker ? (marker.Season, marker.FirstEpisode) : null;
 
     private static readonly HashSet<string> SidecarExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
