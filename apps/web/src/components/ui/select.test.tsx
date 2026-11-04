@@ -73,4 +73,35 @@ describe("a select", () => {
     render(<Select aria-label="Pick" id="mine" options={OPTIONS} />);
     expect(screen.getByRole("combobox")).toHaveAttribute("id", "mine");
   });
+
+  it("keeps the box and the select apart whatever else the class list holds", () => {
+    const { container } = render(<Select aria-label="Pick" options={OPTIONS} className="text-sm text-grow-x !w-1/2 font-bold" />);
+    expect(container.firstElementChild?.className).toBe("group relative block w-full min-w-0 !w-1/2");
+    expect(screen.getByRole("combobox")).toHaveClass("text-sm", "text-grow-x", "font-bold");
+    expect(screen.getByRole("combobox")).not.toHaveClass("!w-1/2");
+  });
+
+  it("keeps two classes for the select apart from each other", () => {
+    render(<Select aria-label="Pick" options={OPTIONS} className="text-sm font-bold" />);
+    expect(screen.getByRole("combobox").className).toContain("text-sm font-bold");
+  });
+
+  it("leaves the box with only its own classes when given none", () => {
+    const { container } = render(<Select aria-label="Pick" options={OPTIONS} />);
+    expect(container.firstElementChild?.className).toBe("group relative block w-full min-w-0");
+  });
+
+  it("is a pointer-cursor box with room on the right for its arrow, and is named Select for the developer tools", () => {
+    render(<Select aria-label="Pick" options={OPTIONS} />);
+    expect(screen.getByRole("combobox")).toHaveClass("cursor-pointer", "appearance-none", "pr-[calc(var(--field-pad-x)+1.5rem)]");
+    expect(Select.displayName).toBe("Select");
+  });
+
+  it("puts no stray class on a select that was given none", () => {
+    render(<Select aria-label="Pick" options={OPTIONS} />);
+    const tokens = Array.from(screen.getByRole("combobox").classList);
+    expect(tokens).not.toContain("was");
+    expect(tokens).not.toContain("Stryker");
+    expect(tokens).not.toContain("here!");
+  });
 });

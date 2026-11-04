@@ -529,6 +529,38 @@
       "line": 32,
       "replacement": "\"\"",
       "reason": "Equivalent: the caller's props are spread onto the input after these two attributes, so the caller's own value wins whatever key is read here; and the ref is set once the input has mounted, so its check is always true by the time the effect runs."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/select.tsx",
+      "mutator": "MethodExpression",
+      "line": 36,
+      "replacement": "(className ?? \"\").split(/\\s+/)",
+      "reason": "Equivalent: the caller's props are spread onto the select after the aria attributes, so the caller's own value wins whatever key is read; and splitting on single spaces or keeping empty words leaves only empty class names, which the class merger drops."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/select.tsx",
+      "mutator": "Regex",
+      "line": 36,
+      "replacement": "/\\s/",
+      "reason": "Equivalent: the caller's props are spread onto the select after the aria attributes, so the caller's own value wins whatever key is read; and splitting on single spaces or keeping empty words leaves only empty class names, which the class merger drops."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/select.tsx",
+      "mutator": "StringLiteral",
+      "line": 53,
+      "replacement": "\"\"",
+      "reason": "Equivalent: the caller's props are spread onto the select after the aria attributes, so the caller's own value wins whatever key is read; and splitting on single spaces or keeping empty words leaves only empty class names, which the class merger drops."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/select.tsx",
+      "mutator": "StringLiteral",
+      "line": 54,
+      "replacement": "\"\"",
+      "reason": "Equivalent: the caller's props are spread onto the select after the aria attributes, so the caller's own value wins whatever key is read; and splitting on single spaces or keeping empty words leaves only empty class names, which the class merger drops."
     }
   ]
 }
