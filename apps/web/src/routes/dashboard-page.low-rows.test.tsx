@@ -119,4 +119,39 @@ describe("the Dashboard shell (low rows)", () => {
     expect(keys).toEqual(expect.arrayContaining(["dashboard", "src"]));
     invalidate.mockRestore();
   });
+
+  it("on a wide window the page is as tall as the window and a phone leaves its height to the content", async () => {
+    const width = window.innerWidth;
+    const observed: Array<() => void> = [];
+    class Observer { constructor(callback: () => void) { observed.push(callback); } observe() {} disconnect() {} }
+    vi.stubGlobal("ResizeObserver", Observer);
+    try {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: 1400 });
+      const { container, unmount } = open();
+      await screen.findByRole("tablist", { name: "Dashboard sections" });
+      const page = container.firstElementChild as HTMLElement;
+      expect(page.style.height).toMatch(/^\d+px$/);
+
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: 500 });
+      act(() => { for (const callback of observed) callback(); });
+      expect(page.style.height).toBe("");
+      unmount();
+    } finally {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("a page inside a main element leaves its bottom padding out of the height", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1400 });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <main style={{ paddingBottom: "20px" }}><DashboardPage /></main>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    await screen.findByRole("tablist", { name: "Dashboard sections" });
+    expect(document.querySelector("main")!.firstElementChild).toHaveStyle({ height: `${Math.max(600, window.innerHeight - 20)}px` });
+  });
 });
