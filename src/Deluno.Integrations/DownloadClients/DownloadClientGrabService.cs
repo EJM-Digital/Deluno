@@ -493,6 +493,21 @@ public sealed class DownloadClientGrabService(
         CancellationToken cancellationToken)
     {
         var refusals = grabResult.FollowUpRefusals ?? [];
+
+        // #1470: the refusals that can stop the import are kept on the dispatch so the download's row can say them; a grab
+        // whose same calls were taken clears them. A grab that sent no follow-up call leaves what is there alone.
+        if (!string.IsNullOrWhiteSpace(request.DispatchId) && (refusals.Count > 0 || grabResult.FollowUpCallsSent is { Count: > 0 }))
+        {
+            try
+            {
+                await dispatchesRepository.SetFollowUpRefusalsAsync(request.DispatchId, FollowUpRefusalNotes.ToJson(refusals, client.Name), cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                logger?.LogWarning(exception, "Could not keep the refused follow-up on the dispatch of {Release}.", request.ReleaseName.ForLog());
+            }
+        }
+
         foreach (var refusal in refusals)
         {
             var text = $"{client.Name} did not take {refusal.What} for {request.ReleaseName}: {refusal.Reason}";

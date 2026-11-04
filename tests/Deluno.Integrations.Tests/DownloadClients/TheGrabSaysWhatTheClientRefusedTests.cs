@@ -231,6 +231,44 @@ public sealed class TheGrabSaysWhatTheClientRefusedTests
         Assert.Equal("Missing required parameters: enable", Assert.Single(await DownloadClientHelpers.RefusalOf(answer, "setAutoManagement", "automatic torrent management", false, CancellationToken.None)).Reason);
     }
 
+    // ---- kept on the dispatch so the download's row can say it ----
+
+    [Fact]
+    public async Task A_refused_category_is_kept_on_the_dispatch_with_the_clients_words_and_the_fix()
+    {
+        var world = new World(Rig(refuseCategory: true, refuseShareLimits: true), shareLimits: true);
+
+        await world.GrabAsync(Request() with { DispatchId = "dispatch-1" });
+
+        var (id, json) = Assert.Single(world.Kept);
+        Assert.Equal("dispatch-1", id);
+        Assert.Contains("Incorrect category name", json, StringComparison.Ordinal);
+        var kept = System.Text.Json.Nodes.JsonNode.Parse(json!)!.AsArray().Single()!;
+        Assert.Equal("Create the category in qBittorrent or change the library's category, then send it again.", kept["fix"]!.GetValue<string>());
+        Assert.DoesNotContain("share limits", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_grab_whose_calls_the_client_took_clears_what_was_kept()
+    {
+        var world = new World(Rig(refuseCategory: false, refuseShareLimits: false), shareLimits: false);
+
+        await world.GrabAsync(Request() with { DispatchId = "dispatch-1" });
+
+        var (_, json) = Assert.Single(world.Kept);
+        Assert.Null(json);
+    }
+
+    [Fact]
+    public async Task A_grab_with_no_dispatch_keeps_nothing()
+    {
+        var world = new World(Rig(refuseCategory: true, refuseShareLimits: false), shareLimits: false);
+
+        await world.GrabAsync();
+
+        Assert.Empty(world.Kept);
+    }
+
     private sealed class World
     {
         private readonly DownloadClientGrabService service;
@@ -240,6 +278,8 @@ public sealed class TheGrabSaysWhatTheClientRefusedTests
         public List<string> Activity { get; } = [];
 
         public List<HealthCheckOutcome> Health { get; } = [];
+
+        public List<(string Id, string? Json)> Kept { get; } = [];
 
         public World(QbittorrentDownloadClient adapter, bool shareLimits)
         {
@@ -253,6 +293,12 @@ public sealed class TheGrabSaysWhatTheClientRefusedTests
             registry.Setup(instance => instance.TryGet(It.IsAny<string?>(), out captured)).Returns(true);
             var dispatches = new Mock<IDownloadDispatchesRepository>();
             dispatches.Setup(instance => instance.FindDispatchesByClientItemIdsAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+            dispatches.Setup(instance => instance.SetFollowUpRefusalsAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                .Returns((string id, string? json, CancellationToken _) =>
+                {
+                    Kept.Add((id, json));
+                    return Task.CompletedTask;
+                });
             var activity = new Mock<IActivityFeedRepository>();
             activity.Setup(instance => instance.RecordActivityAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((string category, string message, string? details, string? job, string? entityType, string? entityId, CancellationToken _) =>
@@ -281,6 +327,8 @@ public sealed class TheGrabSaysWhatTheClientRefusedTests
         }
 
         public Task<DownloadClientGrabResult> GrabAsync() => service.GrabAsync("client-1", Request(), CancellationToken.None);
+
+        public Task<DownloadClientGrabResult> GrabAsync(DownloadClientGrabRequest request) => service.GrabAsync("client-1", request, CancellationToken.None);
     }
 
     private sealed class PassThrough : IIntegrationResiliencePolicy

@@ -1873,7 +1873,9 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                           {removalReasonBusy === "reclaim" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                           Remove this copy
                         </Button>
-                      ) : (
+                      ) : finding.kind === "follow-up-refused" ? null : (
+                        /* #1470: a category or folder the client refused is a live fact kept on the download; it goes
+                           when a later send has the call taken, so there is nothing to dismiss. */
                         <Button
                           type="button"
                           variant="ghost"
