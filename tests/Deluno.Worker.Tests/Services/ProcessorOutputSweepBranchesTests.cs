@@ -98,6 +98,7 @@ public sealed class ProcessorOutputSweepBranchesTests : IDisposable
         var said = Assert.Single(rig.Said);
         Assert.Equal("Deleted the folder Heat.1995 from the Movies library's processor output folder: Deluno imported the original download instead of this processed copy.", said.Message);
         Assert.Equal("library-1", said.EntityId);
+        rig.Activity.Verify(a => a.RecordActivityAsync("processing.output.deleted", It.IsAny<string>(), It.IsAny<string?>(), null, "library", "library-1", It.IsAny<CancellationToken>()), Times.Once);
         Assert.Contains("\"Automatic\":true", said.Details);
         Assert.Contains("\"LibraryName\":\"Movies\"", said.Details);
         rig.Health.Verify(h => h.RemoveAsync("processor-output:library-1:heat.1995", It.IsAny<CancellationToken>()), Times.Once);
@@ -217,10 +218,10 @@ public sealed class ProcessorOutputSweepBranchesTests : IDisposable
     public async Task A_hand_off_that_may_still_receive_output_keeps_the_item_even_when_an_older_one_was_released()
     {
         var file = Put("Heat.1995.mkv");
-        var older = Handoff("h1", "Heat.1995", created: Now.AddDays(-1));
-        var waiting = Handoff("h2", "Heat.1995", status: ProcessorHandoffStatuses.AcceptingLateOutput[0], created: Now);
+        var waiting = Handoff("h1", "Heat.1995.mkv", status: ProcessorHandoffStatuses.AcceptingLateOutput[0], created: Now.AddDays(-1));
+        var newer = Handoff("h2", "Heat.1995.mkv", created: Now);
 
-        Assert.Equal(0, await new Rig([Library()], [older, waiting]).SweepAsync());
+        Assert.Equal(0, await new Rig([Library()], [waiting, newer]).SweepAsync());
         Assert.True(File.Exists(file));
     }
 
@@ -228,8 +229,8 @@ public sealed class ProcessorOutputSweepBranchesTests : IDisposable
     public async Task The_newest_of_the_hand_offs_that_claim_an_item_decides_why_it_goes()
     {
         var file = Put("Heat.1995.mkv");
-        var older = Handoff("h1", "Heat.1995", status: "released", created: Now.AddDays(-1));
-        var newer = Handoff("h2", "Heat.1995", status: ProcessorHandoffStatuses.Failed, created: Now);
+        var older = Handoff("h1", "Heat.1995.mkv", status: "released", created: Now.AddDays(-1));
+        var newer = Handoff("h2", "Heat.1995.mkv", status: ProcessorHandoffStatuses.Failed, created: Now);
         var rig = new Rig([Library()], [older, newer]);
 
         Assert.Equal(0, await rig.SweepAsync());
@@ -333,6 +334,67 @@ public sealed class ProcessorOutputSweepBranchesTests : IDisposable
         Assert.True(Directory.Exists(Path.Combine(_ready, "Heat.1995")));
     }
 
+    [Theory]
+    [InlineData("io")]
+    [InlineData("denied")]
+    public async Task A_loose_file_that_cannot_be_deleted_is_not_counted(string kind)
+    {
+        var file = Put("Heat.1995.mkv");
+        var rig = new Rig([Library()], [Handoff("h1", "Heat.1995.mkv")])
+        {
+            DeleteFile = _ => throw (kind == "io" ? new IOException() : new UnauthorizedAccessException())
+        };
+
+        Assert.Equal(0, await rig.SweepAsync());
+        Assert.True(File.Exists(file));
+        Assert.Empty(rig.Said);
+    }
+
+    [Fact]
+    public async Task The_download_history_is_read_with_archived_downloads_included()
+    {
+        Put("Heat.1995.mkv");
+        var rig = new Rig([Library()], [Handoff("h1", "Heat.1995.mkv")]);
+
+        await rig.SweepAsync();
+
+        rig.Jobs.Verify(j => j.ListDownloadDispatchesAsync(1000, null, It.IsAny<CancellationToken>(), true, It.IsAny<string?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task The_latest_of_a_releases_own_downloads_is_the_one_a_newer_import_is_measured_against()
+    {
+        var file = Put("Heat.1995.mkv");
+        var first = Dispatch("Heat.1995.mkv", Now.AddDays(-2));
+        var second = Dispatch("Heat.1995.mkv", Now);
+        var between = Dispatch("Heat.1995.REPACK", Now.AddDays(-1), importStatus: "imported");
+
+        Assert.Equal(0, await new Rig([Library()], [Handoff("h1", "Heat.1995.mkv", status: ProcessorHandoffStatuses.Failed)], dispatches: [first, between, second]).SweepAsync());
+        Assert.True(File.Exists(file));
+    }
+
+    [Fact]
+    public async Task An_import_at_the_very_same_moment_as_the_download_is_not_a_newer_one()
+    {
+        var file = Put("Heat.1995.mkv");
+        var own = Dispatch("Heat.1995.mkv", Now);
+        var sameMoment = Dispatch("Heat.1995.REPACK", Now, importStatus: "imported");
+
+        Assert.Equal(0, await new Rig([Library()], [Handoff("h1", "Heat.1995.mkv", status: ProcessorHandoffStatuses.Failed)], dispatches: [own, sameMoment]).SweepAsync());
+        Assert.True(File.Exists(file));
+    }
+
+    [Fact]
+    public async Task A_folder_with_one_file_still_being_written_or_one_queued_is_not_settled_even_when_another_is_ready()
+    {
+        Put("Heat.1995/Heat.1995.mkv");
+        var busy = Put("Heat.1995/Heat.1995.sub.mkv");
+        File.SetLastWriteTimeUtc(busy, DateTime.UtcNow);
+
+        Assert.Equal(0, await new Rig([Library()], [Handoff("h1", "Heat.1995")]).SweepAsync());
+        Assert.True(Directory.Exists(Path.Combine(_ready, "Heat.1995")));
+    }
+
     [Fact]
     public async Task A_library_root_inside_its_own_output_item_is_never_removed()
     {
@@ -403,12 +465,12 @@ public sealed class ProcessorOutputSweepBranchesTests : IDisposable
     public async Task A_listing_that_gives_a_blank_name_or_a_path_that_is_not_a_direct_child_is_skipped()
     {
         Put("Heat.1995/Heat.1995.mkv");
-        var rig = new Rig([Library()], [Handoff("h1", "Heat.1995")])
+        var rig = new Rig([Library()], [Handoff("h1", "Heat.1995.mkv")])
         {
             ListEntries = root => [root + Path.DirectorySeparatorChar, Path.Combine(root, "Heat.1995", "Heat.1995.mkv"), Path.Combine(_root, "downloads")]
         };
 
         Assert.Equal(0, await rig.SweepAsync());
-        Assert.True(Directory.Exists(Path.Combine(_ready, "Heat.1995")));
+        Assert.True(File.Exists(Path.Combine(_ready, "Heat.1995", "Heat.1995.mkv")));
     }
 }

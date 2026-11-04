@@ -141,7 +141,7 @@ public sealed class ProcessorOutputSweep(
                 continue;
             }
 
-            var latest = claiming.OrderByDescending(handoff => handoff.CreatedUtc).First();
+            var latest = claiming.MaxBy(handoff => handoff.CreatedUtc)!;
             var reason = await NeverImportedBecauseAsync(latest, allLibraries, dispatches, cancellationToken);
             if (reason is null || !EverythingIsSettled(entry, reserved))
             {
