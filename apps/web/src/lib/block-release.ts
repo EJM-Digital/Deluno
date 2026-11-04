@@ -46,7 +46,7 @@ export function findQueueMatch(
 
   for (const client of overview.clients) {
     for (const item of client.queue) {
-      const itemHash = item.id?.trim().toLowerCase();
+      const itemHash = item.id.trim().toLowerCase();
       const itemName = item.releaseName?.trim().toLowerCase();
       const hashMatches = Boolean(hash) && itemHash === hash;
       const nameMatches = itemName === name;
@@ -91,7 +91,7 @@ export async function checkBlockedMatch(identity: ReleaseIdentity): Promise<Bloc
       releases.find((release) => {
         if (release.state === "proposed") return false;
         const releaseHash = release.torrentHashOrItemId?.trim().toLowerCase();
-        const releaseName = release.releaseName?.trim().toLowerCase();
+        const releaseName = release.releaseName.trim().toLowerCase();
         return (Boolean(hash) && releaseHash === hash) || releaseName === name;
       }) ?? null
     );
