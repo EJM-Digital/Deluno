@@ -1,9 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AcquisitionBlocker, AcquisitionBlockersResponse } from "../../lib/api";
 import { authedFetch } from "../../lib/use-auth";
 import { ACQUISITION_BLOCKER_KINDS } from "../../lib/api";
+import { LIST_TRACK } from "../ui/list-card";
 import { AcquisitionBlockersCard, BLOCKER_TONE } from "./acquisition-blockers-card";
 
 vi.mock("../../lib/use-auth", () => ({ authedFetch: vi.fn() }));
@@ -193,5 +194,204 @@ describe("the acquisition blockers card", () => {
 
     expect(toasts.error).toHaveBeenCalledWith("The re-download could not be forced. Nothing was changed.");
     expect(onForced).not.toHaveBeenCalled();
+  });
+
+  it("tells the person plainly that everything was cleared, searching the chosen library", async () => {
+    vi.mocked(authedFetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ mediaId: "movie-1", cleared: ["x"], couldNotClear: [], searchStarted: true, summary: "Cleared 1 thing." })
+    } as Response);
+    const onForced = vi.fn();
+    render(<AcquisitionBlockersCard blockers={response()} route="/api/movies" mediaId="movie-1" libraryId="lib 1" onForced={onForced} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /force a re-download/i }));
+    await userEvent.click(screen.getByRole("button", { name: /clear it and search again/i }));
+
+    expect(authedFetch).toHaveBeenCalledWith("/api/movies/movie-1/force-redownload?libraryId=lib%201", { method: "POST" });
+    expect(toasts.success).toHaveBeenCalledWith("Cleared 1 thing.");
+    expect(onForced).toHaveBeenCalled();
+  });
+
+  it("counts the records when more than one will be cleared, and lets the person back out", async () => {
+    renderCard(response({ blockers: [blocker(), blocker({ kind: "import-excluded", source: "Deluno" })] }));
+
+    await userEvent.click(screen.getByRole("button", { name: /force a re-download/i }));
+    expect(screen.getByText(/2 records will be cleared/)).toBeInTheDocument();
+
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByText(/2 records will be cleared/)).not.toBeInTheDocument();
+  });
+
+  it("falls back to the reason's own words when the server gave no effect, and to a quiet chip for a kind it does not know", async () => {
+    renderCard(response({ blockers: [blocker({ kind: "something-new", clearEffect: undefined, summary: "Held for a new reason." })] }));
+
+    await userEvent.click(screen.getByRole("button", { name: /force a re-download/i }));
+
+    expect(screen.getAllByText(/Held for a new reason\./).length).toBeGreaterThan(1);
+  });
+
+  it.each([
+    ["already-held", "text-success"],
+    ["download-in-flight", "text-info"],
+    ["processor-holding-file", "text-info"],
+    ["import-excluded", "text-destructive"],
+    ["search-skipped", "text-warning"],
+    ["search-deferred", "text-warning"],
+    ["not-yet-available", "text-muted-foreground"],
+    ["previously-downloaded", "text-warning"],
+    ["releases-blocked", "text-muted-foreground"],
+    ["a-kind-from-a-newer-server", "text-muted-foreground"]
+  ])("colours a %s reason with %s, and a kind it does not know in the quiet grey", (kind, colour) => {
+    renderCard(response({ blockers: [blocker({ kind, source: "Somewhere" })] }));
+
+    expect(screen.getByText("Somewhere")).toHaveClass(colour);
+  });
+
+  it("says a download already on its way is on its way, and anything else is a reason it will not download", () => {
+    const { unmount } = render(
+      <AcquisitionBlockersCard
+        blockers={response({ blockers: [blocker(), blocker({ kind: "processor-holding-file", source: "Weir" })] })}
+        route="/api/movies" mediaId="movie-1" onForced={vi.fn()}
+      />
+    );
+    expect(screen.getByText("Already on Its Way")).toBeInTheDocument();
+    expect(screen.getByText("2 reasons")).toBeInTheDocument();
+    unmount();
+
+    renderCard(response({ blockers: [blocker(), blocker({ kind: "import-excluded", source: "Deluno" })] }));
+    expect(screen.getByText("Why This Will Not Download")).toBeInTheDocument();
+    expect(screen.queryByText("Already on Its Way")).not.toBeInTheDocument();
+  });
+
+  it("says one reason in the singular, and heads the two columns", () => {
+    renderCard(response({ blockers: [blocker({ kind: "import-excluded" })] }));
+
+    expect(screen.getByText("1 reason")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Reason" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Where" })).toBeInTheDocument();
+  });
+
+  it("shows when a wait ends in the person's own clock, and the server's summary beside the button", () => {
+    renderCard(response({ summary: "Arrival is held back.", blockers: [blocker({ kind: "search-deferred", summary: "Deluno will search again in about 6 hours.", untilUtc: "2026-10-08T12:03:00Z" })] }));
+
+    expect(screen.getByText(/^Deluno will search again in about 6 hours \(\d{1,2}:03 [ap]m\)\.$/)).toBeInTheDocument();
+    expect(screen.getByText("Arrival is held back.")).toBeInTheDocument();
+  });
+
+  it("draws nothing when it was told something is in the way but gave no reasons", () => {
+    const { container } = render(
+      <AcquisitionBlockersCard blockers={response({ blockers: [], nothingIsBlocking: false })} route="/api/movies" mediaId="movie-1" onForced={vi.fn()} />
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("draws nothing when it says nothing is blocking, even with reasons listed", () => {
+    const { container } = render(
+      <AcquisitionBlockersCard blockers={response({ nothingIsBlocking: true })} route="/api/movies" mediaId="movie-1" onForced={vi.fn()} />
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("lists only the effects that can be cleared, in order, one sentence after another", async () => {
+    renderCard(response({
+      blockers: [
+        blocker({ clearEffect: "Removes the download." }),
+        blocker({ kind: "already-held", source: "Deluno", canClear: false, clearEffect: "Should not appear." }),
+        blocker({ kind: "import-excluded", source: "Deluno", clearEffect: "Removes the exclusion." })
+      ]
+    }));
+
+    await userEvent.click(screen.getByRole("button", { name: /force a re-download/i }));
+
+    expect(screen.getByText("2 records will be cleared, and then Deluno will search again: Removes the download. Removes the exclusion. This reaches into things Deluno does not own, and pressing the button a second time does not undo it.")).toBeInTheDocument();
+  });
+
+  it("says one record will be cleared when only one can be", async () => {
+    renderCard(response());
+
+    await userEvent.click(screen.getByRole("button", { name: /force a re-download/i }));
+
+    expect(screen.getByText(/^One record will be cleared, and then Deluno will search again: /)).toBeInTheDocument();
+  });
+
+  it("does not offer the button while another action on the page owns the buttons", () => {
+    render(<AcquisitionBlockersCard blockers={response()} route="/api/movies" mediaId="movie-1" disabled onForced={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: /force a re-download/i })).toBeDisabled();
+  });
+
+  it("offers the button when nothing else owns it", () => {
+    renderCard(response());
+
+    expect(screen.getByRole("button", { name: /force a re-download/i })).toBeEnabled();
+  });
+
+  it("forces without a library when the title is in only one", async () => {
+    vi.mocked(authedFetch).mockResolvedValue({ ok: true, json: async () => ({ cleared: [], couldNotClear: [], summary: "Done." }) } as unknown as Response);
+    renderCard(response());
+
+    await userEvent.click(screen.getByRole("button", { name: /force a re-download/i }));
+    await userEvent.click(screen.getByRole("button", { name: /clear it and search again/i }));
+
+    expect(authedFetch).toHaveBeenCalledWith("/api/movies/movie-1/force-redownload", { method: "POST" });
+  });
+
+  it("shows Clearing and cannot be pressed again while the force runs, then closes the question and frees the button", async () => {
+    let finish: (value: Response) => void = () => undefined;
+    vi.mocked(authedFetch).mockReturnValue(new Promise<Response>((resolve) => { finish = resolve; }));
+    renderCard(response());
+
+    await userEvent.click(screen.getByRole("button", { name: /force a re-download/i }));
+    await userEvent.click(screen.getByRole("button", { name: /clear it and search again/i }));
+
+    expect(screen.getByRole("button", { name: "Clearing…" })).toBeDisabled();
+
+    finish({ ok: true, json: async () => ({ cleared: [], couldNotClear: [], summary: "Done." }) } as unknown as Response);
+
+    await waitFor(() => expect(screen.queryByText(/does not undo it/)).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /force a re-download/i })).toBeEnabled();
+  });
+
+  it("lays the reason out wide and the place beside it narrow, with no arrow track, on a phone as on a desktop", () => {
+    const { container } = render(<AcquisitionBlockersCard blockers={response()} route="/api/movies" mediaId="movie-1" onForced={vi.fn()} />);
+
+    const table = container.querySelector<HTMLElement>("[style*='--list-cols']")!;
+    expect(table.style.getPropertyValue("--list-cols")).toBe(`minmax(0,1.6fr) ${LIST_TRACK.action}`);
+    expect(table.style.getPropertyValue("--list-cols-mobile")).toBe("minmax(0,1fr) auto");
+  });
+
+  it("says the force failed, and does not call it done, even when the refusal came with a readable body", async () => {
+    vi.mocked(authedFetch).mockResolvedValue({ ok: false, json: async () => ({ couldNotClear: [], summary: "Done." }) } as unknown as Response);
+    const onForced = renderCard(response());
+
+    await userEvent.click(screen.getByRole("button", { name: /force a re-download/i }));
+    await userEvent.click(screen.getByRole("button", { name: /clear it and search again/i }));
+
+    await waitFor(() => expect(toasts.error).toHaveBeenCalled());
+    expect(toasts.success).not.toHaveBeenCalled();
+    expect(onForced).not.toHaveBeenCalled();
+  });
+
+  it("keeps the question open, and the button free, when the force fails", async () => {
+    vi.mocked(authedFetch).mockResolvedValue({ ok: false } as Response);
+    renderCard(response());
+
+    await userEvent.click(screen.getByRole("button", { name: /force a re-download/i }));
+    await userEvent.click(screen.getByRole("button", { name: /clear it and search again/i }));
+
+    await waitFor(() => expect(toasts.error).toHaveBeenCalled());
+    expect(screen.getByText(/does not undo it/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear it and search again" })).toBeEnabled();
+  });
+
+  it("keeps the question open while the force is still running", async () => {
+    vi.mocked(authedFetch).mockReturnValue(new Promise(() => {}));
+    renderCard(response());
+
+    await userEvent.click(screen.getByRole("button", { name: /force a re-download/i }));
+    await userEvent.click(screen.getByRole("button", { name: /clear it and search again/i }));
+    await userEvent.keyboard("{Escape}");
+
+    expect(screen.getByText(/does not undo it/)).toBeInTheDocument();
   });
 });
