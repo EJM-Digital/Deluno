@@ -51,7 +51,6 @@ function labelFor(key: string): string {
 }
 
 function valueText(value: unknown): string | null {
-  if (value === null || value === undefined) return null;
   if (typeof value === "string") return value.trim() === "" ? null : value;
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "number") return String(value);
@@ -118,8 +117,8 @@ export const ACTIVITY_PROBLEM_WORDS = [
 
 /** Whether an Activity kind is a red one, decided the way the server decides it. */
 export function isProblemActivity(category: string): boolean {
-  const lower = category.trim().toLowerCase();
-  if (lower.includes("resolved") || lower.includes("recovered") || lower === "library.reachable") return false;
+  const lower = category.toLowerCase();
+  if (lower.includes("resolved") || lower.includes("recovered")) return false;
   return ACTIVITY_PROBLEM_WORDS.some((word) => lower.includes(word));
 }
 
