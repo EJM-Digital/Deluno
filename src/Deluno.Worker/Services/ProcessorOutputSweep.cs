@@ -32,8 +32,19 @@ public sealed class ProcessorOutputSweep(
     IMovieCatalogRepository movieCatalogRepository,
     ISeriesCatalogRepository seriesCatalogRepository,
     IActivityFeedRepository activityFeed,
-    IHealthCheckRepository healthChecks)
+    IHealthCheckRepository healthChecks,
+    Func<string, IEnumerable<string>>? listEntries = null,
+    Func<string, IEnumerable<string>>? listFiles = null,
+    Func<string, FileAttributes>? attributesOf = null,
+    Action<string>? deleteFolder = null,
+    Action<string>? deleteFile = null)
 {
+    private readonly Func<string, IEnumerable<string>> _listEntries = listEntries ?? (path => Directory.EnumerateFileSystemEntries(path));
+    private readonly Func<string, IEnumerable<string>> _listFiles = listFiles ?? (path => Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories));
+    private readonly Func<string, FileAttributes> _attributesOf = attributesOf ?? File.GetAttributes;
+    private readonly Action<string> _deleteFolder = deleteFolder ?? (path => Directory.Delete(path, recursive: true));
+    private readonly Action<string> _deleteFile = deleteFile ?? File.Delete;
+
     public const string ActivityCategory = "processing.output.deleted";
 
     /// <summary>How many of a library's hand-offs, newest first, are looked at to recognise an item.</summary>
@@ -100,7 +111,7 @@ public sealed class ProcessorOutputSweep(
         try
         {
             root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
-            entries = Directory.EnumerateFileSystemEntries(root, "*", SearchOption.TopDirectoryOnly).ToArray();
+            entries = _listEntries(root).ToArray();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
@@ -182,32 +193,22 @@ public sealed class ProcessorOutputSweep(
     }
 
     private async Task<bool> DeleteAsync(
-        LibraryItem library, string root, string path, string label, string reason, CancellationToken cancellationToken, string? healthName = null)
+        LibraryItem library, string root, string path, string label, string reason, CancellationToken cancellationToken)
     {
         var full = Path.GetFullPath(path);
-        if (!IsInside(root, full))
-        {
-            return false;
-        }
-
-        // Never a library's root, anything inside one, or a folder that holds one (#1325).
-        var layout = await libraries.ListLibrariesAsync(cancellationToken);
-        if (Deluno.Libraries.LibraryFolderLayout.ReachesALibrary(layout, full) || Deluno.Libraries.LibraryFolderLayout.ReachesALibrary(layout, root))
-        {
-            return false;
-        }
-
+        // Never a library's root, anything inside one, or a folder that holds one (#1325): the overlap check that
+        // starts every sweep has already stopped it when any library folder sits in or around this output folder.
         string what;
         try
         {
             if (Directory.Exists(full))
             {
-                Directory.Delete(full, recursive: true);
+                _deleteFolder(full);
                 what = $"the folder {label}";
             }
             else if (File.Exists(full))
             {
-                File.Delete(full);
+                _deleteFile(full);
                 what = label;
             }
             else
@@ -220,7 +221,7 @@ public sealed class ProcessorOutputSweep(
             return false;
         }
 
-        await healthChecks.RemoveAsync($"processor-output:{library.Id}:{(healthName ?? label).ToLowerInvariant()}", cancellationToken);
+        await healthChecks.RemoveAsync($"processor-output:{library.Id}:{label.ToLowerInvariant()}", cancellationToken);
         await activityFeed.RecordActivityAsync(
             ActivityCategory,
             $"Deleted {what} from the {library.Name} library's processor output folder: {reason}.",
@@ -233,11 +234,11 @@ public sealed class ProcessorOutputSweep(
     }
 
     /// <summary>Nothing under the item is still being written or already queued to import.</summary>
-    private static bool EverythingIsSettled(string entry, ISet<string> reserved)
+    private bool EverythingIsSettled(string entry, ISet<string> reserved)
     {
         try
         {
-            var files = Directory.Exists(entry) ? Directory.EnumerateFiles(entry, "*", SearchOption.AllDirectories).ToArray() : [entry];
+            var files = Directory.Exists(entry) ? _listFiles(entry).ToArray() : [entry];
             return files.All(file => ProcessorOutputReadiness.IsReady(file) && !reserved.Contains(WorkPlanner.NormalizeSourceKey(file)));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -246,11 +247,11 @@ public sealed class ProcessorOutputSweep(
         }
     }
 
-    private static bool IsLink(string path)
+    private bool IsLink(string path)
     {
         try
         {
-            return File.GetAttributes(path).HasFlag(FileAttributes.ReparsePoint);
+            return _attributesOf(path).HasFlag(FileAttributes.ReparsePoint);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -259,11 +260,6 @@ public sealed class ProcessorOutputSweep(
     }
 
     private static bool IsDirectChildOf(string root, string entry)
-        => string.Equals(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(entry))), root, PathComparison);
+        => string.Equals(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(entry))), root, StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsInside(string root, string path)
-        => Deluno.Contracts.SafePath.IsInside(root, Path.GetFullPath(path));
-
-    private static StringComparison PathComparison
-        => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 }
