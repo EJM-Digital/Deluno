@@ -330,8 +330,8 @@ function RuleIntentPicker({
   return (
     <ul className="grid gap-1.5">
       {chosen.map((formatId) => {
-        const format = offered.find((candidate) => candidate.id === formatId);
-        if (!format) return null;
+        // `chosen` is always drawn from `offered`, so the rule is there.
+        const format = offered.find((candidate) => candidate.id === formatId)!;
         // A rule is off until a person turns it on. It used to show, and act
         // on, the guide's score as if it had been chosen: "Trusted WEB groups"
         // read "Strongly prefer" on a profile nobody had set it on, and held
@@ -520,7 +520,6 @@ export function verdictTone(status: string | undefined): "ok" | "warn" | "bad" |
     case "meetsplan":
       return "ok";
     case "belowgoal":
-      return "warn";
     case "needsreview":
       return "warn";
     case "missing":
