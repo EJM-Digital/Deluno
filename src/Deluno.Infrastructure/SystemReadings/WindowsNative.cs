@@ -62,6 +62,41 @@ internal static class WindowsNative
         public ushort[] StorageManagerName;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct IoCounters
+    {
+        public ulong ReadOperationCount;
+        public ulong WriteOperationCount;
+        public ulong OtherOperationCount;
+        public ulong ReadTransferCount;
+        public ulong WriteTransferCount;
+        public ulong OtherTransferCount;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetProcessIoCounters(IntPtr processHandle, out IoCounters counters);
+
+    public static ProcessIoCounters? TryReadProcessIo()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return null;
+        }
+
+        try
+        {
+            using var process = System.Diagnostics.Process.GetCurrentProcess();
+            return GetProcessIoCounters(process.Handle, out var counters)
+                ? new ProcessIoCounters(counters.ReadTransferCount, counters.WriteTransferCount)
+                : null;
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetSystemTimes(out FileTime idle, out FileTime kernel, out FileTime user);

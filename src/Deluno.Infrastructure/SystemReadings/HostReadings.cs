@@ -9,6 +9,9 @@ public readonly record struct CpuTimes(ulong Idle, ulong Total);
 /// </summary>
 public sealed record DiskCounters(long BytesRead, long BytesWritten, long Operations, long IdleTime, long QueryTime);
 
+/// <summary>Bytes this program has read and written, as Windows counts them.</summary>
+public sealed record ProcessIoCounters(ulong ReadBytes, ulong WriteBytes);
+
 /// <summary>Cumulative bytes on the adapter that carries the default route, plus what is known about it.</summary>
 public sealed record NetworkAdapterReading(string Name, string? Ip, long? LinkMbps, long BytesIn, long BytesOut);
 
