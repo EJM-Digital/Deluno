@@ -1,17 +1,16 @@
 /**
  * Small hooks the Live board shares (#1096): the clock that countdowns tick
- * from, when the summary last arrived, the library titles on the board,
+ * from, the library titles on the board,
  * and which cards have just arrived or changed lane.
  */
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
-import type { DashboardSummary } from "../../../lib/api";
 import { useLiveInterval } from "../../../hooks/use-live-interval";
 import { movedCards, type JourneyCard, type Stage } from "./journey";
 import { fetchByName, fetchMovieTitles, fetchSeriesTitles, NO_TITLES, nameSearchOf, wantedTitles, type Entity, type NameSearch, type TitleInfo, type TitleLookup } from "./titles";
 
 /** A little past the boundary, so a timer that fires a hair early still lands in the new second. */
-export const SECOND_SLACK_MS = 5;
+const SECOND_SLACK_MS = 5;
 
 /** Milliseconds until just after the next whole second of the wall clock. */
 export function msToNextSecond(at: number): number {
@@ -52,27 +51,6 @@ export function useNow(intervalMs = 1000): number {
     };
   }, [intervalMs]);
   return now;
-}
-
-/**
- * When the summary last arrived here. The server stamps each summary, so a
- * summary that is already in the cache on arrival keeps its own time; a newer
- * one (a realtime nudge, the safety-net refresh) resets it to now.
- */
-export function useSummaryUpdatedAt(summary: DashboardSummary | undefined): number {
-  const [updatedAt, setUpdatedAt] = useState(() => {
-    const stamped = Date.parse(summary?.asOfUtc ?? "");
-    return Number.isFinite(stamped) ? Math.min(Date.now(), stamped) : Date.now();
-  });
-  const first = useRef(true);
-  useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
-    setUpdatedAt(Date.now());
-  }, [summary]);
-  return updatedAt;
 }
 
 /**
@@ -207,22 +185,6 @@ export function useFreshKeys(keys: readonly string[], holdMs = 1600): ReadonlySe
   return fresh;
 }
 
-/** The height of an element, kept up to date as it changes (0 until it has been laid out). */
-export function useElementHeight<T extends HTMLElement>(): [RefObject<T | null>, number] {
-  const ref = useRef<T | null>(null);
-  const [height, setHeight] = useState(0);
-  useEffect(() => {
-    const element = ref.current;
-    if (!element || typeof ResizeObserver === "undefined") return undefined;
-    const read = () => setHeight(Math.round(element.getBoundingClientRect().height));
-    read();
-    const observer = new ResizeObserver(read);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-  return [ref, height];
-}
-
 /**
  * The width and height of an element, kept up to date as it changes (0 until it has been laid out). It is read before the
  * first paint (the layout built from it is settled when the page first shows, so nothing shifts after load) and again when
@@ -234,9 +196,7 @@ export function useElementSize<T extends HTMLElement>(): [RefObject<T | null>, {
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element || typeof ResizeObserver === "undefined") return undefined;
-    let live = true;
     const read = () => {
-      if (!live) return;
       const box = element.getBoundingClientRect();
       const next = { width: Math.round(box.width), height: Math.round(box.height) };
       setSize((current) => (current.width === next.width && current.height === next.height ? current : next));
@@ -246,7 +206,6 @@ export function useElementSize<T extends HTMLElement>(): [RefObject<T | null>, {
     observer.observe(element);
     void document.fonts?.ready.then(read);
     return () => {
-      live = false;
       observer.disconnect();
     };
   }, []);
@@ -255,21 +214,6 @@ export function useElementSize<T extends HTMLElement>(): [RefObject<T | null>, {
 
 /** The size of one rem in pixels, read once (the app's own type scale is in rem, so measured space is compared in rem). */
 export function useRemPx(): number {
-  const [rem] = useState(() => (typeof window === "undefined" ? 16 : parseFloat(getComputedStyle(document.documentElement).fontSize) || 16));
+  const [rem] = useState(() => (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16));
   return rem;
-}
-
-/** True while the window is at least the `lg` breakpoint wide, where the page is held to the window and its cards must fit the space they are given. Below it the page scrolls and every card shows everything. */
-export function useIsWide(): boolean {
-  const query = "(min-width: 1024px)";
-  const [wide, setWide] = useState(() => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(query).matches);
-  useEffect(() => {
-    if (typeof window.matchMedia !== "function") return undefined;
-    const list = window.matchMedia(query);
-    const read = () => setWide(list.matches);
-    read();
-    list.addEventListener?.("change", read);
-    return () => list.removeEventListener?.("change", read);
-  }, []);
-  return wide;
 }
