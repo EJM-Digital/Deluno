@@ -1001,6 +1001,30 @@
       "line": 64,
       "replacement": "true",
       "reason": "Equivalent: an unreadable time is NaN whether the default is empty or a stray word, and a push whose own time cannot be read is counted either way because comparing NaN is false."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/dispatch-final-state.ts",
+      "mutator": "ConditionalExpression",
+      "line": 31,
+      "replacement": "false",
+      "reason": "Equivalent: a failed import status is neither imported nor completed and is not empty, so the next lines return false anyway; the default list is only read for extra-copy matches, which a stray word never makes; and the failure text is only searched for the words refus, rejected, removed and vanished, which a stray word does not hold."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/dispatch-final-state.ts",
+      "mutator": "ArrayDeclaration",
+      "line": 62,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "Equivalent: a failed import status is neither imported nor completed and is not empty, so the next lines return false anyway; the default list is only read for extra-copy matches, which a stray word never makes; and the failure text is only searched for the words refus, rejected, removed and vanished, which a stray word does not hold."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/dispatch-final-state.ts",
+      "mutator": "StringLiteral",
+      "line": 67,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: a failed import status is neither imported nor completed and is not empty, so the next lines return false anyway; the default list is only read for extra-copy matches, which a stray word never makes; and the failure text is only searched for the words refus, rejected, removed and vanished, which a stray word does not hold."
     }
   ]
 }
