@@ -5869,7 +5869,7 @@ public sealed partial class ImportPipelineService(
     /// library health row).
     /// </summary>
     internal static bool CanLikelyHardlink(string sourcePath, string destinationPath)
-        => CanLikelyHardlink(sourcePath, destinationPath, MountedRoots());
+        => CanLikelyHardlink(sourcePath, destinationPath, MountedVolumes.Roots());
 
     internal static bool CanLikelyHardlink(string sourcePath, string destinationPath, IReadOnlyList<string> mountedRoots)
     {
@@ -5886,39 +5886,9 @@ public sealed partial class ImportPipelineService(
         }
     }
 
-    private static IReadOnlyList<string> MountedRoots()
-    {
-        try
-        {
-            return [.. DriveInfo.GetDrives().Select(drive => drive.RootDirectory.FullName)];
-        }
-        catch
-        {
-            return [];
-        }
-    }
-
-    // The longest mounted root the path is under, on a folder boundary; the path's own root when none holds it (a network share).
+    // The longest mounted root the path is under; the path's own root when none holds it (a network share).
     private static string? VolumeRootOf(string fullPath, IReadOnlyList<string> mountedRoots)
-    {
-        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        string? best = null;
-        foreach (var root in mountedRoots)
-        {
-            if (string.IsNullOrEmpty(root) || !fullPath.StartsWith(root, comparison))
-            {
-                continue;
-            }
-
-            var onBoundary = fullPath.Length == root.Length || root[^1] is '/' or '\\' || fullPath[root.Length] is '/' or '\\';
-            if (onBoundary && (best is null || root.Length > best.Length))
-            {
-                best = root;
-            }
-        }
-
-        return best ?? Path.GetPathRoot(fullPath);
-    }
+        => MountedVolumes.RootOf(fullPath, mountedRoots) ?? Path.GetPathRoot(fullPath);
 
     private static bool IsSamePath(string first, string second)
     {
