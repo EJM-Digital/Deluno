@@ -110,7 +110,9 @@ export function SettingsMigrationPage() {
   useEffect(() => {
     // Leaving the page stops the request, its retries included.
     const leaving = new AbortController();
-    void fetchJson<MigrationAuditReport[]>("/api/migration/reports", { signal: leaving.signal }).then(setAuditReports).catch(() => setAuditReports([]));
+    void fetchJson<MigrationAuditReport[]>("/api/migration/reports", { signal: leaving.signal }).then(setAuditReports).catch(() => {
+      // No list to show: the history stays empty, as it started.
+    });
     return () => leaving.abort();
   }, []);
 
