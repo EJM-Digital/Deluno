@@ -42,7 +42,7 @@ public sealed class SeasonSearchJobHandlerTests
         var jobQueueRepository = new Mock<IJobQueueRepository>(MockBehavior.Strict);
 
         seasonSearchExecutor
-            .Setup(executor => executor.ExecuteAsync("series-1", 1, "automatic-season", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(executor => executor.ExecuteAsync("series-1", 1, "automatic-season", It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
             .ReturnsAsync(Completed(dispatched: true));
 
         var handler = new SeasonSearchJobHandler(seasonSearchExecutor.Object, jobQueueRepository.Object);
@@ -60,7 +60,7 @@ public sealed class SeasonSearchJobHandlerTests
         var jobQueueRepository = new Mock<IJobQueueRepository>();
 
         seasonSearchExecutor
-            .Setup(executor => executor.ExecuteAsync("series-1", 1, "automatic-season", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(executor => executor.ExecuteAsync("series-1", 1, "automatic-season", It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
             .ReturnsAsync(Completed(dispatched: false));
 
         IReadOnlyList<EpisodeSearchPlanItem>? planned = null;
@@ -90,7 +90,7 @@ public sealed class SeasonSearchJobHandlerTests
         var jobQueueRepository = new Mock<IJobQueueRepository>(MockBehavior.Strict);
 
         seasonSearchExecutor
-            .Setup(executor => executor.ExecuteAsync("series-1", 1, "automatic-season", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(executor => executor.ExecuteAsync("series-1", 1, "automatic-season", It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
             .ReturnsAsync(new SeasonSearchOutcome(
                 status, "not-found", null, 1, 0, 0, 0, 0, 0, null, null, null, null, null, [], [], false));
 
@@ -116,7 +116,7 @@ public sealed class SeasonSearchJobHandlerTests
         var jobQueueRepository = new Mock<IJobQueueRepository>(MockBehavior.Strict);
 
         seasonSearchExecutor
-            .Setup(executor => executor.ExecuteAsync("series-1", 1, "automatic-season", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(executor => executor.ExecuteAsync("series-1", 1, "automatic-season", It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
             .ReturnsAsync(SeasonSearchOutcome.EvidenceHeld(1, 3, 2, 1, "Whole-season replacement was held."));
 
         var handler = new SeasonSearchJobHandler(seasonSearchExecutor.Object, jobQueueRepository.Object);
@@ -132,7 +132,7 @@ public sealed class SeasonSearchJobHandlerTests
         var jobQueueRepository = new Mock<IJobQueueRepository>(MockBehavior.Strict);
 
         seasonSearchExecutor
-            .Setup(executor => executor.ExecuteAsync("series-1", 1, "automatic-season", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(executor => executor.ExecuteAsync("series-1", 1, "automatic-season", It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
             .ReturnsAsync(SeasonSearchOutcome.Blocked(1, 3, "No indexers are linked to this library yet."));
 
         var handler = new SeasonSearchJobHandler(seasonSearchExecutor.Object, jobQueueRepository.Object);
@@ -153,7 +153,7 @@ public sealed class SeasonSearchJobHandlerTests
         // SeasonSearchExecutor recorded the same retryDelayHours backoff as
         // Blocked/EvidenceHeld for it.
         seasonSearchExecutor
-            .Setup(executor => executor.ExecuteAsync("series-1", 1, "automatic-season", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(executor => executor.ExecuteAsync("series-1", 1, "automatic-season", It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
             .ReturnsAsync(new SeasonSearchOutcome(
                 SeasonSearchStatus.Completed, "held", "Not a proven upgrade for every installed episode.",
                 1, 3, 2, 0, 0, 0, "Pioneer.One.S01.1080p", "Example", null, null, null, [], ["episode-1", "episode-2", "episode-3"], false));
@@ -162,6 +162,37 @@ public sealed class SeasonSearchJobHandlerTests
         await handler.HandleAsync(SeasonJob(), CancellationToken.None);
 
         jobQueueRepository.VerifyNoOtherCalls();
+    }
+
+    /// <summary>#1482: the dispatch a replacement season search was planned for reaches the executor, and the episode fallback.</summary>
+    [Fact]
+    public async Task The_dispatch_a_replacement_season_search_was_planned_for_is_handed_to_the_executor_and_the_fallback()
+    {
+        var seasonSearchExecutor = new Mock<ISeasonSearchExecutor>();
+        var jobQueueRepository = new Mock<IJobQueueRepository>();
+        seasonSearchExecutor
+            .Setup(executor => executor.ExecuteAsync("series-1", 1, "automatic-season", It.IsAny<string>(), It.IsAny<CancellationToken>(), "struck"))
+            .ReturnsAsync(Completed(dispatched: false));
+        IReadOnlyList<EpisodeSearchPlanItem>? planned = null;
+        jobQueueRepository
+            .Setup(repository => repository.PlanEpisodeSearchesAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<EpisodeSearchPlanItem>>(), It.IsAny<CancellationToken>()))
+            .Callback<string, IReadOnlyList<EpisodeSearchPlanItem>, CancellationToken>((_, episodes, _) => planned = episodes)
+            .Returns(Task.CompletedTask);
+        var payload = JsonSerializer.Serialize(new
+        {
+            seriesId = "series-1",
+            seriesTitle = "Pioneer One",
+            libraryId = "library-tv",
+            seasonNumber = 1,
+            episodes = Episodes,
+            ignoreDispatchId = "struck"
+        });
+
+        await new SeasonSearchJobHandler(seasonSearchExecutor.Object, jobQueueRepository.Object)
+            .HandleAsync(TestJobs.Create("series.search.season", payloadJson: payload), CancellationToken.None);
+
+        Assert.NotNull(planned);
+        Assert.All(planned!, item => Assert.Equal("struck", item.IgnoreDispatchId));
     }
 
     private static JobQueueItem SeasonJob()

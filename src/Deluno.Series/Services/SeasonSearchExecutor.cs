@@ -37,7 +37,8 @@ public interface ISeasonSearchExecutor
         int seasonNumber,
         string triggeredBy,
         string activityClause,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        string? ignoreDispatchId);
 }
 
 public sealed class SeasonSearchExecutor(
@@ -66,7 +67,8 @@ public sealed class SeasonSearchExecutor(
         int seasonNumber,
         string triggeredBy,
         string activityClause,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? ignoreDispatchId = null)
     {
         var seriesItem = await repository.GetByIdAsync(seriesId, cancellationToken);
         if (seriesItem is null)
@@ -350,7 +352,7 @@ public sealed class SeasonSearchExecutor(
             ? await DispatchSendGate.EnterAsync(bestCandidate.ReleaseName, [seriesItem.Id], cancellationToken)
             : null;
         var onItsWay = !noPackFound && !replacementHeld && decisionPlan.ShouldDispatch && bestCandidate is not null
-            ? await DispatchCoverage.AlreadyOnItsWayAsync(jobQueueRepository, bestCandidate.ReleaseName, [seriesItem.Id], cancellationToken)
+            ? await DispatchCoverage.AlreadyOnItsWayAsync(jobQueueRepository, bestCandidate.ReleaseName, [seriesItem.Id], cancellationToken, ignoreDispatchId)
             : null;
 
         var outcome = onItsWay is not null ? "skipped" : replacementHeld ? "held" : noPackFound ? "checked" : decisionPlan.Outcome;

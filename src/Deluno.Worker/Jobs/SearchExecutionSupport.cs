@@ -339,8 +339,27 @@ internal static class SearchExecutionSupport
         IJobQueueRepository jobQueueRepository,
         string releaseName,
         IReadOnlyCollection<string> entityIds,
-        CancellationToken cancellationToken)
-        => DispatchCoverage.AlreadyOnItsWayAsync(jobQueueRepository, releaseName, entityIds, cancellationToken);
+        CancellationToken cancellationToken,
+        string? ignoreDispatchId = null)
+        => DispatchCoverage.AlreadyOnItsWayAsync(jobQueueRepository, releaseName, entityIds, cancellationToken, ignoreDispatchId);
+
+    /// <summary>
+    /// The dispatch a replacement search was queued for (#1482), or null for any other job. Whatever order the
+    /// caller removed, archived and queued in, the search never counts that download as still on its way.
+    /// </summary>
+    internal static string? ReplacedDispatchId(JobQueueItem job)
+        => string.Equals(job.RelatedEntityType, "download_dispatch", StringComparison.Ordinal)
+            && !string.IsNullOrWhiteSpace(job.RelatedEntityId)
+                ? job.RelatedEntityId
+                : null;
+
+    /// <summary>Whether the search was queued because a download or its release went wrong (#1482).</summary>
+    internal static bool IsReplacementSearch(string? triggeredBy)
+        => triggeredBy is "health-replacement" or "recovery-retry" or "grab-rejected" or "external-redownload";
+
+    /// <summary>The plain-words line when a replacement search finds no other usable release (#1482).</summary>
+    internal static string NoOtherReleaseMessage(string title)
+        => $"Deluno looked for another copy of {title} to replace the download that went wrong and found no other usable release. It will look again at the next scheduled search.";
 
     internal static string? SerializeSearchPlan(MediaSearchPlan plan, DownloadClientGrabResult? grabResult = null)
     {

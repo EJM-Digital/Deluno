@@ -58,7 +58,8 @@ internal static class JobPayloads
         int EpisodeNumber,
         string Title,
         IReadOnlyList<string>? PriorityIndexerIds = null,
-        int FollowUp = 0);
+        int FollowUp = 0,
+        string? IgnoreDispatchId = null);
 
     internal sealed record SeasonSearchPayloadEpisode(
         string EpisodeId,
@@ -70,7 +71,8 @@ internal static class JobPayloads
         string SeriesTitle,
         string LibraryId,
         int SeasonNumber,
-        IReadOnlyList<SeasonSearchPayloadEpisode> Episodes);
+        IReadOnlyList<SeasonSearchPayloadEpisode> Episodes,
+        string? IgnoreDispatchId = null);
 
     internal sealed record IntakeSyncPayload(
         string? SourceId,

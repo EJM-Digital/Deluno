@@ -43,7 +43,7 @@ public sealed class TheSearchingLaneNamesWhatIsBeingSearchedOnAShowTests
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var executor = new Mock<ISeasonSearchExecutor>();
         executor
-            .Setup(item => item.ExecuteAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(item => item.ExecuteAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
             .Returns(async () =>
             {
                 await release.Task;

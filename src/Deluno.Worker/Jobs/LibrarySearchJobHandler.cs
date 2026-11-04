@@ -103,7 +103,7 @@ public abstract class LibrarySearchJobHandler(
 
         if (IsTargeted(payload))
         {
-            await ReleaseStaleDownloadingMarkAsync(payload, now, cancellationToken);
+            await ReleaseStaleDownloadingMarkAsync(payload, SearchExecutionSupport.ReplacedDispatchId(job), now, cancellationToken);
         }
 
         var routing = await librariesRepository.GetLibraryRoutingAsync(payload.LibraryId, cancellationToken);
@@ -332,7 +332,7 @@ public abstract class LibrarySearchJobHandler(
                 ? await DispatchSendGate.EnterAsync(bestCandidate.ReleaseName, [candidate.MovieId], cancellationToken)
                 : null;
             var onItsWay = decisionPlan.ShouldDispatch && bestCandidate is not null
-                ? await SearchExecutionSupport.AlreadyOnItsWayAsync(jobQueueRepository, bestCandidate.ReleaseName, [candidate.MovieId], cancellationToken)
+                ? await SearchExecutionSupport.AlreadyOnItsWayAsync(jobQueueRepository, bestCandidate.ReleaseName, [candidate.MovieId], cancellationToken, SearchExecutionSupport.ReplacedDispatchId(job))
                 : null;
             if (onItsWay is not null)
             {
@@ -522,7 +522,8 @@ public abstract class LibrarySearchJobHandler(
 
         await activityFeedRepository.RecordActivityAsync(
             "library.search.executed",
-            SearchExecutionSupport.FormatExecutionMessage(payload.LibraryName, candidates.Length, configuredSources, configuredClients, "movie"),
+            await ReplacementNothingFoundMessageAsync(payload, MediaKind.Movie, candidates.FirstOrDefault()?.Title, matchedCount, configuredSources, configuredClients, cancellationToken)
+                ?? SearchExecutionSupport.FormatExecutionMessage(payload.LibraryName, candidates.Length, configuredSources, configuredClients, "movie"),
             null,
             job.Id,
             "library",
@@ -577,6 +578,38 @@ public abstract class LibrarySearchJobHandler(
     private async Task<IReadOnlyList<BlockedRelease>> ListRefusalsAsync(CancellationToken cancellationToken)
         => blockedReleases is null ? [] : await blockedReleases.ListAsync(cancellationToken);
 
+    /// <summary>
+    /// A replacement search that sent nothing says so in plain words naming the title, never the library-wide
+    /// "nothing else to look for" (#1482). Null when this is not a replacement search, when something was sent, or
+    /// when sources or clients are missing (the usual line already says that).
+    /// </summary>
+    private async Task<string?> ReplacementNothingFoundMessageAsync(
+        JobPayloads.LibrarySearchPayload payload,
+        MediaKind kind,
+        string? candidateTitle,
+        int matchedCount,
+        int configuredSources,
+        int configuredClients,
+        CancellationToken cancellationToken)
+    {
+        if (!IsTargeted(payload)
+            || matchedCount > 0
+            || configuredSources == 0
+            || configuredClients == 0
+            || !SearchExecutionSupport.IsReplacementSearch(payload.TriggeredBy))
+        {
+            return null;
+        }
+
+        var title = candidateTitle;
+        if (string.IsNullOrWhiteSpace(title) && mediaStateRepository is not null)
+        {
+            title = (await mediaStateRepository.GetByIdAsync(kind, payload.TargetEntityId!, cancellationToken))?.Title;
+        }
+
+        return string.IsNullOrWhiteSpace(title) ? null : SearchExecutionSupport.NoOtherReleaseMessage(title);
+    }
+
     private static bool IsTargeted(JobPayloads.LibrarySearchPayload payload)
         => !string.IsNullOrWhiteSpace(payload.TargetEntityId);
 
@@ -591,6 +624,7 @@ public abstract class LibrarySearchJobHandler(
     /// </summary>
     private async Task ReleaseStaleDownloadingMarkAsync(
         JobPayloads.LibrarySearchPayload payload,
+        string? replacedDispatchId,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
@@ -600,7 +634,9 @@ public abstract class LibrarySearchJobHandler(
         }
 
         var inFlight = await jobQueueRepository.ListDownloadsInFlightAsync(DispatchLiveDownloadLookup.Limit, cancellationToken);
-        if (inFlight.Any(download => string.Equals(download.EntityId, payload.TargetEntityId, StringComparison.Ordinal)))
+        // A replacement search ignores the download it replaces: it may be queued before that one is removed and archived (#1482).
+        if (inFlight.Any(download => string.Equals(download.EntityId, payload.TargetEntityId, StringComparison.Ordinal)
+            && !DispatchCoverage.IsIgnored(download, replacedDispatchId)))
         {
             return;
         }
@@ -860,7 +896,8 @@ public abstract class LibrarySearchJobHandler(
                 // An episode with no title yet is still worth searching for; the
                 // plan payload names it by its code, which is what an indexer
                 // query uses anyway.
-                Title: episode.Title ?? $"S{episode.SeasonNumber:00}E{episode.EpisodeNumber:00}"))
+                Title: episode.Title ?? $"S{episode.SeasonNumber:00}E{episode.EpisodeNumber:00}",
+                IgnoreDispatchId: SearchExecutionSupport.ReplacedDispatchId(job)))
             .ToArray();
 
         // A season that is entirely missing and fully aired is searched as one
@@ -899,7 +936,8 @@ public abstract class LibrarySearchJobHandler(
             {
                 SeriesTitle = seasonInventoryBySeries.TryGetValue(season.SeriesId, out var seriesInventory)
                     ? seriesInventory.Title
-                    : season.SeriesTitle
+                    : season.SeriesTitle,
+                IgnoreDispatchId = SearchExecutionSupport.ReplacedDispatchId(job)
             })
             .ToArray();
 
@@ -1038,7 +1076,7 @@ public abstract class LibrarySearchJobHandler(
                 ? await DispatchSendGate.EnterAsync(bestCandidate.ReleaseName, [candidate.SeriesId], cancellationToken)
                 : null;
             var onItsWay = decisionPlan.ShouldDispatch && bestCandidate is not null
-                ? await SearchExecutionSupport.AlreadyOnItsWayAsync(jobQueueRepository, bestCandidate.ReleaseName, [candidate.SeriesId], cancellationToken)
+                ? await SearchExecutionSupport.AlreadyOnItsWayAsync(jobQueueRepository, bestCandidate.ReleaseName, [candidate.SeriesId], cancellationToken, SearchExecutionSupport.ReplacedDispatchId(job))
                   ?? LeftToPlannedSeasonSearch(candidate.SeriesId, bestCandidate, plannedSeasonNumbersBySeries)
                 : null;
             if (onItsWay is not null)
@@ -1193,7 +1231,8 @@ public abstract class LibrarySearchJobHandler(
 
         await activityFeedRepository.RecordActivityAsync(
             "library.search.executed",
-            SearchExecutionSupport.FormatExecutionMessage(payload.LibraryName, seriesCandidates.Length, configuredSources, configuredClients, "TV show"),
+            await ReplacementNothingFoundMessageAsync(payload, MediaKind.Series, seriesCandidates.FirstOrDefault()?.Title, seriesMatchedCount, configuredSources, configuredClients, cancellationToken)
+                ?? SearchExecutionSupport.FormatExecutionMessage(payload.LibraryName, seriesCandidates.Length, configuredSources, configuredClients, "TV show"),
             null,
             job.Id,
             "library",

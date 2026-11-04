@@ -12,6 +12,7 @@ namespace Deluno.Jobs.Contracts;
 /// <param name="ClientId">The client it was sent to, so a hand send can name it and a Replace can remove it (#1175).</param>
 /// <param name="ClientName">That client's name as it was when the release was sent.</param>
 /// <param name="QueueItemId">The id the client knows it by (hash or item id), when the client gave one.</param>
+/// <param name="DispatchId">Deluno's own record of the send, so a replacement search can ignore the very download it replaces (#1482).</param>
 public sealed record DownloadInFlight(
     string EntityType,
     string EntityId,
@@ -19,4 +20,5 @@ public sealed record DownloadInFlight(
     bool NeverShown = false,
     string? ClientId = null,
     string? ClientName = null,
-    string? QueueItemId = null);
+    string? QueueItemId = null,
+    string? DispatchId = null);

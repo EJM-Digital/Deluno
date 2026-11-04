@@ -244,7 +244,7 @@ public sealed class EpisodeSearchJobHandler(
             ? await DispatchSendGate.EnterAsync(bestCandidate.ReleaseName, [payload.EpisodeId, payload.SeriesId], cancellationToken)
             : null;
         var onItsWay = decisionPlan.ShouldDispatch && bestCandidate is not null
-            ? await SearchExecutionSupport.AlreadyOnItsWayAsync(jobQueueRepository, bestCandidate.ReleaseName, [payload.EpisodeId, payload.SeriesId], cancellationToken)
+            ? await SearchExecutionSupport.AlreadyOnItsWayAsync(jobQueueRepository, bestCandidate.ReleaseName, [payload.EpisodeId, payload.SeriesId], cancellationToken, payload.IgnoreDispatchId)
             : null;
         if (onItsWay is not null)
         {

@@ -115,6 +115,36 @@ public sealed class SeasonSearchExecutorTests
     }
 
     /// <summary>
+    /// #1482: the season search a replacement plans for a struck pack runs while the pack's dispatch is still
+    /// listed in flight. It ignores that dispatch and only that one, so the next pack is sent.
+    /// </summary>
+    [Fact]
+    public async Task A_replacement_season_search_ignores_the_struck_pack_and_sends_the_next_one()
+    {
+        var world = new World("Pioneer.One.S01.1080p.WEB-DL");
+        world.Jobs.Setup(jobs => jobs.ListDownloadsInFlightAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new DownloadInFlight("series", "series-1", "Pioneer.One.S01.720p.WEB-DL", DispatchId: "struck")]);
+
+        var result = await world.Executor.ExecuteAsync("series-1", 1, "automatic-season", "was searched.", CancellationToken.None, "struck");
+
+        Assert.True(result.Dispatched);
+        world.Grabs.Verify(grab => grab.GrabAsync(It.IsAny<string>(), It.IsAny<DownloadClientGrabRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_replacement_season_search_still_waits_for_a_different_pack_on_its_way()
+    {
+        var world = new World("Pioneer.One.S01.1080p.WEB-DL");
+        world.Jobs.Setup(jobs => jobs.ListDownloadsInFlightAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new DownloadInFlight("series", "series-1", "Pioneer.One.S01.720p.WEB-DL", DispatchId: "other")]);
+
+        var result = await world.Executor.ExecuteAsync("series-1", 1, "automatic-season", "was searched.", CancellationToken.None, "struck");
+
+        Assert.False(result.Dispatched);
+        world.Grabs.Verify(grab => grab.GrabAsync(It.IsAny<string>(), It.IsAny<DownloadClientGrabRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>
     /// #808: the season path is the one automatic-search path that lives
     /// outside <c>Deluno.Worker</c> (it cannot reference
     /// <c>SearchExecutionSupport</c>), so it explains tag-based routing

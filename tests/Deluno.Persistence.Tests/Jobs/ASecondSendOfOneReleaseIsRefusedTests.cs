@@ -89,6 +89,21 @@ public sealed class ASecondSendOfOneReleaseIsRefusedTests
         Assert.Equal("SABnzbd", only.ClientName);
     }
 
+    /// <summary>#1482: a replacement search ignores the dispatch it was queued for, and only that one.</summary>
+    [Fact]
+    public async Task A_download_in_flight_names_its_dispatch_so_a_replacement_can_ignore_it()
+    {
+        using var world = await World.CreateAsync();
+        Assert.True(await SearchAsync(world, "sab", "SABnzbd", TimeSpan.Zero));
+
+        var only = Assert.Single(await world.Store.ListDownloadsInFlightAsync(100, CancellationToken.None));
+        Assert.False(string.IsNullOrEmpty(only.DispatchId));
+
+        Assert.Null(await DispatchCoverage.AlreadyOnItsWayAsync(world.Store, "Another.Release", [MovieId], CancellationToken.None, only.DispatchId));
+        Assert.NotNull(await DispatchCoverage.AlreadyOnItsWayAsync(world.Store, "Another.Release", [MovieId], CancellationToken.None, "some-other-dispatch"));
+        Assert.NotNull(await DispatchCoverage.AlreadyOnItsWayAsync(world.Store, "Another.Release", [MovieId], CancellationToken.None));
+    }
+
     [Fact]
     public async Task A_title_whose_library_file_came_from_the_release_is_not_sent_it_again()
     {
