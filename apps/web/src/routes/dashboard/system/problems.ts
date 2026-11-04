@@ -83,7 +83,7 @@ export function buildHealth(args: { summary: DashboardSummary | undefined; atten
   const connectionKinds = new Set(["connection", "jobs", "lanes"]);
   const others = attention.rows.filter((item) => item.section === "deluno" && !connectionKinds.has(item.kind) && !item.kind.startsWith("health:"));
   const jobsGaveUp = attention.rows.filter((item) => item.kind === "jobs");
-  const links = new Map((summary?.health?.topProblems ?? []).map((problem) => [problem.id, problem.link]));
+  const links = new Map(summary?.health?.topProblems.map((problem) => [problem.id, problem.link]));
   const covered = new Set(attention.rows.filter((row) => row.kind === "connection").map((row) => (row.id.startsWith("client:") ? `download-client:${row.id.slice(7)}` : row.id)));
 
   const all = checks ?? [];
@@ -92,14 +92,14 @@ export function buildHealth(args: { summary: DashboardSummary | undefined; atten
   const rows: HealthRow[] = [];
 
   for (const item of others) {
-    rows.push({ id: `item:${item.id}`, area: areaOfAttention(item.id), tone: item.tone === "bad" ? "bad" : "warn", title: item.title, why: item.text, atUtc: null, buttons: buttonsFor(screenLinkActions(item.action, item.to, `open:${item.id}`)) });
+    rows.push({ id: `item:${item.id}`, area: areaOfAttention(item.id), tone: item.tone === "bad" ? "bad" : "warn", title: item.title, why: item.text, atUtc: null, buttons: buttonsFor(screenLinkActions(item.action, item.to)) });
   }
 
   const listed = checks
-    ? open.filter((check) => !covered.has(check.id)).map((check) => ({ id: check.id, title: check.name, message: check.message, detail: [check.cause, check.fix].filter(Boolean).join(" "), link: links.get(check.id) ?? "/system", category: check.category as string | undefined, at: check.problemSinceUtc ?? check.lastRunUtc, area: areaOf(check) }))
+    ? open.filter((check) => !covered.has(check.id)).map((check) => ({ id: check.id, title: check.name, message: check.message, detail: [check.cause, check.fix].filter(Boolean).join(" "), link: links.get(check.id), category: check.category as string | undefined, at: check.problemSinceUtc ?? check.lastRunUtc, area: areaOf(check) }))
     : attention.rows.filter((row) => row.kind.startsWith("health:")).map((row) => {
       const problem = row.data as { id: string; category?: string; link?: string };
-      return { id: problem.id, title: row.title, message: row.text, detail: "", link: problem.link || "/system", category: problem.category as string | undefined, at: row.sinceUtc, area: "machine" as HealthArea };
+      return { id: problem.id, title: row.title, message: row.text, detail: "", link: problem.link, category: problem.category as string | undefined, at: row.sinceUtc, area: "machine" as HealthArea };
     });
   for (const problem of listed) {
     rows.push({
@@ -109,14 +109,14 @@ export function buildHealth(args: { summary: DashboardSummary | undefined; atten
   }
 
   for (const job of jobsGaveUp) {
-    const about = job.id === "failed-title-jobs" ? "title" : "background";
-    rows.push({ id: about === "title" ? "title-jobs-gave-up" : "jobs-gave-up", area: "machine", tone: "bad", title: job.title, why: job.text, atUtc: null, buttons: buttonsFor(jobsGaveUpActions(about)) });
+    const title = job.id === "failed-title-jobs";
+    rows.push({ id: title ? "title-jobs-gave-up" : "jobs-gave-up", area: "machine", tone: "bad", title: job.title, why: job.text, atUtc: null, buttons: buttonsFor(jobsGaveUpActions(title ? "title" : undefined)) });
   }
   for (const lane of failedLanes) {
-    rows.push({ id: `lane:${lane.name}`, area: "machine", tone: "bad", title: `${plainWords(lane.name, "A worker")} isn’t running`, why: lane.lastError ?? "It stopped and hasn’t come back.", atUtc: null, buttons: buttonsFor(screenLinkActions("Look", "/system", `look:${lane.name}`)) });
+    rows.push({ id: `lane:${lane.name}`, area: "machine", tone: "bad", title: `${plainWords(lane.name, "A worker")} isn’t running`, why: lane.lastError ?? "It stopped and hasn’t come back.", atUtc: null, buttons: buttonsFor(screenLinkActions("Look", "/system")) });
   }
   for (const check of checks ? open.filter((c) => covered.has(c.id)) : []) {
-    rows.push({ id: `check:${check.id}`, area: areaOf(check), tone: "bad", title: check.name, why: `${check.message} Fix it in Connections.`, atUtc: check.problemSinceUtc ?? check.lastRunUtc, buttons: buttonsFor(healthProblemActions({ id: check.id, name: check.name, category: check.category as string, link: "/system" })) });
+    rows.push({ id: `check:${check.id}`, area: areaOf(check), tone: "bad", title: check.name, why: `${check.message} Fix it in Connections.`, atUtc: check.problemSinceUtc ?? check.lastRunUtc, buttons: buttonsFor(healthProblemActions({ id: check.id, name: check.name, category: check.category as string })) });
   }
   // The server lists every open problem, so none is "more" than what is listed.
   const need = rows.length;
@@ -124,7 +124,7 @@ export function buildHealth(args: { summary: DashboardSummary | undefined; atten
 
   // Not live problems: snoozed ones (still clearable), then what is not checked yet, suggestions, and what passes.
   for (const check of all.filter((c) => c.status === "problem" && isSnoozed(c))) {
-    rows.push({ id: `snoozed:${check.id}`, area: areaOf(check), tone: "idle", title: check.name, why: check.message, atUtc: check.problemSinceUtc ?? check.lastRunUtc, note: `Snoozed until ${new Date(check.snoozedUntilUtc ?? "").toLocaleDateString("en-AU", { day: "numeric", month: "short" })}`, buttons: [{ label: "Unsnooze", note: "Watches this again; it shows here as a problem if it is still true.", post: { path: `/api/system/health/${encodeURIComponent(check.id)}/unsnooze`, failure: "That could not be unsnoozed.", done: `${check.name} is being watched again` } }] });
+    rows.push({ id: `snoozed:${check.id}`, area: areaOf(check), tone: "idle", title: check.name, why: check.message, atUtc: check.problemSinceUtc ?? check.lastRunUtc, note: `Snoozed until ${new Date(check.snoozedUntilUtc as string).toLocaleDateString("en-AU", { day: "numeric", month: "short" })}`, buttons: [{ label: "Unsnooze", note: "Watches this again; it shows here as a problem if it is still true.", post: { path: `/api/system/health/${encodeURIComponent(check.id)}/unsnooze`, failure: "That could not be unsnoozed.", done: `${check.name} is being watched again` } }] });
   }
   for (const check of all.filter((c) => c.status === "unknown")) rows.push({ id: `unknown:${check.id}`, area: areaOf(check), tone: "idle", title: check.name, why: check.message, atUtc: null, note: "Not checked yet", buttons: [] });
   for (const check of all.filter((c) => c.status === "suggestion")) rows.push({ id: `suggestion:${check.id}`, area: areaOf(check), tone: "idle", title: check.name, why: check.message, atUtc: null, note: "Suggestion", buttons: [] });
