@@ -39,9 +39,10 @@ env:
 
 jobs:
   backend:
-    name: ${{ matrix.project }}
+    name: ${{ matrix.project }}${{ matrix.part && format(' part {0}', matrix.part) || '' }}
     runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
-    # Three runs of the slowest project plus its build; the backend job in ci.yml has 90 minutes for one run of all of them.
+    # Three runs of the slowest leg plus its build. Deluno.Persistence.Tests runs in the parts of scripts/persistence-parts.mjs,
+    # as in ci.yml: whole, one run is about 78 minutes, so three in a row could never finish in one job (run 41755720149, #1396).
     timeout-minutes: 150
     strategy:
       fail-fast: false
@@ -50,11 +51,18 @@ jobs:
         project:
           - Deluno.Integrations.Tests
           - Deluno.Movies.Tests
-          - Deluno.Persistence.Tests
           - Deluno.Platform.Tests
           - Deluno.Series.Tests
           - Deluno.Tray.Tests
           - Deluno.Worker.Tests
+        # One leg per part; check-persistence-parts.mjs in ci.yml proves every test is in exactly one part.
+        include:
+          - { project: Deluno.Persistence.Tests, part: 1 }
+          - { project: Deluno.Persistence.Tests, part: 2 }
+          - { project: Deluno.Persistence.Tests, part: 3 }
+          - { project: Deluno.Persistence.Tests, part: 4 }
+          - { project: Deluno.Persistence.Tests, part: 5 }
+          - { project: Deluno.Persistence.Tests, part: 6 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -73,9 +81,13 @@ jobs:
       - name: Run the suite ${{ env.REPEATS }} times in a row, no retry
         shell: bash
         run: |
+          filter=()
+          if [ -n "${{ matrix.part }}" ]; then
+            filter=(--filter "$(node scripts/persistence-parts.mjs filter ${{ matrix.part }})")
+          fi
           for run in $(seq 1 "$REPEATS"); do
             echo "::group::Run $run of $REPEATS"
-            dotnet test tests/${{ matrix.project }} -c Release --no-build
+            dotnet test tests/${{ matrix.project }} -c Release --no-build "${filter[@]}"
             echo "::endgroup::"
           done
 

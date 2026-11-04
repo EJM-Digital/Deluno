@@ -33,6 +33,20 @@ describe("the applied history", () => {
     expect(screen.queryByText(/not answering/)).toBeNull();
   });
 
+  it("drops an answer that arrives after the page has gone (#1396)", async () => {
+    let answer: (response: Response) => void = () => {};
+    vi.mocked(authedFetch).mockImplementation((input: RequestInfo | URL) =>
+      String(input) === "/api/migration/reports" ? new Promise<Response>((resolve) => { answer = resolve; }) : Promise.resolve(json({})));
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { unmount } = render(<MemoryRouter><SettingsMigrationPage /></MemoryRouter>);
+    await waitFor(() => expect(vi.mocked(authedFetch).mock.calls.some(([url]) => url === "/api/migration/reports")).toBe(true));
+    unmount();
+    answer(json([audit]));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
   it("is simply absent when the server refuses the list", async () => {
     vi.mocked(authedFetch).mockImplementation(async (input: RequestInfo | URL) => String(input) === "/api/migration/reports" ? json({ message: "No." }, 500) : json({}));
     render(<MemoryRouter><SettingsMigrationPage /></MemoryRouter>);

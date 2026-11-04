@@ -53,6 +53,24 @@ public sealed class MachineTelemetrySamplerCadenceTests
         return done();
     }
 
+    /// <summary>Waits on the real clock, without moving the fake one, for work the service does on its own thread (#1396).</summary>
+    private static async Task<bool> SettlesAsync(Func<bool> done)
+    {
+        var until = DateTime.UtcNow.AddSeconds(10);
+        while (!done() && DateTime.UtcNow < until)
+        {
+            await Task.Delay(10); // reason: the service thread has no signal to await; bounded by ten real seconds
+        }
+
+        return done();
+    }
+
+    private static int Stored(Mock<IMachineTelemetryRepository> repository)
+        => repository.Invocations.Count(call => call.Method.Name == nameof(IMachineTelemetryRepository.RecordSampleAsync));
+
+    private static int Pruned(Mock<IMachineTelemetryRepository> repository)
+        => repository.Invocations.Count(call => call.Method.Name == nameof(IMachineTelemetryRepository.PruneAsync));
+
     [Fact]
     public async Task A_reading_is_stored_at_start_and_then_once_a_minute_and_readings_older_than_48_hours_are_pruned_once_an_hour()
     {
@@ -66,16 +84,17 @@ public sealed class MachineTelemetrySamplerCadenceTests
         await sampler.StartAsync(CancellationToken.None);
         try
         {
-            Assert.True(await AdvanceUntilAsync(time, () => probe.Calls >= 1, TimeSpan.FromSeconds(30)), "No reading at start.");
+            // The first reading needs no time to pass; on a slow machine the service may take longer than one fake-clock step to start.
+            Assert.True(await SettlesAsync(() => probe.Calls >= 1), "No reading at start.");
 
             Assert.True(await AdvanceUntilAsync(time, () => probe.Calls >= 6, TimeSpan.FromMinutes(6)), "Readings did not follow one a minute.");
-            await Task.Delay(100); // reason: the store call after the sixth reading runs on the service thread; no signal to await, bounded
+            Assert.True(await SettlesAsync(() => Stored(repository) >= 6 && Pruned(repository) >= 1), "The sixth reading was not stored.");
             Assert.Equal(6, probe.Calls); // one at start plus one for each of five minutes, not more
             repository.Verify(item => item.RecordSampleAsync(It.IsAny<MachineTelemetrySample>(), It.IsAny<CancellationToken>()), Times.Exactly(6));
             repository.Verify(item => item.PruneAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Once);
 
             Assert.True(await AdvanceUntilAsync(time, () => probe.Calls >= 66, TimeSpan.FromHours(1)), "Readings stopped before the hour was up.");
-            await Task.Delay(100); // reason: as above
+            Assert.True(await SettlesAsync(() => Stored(repository) >= 66 && Pruned(repository) >= 2), "The readings of the hour were not all stored.");
             repository.Verify(item => item.PruneAsync(It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
             Assert.All(prunes, pair => Assert.Equal(TimeSpan.FromHours(48), pair.At - pair.Cutoff));
         }
@@ -96,7 +115,7 @@ public sealed class MachineTelemetrySamplerCadenceTests
         try
         {
             Assert.True(await AdvanceUntilAsync(time, () => probe.Calls >= 4, TimeSpan.FromMinutes(5)), "The sampler stopped after a failed reading.");
-            await Task.Delay(100); // reason: as above
+            Assert.True(await SettlesAsync(() => Stored(repository) >= probe.Calls - 1), "The good readings were not all stored.");
             repository.Verify(item => item.RecordSampleAsync(It.IsAny<MachineTelemetrySample>(), It.IsAny<CancellationToken>()), Times.Exactly(probe.Calls - 1));
         }
         finally

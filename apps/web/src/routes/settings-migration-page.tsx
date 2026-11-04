@@ -108,7 +108,12 @@ export function SettingsMigrationPage() {
   const openOperation = openOperationId ? report?.operations.find((operation) => operation.id === openOperationId) ?? null : null;
 
   useEffect(() => {
-    void fetchJson<MigrationAuditReport[]>("/api/migration/reports").then(setAuditReports).catch(() => setAuditReports([]));
+    // An answer that arrives after the page has gone is dropped, not written into a page that no longer exists.
+    let left = false;
+    void fetchJson<MigrationAuditReport[]>("/api/migration/reports")
+      .then((reports) => { if (!left) setAuditReports(reports); })
+      .catch(() => { if (!left) setAuditReports([]); });
+    return () => { left = true; };
   }, []);
 
   async function handlePreview(event?: FormEvent<HTMLFormElement>) {
