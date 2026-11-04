@@ -1,3 +1,5 @@
+using Deluno.Contracts;
+
 namespace Deluno.Recovery.Policies;
 
 /// <summary>
@@ -78,17 +80,12 @@ public static class SharingFootprint
     /// is not always the one that wrote it, so a drive letter is recognised by
     /// its shape.</para>
     ///
-    /// <para><b>A known gap, left open deliberately.</b> On a genuinely POSIX
-    /// install every path is rooted at <c>/</c>, so this still cannot tell two
-    /// volumes apart there — and in the container image <c>/downloads</c> and
-    /// <c>/media</c> being separate mounts is the normal arrangement, which a
-    /// hardlink cannot cross. Answering that needs the mount table, and reading
-    /// it here is what broke: <see cref="DriveInfo.GetDrives"/> stats every
-    /// mount, a CI runner has some that do not answer promptly, and a test run
-    /// that had passed sat for eight minutes without exiting. Caching the
-    /// reading fixed the cost and not the blocking. It is worth doing on a
-    /// machine where it can be measured, which is not here, so it is not being
-    /// guessed at here.</para>
+    /// <para><b>A POSIX path.</b> Every path is rooted at <c>/</c>, so the path's
+    /// own root said one volume for the container's <c>/downloads</c> and
+    /// <c>/media</c>, which are separate mounts a hardlink cannot cross. The
+    /// volume is the mount point that holds the path, read from the mount
+    /// table as text (<see cref="MountedVolumes"/>, #1464); reading it through
+    /// <see cref="DriveInfo.GetDrives"/> once kept a CI run from exiting.</para>
     /// </summary>
     private static string? RootOf(string? path)
     {
@@ -104,7 +101,8 @@ public static class SharingFootprint
 
         try
         {
-            var root = Path.GetPathRoot(Path.GetFullPath(path));
+            var fullPath = Path.GetFullPath(path);
+            var root = MountedVolumes.RootOf(fullPath, MountedVolumes.Roots()) ?? Path.GetPathRoot(fullPath);
             return string.IsNullOrWhiteSpace(root) ? null : root;
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException or IOException)

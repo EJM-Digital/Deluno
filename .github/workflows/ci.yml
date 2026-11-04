@@ -97,6 +97,8 @@ jobs:
               - 'package.json'
               - 'package-lock.json'
               - 'scripts/test-docker-recovery.sh'
+              - 'scripts/compose-contract.test.mjs'
+              - 'scripts/docker-container.test.mjs'
               - 'scripts/test-docker-platform.sh'
               - 'scripts/test-readme-docker-examples.sh'
               # The README's install examples are run against the image (test-readme-docker-examples.sh).
@@ -351,6 +353,18 @@ jobs:
         if: ${{ runner.os == 'Linux' }}
         run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
 
+      # Two real tmpfs mounts under one root, for the hard-link test (CanLikelyHardlinkAcrossMountsTests): a link inside one mount
+      # works and one across them is refused. Self-hosted runners may not allow sudo; the test is then skipped, with its reason.
+      - name: Make two tmpfs mounts for the hard-link test
+        if: ${{ runner.os == 'Linux' && runner.environment == 'github-hosted' }}
+        run: |
+          for side in a b; do
+            sudo mkdir -p "/mnt/deluno-mount-$side"
+            sudo mount -t tmpfs -o size=16m tmpfs "/mnt/deluno-mount-$side"
+            sudo chown "$(id -u):$(id -g)" "/mnt/deluno-mount-$side"
+            echo "DELUNO_TWO_MOUNTS_${side^^}=/mnt/deluno-mount-$side" >> "$GITHUB_ENV"
+          done
+
       - name: Restore backend dependencies
         run: dotnet restore Deluno.slnx
 
@@ -582,6 +596,10 @@ jobs:
     runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     # Observed 1 to 7 minutes for the image; the proofs below add a few more.
     timeout-minutes: 25
+    permissions:
+      contents: read
+      # The previous published image is pulled from the registry to prove an upgrade from it keeps the data.
+      packages: read
     env:
       IMAGE: deluno-ci:${{ github.sha }}
     steps:
@@ -659,6 +677,41 @@ jobs:
           DELUNO_DOCKER_IMAGE: ${{ env.IMAGE }}
         run: node --test scripts/platform-docker.test.mjs
 
+      # The compose file as Docker reads it: the published port, the /data volume, the restart policy and the healthcheck.
+      - name: Prove the compose file's contract
+        timeout-minutes: 5
+        run: node --test scripts/compose-contract.test.mjs
+
+      # What a deployment passes in reaches the app, and a stack with separate /downloads and /media mounts is told apart (#1464).
+      - name: Prove the container's configuration and separate download and media mounts
+        timeout-minutes: 15
+        env:
+          DELUNO_DOCKER_IMAGE: ${{ env.IMAGE }}
+        run: node --test scripts/docker-container.test.mjs
+
+      # The newest published release's image, the one a person upgrades from. None yet (a first release) is said, not failed.
+      - name: Take the previous published image
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty')"
+          if [[ -z "$tag" ]]; then
+            echo "::notice::No release has been published yet, so there is no previous image to upgrade from."
+            exit 0
+          fi
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:${tag#v}"
+          echo "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker pull --quiet "$image"
+          echo "PREVIOUS_IMAGE=$image" >> "$GITHUB_ENV"
+
+      # The recovery script starts the previous image with docker run over a populated /data volume, then the candidate over the same volume.
+      - name: Upgrade from the previous published image keeps the data
+        if: ${{ env.PREVIOUS_IMAGE != '' }}
+        timeout-minutes: 10
+        run: flock --timeout 3600 /tmp/deluno-docker-fixed-ports.lock bash scripts/test-docker-recovery.sh "$PREVIOUS_IMAGE" "$IMAGE"
+
       - name: Prove the image's tools, settings, health, stop, backup and restore
         timeout-minutes: 10
         run: bash scripts/test-docker-platform.sh "$IMAGE"
@@ -673,6 +726,7 @@ jobs:
         if: ${{ always() }}
         run: |
           docker image rm "$IMAGE" "${DOCKER_BASELINE_IMAGE:-deluno-schema-baseline:none}" >/dev/null 2>&1 || true
+          docker image rm "${PREVIOUS_IMAGE:-deluno-previous:none}" >/dev/null 2>&1 || true
           docker image prune --force >/dev/null 2>&1 || true
 
   # The end-to-end suite on Docker Compose (docs/exec-plans/active/PLAN-E2E-IN-CI.md): this commit's own image, the real
