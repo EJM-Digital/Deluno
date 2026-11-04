@@ -19,6 +19,7 @@ public sealed class DownloadAttemptsTests
     [InlineData("Film.2020", "Film.2021", false)]
     [InlineData("Film.2020.txt", "Film.2020", false)]
     [InlineData(".mkv", ".mkv", true)]
+    [InlineData(".mkv", ".mp4", false)]
     [InlineData(".mkv", "x", false)]
     [InlineData(null, "Film", false)]
     [InlineData("Film", null, false)]

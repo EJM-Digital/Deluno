@@ -52,6 +52,8 @@ public sealed class ClientPathsTests
     [InlineData("\\\\nas\\share", true)]
     [InlineData("C:\\data", true)]
     [InlineData("c:/data", true)]
+    [InlineData("C:\\", true)]
+    [InlineData("C:/", true)]
     [InlineData("C:data", false)]
     [InlineData("C:", false)]
     [InlineData("1:\\data", false)]
