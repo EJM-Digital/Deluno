@@ -349,6 +349,8 @@ describe("what each box does to the form", () => {
     expect(screen.getByLabelText("Maximum size")).toHaveAttribute("min", "0");
     expect(screen.getByLabelText("Availability delay")).toHaveAttribute("min", "0");
     expect(screen.getByLabelText("Minimum seeders")).toHaveAttribute("min", "0");
+    // #1483: the owner's words, 5 Nov - 0 is no minimum, 2 or 3 is the advice.
+    expect(screen.getByText("0 means no minimum. 2 or 3 is recommended: a torrent with fewer seeders than this is refused before it can be grabbed.")).toBeInTheDocument();
     expect(screen.getByText("Custom intervals must be between 2 and 60 seconds. The default is 2 seconds.")).toBeInTheDocument();
   });
 
