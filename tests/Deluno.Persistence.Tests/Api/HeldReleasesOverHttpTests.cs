@@ -286,6 +286,43 @@ public sealed class HeldReleasesOverHttpTests
         Assert.Equal(historyId, await HistoryIdAsync(app));
     }
 
+    [Fact]
+    public async Task Approving_a_held_tv_release_the_episode_still_needs_sends_it_once_and_answers_the_row()
+    {
+        var grabs = new CountingGrabService();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services =>
+        {
+            services.RemoveAll<IDownloadClientGrabService>();
+            services.AddSingleton<IDownloadClientGrabService>(grabs);
+        });
+        var libraryId = await ApiScenes.CreateLibraryAsync(app, "tv");
+        var series = app.Services.GetRequiredService<Deluno.Series.Data.ISeriesCatalogRepository>();
+        await series.ImportExistingAsync(
+            libraryId, "The Twilight Zone", 1959, "missing", "Imported.", null, "Bluray-1080p", true, null, null,
+            [new Deluno.Series.Contracts.ImportedEpisodeItem(1, 1, HasFile: false)],
+            CancellationToken.None);
+        var seriesId = (await series.ListAsync(CancellationToken.None)).Single().Id;
+        var episodeId = (await series.GetInventoryDetailAsync(seriesId, CancellationToken.None))!.Episodes.Single().EpisodeId;
+        var client = await app.Services.GetRequiredService<IConnectionsRepository>().CreateDownloadClientAsync(
+            new CreateDownloadClientRequest("Transmission", "transmission", "localhost", 1234, null, null, null, "movies", "tv", null, 1, true), CancellationToken.None);
+        var routed = await app.Client.PutAsJsonAsync($"/api/libraries/{libraryId}/routing", new
+        {
+            sources = Array.Empty<object>(),
+            downloadClients = new[] { new { downloadClientId = client.Id, priority = 1, category = (string?)null } }
+        });
+        Assert.True(routed.IsSuccessStatusCode);
+        const string Release = "The.Twilight.Zone.S01E01.Where.Is.Everybody.1080p.BluRay.x264-GRP";
+        var plan = HeldPlan.Replace("Big.Buck.Bunny.2008.2160p.WEB-DL-GRP", Release).Replace("WEB 2160p", "Bluray 1080p");
+        await series.RecordSearchAttemptAsync(seriesId, episodeId, libraryId, "automatic", "held", DateTimeOffset.UtcNow.AddHours(-1), null, "Held.", Release, "Nyaa", plan, CancellationToken.None);
+        var historyId = await HistoryIdAsync(app);
+
+        using var response = await app.Client.PostAsync($"/api/attention/held-releases/{historyId}/approve", content: null);
+
+        Assert.True(response.StatusCode == HttpStatusCode.OK, $"{(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
+        Assert.Equal(1, grabs.Count);
+        Assert.Empty((await app.Client.GetFromJsonAsync<JsonElement>("/api/attention/held-releases")).EnumerateArray());
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private static async Task AssertRefusedAsync(HttpResponseMessage response, LogCapture logs, string reason, string releaseName)

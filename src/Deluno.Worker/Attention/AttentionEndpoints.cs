@@ -238,8 +238,7 @@ public static class AttentionEndpoints
             {
                 // Every one of these is something the person can act on, so it is answered like the other refusals: 409
                 // with the reason in plain words, and a line in the log.
-                var reason = string.Join(" ", result.ValidationErrors.Values.SelectMany(messages => messages).Where(text => !string.IsNullOrWhiteSpace(text)));
-                return Refused(logger, item.ReleaseName, string.IsNullOrWhiteSpace(reason) ? $"{item.ReleaseName} could not be sent." : reason);
+                return Refused(logger, item.ReleaseName, RefusalWords(result.ValidationErrors, item.ReleaseName));
             }
 
             if (result.DispatchStatus != GrabStatuses.Sent)
@@ -258,6 +257,13 @@ public static class AttentionEndpoints
     {
         logger.LogInformation("Approving the held release {ReleaseName} was refused: {Reason}", releaseName, message);
         return Results.Json(new { code = "held-release-refused", message }, statusCode: StatusCodes.Status409Conflict);
+    }
+
+    /// <summary>The refusal's own messages joined, or a plain line when it carried none.</summary>
+    internal static string RefusalWords(IReadOnlyDictionary<string, string[]> errors, string releaseName)
+    {
+        var reason = string.Join(" ", errors.Values.SelectMany(messages => messages).Where(text => !string.IsNullOrWhiteSpace(text)));
+        return string.IsNullOrWhiteSpace(reason) ? $"{releaseName} could not be sent." : reason;
     }
 
     /// <summary>Why a send that reached the client layer did not go out, in words that say what to do next.</summary>
