@@ -91,6 +91,15 @@ describe("the fact tiles of This instance", () => {
   it("counts the browsers live now", () => {
     expect(byLabel(instanceFacts(instance({ browsersLive: 3 }), undefined, NOW), "Browsers")).toEqual({ label: "Browsers", value: "3 live", sub: "live now" });
   });
+
+  it('counts the jobs run today with thousands separated and the word run', () => {
+    expect(byLabel(instanceFacts(instance({ jobsToday: 1234567 }), undefined, NOW), 'Jobs today').value).toBe('1,234,567 run');
+  });
+
+  it('does not say anything is waiting when the oldest wait is not known', () => {
+    expect(byLabel(instanceFacts(instance({ oldestWaitingSeconds: null }), undefined, NOW), 'Workers').sub).toBe('none waiting');
+    expect(byLabel(instanceFacts(instance({ oldestWaitingSeconds: -3 }), undefined, NOW), 'Workers').sub).toBe('none waiting');
+  });
 });
 
 describe("the fact tiles before the overview has arrived", () => {

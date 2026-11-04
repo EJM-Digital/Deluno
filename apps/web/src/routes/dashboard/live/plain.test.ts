@@ -51,4 +51,15 @@ describe("a stuck download's reason in plain words", () => {
     expect(plainReason(undefined)).toBeNull();
     expect(plainReason("   ")).toBeNull();
   });
+
+  it('understands a hand-off written without the hyphen, in any case', () => {
+    expect(plainReason('REFUSED THE HANDOFF WITH HTTP 403')?.text).toBe("The processor refused Deluno's key, so it was not cleaned.");
+  });
+
+  it('understands every way the cleaned output can be missing, and ignores a sentence that merely mentions an output', () => {
+    expect(plainReason('The cleaned folder was not found')?.text).toBe('The processor finished but its cleaned files are not there.');
+    expect(plainReason('The cleaned files are missing')?.text).toBe('The processor finished but its cleaned files are not there.');
+    expect(plainReason('The result was not there')?.text).toBe('The processor finished but its cleaned files are not there.');
+    expect(plainReason('The output looks fine')?.text).toBe('The output looks fine');
+  });
 });
