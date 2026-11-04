@@ -521,6 +521,22 @@
       "line": 164,
       "replacement": ";",
       "reason": "Which of the two waits finishes first when a job ends at the very moment the lane is stopped is decided by thread timing, not by anything a test can set; either way the lane asks for no more work, so this guard only closes a race."
+    },
+    {
+      "project": "Deluno.Worker",
+      "file": "src/Deluno.Worker/HealthChecks/Checks/ProcessorOutputSafetyNetHealthCheck.cs",
+      "mutator": "String mutation",
+      "line": 44,
+      "replacement": "\"\"",
+      "reason": "An empty search pattern lists every file, exactly as the star does, so the folder listing is the same and no test can tell the two apart."
+    },
+    {
+      "project": "Deluno.Worker",
+      "file": "src/Deluno.Worker/HealthChecks/Checks/ProcessorOutputSafetyNetHealthCheck.cs",
+      "mutator": "Linq method mutation (First() to FirstOrDefault())",
+      "line": 199,
+      "replacement": "relative.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault",
+      "reason": "A relative path is never empty (the root itself reads as \".\"), so Split always has a first part and First() and FirstOrDefault() return the same."
     }
   ]
 }

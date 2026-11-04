@@ -36,8 +36,13 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
     IProcessorRepository processors,
     IJobQueueRepository jobQueueRepository,
     IMovieCatalogRepository movies,
-    ProcessorOutputSweep? sweep = null) : IHealthCheck
+    ProcessorOutputSweep? sweep = null,
+    Func<string, IEnumerable<string>>? listEntries = null,
+    Func<string, IEnumerable<string>>? listFiles = null) : IHealthCheck
 {
+    private readonly Func<string, IEnumerable<string>> _listEntries = listEntries ?? (path => Directory.EnumerateFileSystemEntries(path));
+    private readonly Func<string, IEnumerable<string>> _listFiles = listFiles ?? (path => Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories));
+
     public string Category => HealthCheckCategories.Processor;
 
     /// <summary>Same batch size <see cref="WorkPlanner"/> reads existing jobs with -- one list, read once.</summary>
@@ -54,7 +59,7 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
             {
                 await sweep.SweepAsync(cancellationToken);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException && ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
             {
                 // The list below is still true; the sweep tries again on the next pass.
             }
@@ -124,7 +129,7 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
             IReadOnlyList<string> entries;
             try
             {
-                entries = Directory.EnumerateFileSystemEntries(root, "*", SearchOption.TopDirectoryOnly).ToArray();
+                entries = _listEntries(root).ToArray();
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -190,8 +195,9 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
             return null;
         }
 
-        var first = relative.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-        return string.IsNullOrEmpty(first) || first == "." ? null : first;
+        // A relative path is never empty: the root itself reads as ".".
+        var first = relative.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries).First();
+        return first == "." ? null : first;
     }
 
     private async Task<IReadOnlyDictionary<string, string>> HeldFilmsAsync(CancellationToken cancellationToken)
@@ -199,22 +205,22 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
         var held = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var film in await movies.ListAsync(cancellationToken))
         {
-            if (film.HasFile && SpareCopy.KeyOf(film.Title, film.ReleaseYear) is { } key)
+            if (film.HasFile && film.ReleaseYear is { } year && SpareCopy.KeyOf(film.Title, year) is { } key)
             {
-                held[key] = film.ReleaseYear is { } year ? $"{film.Title} ({year})" : film.Title;
+                held[key] = $"{film.Title} ({year})";
             }
         }
 
         return held;
     }
 
-    private static HealthCheckOutcome? DescribeSpare(LibraryItem library, string path, string name, string heldTitle, ISet<string> activeSourceKeys)
+    private HealthCheckOutcome? DescribeSpare(LibraryItem library, string path, string name, string heldTitle, ISet<string> activeSourceKeys)
     {
         IReadOnlyList<string> files;
         try
         {
             files = Directory.Exists(path)
-                ? Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories).ToArray()
+                ? _listFiles(path).ToArray()
                 : [path];
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -238,12 +244,12 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
             detailsJson: JsonSerializer.Serialize(new { libraryId = library.Id, path, kind = Directory.Exists(path) ? "folder" : "file", isMedia = true, spareCopyOf = heldTitle }));
     }
 
-    private static HealthCheckOutcome? DescribeFolder(LibraryItem library, string path, string name, ISet<string> reservedSourceKeys)
+    private HealthCheckOutcome? DescribeFolder(LibraryItem library, string path, string name, ISet<string> reservedSourceKeys)
     {
         IReadOnlyList<string> files;
         try
         {
-            files = Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories).ToArray();
+            files = _listFiles(path).ToArray();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -306,8 +312,7 @@ internal static class SpareCopy
     /// <summary>"Pulp.Fiction.1994.1080p.mkv" gives "pulpfiction|1994"; a name with no year gives null.</summary>
     public static string? TitleKey(string name)
     {
-        var withoutExtension = WorkPlanner.IsImportableVideoFile(name) ? Path.GetFileNameWithoutExtension(name) : name;
-        var tokens = withoutExtension.Split([' ', '.', '-', '_', '[', ']', '(', ')'], StringSplitOptions.RemoveEmptyEntries);
+        var tokens = name.Split([' ', '.', '-', '_', '[', ']', '(', ')'], StringSplitOptions.RemoveEmptyEntries);
         var at = -1;
         for (var index = 1; index < tokens.Length; index++)
         {
