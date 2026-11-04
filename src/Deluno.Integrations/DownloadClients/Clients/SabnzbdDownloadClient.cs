@@ -89,8 +89,10 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
         try
         {
             using var document = JsonDocument.Parse(responseJson);
-            accepted = document.RootElement.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.True;
-            if (document.RootElement.TryGetProperty("nzo_ids", out var ids) && ids.ValueKind == JsonValueKind.Array)
+            // An answer that is JSON but not an object ("null", a list) is not SABnzbd's: refused like any other answer it did not accept.
+            var isObject = document.RootElement.ValueKind == JsonValueKind.Object;
+            accepted = isObject && document.RootElement.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.True;
+            if (isObject && document.RootElement.TryGetProperty("nzo_ids", out var ids) && ids.ValueKind == JsonValueKind.Array)
             {
                 externalId = ids.EnumerateArray()
                     .Where(item => item.ValueKind == JsonValueKind.String)
