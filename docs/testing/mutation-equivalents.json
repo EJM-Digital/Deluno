@@ -721,6 +721,14 @@
       "line": 64,
       "replacement": "\"Stryker was here!\"",
       "reason": "The last fallback for the quality profile select when neither the form nor the library names one. A native select whose value matches no option shows its first option, so an empty string and any other string look the same."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/job-drawer.tsx",
+      "mutator": "StringLiteral",
+      "line": 23,
+      "replacement": "\"\"",
+      "reason": "The title given to a drawer that has no job. The drawer is shut then and draws neither its title nor its description, so no test can see it."
     }
   ]
 }
