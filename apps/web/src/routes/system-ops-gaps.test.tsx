@@ -803,6 +803,31 @@ describe("Updates (System > Updates)", () => {
     expect(screen.queryByText(/require the packaged Windows install/)).toBeNull();
   });
 
+  it("follows a check and a download made elsewhere when the server pushes UpdateStatusChanged, with no button pressed (#1469)", async () => {
+    vi.useFakeTimers();
+    setup({ message: "You are up to date." });
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+    // The tray checked for updates: the server pushes, the page reads the status again.
+    for (const handler of [...(pushHandlers.get("UpdateStatusChanged") ?? [])]) handler({});
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(invalidate.mock.calls.map((call) => JSON.stringify((call[0] as { queryKey: unknown }).queryKey))).toContain(JSON.stringify(systemSources.updateStatus.key));
+    invalidate.mockRestore();
+    vi.useRealTimers();
+    loaderData.updateStatus = status({ updateAvailable: true, latestVersion: "1.3.0", canDownload: true, message: "Version 1.3.0 is ready to download." });
+    act(() => bump());
+    expect(await screen.findByText("Version 1.3.0 is ready to download.")).toBeInTheDocument();
+
+    // A download under way: each step's push shows its percent.
+    loaderData.updateStatus = status({ updateAvailable: true, latestVersion: "1.3.0", state: "downloading", progressPercent: 40, message: "Downloading 1.3.0." });
+    act(() => bump());
+    expect(await screen.findByText(/Download progress: 40/)).toBeInTheDocument();
+    loaderData.updateStatus = status({ updateAvailable: true, latestVersion: "1.3.0", state: "downloading", progressPercent: 75, message: "Downloading 1.3.0." });
+    act(() => bump());
+    expect(await screen.findByText(/Download progress: 75/)).toBeInTheDocument();
+    expect(authedFetchMock.mock.calls.filter((call) => call[0] === "/api/updates/check" || call[0] === "/api/updates/download")).toHaveLength(0);
+  });
+
   it("Check now asks for an update check and shows the result in the status area", async () => {
     setup({}, { "POST /api/updates/check": action({ updateAvailable: true, latestVersion: "1.3.0", canDownload: true, message: "Version 1.3.0 is ready to download." }, "Version 1.3.0 is available.") });
 

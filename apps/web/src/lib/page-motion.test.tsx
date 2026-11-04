@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render } from "@testing-library/react";
 import { CountUp } from "../components/ui/count-up";
-import { RadialGauge } from "../components/ui/radial-gauge";
 import { installHiddenPageMotionGuard, motionAllowed, onPageHidden } from "./page-motion";
 
 // #873: a value that changes while the tab is hidden must be shown at its
@@ -69,15 +68,6 @@ describe("CountUp while the page is hidden (#873)", () => {
     rerender(<CountUp value={100} />);
     act(() => flushFrames(performance.now() + 60_000));
     expect(shown(container)).toBe("100");
-  });
-});
-
-describe("RadialGauge while the page is hidden (#873)", () => {
-  it("draws a value that changed in the background at once", () => {
-    const { rerender } = render(<RadialGauge value={0.1} label="10%" />);
-    setVisibility("hidden");
-    rerender(<RadialGauge value={0.9} label="90%" />);
-    expect(frames).toHaveLength(0);
   });
 });
 

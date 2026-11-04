@@ -769,6 +769,54 @@
       "line": 264,
       "replacement": ";",
       "reason": "The pause between two tries at a file another program holds only paces them; without it the same tries happen faster and end the same way at the same time, so nothing a test can read differs."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/countdowns.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 27,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "The fallback for a summary with no libraries list: iterating one string instead of an empty list reads library.nextSearchUtc and library.status as undefined, so the row is skipped exactly as no row would be."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/countdowns.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 40,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "The fallback for a summary with no tasks list: the one string has no nextRunUtc, so the task is skipped exactly as no task would be."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/countdowns.tsx",
+      "mutator": "StringLiteral",
+      "line": 54,
+      "replacement": "\"\"",
+      "reason": "The sort key of a running search with no next time: an empty key parses to NaN, which a sort comparator treats as equal, and a running search never has to move past a timed one that follows it, so the order comes out the same."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/system/data.ts",
+      "mutator": "ArrayDeclaration",
+      "line": 46,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list that is constant either way: the callback uses only the query client and a constant key, so an empty list and a list of one fixed string both keep one callback for the life of the hook."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/system/data.ts",
+      "mutator": "ArrayDeclaration",
+      "line": 82,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list that is constant either way: the callback uses only the query client and a constant key, so an empty list and a list of one fixed string both keep one callback for the life of the hook."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/system/data.ts",
+      "mutator": "ArrayDeclaration",
+      "line": 103,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list that is constant either way: the callback uses only the query client and a constant key, so an empty list and a list of one fixed string both keep one callback for the life of the hook."
     }
   ]
 }

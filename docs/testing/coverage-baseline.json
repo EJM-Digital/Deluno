@@ -530,10 +530,6 @@
       "line": 100,
       "branch": 90
     },
-    "apps/web/src/components/ui/radial-gauge.tsx": {
-      "line": 63.88,
-      "branch": 46.66
-    },
     "apps/web/src/components/ui/range-slider.tsx": {
       "line": 2.08,
       "branch": 0

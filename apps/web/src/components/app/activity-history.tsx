@@ -105,7 +105,7 @@ export function useActivityHistory({ enabled, onOpenEvent, sort = ACTIVITY_DEFAU
         again = true;
         continue;
       }
-      queryClient.setQueryData(query.queryKey, (data: unknown) => (data ? addToHistory(data as Parameters<typeof addToHistory>[0], item) : data));
+      queryClient.setQueryData(query.queryKey, (data: unknown) => addToHistory(data as Parameters<typeof addToHistory>[0], item));
     }
     if (again) readAgain();
   });
@@ -169,13 +169,13 @@ export function ActivityFilters({
     if (!controls || !main || !title) return;
     const chipsBox = controls.querySelector<HTMLElement>("[data-activity-chips] > *");
     if (!chipsBox) return;
-    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
     const chipsWidth = chipsBox.scrollWidth;
     const actions = document.getElementById("topbar-page-actions");
-    const buttons = actions && actions.childElementCount ? actions.getBoundingClientRect().width : 0;
     const mainGap = parseFloat(getComputedStyle(main).columnGap) || 0;
-    const titleGap = parseFloat(getComputedStyle(title.parentElement ?? title).columnGap) || 0;
-    const room = main.getBoundingClientRect().width - (buttons > 0 ? buttons + mainGap : 0) - title.getBoundingClientRect().width - titleGap;
+    const buttons = actions?.childElementCount ? actions.getBoundingClientRect().width + mainGap : 0;
+    const titleGap = parseFloat(getComputedStyle(title.parentElement as HTMLElement).columnGap) || 0;
+    const room = main.getBoundingClientRect().width - buttons - title.getBoundingClientRect().width - titleGap;
     // Each stage's least width, with the 16px of gaps between the three parts.
     const need = (search: number, chipsMin: number, scope: number) => (search + scope) * rem + chipsMin + 16;
     const stages = [
@@ -195,8 +195,7 @@ export function ActivityFilters({
       const element = document.getElementById(id);
       if (element) observer.observe(element);
     }
-    const fonts = typeof document !== "undefined" ? document.fonts : undefined;
-    void fonts?.ready.then(measure);
+    void document.fonts?.ready.then(measure);
     return () => observer.disconnect();
     // measure reads only the document and the controls' own box.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -204,11 +203,11 @@ export function ActivityFilters({
 
   const inHeader = slot !== null && stage !== null;
   // In the row under the header there is room for everything, at full size.
-  const level = inHeader ? stage ?? 0 : 0;
+  const level = inHeader ? (stage as number) : 0;
   const magnifier = level >= 1;
   const compact = level >= 2;
   const searchOpen = searchFocused || titleDraft !== "";
-  const customSince = filters.since !== "" && !isQuickSince(filters.since);
+  const customSince = !isQuickSince(filters.since);
   const typeOptions = [{ value: "", label: "Any step" }, ...(choices.data?.types ?? []), ...LIVE_STEPS.map((step) => ({ value: step.value, label: step.label }))];
   const sinceOptions = customSince
     ? [...ACTIVITY_SINCE_CHOICES, { value: filters.since, label: `Since ${filters.since}` }]

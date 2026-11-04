@@ -34,9 +34,9 @@ test("a Torznab indexer is named after its address by default and keeps a name t
   const made: string[] = [];
   const token = await page.evaluate(() => localStorage.getItem("deluno-auth-token"));
   try {
-    // Blank name, an address on this computer: the hint is the address's host, and so is the name.
+    // Blank name, a Jackett address on this computer: the hint is the tracker's id, and so is the saved name (#1466).
     const first = await addTorznab(page, "http://localhost:9117/api/v2.0/indexers/fit-check/results/torznab/");
-    await expect(first.field).toHaveAttribute("placeholder", "localhost");
+    await expect(first.field).toHaveAttribute("placeholder", "fit-check");
     await first.drawer.getByRole("button", { name: "Add indexer" }).click();
     await expect(page.getByRole("button", { name: "Add indexer" })).toHaveCount(0);
     await page.keyboard.press("Escape");
@@ -53,7 +53,7 @@ test("a Torznab indexer is named after its address by default and keeps a name t
     if (local) made.push(local.id);
     if (typed) made.push(typed.id);
     expect(typed?.name).toBe("My private tracker");
-    expect(local?.name).toBeTruthy();
+    expect(local?.name).toBe("fit-check");
     expect(local!.name.toLowerCase()).not.toBe(os.hostname().toLowerCase());
     // Reopened, the saved name is what the field holds.
     await page.goto("/indexers/indexers");

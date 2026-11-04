@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { LibraryActions } from "./library-actions";
 
@@ -54,5 +55,78 @@ describe("LibraryActions Season Pass link (#959)", () => {
     renderActions({ showSeasonPassLink: false });
 
     expect(screen.queryByRole("link", { name: "Season Pass" })).not.toBeInTheDocument();
+  });
+});
+
+describe("LibraryActions search and refresh buttons", () => {
+  const search = () => screen.getByRole("button", { name: /^Search these|^Searching/ });
+
+  it("leaves the Season Pass link out unless the shelf asks for it", () => {
+    renderActions({ showSeasonPassLink: undefined });
+    expect(screen.queryByRole("link", { name: "Season Pass" })).not.toBeInTheDocument();
+  });
+
+  it("adds a title, and says the singular in the button", async () => {
+    const onToggleCreate = vi.fn();
+    renderActions({ onToggleCreate, showSeasonPassLink: false });
+    await userEvent.click(screen.getByRole("button", { name: "Add show" }));
+    expect(onToggleCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("searches everything on screen, and says how many in its tooltip", async () => {
+    const onSearchShown = vi.fn();
+    renderActions({ shownCount: 5, label: "shows", onSearchShown });
+    expect(search()).toHaveTextContent("Search these 5");
+    expect(search()).toHaveAttribute("title", "Search now for all 5 shows on screen. Narrow the shelf first to search fewer.");
+    expect(search()).toBeEnabled();
+    await userEvent.click(search());
+    expect(onSearchShown).toHaveBeenCalledTimes(1);
+  });
+
+  it("names the one title on screen", () => {
+    renderActions({ shownCount: 1, singular: "Show", onSearchShown: vi.fn() });
+    expect(search()).toHaveAttribute("title", "Search now for the show on screen");
+    expect(search()).toBeEnabled();
+  });
+
+  it("cannot search when nothing is on screen, and says so", () => {
+    renderActions({ shownCount: 0, label: "shows", onSearchShown: vi.fn() });
+    expect(search()).toBeDisabled();
+    expect(search()).toHaveAttribute("title", "No shows on screen to search for");
+  });
+
+  it("shows that a search is running, and cannot start another", () => {
+    renderActions({ isSearchingShown: true, onSearchShown: vi.fn() });
+    const button = screen.getByRole("button", { name: "Searching…" });
+    expect(button).toBeDisabled();
+    expect(button.querySelector("svg")).toHaveClass("animate-pulse");
+  });
+
+  it("does not pulse the search icon when no search is running", () => {
+    renderActions({ onSearchShown: vi.fn() });
+    expect(search().querySelector("svg")).not.toHaveClass("animate-pulse");
+    expect(search().querySelector("svg")).toHaveClass("h-4 w-4");
+  });
+
+  it("cannot search when the page gives it nothing to run", () => {
+    renderActions({ shownCount: 3 });
+    expect(search()).toBeDisabled();
+  });
+
+  it("queues a metadata refresh, spinning while one is queued", async () => {
+    const onUpdateMetadata = vi.fn();
+    const view = renderActions({ onUpdateMetadata, singular: "Show" });
+    const refresh = screen.getByRole("button", { name: "Update all metadata" });
+    expect(refresh).toHaveAttribute("title", "Queue a metadata refresh for every show in Deluno");
+    expect(refresh.querySelector("svg")).not.toHaveClass("animate-spin");
+    expect(refresh.querySelector("svg")).toHaveClass("h-4 w-4");
+    await userEvent.click(refresh);
+    expect(onUpdateMetadata).toHaveBeenCalledTimes(1);
+    view.unmount();
+
+    renderActions({ isUpdatingMetadata: true });
+    const busy = screen.getByRole("button", { name: "Update all metadata" });
+    expect(busy).toBeDisabled();
+    expect(busy.querySelector("svg")).toHaveClass("animate-spin");
   });
 });
