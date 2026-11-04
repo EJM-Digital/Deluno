@@ -32,7 +32,7 @@ public sealed class LibraryMediaLeavesOnlyThroughTheRecycleBinTests
         ["src/Deluno.Filesystem/ImportRestartRecoveryService.cs"] = (1, "An import marker file. " + OwnData),
         ["src/Deluno.Filesystem/LibraryAvailabilityService.cs"] = (2, "A write-probe file. " + OwnData),
         ["src/Deluno.Filesystem/ProcessorHandoffOutputCleanup.cs"] = (2, "A processor's partial output and empty folders inside its output folder. " + DownloadArea),
-        ["src/Deluno.Infrastructure/Observability/DelunoFileLogger.cs"] = (2, "Deluno's own old log files past their retention. " + OwnData),
+        ["src/Deluno.Infrastructure/Observability/DelunoFileLogger.cs"] = (1, "Deluno's own old log files past their retention. " + OwnData),
         ["src/Deluno.Infrastructure/Storage/DataFolderCheck.cs"] = (1, "The start-up write-probe file in the data folder. " + OwnData),
         ["src/Deluno.Infrastructure/Storage/StagedRestore.cs"] = (4, "Restore markers and staging under the data root. " + OwnData),
         ["src/Deluno.Integrations/DownloadClients/ClientRemovalGuard.cs"] = (3, "A finished usenet job's own folder (or its one finished file), and the empty temporary folders Transmission leaves beside a removed download (#1224), asked for by the person's 'delete with data' when the client's own delete leaves it (#1212); only a folder named after that job, never a filesystem root. " + DownloadArea),
