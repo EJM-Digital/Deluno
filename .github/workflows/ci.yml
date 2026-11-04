@@ -459,12 +459,24 @@ jobs:
           retention-days: 1
 
   web:
-    name: Frontend quality
+    # Three shards. One run took about 8 minutes on 4 Nov and then outgrew the 15-minute limit as the coverage work
+    # added test files: every run from e34332795 on was cancelled mid-suite, and the ratchet then read the web's
+    # files as uncovered. vitest cuts the files into equal shares (--shard); with coverage on, each shard writes a
+    # blob and web-coverage merges them, so a line two shards cover counts every branch either took.
+    name: Frontend quality (${{ matrix.shard_id }}/3)
     needs: changes
     if: ${{ needs.changes.outputs.run_web == 'true' }}
     runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
-    # Observed about 6 minutes, 5 of them the unit tests.
+    # Expected about 5 minutes each, the limit about three times that.
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - shard_id: 1
+          - shard_id: 2
+          - shard_id: 3
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -477,28 +489,80 @@ jobs:
         run: npm ci
 
       - name: Check for orphaned frontend modules
+        if: ${{ matrix.shard_id == 1 }}
         working-directory: apps/web
         run: npm run check:orphans
 
       - name: Typecheck supported TypeScript SDK
+        if: ${{ matrix.shard_id == 1 }}
         run: npm run typecheck:sdk
 
       # The SDK's own tests compile it under strict tsc, so they run where the packages are installed (29 Oct 2026: in the
       # repository-checks job, which installs none, tsc was missing).
       - name: The TypeScript SDK's tests
+        if: ${{ matrix.shard_id == 1 }}
         run: node --test sdk/typescript/tests/delunoclient.test.mjs sdk/typescript/tests/docs-samples.test.mjs
 
       - name: Run frontend unit tests
         if: ${{ needs.changes.outputs.run_coverage != 'true' }}
-        run: npm run test:unit:web
+        working-directory: apps/web
+        run: npx vitest run --shard=${{ matrix.shard_id }}/3
 
-      # The same run with v8 coverage (@vitest/coverage-v8 is a devDependency of apps/web).
+      # The same run with v8 coverage (@vitest/coverage-v8 is a devDependency of apps/web), written as a blob for the merge.
       - name: Run frontend unit tests with coverage
         if: ${{ needs.changes.outputs.run_coverage == 'true' }}
-        run: npm run test:unit:web:coverage
+        working-directory: apps/web
+        run: npx vitest run --coverage --shard=${{ matrix.shard_id }}/3 --reporter=default --reporter=blob --outputFile.blob=.vitest-reports/blob-${{ matrix.shard_id }}.json
+
+      - name: Upload this shard's blob
+        if: ${{ needs.changes.outputs.run_coverage == 'true' && !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web-blob-${{ matrix.shard_id }}
+          path: apps/web/.vitest-reports/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 1
+
+  web-coverage:
+    name: Frontend coverage merge
+    needs: [changes, web]
+    # Due whenever coverage is (scripts/ci-passed.mjs); a backend-only push runs no web shards, so there is nothing to merge.
+    if: ${{ !cancelled() && needs.changes.outputs.run_coverage == 'true' && (needs.web.result == 'success' || needs.web.result == 'skipped') }}
+    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ needs.web.result == 'success' }}
+
+      - name: No web shards ran
+        if: ${{ needs.web.result == 'skipped' }}
+        run: echo "No web tests in this run, so there is no web coverage to merge."
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: ${{ needs.web.result == 'success' }}
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install frontend dependencies
+        if: ${{ needs.web.result == 'success' }}
+        run: npm ci
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: ${{ needs.web.result == 'success' }}
+        with:
+          pattern: web-blob-*
+          path: apps/web/.vitest-reports
+          merge-multiple: true
+
+      - name: Merge the shards' coverage into one report
+        if: ${{ needs.web.result == 'success' }}
+        working-directory: apps/web
+        run: npx vitest --merge-reports .vitest-reports --coverage --reporter=dot
 
       - name: Upload frontend coverage
-        if: ${{ needs.changes.outputs.run_coverage == 'true' && !cancelled() }}
+        if: ${{ needs.web.result == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-web
@@ -1095,9 +1159,10 @@ jobs:
   # (docs/testing/coverage-baseline.json) and publishes the table. Issue 1268; the standard is docs/testing/STRATEGY.md.
   coverage:
     name: Coverage report and ratchet
-    needs: [changes, backend, web, coverage-node]
+    needs: [changes, backend, web, web-coverage, coverage-node]
     # backend and web are skipped when only the other side changed; the report then holds the side that ran (and the Node code).
-    if: ${{ !cancelled() && needs.changes.outputs.run_coverage == 'true' && needs.backend.result != 'failure' && needs.web.result != 'failure' && needs.coverage-node.result != 'failure' }}
+    # A side that was due must have finished: a cancelled web run used to pass here and the ratchet read its files as uncovered.
+    if: ${{ !cancelled() && needs.changes.outputs.run_coverage == 'true' && needs.backend.result != 'failure' && needs.backend.result != 'cancelled' && needs.web-coverage.result == 'success' && needs.coverage-node.result != 'failure' }}
     runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:
@@ -1223,7 +1288,7 @@ jobs:
 
   # The verdict. `always()` so it reports even when a job it needs failed or was skipped.
   ci-passed:
-    needs: [changes, repo-checks, backend, web-dist, web, e2e-smoke, docker, windows-installer, e2e-windows, e2e-linux, coverage-node, coverage, mutation]
+    needs: [changes, repo-checks, backend, web-dist, web, web-coverage, e2e-smoke, docker, windows-installer, e2e-windows, e2e-linux, coverage-node, coverage, mutation]
     if: ${{ always() }}
     runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 5

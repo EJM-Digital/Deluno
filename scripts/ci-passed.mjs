@@ -17,6 +17,8 @@ export const GATES = {
   // The production web build the smoke shards and the web checks share.
   "web-dist": "run_web_dist",
   web: "run_web",
+  // Merges the web shards' coverage blobs; due with coverage, and a no-op when no web shard ran.
+  "web-coverage": "run_coverage",
   "e2e-smoke": "run_e2e_smoke",
   docker: "run_docker",
   // Only a manual run builds it: the installable build the golden path installs (docs/golden-path.md).
