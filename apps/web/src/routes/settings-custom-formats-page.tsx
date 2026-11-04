@@ -92,7 +92,7 @@ import { KNOWN_INDEXER_FLAGS } from "./connections/presets";
 import { localizeResetTimes } from "../lib/reset-times";
 import { plural } from "../lib/plural";
 
-const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")?.items ?? [];
+const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")!.items;
 
 // Presentation metadata only. The guide package (including the category values
 // and all catalogue entries) is served by the backend; these labels keep the
@@ -117,7 +117,7 @@ const GUIDE_CATEGORY_ORDER = [
   "misc"
 ] as const;
 
-const GUIDE_CATEGORY_LABELS: Record<string, string> = {
+const GUIDE_CATEGORY_LABELS: Record<(typeof GUIDE_CATEGORY_ORDER)[number], string> = {
   hdr: "HDR & Color",
   codec: "Video Codec",
   audio: "Audio Format",
@@ -178,6 +178,9 @@ const RULE_COLUMNS = [
   { label: "Used by" },
   { label: "Intent", width: LIST_TRACK.status, mobile: true }
 ];
+
+/** The legacy input each choosable intent stores. */
+const INTENT_SCORES: Record<string, string> = { blocked: "-10000", avoid: "-100", neutral: "0", prefer: "100", "strong-prefer": "500" };
 
 const CONDITION_TYPES = [
   { value: "releaseTitle", label: "Release title" },
@@ -346,7 +349,6 @@ export function SettingsCustomFormatsPage() {
   }
 
   async function runGuideUpdateCheck() {
-    if (!updateCheck.isEnabled) return;
     setUpdateCheckBusy("run");
     try {
       const next = await runTrashGuideUpdateCheck();
@@ -405,15 +407,15 @@ export function SettingsCustomFormatsPage() {
     }
   }
 
-  async function applyGuideSync() {
+  async function applyGuideSync(preview: GuidePackageUpdatePreview) {
     const remoteRevision = updateCheck.report?.remoteRevision;
-    if (!remoteRevision || !guideSyncPreview?.canApply) return;
+    if (!remoteRevision) return;
     setUpdateCheckBusy("sync-apply");
     try {
       const applied = await applyTrashGuideSync({
         expectedCurrentIntegritySha256: guide.integritySha256,
         expectedUpstreamRevision: remoteRevision,
-        expectedProposedIntegritySha256: guideSyncPreview.proposedIntegritySha256
+        expectedProposedIntegritySha256: preview.proposedIntegritySha256
       });
       setGuideSyncPreview(null);
       revalidator.revalidate();
@@ -927,7 +929,7 @@ export function SettingsCustomFormatsPage() {
                       </p>
                     </div>
                     {guideSyncPreview.canApply ? (
-                      <Button type="button" size="sm" onClick={() => void applyGuideSync()} disabled={updateCheckBusy !== null}>
+                      <Button type="button" size="sm" onClick={() => void applyGuideSync(guideSyncPreview)} disabled={updateCheckBusy !== null}>
                         {updateCheckBusy === "sync-apply" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                         Sync reviewed snapshot
                       </Button>
@@ -1214,7 +1216,7 @@ export function SettingsCustomFormatsPage() {
                   const entries = guide.customFormats.filter((cf) => cf.category === category && !cf.bundleOnly && guideFormatAppliesTo(cf, form.mediaType));
                   if (!entries.length) return null;
                   return (
-                    <optgroup key={category} label={GUIDE_CATEGORY_LABELS[category] ?? category}>
+                    <optgroup key={category} label={GUIDE_CATEGORY_LABELS[category]}>
                       {entries.map((cf) => (
                         <option key={cf.trashId} value={cf.trashId}>
                           {/* #781: marks the release-group tiers and Anime Versions that a
@@ -1261,7 +1263,7 @@ export function SettingsCustomFormatsPage() {
               value={scoreIntent(form.score)}
               onValueChange={(next) => {
                 if (next === "custom") return;
-                setForm((current) => ({ ...current, score: scoreForIntent(next) }));
+                setForm((current) => ({ ...current, score: INTENT_SCORES[next]! }));
               }}
               options={INTENT_OPTIONS.filter((option) =>
                 // "Custom" is not a thing you choose; it is what an imported
@@ -1999,17 +2001,5 @@ function scoreIntent(score: string) {
   if (value < 0) return "avoid";
   if (value === 0) return "neutral";
   if (value >= 500) return "strong-prefer";
-  if (value > 0) return "prefer";
-  return "custom";
-}
-
-function scoreForIntent(intent: string | undefined) {
-  switch (intent) {
-    case "blocked": return "-10000";
-    case "avoid": return "-100";
-    case "neutral": return "0";
-    case "strong-prefer": return "500";
-    case "prefer": return "100";
-    default: return "0";
-  }
+  return "prefer";
 }
