@@ -83,7 +83,7 @@ describe("the Tags list", () => {
   it("each colour has its own dot", () => {
     const { container } = show();
     const dots = Array.from(container.querySelectorAll("span.rounded-full.h-2\\.5")).map((dot) => dot.className.split(" ").find((name) => name.startsWith("bg-")));
-    expect(dots.sort()).toEqual(["bg-amber-500", "bg-emerald-500", "bg-rose-500", "bg-sky-500", "bg-slate-400", "bg-teal-500", "bg-violet-500"]);
+    expect(dots.sort()).toEqual(["amber-500", "emerald-500", "rose-500", "sky-500", "slate-400", "teal-500", "violet-500"].map((shade) => `bg-${shade}`));
   });
 });
 
