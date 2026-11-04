@@ -1,4 +1,6 @@
 import { settleFormAfterSave } from "../../lib/settle-form-after-save";
+import { toast } from "../shell/toaster";
+import { refusalSentence } from "./password-prompt";
 import { SecretUnreadableNotice } from "./secret-unreadable-notice";
 import { useEffect, useState, type FormEvent } from "react";
 import { Copy, Loader2, Wifi } from "lucide-react";
@@ -296,7 +298,7 @@ export function SeerrServersCard({
   async function toggle(server: SeerrServer, isEnabled: boolean) {
     setBusy(`toggle:${server.id}`);
     try {
-      await authedFetch(`/api/seerr-servers/${server.id}`, {
+      const response = await authedFetch(`/api/seerr-servers/${server.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -310,7 +312,13 @@ export function SeerrServersCard({
           seriesQualityProfileId: server.seriesQualityProfileId
         })
       });
+      if (!response.ok) {
+        toast.error(await refusalSentence(response, `${server.name} could not be switched ${isEnabled ? "on" : "off"} (HTTP ${response.status}).`));
+        return;
+      }
       onChanged();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : `${server.name} could not be switched ${isEnabled ? "on" : "off"}.`);
     } finally {
       setBusy(null);
     }

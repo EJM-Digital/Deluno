@@ -9,9 +9,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * ones the retention routes give.
  */
 
+import { toast } from "../components/shell/toaster";
+
 const authedFetchMock = vi.fn();
 vi.mock("../lib/use-auth", () => ({ authedFetch: (...args: unknown[]) => authedFetchMock(...args) }));
 vi.mock("../hooks/use-unsaved-changes", () => ({ useUnsavedChanges: () => undefined }));
+vi.mock("../components/shell/toaster", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const field = (id: string, label: string, valueKind: string, operators: string[], group = "watching") => ({
   id, label, hint: "", group, valueKind, operators, options: null, source: "server", unsupportedOn: [] as string[]
@@ -233,5 +236,34 @@ describe("the rule drawer", () => {
     expect(drawer.getByText("Keep the list in Deluno only")).toBeInTheDocument();
     expect(drawer.getByText("Nothing is created on these servers. The list stays here for review, and keeping, postponing and the day's action work as usual.")).toBeInTheDocument();
     expect(drawer.getByText("Reports itself as Plex")).toBeInTheDocument();
+  });
+});
+
+describe("the On switch of a rule", () => {
+  const refuse = (response: Response | Error | string) => authedFetchMock.mockImplementation((path: string, init?: RequestInit) => {
+    if (init?.method === "PUT") return typeof response === "string" || response instanceof Error ? Promise.reject(response) : Promise.resolve(response);
+    return reply(String(path).includes("/trial") ? trialOf() : []);
+  });
+
+  it("tells the person why when the server refuses it, in the server's words or with the code", async () => {
+    loaderData.rules = [rule()];
+    renderPage();
+    refuse(new Response(JSON.stringify({ message: "That rule is being checked." }), { status: 409 }));
+    fireEvent.click(screen.getByRole("switch", { name: "Turn off Unwatched films" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("That rule is being checked."));
+    refuse(new Response("", { status: 500 }));
+    fireEvent.click(screen.getByRole("switch", { name: "Turn off Unwatched films" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Unwatched films could not be switched off (HTTP 500)."));
+  });
+
+  it("tells the person why when the request fails outright", async () => {
+    loaderData.rules = [rule({ isEnabled: false })];
+    renderPage();
+    refuse(new Error("offline"));
+    fireEvent.click(screen.getByRole("switch", { name: "Turn on Unwatched films" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("offline"));
+    refuse("boom");
+    fireEvent.click(screen.getByRole("switch", { name: "Turn on Unwatched films" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Unwatched films could not be switched on."));
   });
 });

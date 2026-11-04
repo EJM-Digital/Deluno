@@ -66,7 +66,7 @@ describe("links to /api/ routes work signed in (#1331)", () => {
   }, 60_000);
 });
 
-const HANDLER_ATTRIBUTES = new Set(["onClick", "onSubmit", "onSelect"]);
+const HANDLER_ATTRIBUTES = new Set(["onClick", "onSubmit", "onSelect", "onChange", "onCheckedChange", "onValueChange", "onConfirm", "onPressedChange"]);
 
 /** Helpers that never reject: they turn any failure into words. */
 const NEVER_REJECTS = new Set(["describeRequestFailure", "describeAuthRefusal"]);

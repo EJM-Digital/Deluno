@@ -80,21 +80,21 @@ export function UnsavedChangesProvider({ children }: UnsavedChangesProviderProps
         }
         form.requestSubmit();
       }
+
+      // The form owns the request and error state. Wait briefly for its dirty
+      // flag to clear; a failed request leaves the prompt open with the form's
+      // error visible underneath it.
+      const deadline = Date.now() + 8000;
+      while (Date.now() < deadline) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 50));
+        const latest = registrationRef.current;
+        if (!latest || !latest.dirty) break;
+      }
     } catch {
       // The editor owns its error message. Keep the modal open so the user can
       // retry or choose Discard and continue after seeing that error.
       setSaving(false);
       return;
-    }
-
-    // The form owns the request and error state. Wait briefly for its dirty
-    // flag to clear; a failed request leaves the prompt open with the form's
-    // error visible underneath it.
-    const deadline = Date.now() + 8000;
-    while (Date.now() < deadline) {
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 50));
-      const latest = registrationRef.current;
-      if (!latest || !latest.dirty) break;
     }
 
     setSaving(false);
