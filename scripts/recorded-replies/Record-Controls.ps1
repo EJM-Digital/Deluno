@@ -303,3 +303,67 @@ function Invoke-RecordNzbgetConfigError($p) {
         Remove-Item 'C:\golden\recorded-nzbget.conf.original' -Force -ErrorAction SilentlyContinue
     }
 }
+
+# ---------------------------------------------------------------- the follow-up calls a client refuses after a grab (#1470)
+# Deluno sends a download client calls after the grab (a category, a save folder, automatic management, share limits). Each is recorded
+# here as the real client answers it when it will not do it. Nothing is invented: whatever the client really answers is written, and the
+# note of each state says which calls it really refused and which it took, so a test never assumes a refusal the client does not give.
+#   qBittorrent   location-refused         setLocation to a folder it cannot make, and with no folder at all
+#                 auto-management-refused  setAutoManagement with no `enable`, with a value that is not true/false, and for a hash it never had
+#   Deluge        torrent-options-refused  core.set_torrent_options with a move-completed folder that does not exist, with a value of the wrong type, and for an id it never had
+function Invoke-RecordTorrentRefusals($p, [string[]] $Apps) {
+    Assert-FreeSpace 4 'the refused follow-up calls'
+    New-Item -ItemType Directory -Force -Path 'C:\golden\recorded\feed' | Out-Null
+    foreach ($f in $p.FeedFiles) { Set-Content -LiteralPath (Join-Path 'C:\golden\recorded\feed' $f.name) -Value $f.text -Encoding utf8 }
+    $adapters = [ordered]@{}
+    if ($Apps -contains 'qbittorrent') { $a = New-QbitAdapter $p; if ($a) { $adapters.qbittorrent = $a } }
+    if ($Apps -contains 'deluge') { $a = New-DelugeAdapter $p; if ($a) { $adapters.deluge = $a } }
+    foreach ($app in $adapters.Keys) {
+        $A = $adapters[$app]
+        $ver = & $A.VersionOf (& $A.Version)
+        if (-not $ver) { Add-Missing "$app refusals: it did not answer its version call"; continue }
+        $dir = "C:\golden\recorded\$app\save"
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        $t = $null
+        try {
+            # A torrent with no data and a tracker that does not exist: the client holds it, which is all these calls need.
+            $t = Add-FeedRelease -Title "Recorded.Refusal.$app" -DummyMb 700
+            $null = & $A.Add $t $dir $false
+            Start-Sleep -Seconds 4
+            $h = $t.InfoHash
+            $unknown = '0' * 40
+            if ($app -eq 'qbittorrent') {
+                $c = $global:QbClient
+                $cannotMake = 'Z:\no-such-drive\recorded-movies'
+                $exchanges = @(
+                    (Send-Recorded -Client $c -Method POST -Path '/api/v2/torrents/setLocation' -Form @{ hashes = $h; location = $cannotMake }),
+                    (Send-Recorded -Client $c -Method POST -Path '/api/v2/torrents/setLocation' -Form @{ hashes = $h; location = '' }),
+                    (Send-Recorded -Client $c -Method POST -Path '/api/v2/torrents/setLocation' -Form @{ hashes = $unknown; location = $dir }),
+                    (Send-Recorded -Client $c -Path "/api/v2/torrents/info?hashes=$h"))
+                Save-State qbittorrent $ver 'location-refused' 'setLocation to a folder qBittorrent cannot make (a drive that does not exist), with an empty folder, and for a hash it never had, then the torrent as it stayed. The statuses are what qBittorrent really answered.' $exchanges
+                $exchanges = @(
+                    (Send-Recorded -Client $c -Method POST -Path '/api/v2/torrents/setAutoManagement' -Form @{ hashes = $h }),
+                    (Send-Recorded -Client $c -Method POST -Path '/api/v2/torrents/setAutoManagement' -Form @{ hashes = $h; enable = 'maybe' }),
+                    (Send-Recorded -Client $c -Method POST -Path '/api/v2/torrents/setAutoManagement' -Form @{ hashes = $unknown; enable = 'false' }),
+                    (Send-Recorded -Client $c -Method POST -Path '/api/v2/torrents/setAutoManagement' -Form @{ hashes = $h; enable = 'false' }),
+                    (Send-Recorded -Client $c -Path "/api/v2/torrents/info?hashes=$h"))
+                Save-State qbittorrent $ver 'auto-management-refused' 'setAutoManagement with no enable value, with a value that is not true or false, and for a hash it never had, then one that is right (false), then the torrent. The statuses are what qBittorrent really answered.' $exchanges
+            }
+            if ($app -eq 'deluge') {
+                $rpc = $global:DlRpc
+                $exchanges = @(
+                    (& $rpc 'core.set_torrent_options' @(@($h), @{ move_completed = $true; move_completed_path = 'Z:\no-such-drive\recorded-movies' })),
+                    (& $rpc 'core.set_torrent_options' @(@($h), @{ move_completed = 'not-a-bool'; move_completed_path = 12345 })),
+                    (& $rpc 'core.set_torrent_options' @(@($unknown), @{ move_completed = $true; move_completed_path = $dir })),
+                    (& $rpc 'web.update_ui' @($global:DlKeys, @{ id = @($h) })))
+                Save-State deluge $ver 'torrent-options-refused' 'core.set_torrent_options with a move-completed folder on a drive that does not exist, with values of the wrong type, and for an id it never had, then the torrent as it stayed. The statuses and errors are what Deluge really answered.' $exchanges
+            }
+        } finally {
+            if ($t) { $null = & $A.Remove $t.InfoHash $true }
+            Remove-Item "C:\golden\recorded\$app" -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+    # The adapters saved their sign-in states while they logged in; those are already recorded, so only these stay.
+    $keepStates = @{ qbittorrent = @('location-refused', 'auto-management-refused'); deluge = @('torrent-options-refused') }
+    $null = $script:Recordings.RemoveAll([Predicate[object]]{ param($r) $keepStates.ContainsKey($r.app) -and ($keepStates[$r.app] -notcontains $r.state) })
+}
