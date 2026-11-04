@@ -4,7 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // #1329: what main.tsx does when the page loads: the service worker, and the theme a first visit gets.
 
-vi.mock("./router", () => ({ router: { state: { navigation: { location: null } } } }));
+const navigation = vi.hoisted(() => ({ location: null as { pathname: string; search: string; hash: string } | null }));
+const recovery = vi.hoisted(() => ({ pendingPage: null as (() => string | null) | null }));
+
+vi.mock("./router", () => ({ router: { state: { navigation } } }));
+vi.mock("./lib/stale-build", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./lib/stale-build")>()),
+  installStaleBuildRecovery: (_window: Window, pendingPage: () => string | null) => { recovery.pendingPage = pendingPage; }
+}));
 vi.mock("react-router-dom", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router-dom")>()),
   RouterProvider: () => <p>the app</p>
@@ -113,5 +120,17 @@ describe("the theme a visit starts with (#1329)", () => {
     pretendOsPrefers("dark");
     await startApp();
     await vi.waitFor(() => expect(document.documentElement.classList.contains("dark")).toBe(true));
+  });
+});
+
+describe("a tab that predates an update reopens the page being opened (#1329)", () => {
+  it("names the page being navigated to, and nothing when no navigation is under way", async () => {
+    await startApp();
+
+    navigation.location = null;
+    expect(recovery.pendingPage!()).toBeNull();
+    navigation.location = { pathname: "/tv", search: "?filter=missing", hash: "#top" };
+    expect(recovery.pendingPage!()).toBe("/tv?filter=missing#top");
+    navigation.location = null;
   });
 });
