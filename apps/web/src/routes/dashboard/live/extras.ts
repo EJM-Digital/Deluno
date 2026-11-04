@@ -9,10 +9,6 @@ import type { StartedBy } from "./provenance";
 import { cardLink, releaseKey, titleFromRelease, type JourneyCard } from "./journey";
 import { entityFromRelated, type Entity } from "./titles";
 
-function entityOfRequest(request: LiveRequestItem): Entity {
-  return { kind: request.mediaType.toLowerCase().startsWith("movie") ? "movie" : "series", id: request.entityId };
-}
-
 type SearchingItem = NonNullable<DashboardLiveExtras["searching"]>[number];
 
 function entityOfSearch(search: SearchingItem): Entity {
@@ -48,7 +44,7 @@ export function searchingCards(searching: DashboardLiveExtras["searching"], requ
   for (const search of searching ?? []) {
     const entity = entityOfSearch(search);
     if (isFurtherAlong(entity, search.title, cards)) continue;
-    const asked = (requests ?? []).find((request) => request.entityId === search.entityId);
+    const asked = requests?.find((request) => request.entityId === search.entityId);
     out.push({
       key: `search:${search.entityId}`,
       stage: "searching",
@@ -67,7 +63,7 @@ export function searchingCards(searching: DashboardLiveExtras["searching"], requ
 /** A card for a title that was asked for in Seerr says so, wherever it is on its way. */
 export function withSeerr(cards: JourneyCard[], requests: LiveRequestItem[] | undefined): JourneyCard[] {
   if (!requests || requests.length === 0) return cards;
-  const asked = new Set(requests.map((request) => entityOfRequest(request).id));
+  const asked = new Set(requests.map((request) => request.entityId));
   return cards.map((card) => (card.entity && asked.has(card.entity.id) && card.startedBy !== "seerr" ? { ...card, startedBy: "seerr" } : card));
 }
 
@@ -117,14 +113,14 @@ function toArrivalItem(arrival: LiveArrivalItem, index: number, asked: ReadonlyM
 /** The newest arrivals of the last seven days, for the shelf when nothing has arrived today. Empty when the server does not send them. */
 export function recentArrivalItems(extras: DashboardLiveExtras | null | undefined): ArrivalItem[] {
   if (!extras?.recentArrivals) return [];
-  const asked = new Map((extras.requests ?? []).map((request) => [request.entityId, request.requestedBy]));
+  const asked = new Map(extras.requests?.map((request) => [request.entityId, request.requestedBy]));
   return extras.recentArrivals.map((arrival, index) => toArrivalItem(arrival, index, asked));
 }
 
 /** Today's arrivals, newest first: the day's real imports when the server has them, otherwise the imported cards. */
 export function arrivalItems(extras: DashboardLiveExtras | null | undefined, cards: JourneyCard[]): ArrivalItem[] {
   if (extras) {
-    const asked = new Map((extras.requests ?? []).map((request) => [request.entityId, request.requestedBy]));
+    const asked = new Map(extras.requests?.map((request) => [request.entityId, request.requestedBy]));
     return extras.arrivals.map((arrival, index) => toArrivalItem(arrival, index, asked));
   }
   return cards
