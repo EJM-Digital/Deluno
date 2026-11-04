@@ -459,8 +459,8 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
               && finalFolders.TryGetValue(item.Label.Trim().ToLowerInvariant(), out var finalFolder)
               && !SameFolder(item.SavePath, finalFolder);
 
-    private static bool SameFolder(string? left, string? right)
-        => string.Equals((left ?? string.Empty).TrimEnd('\\', '/'), (right ?? string.Empty).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
+    private static bool SameFolder(string? left, string right)
+        => string.Equals((left ?? string.Empty).TrimEnd('\\', '/'), right.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// For each label with a finished torrent that has no move of its own, the

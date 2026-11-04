@@ -10,6 +10,13 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// </summary>
 internal static class EveryCallOnAnOddReply
 {
+    /// <summary>The JSON-RPC method a request body names.</summary>
+    public static string MethodOf(string body)
+    {
+        using var document = System.Text.Json.JsonDocument.Parse(body);
+        return document.RootElement.TryGetProperty("method", out var method) ? method.GetString() ?? string.Empty : string.Empty;
+    }
+
     public static readonly string[] MagnetHash = ["d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c"];
 
     public static IEnumerable<DownloadClientGrabRequest> GrabRequests(bool usenet)

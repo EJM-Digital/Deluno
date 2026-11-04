@@ -181,7 +181,7 @@ public sealed class DelugeEveryBranchTests
     private static string Full(string method, string body) => method switch
     {
         "web.update_ui" => "{\"id\":2,\"result\":{\"torrents\":{\"d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c\":" + FullTorrent
-            + ",\"e\":{\"state\":\"Seeding\",\"progress\":100,\"label\":\"movies\"},\"b\":{\"name\":\"Moving\",\"state\":\"Moving\",\"progress\":100,\"label\":\"tv\",\"save_path\":\"/x\",\"move_completed\":true,\"move_completed_path\":\"/y\"},\"c\":{},\"d\":{\"state\":\"Paused\",\"progress\":3,\"label\":\"movies\",\"message\":\"OK\"}}},\"error\":null}",
+            + ",\"f\":{\"state\":\"Seeding\",\"progress\":100,\"label\":\"tv\",\"save_path\":\"/same/\",\"move_completed\":true,\"move_completed_path\":\"/same\"},\"g\":{\"state\":\"Seeding\",\"progress\":100,\"move_completed\":false,\"save_path\":\"/x\",\"move_completed_path\":\"/y\"},\"h\":{\"state\":\"Seeding\",\"progress\":100,\"move_completed\":true,\"move_completed_path\":\"/y\"},\"e\":{\"state\":\"Seeding\",\"progress\":100,\"label\":\"movies\"},\"b\":{\"name\":\"Moving\",\"state\":\"Moving\",\"progress\":100,\"label\":\"tv\",\"save_path\":\"/x\",\"move_completed\":true,\"move_completed_path\":\"/y\"},\"c\":{},\"d\":{\"state\":\"Paused\",\"progress\":3,\"label\":\"movies\",\"message\":\"OK\"}}},\"error\":null}",
         "core.get_free_space" => "{\"id\":8,\"result\":123456789,\"error\":null}",
         "daemon.info" or "daemon.get_version" => "{\"id\":9,\"result\":\"2.2.0\",\"error\":null}",
         "core.get_torrent_status" => body.Contains("\"files\"", StringComparison.Ordinal) && body.Contains("\"label\"", StringComparison.Ordinal) ? "{\"id\":2,\"result\":{\"label\":\"movies\"},\"error\":null}" : "{\"id\":2,\"result\":{\"files\":[{\"path\":\"a/b.mkv\"},{}],\"label\":\"movies\"},\"error\":null}",
@@ -241,5 +241,19 @@ public sealed class DelugeEveryBranchTests
         }
 
         await Task.WhenAll(asks);
+    }
+
+    [Fact]
+    public async Task A_torrent_file_is_named_after_the_release_with_every_character_a_file_name_cannot_hold_replaced()
+    {
+        var calls = new Calls("deluge", [RecordedReplies.Deluge("sign-in")], (_, body) =>
+            body.Contains("\"auth.login\"", StringComparison.Ordinal) || body.Contains("\"web.connected\"", StringComparison.Ordinal) ? null
+            : RecordedReplies.Json(Full(System.Text.RegularExpressions.Regex.Match(body, "\"method\"\\s*:\\s*\"([^\"]+)\"").Groups[1].Value, body)));
+        var request = EveryCallOnAnOddReply.GrabRequests(false).Last() with { ReleaseName = "Example/Movie: 2026" + new string(Path.GetInvalidFileNameChars()[0], 1) };
+
+        var result = await new DelugeDownloadClient(new Factory(calls.Build())).GrabAsync(Item(), request, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.True(calls.Sent("Example_Movie"));
     }
 }

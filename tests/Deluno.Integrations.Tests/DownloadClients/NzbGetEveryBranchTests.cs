@@ -44,7 +44,9 @@ public sealed class NzbGetEveryBranchTests
         "DELETED/HEALTH", "DELETED/SCAN", "DELETED/MANUAL", "DELETED/NONE", "DELETED/", "DELETED/ODD", "Download failed", "disk error", "Import ready", "Weird", ""
     ];
 
-    private static string Populated(string method) => method switch
+    private static string Populated(string method, int variant = 0) => variant == 0 ? Original(method) : Variant(method, variant);
+
+    private static string Original(string method) => method switch
     {
         "listgroups" => "[" + Queued + "," + QueuedMegabytes + "," + NearlyDone + ",{}]",
         "history" => History(AllStatuses),
@@ -56,6 +58,25 @@ public sealed class NzbGetEveryBranchTests
         "version" => "\"26.3\"",
         "editqueue" or "saveconfig" or "reload" or "scan" or "pausedownload" or "resumedownload" => "true",
         _ => "null"
+    };
+
+    private static string Variant(string method, int variant) => (method, variant) switch
+    {
+        ("listgroups", 1) => "[{\"NZBID\":1,\"NZBName\":\"Huge\",\"Status\":\"DOWNLOADING\",\"FileSizeHi\":2000000000,\"FileSizeLo\":0,\"RemainingSizeHi\":0,\"RemainingSizeLo\":1},"
+            + "{\"NZBID\":2,\"Status\":\"PAUSED\"},{\"NZBID\":3,\"NZBName\":\"MB\",\"Status\":\"QUEUED\",\"FileSizeMB\":10,\"RemainingSizeMB\":5,\"PausedSizeMB\":5},"
+            + "{\"NZBID\":4,\"FileSizeLo\":100,\"FileSizeHi\":0,\"RemainingSizeLo\":50,\"RemainingSizeHi\":0,\"PausedSizeLo\":50},"
+            + "{\"NZBID\":5,\"Status\":\"QUEUED\",\"FileSizeLo\":100,\"RemainingSizeLo\":40,\"PausedSizeLo\":10,\"PausedSizeHi\":1},{\"NZBID\":7,\"Status\":\"Failed\",\"FileSizeMB\":10,\"RemainingSizeMB\":5},"
+            + "{\"NZBID\":8,\"Status\":\"QUEUED\",\"FileSizeMB\":10,\"RemainingSizeMB\":5,\"PausedSizeMB\":1},{\"NZBID\":9,\"Status\":\"DOWNLOADING\",\"RemainingSizeMB\":0}]",
+        ("history", 1) => "[{},{\"NZBID\":2,\"NZBName\":\"x\",\"Status\":\"SUCCESS/ALL\",\"DestDir\":\"\",\"FinalDir\":\"\"},{\"NZBID\":3,\"Name\":\"y\",\"DestDir\":\"/d\"},{\"NZBID\":7,\"NZBName\":\"z\",\"Status\":\"SUCCESS/ALL\",\"FinalDir\":\"/\"},{\"NZBID\":8,\"Status\":\"FAILURE/BAD\",\"ScriptStatuses\":null}]",
+        ("config", 1) => "[{\"Name\":\"DestDir\",\"Value\":\"${Unknown}/dst\"},{\"Name\":\"AppendCategoryDir\",\"Value\":\"no\"},{\"Name\":\"Category1.Name\",\"Value\":\"movies\"},{\"Name\":\"Category2.Name\",\"Value\":\"tv\"},{\"Name\":\"Category2.DestDir\",\"Value\":\"tv\"},{\"Name\":\"Category3.Name\"}]",
+        ("config", 2) => "[{\"Name\":\"DestDir\"},{\"Name\":\"Category1.Name\",\"Value\":\"movies\"},{\"Name\":\"Category1.DestDir\",\"Value\":\"/abs/movies\"}]",
+        ("log", 1) => "[{\"ID\":1,\"Kind\":\"INFO\",\"Text\":\"Paused due to errors in configuration\",\"Time\":10},{\"ID\":2,\"Kind\":\"INFO\",\"Time\":11},{\"ID\":3,\"Kind\":\"ERROR\",\"Text\":\"  \",\"Time\":12}]",
+        ("log", 2) => "[{\"ID\":1,\"Text\":\"errors in configuration\",\"Time\":10},{\"ID\":2,\"Text\":\"nzbget 26.3 server-mode\",\"Time\":20},{\"ID\":3,\"Text\":\"using x nzbget.conf\",\"Time\":21},{\"ID\":4,\"Text\":\"other\",\"Time\":22},{\"ID\":5}]",
+        ("status", 4) => "{\"DownloadRate\":0,\"FreeDiskSpaceMB\":0,\"DownloadPaused\":false,\"PostPaused\":false,\"ScanPaused\":false}",
+        ("status", 5) => "{\"DownloadPaused\":true,\"PostPaused\":false}",
+        ("resumedownload" or "resumepost" or "resumescan", 3) => "false",
+        ("append", 3) => "-1",
+        _ => Original(method)
     };
 
     private static string Empty(string method) => method switch
@@ -82,7 +103,38 @@ public sealed class NzbGetEveryBranchTests
 
     [Fact]
     public async Task No_question_throws_when_the_client_answers_every_call_with_something_in_it_of_every_kind()
-        => await AskAll(Populated);
+        => await AskAll(method => Populated(method));
+
+    [Fact]
+    public async Task No_question_throws_when_the_client_answers_every_call_with_the_odd_things_a_real_one_can_hold()
+    {
+        foreach (var variant in new[] { 1, 2, 3, 4, 5 })
+        {
+            await AskAll(method => Populated(method, variant));
+        }
+    }
+
+    [Fact]
+    public async Task A_category_check_needs_a_name_and_an_address()
+    {
+        var client = Answering(method => Populated(method), out _);
+
+        var blank = await client.CheckCategoryAsync(Item(), " ", CancellationToken.None);
+        var noAddress = await client.CheckCategoryAsync(Item() with { Host = null, EndpointUrl = null }, "movies", CancellationToken.None);
+        var folders = new List<DownloadClientCategoryCheckResult>();
+        foreach (var variant in new[] { 1, 2 })
+        {
+            var configured = Answering(method => Populated(method, variant), out _);
+            foreach (var name in new[] { "movies", "tv", "none" })
+            {
+                folders.Add(await configured.CheckCategoryAsync(Item(), name, CancellationToken.None));
+            }
+        }
+
+        Assert.Contains("Enter a category", blank.Message);
+        Assert.Contains("address", noAddress.Message);
+        Assert.Equal(6, folders.Count);
+    }
 
     [Fact]
     public async Task No_question_throws_when_the_client_answers_every_call_with_no_result_an_error_or_a_bare_null()
@@ -111,7 +163,7 @@ public sealed class NzbGetEveryBranchTests
     [Fact]
     public async Task Nothing_is_asked_without_an_address()
     {
-        var client = Answering(Populated, out var calls);
+        var client = Answering(method => Populated(method), out var calls);
         var noAddress = Item() with { Host = null, EndpointUrl = null };
 
         var grab = await client.GrabAsync(noAddress, EveryCallOnAnOddReply.GrabRequests(true).First(), CancellationToken.None);
@@ -228,5 +280,51 @@ public sealed class NzbGetEveryBranchTests
         }
 
         await Task.WhenAll(asks);
+    }
+
+    [Theory]
+    [InlineData(DownloadClientActions.Delete, true, true)]
+    [InlineData(DownloadClientActions.DeleteWithData, true, true)]
+    [InlineData(DownloadClientActions.DeleteWithData, false, true)]
+    [InlineData(DownloadClientActions.DeleteWithData, true, false)]
+    [InlineData(DownloadClientActions.RemoveRefusedCopy, false, true)]
+    public async Task A_finished_job_is_removed_with_its_own_folder_or_the_folder_left_is_said(string action, bool queuedFirst, bool folderNamed)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "deluno-nzbget-" + Guid.NewGuid().ToString("N"));
+        var folder = Path.Combine(root, "Example.Movie");
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "film.mkv"), "x");
+        try
+        {
+            var deleted = false;
+            var finalDeleted = false;
+            var made = new Calls("nzbget", [RecordedReplies.Nzbget("settings")], (_, body) =>
+            {
+                var method = EveryCallOnAnOddReply.MethodOf(body);
+                if (method == "editqueue")
+                {
+                    if (body.Contains("FinalDelete", StringComparison.Ordinal)) finalDeleted = true;
+                    else deleted = true;
+                    return RecordedReplies.Json("{\"version\":\"1.1\",\"result\":true}");
+                }
+
+                var job = "{\"NZBID\":7,\"NZBName\":\"Example.Movie\",\"Name\":\"Example.Movie\",\"Status\":\"SUCCESS/ALL\",\"DestDir\":" + System.Text.Json.JsonSerializer.Serialize(folderNamed ? folder : string.Empty) + ",\"FinalDir\":\"\"}";
+                return RecordedReplies.Json("{\"version\":\"1.1\",\"result\":" + method switch
+                {
+                    "listgroups" => queuedFirst && !deleted ? "[" + Queued + "]" : "[]",
+                    "history" => finalDeleted || (queuedFirst && !deleted) ? "[]" : "[" + job + "]",
+                    _ => Populated(method)
+                } + "}");
+            });
+            var client = new NzbGetDownloadClient(new Factory(made.Build()), TimeSpan.Zero, TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(10));
+
+            var result = await client.ExecuteActionAsync(Item(), action, Hash, CancellationToken.None);
+
+            Assert.NotNull(result);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 }

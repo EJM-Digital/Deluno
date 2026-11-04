@@ -244,4 +244,99 @@ public sealed class SabnzbdEveryBranchTests
 
         await Task.WhenAll(asks);
     }
+
+    [Theory]
+    [InlineData("1.5 GB", 1500d)]
+    [InlineData("2G", 2000d)]
+    [InlineData("300KB", 0.3d)]
+    [InlineData("4K", 0.004d)]
+    [InlineData("512B", 0.000512d)]
+    [InlineData("7MB", 7d)]
+    [InlineData("8M", 8d)]
+    [InlineData("1.2 M/s", 1.2d)]
+    [InlineData("9", 9d)]
+    [InlineData("x", 0d)]
+    [InlineData("-1", 0d)]
+    [InlineData("", 0d)]
+    [InlineData(null, 0d)]
+    public void A_size_or_speed_is_read_as_decimal_megabytes(string? text, double expected)
+        => Assert.Equal(expected, SabnzbdDownloadClient.ParseMegabytes(text), 6);
+
+    [Fact]
+    public void The_reasons_a_history_row_carries_are_said_with_or_without_the_clients_own_words()
+    {
+        Assert.Contains("Clean.py", SabnzbdDownloadClient.ScriptReason("Clean.py", isFailure: true));
+        Assert.Contains("warned", SabnzbdDownloadClient.ScriptReason("Clean.py", isFailure: false));
+        Assert.Contains("post-processing script", SabnzbdDownloadClient.ScriptReason("None", isFailure: true));
+        Assert.Contains("post-processing script", SabnzbdDownloadClient.ScriptReason("", isFailure: true));
+        Assert.Contains("post-processing script", SabnzbdDownloadClient.ScriptReason(null, isFailure: false));
+        Assert.Contains("it was a duplicate", SabnzbdDownloadClient.DuplicateReason(null));
+        Assert.Contains("Duplicate NZB", SabnzbdDownloadClient.DuplicateReason("Duplicate NZB"));
+        Assert.Contains("free space, then retry", SabnzbdDownloadClient.AttentionReason(" "));
+        Assert.Contains("Unpacking failed", SabnzbdDownloadClient.AttentionReason("Unpacking failed, disk full"));
+        Assert.Contains("could not download it.", SabnzbdDownloadClient.FailureReason(null));
+        Assert.Contains("because", SabnzbdDownloadClient.FailureReason("because"));
+    }
+
+    [Fact]
+    public async Task A_job_with_a_sliver_left_never_reads_one_hundred_percent_and_odd_answers_are_read_kindly()
+    {
+        var queue = "{\"queue\":{\"slots\":[{\"nzo_id\":\"a\",\"filename\":\"Huge\",\"status\":\"Downloading\",\"mb\":\"10000000000\",\"mbleft\":\"0.000001\"}]}}";
+        var client = Answering(request => RecordedReplies.Json(Mode(request) == "queue" ? queue : "{\"status\":\"yes\",\"error\":null}"), out _);
+
+        var snapshot = await client.GetSnapshotAsync(Item(), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.True(snapshot!.Queue.Single().Progress < 100d);
+        await EveryCallOnAnOddReply.AskAsync(client, Item(), usenet: true, Hash);
+    }
+
+    [Fact]
+    public async Task A_category_check_reads_every_kind_of_folder_the_client_can_hold()
+    {
+        var shapes = new[]
+        {
+            "{\"config\":{\"misc\":{\"complete_dir\":\"/c\",\"download_dir\":\"/i\"},\"categories\":[{\"name\":\"movies\",\"dir\":\"\"},{\"name\":\"tv\",\"dir\":\"/abs/tv\"},{\"name\":5},{\"dir\":\"x\"}]}}",
+            "{\"config\":{\"misc\":{},\"categories\":[{\"name\":\"movies\",\"dir\":\"\"},{\"name\":\"tv\",\"dir\":\"abs\"}]}}",
+            "{\"config\":{\"misc\":5,\"categories\":[{\"name\":\"movies\"}]}}",
+            "{\"config\":5}",
+            "[]"
+        };
+        foreach (var shape in shapes)
+        {
+            var client = Answering(_ => RecordedReplies.Json(shape), out _);
+            foreach (var name in new[] { "movies", "tv", "other" })
+            {
+                Assert.NotNull(await client.CheckCategoryAsync(Item(), name, CancellationToken.None));
+            }
+        }
+    }
+
+    [Fact]
+    public async Task A_removal_the_queue_would_not_do_and_the_history_could_not_be_asked_about_is_said()
+    {
+        var body = PopulatedBody();
+        var queueNo = Answering(request => Mode(request) == "history" ? throw new HttpRequestException("The connection dropped.")
+            : Mode(request) == "queue" && request.RequestUri!.Query.Contains("name=delete", StringComparison.Ordinal) ? RecordedReplies.Json("{\"status\":false}") : RecordedReplies.Json(body), out _);
+        var neither = Answering(request => request.RequestUri!.Query.Contains("name=delete", StringComparison.Ordinal) ? throw new HttpRequestException("The connection dropped.") : RecordedReplies.Json(body), out _);
+        var teapot = Answering(request => request.RequestUri!.Query.Contains("name=delete", StringComparison.Ordinal) ? new HttpResponseMessage((HttpStatusCode)199) { Content = new StringContent("") } : RecordedReplies.Json(body), out _);
+        var historyDown = Answering(request => Mode(request) == "history" && !request.RequestUri!.Query.Contains("name=delete", StringComparison.Ordinal) ? new HttpResponseMessage(HttpStatusCode.InternalServerError) : request.RequestUri!.Query.Contains("name=delete", StringComparison.Ordinal) ? RecordedReplies.Json("{\"status\":false}") : RecordedReplies.Json(body), out _);
+
+        foreach (var client in new[] { queueNo, neither, teapot, historyDown })
+        {
+            foreach (var action in new[] { DownloadClientActions.Delete, DownloadClientActions.DeleteWithData, DownloadClientActions.RemoveRefusedCopy })
+            {
+                Assert.NotNull(await client.ExecuteActionAsync(Item(), action, "SABnzbd_nzo_2", CancellationToken.None));
+            }
+        }
+    }
+
+    [Fact]
+    public async Task A_news_server_given_with_no_user_or_password_is_written_as_it_is()
+    {
+        var client = Answering(_ => RecordedReplies.Json(PopulatedBody()), out var calls);
+
+        await client.SetUsenetProviderAsync(Item(), new Deluno.Connections.Usenet.UsenetProviderRequest("news.example", 119, false, null, null, 4), CancellationToken.None);
+
+        Assert.True(calls.Sent("ssl=0"));
+    }
 }

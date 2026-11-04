@@ -490,12 +490,10 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
                 client.Id,
                 client.Name,
                 normalizedCategory,
-                found ? DownloadClientCategoryStatuses.Ready : DownloadClientCategoryStatuses.Missing,
-                found
-                    ? $"SABnzbd has a category named {normalizedCategory}."
-                    : $"SABnzbd does not have a category named {normalizedCategory}. Create it there before using it in Deluno.",
+                DownloadClientCategoryStatuses.Missing,
+                $"SABnzbd does not have a category named {normalizedCategory}. Create it there before using it in Deluno.",
                 Supported: true,
-                Found: found);
+                Found: false);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
         {
@@ -1173,25 +1171,6 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
                 yield return (name, directory);
             }
         }
-    }
-
-    private static IReadOnlyList<string> ReadCategoryNames(JsonElement root)
-    {
-        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("categories", out var categories))
-        {
-            return [];
-        }
-
-        return categories.ValueKind switch
-        {
-            JsonValueKind.Array => categories.EnumerateArray()
-                .Where(item => item.ValueKind == JsonValueKind.String)
-                .Select(item => item.GetString() ?? string.Empty)
-                .Where(item => !string.IsNullOrWhiteSpace(item))
-                .ToArray(),
-            JsonValueKind.Object => categories.EnumerateObject().Select(item => item.Name).ToArray(),
-            _ => []
-        };
     }
 
     private sealed record SabFilesResponse([property: JsonPropertyName("files")] IReadOnlyList<SabFile>? Files);
