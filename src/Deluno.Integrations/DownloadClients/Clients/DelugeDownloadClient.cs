@@ -808,14 +808,15 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
     }
 
     /// <summary>
-    /// Deluge's own words for a refusal. Its errors arrive as a whole Python traceback; the last "Exception:" line is what it
-    /// said ("Unknown Label"), and anything else is cut to its first line.
+    /// Deluge's own words for a refusal. Its errors arrive as a whole Python traceback that ends in the error's own line
+    /// ("Exception: Unknown Label", "KeyError: '0000'") and a closing bracket; that line is what it said, and a plain message
+    /// ("Unknown method") is its first line. Cut to 200 characters.
     /// </summary>
     internal static string ReasonOf(string? message)
     {
         var lines = (message ?? string.Empty).Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        var said = lines.LastOrDefault(line => line.StartsWith("Exception: ", StringComparison.Ordinal));
-        var text = said is not null ? said["Exception: ".Length..] : lines.FirstOrDefault() ?? string.Empty;
+        var text = lines.Length > 1 ? lines.LastOrDefault(line => line != "]") ?? string.Empty : lines.FirstOrDefault() ?? string.Empty;
+        if (text.StartsWith("Exception: ", StringComparison.Ordinal)) text = text["Exception: ".Length..];
         return text.Length > 200 ? text[..200] : text;
     }
 

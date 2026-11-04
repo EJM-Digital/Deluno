@@ -2,7 +2,7 @@
   "app": "tmdb",
   "version": "2026-11-04",
   "state": "search-movie-love-page1",
-  "recordedAt": "2026-11-04T20:02:16Z",
+  "recordedAt": "2026-11-04T20:08:07Z",
   "note": "GET /metadata/search for a title with hundreds of matches: page 1 of many (#1473). Through the deployed gateway (deluno-metadata-gateway.ejmdigital.workers.dev).",
   "exchanges": [
     {

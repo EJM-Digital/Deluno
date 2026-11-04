@@ -346,7 +346,7 @@ public sealed partial class TmdbMetadataProvider(
 
         var config = await GetMetadataConfigurationAsync(cancellationToken);
         var mediaType = NormalizeMediaType(request.MediaType);
-        var cacheKey = BuildSearchCacheKey(config.ProviderMode, mediaType, query, request.Year, request.ProviderId, config.Language);
+        var cacheKey = BuildSearchCacheKey(config.ProviderMode, mediaType, query, request.Year, request.ProviderId, config.Language, request.Page);
         var cached = await TryReadSearchCacheAsync(cacheKey, cancellationToken);
         if (cached is not null)
         {
@@ -524,7 +524,7 @@ public sealed partial class TmdbMetadataProvider(
 
         var (language, certificationCountry) = await GetLocalizationAsync(cancellationToken);
         var mediaType = NormalizeMediaType(request.MediaType);
-        var cacheKey = BuildSearchCacheKey($"{ProviderName}:direct", mediaType, query, request.Year, request.ProviderId, language);
+        var cacheKey = BuildSearchCacheKey($"{ProviderName}:direct", mediaType, query, request.Year, request.ProviderId, language, request.Page);
         var cached = await TryReadSearchCacheAsync(cacheKey, cancellationToken);
         if (cached is not null)
         {
@@ -564,7 +564,7 @@ public sealed partial class TmdbMetadataProvider(
 
         var endpoint = mediaType == "tv" ? "search/tv" : "search/movie";
         var url =
-            $"https://api.themoviedb.org/3/{endpoint}?api_key={Uri.EscapeDataString(apiKey)}&query={Uri.EscapeDataString(query)}&include_adult=false";
+            $"https://api.themoviedb.org/3/{endpoint}?api_key={Uri.EscapeDataString(apiKey)}&query={Uri.EscapeDataString(query)}&include_adult=false&page={request.Page.ToString(CultureInfo.InvariantCulture)}";
         if (!string.IsNullOrWhiteSpace(language))
         {
             url += $"&language={Uri.EscapeDataString(language)}";
@@ -584,7 +584,7 @@ public sealed partial class TmdbMetadataProvider(
             cancellationToken);
         var items = response?.Results?
             .Where(item => !string.IsNullOrWhiteSpace(item.Title ?? item.Name))
-            .Take(12)
+            .Take(MetadataSearchPaging.PageSize)
             .ToArray() ?? [];
 
         var results = new List<MetadataSearchResult>(items.Length);
@@ -1496,8 +1496,11 @@ public sealed partial class TmdbMetadataProvider(
     /// would have been columns that stayed empty for no visible reason.
     ///
     /// Bump this whenever <see cref="MetadataSearchResult"/> gains a field.
+    ///
+    /// v7 is the whole page (#1473). v6 held lists cut to twelve with no page in
+    /// the key, so a v6 entry is a cut list that must never answer a search.
     /// </summary>
-    private const string SearchCacheShape = "v6";
+    private const string SearchCacheShape = "v7";
 
     // The language is part of the key, not the shape: two installs asking for
     // the same title in different languages are asking a different question,
@@ -1508,8 +1511,9 @@ public sealed partial class TmdbMetadataProvider(
         string query,
         int? year,
         string? providerId,
-        string? language)
-        => $"{source}:search:{SearchCacheShape}:{mediaType}:{query.Trim().ToLowerInvariant()}:{year?.ToString(CultureInfo.InvariantCulture) ?? "any"}:{providerId?.Trim() ?? "none"}:{language?.Trim().ToLowerInvariant() ?? "default"}";
+        string? language,
+        int page = 1)
+        => $"{source}:search:{SearchCacheShape}:{mediaType}:{query.Trim().ToLowerInvariant()}:{year?.ToString(CultureInfo.InvariantCulture) ?? "any"}:{providerId?.Trim() ?? "none"}:{language?.Trim().ToLowerInvariant() ?? "default"}:p{page.ToString(CultureInfo.InvariantCulture)}";
 
     private static void AddParameter(System.Data.Common.DbCommand command, string name, object? value)
     {
@@ -1687,7 +1691,12 @@ public sealed partial class TmdbMetadataProvider(
 
         if (!string.IsNullOrWhiteSpace(request.ProviderId))
         {
+            // An exact record has one answer: there is no next page of it.
             url += $"&providerId={Uri.EscapeDataString(request.ProviderId.Trim())}";
+        }
+        else
+        {
+            url += $"&page={request.Page.ToString(CultureInfo.InvariantCulture)}";
         }
 
         var brokerKey = BuildHostKey(brokerUrl);
@@ -1703,7 +1712,7 @@ public sealed partial class TmdbMetadataProvider(
             return null;
         }
 
-        return brokerResponse.Results?.Take(12).ToArray();
+        return brokerResponse.Results?.Take(MetadataSearchPaging.PageSize).ToArray();
     }
 
     private async Task<MetadataProviderRecordLookup> ResolveBrokerProviderRecordAsync(

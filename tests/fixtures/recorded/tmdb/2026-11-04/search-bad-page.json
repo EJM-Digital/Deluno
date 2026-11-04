@@ -2,7 +2,7 @@
   "app": "tmdb",
   "version": "2026-11-04",
   "state": "search-bad-page",
-  "recordedAt": "2026-11-04T20:02:17Z",
+  "recordedAt": "2026-11-04T20:08:08Z",
   "note": "GET /metadata/search with a page number out of range: 400 (#1473). Through the deployed gateway (deluno-metadata-gateway.ejmdigital.workers.dev).",
   "exchanges": [
     {

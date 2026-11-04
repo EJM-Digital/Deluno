@@ -18,8 +18,28 @@ public interface IAllowedHostsCandidateProvider
     IReadOnlyList<DetectedHostCandidate> DetectCandidates(HttpContext? currentRequest);
 }
 
-public sealed class AllowedHostsCandidateProvider(IForwardedHostTracker forwardedHostTracker) : IAllowedHostsCandidateProvider
+public sealed class AllowedHostsCandidateProvider : IAllowedHostsCandidateProvider
 {
+    private readonly IForwardedHostTracker forwardedHostTracker;
+    private readonly Func<string?> machineName;
+    private readonly Func<IEnumerable<NetworkInterface>> adapters;
+
+    public AllowedHostsCandidateProvider(IForwardedHostTracker forwardedHostTracker)
+        : this(forwardedHostTracker, () => Environment.MachineName, NetworkInterface.GetAllNetworkInterfaces)
+    {
+    }
+
+    /// <summary>The same, with this computer's name and adapters handed in so a computer that will not give them can be shown.</summary>
+    public AllowedHostsCandidateProvider(
+        IForwardedHostTracker forwardedHostTracker,
+        Func<string?> machineName,
+        Func<IEnumerable<NetworkInterface>> adapters)
+    {
+        this.forwardedHostTracker = forwardedHostTracker;
+        this.machineName = machineName;
+        this.adapters = adapters;
+    }
+
     public IReadOnlyList<DetectedHostCandidate> DetectCandidates(HttpContext? currentRequest)
     {
         var candidates = new List<DetectedHostCandidate>();
@@ -51,11 +71,11 @@ public sealed class AllowedHostsCandidateProvider(IForwardedHostTracker forwarde
         return candidates;
     }
 
-    private static string? SafeMachineName()
+    private string? SafeMachineName()
     {
         try
         {
-            return Environment.MachineName;
+            return machineName();
         }
         catch (InvalidOperationException)
         {
@@ -63,12 +83,12 @@ public sealed class AllowedHostsCandidateProvider(IForwardedHostTracker forwarde
         }
     }
 
-    private static IEnumerable<string> LanAddresses()
+    private IEnumerable<string> LanAddresses()
     {
         List<string> addresses = [];
         try
         {
-            foreach (var networkInterface in NetworkInterface.GetAllNetworkInterfaces())
+            foreach (var networkInterface in adapters())
             {
                 if (networkInterface.OperationalStatus != OperationalStatus.Up) continue;
                 if (networkInterface.NetworkInterfaceType is NetworkInterfaceType.Loopback) continue;

@@ -1187,6 +1187,32 @@ public sealed class SqliteDownloadDispatchesRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
+    public async Task SetFollowUpRefusalsAsync(string dispatchId, string? refusalsJson, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs, cancellationToken);
+
+        using var command = connection.CreateCommand();
+        // Notes that are not a JSON object (or are empty) start again as one; every other key is left alone.
+        command.CommandText = refusalsJson is null
+            ? """
+              UPDATE download_dispatches
+              SET notes_json = json_remove(notes_json, '$.followUpRefusals')
+              WHERE id = @dispatchId AND json_valid(notes_json) AND json_type(notes_json) = 'object'
+                AND json_type(notes_json, '$.followUpRefusals') IS NOT NULL
+              """
+            : """
+              UPDATE download_dispatches
+              SET notes_json = json_set(
+                  CASE WHEN json_valid(notes_json) AND json_type(notes_json) = 'object' THEN notes_json ELSE '{}' END,
+                  '$.followUpRefusals', json(@refusals))
+              WHERE id = @dispatchId
+              """;
+        AddParameter(command, "@dispatchId", dispatchId);
+        if (refusalsJson is not null) AddParameter(command, "@refusals", refusalsJson);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     private static DownloadDispatchItem ReadDispatch(DbDataReader reader)
     {
         var dispatch = new DownloadDispatchItem(

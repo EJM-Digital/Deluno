@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import type { ComponentProps, Dispatch, SetStateAction } from "react";
@@ -219,13 +219,47 @@ describe("the add dialog's match cards", () => {
     expect(screen.queryByText(/Choose one or more matches/)).not.toBeInTheDocument();
   });
 
-  it("shows at most six matches, each with its title, year and where it came from", () => {
-    const results = Array.from({ length: 8 }, (_, index) => found({ providerId: String(index), title: `Film ${index}`, year: 2000 + index }));
+  it("shows every match it is given, a whole page of twenty, each with its title, year and where it came from", () => {
+    const results = Array.from({ length: 20 }, (_, index) => found({ providerId: String(index), title: `Film ${index}`, year: 2000 + index }));
     show({ metadataResults: results });
     expect(screen.getByText("Choose one or more matches to prefill (this does not add yet)")).toBeInTheDocument();
     expect(screen.getByText("Film 5")).toBeInTheDocument();
-    expect(screen.queryByText("Film 6")).not.toBeInTheDocument();
+    expect(screen.getByText("Film 19")).toBeInTheDocument();
+    expect(within(screen.getByTestId("add-matches")).getAllByRole("button")).toHaveLength(20);
     expect(screen.getByText("2003 · TMDb")).toBeInTheDocument();
+  });
+
+  it("gives each match its synopsis, cut to a few lines until the match is picked and whole once it is", () => {
+    const long = "A long synopsis. ".repeat(40).trim();
+    const picked = found({ providerId: "a", title: "Picked", overview: long });
+    const other = found({ providerId: "b", title: "Other", overview: long });
+    const bare = found({ providerId: "c", title: "Bare", overview: null });
+    show({ metadataResults: [picked, other, bare], selectedMetadataResults: [picked] });
+    const synopsis = (title: string) => within(screen.getByTitle(`Select ${title}`)).getByText(long);
+    expect(synopsis("Picked")).not.toHaveClass("line-clamp-4");
+    expect(synopsis("Other")).toHaveClass("line-clamp-4");
+    expect(within(screen.getByTitle("Select Bare")).getByText("No synopsis yet.")).toBeInTheDocument();
+  });
+
+  it("offers More matches only while there are more, asks for them when pressed, and is disabled while they load", async () => {
+    const user = userEvent.setup();
+    const results = [found({ providerId: "a", title: "One" })];
+    const onMoreMatches = vi.fn();
+    show({ metadataResults: results, hasMoreMatches: true, onMoreMatches });
+    await user.click(screen.getByRole("button", { name: "More matches" }));
+    expect(onMoreMatches).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides More matches when there are no more, when nothing was found, and shows it busy while loading", () => {
+    const results = [found({ providerId: "a", title: "One" })];
+    show({ metadataResults: results, hasMoreMatches: false, onMoreMatches: vi.fn() });
+    expect(screen.queryByRole("button", { name: "More matches" })).not.toBeInTheDocument();
+    cleanup();
+    show({ metadataResults: [], hasMoreMatches: true, onMoreMatches: vi.fn() });
+    expect(screen.queryByRole("button", { name: "More matches" })).not.toBeInTheDocument();
+    cleanup();
+    show({ metadataResults: results, hasMoreMatches: true, isLoadingMoreMatches: true, onMoreMatches: vi.fn() });
+    expect(screen.getByRole("button", { name: "More matches" })).toBeDisabled();
   });
 
   it("says Unknown year, shows art when there is some, and the rating only when there is one", () => {
@@ -548,14 +582,14 @@ describe("the add dialog's remaining details", () => {
     expect(screen.getByText("2021 · TMDb")).toBeInTheDocument();
   });
 
-  it("dresses a held card green, a picked card blue and the rest plain", () => {
+  it("dresses a held card quietly, a picked card blue and the rest plain", () => {
     const picked = found({ providerId: "a", title: "Picked" });
     show({
       metadataResults: [picked, found({ providerId: "b", title: "Held", libraryEntryId: "e" }), found({ providerId: "c", title: "Plain" })],
       selectedMetadataResults: [picked]
     });
     expect(screen.getByTitle("Select Picked")).toHaveClass("border-primary/70", "bg-primary/10", "flex", "rounded-xl");
-    expect(screen.getByTitle("Open Held — already in your library")).toHaveClass("border-success/45", "bg-success/5");
+    expect(screen.getByTitle("Open Held — already in your library")).toHaveClass("opacity-75");
     expect(screen.getByTitle("Select Plain")).toHaveClass("border-hairline");
     expect(screen.getByTitle("Select Plain")).not.toHaveClass("border-primary/70");
     expect(screen.getByTitle("Select Plain")).not.toHaveClass("border-success/45");

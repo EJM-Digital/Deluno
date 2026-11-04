@@ -204,6 +204,21 @@ describe("download drawer: a finding in the Health box", () => {
     expect(authedFetchMock.mock.calls.some(([url]) => String(url).includes("/health/"))).toBe(false);
   });
 
+  it("a category or folder the client refused after the grab is said with its fix and has nothing to dismiss (#1470)", async () => {
+    openDrawerFor(queueItem({
+      healthFindings: [finding({
+        kind: "follow-up-refused",
+        summary: "qBittorrent did not take the movies category: Incorrect category name.",
+        recommendedAction: "Create the category in qBittorrent or change the library's category, then send it again."
+      })]
+    }));
+    const drawer = within(await screen.findByRole("dialog"));
+
+    expect(drawer.getByText("qBittorrent did not take the movies category: Incorrect category name.")).toBeInTheDocument();
+    expect(drawer.getByText("Create the category in qBittorrent or change the library's category, then send it again.")).toBeInTheDocument();
+    expect(drawer.queryByRole("button", { name: "Dismiss" })).not.toBeInTheDocument();
+  });
+
   it("a lost hard link offers Remove this copy, which removes it with the reason reclaim, instead of Dismiss", async () => {
     authedFetchMock.mockImplementation(() => reply({ succeeded: true, message: "Removed the copy from qBittorrent. The library file was not touched." }));
     openDrawerFor(queueItem({ healthFindings: [finding({ kind: "hardlink-lost", summary: "This copy no longer shares data with the library." })] }));

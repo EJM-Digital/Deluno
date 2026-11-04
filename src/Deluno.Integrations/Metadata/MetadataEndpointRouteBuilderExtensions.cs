@@ -56,6 +56,8 @@ public static class MetadataEndpointRouteBuilderExtensions
             // `providerId` then carries the raw id and this says which
             // catalogue it names.
             string? idSource,
+            // Which page of matches, from 1; the Add screen's More matches asks for the next (#1473).
+            int? page,
             IMetadataProvider provider,
             IMetadataLibraryPresence libraryPresence,
             CancellationToken cancellationToken) =>
@@ -66,7 +68,7 @@ public static class MetadataEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var request = new MetadataLookupRequest(query, mediaType, year, providerId, idSource);
+            var request = new MetadataLookupRequest(query, mediaType, year, providerId, idSource, MetadataSearchPaging.Clamp(page));
             using var failureScope = provider.BeginFailureScope();
             var results = await provider.SearchAsync(request, cancellationToken);
 

@@ -1,6 +1,6 @@
 import type { Dispatch, FormEventHandler, MutableRefObject, SetStateAction } from "react";
 import { ArtworkImage } from "../ui/artwork-image";
-import { ArrowUpRight, LoaderCircle, Plus, Search, X } from "lucide-react";
+import { ArrowUpRight, Check, LoaderCircle, Plus, Search, Star, X } from "lucide-react";
 import * as Dialog from "../ui/dialog-primitives";
 import type { MetadataProviderStatus, MetadataSearchResult } from "../../lib/api";
 import { SHOW_MONITOR_PRESETS, type CreateFormDraft, type LibraryVariant, type ShowMonitorPreset } from "../../hooks/use-library-create";
@@ -32,6 +32,11 @@ type LibraryCreateDialogProps = {
   isSearchingMetadata: boolean;
   metadataSearchSequence: MutableRefObject<number>;
   onSearch: () => void;
+  /** Whether TMDb has a next page of matches for this search (#1473). */
+  hasMoreMatches?: boolean;
+  isLoadingMoreMatches?: boolean;
+  /** Asks for the next page and adds it below the matches; the caller says why a load failed. */
+  onMoreMatches?: () => void;
   onSelectResult: (result: MetadataSearchResult) => void;
   /**
    * Opens a title Deluno already holds, instead of adding it a second time.
@@ -56,31 +61,41 @@ export function LibraryCreateDialog({
   open, onOpenChange, variant, label, singular, metadataStatus, isCreating, createForm,
   setCreateForm, metadataResults, setMetadataResults, selectedMetadataResults,
   setSelectedMetadataResults, isSearchingMetadata, metadataSearchSequence, onSearch,
-  onSelectResult, onOpenHeldResult, onCreate, libraries = [], libraryId, onLibraryChange, qualityProfiles = [],
+  hasMoreMatches = false, isLoadingMoreMatches = false, onMoreMatches, onSelectResult, onOpenHeldResult, onCreate, libraries = [], libraryId, onLibraryChange, qualityProfiles = [],
 }: LibraryCreateDialogProps) {
   const selectedMetadataCount = selectedMetadataResults.length;
   const chosenLibrary = libraries.find((library) => library.id === (libraryId ?? libraries[0].id));
   // The profile shown is the one picked, or else the library's own - the default is a real choice you can see, not a blank.
   const shownProfileId = createForm.qualityProfileId || chosenLibrary?.qualityProfileId || "";
 
+  const manualEntry = (
+    <details className="mt-3 rounded-xl border border-hairline bg-surface-1 px-4 py-3">
+      <summary className="cursor-pointer text-sm font-medium text-muted-foreground">Can’t find it? Add it manually</summary>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <Input type="number" value={createForm.year} onChange={(event) => setCreateForm((current) => ({ ...current, year: event.target.value }))} placeholder={variant === "movies" ? "Year (optional)" : "Start year (optional)"} />
+        <Input value={createForm.imdbId} onChange={(event) => setCreateForm((current) => ({ ...current, imdbId: event.target.value }))} placeholder="IMDb ID (optional)" />
+      </div>
+    </details>
+  );
+
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/55 backdrop-blur-[3px]" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[min(88dvh,760px)] w-[calc(100%-2rem)] max-w-5xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-hairline bg-card shadow-2xl">
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex h-[min(96dvh,1180px)] w-[calc(100%-1.5rem)] max-w-[1600px] -translate-x-1/2 -translate-y-1/2 flex-col overflow-y-auto rounded-2xl border border-hairline bg-card shadow-2xl md:overflow-hidden">
           <div className="flex items-start justify-between gap-(--grid-gap) border-b border-hairline px-6 py-5">
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <Dialog.Title className="font-display text-xl font-semibold tracking-tight text-foreground">Add {singular}</Dialog.Title>
                 <Badge variant={metadataStatus?.isConfigured ? "success" : "warning"}>{metadataStatus?.isConfigured ? "Title matching ready" : "Manual entry"}</Badge>
               </div>
-              <Dialog.Description className="mt-1 text-sm text-muted-foreground">Start typing, then pick matches to prefill details. Use Add at the bottom to create what you selected.</Dialog.Description>
+              <Dialog.Description className="mt-1 text-sm [@media(max-height:800px)]:hidden text-muted-foreground">Start typing, then pick matches to prefill details. Use Add at the bottom to create what you selected.</Dialog.Description>
             </div>
             <Dialog.Close asChild><Button variant="ghost" size="icon" aria-label={`Close add ${singular}`} disabled={isCreating}><X className="h-4 w-4" /></Button></Dialog.Close>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-6">
-            <form onSubmit={(event) => { event.preventDefault(); onSearch(); }}>
+          <div className="flex flex-col px-6 pt-5 md:min-h-0 md:flex-1">
+            <form className="shrink-0" onSubmit={(event) => { event.preventDefault(); onSearch(); }}>
               <label className="text-sm font-semibold text-foreground" htmlFor={`add-${variant}-title`}>What do you want to add?</label>
               <div className="mt-2"><Input id={`add-${variant}-title`} autoFocus value={createForm.title} onChange={(event) => {
                 metadataSearchSequence.current += 1;
@@ -96,47 +111,56 @@ export function LibraryCreateDialog({
 
             {metadataStatus?.isConfigured === false ? <p className="mt-3 rounded-xl border border-warning/25 bg-warning/10 p-3 text-sm text-warning">Title matching is temporarily unavailable. You can still add this title manually below.</p> : null}
             {metadataResults.length > 0 ? (
-              <div className="mt-5">
-                <p className="text-sm font-semibold text-foreground">Choose one or more matches to prefill (this does not add yet)</p>
-                {variant === "shows" && metadataResults.some((result) => result.tvDbId) ? <TvdbAttribution className="mt-1" /> : null}
-                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {metadataResults.slice(0, 6).map((result) => {
-                    const isSelected = selectedMetadataResults.some((selected) => sameMetadataResult(selected, result));
-                    // Held titles are not offered for selection at all. Adding
-                    // one is already a no-op that hands back the row Deluno
-                    // has - so a card that said "Selected" and then added
-                    // nothing would be the same silence in a different place.
-                    const isHeld = Boolean(result.libraryEntryId);
-                    return <button key={`${result.provider}:${result.providerId}`} type="button" onClick={() => (isHeld ? onOpenHeldResult(result) : onSelectResult(result))} className={cn("flex min-w-0 gap-3 rounded-xl border bg-surface-1 p-3 text-left transition", isHeld ? "border-success/45 bg-success/5 hover:border-success/70 hover:bg-success/10" : isSelected ? "border-primary/70 bg-primary/10 ring-1 ring-primary/25 hover:border-primary/45 hover:bg-primary/5" : "border-hairline hover:border-primary/45 hover:bg-primary/5")} title={isHeld ? `Open ${result.title} — already in your library` : `Select ${result.title}`}>
-                      {result.posterUrl ? <ArtworkImage src={result.posterUrl} alt="" className="h-24 w-16 shrink-0 rounded-lg bg-muted object-cover" /> : <div className="flex h-24 w-16 shrink-0 items-center justify-center rounded-lg bg-muted text-(length:--type-caption) text-muted-foreground">No art</div>}
-                      <span className="min-w-0 self-center">
-                        <span className="block truncate text-sm font-semibold text-foreground">{result.title}</span>
-                        <span className="mt-1 block text-xs text-muted-foreground">{result.year ?? "Unknown year"} · {result.dataSource === "tvdb" ? "TheTVDB" : "TMDb"}</span>
-                        {result.rating ? <span className="mt-2 block text-xs tabular-nums text-primary">{result.rating.toFixed(1)} rating</span> : null}
-                        {isHeld
-                          ? <span className="mt-1 inline-flex items-center gap-1 text-(length:--type-micro) font-semibold text-success">Already in your library — open it<ArrowUpRight className="h-3 w-3" /></span>
-                          : isSelected
-                            ? <span className="mt-1 inline-flex rounded-full bg-primary/15 px-2 py-0.5 text-(length:--type-micro) font-semibold text-primary">Selected</span>
-                            : <span className="mt-1 block text-(length:--type-micro) text-muted-foreground">Click to select</span>}
-                      </span>
-                    </button>;
-                  })}
+              <div className="mt-4 flex flex-col md:min-h-0 md:flex-1">
+                <p className="shrink-0 text-sm font-semibold text-foreground">Choose one or more matches to prefill (this does not add yet)</p>
+                {variant === "shows" && metadataResults.some((result) => result.tvDbId) ? <TvdbAttribution className="mt-1 shrink-0" /> : null}
+                {/* The matches scroll here, so the search above and the settings below stay in view. */}
+                <div className="mt-3 pb-2 pr-1 md:min-h-0 md:flex-1 md:overflow-y-auto" data-testid="add-matches">
+                  <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+                    {metadataResults.map((result) => {
+                      const isSelected = selectedMetadataResults.some((selected) => sameMetadataResult(selected, result));
+                      // Held titles are not offered for selection at all. Adding
+                      // one is already a no-op that hands back the row Deluno
+                      // has - so a card that said "Selected" and then added
+                      // nothing would be the same silence in a different place.
+                      const isHeld = Boolean(result.libraryEntryId);
+                      return <button key={`${result.provider}:${result.providerId}`} type="button" onClick={() => (isHeld ? onOpenHeldResult(result) : onSelectResult(result))} className={cn("flex min-w-0 items-start gap-3 rounded-xl border p-3 text-left transition sm:p-4", isHeld ? "border-hairline bg-surface-1/60 opacity-75 hover:border-success/50 hover:opacity-100" : isSelected ? "border-primary/70 bg-primary/10 ring-1 ring-primary/25 hover:border-primary/45 hover:bg-primary/5" : "border-hairline bg-surface-1 hover:border-primary/45 hover:bg-primary/5")} title={isHeld ? `Open ${result.title} — already in your library` : `Select ${result.title}`}>
+                        {result.posterUrl ? <ArtworkImage src={result.posterUrl} alt="" className="aspect-2/3 w-24 shrink-0 rounded-lg bg-muted object-cover sm:w-32" /> : <div className="flex aspect-2/3 w-24 shrink-0 items-center justify-center rounded-lg bg-muted text-(length:--type-caption) text-muted-foreground sm:w-32">No art</div>}
+                        <span className="min-w-0 flex-1">
+                          <span className="line-clamp-2 block font-display text-base font-semibold leading-snug text-foreground">{result.title}</span>
+                          <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                            <span>{result.year ?? "Unknown year"} · {result.dataSource === "tvdb" ? "TheTVDB" : "TMDb"}</span>
+                            {result.rating ? <span className="inline-flex items-center gap-1 tabular-nums text-primary"><Star className="h-3 w-3" aria-hidden />{result.rating.toFixed(1)} rating</span> : null}
+                          </span>
+                          {result.overview ? <span className={cn("mt-2 block text-sm leading-relaxed text-muted-foreground", isSelected ? "" : "line-clamp-4")}>{result.overview}</span> : <span className="mt-2 block text-sm italic text-muted-foreground">No synopsis yet.</span>}
+                          {isHeld
+                            ? <span className="mt-2 inline-flex items-center gap-1 text-(length:--type-micro) font-medium text-muted-foreground"><Check className="h-3 w-3 text-success" aria-hidden />Already in your library — open it<ArrowUpRight className="h-3 w-3" /></span>
+                            : isSelected
+                              ? <span className="mt-2 inline-flex rounded-full bg-primary/15 px-2 py-0.5 text-(length:--type-micro) font-semibold text-primary">Selected</span>
+                              : <span className="mt-2 block text-(length:--type-micro) text-muted-foreground">Click to select</span>}
+                        </span>
+                      </button>;
+                    })}
+                  </div>
+                  {hasMoreMatches && onMoreMatches ? (
+                    <div className="mt-4 flex justify-center">
+                      <Button type="button" variant="secondary" onClick={onMoreMatches} disabled={isLoadingMoreMatches} className="gap-2">
+                        {isLoadingMoreMatches ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                        More matches
+                      </Button>
+                    </div>
+                  ) : null}
+                  {manualEntry}
                 </div>
               </div>
-            ) : null}
+            ) : manualEntry}
 
-            <details className="mt-5 rounded-xl border border-hairline bg-surface-1 px-4 py-3">
-              <summary className="cursor-pointer text-sm font-medium text-muted-foreground">Can’t find it? Add it manually</summary>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <Input type="number" value={createForm.year} onChange={(event) => setCreateForm((current) => ({ ...current, year: event.target.value }))} placeholder={variant === "movies" ? "Year (optional)" : "Start year (optional)"} />
-                <Input value={createForm.imdbId} onChange={(event) => setCreateForm((current) => ({ ...current, imdbId: event.target.value }))} placeholder="IMDb ID (optional)" />
-              </div>
-            </details>
           </div>
 
           {/* Where it goes and what it is judged by, chosen before anything is searched (#530, #1145). */}
+          <div className="grid shrink-0 gap-3 border-t border-hairline px-6 py-4 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1.4fr]">
           {libraries.length > 0 && onLibraryChange ? (
-            <div className="grid gap-3 border-t border-hairline px-6 py-4 sm:grid-cols-2">
+            <>
               <Field label="Add into" help={variant === "movies" ? "Only this library searches for it and holds it. It can be kept in another library too, later, from its page." : "Only this library searches for it and holds it. It can be moved to another library later, from its page."}>
                 <Select
                   aria-label="Library"
@@ -162,12 +186,12 @@ export function LibraryCreateDialog({
                   />
                 </Field>
               ) : null}
-            </div>
+            </>
           ) : null}
 
           {/* Optional tags, put on the title as it is added (#1038). */}
-          <div className="border-t border-hairline px-6 py-4">
-            <Field label="Tags" help="Optional. Put on the title as it is added, so a tagged connection or rule treats it right from the start.">
+          <div className={libraries.length > 0 && onLibraryChange ? "sm:col-span-2 xl:col-span-1" : "sm:col-span-2 xl:col-span-3"}>
+            <Field label="Tags (optional)">
               <TagPicker
                 label={`Tags for the ${singular} being added`}
                 value={createForm.tags}
@@ -176,8 +200,9 @@ export function LibraryCreateDialog({
               />
             </Field>
           </div>
+          </div>
 
-          <form onSubmit={onCreate}className="flex flex-col gap-3 border-t border-hairline bg-surface-1/70 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <form onSubmit={onCreate} className="sticky bottom-0 z-10 flex shrink-0 flex-col md:static gap-3 border-t border-hairline bg-card px-6 py-4 sm:flex-row md:bg-surface-1/70 sm:items-center sm:justify-between">
             <div className="flex flex-col gap-2 text-sm text-muted-foreground">
               <div className="inline-flex min-h-5 flex-wrap items-center gap-x-4 gap-y-2">
                 <label className="inline-flex select-none items-center gap-2"><Checkbox checked={createForm.monitored} onCheckedChange={(monitored) => setCreateForm((current) => ({ ...current, monitored }))} />Monitor it</label>

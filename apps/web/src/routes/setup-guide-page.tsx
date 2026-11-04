@@ -54,6 +54,7 @@ import {
   readErrorText,
   type BundledComponentStatus } from "../lib/api";
 import { metadataCreatePayload } from "../hooks/use-library-create";
+import { mergeMetadataPage, nextMetadataPage } from "../lib/metadata-search-paging";
 import { createRuleFromGuide, guideBundleTargets } from "../lib/guide-formats";
 import { samePath } from "../lib/library-paths";
 import { safeReturnAddress } from "../lib/return-address";
@@ -715,6 +716,10 @@ export function SetupGuidePage() {
   const [result, setResult] = useState<SetupCompletion | null>(null);
   const [metadataResults, setMetadataResults] = useState<MetadataSearchResult[]>([]);
   const [metadataBusy, setMetadataBusy] = useState(false);
+  // The next page of matches for the title last searched, or null when TMDb has no more (#1473).
+  const [metadataNextPage, setMetadataNextPage] = useState<number | null>(null);
+  const [metadataLoadingMore, setMetadataLoadingMore] = useState(false);
+  const lastMetadataSearch = useRef<URLSearchParams | null>(null);
   const [rollbackMessage, setRollbackMessage] = useState<string | null>(null);
   // #1061: the apps the installer put here, and whether the person skipped connecting them. Never blocks the baseline.
   const [installedApps, setInstalledApps] = useState<BundledComponentStatus[]>([]);
@@ -989,6 +994,7 @@ export function SetupGuidePage() {
     setError(null);
     setMetadataBusy(true);
     setMetadataResults([]);
+    setMetadataNextPage(null);
     try {
       const params = new URLSearchParams({
         mediaType: form.firstTitleType,
@@ -997,11 +1003,32 @@ export function SetupGuidePage() {
       if (form.firstTitleYear.trim()) params.set("year", form.firstTitleYear.trim());
       const results = await fetchJson<MetadataSearchResult[]>(`/api/metadata/search?${params.toString()}`);
       setMetadataResults(results);
+      lastMetadataSearch.current = params;
+      setMetadataNextPage(nextMetadataPage(1, results.length));
       if (results.length === 0) setError("No metadata matches were found. You can still add the title manually.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Metadata lookup failed.");
     } finally {
       setMetadataBusy(false);
+    }
+  }
+
+  async function handleMoreMatches() {
+    const page = metadataNextPage;
+    const base = lastMetadataSearch.current;
+    if (page === null || !base || metadataLoadingMore) return;
+    setMetadataLoadingMore(true);
+    try {
+      const params = new URLSearchParams(base);
+      params.set("page", String(page));
+      const more = await fetchJson<MetadataSearchResult[]>(`/api/metadata/search?${params.toString()}`);
+      setMetadataResults((current) => mergeMetadataPage(current, more));
+      setMetadataNextPage(nextMetadataPage(page, more.length));
+      if (more.length === 0) setError("There are no more matches.");
+    } catch (err) {
+      setError(`Could not load more matches. ${err instanceof Error ? err.message : "Please try again."}`);
+    } finally {
+      setMetadataLoadingMore(false);
     }
   }
 
@@ -1201,6 +1228,9 @@ export function SetupGuidePage() {
                 metadataBusy={metadataBusy}
                 existingMetadataConfigured={Boolean(data.metadataStatus?.isConfigured)}
                 onMetadataSearch={() => void handleMetadataSearch()}
+                hasMoreMatches={metadataNextPage !== null}
+                metadataLoadingMore={metadataLoadingMore}
+                onMoreMatches={() => void handleMoreMatches()}
                 onSelectMetadata={selectMetadataResult}
                 route={describeDownloadRoute(liveClients, form, serviceTest.client === "passed")}
               />
@@ -2211,6 +2241,9 @@ function FinishStep({
   metadataBusy,
   existingMetadataConfigured,
   onMetadataSearch,
+  hasMoreMatches,
+  metadataLoadingMore,
+  onMoreMatches,
   onSelectMetadata,
   route
 }: {
@@ -2228,6 +2261,9 @@ function FinishStep({
   metadataBusy: boolean;
   existingMetadataConfigured: boolean;
   onMetadataSearch: () => void;
+  hasMoreMatches: boolean;
+  metadataLoadingMore: boolean;
+  onMoreMatches: () => void;
   onSelectMetadata: (item: MetadataSearchResult) => void;
 }) {
   if (result) {
@@ -2359,8 +2395,9 @@ function FinishStep({
           ) : null}
         </div>
         {metadataResults.length > 0 ? (
-          <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-            {metadataResults.slice(0, 6).map((item) => (
+          <div className="mt-3 max-h-[min(24rem,45dvh)] overflow-y-auto pr-1">
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {metadataResults.map((item) => (
               <button
                 key={`${item.provider}:${item.providerId}`}
                 type="button"
@@ -2381,6 +2418,7 @@ function FinishStep({
                   <span title={item.title} className="block truncate text-sm font-semibold text-foreground">{item.title}</span>
                   <span className="mt-0.5 block text-xs text-muted-foreground">{item.year ?? "Unknown year"} · {item.provider.toUpperCase()}</span>
                   {item.rating ? <span className="mt-1 block text-(length:--type-caption) tabular-nums text-primary">{item.rating.toFixed(1)} rating</span> : null}
+                  {item.overview ? <span className="mt-1 line-clamp-3 block text-xs leading-relaxed text-muted-foreground">{item.overview}</span> : null}
                   {/*
                     The same silence the Add screen had (#424). Setup normally
                     runs against an empty library, but this page is a route like
@@ -2391,6 +2429,15 @@ function FinishStep({
                 </span>
               </button>
             ))}
+          </div>
+          {hasMoreMatches ? (
+            <div className="mt-3 flex justify-center">
+              <Button type="button" variant="secondary" onClick={onMoreMatches} disabled={metadataLoadingMore} className="gap-2">
+                {metadataLoadingMore ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                More matches
+              </Button>
+            </div>
+          ) : null}
           </div>
         ) : null}
       </div>

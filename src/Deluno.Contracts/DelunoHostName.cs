@@ -7,19 +7,19 @@ namespace Deluno.Contracts;
 /// </summary>
 public static class DelunoHostName
 {
-    public static string Current
+    public static string Current => NameFrom(() => Environment.MachineName);
+
+    /// <summary>The name <paramref name="read"/> gives, or "Deluno" when it gives none or cannot be read.</summary>
+    public static string NameFrom(Func<string?> read)
     {
-        get
+        try
         {
-            try
-            {
-                var name = Environment.MachineName;
-                return string.IsNullOrWhiteSpace(name) ? "Deluno" : name;
-            }
-            catch
-            {
-                return "Deluno";
-            }
+            var name = read();
+            return string.IsNullOrWhiteSpace(name) ? "Deluno" : name;
+        }
+        catch
+        {
+            return "Deluno";
         }
     }
 

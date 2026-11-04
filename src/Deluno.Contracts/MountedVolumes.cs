@@ -17,12 +17,23 @@ public static class MountedVolumes
     /// finished test run from exiting for eight minutes. On Windows they are the drive letters, which costs no disk access.
     /// </summary>
     public static IReadOnlyList<string> Roots()
+        => Roots(
+            OperatingSystem.IsLinux(),
+            ReadLinuxMountTable,
+            DriveNames);
+
+    /// <summary>The lines of the Linux mount table.</summary>
+    public static IEnumerable<string> ReadLinuxMountTable() => File.ReadLines(LinuxMountTable);
+
+    /// <summary>The names of the drives, for systems that have them.</summary>
+    public static IEnumerable<string> DriveNames() => DriveInfo.GetDrives().Select(drive => drive.Name);
+
+    /// <summary>The same, with the system's answers handed in so each system's way can be shown on any other.</summary>
+    public static IReadOnlyList<string> Roots(bool isLinux, Func<IEnumerable<string>> mountTable, Func<IEnumerable<string>> drives)
     {
         try
         {
-            return OperatingSystem.IsLinux()
-                ? ParseMountTable(File.ReadLines(LinuxMountTable))
-                : [.. DriveInfo.GetDrives().Select(drive => drive.Name)];
+            return isLinux ? ParseMountTable(mountTable()) : [.. drives()];
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -45,8 +56,11 @@ public static class MountedVolumes
         => RootOf(fullPath, roots, PathComparison);
 
     /// <summary>How this system compares folder names: without case on Windows, with case elsewhere.</summary>
-    public static StringComparison PathComparison
-        => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+    public static StringComparison PathComparison => PathComparisonFor(OperatingSystem.IsWindows());
+
+    /// <summary>The same, once it is known whether this is Windows.</summary>
+    public static StringComparison PathComparisonFor(bool isWindows)
+        => isWindows ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
     public static string? RootOf(string fullPath, IReadOnlyList<string> roots, StringComparison comparison)
         => roots

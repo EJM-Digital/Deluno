@@ -31,7 +31,9 @@ public sealed class MetadataSearchAndDiscoverOnTheRecordedGatewayTests
             string? state = null;
             if (path == "/metadata/search")
             {
-                state = query.Contains("Zzqxjv", StringComparison.Ordinal) ? "search-no-results"
+                state = query.Contains("query=Kickboxer", StringComparison.Ordinal)
+                        ? (query.Contains("page=2", StringComparison.Ordinal) ? "search-movie-kickboxer-page2" : "search-movie-kickboxer-page1")
+                    : query.Contains("Zzqxjv", StringComparison.Ordinal) ? "search-no-results"
                     : query.Contains("mediaType=tv", StringComparison.Ordinal) ? "search-tv" : "search-movie";
             }
             else if (path == "/metadata/tv/popular") state = "popular-tv";
@@ -67,6 +69,25 @@ public sealed class MetadataSearchAndDiscoverOnTheRecordedGatewayTests
         Assert.False(string.IsNullOrWhiteSpace(match.GetProperty("posterUrl").GetString()));
         Assert.Equal(JsonValueKind.Null, match.GetProperty("libraryEntryId").ValueKind);
         Assert.Contains(replay.Asked, asked => asked.StartsWith("/metadata/search?", StringComparison.Ordinal) && asked.Contains("query=Sintel", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Searching_a_film_with_many_matches_lists_the_whole_page_and_asks_the_gateway_for_the_page_it_was_given()
+    {
+        var replay = new GatewayReplay();
+        await using var app = await StartAsync(replay);
+
+        var one = await (await app.Client.GetAsync("/api/metadata/search?mediaType=movies&query=Kickboxer")).Content.ReadFromJsonAsync<JsonElement>();
+        var two = await (await app.Client.GetAsync("/api/metadata/search?mediaType=movies&query=Kickboxer&page=2")).Content.ReadFromJsonAsync<JsonElement>();
+        await app.Client.GetAsync("/api/metadata/search?mediaType=movies&query=Kickboxer&page=0");
+        await app.Client.GetAsync("/api/metadata/search?mediaType=movies&query=Kickboxer&page=9999");
+
+        Assert.Equal(20, one.GetArrayLength());
+        Assert.Equal(20, two.GetArrayLength());
+        Assert.Contains(replay.Asked, asked => asked.Contains("query=Kickboxer&page=1", StringComparison.Ordinal));
+        Assert.Contains(replay.Asked, asked => asked.Contains("query=Kickboxer&page=2", StringComparison.Ordinal));
+        Assert.Contains(replay.Asked, asked => asked.Contains("query=Kickboxer&page=500", StringComparison.Ordinal));
+        Assert.DoesNotContain(replay.Asked, asked => asked.Contains("page=0", StringComparison.Ordinal) || asked.Contains("page=9999", StringComparison.Ordinal));
     }
 
     [Fact]

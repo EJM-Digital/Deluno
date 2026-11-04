@@ -43,7 +43,10 @@ public sealed class MetadataGatewayOnRecordingsTests : IDisposable
         {
             var tv = query.Contains("mediaType=tv", StringComparison.Ordinal);
             var exact = query.Contains("providerId=", StringComparison.Ordinal);
-            state = query.Contains("providerId=999999999", StringComparison.Ordinal) ? "search-provider-record-missing"
+            var page = query.Contains("page=2", StringComparison.Ordinal) ? 2 : 1;
+            state = query.Contains("query=Kickboxer", StringComparison.Ordinal) ? $"search-movie-kickboxer-page{page}"
+                : query.Contains("query=Love", StringComparison.Ordinal) ? (tv ? "search-tv-love-page1" : $"search-movie-love-page{page}")
+                : query.Contains("providerId=999999999", StringComparison.Ordinal) ? "search-provider-record-missing"
                 : query.Contains("Zzqxjv", StringComparison.Ordinal) ? "search-no-results"
                 : tv ? (exact ? "search-tv-by-provider-id" : "search-tv")
                 : exact ? "search-movie-by-provider-id" : "search-movie";
@@ -118,6 +121,112 @@ public sealed class MetadataGatewayOnRecordingsTests : IDisposable
 
         Assert.Equal(400, refused.Status);
         Assert.Equal("invalid_request", (string?)refused.Json()["error"]);
+    }
+
+    // ---- the whole page, and the next one (#1473) ----
+
+    private static MetadataLookupRequest Page(string title, int page, string mediaType = "movies")
+        => new(title, mediaType, null, null, null, page);
+
+    [Fact]
+    public void The_recorded_pages_are_the_whole_page_of_twenty_with_the_gateways_page_numbers()
+    {
+        foreach (var (state, matches, page, pages, total) in new[]
+        {
+            ("search-movie-kickboxer-page1", 20, 1, 4, 78),
+            ("search-movie-kickboxer-page2", 20, 2, 4, 78),
+            ("search-movie-love-page1", 20, 1, 500, 10000),
+            ("search-movie-love-page2", 20, 2, 500, 10000),
+            ("search-tv-love-page1", 20, 1, 257, 5132)
+        })
+        {
+            var body = R(state).Single.Reply.Json();
+            Assert.Equal(matches, (int)body["resultCount"]!);
+            Assert.Equal(MetadataSearchPaging.PageSize, matches);
+            Assert.Equal(page, (int)body["page"]!);
+            Assert.Equal(pages, (int)body["totalPages"]!);
+            Assert.Equal(total, (int)body["totalResults"]!);
+        }
+    }
+
+    [Fact]
+    public async Task A_title_with_many_films_shows_every_match_of_the_page_not_the_first_six_or_twelve()
+    {
+        var rig = await RigAsync(Gateway);
+
+        var results = await rig.SearchAsync(Page("Kickboxer", 1), CancellationToken.None);
+
+        Assert.Equal(20, results.Count);
+        foreach (var title in new[] { "Kickboxer 2: The Road Back", "Kickboxer 3: The Art of War", "Kickboxer 4: The Aggressor", "The Redemption: Kickboxer 5" })
+        {
+            Assert.Contains(results, result => result.Title == title);
+        }
+        Assert.Equal(results.Count, results.Select(result => result.ProviderId).Distinct().Count());
+    }
+
+    [Fact]
+    public async Task The_next_page_asks_the_gateway_for_that_page_and_adds_matches_the_first_page_did_not_have()
+    {
+        var asked = new List<string>();
+        var rig = await RigAsync(request => { asked.Add(request.RequestUri!.Query); return Gateway(request); });
+
+        var first = await rig.SearchAsync(Page("Kickboxer", 1), CancellationToken.None);
+        var second = await rig.SearchAsync(Page("Kickboxer", 2), CancellationToken.None);
+
+        Assert.Equal(20, first.Count);
+        Assert.Equal(20, second.Count);
+        Assert.Empty(first.Select(result => result.ProviderId).Intersect(second.Select(result => result.ProviderId)));
+        Assert.Contains(asked, query => query.Contains("page=1", StringComparison.Ordinal));
+        Assert.Contains(asked, query => query.Contains("page=2", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Each_page_is_remembered_under_its_own_key_so_a_repeat_does_not_reach_the_gateway_and_page_two_is_never_page_one()
+    {
+        var searches = 0;
+        var rig = await RigAsync(request => { if (request.RequestUri!.AbsolutePath == "/metadata/search") searches++; return Gateway(request); });
+
+        var one = await rig.SearchAsync(Page("Kickboxer", 1), CancellationToken.None);
+        var two = await rig.SearchAsync(Page("Kickboxer", 2), CancellationToken.None);
+        var oneAgain = await rig.SearchAsync(Page("Kickboxer", 1), CancellationToken.None);
+        var twoAgain = await rig.SearchAsync(Page("Kickboxer", 2), CancellationToken.None);
+
+        Assert.Equal(2, searches);
+        Assert.Equal(one.Select(r => r.ProviderId), oneAgain.Select(r => r.ProviderId));
+        Assert.Equal(two.Select(r => r.ProviderId), twoAgain.Select(r => r.ProviderId));
+        Assert.NotEqual(one.Select(r => r.ProviderId), two.Select(r => r.ProviderId));
+    }
+
+    [Fact]
+    public async Task A_search_for_a_film_with_thousands_of_matches_and_one_for_a_show_both_return_a_page_of_twenty()
+    {
+        var rig = await RigAsync(Gateway);
+
+        var filmsOne = await rig.SearchAsync(Page("Love", 1), CancellationToken.None);
+        var filmsTwo = await rig.SearchAsync(Page("Love", 2), CancellationToken.None);
+        var shows = await rig.SearchAsync(Page("Love", 1, "tv"), CancellationToken.None);
+
+        Assert.Equal(20, filmsOne.Count);
+        Assert.Equal(20, filmsTwo.Count);
+        Assert.Equal(20, shows.Count);
+        Assert.All(shows, show => Assert.Equal("tv", show.MediaType));
+        // TMDb's pages shift while people search, so the recorded second page repeats four films of the first: the Add screen drops a repeat.
+        Assert.Equal(4, filmsOne.Select(r => r.ProviderId).Intersect(filmsTwo.Select(r => r.ProviderId)).Count());
+    }
+
+    [Fact]
+    public void A_page_past_the_last_the_gateway_refuses_is_a_400_and_the_endpoint_never_sends_one()
+    {
+        var refused = R("search-bad-page").Single.Reply;
+
+        Assert.Equal(400, refused.Status);
+        Assert.Equal("invalid_request", (string?)refused.Json()["error"]);
+        Assert.Equal(1, MetadataSearchPaging.Clamp(null));
+        Assert.Equal(1, MetadataSearchPaging.Clamp(0));
+        Assert.Equal(1, MetadataSearchPaging.Clamp(-4));
+        Assert.Equal(7, MetadataSearchPaging.Clamp(7));
+        Assert.Equal(500, MetadataSearchPaging.Clamp(500));
+        Assert.Equal(500, MetadataSearchPaging.Clamp(501));
     }
 
     // ---- one exact record: refresh and the metadata link preview ----

@@ -213,14 +213,9 @@ public static class ReleaseTermPattern
             return null;
         }
 
-        try
-        {
-            return new Regex(pattern, options, TimeSpan.FromSeconds(5));
-        }
-        catch (ArgumentException)
-        {
-            return null;
-        }
+        // The pattern parsed above, so only a feature the linear engine lacks (a look-around or a
+        // back-reference) brought it here; the backtracking engine takes it, with a limit on the time.
+        return new Regex(pattern, options, TimeSpan.FromSeconds(5));
     }
 
     private static RegexOptions ToOptions(string modifiers)
@@ -234,8 +229,8 @@ public static class ReleaseTermPattern
                 'm' => RegexOptions.Multiline,
                 's' => RegexOptions.Singleline,
                 'x' => RegexOptions.IgnorePatternWhitespace,
-                'n' => RegexOptions.ExplicitCapture,
-                _ => RegexOptions.None
+                // 'n': every caller has already refused any other letter.
+                _ => RegexOptions.ExplicitCapture
             };
         }
 
