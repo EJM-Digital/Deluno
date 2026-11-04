@@ -75,6 +75,66 @@ public sealed class ADeadTorrentThatFlipsThroughCheckingKeepsItsStrikesTests
         }
     }
 
+    /// <summary>
+    /// The checking reading is each client's own recorded reply, read by the client's real status normaliser, not
+    /// Deluno's status written by hand: qBittorrent 5.2.1's <c>checkingDL</c> after a recheck, and Transmission 4.1.3's
+    /// verifying (2) and queued-to-verify (1) torrents. The dead torrent flips stalled, checking, stalled, checking,
+    /// stalled with no bytes gained and still reaches its third strike.
+    /// </summary>
+    [Theory]
+    [InlineData("qbittorrent", "checking-download")]
+    [InlineData("transmission", "verifying")]
+    [InlineData("transmission", "queued-to-verify")]
+    public async Task A_recorded_checking_reading_from_the_client_holds_the_strikes_of_a_dead_torrent(string app, string state)
+    {
+        var readings = RecordedStatuses(app, state);
+        // The recorded torrents are the ones being checked or waiting to be: each must read as a pause, none as downloading.
+        var pause = Assert.Single(readings.Where(reading => DownloadHealthStrikes.PausesTransferFindings(reading, 0)).Distinct().Take(1));
+
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(Start);
+        var repository = await RepositoryAsync(storage, time);
+        var torrent = RecordedTorrent("stalled");
+        var rules = new[] { NoProgressRule() };
+        var strikes = new List<int>();
+        foreach (var status in new[] { "stalled", pause, "stalled", pause, "stalled" })
+        {
+            await repository.ObserveDownloadProgressAsync(ClientId, [(torrent.Hash, torrent.Downloaded)], CancellationToken.None);
+            await ReadAsync(repository, time, torrent, status, rules);
+            strikes.Add((await repository.ListDownloadHealthRecordsAsync(10, CancellationToken.None)).Single().StrikeCount);
+            time.Advance(Step);
+        }
+
+        Assert.Equal([1, 1, 2, 2, 3], strikes);
+    }
+
+    private static IReadOnlyList<string> RecordedStatuses(string app, string state)
+    {
+        var statuses = new List<string>();
+        if (app == "qbittorrent")
+        {
+            var client = new QbittorrentDownloadClient();
+            var recording = RecordedReplies.Qbittorrent(state);
+            foreach (var row in JsonNode.Parse(recording.Body("torrents/info"))!.AsArray())
+            {
+                statuses.Add(client.NormalizeStatus(row!["state"]!.GetValue<string>(), row["progress"]!.GetValue<double>(), null, null));
+            }
+        }
+        else
+        {
+            var client = new TransmissionDownloadClient(null!);
+            foreach (var exchange in RecordedReplies.Transmission(state).Exchanges.Where(e => e.Reply.Body?.Contains("\"torrents\"") == true))
+            {
+                foreach (var row in JsonNode.Parse(exchange.Reply.Body!)!["arguments"]!["torrents"]!.AsArray())
+                {
+                    statuses.Add(client.NormalizeStatus(row!["status"]!.GetValue<int>().ToString(), row["percentDone"]!.GetValue<double>(), null, null));
+                }
+            }
+        }
+
+        return statuses;
+    }
+
     [Fact]
     public void The_recorded_queued_torrent_reads_as_a_pause_and_the_recorded_stalled_one_does_not()
     {
