@@ -333,9 +333,9 @@ export function IndexerDrawerBody({
             </Field>
           </FieldRow>
           {form.protocol !== "newznab" ? (
-            <Field label="Minimum seeders" error={errors.minimumSeeders} help="0 means no minimum. 2 or 3 is recommended: a torrent with fewer seeders than this is refused before it can be grabbed.">
+            <Field label="Minimum seeders" error={errors.minimumSeeders} help="0 means no minimum, so even a torrent nobody is sharing can be grabbed. 1, the default, refuses only those. 2 or 3 is recommended.">
               <div className="flex items-center gap-2">
-                <Input type="number" min="0" step="1" value={form.minimumSeeders} onChange={(event) => { clearError("minimumSeeders"); setForm((current) => ({ ...current, minimumSeeders: event.target.value })); }} placeholder="No minimum" />
+                <Input type="number" min="0" step="1" value={form.minimumSeeders} onChange={(event) => { clearError("minimumSeeders"); setForm((current) => ({ ...current, minimumSeeders: event.target.value })); }} placeholder="1" />
                 <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">seeders</span>
               </div>
             </Field>

@@ -47,7 +47,7 @@ public sealed class TurnedDownReasonsTests
     // too few people sharing it
     [InlineData("No one is seeding this torrent, so it cannot download.", TurnedDownGroups.FewSeeders)]
     [InlineData("No seeders were reported.", TurnedDownGroups.FewSeeders)]
-    [InlineData("Release has 2 seeder(s), below this indexer's configured minimum of 5.", TurnedDownGroups.FewSeeders)]
+    [InlineData("Release has 2 seeder(s), under this indexer's minimum of 5.", TurnedDownGroups.FewSeeders)]
     [InlineData("Very low seed count may stall or fail.", TurnedDownGroups.FewSeeders)]
     // bigger than the size limit
     [InlineData("Release size exceeds this indexer's 4000 MB maximum.", TurnedDownGroups.TooBig)]

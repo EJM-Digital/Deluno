@@ -406,25 +406,25 @@ public static partial class ReleaseDecisionEngine
         }
 
         var seederScore = ScoreSeeders(input.Seeders, risks, reasons);
-        // A torrent nobody seeds never downloads (#611). It stays in a manual
-        // search with this reason, where a person can still force it.
-        if (input.Seeders == 0 && DownloadProtocols.SourceKind(input.IndexerProtocol) == DownloadProtocols.Torrent)
-        {
-            // It leads the reasons like any refusal, so a person never reads the quality line as why it was refused (#1159).
-            hardReject = true;
-            refusals.Add("No one is seeding this torrent, so it cannot download.");
-            rejectionGate ??= "No one is seeding this torrent, so it cannot download.";
-        }
-
-        // #738: a per-indexer seeder floor, stricter than the always-on
-        // zero-seeder gate above. Usenet has no seeder count, so this only
-        // ever applies to torrents.
-        if (input.MinimumSeeders is > 0
-            && DownloadProtocols.SourceKind(input.IndexerProtocol) == DownloadProtocols.Torrent
+        // The indexer's own minimum is the only seeder rule (#1484). 0 means off, so even a torrent nobody
+        // shares can be grabbed; a blank (old data) reads as 1, so nothing loosens. An unknown count and Usenet
+        // are never refused by it. A refused torrent stays in a manual search, where a person can still force it.
+        if (DownloadProtocols.SourceKind(input.IndexerProtocol) == DownloadProtocols.Torrent
             && input.Seeders is { } seederCount
-            && seederCount < input.MinimumSeeders.Value)
+            && input.MinimumSeeders.GetValueOrDefault(DefaultMinimumSeeders) is var minimumSeeders
+            && seederCount < minimumSeeders)
         {
-            Refuse($"Release has {seederCount} seeder(s), below this indexer's configured minimum of {input.MinimumSeeders.Value}.");
+            if (seederCount == 0 && minimumSeeders == DefaultMinimumSeeders)
+            {
+                // It leads the reasons like any refusal, so a person never reads the quality line as why it was refused (#1159).
+                hardReject = true;
+                refusals.Add("No one is seeding this torrent, so it cannot download.");
+                rejectionGate ??= "No one is seeding this torrent, so it cannot download.";
+            }
+            else
+            {
+                Refuse($"Release has {seederCount} seeder(s), under this indexer's minimum of {minimumSeeders}.");
+            }
         }
 
         var sizeScore = ScoreSize(input.SizeBytes, normalizedCandidate, input.SizeRules, IsSingleEpisode(input.MediaType, input.ReleaseName), input.RuntimeMinutes, risks, reasons, out var estimatedBitrate, out var sizeOutOfRange);
@@ -736,6 +736,9 @@ public static partial class ReleaseDecisionEngine
 
     public static int QualityRank(string? quality)
         => LibraryQualityDecider.GetRank(quality);
+
+    /// <summary>What a torrent indexer with no stored minimum is read as (#1484).</summary>
+    public const int DefaultMinimumSeeders = 1;
 
     private static int ScoreSeeders(int? seeders, ICollection<string> risks, ICollection<string> reasons)
     {

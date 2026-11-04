@@ -375,3 +375,12 @@ describe("connection names (#1076)", () => {
     expect(indexerFormErrors(emptyIndexerForm(), true)).not.toHaveProperty("name");
   });
 });
+
+describe("a new indexer's Minimum seeders (#1484)", () => {
+  it("starts at 1, while a saved indexer shows what it has, blank and 0 included", () => {
+    expect(emptyIndexerForm().minimumSeeders).toBe("1");
+    expect(indexerFormFrom({ ...savedIndexer(), minimumSeeders: null }).minimumSeeders).toBe("");
+    expect(indexerFormFrom({ ...savedIndexer(), minimumSeeders: 0 }).minimumSeeders).toBe("0");
+    expect(indexerFormFrom({ ...savedIndexer(), minimumSeeders: 3 }).minimumSeeders).toBe("3");
+  });
+});

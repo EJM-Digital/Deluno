@@ -404,7 +404,7 @@ public sealed class ReleaseDecisionEngineTests
         var decision = ReleaseDecisionEngine.Decide(GoodInput(seeders: 4, minimumSeeders: 5));
 
         Assert.Equal("rejected", decision.Status);
-        Assert.Contains(decision.RiskFlags, r => r.Contains("below this indexer's configured minimum of 5", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(decision.RiskFlags, r => r.Contains("under this indexer's minimum of 5", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -415,10 +415,55 @@ public sealed class ReleaseDecisionEngineTests
         Assert.NotEqual("rejected", decision.Status);
     }
 
-    [Fact]
-    public void Decide_leaves_seeders_unrestricted_when_minimum_is_not_set()
+    // #1484: the indexer's minimum is the only seeder rule. Every cell of the table in the issue.
+    [Theory]
+    [InlineData(0, 0, false)] [InlineData(0, 1, false)] [InlineData(0, 2, false)] [InlineData(0, 3, false)]
+    [InlineData(1, 0, true)] [InlineData(1, 1, false)] [InlineData(1, 2, false)] [InlineData(1, 3, false)]
+    [InlineData(2, 0, true)] [InlineData(2, 1, true)] [InlineData(2, 2, false)] [InlineData(2, 3, false)]
+    [InlineData(3, 0, true)] [InlineData(3, 1, true)] [InlineData(3, 2, true)] [InlineData(3, 3, false)]
+    public void Decide_refuses_a_torrent_only_when_it_has_fewer_seeders_than_the_indexer_minimum(int minimum, int seeders, bool refused)
     {
-        var decision = ReleaseDecisionEngine.Decide(GoodInput(seeders: 1, minimumSeeders: null));
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(seeders: seeders, minimumSeeders: minimum));
+
+        Assert.Equal(refused, decision.Status == "rejected");
+        if (refused)
+        {
+            Assert.Equal(
+                seeders == 0 && minimum == 1
+                    ? "No one is seeding this torrent, so it cannot download."
+                    : $"Release has {seeders} seeder(s), under this indexer's minimum of {minimum}.",
+                decision.Reasons[0]);
+        }
+    }
+
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    public void Decide_reads_a_blank_minimum_as_1(int seeders, bool refused)
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(seeders: seeders, minimumSeeders: null));
+
+        Assert.Equal(refused, decision.Status == "rejected");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0)]
+    [InlineData(5)]
+    public void Decide_never_refuses_an_unknown_seeder_count_on_the_minimum(int? minimum)
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(seeders: null, minimumSeeders: minimum));
+
+        Assert.NotEqual("rejected", decision.Status);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(1)]
+    [InlineData(5)]
+    public void Decide_never_refuses_a_usenet_release_on_the_minimum(int? minimum)
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(seeders: 0, minimumSeeders: minimum, indexerProtocol: "newznab"));
 
         Assert.NotEqual("rejected", decision.Status);
     }
