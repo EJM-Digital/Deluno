@@ -79,7 +79,7 @@ import { cn } from "../lib/utils";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { plural } from "../lib/plural";
 
-const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")?.items ?? [];
+const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")!.items;
 
 interface LoaderData {
   libraries: LibraryItem[];
@@ -198,6 +198,8 @@ export function SettingsProfilesPage() {
   const [advancedPlanOpen, setAdvancedPlanOpen] = useState(false);
 
   const isOpen = mode.kind !== "closed";
+  /** Only the Delete button of an open saved profile opens the confirmation, so this is a real id whenever it is used. */
+  const removeId = mode.kind === "edit" ? mode.id : "";
   const editing = mode.kind === "edit" ? qualityProfiles.find((profile) => profile.id === mode.id) ?? null : null;
   const dirty = useMemo(() => isOpen && !sameForm(form, initialForm), [isOpen, form, initialForm]);
   const footerState: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
@@ -365,7 +367,6 @@ export function SettingsProfilesPage() {
   }
 
   function addTier(name: string) {
-    if (!name) return;
     setErrors((current) => ({ ...current, allowed: undefined }));
     setForm((current) => {
       // Keep storage order least → most preferred, by rank.
@@ -385,13 +386,9 @@ export function SettingsProfilesPage() {
       const display = [...current.allowed].reverse();
       const index = display.indexOf(name);
       const target = index + direction;
-      if (index < 0 || target < 0 || target >= display.length) return current;
       [display[index], display[target]] = [display[target]!, display[index]!];
       return { ...current, allowed: display.reverse() };
     });
-  }
-  function toggleFormat(id: string) {
-    setForm((current) => ({ ...current, customFormatIds: current.customFormatIds.includes(id) ? current.customFormatIds.filter((item) => item !== id) : [...current.customFormatIds, id] }));
   }
 
   /* ---------------------------------------------------------- saving */
@@ -449,12 +446,14 @@ export function SettingsProfilesPage() {
       const response = await authedFetch(mode.kind === "edit" ? `/api/quality-profiles/${mode.id}` : "/api/quality-profiles", { method: mode.kind === "edit" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!response.ok) {
         const problem = await readValidationProblem(response.clone());
-        const validationMessage = problem?.errors?.allowedQualities?.[0] ?? problem?.errors?.cutoffQuality?.[0];
-        if (problem?.errors?.allowedQualities?.[0] || problem?.errors?.cutoffQuality?.[0]) {
+        const allowedProblem = problem?.errors?.allowedQualities?.[0];
+        const cutoffProblem = problem?.errors?.cutoffQuality?.[0];
+        const validationMessage = allowedProblem ?? cutoffProblem;
+        if (validationMessage) {
           setErrors((current) => ({
             ...current,
-            allowed: problem.errors?.allowedQualities?.[0] ?? current.allowed,
-            cutoff: problem.errors?.cutoffQuality?.[0] ?? current.cutoff
+            allowed: allowedProblem ?? current.allowed,
+            cutoff: cutoffProblem ?? current.cutoff
           }));
         }
         throw new Error(validationMessage ?? (mode.kind === "edit" ? "Profile could not be saved." : "Profile could not be created."));
@@ -476,10 +475,9 @@ export function SettingsProfilesPage() {
   }
 
   async function handleRemove() {
-    if (mode.kind !== "edit") return;
     setBusy(true);
     try {
-      const response = await authedFetch(`/api/quality-profiles/${mode.id}`, { method: "DELETE" });
+      const response = await authedFetch(`/api/quality-profiles/${removeId}`, { method: "DELETE" });
       if (!response.ok && response.status !== 204) throw new Error(await readErrorText(response, "Profile could not be removed."));
       toast.success(`${editing?.name ?? "Profile"} removed`);
       setConfirmRemove(false);
@@ -1089,7 +1087,7 @@ export function baselineStarterFor(starters: ProfileStarter[], mediaType: "movie
 function defaultForm(
   starters: ProfileStarter[],
   mediaType: "movies" | "tv" = "movies",
-  guide?: GuidePackage,
+  guide: GuidePackage,
   existingFormats: CustomFormatItem[] = []
 ): ProfileForm {
   const blank: ProfileForm = {
@@ -1114,7 +1112,7 @@ function defaultForm(
   // Only the ones that already exist as formats here — the rest are created on
   // save by ensureRecommendedFormats, and a checklist cannot show an answer
   // pointing at a row that does not exist yet.
-  const recommended = guide ? recommendedFormatsFor(balanced.id, guide) : [];
+  const recommended = recommendedFormatsFor(balanced.id, guide);
   const byTrashId = new Map(
     existingFormats
       .filter((format) => format.trashId && format.mediaType === mediaType)
@@ -1391,7 +1389,7 @@ function humanizePreferenceFamily(value: string) {
 }
 
 function humanizeTrait(value: string) {
-  return humanizePreferenceFamily(value.split(".").slice(-1)[0] ?? value);
+  return humanizePreferenceFamily(value.slice(value.lastIndexOf(".") + 1));
 }
 
 function humanizeLevel(family: ReleasePreferencePlanCompilation["plan"]["families"][number], levelId: string) {
