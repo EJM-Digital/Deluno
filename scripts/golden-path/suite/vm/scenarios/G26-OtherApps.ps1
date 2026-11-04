@@ -971,3 +971,90 @@ function Invoke-GroupTrayTryAgain {
         }
     }
 }
+
+function Set-PickerBox {
+    param([Parameter(Mandatory)] $Window, [Parameter(Mandatory)] [string] $Name, [Parameter(Mandatory)] [AllowEmptyString()] [string] $Value)
+    $box = Get-WindowControls -Window $Window | Where-Object { $_.Type -eq 'Edit' -and $_.Name -eq $Name } | Select-Object -First 1
+    if (-not $box) { return $false }
+    $box.Element.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($Value)
+    $true
+}
+
+function Invoke-PickerUsenetLoginAndSubset {
+    param([Parameter(Mandatory)] [string] $CandidateVersion)
+    Invoke-Scenario -Id 'picker.usenet-login-and-subset' -Title "The picker with only NZBGet ticked: the Usenet login is asked for, an empty login and an unsafe one are refused in words with the window still open and nothing installed, a good one is accepted once and written to NZBGet's own settings, only NZBGet is installed, the finish screen offers Open Deluno, and the browser opens only if that is pressed" -Body {
+        # A machine with none of the clients: the previous release, installed without the picker.
+        $ctx = Start-PreviousForUpdate -CandidateVersion $CandidateVersion
+        if (-not $ctx) { return }
+        $dataRoot = Join-Path $env:LOCALAPPDATA 'DelunoData'
+        $pending = Join-Path $dataRoot 'config\pending-component-installs.json'
+        $hadPending = Test-Path $pending
+        $pendingBefore = if ($hadPending) { Get-Content -Raw $pending } else { $null }
+        $title = '^Set up download clients and Weir$'
+        $conf = Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'NZBGet\nzbget.conf'
+        $user = 'golden-nzb'
+        $password = 'Gp-Nzb-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
+        $watching = $false
+        try {
+            $o = Open-PickerByAsk -Pending $pending -Title $title
+            Add-Check 'The picker opens when NZBGet is asked for' ($o.Ask.Status -eq 202 -and $null -ne $o.Window) $(if ($o.Window) { "HTTP $($o.Ask.Status)" } else { 'windows: ' + (Format-DesktopWindows) })
+            $dlg = $o.Window
+            if (-not $dlg) { return }
+            Save-Evidence -Name 'picker-controls-at-open.txt' -Text ((Get-WindowControls -Window $dlg | ForEach-Object { "$($_.Type) | $($_.Name) | enabled=$($_.Enabled) offscreen=$($_.Offscreen)" }) -join "`n")
+            $r0 = $dlg.Element.Current.BoundingRectangle
+            Save-Evidence -Name 'picker-window-rect.txt' -Text ("window {0},{1} {2}x{3}" -f $r0.X, $r0.Y, $r0.Width, $r0.Height)
+            $rows = @(Get-WindowControls -Window $dlg | Where-Object { $_.Type -eq 'CheckBox' -and $_.Name -match '\(' })
+            $stateOf = { param($r) try { "$($r.Element.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState)" } catch { 'unknown' } }
+            $ticked = @($rows | Where-Object { (& $stateOf $_) -eq 'On' } | ForEach-Object { ($_.Name -split ' ')[0] })
+            Add-Check 'Only NZBGet is ticked (a subset: the other apps are left alone)' (($ticked -join ',') -eq 'NZBGet') "ticked: $($ticked -join ', ')"
+            $text = Get-WindowText -Window $dlg
+            Add-Check 'The Usenet login is asked for (NZBGet username and password boxes)' ($text -match 'NZBGet username' -and $text -match 'NZBGet password' -or @(Get-WindowControls -Window $dlg | Where-Object { $_.Type -eq 'Edit' -and $_.Name -like 'NZBGet*' }).Count -ge 2) ''
+
+            # An empty login is refused in words, and the window stays.
+            Click-WindowButton -Window $dlg -NamePattern '^Install selected$' | Out-Null
+            Start-Sleep -Seconds 2 # reason: UI settle after input; Windows raises no event for it
+            $stillOpen = Wait-DesktopWindow -NamePattern $title -Process 'Deluno' -TimeoutSec 5
+            if ($stillOpen) { Save-Evidence -Name 'picker-controls-after-empty-install.txt' -Text ((Get-WindowControls -Window $stillOpen | ForEach-Object { "$($_.Type) | $($_.Name) | enabled=$($_.Enabled) offscreen=$($_.Offscreen)" }) -join "`n") }
+            $says = if ($stillOpen) { Get-WindowText -Window $stillOpen } else { '' }
+            Add-Check 'An empty login is refused in words and the window stays open' ($null -ne $stillOpen -and $says -match 'Choose a username and a password for NZBGet') $says
+            # A login with a quote in it is refused too.
+            [void](Set-PickerBox -Window $stillOpen -Name 'NZBGet username' -Value "bad'name")
+            [void](Set-PickerBox -Window $stillOpen -Name 'NZBGet password' -Value 'Whatever-1234')
+            Click-WindowButton -Window $stillOpen -NamePattern '^Install selected$' | Out-Null
+            Start-Sleep -Seconds 2 # reason: UI settle after input; Windows raises no event for it
+            $again = Wait-DesktopWindow -NamePattern $title -Process 'Deluno' -TimeoutSec 5
+            Add-Check 'A login with a quote in it is refused in words and the window stays open' ($null -ne $again -and (Get-WindowText -Window $again) -match 'NZBGet') ''
+            Add-Check 'Nothing was installed by the refusals' (-not (Test-Path $conf)) $conf
+            if (-not $again) { return }
+
+            # A good login is accepted.
+            [void](Set-PickerBox -Window $again -Name 'NZBGet username' -Value $user)
+            [void](Set-PickerBox -Window $again -Name 'NZBGet password' -Value $password)
+            Start-EdgeLaunchWatch; $watching = $true
+            Click-WindowButton -Window $again -NamePattern '^Install selected$' | Out-Null
+            $finished = Wait-Until -TimeoutSec 1200 -IntervalSec 5 -Condition {
+                $w = Wait-DesktopWindow -NamePattern $title -Process 'Deluno' -TimeoutSec 2
+                if ($w -and @(Get-WindowControls -Window $w | Where-Object { $_.Type -eq 'Button' -and $_.Name -eq 'Open Deluno' -and -not $_.Offscreen }).Count -gt 0) { $w } else { $null }
+            }
+            Add-Check 'The install finishes and the finish screen offers Open Deluno and Close' ($finished.Ok -and @(Get-WindowControls -Window $finished.Value | Where-Object { $_.Type -eq 'Button' -and $_.Name -eq 'Close' }).Count -gt 0) $(if ($finished.Ok) { Get-WindowText -Window $finished.Value } else { 'windows: ' + (Format-DesktopWindows) })
+            if (-not $finished.Ok) { return }
+            Add-Check 'The browser was not opened by itself' ((Get-EdgeLaunchCount) -eq 0) "$(Get-EdgeLaunchCount) browser start(s)"
+            $confText = if (Test-Path $conf) { Get-Content -Raw $conf } else { '' }
+            Add-Check 'The login was written to NZBGet''s own settings' ($confText -match "(?m)^ControlUsername=$([regex]::Escape($user))\s*$" -and $confText -match "(?m)^ControlPassword=$([regex]::Escape($password))\s*$") $conf
+            $log = Join-Path $env:LOCALAPPDATA 'Deluno\logs\install-hook.log'
+            $logs = @($log, (Join-Path $env:LOCALAPPDATA 'Deluno\logs\component-installs.log') | Where-Object { Test-Path $_ } | ForEach-Object { Get-Content -Raw $_ })
+            Add-Check 'The password is never printed in the install log' (@($logs | Where-Object { $_ -match [regex]::Escape($password) }).Count -eq 0) ''
+            $others = @('qbittorrent', 'transmission', 'deluge', 'sabnzbd') | Where-Object { Get-NetTCPConnection -State Listen -LocalPort @{ qbittorrent = 8081; transmission = 9091; deluge = 8112; sabnzbd = 8080 }[$_] -ErrorAction SilentlyContinue }
+            $nzb = Wait-Until -TimeoutSec 120 -IntervalSec 3 -Condition { Get-NetTCPConnection -State Listen -LocalPort 6789 -ErrorAction SilentlyContinue }
+            Add-Check 'Only NZBGet was installed: it answers, and none of the other clients does' ($nzb.Ok -and @($others).Count -eq 0) "others answering: $(@($others) -join ', ')"
+            Click-WindowButton -Window $finished.Value -NamePattern '^Open Deluno$' | Out-Null
+            $opened = Wait-Until -TimeoutSec 30 -IntervalSec 1 -Condition { if ((Get-EdgeLaunchCount) -ge 1) { $true } else { $null } }
+            Add-Check 'Pressing Open Deluno opens the browser' $opened.Ok ''
+        }
+        finally {
+            if ($watching) { Stop-EdgeLaunchWatch }
+            foreach ($w in @(Get-DesktopWindows | Where-Object { $_.Process -eq 'Deluno' -and $_.Name -match 'Set up download clients|Third-party licences' })) { Close-DesktopWindow -Window $w }
+            if ($hadPending) { Set-Content -LiteralPath $pending -Value $pendingBefore -Encoding utf8 } else { Remove-Item -LiteralPath $pending -ErrorAction SilentlyContinue }
+        }
+    }
+}
