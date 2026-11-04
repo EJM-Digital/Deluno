@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { cleanup, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -128,6 +130,76 @@ describe("the title search in the Add dialog", () => {
 
     await waitFor(() => expect(mocks.toast.warning).toHaveBeenCalledWith("The metadata service is not answering right now.", { description: "You can still add the title by hand." }));
     expect(mocks.toast.info).not.toHaveBeenCalledWith("No metadata matches found.");
+  });
+});
+
+// The gateway's own recorded replies for Kickboxer (78 matches, 20 to a page): the results of each page, as Deluno's endpoint passes them on.
+const recordedPage = (state: string) => JSON.parse(readFileSync(resolve(import.meta.dirname, `../../../../../tests/fixtures/recorded/tmdb/2026-11-04/${state}.json`), "utf8")).exchanges[0].reply.body.results as Array<{ providerId: string; title: string }>;
+
+describe("More matches in the Add dialog (#1473)", () => {
+  const moreButton = (dialog: HTMLElement) => within(dialog).queryByRole("button", { name: "More matches" });
+  async function searchKickboxer(dialog: HTMLElement) {
+    fireEvent.change(titleBox(dialog), { target: { value: "Kickboxer" } });
+    fireEvent.submit(titleBox(dialog).closest("form")!);
+    await within(dialog).findByText("Kickboxer 2: The Road Back");
+  }
+
+  it("lists the whole first page, then asks for page 2 and adds it below, until a short page ends it", async () => {
+    const pageOne = recordedPage("search-movie-kickboxer-page1");
+    const pageTwo = recordedPage("search-movie-kickboxer-page2");
+    expect(pageOne).toHaveLength(20);
+    metadataReply = () => (searches().some((c) => c.url.includes("page=2")) ? pageTwo.slice(0, 18) : pageOne);
+    const dialog = await openDialog();
+
+    await searchKickboxer(dialog);
+    expect(within(dialog).getByTestId("add-matches").querySelectorAll("button[title^='Select']").length).toBe(20);
+    expect(searches().every((c) => !c.url.includes("page="))).toBe(true);
+
+    fireEvent.click(moreButton(dialog)!);
+    await waitFor(() => expect(within(dialog).getByTestId("add-matches").querySelectorAll("button[title^='Select']").length).toBe(38));
+    expect(searches().at(-1)!.url).toContain("page=2");
+    expect(searches().at(-1)!.url).toContain("query=Kickboxer");
+    expect(moreButton(dialog)).toBeNull();
+  });
+
+  it("drops a film TMDb repeats on the next page instead of listing it twice", async () => {
+    const pageOne = recordedPage("search-movie-kickboxer-page1");
+    metadataReply = () => (searches().some((c) => c.url.includes("page=2")) ? [pageOne[0], { ...pageOne[1], providerId: "fresh", title: "Fresh film" }, ...pageOne.slice(2, 20)] : pageOne);
+    const dialog = await openDialog();
+    await searchKickboxer(dialog);
+
+    fireEvent.click(moreButton(dialog)!);
+    await within(dialog).findByText("Fresh film");
+    expect(within(dialog).getByTestId("add-matches").querySelectorAll("button[title^='Select']").length).toBe(21);
+  });
+
+  it("says why a load failed, keeps the matches and the button, and a second press works", async () => {
+    const pageOne = recordedPage("search-movie-kickboxer-page1");
+    let failNext = true;
+    metadataReply = () => {
+      if (searches().some((c) => c.url.includes("page=2"))) {
+        if (failNext) { failNext = false; throw new ApiRequestError("The metadata service is not answering right now.", 503, "/api/metadata/search", JSON.stringify({ error: "metadata-unavailable" })); }
+        return [{ ...pageOne[0], providerId: "later", title: "Later film" }];
+      }
+      return pageOne;
+    };
+    const dialog = await openDialog();
+    await searchKickboxer(dialog);
+
+    fireEvent.click(moreButton(dialog)!);
+    await waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith("Could not load more matches.", expect.objectContaining({ description: expect.any(String) })));
+    expect(within(dialog).getByTestId("add-matches").querySelectorAll("button[title^='Select']").length).toBe(20);
+
+    fireEvent.click(moreButton(dialog)!);
+    await within(dialog).findByText("Later film");
+    expect(moreButton(dialog)).toBeNull();
+  });
+
+  it("offers no More matches after a short first page, and a short page ends the list", async () => {
+    metadataReply = () => recordedPage("search-movie-kickboxer-page1").slice(5, 15);
+    const dialog = await openDialog();
+    await searchKickboxer(dialog);
+    expect(moreButton(dialog)).toBeNull();
   });
 });
 

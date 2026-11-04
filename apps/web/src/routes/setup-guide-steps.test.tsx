@@ -495,7 +495,7 @@ describe("Start: the first title, the banners and the finish", () => {
     expect(await screen.findByText("No metadata matches were found. You can still add the title manually.")).toBeTruthy();
   });
 
-  it("shows up to six results with art or No art, year, provider, rating and Already in your library, and picking one fills the title and year", async () => {
+  it("shows every result of the page with art or No art, year, provider, rating and Already in your library, and picking one fills the title and year", async () => {
     renderStep({ stepId: "finish", metadataStatus: { isConfigured: true } });
     await ready();
     const found = Array.from({ length: 8 }, (_, index) => result({ title: `Dune ${index}`, providerId: String(index), year: index === 0 ? 2021 : 2000 + index, libraryEntryId: index === 1 ? "lib-1" : null }));
@@ -503,14 +503,40 @@ describe("Start: the first title, the banners and the finish", () => {
     fireEvent.change(searchBox(), { target: { value: "Dune" } });
     fireEvent.click(await button("Search metadata"));
     expect(await screen.findByText("Dune 0")).toBeTruthy();
-    expect(screen.queryByText("Dune 6")).toBeNull();
-    expect(screen.getAllByText("No art")).toHaveLength(6);
+    expect(screen.getByText("Dune 7")).toBeTruthy();
+    expect(screen.getAllByText("No art")).toHaveLength(8);
     expect(screen.getAllByText("Already in your library")).toHaveLength(1);
     expect(screen.getAllByText("8.0 rating").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByText("Dune 3").closest("button")!);
     await waitFor(() => expect(searchBox().value).toBe("Dune 3"));
     expect((screen.getByPlaceholderText("Year") as HTMLInputElement).value).toBe("2003");
     expect(screen.getByText("TMDB #3")).toBeTruthy();
+  });
+
+  it("offers More matches after a whole page, adds the next page without repeats, and says why a load failed", async () => {
+    renderStep({ stepId: "finish", metadataStatus: { isConfigured: true } });
+    await ready();
+    const page = (from: number) => Array.from({ length: 20 }, (_, index) => result({ title: `Dune ${from + index}`, providerId: String(from + index), year: 2000 }));
+    let failNext = true;
+    fetchJson.mockImplementation(async (url: string) => {
+      const asked = String(url);
+      if (!asked.startsWith("/api/metadata/search")) return [];
+      if (!asked.includes("page=2")) return page(0);
+      if (failNext) { failNext = false; throw new Error("The metadata service is not answering."); }
+      return [...page(19).slice(0, 3)];
+    });
+    fireEvent.change(searchBox(), { target: { value: "Dune" } });
+    fireEvent.click(await button("Search metadata"));
+    expect(await screen.findByText("Dune 19")).toBeTruthy();
+
+    fireEvent.click(await button("More matches"));
+    expect(await screen.findByText(/Could not load more matches\. The metadata service is not answering\./)).toBeTruthy();
+
+    fireEvent.click(await button("More matches"));
+    expect(await screen.findByText("Dune 21")).toBeTruthy();
+    expect(screen.getAllByText("Dune 19")).toHaveLength(1);
+    await waitFor(() => expect(screen.queryByRole("button", { name: "More matches" })).toBeNull());
+    expect(fetchJson.mock.calls.some(([url]) => String(url).includes("query=Dune") && String(url).includes("page=2"))).toBe(true);
   });
 
   it("when Create baseline is refused, the error shows red, what was made is taken back in reverse order and the amber note says none of the answers were applied", async () => {

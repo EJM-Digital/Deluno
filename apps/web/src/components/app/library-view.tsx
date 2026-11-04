@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { useNavigate, useNavigation, useSearchParams } from "react-router-dom";
 import type { MediaItem } from "../../lib/media-types";
 import { describeMetadataSearchError } from "../../lib/metadata-check";
+import { mergeMetadataPage, nextMetadataPage } from "../../lib/metadata-search-paging";
 import {
   fetchJson,
   readValidationProblem,
@@ -252,6 +253,10 @@ export function LibraryView({
     metadataResults, setMetadataResults, selectedMetadataResults, setSelectedMetadataResults,
     isSearchingMetadata, setIsSearchingMetadata, metadataSearchSequence
   } = useLibraryCreate(variant, searchParams.get("add") === "true");
+  // The next page of matches for the title last searched, or null when TMDb has no more (#1473).
+  const [metadataNextPage, setMetadataNextPage] = useState<number | null>(null);
+  const [isLoadingMoreMatches, setIsLoadingMoreMatches] = useState(false);
+  const lastMetadataSearch = useRef<URLSearchParams | null>(null);
 
   // Opened from elsewhere with a title to look for, such as a film on a media
   // server that Deluno does not manage yet (#494): start with that title.
@@ -873,6 +878,8 @@ export function LibraryView({
       }
 
       setMetadataResults(results);
+      lastMetadataSearch.current = idSearch ? null : params;
+      setMetadataNextPage(idSearch ? null : nextMetadataPage(1, results.length));
       if (results.length === 0 && !options.silent) {
         toast.info(
           metadataStatus?.isConfigured === false
@@ -897,6 +904,29 @@ export function LibraryView({
       if (searchSequence === metadataSearchSequence.current) {
         setIsSearchingMetadata(false);
       }
+    }
+  }
+
+  async function handleMoreMatches() {
+    const page = metadataNextPage;
+    const base = lastMetadataSearch.current;
+    if (page === null || !base || isLoadingMoreMatches) return;
+    const searchSequence = metadataSearchSequence.current;
+    setIsLoadingMoreMatches(true);
+    try {
+      const params = new URLSearchParams(base);
+      params.set("page", String(page));
+      const more = await fetchJson<MetadataSearchResult[]>(`/api/metadata/search?${params.toString()}`);
+      if (searchSequence !== metadataSearchSequence.current) return;
+      setMetadataResults((current) => mergeMetadataPage(current, more));
+      setMetadataNextPage(nextMetadataPage(page, more.length));
+      if (more.length === 0) toast.info("There are no more matches.");
+    } catch (error) {
+      // Said in its own words, and the button stays so it can be tried again.
+      const failure = describeMetadataSearchError(error);
+      toast.error("Could not load more matches.", { description: failure.message });
+    } finally {
+      setIsLoadingMoreMatches(false);
     }
   }
 
@@ -1247,6 +1277,9 @@ export function LibraryView({
           isSearchingMetadata={isSearchingMetadata}
           metadataSearchSequence={metadataSearchSequence}
           onSearch={() => void handleMetadataSearch()}
+          hasMoreMatches={metadataNextPage !== null}
+          isLoadingMoreMatches={isLoadingMoreMatches}
+          onMoreMatches={() => void handleMoreMatches()}
           onSelectResult={applyMetadataResult}
           onOpenHeldResult={openHeldMetadataResult}
           onCreate={handleCreate}
