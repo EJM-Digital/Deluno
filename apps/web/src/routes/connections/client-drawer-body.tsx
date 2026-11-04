@@ -100,7 +100,7 @@ export function ClientDrawerBody({
   ];
   const chip = editing ? healthChip(editing) : null;
   const webAddress = clientWebAddress(form);
-  const pageOpens = clientPageOpensFromBrowser(form, typeof window === "undefined" ? "" : window.location.hostname);
+  const pageOpens = clientPageOpensFromBrowser(form, window.location.hostname);
   const sameCategory = form.moviesCategory && form.moviesCategory === form.tvCategory;
 
   useEffect(() => {
