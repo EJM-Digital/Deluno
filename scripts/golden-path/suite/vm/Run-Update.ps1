@@ -47,6 +47,9 @@ try {
         'uninstall.removes-the-windows-service' { Invoke-UninstallRemovesTheWindowsService -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
         'install.silent-first-install' { Invoke-InstallSilentFirstInstall -CandidateVersion $CandidateVersion }
         'companions.install-from-the-page' { Invoke-CompanionsInstallFromThePage }
+        'uninstall.custom-data-root' { Invoke-UninstallCustomDataRoot -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
+        'update.with-bundled-clients' { Invoke-UpdateWithBundledClients -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
+        'update.locked-install-folder' { Invoke-UpdateLockedInstallFolder -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
         'update.tray-menu' { Invoke-UpdateTrayMenu -CandidateVersion $CandidateVersion }
         default { throw "Unknown update scenario '$Scenario'." }
     }

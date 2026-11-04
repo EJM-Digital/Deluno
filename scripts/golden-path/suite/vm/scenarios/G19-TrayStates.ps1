@@ -11,6 +11,8 @@
                              greyed, Report a problem opens the logs folder, Check for updates is enabled and pressing it ends in a state the menu words.
     tray.update-not-installed A copy of Deluno run from a plain folder (not an installed one): the tray's update item opens the Updates page
                              in the browser instead of running a check, and the copy's Updates page offers no update controls.
+    tray.amber-sources       Amber for an indexer that does not answer, the first problem named and the rest counted ("and 1 more"), a library
+                             whose folder is gone named; green again once all is clear.
     tray.quit                Quit Deluno: the icon shows busy, Deluno's process is gone within 30 s, the icon is removed and the host stopped; Deluno is then
                              started again the way a person starts it.
 #>
@@ -227,6 +229,66 @@ function Invoke-GroupTrayStates {
             $null = Quit-DelunoFromTray
             Remove-Item -LiteralPath $copyRoot -Recurse -Force -ErrorAction SilentlyContinue
             Add-Check 'The copy is removed and the installed Deluno is started again and answers' ((Restore-DelunoTray) -and -not (Test-Path $copyRoot)) ''
+        }
+    }
+    Invoke-Scenario -Id 'tray.amber-sources' -Title 'The tray goes amber for more than a download client: an indexer that does not answer is named in the hover text; with a second problem the first is named and the rest are counted ("and 1 more"); a library folder that is gone is named; all clear, the dot is green again' -Body {
+        Connect-Deluno
+        $indexerId = $null; $clientId = $null; $libraryId = $null
+        $folder = 'C:\golden\amber-library'
+        $downloads = 'C:\golden\amber-downloads'
+        try {
+            $indexerName = 'Golden tray amber indexer'
+            $added = Invoke-Deluno -Method POST -Path '/api/indexers' -Body @{
+                name = $indexerName; protocol = 'torznab'; privacy = 'public'; baseUrl = 'http://127.0.0.1:1/'; apiKey = 'golden'
+                priority = 90; categories = '2000'; mediaScope = 'both'; isEnabled = $true; keepName = $true; routeToLibraries = $false
+                rssEnabled = $false; automaticSearchEnabled = $false
+            }
+            $indexerId = $added.id
+            $amber = Wait-TrayDot -Match { param($d) $d.Colour -eq 'amber' -and $d.Hover -match "Golden tray amber indexer isn't answering" } -TimeoutSec 300
+            $seen = Get-TrayDot -Icon 'Deluno' -NoOverflow
+            Add-Check 'An indexer that does not answer: the dot goes amber and the hover text names it' $amber.Ok "colour $($seen.Colour), hover '$($seen.Hover)'"
+
+            $clientName = 'Golden tray amber second client'
+            $c = Invoke-Deluno -Method POST -Path '/api/download-clients' -Body @{
+                name = $clientName; protocol = 'qbittorrent'; host = '127.0.0.1'; port = 1; username = 'x'; password = 'y'
+                moviesCategory = 'deluno-movies'; tvCategory = 'deluno-tv'; priority = 41; isEnabled = $true
+            }
+            $clientId = $c.id
+            $counted = Wait-TrayDot -Match { param($d) $d.Colour -eq 'amber' -and $d.Hover -match "isn't answering and 1 more" } -TimeoutSec 300
+            $seen = Get-TrayDot -Icon 'Deluno' -NoOverflow
+            Add-Check 'With a second thing not answering the first is named and the rest are counted ("... and 1 more")' $counted.Ok "colour $($seen.Colour), hover '$($seen.Hover)'"
+            $status = (Get-TrayMenuStates | Where-Object { $_.Name -match '^Deluno - ' } | Select-Object -First 1).Name
+            Add-Check 'The menu''s status line says the same' ($status -match "isn't answering and 1 more") $status
+
+            Invoke-Deluno -Method DELETE -Path "/api/download-clients/$clientId" | Out-Null; $clientId = $null
+            Invoke-Deluno -Method DELETE -Path "/api/indexers/$indexerId" | Out-Null; $indexerId = $null
+            $clear = Wait-TrayDot -Match { param($d) $d.Colour -eq 'green' -and $d.Hover -notmatch "isn't answering" } -TimeoutSec 300
+            $seen = Get-TrayDot -Icon 'Deluno' -NoOverflow
+            Add-Check 'With both gone the dot is green again' $clear.Ok "colour $($seen.Colour), hover '$($seen.Hover)'"
+
+            # A library whose folder has gone.
+            New-Item -ItemType Directory -Force -Path $folder, $downloads | Out-Null
+            $profile = (Get-Library -MediaType 'movies').qualityProfileId
+            $libraryName = 'Golden amber library'
+            $lib = Try-Deluno -Method POST -Path '/api/libraries' -Body @{
+                name = $libraryName; mediaType = 'movies'; purpose = 'Main library'; rootPath = $folder; downloadsPath = $downloads
+                qualityProfileId = $profile; autoSearchEnabled = $false; missingSearchEnabled = $false; upgradeSearchEnabled = $false
+                removeEmptySourceFolders = $false; searchIntervalMinutes = 720; retryDelayHours = 6; maxItemsPerRun = 10
+            }
+            Add-Check 'A library is made on a folder that exists' ($lib.Status -in 200, 201) "HTTP $($lib.Status) $($lib.Raw)"
+            if ($lib.Status -in 200, 201) {
+                $libraryId = $lib.Data.id
+                Remove-Item -LiteralPath $folder -Recurse -Force
+                $gone = Wait-TrayDot -Match { param($d) $d.Colour -eq 'amber' -and $d.Hover -match "The Golden amber library library folder has a problem|Golden amber library.*folder has a problem" } -TimeoutSec 600
+                $seen = Get-TrayDot -Icon 'Deluno' -NoOverflow
+                Add-Check 'A library whose folder is gone: the dot goes amber and the hover text names the library' $gone.Ok "colour $($seen.Colour), hover '$($seen.Hover)'"
+            }
+        }
+        finally {
+            if ($clientId) { try { Invoke-Deluno -Method DELETE -Path "/api/download-clients/$clientId" | Out-Null } catch { } }
+            if ($indexerId) { try { Invoke-Deluno -Method DELETE -Path "/api/indexers/$indexerId" | Out-Null } catch { } }
+            if ($libraryId) { try { Invoke-Deluno -Method DELETE -Path "/api/libraries/$libraryId" | Out-Null } catch { } }
+            Remove-Item -LiteralPath $folder, $downloads -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
     Invoke-Scenario -Id 'tray.quit' -Title 'Quit Deluno from the menu: the icon shows busy, Deluno stops within 30 seconds, the icon is removed and the host is down; Deluno is then started again' -Body {
