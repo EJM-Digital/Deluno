@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
@@ -60,7 +61,9 @@ public sealed class DownloadClientTelemetryService(
     // then never moves a torrent: nothing is keeping anything seeding until this is wired.
     IKeepSeedingStore? keepSeedingStore = null,
     // #1240: a tracker definition's own privacy, for a site added before Deluno stored it.
-    ITrackerDefinitionNames? trackerDefinitionNames = null)
+    ITrackerDefinitionNames? trackerDefinitionNames = null,
+    // #1476: each strike change and each action taken is written to the log with the release name.
+    ILogger<DownloadClientTelemetryService>? logger = null)
     : IDownloadClientTelemetryService
 {
     private readonly LegacyItemIdUpgradeMemory legacyUpgrades = legacyUpgradeMemory ?? new LegacyItemIdUpgradeMemory();
@@ -1905,7 +1908,13 @@ public sealed class DownloadClientTelemetryService(
                 defaultStrikeWindow,
                 strikeInactivityWindow,
                 cancellationToken,
-                everythingTheClientHolds)).ToArray();
+                everythingTheClientHolds,
+                // #1476: checking, queued or paused is a reading the transfer rules do not apply to: it holds a
+                // dead torrent's strikes where they are instead of ending its record as recovered.
+                annotated
+                    .Where(entry => DownloadHealthStrikes.PausesTransferFindings(entry.Item.Status, entry.Item.Progress))
+                    .Select(entry => entry.Item.Id)
+                    .ToArray())).ToArray();
         }
         var recordsByFinding = records.ToDictionary(
             record => $"{record.ClientId}\u001f{record.QueueItemId}\u001f{record.Kind}",
@@ -2442,6 +2451,10 @@ public sealed class DownloadClientTelemetryService(
                     continue;
                 }
 
+                logger?.LogInformation(
+                    "{Kind} reached {Strikes} of {Limit} strike(s) for {Release} on {Client}: {Actions}{DryRun}.",
+                    struck.Kind, struck.StrikeCount, struck.RuleStrikeLimit, item.ReleaseName, client.Name,
+                    string.Join(", ", applied), dryRun ? " (dry run)" : string.Empty);
                 var details = JsonSerializer.Serialize(new
                 {
                     clientId = client.Id,

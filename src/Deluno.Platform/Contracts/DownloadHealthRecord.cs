@@ -226,6 +226,31 @@ public static class DownloadHealthStrikes
     public static bool MayActOnFinishedDownload(string kind)
         => string.Equals(kind, DangerousFile, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>The always-on note that a download sits at 0% (never struck).</summary>
+    public const string ZeroPercentDownload = "zero-percent-download";
+
+    /// <summary>
+    /// The findings about getting the bytes that a download can only lose by really recovering (#1476): no progress, no
+    /// peers, too slow, too few peers, low availability, still at 0%. Each is gated on the download reading as
+    /// downloading or stalled, so a reading of checking, queued or paused says nothing about them either way.
+    /// </summary>
+    public static bool IsTransferFinding(string kind)
+        => string.Equals(kind, NoThroughput, StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(kind, LowAvailability, StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(kind, DeadTorrent, StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(kind, LowPeers, StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(kind, LowSpeed, StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(kind, ZeroPercentDownload, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Whether a reading shows the client doing something other than moving bytes: checking the files
+    /// (<c>notTransferring</c>), holding the download back (<c>queued</c>) or stopped by a person (<c>paused</c>). The
+    /// transfer rules do not apply to it, so such a reading pauses a transfer finding's record: no strike, and the
+    /// record does not end (#1476). A finished download is not a pause.
+    /// </summary>
+    public static bool PausesTransferFindings(string? status, double progressPercent)
+        => !IsFinishedOrHandedOff(status, progressPercent) && status is "notTransferring" or "queued" or "paused";
+
     public static bool Counts(string kind)
         => string.Equals(kind, ClientStalled, StringComparison.OrdinalIgnoreCase) ||
            string.Equals(kind, NoThroughput, StringComparison.OrdinalIgnoreCase) ||

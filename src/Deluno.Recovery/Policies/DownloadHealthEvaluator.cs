@@ -269,7 +269,7 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
         {
             findings.Add(new(
                 Severity: "warning",
-                Kind: "zero-percent-download",
+                Kind: DownloadHealthStrikes.ZeroPercentDownload,
                 Summary: "This download is still at 0%.",
                 Evidence: ZeroPercentEvidence(item, capturedUtc),
                 RecommendedAction: "Check the indexer/client connection, then Resume or Recheck if appropriate; a replacement search may do better.",

@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using Deluno.Contracts;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Integrations.DownloadClients;
+using Deluno.Integrations.DownloadClients.Clients;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
@@ -51,24 +52,169 @@ public sealed class ADeadTorrentThatFlipsThroughCheckingKeepsItsStrikesTests
         Assert.True(last.BlocksCandidate(time.GetUtcNow()));
     }
 
+    [Theory]
+    [InlineData(DownloadQueueStatuses.NotTransferring)]
+    [InlineData(DownloadQueueStatuses.Queued)]
+    [InlineData(DownloadQueueStatuses.Paused)]
+    public async Task Any_reading_where_the_rule_does_not_apply_holds_the_strikes_without_adding_one(string status)
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(Start);
+        var repository = await RepositoryAsync(storage, time);
+        var torrent = RecordedTorrent("stalled");
+        var rules = new[] { NoProgressRule() };
+        await ReadAsync(repository, time, torrent, "stalled", rules);
+        time.Advance(Step);
+        await ReadAsync(repository, time, torrent, "stalled", rules);
+
+        for (var poll = 0; poll < 4; poll++)
+        {
+            time.Advance(Step);
+            await ReadAsync(repository, time, torrent, status, rules);
+            Assert.Equal(2, Assert.Single(await repository.ListDownloadHealthRecordsAsync(10, CancellationToken.None)).StrikeCount);
+        }
+    }
+
+    [Fact]
+    public void The_recorded_queued_torrent_reads_as_a_pause_and_the_recorded_stalled_one_does_not()
+    {
+        var registry = new DownloadClientRegistry([new QbittorrentDownloadClient()]);
+        Assert.True(registry.TryGet("qbittorrent", out var client));
+        var queued = JsonNode.Parse(RecordedReplies.Qbittorrent("queued").Body("torrents/info"))![0]!;
+        var stalled = JsonNode.Parse(RecordedReplies.Qbittorrent("stalled").Body("torrents/info"))![0]!;
+
+        var queuedStatus = client.NormalizeStatus(queued["state"]!.GetValue<string>(), queued["progress"]!.GetValue<double>(), null, null);
+        var stalledStatus = client.NormalizeStatus(stalled["state"]!.GetValue<string>(), stalled["progress"]!.GetValue<double>(), null, null);
+
+        Assert.True(DownloadHealthStrikes.PausesTransferFindings(queuedStatus, 0));
+        Assert.False(DownloadHealthStrikes.PausesTransferFindings(stalledStatus, 0));
+    }
+
+    [Fact]
+    public async Task Bytes_gained_while_it_was_checking_are_real_recovery_and_end_the_record()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(Start);
+        var repository = await RepositoryAsync(storage, time);
+        var torrent = RecordedTorrent("stalled");
+        var rules = new[] { NoProgressRule() };
+        await repository.ObserveDownloadProgressAsync(ClientId, [(torrent.Hash, 0)], CancellationToken.None);
+        await ReadAsync(repository, time, torrent, "stalled", rules);
+        Assert.Single(await repository.ListDownloadHealthRecordsAsync(10, CancellationToken.None));
+
+        time.Advance(Step);
+        await repository.ObserveDownloadProgressAsync(ClientId, [(torrent.Hash, 4_096_000)], CancellationToken.None);
+        await ReadAsync(repository, time, torrent, DownloadQueueStatuses.NotTransferring, rules);
+
+        Assert.Empty(await repository.ListDownloadHealthRecordsAsync(10, CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData("downloading")]
+    [InlineData("importReady")]
+    public async Task A_download_that_is_moving_again_or_finished_ends_the_record(string status)
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(Start);
+        var repository = await RepositoryAsync(storage, time);
+        var torrent = RecordedTorrent("stalled");
+        var rules = new[] { NoProgressRule() };
+        await ReadAsync(repository, time, torrent, "stalled", rules);
+
+        time.Advance(Step);
+        await RecordAsync(repository, torrent, status, []);
+
+        Assert.Empty(await repository.ListDownloadHealthRecordsAsync(10, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_paused_record_ends_when_the_download_leaves_the_client()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(Start);
+        var repository = await RepositoryAsync(storage, time);
+        var torrent = RecordedTorrent("stalled");
+        var rules = new[] { NoProgressRule() };
+        await ReadAsync(repository, time, torrent, "stalled", rules);
+        time.Advance(Step);
+        await ReadAsync(repository, time, torrent, DownloadQueueStatuses.NotTransferring, rules);
+        Assert.Single(await repository.ListDownloadHealthRecordsAsync(10, CancellationToken.None));
+
+        // The client answered and no longer holds it (#1223): not listed, not held.
+        time.Advance(Step);
+        await repository.RecordDownloadHealthObservationsAsync(
+            ClientId, [], [], Window, TimeSpan.FromHours(24), CancellationToken.None, everythingTheClientHolds: []);
+
+        Assert.Empty(await repository.ListDownloadHealthRecordsAsync(10, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_pause_longer_than_the_inactivity_window_still_starts_the_spell_again()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(Start);
+        var repository = await RepositoryAsync(storage, time);
+        var torrent = RecordedTorrent("stalled");
+        var rules = new[] { NoProgressRule() };
+        await ReadAsync(repository, time, torrent, "stalled", rules);
+        time.Advance(Step);
+        await ReadAsync(repository, time, torrent, "stalled", rules);
+        Assert.Equal(2, Assert.Single(await repository.ListDownloadHealthRecordsAsync(10, CancellationToken.None)).StrikeCount);
+
+        // Paused for longer than the 24 hour window (#825): the checking polls do not refresh the record.
+        time.Advance(TimeSpan.FromHours(10));
+        await ReadAsync(repository, time, torrent, DownloadQueueStatuses.NotTransferring, rules);
+        time.Advance(TimeSpan.FromHours(15));
+        await ReadAsync(repository, time, torrent, DownloadQueueStatuses.NotTransferring, rules);
+        await ReadAsync(repository, time, torrent, "stalled", rules);
+
+        Assert.Equal(1, Assert.Single(await repository.ListDownloadHealthRecordsAsync(10, CancellationToken.None)).StrikeCount);
+    }
+
+    [Theory]
+    [InlineData(DownloadHealthStrikes.LowAvailability, true)]
+    [InlineData(DownloadHealthStrikes.ZeroPercentDownload, true)]
+    [InlineData(DownloadHealthStrikes.DangerousFile, false)]
+    public async Task Only_a_finding_about_getting_the_bytes_is_paused_by_a_checking_reading(string kind, bool kept)
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(Start);
+        var repository = await RepositoryAsync(storage, time);
+        var torrent = RecordedTorrent("stalled");
+        await repository.RecordDownloadHealthObservationsAsync(
+            ClientId, [torrent.Hash], [new DownloadHealthObservation(ClientId, torrent.Hash, torrent.Name, kind, "warning", "x")],
+            Window, TimeSpan.FromHours(24), CancellationToken.None);
+
+        time.Advance(Step);
+        await repository.RecordDownloadHealthObservationsAsync(
+            ClientId, [torrent.Hash], [], Window, TimeSpan.FromHours(24), CancellationToken.None,
+            pausedQueueItemIds: [torrent.Hash]);
+
+        Assert.Equal(kept, (await repository.ListDownloadHealthRecordsAsync(10, CancellationToken.None)).Count == 1);
+    }
+
     private static async Task ReadAsync(
-        SqliteDownloadHealthRepository repository, FixedTimeProvider time, Torrent torrent, string status, DownloadHealthRule[] rules)
+        SqliteDownloadHealthRepository repository, FixedTimeProvider time, Torrent torrent, string status, DownloadHealthRule[] rules,
+        IReadOnlyCollection<string>? held = null)
     {
         var findings = new DownloadHealthEvaluator().Evaluate(
             new RecoveryQueueSnapshot(status, null, null, 0, Start.AddMinutes(-60), 0, torrent.Name, 0,
                 ProgressPercent: 0, SizeBytes: torrent.Size, BytesGrewSinceLastCheck: false),
             time.GetUtcNow(), rules);
-        await RecordAsync(repository, torrent, status, findings);
+        await RecordAsync(repository, torrent, status, findings, held);
     }
 
     private static async Task RecordAsync(
-        SqliteDownloadHealthRepository repository, Torrent torrent, string status, IReadOnlyList<RecoveryHealthFinding> findings)
+        SqliteDownloadHealthRepository repository, Torrent torrent, string status, IReadOnlyList<RecoveryHealthFinding> findings,
+        IReadOnlyCollection<string>? held = null)
     {
         var observations = findings.Where(finding => DownloadHealthStrikes.Counts(finding.Kind)).Select(finding => new DownloadHealthObservation(
             ClientId, torrent.Hash, torrent.Name, finding.Kind, finding.Severity, finding.Evidence,
             finding.RuleId, finding.RuleStrikeLimit, finding.RuleTimerMinutes, finding.RuleActionPreset)).ToArray();
         await repository.RecordDownloadHealthObservationsAsync(
-            ClientId, [torrent.Hash], observations, Window, TimeSpan.FromHours(24), CancellationToken.None);
+            ClientId, [torrent.Hash], observations, Window, TimeSpan.FromHours(24), CancellationToken.None,
+            everythingTheClientHolds: held ?? [torrent.Hash],
+            pausedQueueItemIds: DownloadHealthStrikes.PausesTransferFindings(status, 0) ? [torrent.Hash] : []);
     }
 
     private sealed record Torrent(string Hash, string Name, long Downloaded, long Size);

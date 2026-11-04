@@ -5,6 +5,7 @@ using Deluno.Contracts;
 using Deluno.Contracts.Connectivity;
 using Deluno.Infrastructure.Storage;
 using Deluno.Platform.Contracts;
+using Microsoft.Extensions.Logging;
 using static Deluno.Infrastructure.Storage.SqliteRecordHelpers;
 
 namespace Deluno.Platform.Data;
@@ -13,7 +14,8 @@ public sealed class SqliteDownloadHealthRepository(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     TimeProvider timeProvider,
     IConnectivityMonitor? connectivityMonitor = null,
-    IRealtimeEventPublisher? realtimeEventPublisher = null)
+    IRealtimeEventPublisher? realtimeEventPublisher = null,
+    ILogger<SqliteDownloadHealthRepository>? logger = null)
     : IDownloadHealthRepository
 {
     // Tests, and any caller that predates #901, construct this without a
@@ -39,7 +41,8 @@ public sealed class SqliteDownloadHealthRepository(
         TimeSpan defaultStrikeWindow,
         TimeSpan strikeInactivityWindow,
         CancellationToken cancellationToken,
-        IReadOnlyCollection<string>? everythingTheClientHolds = null)
+        IReadOnlyCollection<string>? everythingTheClientHolds = null,
+        IReadOnlyCollection<string>? pausedQueueItemIds = null)
     {
         if (string.IsNullOrWhiteSpace(clientId) || (observations.Count == 0 && listedQueueItemIds.Count == 0 && everythingTheClientHolds is null))
         {
@@ -58,10 +61,39 @@ public sealed class SqliteDownloadHealthRepository(
         var stillSeen = observations
             .Select(observation => $"{observation.QueueItemId}{observation.Kind}")
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var ended = records.RemoveAll(record =>
-            string.Equals(record.ClientId, clientId, StringComparison.OrdinalIgnoreCase) &&
-            listed.Contains(record.QueueItemId) &&
-            !stillSeen.Contains($"{record.QueueItemId}{record.Kind}"));
+        // #1476: a reading where the transfer rules do not apply (checking, queued, paused) says nothing about whether
+        // the download recovered, so it pauses a transfer finding's record instead of ending it. Only real recovery
+        // ends it: bytes gained since the record began (the progress clock), a finished download, or one that left.
+        var paused = pausedQueueItemIds?.ToHashSet(StringComparer.OrdinalIgnoreCase) ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var progressByItem = paused.Count == 0
+            ? new Dictionary<string, DownloadProgressRecord>(StringComparer.OrdinalIgnoreCase)
+            : ReadDownloadProgressRecords(settings)
+                .Where(progress => string.Equals(progress.ClientId, clientId, StringComparison.OrdinalIgnoreCase))
+                .GroupBy(progress => progress.QueueItemId, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var ended = 0;
+        foreach (var record in records.Where(record =>
+                         string.Equals(record.ClientId, clientId, StringComparison.OrdinalIgnoreCase) &&
+                         listed.Contains(record.QueueItemId) &&
+                         !stillSeen.Contains($"{record.QueueItemId}{record.Kind}")).ToList())
+        {
+            var gainedBytes = progressByItem.TryGetValue(record.QueueItemId, out var progress) &&
+                progress.LastIncreaseUtc > record.FirstObservedUtc;
+            if (DownloadHealthStrikes.IsTransferFinding(record.Kind) && paused.Contains(record.QueueItemId) && !gainedBytes)
+            {
+                logger?.LogDebug(
+                    "{Kind} for {Release} is paused at {Strikes} strike(s): the client shows it checking, queued or paused, so no strike is added and the record is kept.",
+                    record.Kind, record.ReleaseName, record.StrikeCount);
+                continue;
+            }
+
+            records.Remove(record);
+            ended++;
+            logger?.LogInformation(
+                "{Kind} record for {Release} ended at {Strikes} strike(s): {Reason}.",
+                record.Kind, record.ReleaseName, record.StrikeCount,
+                gainedBytes ? "it gained bytes since the record began" : "the client lists it and the finding no longer applies");
+        }
 
         // #1223: the client answered and does not list it, so it has left every client. Whoever removed it
         // (Deluno, a person, the client's own clean-up), its strikes and findings are over. This also closes
@@ -69,11 +101,18 @@ public sealed class SqliteDownloadHealthRepository(
         if (everythingTheClientHolds is not null)
         {
             var held = everythingTheClientHolds.ToHashSet(StringComparer.OrdinalIgnoreCase);
-            ended += records.RemoveAll(record =>
-                string.Equals(record.ClientId, clientId, StringComparison.OrdinalIgnoreCase) &&
-                !listed.Contains(record.QueueItemId) &&
-                !held.Contains(record.QueueItemId) &&
-                !stillSeen.Contains($"{record.QueueItemId}{record.Kind}"));
+            foreach (var record in records.Where(record =>
+                             string.Equals(record.ClientId, clientId, StringComparison.OrdinalIgnoreCase) &&
+                             !listed.Contains(record.QueueItemId) &&
+                             !held.Contains(record.QueueItemId) &&
+                             !stillSeen.Contains($"{record.QueueItemId}{record.Kind}")).ToList())
+            {
+                records.Remove(record);
+                ended++;
+                logger?.LogInformation(
+                    "{Kind} record for {Release} ended at {Strikes} strike(s): the download left the client.",
+                    record.Kind, record.ReleaseName, record.StrikeCount);
+            }
         }
 
         foreach (var observation in observations)
@@ -123,6 +162,18 @@ public sealed class SqliteDownloadHealthRepository(
             var struckAt = due && strikes != previousStrikes
                 ? DownloadHealthStrikes.StrikeLandedAt(lastStrike, now, window, outageOverlap)
                 : counts && strikes != previousStrikes || !continuing ? now : lastStrike;
+            if (record is not null && !continuing)
+            {
+                logger?.LogInformation(
+                    "{Kind} for {Release} starts again: it was not seen for longer than the strike inactivity window.",
+                    observation.Kind, observation.ReleaseName);
+            }
+            if (counts && strikes != previousStrikes)
+            {
+                logger?.LogInformation(
+                    "{Kind} strike {Strikes} of {Limit} added for {Release}.",
+                    observation.Kind, strikes, observation.RuleStrikeLimit, observation.ReleaseName);
+            }
             var updated = new DownloadHealthRecord(
                 observation.ClientId.Trim(), observation.QueueItemId.Trim(), observation.ReleaseName.Trim(), releaseKey,
                 observation.Kind.Trim(), observation.Severity.Trim(), SanitizeDownloadHealthEvidence(observation.Evidence),
