@@ -87,8 +87,21 @@ public sealed class LibraryFolderChainHealthCheck(
             return "//" + string.Join('/', parts.Take(2));
         }
 
-        return new DriveInfo(trimmed).Name;
+        // On Linux a DriveInfo made from a folder is named after the folder itself, so every folder looked like a volume of
+        // its own (#1464). The mounted roots answer on both systems.
+        return MountOf(Path.GetFullPath(trimmed), [.. DriveInfo.GetDrives().Select(drive => drive.RootDirectory.FullName)]);
     }
+
+    /// <summary>The longest mounted root a full path is under, on a folder boundary, so /data does not hold /database (#1464).</summary>
+    internal static string MountOf(string fullPath, IReadOnlyList<string> mountRoots)
+    {
+        var under = mountRoots.Where(root => IsUnder(fullPath, root)).ToList();
+        return under.Count == 0 ? fullPath : under.MaxBy(root => root.Length)!;
+    }
+
+    private static bool IsUnder(string fullPath, string root)
+        => fullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase)
+           && (fullPath.Length == root.Length || root[^1] is '/' or '\\' || fullPath[root.Length] is '/' or '\\');
 
     private static HealthCheckOutcome? VolumesOutcome(FolderChainReport report)
     {
