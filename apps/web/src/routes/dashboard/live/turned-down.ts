@@ -82,7 +82,7 @@ export function mergeTurnedDown(base: LiveTurnedDown | null | undefined, pushed:
   return {
     total,
     // The biggest reasons first (ties keep the fixed order, "other" last), so a short card shows the ones that matter.
-    reasons: REASON_ORDER.map((group) => ({ group, label: base?.reasons.find((reason) => reason.group === group)?.label ?? REASON_LABEL[group], count: counts.get(group) ?? 0 })).sort((a, b) => b.count - a.count),
+    reasons: REASON_ORDER.map((group) => ({ group, label: base?.reasons.find((reason) => reason.group === group)?.label ?? REASON_LABEL[group], count: counts.get(group) as number })).sort((a, b) => b.count - a.count),
     latest
   };
 }

@@ -977,6 +977,30 @@
       "line": 98,
       "replacement": "true",
       "reason": "Equivalent: the starting parts are replaced before they are read (a new group always sets them), and a group's tooltip and freshness are overwritten when the group is closed, which always happens before the list is returned."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/turned-down.ts",
+      "mutator": "StringLiteral",
+      "line": 58,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: an unreadable time is NaN whether the default is empty or a stray word, and a push whose own time cannot be read is counted either way because comparing NaN is false."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/turned-down.ts",
+      "mutator": "LogicalOperator",
+      "line": 64,
+      "replacement": "Number.isFinite(since) || Number.isFinite(at)",
+      "reason": "Equivalent: an unreadable time is NaN whether the default is empty or a stray word, and a push whose own time cannot be read is counted either way because comparing NaN is false."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/turned-down.ts",
+      "mutator": "ConditionalExpression",
+      "line": 64,
+      "replacement": "true",
+      "reason": "Equivalent: an unreadable time is NaN whether the default is empty or a stray word, and a push whose own time cannot be read is counted either way because comparing NaN is false."
     }
   ]
 }
