@@ -91,7 +91,7 @@ public static class SafePath
             return false;
         }
 
-        var compare = comparison ?? (OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+        var compare = comparison ?? MountedVolumes.PathComparison;
         if (normalPath.Equals(normalRoot, compare))
         {
             return allowEqual;
