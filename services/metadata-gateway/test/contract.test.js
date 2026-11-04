@@ -68,7 +68,7 @@ test("the search answer is the one envelope the contract states, with the count 
 
   assert.equal(response.status, 200);
   const body = await response.json();
-  assert.deepEqual(Object.keys(body).sort(), ["mode", "provider", "resultCount", "results"]);
+  assert.deepEqual(Object.keys(body).sort(), ["mode", "page", "provider", "resultCount", "results", "totalPages", "totalResults"]);
   assert.equal(body.provider, "deluno-broker");
   assert.equal(body.mode, "broker");
   assert.equal(body.resultCount, body.results.length);

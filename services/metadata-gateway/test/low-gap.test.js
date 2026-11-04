@@ -117,7 +117,7 @@ test("cache lifetimes: search 12 h, popular 3 h, translations 7 days, release da
   await ask("/person/7/imdb", { env, stub });
 
   const ttl = (prefix) => cache.puts.find((put) => put.key.startsWith(prefix))?.options.expirationTtl;
-  assert.equal(ttl("search:v8:"), 60 * 60 * 12);
+  assert.equal(ttl("search:v9:"), 60 * 60 * 12);
   assert.equal(ttl("popular:v1:movies:1"), 60 * 60 * 3);
   assert.equal(ttl("translations:v1:movie:5"), 60 * 60 * 24 * 7);
   assert.equal(ttl("release-dates:v1:5"), 60 * 60 * 6);
@@ -125,13 +125,13 @@ test("cache lifetimes: search 12 h, popular 3 h, translations 7 days, release da
   assert.equal(ttl("person-external-ids:v1:7"), 60 * 60 * 24 * 365);
 });
 
-test("the search cache key is versioned search:v8 and lower-cases the query", async () => {
+test("the search cache key is versioned search:v9 and lower-cases the query", async () => {
   const cache = kv();
   const stub = tmdb({ "/3/search/movie": { results: [{ id: 1, title: "Alpha" }] } });
 
   await ask("/metadata/search?mediaType=movies&query=THE%20Matrix&year=1999", { env: { METADATA_CACHE: cache }, stub });
 
-  assert.deepEqual([...cache.store.keys()], [`search:v8:${encodeURIComponent("movies|the matrix|1999|")}`]);
+  assert.deepEqual([...cache.store.keys()], [`search:v9:${encodeURIComponent("movies|the matrix|1999||1")}`]);
 });
 
 test("a KV write that throws never fails the request", async () => {
@@ -337,4 +337,113 @@ test("the artwork route is answered before the limiter wraps fetch, so it spends
     globalThis.caches = realCaches;
     globalThis.fetch = realFetch;
   }
+});
+
+// #1473: a search page is TMDb's whole page of twenty, and the next page is one request away.
+function searchPage(page, count, totalPages, totalResults) {
+  return {
+    page,
+    total_pages: totalPages,
+    total_results: totalResults,
+    results: Array.from({ length: count }, (_, i) => ({ id: page * 100 + i + 1, title: `Kickboxer ${page}-${i + 1}`, release_date: "1989-01-01" }))
+  };
+}
+
+test("a search returns all twenty matches of TMDb's page with its page numbers", async () => {
+  const stub = tmdb({ "/3/search/movie": searchPage(1, 20, 3, 45) });
+  const body = await (await ask("/metadata/search?mediaType=movies&query=Kickboxer", { stub })).json();
+  assert.equal(body.resultCount, 20);
+  assert.equal(body.results.length, 20);
+  assert.deepEqual([body.page, body.totalPages, body.totalResults], [1, 3, 45]);
+});
+
+test("page is passed to TMDb, kept in its own cache entry, and defaults to 1", async () => {
+  const cache = kv();
+  const asked = [];
+  const stub = {
+    calls: [],
+    fetch: async (url) => {
+      const parsed = new URL(url);
+      asked.push(parsed.searchParams.get("page"));
+      const page = Number(parsed.searchParams.get("page"));
+      return { ok: true, status: 200, json: async () => searchPage(page, page === 3 ? 5 : 20, 3, 45) };
+    }
+  };
+  const env = { METADATA_CACHE: cache };
+  await ask("/metadata/search?mediaType=tv&query=Kickboxer", { env, stub });
+  const third = await (await ask("/metadata/search?mediaType=tv&query=Kickboxer&page=3", { env, stub })).json();
+  await ask("/metadata/search?mediaType=tv&query=Kickboxer&page=3", { env, stub });
+  assert.deepEqual(asked, ["1", "3"], "the repeat came from the cache");
+  assert.deepEqual([third.page, third.resultCount], [3, 5]);
+  assert.deepEqual([...cache.store.keys()].sort(), [
+    `search:v9:${encodeURIComponent("tv|kickboxer|||1")}`,
+    `search:v9:${encodeURIComponent("tv|kickboxer|||3")}`
+  ]);
+});
+
+test("a TMDb answer with no page numbers still reports the page asked for", async () => {
+  const stub = tmdb({ "/3/search/movie": { results: [{ id: 1, title: "Alpha" }] } });
+  const body = await (await ask("/metadata/search?mediaType=movies&query=Alpha&page=2", { stub })).json();
+  assert.deepEqual([body.page, body.totalPages, body.totalResults], [2, 2, 1]);
+});
+
+test("an exact provider id reports one page of one", async () => {
+  const stub = tmdb({ "/3/movie/603": { id: 603, title: "The Matrix", release_date: "1999-03-30", genres: [], external_ids: {} } });
+  const body = await (await ask("/metadata/search?mediaType=movies&query=x&providerId=603", { stub })).json();
+  assert.deepEqual([body.page, body.totalPages, body.totalResults, body.resultCount], [1, 1, 1, 1]);
+});
+
+test("a page outside 1 to 500, or not a whole number, is a 400", async () => {
+  for (const page of ["0", "501", "abc", "-1", "1.5", "9999999"]) {
+    const response = await ask(`/metadata/search?mediaType=movies&query=Alpha&page=${page}`);
+    assert.equal(response.status, 400, page);
+    assert.match((await response.json()).message, /page must be between 1 and 500/);
+  }
+  assert.equal((await ask("/metadata/search?mediaType=movies&query=Alpha&page=500", { stub: tmdb({ "/3/search/movie": { results: [] } }) })).status, 200);
+  assert.equal((await ask("/metadata/search?mediaType=movies&query=Alpha&page=1", { stub: tmdb({ "/3/search/movie": { results: [] } }) })).status, 200);
+});
+
+test("lookupTmdbPage sends the key, query, page and year to TMDb and drops cards without an id or a title", async () => {
+  const { lookupTmdbPage } = await import("../src/index.js");
+  const seen = [];
+  const request = async (url) => {
+    seen.push(new URL(url));
+    return { ok: true, status: 200, json: async () => ({ results: [null, { title: "No id" }, { id: 2 }, { id: 3, name: "Show" }, { id: 4, title: "Film" }] }) };
+  };
+  const found = await lookupTmdbPage({ mediaType: "tv", query: "Q", providerId: null, year: null, page: 4 }, "KEY", request);
+  const url = seen[0];
+  assert.equal(url.searchParams.get("api_key"), "KEY");
+  assert.equal(url.searchParams.get("query"), "Q");
+  assert.equal(url.searchParams.get("page"), "4");
+  assert.equal(url.searchParams.has("first_air_date_year"), false);
+  assert.equal(url.searchParams.has("year"), false);
+  assert.deepEqual(found.results.map((item) => item.providerId), ["3", "4"]);
+  const noPage = await lookupTmdbPage({ mediaType: "movies", query: "Q", providerId: null, year: null }, "KEY", request);
+  assert.equal(noPage.page, 1);
+  assert.equal(seen[1].searchParams.get("page"), "1");
+});
+
+test("lookupTmdbPage takes TMDb's totals only when they are whole numbers and never reports fewer pages than the page asked for", async () => {
+  const { lookupTmdbPage } = await import("../src/index.js");
+  const lookup = { mediaType: "movies", query: "Q", providerId: null, year: null, page: 2 };
+  const answer = (body) => async () => ({ ok: true, status: 200, json: async () => body });
+  const one = [{ id: 1, title: "A" }];
+  const good = await lookupTmdbPage(lookup, "k", answer({ results: one, total_pages: 7, total_results: 130 }));
+  assert.deepEqual([good.totalPages, good.totalResults], [7, 130]);
+  const exactlyTwo = await lookupTmdbPage(lookup, "k", answer({ results: one, total_pages: 2, total_results: 0 }));
+  assert.deepEqual([exactlyTwo.totalPages, exactlyTwo.totalResults], [2, 0]);
+  const below = await lookupTmdbPage(lookup, "k", answer({ results: one, total_pages: 1, total_results: -5 }));
+  assert.deepEqual([below.totalPages, below.totalResults], [2, 0]);
+  const text = await lookupTmdbPage(lookup, "k", answer({ results: one, total_pages: "9", total_results: "9" }));
+  assert.deepEqual([text.totalPages, text.totalResults], [2, 1]);
+  const none = await lookupTmdbPage(lookup, "k", answer({}));
+  assert.deepEqual([none.totalPages, none.totalResults, none.results.length], [2, 0, 0]);
+});
+
+test("an exact lookup of a title TMDb has no record of is an empty page, and a page of ' 2 ' is page 2", async () => {
+  const { lookupTmdbPage, parseLookup } = await import("../src/index.js");
+  const found = await lookupTmdbPage({ mediaType: "movies", query: "x", providerId: "9", page: 1 }, "k", async () => ({ ok: true, status: 200, json: async () => ({}) }));
+  assert.deepEqual(found, { page: 1, totalPages: 1, totalResults: 0, results: [] });
+  assert.equal(parseLookup(new URLSearchParams("mediaType=tv&query=a&page=%202%20")).value.page, 2);
+  assert.equal(parseLookup(new URLSearchParams("mediaType=tv&query=a&page=")).value.page, 1);
 });
