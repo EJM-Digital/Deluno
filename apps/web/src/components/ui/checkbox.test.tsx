@@ -65,6 +65,25 @@ describe("a checkbox", () => {
   });
 });
 
+describe("a checkbox's look", () => {
+  it("is a small rounded square that shows focus, the ticked and mixed states, and the disabled state", () => {
+    render(<Checkbox aria-label="Keep it" checked={false} onCheckedChange={vi.fn()} className="mine" />);
+    expect(screen.getByRole("checkbox")).toHaveClass(
+      "peer", "h-4", "w-4", "appearance-none", "rounded-sm", "border-hairline", "bg-surface-1", "shadow-none",
+      "focus-visible:ring-2", "focus-visible:ring-ring", "checked:bg-primary", "indeterminate:bg-primary", "disabled:cursor-not-allowed", "disabled:opacity-60", "mine"
+    );
+  });
+
+  it("is named Checkbox for the developer tools", () => {
+    expect(Checkbox.displayName).toBe("Checkbox");
+  });
+
+  it("lays a row out with its box beside its words", () => {
+    const { container } = render(<CheckboxRow label="Stop it" checked onCheckedChange={vi.fn()} />);
+    expect(container.firstElementChild).toHaveClass("flex", "items-start", "gap-2");
+  });
+});
+
 describe("a checkbox row", () => {
   it("is ticked by clicking its words, and shows its description", async () => {
     const onCheckedChange = vi.fn();
