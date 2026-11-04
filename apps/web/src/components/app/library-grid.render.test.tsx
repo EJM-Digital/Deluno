@@ -133,6 +133,14 @@ describe("how many posters fit across", () => {
     expect(observers[0].observed).toBe(document.querySelector(".overflow-auto"));
   });
 
+  it("measures a container that has been taken out of the page by putting its probe in the container itself", () => {
+    grid({ items: Array.from({ length: 9 }, (_, index) => movie(String(index))) });
+    const callback = observers[0].callback;
+    document.querySelector(".overflow-auto")!.remove();
+    expect(() => callback()).not.toThrow();
+    expect(document.querySelector("[style*='visibility']")).toBeNull();
+  });
+
   it("stops watching when it goes away, and watches the new container when the grid is rebuilt", () => {
     const view = grid({ keyBust: "a" });
     const first = observers[0];

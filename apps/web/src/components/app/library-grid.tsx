@@ -129,7 +129,7 @@ export function ProgressiveGrid({
       // way — but the container is the element this ResizeObserver watches, and
       // adding a child to it inside its own callback is a write to the thing
       // being observed. It is the second half of the loop the owner saw shaking.
-      const host = container.parentElement!;
+      const host = container.parentElement ?? container;
       const probe = document.createElement("div");
       probe.style.cssText = `position:absolute;visibility:hidden;pointer-events:none;min-width:${gridMin};margin-left:var(--library-grid-gap);`;
       host.appendChild(probe);

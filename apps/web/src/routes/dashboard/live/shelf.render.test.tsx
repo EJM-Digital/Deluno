@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -443,8 +443,8 @@ describe("the caption tiers", () => {
     const ready = Promise.resolve();
     Object.defineProperty(document, "fonts", { configurable: true, value: { ready } });
     two();
-    await ready;
-    expect(words()).toEqual(["Met", "Upgraded"]);
+    await act(async () => { await ready; });
+    await waitFor(() => expect(words()).toEqual(["Met", "Upgraded"]));
     delete (document as unknown as { fonts?: unknown }).fonts;
   });
 
