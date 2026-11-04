@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Chip } from "../ui/chip";
 import { QualityBuildSteps, guideIntentFor, type QualityBuildStepsProps } from "./quality-build-steps";
 
 const judge = vi.hoisted(() => vi.fn());
@@ -366,6 +367,17 @@ describe("the rules that are the person's own", () => {
     expect(screen.queryByRole("group", { name: "Your custom release rules" })).toBeNull();
   });
 
+  it("saves no answer for a custom rule that already has one, or when a rule is removed that has none", () => {
+    const { p } = show({ customFormatIds: ["mine1"], formatIntents: { mine2: "avoid" } });
+    fireEvent.click(step(/How should your own rules affect a choice/));
+    const group = screen.getByRole("group", { name: "Your custom release rules" });
+    fireEvent.click(within(group).getByRole("checkbox", { name: "Second rule" }));
+    expect(p.onCustomFormatIdsChange).toHaveBeenLastCalledWith(["mine1", "mine2"]);
+    fireEvent.click(within(group).getByRole("checkbox", { name: "My rule" }));
+    expect(p.onCustomFormatIdsChange).toHaveBeenLastCalledWith([]);
+    expect(p.onFormatIntentChange).not.toHaveBeenCalled();
+  });
+
   it("keeps an answer already given, removes a rule on a second click, and asks how much it matters", () => {
     const { p } = show({ customFormatIds: ["mine1", "mine2"], formatIntents: { mine1: "avoid" } });
     fireEvent.click(step(/How should your own rules affect a choice/));
@@ -429,6 +441,24 @@ describe("the release you try against your answers", () => {
     show();
     await settle();
     expect(screen.getByText("Deluno would take this and stop looking").className).not.toBe(refusedClass);
+    expect(document.querySelectorAll("ul li")).toHaveLength(0);
+  });
+
+  it("draws a refusal exactly as the problem colour of a chip", async () => {
+    const { container } = render(<Chip tone="bad">Deluno would not take this</Chip>);
+    const bad = container.firstElementChild!.className;
+    cleanup();
+    judge.mockResolvedValue({ refusal: "No" });
+    show();
+    await settle();
+    expect(screen.getByText("Deluno would not take this").className).toBe(bad);
+  });
+
+  it("lists no reasons when the judgement gives none at all", async () => {
+    judge.mockResolvedValue({ candidateEvaluation: { status: "meetsPlan" } });
+    show();
+    await settle();
+    expect(screen.getByText("Deluno would take this and stop looking")).toBeInTheDocument();
     expect(document.querySelectorAll("ul li")).toHaveLength(0);
   });
 
