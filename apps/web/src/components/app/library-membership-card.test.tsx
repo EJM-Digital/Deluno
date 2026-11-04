@@ -303,4 +303,28 @@ describe("LibraryMembershipCard, the libraries a title is in (#530)", () => {
     await userEvent.click(within(screen.getByRole("columnheader", { name: /^Copy/ })).getByRole("button"));
     expect(names()).toEqual(["Charlie", "Bravo", "alpha"]);
   });
+
+  it("keeps the film in the library chosen from the list, not just the first one", async () => {
+    renderFull({ memberships: [held[0]] });
+
+    await userEvent.click(screen.getByRole("button", { name: "Keep in another library…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Keep this film in another library too?" });
+    await userEvent.selectOptions(within(dialog).getByRole("combobox"), "lib-kids");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Keep it there too" }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Also kept in Kids."));
+    expect(JSON.parse(String((vi.mocked(authedFetch).mock.calls[0][1] as RequestInit).body))).toEqual({ libraryId: "lib-kids" });
+  });
+
+  it("keeps the Move question open when the server refuses the move", async () => {
+    vi.mocked(authedFetch).mockResolvedValue(new Response(JSON.stringify({ message: "Kids cannot take it." }), { status: 409 }));
+    const { onSelect } = renderFull({ selectedLibraryId: "lib-4k" });
+
+    await userEvent.click(screen.getByRole("button", { name: "Move…" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Move" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Kids cannot take it."));
+    expect(screen.getByRole("dialog", { name: "Move out of Movies 4K?" })).toBeTruthy();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
 });

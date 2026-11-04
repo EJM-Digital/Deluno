@@ -99,10 +99,9 @@ export function LibraryMembershipCard({
     const ok = chosen.kind === "keep"
       ? await send(`${route}/${mediaId}/libraries/`, "POST", { libraryId: target }, `Also kept in ${name}.`)
       : await send(`${route}/${mediaId}/libraries/${chosen.from.libraryId}`, "PUT", { libraryId: target }, `Moved to ${name}.`);
-    if (ok) {
-      setPending(null);
-      if (chosen.kind === "move" && selectedLibraryId === chosen.from.libraryId) onSelect(target);
-    }
+    if (!ok) return;
+    setPending(null);
+    if (chosen.kind === "move" && selectedLibraryId === chosen.from.libraryId) onSelect(target);
   }
 
   return (
