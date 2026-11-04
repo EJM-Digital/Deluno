@@ -3,7 +3,8 @@ import { cn, formatBytesFromGb } from "./utils";
 
 describe("joining class names", () => {
   it("keeps the ones that apply and drops the ones that do not", () => {
-    expect(cn("a", false && "b", undefined, null, "c")).toBe("a c");
+    const off: boolean = Number("0") === 1;
+    expect(cn("a", off && "b", undefined, null, "c")).toBe("a c");
   });
 
   it("lets a later Tailwind class win over an earlier one that sets the same thing", () => {
