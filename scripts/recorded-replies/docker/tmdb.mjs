@@ -31,6 +31,13 @@ const calls = [
   ['search-provider-record-missing', 'GET /metadata/search with a providerId TMDb has no record for: 404 with the error provider_record_missing.', '/metadata/search?mediaType=movies&query=Sintel&providerId=999999999'],
   ['search-no-results', 'GET /metadata/search for a title nothing matches.', '/metadata/search?mediaType=movies&query=Zzqxjv%20Nonexistent%20Title%20Qwerty'],
   ['search-bad-media-type', 'GET /metadata/search with a media type the gateway does not serve.', '/metadata/search?mediaType=books&query=Sintel'],
+  // #1473: a whole page of matches, the next page, and a page number the gateway refuses.
+  ['search-movie-kickboxer-page1', 'GET /metadata/search for a film title with many matches: the whole first page (#1473).', '/metadata/search?mediaType=movies&query=Kickboxer&page=1'],
+  ['search-movie-kickboxer-page2', 'GET /metadata/search, the second page of the same title (#1473).', '/metadata/search?mediaType=movies&query=Kickboxer&page=2'],
+  ['search-movie-love-page1', 'GET /metadata/search for a title with hundreds of matches: page 1 of many (#1473).', '/metadata/search?mediaType=movies&query=Love&page=1'],
+  ['search-movie-love-page2', 'GET /metadata/search, page 2 of the same (#1473).', '/metadata/search?mediaType=movies&query=Love&page=2'],
+  ['search-tv-love-page1', 'GET /metadata/search for a series title with many matches: page 1 (#1473).', '/metadata/search?mediaType=tv&query=Love&page=1'],
+  ['search-bad-page', 'GET /metadata/search with a page number out of range: 400 (#1473).', '/metadata/search?mediaType=movies&query=Love&page=501'],
   ['catalogue-tv', 'GET /metadata/tv/{id}/catalogue: the seasons and episodes of a series (TMDb 1396).', '/metadata/tv/1396/catalogue', (b) => b.seasons?.flatMap?.((s) => s.episodes ?? []) && null],
   ['catalogue-tv-missing', 'GET /metadata/tv/{id}/catalogue for a TMDb id that has no series: 404 not_found.', '/metadata/tv/999999999/catalogue'],
   ['episode-groups-tv', 'GET /metadata/tv/{id}/episode-groups: the alternate episode orderings of a series.', '/metadata/tv/1396/episode-groups'],
@@ -58,7 +65,8 @@ for (const [state, what, path] of calls) {
     const body = replyJson(exchange);
     if (Array.isArray(body?.seasons)) { const total = body.seasons.length; body.seasons = body.seasons.slice(0, 2); exchange.reply.bodyText = JSON.stringify(body); extra = ` The reply had ${total} seasons; the first two are kept.`; }
   }
-  extra += shorten(exchange, (b) => b?.translations, 8) || shorten(exchange, (b) => b?.results, 12);
+  // A search page is kept whole: how many matches a page holds is what the paging tests prove (#1473).
+  extra += shorten(exchange, (b) => b?.translations, 8) || (state.startsWith('search-') ? '' : shorten(exchange, (b) => b?.results, 12));
   save('tmdb', day, state, `${what} Through the deployed gateway (${GATEWAY.replace(/^https:\/\//, '')}).${extra}`, [exchange]);
 }
 console.log('done');
