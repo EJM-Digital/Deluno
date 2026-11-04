@@ -70,7 +70,9 @@ export function IndexerDrawerBody({
   onRouteOnAddChange?: (value: boolean) => void;
 }) {
   const preset = INDEXER_PRESETS.find((item) => item.protocol === form.protocol)!;
-  const chip = editing ? healthChip(editing) : null;
+  // What the Health section says about the limits, once reached (#977); the same sentence is the test for showing the row.
+  const searchLimitText = editing ? describeCallLimitStatus("Search", editing.queryLimitStatus) : null;
+  const grabLimitText = editing ? describeCallLimitStatus("Grab", editing.grabLimitStatus) : null;
   // Category ids are Newznab/Torznab numbers (2000 movies, 5000 TV...). Deluno
   // fills them from the protocol and what the indexer is used for, so they stay
   // folded away and are described in words; only an indexer with non-standard
@@ -194,7 +196,7 @@ export function IndexerDrawerBody({
           {form.sharingRule === "strict"
             ? describeStrictSharingRule()
             : form.sharingRule === "custom"
-              ? describeCustomSharingRule(form.sharingSeedHours.trim() ? Number(form.sharingSeedHours) : null, form.sharingSeedRatio.trim() ? Number(form.sharingSeedRatio) : null)
+              ? describeCustomSharingRule(Number(form.sharingSeedHours), Number(form.sharingSeedRatio))
               : describeGlobalSharingRule(settings)}
         </p>
         {form.sharingRule !== "inherit" ? (
@@ -207,8 +209,8 @@ export function IndexerDrawerBody({
             </Field>
             <p className="text-(length:--type-caption) text-muted-foreground">
               {describeSeasonPackSeedTime(
-                form.seasonPackSeedForHours.trim() ? Number(form.seasonPackSeedForHours) : null,
-                form.sharingRule === "strict" ? STRICT_SHARING.forHours : (form.sharingSeedHours.trim() ? Number(form.sharingSeedHours) : null)
+                Number(form.seasonPackSeedForHours),
+                form.sharingRule === "strict" ? STRICT_SHARING.forHours : Number(form.sharingSeedHours)
               )}
             </p>
           </>
@@ -361,7 +363,7 @@ export function IndexerDrawerBody({
         </div>
       </DrawerSection>
 
-      {editing && chip ? (
+      {editing ? (
         <DrawerSection title="Health">
           <Field label="VIP/subscription expiry" error={errors.vipExpiresUtc} help="For a private tracker with a VIP or membership tier. Deluno warns starting 7 days before this date and until you update it or acknowledge the warning.">
             <Input type="date" value={form.vipExpiresUtc} onChange={(event) => { clearError("vipExpiresUtc"); setForm((current) => ({ ...current, vipExpiresUtc: event.target.value })); }} />
@@ -379,7 +381,7 @@ export function IndexerDrawerBody({
           ) : null}
           <dl className="grid grid-cols-[120px_1fr] items-center gap-x-(--grid-gap) gap-y-2 text-(length:--type-body-sm)">
             <dt className="text-muted-foreground">Last test</dt>
-            <dd className="flex items-center gap-2"><Chip tone={chip.tone}>{chip.label}</Chip><span className="text-muted-foreground">{relative(editing.lastHealthTestUtc)}{editing.lastHealthLatencyMs != null ? ` · ${editing.lastHealthLatencyMs} ms` : ""}</span></dd>
+            <dd className="flex items-center gap-2"><Chip tone={healthChip(editing).tone}>{healthChip(editing).label}</Chip><span className="text-muted-foreground">{relative(editing.lastHealthTestUtc)}{editing.lastHealthLatencyMs != null ? ` · ${editing.lastHealthLatencyMs} ms` : ""}</span></dd>
             <dt className="text-muted-foreground">Pacing</dt>
             <dd aria-live="polite" className="text-foreground">{throttle?.waiting ? `Deluno is waiting on ${throttle.host} before sending ${plural(throttle.waiting, "request")}.` : throttle?.nextPermitInSeconds ? `Deluno will send the next request to ${throttle.host} in about ${formatSeconds(throttle.nextPermitInSeconds)}.` : "No request is waiting. Deluno will still follow this indexer's safe request interval."}</dd>
             {editing.lastHealthMessage && !repeatsSecretNotice(editing, editing.lastHealthMessage) ? (<><dt className="text-muted-foreground">Message</dt><dd className="text-foreground"><MessageWithPreferencesLink text={editing.lastHealthMessage} /></dd></>) : null}
@@ -394,8 +396,8 @@ export function IndexerDrawerBody({
               </>
             ) : null}
             {editing.consecutiveFailures > 0 ? (<><dt className="text-muted-foreground">Failures</dt><dd className="text-warning">{editing.consecutiveFailures} in a row{editing.disabledReason ? ` — ${editing.disabledReason}` : ""}</dd></>) : null}
-            {describeCallLimitStatus("Search", editing.queryLimitStatus) ? (<><dt className="text-muted-foreground">Search limit</dt><dd className="text-warning">{describeCallLimitStatus("Search", editing.queryLimitStatus)}</dd></>) : null}
-            {describeCallLimitStatus("Grab", editing.grabLimitStatus) ? (<><dt className="text-muted-foreground">Grab limit</dt><dd className="text-warning">{describeCallLimitStatus("Grab", editing.grabLimitStatus)}</dd></>) : null}
+            {searchLimitText ? (<><dt className="text-muted-foreground">Search limit</dt><dd className="text-warning">{searchLimitText}</dd></>) : null}
+            {grabLimitText ? (<><dt className="text-muted-foreground">Grab limit</dt><dd className="text-warning">{grabLimitText}</dd></>) : null}
           </dl>
           <div className="flex flex-wrap gap-2">
             {editing.consecutiveFailures > 0 ? (

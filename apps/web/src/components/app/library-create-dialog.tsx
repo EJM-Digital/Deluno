@@ -59,7 +59,7 @@ export function LibraryCreateDialog({
   onSelectResult, onOpenHeldResult, onCreate, libraries = [], libraryId, onLibraryChange, qualityProfiles = [],
 }: LibraryCreateDialogProps) {
   const selectedMetadataCount = selectedMetadataResults.length;
-  const chosenLibrary = libraries.find((library) => library.id === (libraryId ?? libraries[0]?.id));
+  const chosenLibrary = libraries.find((library) => library.id === (libraryId ?? libraries[0].id));
   // The profile shown is the one picked, or else the library's own - the default is a real choice you can see, not a blank.
   const shownProfileId = createForm.qualityProfileId || chosenLibrary?.qualityProfileId || "";
 
@@ -156,7 +156,7 @@ export function LibraryCreateDialog({
                     onChange={(event) => {
                       const next = event.target.value;
                       // Choosing the library's own profile is the same as choosing nothing: the title keeps following the library.
-                      setCreateForm((current) => ({ ...current, qualityProfileId: next === (chosenLibrary?.qualityProfileId ?? "") ? "" : next }));
+                      setCreateForm((current) => ({ ...current, qualityProfileId: next === chosenLibrary?.qualityProfileId ? "" : next }));
                     }}
                     options={qualityProfiles.map((profile) => ({ value: profile.id, label: profile.id === chosenLibrary?.qualityProfileId ? `${profile.name} (library's)` : profile.name }))}
                   />

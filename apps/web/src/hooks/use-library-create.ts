@@ -89,9 +89,7 @@ export type IdPrefixedSearch ={ source: "tmdb" | "imdb" | "tvdb"; id: string };
 export function parseIdPrefixedSearch(text: string): IdPrefixedSearch | null {
   const match = /^(tmdb|imdb|tvdb):\s*(\S+)$/i.exec(text.trim());
   if (!match) return null;
-  const id = match[2].trim();
-  if (!id) return null;
-  return { source: match[1].toLowerCase() as IdPrefixedSearch["source"], id };
+  return { source: match[1].toLowerCase() as IdPrefixedSearch["source"], id: match[2] };
 }
 
 export function metadataCreatePayload(metadata: MetadataSearchResult | null) {

@@ -16,13 +16,13 @@ export class ApiRequestError extends Error {
 const TRANSIENT_HTTP_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 const RETRY_DELAYS_MS = [150, 450, 1_000] as const;
 
-function canRetryRequest(init?: RequestInit) {
-  const method = (init?.method ?? "GET").toUpperCase();
+function canRetryRequest(init: RequestInit) {
+  const method = (init.method ?? "GET").toUpperCase();
   return method === "GET" || method === "HEAD" || method === "OPTIONS";
 }
 
 function isTransientNetworkError(error: unknown) {
-  return error instanceof TypeError || (typeof DOMException !== "undefined" && error instanceof DOMException && error.name !== "AbortError");
+  return error instanceof TypeError || (error instanceof DOMException && error.name !== "AbortError");
 }
 
 /** Waits before the next try, or less if the caller gives up first: a page that has gone stops its retries at once (#1396). */

@@ -23,7 +23,11 @@ public static class SharingFootprint
     /// is the one that lets a drive fill up silently.
     /// </summary>
     public static bool SharesOneCopy(string? downloadPath, string? libraryPath, bool useHardlinks)
-        => useHardlinks && OnSameDrive(downloadPath, libraryPath) == true;
+        => SharesOneCopy(downloadPath, libraryPath, useHardlinks, MountedVolumes.Roots());
+
+    /// <summary>As above, against the mounted roots given (tests pass their own mounts).</summary>
+    internal static bool SharesOneCopy(string? downloadPath, string? libraryPath, bool useHardlinks, IReadOnlyList<string> mountedRoots)
+        => useHardlinks && OnSameDrive(downloadPath, libraryPath, mountedRoots) == true;
 
     /// <summary>
     /// What to tell someone about where their two copies live — and only when
@@ -32,8 +36,12 @@ public static class SharingFootprint
     /// cases inventing a sentence would be noise.
     /// </summary>
     public static string? Describe(string? downloadPath, string? libraryPath, bool useHardlinks)
+        => Describe(downloadPath, libraryPath, useHardlinks, MountedVolumes.Roots());
+
+    /// <summary>As above, against the mounted roots given (tests pass their own mounts).</summary>
+    internal static string? Describe(string? downloadPath, string? libraryPath, bool useHardlinks, IReadOnlyList<string> mountedRoots)
     {
-        var sameDrive = OnSameDrive(downloadPath, libraryPath);
+        var sameDrive = OnSameDrive(downloadPath, libraryPath, mountedRoots);
         if (sameDrive is null)
         {
             return null;
@@ -41,8 +49,8 @@ public static class SharingFootprint
 
         if (sameDrive == false)
         {
-            var downloadDrive = DescribeDrive(downloadPath);
-            var libraryDrive = DescribeDrive(libraryPath);
+            var downloadDrive = DescribeDrive(downloadPath, mountedRoots);
+            var libraryDrive = DescribeDrive(libraryPath, mountedRoots);
             return $"Your downloads land on {downloadDrive} and your library is on {libraryDrive}, so each one Deluno is still sharing takes its own space.";
         }
 
@@ -55,10 +63,10 @@ public static class SharingFootprint
     /// Null when either path is missing or unreadable — which is a different
     /// answer from "no", and the caller has to be able to tell them apart.
     /// </summary>
-    private static bool? OnSameDrive(string? first, string? second)
+    private static bool? OnSameDrive(string? first, string? second, IReadOnlyList<string> mountedRoots)
     {
-        var firstRoot = RootOf(first);
-        var secondRoot = RootOf(second);
+        var firstRoot = RootOf(first, mountedRoots);
+        var secondRoot = RootOf(second, mountedRoots);
         if (firstRoot is null || secondRoot is null)
         {
             return null;
@@ -87,7 +95,7 @@ public static class SharingFootprint
     /// table as text (<see cref="MountedVolumes"/>, #1464); reading it through
     /// <see cref="DriveInfo.GetDrives"/> once kept a CI run from exiting.</para>
     /// </summary>
-    private static string? RootOf(string? path)
+    private static string? RootOf(string? path, IReadOnlyList<string> mountedRoots)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -102,7 +110,7 @@ public static class SharingFootprint
         try
         {
             var fullPath = Path.GetFullPath(path);
-            var root = MountedVolumes.RootOf(fullPath, MountedVolumes.Roots()) ?? Path.GetPathRoot(fullPath);
+            var root = MountedVolumes.RootOf(fullPath, mountedRoots) ?? Path.GetPathRoot(fullPath);
             return string.IsNullOrWhiteSpace(root) ? null : root;
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException or IOException)
@@ -139,9 +147,9 @@ public static class SharingFootprint
 
 
     /// <summary>"C:" rather than "C:\" — how a person says it.</summary>
-    private static string DescribeDrive(string? path)
+    private static string DescribeDrive(string? path, IReadOnlyList<string> mountedRoots)
     {
-        var root = RootOf(path);
+        var root = RootOf(path, mountedRoots);
         if (root is null)
         {
             return "another drive";

@@ -11,14 +11,15 @@ import { detailFields, fixLinkForActivity } from "../../lib/detail-fields";
 import { isChosenOnSearch, relatedEntityLabel } from "../../lib/dispatch-target";
 import type { JobQueueItem } from "../../lib/api";
 
+/** Where a dead-lettered job is put right: the screen that holds its fix. */
+const FIX_FOR_FAILED_JOB = fixLinkForActivity("job.dead-letter")!;
+
 export function JobDrawer({ job, busy, onClose, onDismiss, onRetry }: { job: JobQueueItem | null; busy: boolean; onClose: () => void; onDismiss: (job: JobQueueItem) => void; onRetry?: (job: JobQueueItem) => void }) {
   const { preferences } = useDisplayPreferences();
   return (
     <Drawer
       open={job !== null}
-      onOpenChange={(next) => {
-        if (!next) onClose();
-      }}
+      onOpenChange={() => onClose()}
       title={job ? (job.target ?? job.label) : "Job"}
       description={job ? `${job.target ? `${job.label} · ` : ""}${job.sourceLabel} · ${getJobStatusLabel(job.status as JobStatus)}` : undefined}
       footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={onClose} />}
@@ -77,11 +78,11 @@ export function JobDrawer({ job, busy, onClose, onDismiss, onRetry }: { job: Job
                   </Button>
                 ) : null}
                 <Link
-                  to={fixLinkForActivity("job.dead-letter", "problem")!.to}
+                  to={FIX_FOR_FAILED_JOB.to}
                   onClick={onClose}
                   className="text-(length:--type-caption) font-semibold text-primary hover:underline"
                 >
-                  {fixLinkForActivity("job.dead-letter", "problem")!.label}
+                  {FIX_FOR_FAILED_JOB.label}
                 </Link>
               </div>
             </DrawerSection>
