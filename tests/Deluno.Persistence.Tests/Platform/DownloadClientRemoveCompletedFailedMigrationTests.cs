@@ -56,6 +56,20 @@ public sealed class DownloadClientRemoveCompletedFailedMigrationTests
         Assert.Equal(0, (await ReadClientAsync(connection, "client-1")).RemoveFailed);
     }
 
+    [Fact]
+    public void The_first_version_the_lab_rig_ran_is_still_accepted_beside_the_current_one()
+    {
+        var migration = new V0092DownloadClientRemoveCompletedFailed();
+        var firstVersion =
+            "ALTER TABLE download_clients ADD COLUMN remove_completed INTEGER NOT NULL DEFAULT 0;\n" +
+            "ALTER TABLE download_clients ADD COLUMN remove_failed INTEGER NOT NULL DEFAULT 0;";
+        var expected = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes($"92|download_client_remove_completed_failed|{firstVersion}"))).ToLowerInvariant();
+
+        Assert.Equal([expected], migration.SupersededChecksums);
+        Assert.NotEqual(expected, migration.Checksum);
+    }
+
     private static async Task<SqliteConnection> OpenWithTablesAsync()
     {
         var connection = new SqliteConnection("Data Source=:memory:");
