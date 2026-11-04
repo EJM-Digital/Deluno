@@ -80,7 +80,8 @@ public static class ClientSaveFolders
 
         var clientStyle = StyleOf(clientReportedPath);
         var hostStyle = StyleOf(hostFolder);
-        if (clientStyle == PathStyle.Unknown || hostStyle == PathStyle.Unknown || clientStyle != hostStyle)
+        // An unknown style never equals a known one, so only the host being unknown needs saying.
+        if (hostStyle == PathStyle.Unknown || clientStyle != hostStyle)
         {
             return false;
         }
@@ -150,7 +151,7 @@ public static class ClientSaveFolders
         CancellationToken cancellationToken,
         Func<CancellationToken, Task<string?>>? clientReportedPath = null)
     {
-        var folders = new List<string>();
+        var folders = new List<string?>();
         foreach (var library in (await libraries.ListLibrariesAsync(cancellationToken))
                      .Where(item => string.Equals(item.MediaType, mediaType, StringComparison.OrdinalIgnoreCase)))
         {
@@ -160,17 +161,17 @@ public static class ClientSaveFolders
                 && string.Equals(RoutedCategory(client, library, link.Category), category, StringComparison.OrdinalIgnoreCase)) ?? false;
             if (routed)
             {
-                folders.Add(library.DownloadsPath?.Trim() ?? string.Empty);
+                folders.Add(library.DownloadsPath?.Trim());
             }
         }
 
         var distinct = folders.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        if (distinct.Length != 1 || string.IsNullOrWhiteSpace(distinct[0]) || !ClientPaths.IsFullClientPath(distinct[0]))
+        if (distinct.Length != 1 || string.IsNullOrWhiteSpace(distinct[0]) || !ClientPaths.IsFullClientPath(distinct[0]!))
         {
             return null;
         }
 
-        var host = distinct[0].TrimEnd('/', '\\');
+        var host = distinct[0]!.TrimEnd('/', '\\');
         var clientFolder = ToClientPath(host, mappings);
         var mapped = !string.Equals(clientFolder, host, StringComparison.Ordinal) || IsCovered(host, mappings);
         if (mapped)
