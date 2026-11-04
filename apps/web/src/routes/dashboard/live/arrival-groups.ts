@@ -57,10 +57,12 @@ function seriesOf(item: ArrivalItem, titles: TitleLookup): string | null {
 }
 
 function episodeCode(item: ArrivalItem, titles: TitleLookup): string | null {
-  const entity = item.entity;
-  if (entity?.kind === "episode") {
-    const info = titles.episodes.get(entity.id);
-    if (info) return code(info.season, info.episode);
+  // Only called for an arrival grouped under a show, which always has an entity.
+  const entity = item.entity as NonNullable<ArrivalItem["entity"]>;
+  if (entity.kind === "episode") {
+    // An episode is only grouped under a show when the library knows it, so it is known here.
+    const info = titles.episodes.get(entity.id) as { season: number; episode: number };
+    return code(info.season, info.episode);
   }
   return item.release ? episodeFromRelease(item.release) : null;
 }
@@ -68,7 +70,7 @@ function episodeCode(item: ArrivalItem, titles: TitleLookup): string | null {
 /** "S01E05–E08 · 4 episodes" for a run of one season's episodes, or null where the numbers are not all known or they span seasons. */
 export function episodeSpanOf(codes: ReadonlyArray<string | null>): string | null {
   if (codes.length < 2) return null;
-  const parsed = codes.map((value) => /^S(\d+)E(\d+)$/i.exec(value ?? ""));
+  const parsed = codes.map((value) => /^S(\d+)E(\d+)$/i.exec(String(value)));
   if (parsed.some((match) => !match)) return null;
   const seasons = new Set(parsed.map((match) => Number(match![1])));
   if (seasons.size !== 1) return null;
@@ -102,15 +104,16 @@ export function groupArrivals(items: ArrivalItem[], titles: TitleLookup): Arriva
     }
   }
   const groups = order.map((key): ArrivalGroup => {
-    const members = [...(buckets.get(key) ?? [])].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+    const members = [...(buckets.get(key) as ArrivalItem[])].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
     const first = members[0];
     const named = nameOf(first, titles);
     const isShow = key.startsWith("show:");
     const upgrades = members.filter((item) => item.upgraded).length;
     const qualities = new Set(members.map((item) => item.quality).filter((quality): quality is string => Boolean(quality)));
+    const quality = qualities.size > 1 ? "mixed" : (qualities.values().next().value ?? null);
     let tag: string | null;
     if (members.length === 1) tag = first.upgraded && first.previousQuality && first.quality ? `${first.previousQuality} → ${first.quality}` : first.quality;
-    else tag = qualities.size > 1 ? "mixed" : (qualities.values().next().value ?? null);
+    else tag = quality;
     if (members.length > 1 && upgrades > 0) tag = `${tag ?? "Arrived"} · ${upgrades} upgraded`;
     const showName = isShow ? named.title.replace(/\s+S\d{1,2}E\d{1,3}.*$/i, "") : named.title;
     return {
@@ -121,15 +124,15 @@ export function groupArrivals(items: ArrivalItem[], titles: TitleLookup): Arriva
       to: named.to,
       at: first.at,
       tag,
-      quality: members.length === 1 ? first.quality : qualities.size > 1 ? "mixed" : (qualities.values().next().value ?? null),
+      quality,
       previousQuality: members.length === 1 ? first.previousQuality : null,
       upgrades,
       episodes: !isShow ? null : members.length === 1 ? episodeCode(first, titles) : `${members.length} episodes`,
-      episodeSpan: isShow && members.length > 1 ? episodeSpanOf(members.map((item) => episodeCode(item, titles))) : null,
+      episodeSpan: isShow ? episodeSpanOf(members.map((item) => episodeCode(item, titles))) : null,
       sizeBytes: members.reduce((sum, item) => sum + (item.sizeBytes ?? 0), 0),
       libraryId: first.libraryId ?? null,
       libraryName: first.libraryName ?? null,
-      library: isShow || first.entity?.kind === "series" || first.entity?.kind === "episode" ? "tv" : "movies",
+      library: first.entity?.kind === "series" || first.entity?.kind === "episode" ? "tv" : "movies",
       met: groupMet(members)
     };
   });

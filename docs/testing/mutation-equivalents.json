@@ -657,6 +657,22 @@
       "line": 72,
       "replacement": "true",
       "reason": "Equivalent: the changed comparison gives the same answer for every value the code can hold, because a null or zero size, or an equal finish time, falls out at the next check anyway."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/arrival-groups.ts",
+      "mutator": "Regex",
+      "line": 118,
+      "replacement": "/\\s+S\\d{1,2}E\\d{1,3}.*/i",
+      "reason": "Equivalent: the changed pattern strips the same text, because the greedy rest of the line that follows the episode code removes everything after it whether or not the end of the line is named or the code has one digit more."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/arrival-groups.ts",
+      "mutator": "Regex",
+      "line": 118,
+      "replacement": "/\\s+S\\d{1,2}E\\d.*$/i",
+      "reason": "Equivalent: the changed pattern strips the same text, because the greedy rest of the line that follows the episode code removes everything after it whether or not the end of the line is named or the code has one digit more."
     }
   ]
 }
