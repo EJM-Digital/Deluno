@@ -45,4 +45,34 @@ public sealed class StartupGateTests
         Assert.DoesNotContain("series", gate.FailedDatabases.Keys);
         Assert.DoesNotContain("series", gate.PendingDatabases);
     }
+
+    [Fact]
+    public void An_unregistered_database_is_refused_whether_it_is_ready_or_failed()
+    {
+        var gate = new DelunoStartupGate();
+
+        Assert.Throws<ArgumentException>(() => gate.MarkReady("nope"));
+        Assert.Throws<ArgumentException>(() => gate.MarkFailed("nope", new InvalidOperationException("x")));
+    }
+
+    [Fact]
+    public void The_last_database_ready_moves_start_up_on_to_the_web_host_once()
+    {
+        var steps = new List<StartupPhase>();
+        var gate = new DelunoStartupGate(new Recorder(steps));
+
+        foreach (var database in DelunoStorageLayout.Databases)
+        {
+            Assert.Empty(steps);
+            gate.MarkReady(database.Key);
+        }
+        gate.MarkReady("platform");
+
+        Assert.Equal([StartupPhase.WebHost], steps);
+    }
+
+    private sealed class Recorder(List<StartupPhase> steps) : IStartupProgress
+    {
+        public void Enter(StartupPhase phase, string? detail = null) => steps.Add(phase);
+    }
 }

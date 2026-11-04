@@ -80,8 +80,8 @@ public sealed class NetworkChecker(INetworkProbe probe, TimeProvider timeProvide
             return null;
         }
 
-        var host = share.TrimStart('\\').Split('\\', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-        return string.IsNullOrWhiteSpace(host) ? null : host;
+        // A share root always names a server and a share, so the first part is the server.
+        return share.TrimStart('\\').Split('\\')[0];
     }
 
     private static async Task<TResult?> Limited<TResult>(Func<CancellationToken, Task<TResult>> work, TimeSpan limitFor, CancellationToken cancellationToken)
@@ -100,19 +100,33 @@ public sealed class NetworkChecker(INetworkProbe probe, TimeProvider timeProvide
     }
 }
 
+/// <summary>What one ping showed: whether the machine answered, and the round trip in milliseconds.</summary>
+public sealed record PingOutcome(bool Replied, long RoundtripMilliseconds);
+
 /// <summary>The real probe: the system resolver, a TCP connection to the file-sharing port with a ping as the fallback, and an HTTP request.</summary>
 public sealed class NetworkProbe(HttpClient http) : INetworkProbe
 {
     /// <summary>SMB, the port a network share is served on.</summary>
     private const int FileSharingPort = 445;
 
+    /// <summary>One ping: whether the machine replied, and how long the round trip took. Replaceable so a test can answer.</summary>
+    public Func<string, CancellationToken, Task<PingOutcome>> SendPing { get; init; } = SendRealPing;
+
+    private static async Task<PingOutcome> SendRealPing(string host, CancellationToken cancellationToken)
+    {
+        using var ping = new Ping();
+        var reply = await ping.SendPingAsync(host, TimeSpan.FromSeconds(2), cancellationToken: cancellationToken);
+        return new PingOutcome(reply.Status == IPStatus.Success, reply.RoundtripTime);
+    }
+
     public async Task<double?> LookupMillisecondsAsync(string name, CancellationToken cancellationToken)
     {
         var started = Stopwatch.GetTimestamp();
         try
         {
-            var addresses = await Dns.GetHostAddressesAsync(name, cancellationToken);
-            return addresses.Length == 0 ? null : Elapsed(started);
+            // A name that does not resolve throws; the lookup never answers with an empty list.
+            await Dns.GetHostAddressesAsync(name, cancellationToken);
+            return Elapsed(started);
         }
         catch (SocketException)
         {
@@ -136,9 +150,8 @@ public sealed class NetworkProbe(HttpClient http) : INetworkProbe
 
         try
         {
-            using var ping = new Ping();
-            var reply = await ping.SendPingAsync(host, TimeSpan.FromSeconds(2), cancellationToken: cancellationToken);
-            return reply.Status == IPStatus.Success ? Math.Max(0, reply.RoundtripTime) : null;
+            var reply = await SendPing(host, cancellationToken);
+            return reply.Replied ? Math.Max(0, reply.RoundtripMilliseconds) : null;
         }
         catch (Exception exception) when (exception is PingException or SocketException or InvalidOperationException)
         {

@@ -73,7 +73,7 @@ public sealed class DelunoStartupGate(IStartupProgress? progress = null) : IDelu
 
         failedDatabases.TryRemove(databaseName, out _);
         readyDatabases[databaseName] = 0;
-        if (readyDatabases.Count == ExpectedDatabases.Count && failedDatabases.IsEmpty && allReady.TrySetResult())
+        if (readyDatabases.Count == ExpectedDatabases.Count && allReady.TrySetResult())
         {
             // The databases are done; what is left is the remaining services and the web server (#1256).
             progress?.Enter(StartupPhase.WebHost, "the databases are ready");

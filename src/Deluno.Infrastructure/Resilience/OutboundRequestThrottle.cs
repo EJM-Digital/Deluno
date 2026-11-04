@@ -144,11 +144,6 @@ public sealed class OutboundRequestThrottle(
                 return null;
             }
         }
-        catch (OperationCanceledException)
-        {
-            Interlocked.Decrement(ref bucket.Waiting);
-            throw;
-        }
         finally
         {
             Interlocked.Decrement(ref bucket.Waiting);

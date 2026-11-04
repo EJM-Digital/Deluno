@@ -109,12 +109,54 @@ public sealed class NetworkCheckerTests
         Assert.Equal(expected, NetworkChecker.NetworkHostOf(path));
     }
 
+    [Fact]
+    public async Task Without_a_limit_given_every_check_still_runs_under_the_default_one()
+    {
+        var probe = new FakeProbe { Lookup = 1, Reach = 2, Http = new HttpTiming(3, Now) };
+
+        var result = await new NetworkChecker(probe, new FakeTimeProvider(Now)).RunAsync("nas", Metadata, CancellationToken.None);
+
+        Assert.Equal([1, 2, 3], [result.DnsLookupMs, result.NasMs, result.MetadataMs]);
+    }
+
+    [Fact]
+    public async Task A_check_that_fails_on_the_network_is_null_and_the_others_still_answer()
+    {
+        var probe = new FakeProbe { Lookup = 4, Http = new HttpTiming(9, Now), ReachFails = new System.Net.Sockets.SocketException() };
+
+        var result = await Checker(probe).RunAsync("nas", Metadata, CancellationToken.None);
+
+        Assert.Null(result.NasMs);
+        Assert.Equal(4, result.DnsLookupMs);
+        Assert.Equal(9, result.MetadataMs);
+    }
+
+    [Theory]
+    [InlineData(true, 12, 12.0)]
+    [InlineData(true, -5, 0.0)]
+    [InlineData(false, 12, null)]
+    public async Task A_machine_that_serves_no_files_is_found_by_ping_only_when_it_replies(bool replied, long roundtrip, double? expected)
+    {
+        using var http = new HttpClient();
+        var probe = new NetworkProbe(http) { SendPing = (_, _) => Task.FromResult(new PingOutcome(replied, roundtrip)) };
+
+        Assert.Equal(expected, await probe.ReachMillisecondsAsync("no-such-machine.invalid", CancellationToken.None));
+    }
+
+    [Fact]
+    public void A_share_with_a_server_and_a_folder_names_the_server_and_one_with_only_a_server_names_none()
+    {
+        Assert.Equal("nas", NetworkChecker.NetworkHostOf(@"\\nas\media"));
+        Assert.Null(NetworkChecker.NetworkHostOf(@"\\nas"));
+    }
+
     private sealed class FakeProbe : INetworkProbe
     {
         public double? Lookup { get; set; }
         public double? Reach { get; set; }
         public HttpTiming? Http { get; set; }
         public bool ReachHangs { get; set; }
+        public Exception? ReachFails { get; set; }
         public string? LookedUp { get; private set; }
         public string? Reached { get; private set; }
         public Uri? Requested { get; private set; }
@@ -128,6 +170,11 @@ public sealed class NetworkCheckerTests
         public async Task<double?> ReachMillisecondsAsync(string host, CancellationToken cancellationToken)
         {
             Reached = host;
+            if (ReachFails is not null)
+            {
+                throw ReachFails;
+            }
+
             if (ReachHangs)
             {
                 await Task.Delay(Timeout.Infinite, cancellationToken); // reason: a probe that never answers; the test cancels it
