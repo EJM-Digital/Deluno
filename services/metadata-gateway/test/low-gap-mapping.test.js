@@ -7,7 +7,7 @@ import gateway, { lookupTmdb, mapTmdbResult } from "../src/index.js";
 
 const ORIGIN = "https://gateway.example";
 
-test("at most 6 search results are returned and items with no id or no title are dropped", async () => {
+test("every search result of the page is returned (not cut to six) and items with no id or no title are dropped", async () => {
   const results = [
     { id: 0, title: "No id" },
     { id: 1 },
@@ -17,8 +17,8 @@ test("at most 6 search results are returned and items with no id or no title are
 
   const found = await lookupTmdb({ mediaType: "movies", query: "Film", year: null, providerId: null }, "key", request);
 
-  assert.equal(found.length, 6);
-  assert.deepEqual(found.map((item) => item.providerId), ["10", "11", "12", "13", "14", "15"]);
+  assert.equal(found.length, 9);
+  assert.deepEqual(found.map((item) => item.providerId), ["10", "11", "12", "13", "14", "15", "16", "17", "18"]);
 });
 
 test("a result carries provider tmdb, its id, media type, title, original title and the year of its release date", () => {

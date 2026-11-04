@@ -10,7 +10,6 @@ const CATALOGUE_TTL_SECONDS = 60 * 60 * 6;
 // A title's translations change rarely and one answer carries every language,
 // so it is kept a week and shared by every install whatever language it asks for.
 const TRANSLATIONS_TTL_SECONDS = 60 * 60 * 24 * 7;
-const MAX_RESULTS = 6;
 // A series with 10 seasons is 11 upstream calls. Doing that fan-out here rather
 // than in the app is the whole point of the gateway: one client request, one
 // cached answer, and TMDb sees a single origin it can rate-limit sensibly.
@@ -19,6 +18,8 @@ const ARTWORK_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30;
 // A popular list reshuffles through the day, so it is kept only a few hours.
 const POPULAR_TTL_SECONDS = 60 * 60 * 3;
 const MAX_POPULAR_PAGE = 500;
+// TMDb refuses a search page past 500. A search page is TMDb's own page of 20: the gateway no longer cuts it (#1473).
+const MAX_SEARCH_PAGE = 500;
 const PERSON_EXTERNAL_IDS_TTL_SECONDS = 60 * 60 * 24 * 365;
 const ARTWORK_SIZES = new Set(["w92", "w185", "w342", "w500", "w780", "w1280", "original"]);
 
@@ -97,12 +98,15 @@ export default {
     }
 
     try {
-      const results = await lookupTmdb(lookup.value, env.TMDB_API_KEY, provider, url.origin);
+      const found = await lookupTmdbPage(lookup.value, env.TMDB_API_KEY, provider, url.origin);
       const response = {
         provider: "deluno-broker",
         mode: "broker",
-        resultCount: results.length,
-        results
+        resultCount: found.results.length,
+        page: found.page,
+        totalPages: found.totalPages,
+        totalResults: found.totalResults,
+        results: found.results
       };
       await writeCache(env.METADATA_CACHE, key, response, CACHE_TTL_SECONDS);
       return json(response, 200, { "Cache-Control": "public, max-age=300" });
@@ -646,7 +650,13 @@ export function parseLookup(params) {
     return { error: "year must be between 1800 and 2100." };
   }
 
-  return { value: { query, mediaType, providerId, year } };
+  const rawPage = (params.get("page") ?? "").trim();
+  const page = rawPage ? Number.parseInt(rawPage, 10) : 1;
+  if (rawPage && (!/^\d{1,6}$/.test(rawPage) || page < 1 || page > MAX_SEARCH_PAGE)) {
+    return { error: `page must be between 1 and ${MAX_SEARCH_PAGE}.` };
+  }
+
+  return { value: { query, mediaType, providerId, year, page } };
 }
 
 /**
@@ -662,16 +672,25 @@ export function parseLookup(params) {
  * v5 is the artwork sizes (#326). A payload's poster URL is part of its shape:
  * v4 answers carry w500 and w1280 URLs, and serving one is not a stale field
  * but a title cached at the old resolution for the next thirty days.
+ *
+ * v9 is the whole page (#1473). v8 answers were cut to six matches, so a title
+ * past the sixth could never be found; v9 holds TMDb's page of twenty and the
+ * page number is part of the key.
  */
-export function buildCacheKey({ query, mediaType, providerId, year }) {
-  const normalized = `${mediaType}|${query.toLocaleLowerCase("en-US")}|${year ?? ""}|${providerId ?? ""}`;
-  return `search:v8:${encodeURIComponent(normalized)}`;
+export function buildCacheKey({ query, mediaType, providerId, year, page = 1 }) {
+  const normalized = `${mediaType}|${query.toLocaleLowerCase("en-US")}|${year ?? ""}|${providerId ?? ""}|${page}`;
+  return `search:v9:${encodeURIComponent(normalized)}`;
 }
 
 export async function lookupTmdb(lookup, apiKey, request = fetch, artworkOrigin = null) {
+  return (await lookupTmdbPage(lookup, apiKey, request, artworkOrigin)).results;
+}
+
+export async function lookupTmdbPage(lookup, apiKey, request = fetch, artworkOrigin = null) {
   if (lookup.providerId) {
     const detail = await getTmdbDetail(lookup.mediaType, lookup.providerId, apiKey, request, artworkOrigin);
-    return detail ? [detail] : [];
+    const results = detail ? [detail] : [];
+    return { page: 1, totalPages: 1, totalResults: results.length, results };
   }
 
   const kind = lookup.mediaType === "tv" ? "tv" : "movie";
@@ -679,20 +698,23 @@ export async function lookupTmdb(lookup, apiKey, request = fetch, artworkOrigin 
   endpoint.searchParams.set("api_key", apiKey);
   endpoint.searchParams.set("query", lookup.query);
   endpoint.searchParams.set("include_adult", "false");
+  const page = lookup.page ?? 1;
+  endpoint.searchParams.set("page", String(page));
   if (lookup.year) {
     endpoint.searchParams.set(lookup.mediaType === "tv" ? "first_air_date_year" : "year", String(lookup.year));
   }
 
   const search = await getJson(endpoint, request);
   const matches = Array.isArray(search.results)
-    ? search.results.filter((item) => item?.id && (item.title || item.name)).slice(0, MAX_RESULTS)
+    ? search.results.filter((item) => item?.id && (item.title || item.name))
     : [];
   // Search cards need a title, year, rating, and artwork immediately. TMDb returns all of
   // those in its search response, so do not make a detail request for every visible card.
   // Deluno requests the full record only after the user selects a specific match.
-  return matches
-    .map((item) => mapTmdbResult(item, lookup.mediaType, artworkOrigin))
-    .filter(Boolean);
+  const results = matches.map((item) => mapTmdbResult(item, lookup.mediaType, artworkOrigin));
+  const totalPages = Math.max(page, Number.isInteger(search.total_pages) ? search.total_pages : 0);
+  const totalResults = Number.isInteger(search.total_results) ? Math.max(search.total_results, 0) : results.length;
+  return { page, totalPages, totalResults, results };
 }
 
 async function getTmdbDetail(mediaType, providerId, apiKey, request, artworkOrigin) {
