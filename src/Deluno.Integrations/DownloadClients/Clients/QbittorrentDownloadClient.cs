@@ -247,9 +247,12 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         // failure here does not fail the grab, since the download itself
         // already succeeded; the client just keeps its own default limits.
         var listed = added is not null && after is not null && after.Contains(added, StringComparer.OrdinalIgnoreCase);
+        var refusals = new List<DownloadClientFollowUpRefusal>();
+        var sent = new List<string>();
         if (listed && HasShareLimits(client))
         {
-            await TrySetShareLimitsAsync(http, client, added!, cancellationToken);
+            sent.Add("setShareLimits");
+            refusals.AddRange(await TrySetShareLimitsAsync(http, client, added!, cancellationToken));
         }
 
         // #811: setCategory and setLocation, once the hash is known — the
@@ -258,22 +261,22 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         // form field happened to take (qBittorrent's Automatic Torrent
         // Management can override an add-time savepath; the explicit call
         // does not go through it the same way).
+        // #1470: a call the client refuses is handed back so the grab service says so; the grab itself stands.
         if (listed)
         {
-            await TrySetCategoryAsync(http, client, request, added!, cancellationToken);
-            if (!string.IsNullOrWhiteSpace(client.Location))
-            {
-                await TrySetLocationAsync(http, client, added!, cancellationToken);
-            }
-            else
-            {
-                await TrySetAutoManagementAsync(http, added!, cancellationToken);
-            }
+            sent.Add("setCategory");
+            sent.Add(!string.IsNullOrWhiteSpace(client.Location) ? "setLocation" : "setAutoManagement");
+            refusals.AddRange(await TrySetCategoryAsync(http, client, request, added!, cancellationToken));
+            refusals.AddRange(!string.IsNullOrWhiteSpace(client.Location)
+                ? await TrySetLocationAsync(http, client, added!, cancellationToken)
+                : await TrySetAutoManagementAsync(http, added!, cancellationToken));
         }
 
         return DownloadClientHelpers.GrabSuccess(client, request, "Release URL sent to qBittorrent.") with
         {
-            ExternalId = added
+            ExternalId = added,
+            FollowUpRefusals = refusals.Count > 0 ? refusals : null,
+            FollowUpCallsSent = sent
         };
     }
 
@@ -329,7 +332,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
     /// time, since a failure here never fails the grab (the category from the
     /// add-time form field is still whatever qBittorrent already took).
     /// </summary>
-    private static async Task TrySetCategoryAsync(HttpClient http, DownloadClientItem client, DownloadClientGrabRequest request, string hash, CancellationToken cancellationToken)
+    private static async Task<IReadOnlyList<DownloadClientFollowUpRefusal>> TrySetCategoryAsync(HttpClient http, DownloadClientItem client, DownloadClientGrabRequest request, string hash, CancellationToken cancellationToken)
     {
         try
         {
@@ -338,11 +341,12 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
                 new KeyValuePair<string, string>("hashes", hash),
                 new KeyValuePair<string, string>("category", DownloadClientHelpers.ResolveCategory(client, request))
             };
-            // A refusal is left alone below, so only the call itself matters here.
-            (await http.PostAsync("api/v2/torrents/setCategory", new FormUrlEncodedContent(pairs), cancellationToken)).Dispose();
+            using var response = await http.PostAsync("api/v2/torrents/setCategory", new FormUrlEncodedContent(pairs), cancellationToken);
+            return await DownloadClientHelpers.RefusalOf(response, "setCategory", $"the {DownloadClientHelpers.ResolveCategory(client, request)} category", true, cancellationToken);
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
         {
+            return [DownloadClientHelpers.Refusal("setCategory", $"the {DownloadClientHelpers.ResolveCategory(client, request)} category", true, exception.Message)];
             // Left alone: the add-time category field already took.
         }
     }
@@ -352,7 +356,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
     /// Setting the category after the add can leave a torrent on manual management, and a manual torrent
     /// keeps its own save path; this makes the category folder the one in force. Best-effort.
     /// </summary>
-    private static async Task TrySetAutoManagementAsync(HttpClient http, string hash, CancellationToken cancellationToken)
+    private static async Task<IReadOnlyList<DownloadClientFollowUpRefusal>> TrySetAutoManagementAsync(HttpClient http, string hash, CancellationToken cancellationToken)
     {
         try
         {
@@ -361,11 +365,12 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
                 new KeyValuePair<string, string>("hashes", hash),
                 new KeyValuePair<string, string>("enable", "true")
             };
-            // A refusal is left alone below, so only the call itself matters here.
-            (await http.PostAsync("api/v2/torrents/setAutoManagement", new FormUrlEncodedContent(pairs), cancellationToken)).Dispose();
+            using var response = await http.PostAsync("api/v2/torrents/setAutoManagement", new FormUrlEncodedContent(pairs), cancellationToken);
+            return await DownloadClientHelpers.RefusalOf(response, "setAutoManagement", "automatic torrent management", false, cancellationToken);
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
         {
+            return [DownloadClientHelpers.Refusal("setAutoManagement", "automatic torrent management", false, exception.Message)];
             // Left alone: the add-time autoTMM field already asked for it.
         }
     }
@@ -377,7 +382,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
     /// explicitly once the hash is known — best-effort, since a failure here
     /// never fails the grab.
     /// </summary>
-    private static async Task TrySetLocationAsync(HttpClient http, DownloadClientItem client, string hash, CancellationToken cancellationToken)
+    private static async Task<IReadOnlyList<DownloadClientFollowUpRefusal>> TrySetLocationAsync(HttpClient http, DownloadClientItem client, string hash, CancellationToken cancellationToken)
     {
         try
         {
@@ -386,11 +391,12 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
                 new KeyValuePair<string, string>("hashes", hash),
                 new KeyValuePair<string, string>("location", client.Location!)
             };
-            // A refusal is left alone below, so only the call itself matters here.
-            (await http.PostAsync("api/v2/torrents/setLocation", new FormUrlEncodedContent(pairs), cancellationToken)).Dispose();
+            using var response = await http.PostAsync("api/v2/torrents/setLocation", new FormUrlEncodedContent(pairs), cancellationToken);
+            return await DownloadClientHelpers.RefusalOf(response, "setLocation", $"the save folder {client.Location}", true, cancellationToken);
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
         {
+            return [DownloadClientHelpers.Refusal("setLocation", $"the save folder {client.Location}", true, exception.Message)];
             // Left alone: the add-time savepath field already took, or the
             // client keeps whatever location it chose on its own.
         }
@@ -402,7 +408,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
     /// sends qBittorrent's global default (-2) rather than inventing a limit
     /// nobody configured.
     /// </summary>
-    private static async Task TrySetShareLimitsAsync(HttpClient http, DownloadClientItem client, string hash, CancellationToken cancellationToken)
+    private static async Task<IReadOnlyList<DownloadClientFollowUpRefusal>> TrySetShareLimitsAsync(HttpClient http, DownloadClientItem client, string hash, CancellationToken cancellationToken)
     {
         try
         {
@@ -417,11 +423,12 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
                 // reached; an older qBittorrent ignores a field it does not know.
                 new KeyValuePair<string, string>("shareLimitAction", "Default")
             };
-            // A refusal is left alone below, so only the call itself matters here.
-            (await http.PostAsync("api/v2/torrents/setShareLimits", new FormUrlEncodedContent(pairs), cancellationToken)).Dispose();
+            using var response = await http.PostAsync("api/v2/torrents/setShareLimits", new FormUrlEncodedContent(pairs), cancellationToken);
+            return await DownloadClientHelpers.RefusalOf(response, "setShareLimits", "the share limits", false, cancellationToken);
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
         {
+            return [DownloadClientHelpers.Refusal("setShareLimits", "the share limits", false, exception.Message)];
             // Left alone: the grab already succeeded, and the client keeps
             // seeding under its own default limits until the next successful
             // attempt at this torrent's own settings sets them.

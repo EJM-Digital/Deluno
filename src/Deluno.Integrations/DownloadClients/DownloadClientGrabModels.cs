@@ -109,6 +109,17 @@ public sealed record DownloadClientGrabResult(
     public bool IsDuplicateFollow { get; init; }
 
     /// <summary>
+    /// Calls Deluno sent after the grab (category, save folder, automatic management, share limits) that the client refused
+    /// or that failed (#1470). The grab itself stands; the grab service says so in the log and Activity.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public IReadOnlyList<DownloadClientFollowUpRefusal>? FollowUpRefusals { get; init; }
+
+    /// <summary>The follow-up calls the client took (or refused), so a refusal said earlier is cleared once the same call is taken (#1470).</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public IReadOnlyList<string>? FollowUpCallsSent { get; init; }
+
+    /// <summary>
     /// The .torrent Deluno itself fetched for this grab, kept (when small enough)
     /// so a connectivity retry resends it instead of fetching the file from the
     /// indexer again: a private tracker counts every fetch as a snatch (#1062).
@@ -131,3 +142,9 @@ public sealed record DeadReleaseFollowUp(
     string? LibraryId,
     string? LibraryName = null,
     IReadOnlyList<string>? SeasonEpisodeIds = null);
+
+/// <summary>
+/// One follow-up call a download client refused after a grab (#1470): the client's own call name, what it was for in plain
+/// words, whether the refusal can stop the import (category or save folder), and the client's own words.
+/// </summary>
+public sealed record DownloadClientFollowUpRefusal(string Call, string What, bool CanStopImport, string Reason);

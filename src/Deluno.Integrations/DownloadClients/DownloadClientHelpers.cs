@@ -124,6 +124,24 @@ internal static class DownloadClientHelpers
         return added.Length == 1 ? added[0] : null;
     }
 
+    /// <summary>A follow-up call the client refused (#1470), worded from the client's own reply.</summary>
+    internal static DownloadClientFollowUpRefusal Refusal(string call, string what, bool canStopImport, string reason)
+        => new(call, what, canStopImport, string.IsNullOrWhiteSpace(reason) ? "the client gave no reason." : reason.Trim());
+
+    /// <summary>Reads a follow-up call's reply: none when it was taken, else the client's own words (or its status when it said nothing).</summary>
+    internal static async Task<IReadOnlyList<DownloadClientFollowUpRefusal>> RefusalOf(
+        HttpResponseMessage response, string call, string what, bool canStopImport, CancellationToken cancellationToken)
+    {
+        if (response.IsSuccessStatusCode)
+        {
+            return [];
+        }
+
+        var text = (await response.Content.ReadAsStringAsync(cancellationToken)).Trim();
+        if (text.Length > 200) text = text[..200];
+        return [Refusal(call, what, canStopImport, text.Length > 0 ? text : $"it answered {(int)response.StatusCode}.")];
+    }
+
     internal static DownloadClientGrabResult GrabSuccess(DownloadClientItem client, DownloadClientGrabRequest request, string message)
         => new(client.Id, request.ReleaseName, true, "sent", message);
 
