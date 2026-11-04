@@ -873,6 +873,38 @@
       "line": 31,
       "replacement": "[\"Stryker was here\"]",
       "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed first read leaves an empty list that was already empty; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/connections/routing-status.ts",
+      "mutator": "ArrayDeclaration",
+      "line": 39,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "Equivalent: the default is only read for a library with no routing, which has already been answered as having no indexers; the optional chain is only reached after the sources check has passed; and the key text only has to differ when the clients differ, whatever words fill the gaps."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/connections/routing-status.ts",
+      "mutator": "OptionalChaining",
+      "line": 67,
+      "replacement": "item.snapshot.downloadClients",
+      "reason": "Equivalent: the default is only read for a library with no routing, which has already been answered as having no indexers; the optional chain is only reached after the sources check has passed; and the key text only has to differ when the clients differ, whatever words fill the gaps."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/connections/routing-status.ts",
+      "mutator": "StringLiteral",
+      "line": 68,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: the default is only read for a library with no routing, which has already been answered as having no indexers; the optional chain is only reached after the sources check has passed; and the key text only has to differ when the clients differ, whatever words fill the gaps."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/connections/routing-status.ts",
+      "mutator": "StringLiteral",
+      "line": 68,
+      "replacement": "\"\"",
+      "reason": "Equivalent: the default is only read for a library with no routing, which has already been answered as having no indexers; the optional chain is only reached after the sources check has passed; and the key text only has to differ when the clients differ, whatever words fill the gaps."
     }
   ]
 }
