@@ -61,12 +61,12 @@ public sealed record DownloadHealthRecord(
     /// </summary>
     public bool BlocksCandidate(DateTimeOffset now, int fallbackThreshold = 3)
         => DownloadHealthStrikes.Counts(Kind) &&
-           StrikeCount >= Math.Clamp(RuleStrikeLimit ?? fallbackThreshold, 1, 100) &&
+           StrikeCount >= DownloadHealthBounds.ClampStrikes(RuleStrikeLimit ?? fallbackThreshold) &&
            !IsIgnored(now);
 
     /// <summary>When the next check can add a strike: one check interval after the last strike (#1194).</summary>
     public DateTimeOffset NextStrikeUtc(int checkIntervalMinutes = 5)
-        => (LastStrikeUtc ?? FirstObservedUtc) + TimeSpan.FromMinutes(Math.Clamp(checkIntervalMinutes, 1, 1440));
+        => (LastStrikeUtc ?? FirstObservedUtc) + TimeSpan.FromMinutes(DownloadHealthBounds.ClampMinutes(checkIntervalMinutes));
 }
 
 /// <summary>

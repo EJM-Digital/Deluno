@@ -57,6 +57,7 @@ import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
 import { formatSearchInterval } from "../lib/search-interval-format";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
+import { clampDownloadHealthMinutes, clampDownloadHealthStrikes } from "../lib/download-health-bounds";
 import { plural } from "../lib/plural";
 
 // #984: minutes are the unit on the wire so the interval can go below an
@@ -443,19 +444,19 @@ export function SearchCyclesPage() {
     try {
       const [, nextQualityModel] = await Promise.all([
         settingsMutation.mutate({
-            downloadHealthStrikeThreshold: Math.max(1, Math.min(100, Number(cleanup.strikeThreshold || 3))),
+            downloadHealthStrikeThreshold: clampDownloadHealthStrikes(Number(cleanup.strikeThreshold || 3)),
             cleanupBlockReleaseAfterThreshold: cleanup.blockRelease,
             cleanupQueueReplacementAfterThreshold: cleanup.queueReplacement,
             cleanupRemoveClientEntryAfterThreshold: cleanup.removeClientEntry,
             cleanupPurgePayloadAfterThreshold: cleanup.purgePayload,
             downloadHealthNoProgressEnabled: cleanup.noProgressEnabled,
-            downloadHealthNoProgressMinutes: Math.max(1, Math.min(1440, Number(cleanup.noProgressMinutes || 30))),
+            downloadHealthNoProgressMinutes: clampDownloadHealthMinutes(Number(cleanup.noProgressMinutes || 30)),
             downloadHealthMinSpeedEnabled: cleanup.minSpeedEnabled,
             downloadHealthMinSpeedKbps: Math.max(1, Number(cleanup.minSpeedKbps || 50)),
-            downloadHealthMinSpeedMinutes: Math.max(1, Math.min(1440, Number(cleanup.minSpeedMinutes || 30))),
+            downloadHealthMinSpeedMinutes: clampDownloadHealthMinutes(Number(cleanup.minSpeedMinutes || 30)),
             downloadHealthMinPeersEnabled: cleanup.minPeersEnabled,
             downloadHealthMinPeers: Math.max(0, Number(cleanup.minPeers || 1)),
-            downloadHealthMinPeersMinutes: Math.max(1, Math.min(1440, Number(cleanup.minPeersMinutes || 30))),
+            downloadHealthMinPeersMinutes: clampDownloadHealthMinutes(Number(cleanup.minPeersMinutes || 30)),
             maxSearchesPerHourEnabled: cleanup.maxSearchesPerHourEnabled,
             maxSearchesPerHour: Math.max(1, Math.min(100_000, Number(cleanup.maxSearchesPerHour || 200))),
             pauseSearchWhenQueueLongEnabled: cleanup.pauseSearchWhenQueueLongEnabled,
