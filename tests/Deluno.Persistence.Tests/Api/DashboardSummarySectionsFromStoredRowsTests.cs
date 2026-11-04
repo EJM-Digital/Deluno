@@ -74,7 +74,9 @@ public sealed class DashboardSummarySectionsFromStoredRowsTests
     [Fact]
     public async Task The_pipeline_section_counts_today_apart_from_all_time()
     {
-        await using var app = await ApplicationTestHost.StartAsync();
+        // "Today" starts at local midnight; on a clock where it is midday, the rows from half an hour ago are today at any hour the
+        // test runs (the repeat run at 00:24 UTC put them on yesterday).
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => services.AddSingleton<TimeProvider>(new MiddayClock()));
         var now = DateTimeOffset.UtcNow;
         var today = now.AddMinutes(-30);
         var twoDaysAgo = now.AddDays(-2);
@@ -218,4 +220,19 @@ public sealed class DashboardSummarySectionsFromStoredRowsTests
             Name: name, MediaType: mediaType, Purpose: "General", RootPath: root, DownloadsPath: null, QualityProfileId: null,
             ImportWorkflow: null, ProcessorName: null, ProcessorOutputPath: null, ProcessorTimeoutMinutes: null, ProcessorFailureMode: null,
             AutoSearchEnabled: false, MissingSearchEnabled: false, UpgradeSearchEnabled: false, SearchIntervalMinutes: null, RetryDelayHours: null, MaxItemsPerRun: null);
+
+    /// <summary>The real time, in a time zone where it is about midday now, so "today" has hours of room either side.</summary>
+    private sealed class MiddayClock : TimeProvider
+    {
+        private readonly TimeZoneInfo _zone;
+
+        public MiddayClock()
+        {
+            var offset = TimeSpan.FromHours(12) - DateTimeOffset.UtcNow.TimeOfDay;
+            offset = TimeSpan.FromMinutes(Math.Round(offset.TotalMinutes));
+            _zone = TimeZoneInfo.CreateCustomTimeZone("Deluno-test-midday", offset, "Midday", "Midday");
+        }
+
+        public override TimeZoneInfo LocalTimeZone => _zone;
+    }
 }
