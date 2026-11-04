@@ -477,32 +477,12 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
     private QbitSession GetSession(DownloadClientItem client, Uri baseUri)
     {
         var fingerprint = $"{baseUri}|{client.Username}|{client.Secret}";
-        while (true)
-        {
-            if (sessions.TryGetValue(client.Id, out var existing))
-            {
-                if (existing.Fingerprint == fingerprint)
-                {
-                    return existing;
-                }
-
-                // Address or credentials changed: start again.
-                if (sessions.TryUpdate(client.Id, CreateSession(fingerprint, baseUri), existing))
-                {
-                    existing.Dispose();
-                }
-
-                continue;
-            }
-
-            var created = CreateSession(fingerprint, baseUri);
-            if (sessions.TryAdd(client.Id, created))
-            {
-                return created;
-            }
-
-            created.Dispose();
-        }
+        // Address or credentials changed: start again. (The replaced session is left to the garbage collector: the
+        // handler holds only a connection and a cookie jar, and a call may still be using it.)
+        return sessions.AddOrUpdate(
+            client.Id,
+            _ => CreateSession(fingerprint, baseUri),
+            (_, existing) => existing.Fingerprint == fingerprint ? existing : CreateSession(fingerprint, baseUri));
     }
 
     private QbitSession CreateSession(string fingerprint, Uri baseUri)
@@ -511,7 +491,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         return new QbitSession(fingerprint, new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(8) });
     }
 
-    private sealed class QbitSession(string fingerprint, HttpClient http) : IDisposable
+    private sealed class QbitSession(string fingerprint, HttpClient http)
     {
         private readonly SemaphoreSlim signInGate = new(1, 1);
         private volatile bool signedIn;
@@ -543,10 +523,6 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
                 signInGate.Release();
             }
         }
-
-        // Left to the garbage collector when a call is still using it; the
-        // handler holds only a connection and a cookie jar.
-        public void Dispose() { }
     }
 
     // How long a tracker verdict for one torrent is reused (#1081).
@@ -915,28 +891,27 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         }
         async Task<DownloadClientActionResult> Send()
         {
-            HttpResponseMessage? lastResponse = null;
-            foreach (var endpoint in endpoints)
+            // Every verb has at least one endpoint; a later one is tried only when the earlier is not found (a renamed verb).
+            var attempt = 0;
+            HttpResponseMessage response;
+            while (true)
             {
-                lastResponse?.Dispose();
-                lastResponse = await http.PostAsync(endpoint, new FormUrlEncodedContent(pairs), cancellationToken);
-                if (lastResponse.IsSuccessStatusCode || lastResponse.StatusCode != HttpStatusCode.NotFound) break;
+                response = await http.PostAsync(endpoints[attempt], new FormUrlEncodedContent(pairs), cancellationToken);
+                if (response.IsSuccessStatusCode || response.StatusCode != HttpStatusCode.NotFound || ++attempt == endpoints.Length) break;
+                response.Dispose();
             }
-            using (lastResponse)
-            {
-                if (lastResponse is not null)
-                {
-                    ClientCredentials.ThrowIfRefused(lastResponse, client);
-                }
 
-                return lastResponse?.IsSuccessStatusCode == true
+            using (response)
+            {
+                ClientCredentials.ThrowIfRefused(response, client);
+                return response.IsSuccessStatusCode
                     ? DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "qBittorrent action sent.")
                     : DownloadClientHelpers.ActionFailure(
                         client,
                         queueItemId,
                         action,
-                        $"qBittorrent returned {(int?)lastResponse?.StatusCode ?? 0}.",
-                        lastResponse?.StatusCode);
+                        $"qBittorrent returned {(int)response.StatusCode}.",
+                        response.StatusCode);
             }
         }
 
