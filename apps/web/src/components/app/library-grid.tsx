@@ -11,8 +11,7 @@ import type { SortField } from "../../lib/library-filters";
 import { JumpRail, useJumpRail } from "./library-jump-rail";
 import { authedFetch } from "../../lib/use-auth";
 import { cn } from "../../lib/utils";
-import { TitleBars, TitleMarkBar, TitleMarkCorner, TitleMarkTopBar } from "../ui/title-mark";
-import { cardDesign } from "../../lib/card-design";
+import { TitleBars } from "../ui/title-mark";
 import { ArtworkImage, ArtworkPlaceholder } from "../ui/artwork-image";
 import {
   DEFAULT_DISPLAY_PREFERENCES,
@@ -130,7 +129,7 @@ export function ProgressiveGrid({
       // way — but the container is the element this ResizeObserver watches, and
       // adding a child to it inside its own callback is a write to the thing
       // being observed. It is the second half of the loop the owner saw shaking.
-      const host = container.parentElement ?? container;
+      const host = container.parentElement!;
       const probe = document.createElement("div");
       probe.style.cssText = `position:absolute;visibility:hidden;pointer-events:none;min-width:${gridMin};margin-left:var(--library-grid-gap);`;
       host.appendChild(probe);
@@ -143,9 +142,7 @@ export function ProgressiveGrid({
       // length", taking the whole Movies route down behind the error boundary
       // (#270). One column is the honest fallback for a track we cannot measure.
       const track = minimumCardWidth + gap;
-      const measured = track > 0 ? Math.floor((width + gap) / track) : 1;
-      const nextColumns = Number.isFinite(measured) ? Math.max(1, measured) : 1;
-      setColumns((current) => current === nextColumns ? current : nextColumns);
+      setColumns(track > 0 ? Math.max(1, Math.floor((width + gap) / track)) : 1);
     };
 
     updateColumns();
@@ -153,10 +150,8 @@ export function ProgressiveGrid({
     observer.observe(container);
     return () => observer.disconnect();
   }, [container, gridMin]);
-  // Belt and braces: the virtualiser allocates an array of this length, so it
-  // must be a non-negative integer no matter what the measurement produced.
-  const safeColumns = Number.isFinite(columns) && columns >= 1 ? Math.floor(columns) : 1;
-  const rowCount = Math.max(0, Math.ceil(items.length / safeColumns));
+  // `columns` is always a whole number of at least one (see `updateColumns`), which is what the virtualiser needs to size its rows.
+  const rowCount = Math.ceil(items.length / columns);
   const virtualizer = useVirtualizer({ count: rowCount, getScrollElement: () => container, estimateSize: () => cardSize === "lg" ? 440 : cardSize === "sm" ? 245 : 340, overscan: 3 });
   const virtualRows = virtualizer.getVirtualItems();
 
@@ -169,7 +164,7 @@ export function ProgressiveGrid({
     () => buildJumpBuckets(items, sortField, sortDirection),
     [items, sortDirection, sortField]
   );
-  const { slotWidth, activeIndex, jumpTo } = useJumpRail(virtualizer, safeColumns, virtualRows, buckets);
+  const { slotWidth, activeIndex, jumpTo } = useJumpRail(virtualizer, columns, virtualRows, buckets);
 
   return (
     <div className="flex items-stretch gap-1">
@@ -181,8 +176,8 @@ export function ProgressiveGrid({
         <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {virtualRows.map((row) => (
             <div key={row.key} ref={virtualizer.measureElement} data-index={row.index} className="absolute left-0 top-0 w-full" style={{ transform: `translateY(${row.start}px)` }}>
-              <div className="stagger grid gap-(--library-grid-gap) pb-(--library-grid-gap)" style={{ gridTemplateColumns: `repeat(${safeColumns}, minmax(${gridMin}, 1fr))` }}>
-                {items.slice(row.index * safeColumns, (row.index + 1) * safeColumns).map((item) => (
+              <div className="stagger grid gap-(--library-grid-gap) pb-(--library-grid-gap)" style={{ gridTemplateColumns: `repeat(${columns}, minmax(${gridMin}, 1fr))` }}>
+                {items.slice(row.index * columns, (row.index + 1) * columns).map((item) => (
                   <PosterCard key={item.id} item={item} size={cardSize} displayOptions={displayOptions} selected={selectedIds.includes(item.id)} onSelect={() => onSelect(item)} onToggle={() => onToggle(item.id)} />
                 ))}
               </div>
@@ -203,14 +198,14 @@ export function ProgressiveGrid({
 
 function PosterCard({
   item,
-  size = "md",
+  size,
   displayOptions,
   selected,
   onSelect,
   onToggle
 }: {
   item: MediaItem;
-  size?: CardSize;
+  size: CardSize;
   displayOptions: DisplayOptions;
   selected: boolean;
   onSelect: () => void;
@@ -375,43 +370,27 @@ function PosterCard({
             detail page; it is not on the artwork any more.
           */}
           {/*
-            DESIGN-006 replaces all three of the above on a shelf that has opted
-            in, and only that shelf. The owner: *"they should be independant of each
-            other, tv and movie"* — each shelf keeps its own declaration even
-            though TV now has its approved bar treatment.
-
-            `cardDesign(item.type).bars` is the whole of the opt-in. Flipping it
-            for shows is how TV adopts this, and nothing about the movie card
-            moves when it does. The mechanism underneath is shared: one bar
-            component, so the two-layer label, the contrast rules and the
-            unmonitored override cannot drift between the shelves.
+            The state and the subtitles are one bar component, shared with the
+            detail page: the two-layer label, the contrast rules and the
+            unmonitored override cannot drift between the shelves, and each
+            shelf (films, shows) keeps its own design in `cardDesign`.
           */}
-          {cardDesign(item.type).bars ? (
-            <TitleBars
-              item={{
-                type: item.type,
-                monitored: item.monitored,
-                wantedStatus: item.wantedStatus,
-                hasFile: item.hasFile,
-                quality: item.quality,
-                airedEpisodeCount: item.airedEpisodeCount,
-                airedWithFileCount: item.airedWithFileCount,
-                subtitleLanguagesWanted: item.subtitleLanguagesWanted,
-                subtitleLanguagesHeld: item.subtitleLanguagesHeld,
-                subtitleLanguagesSettled: item.subtitleLanguagesSettled
-              }}
-              showMediaText={displayOptions[item.type === "show" ? "showEpisodeCountOnBar" : "showQualityOnBar"] !== false}
-              showSubtitleText={displayOptions.showSubtitleCountOnBar !== false}
-            />
-          ) : (
-            <>
-              <TitleMarkTopBar item={item} />
-              <TitleMarkCorner item={item} />
-
-              {/* What you asked for beyond the title. A movie has no bar. */}
-              <TitleMarkBar item={item} />
-            </>
-          )}
+          <TitleBars
+            item={{
+              type: item.type,
+              monitored: item.monitored,
+              wantedStatus: item.wantedStatus,
+              hasFile: item.hasFile,
+              quality: item.quality,
+              airedEpisodeCount: item.airedEpisodeCount,
+              airedWithFileCount: item.airedWithFileCount,
+              subtitleLanguagesWanted: item.subtitleLanguagesWanted,
+              subtitleLanguagesHeld: item.subtitleLanguagesHeld,
+              subtitleLanguagesSettled: item.subtitleLanguagesSettled
+            }}
+            showMediaText={displayOptions[item.type === "show" ? "showEpisodeCountOnBar" : "showQualityOnBar"] !== false}
+            showSubtitleText={displayOptions.showSubtitleCountOnBar !== false}
+          />
 
           {/*
             The quality stays on the artwork, and nothing else does.
@@ -563,7 +542,7 @@ function PosterCard({
  * nothing has recomputed the show yet — a window of at most a few minutes — and
  * printing "last Tuesday" under a poster would be worse than printing nothing.
  */
-function nextAiringLabel(nextAirDateUtc: string, preferences: DisplayPreferences = DEFAULT_DISPLAY_PREFERENCES): string | null {
+function nextAiringLabel(nextAirDateUtc: string, preferences: DisplayPreferences): string | null {
   const next = new Date(nextAirDateUtc);
   if (Number.isNaN(next.getTime())) return null;
 
@@ -618,8 +597,6 @@ function PosterExtras({ item, displayOptions }: { item: MediaItem; displayOption
   // silence made all five look like defects.
   const { preferences } = useDisplayPreferences();
   const rows = posterRowsFor(item, displayOptions, preferences);
-
-  if (rows.length === 0) return null;
 
   return (
     <>
@@ -717,7 +694,7 @@ function PosterAction({
       onClick={(event) => {
         // The card behind this opens the drawer on click.
         event.stopPropagation();
-        onClick?.();
+        onClick!();
       }}
       className={className}
     >
@@ -849,7 +826,7 @@ const POSTER_ROWS: {
     option: "showEpisodeProgress",
     label: "Episodes held",
     icon: ListVideo,
-    read: (item, _preferences: DisplayPreferences) => typeof item.airedEpisodeCount === "number" && item.airedEpisodeCount > 0
+    read: (item) => (item.airedEpisodeCount ?? 0) > 0
       ? `${item.airedWithFileCount ?? 0}/${item.airedEpisodeCount} episodes`
       : null
   },
@@ -891,7 +868,7 @@ export function PosterArtwork({
  * for something that is not. An unparseable value is printed as it arrived
  * rather than as "Invalid Date".
  */
-function releaseDateLabel(value: string, preferences: DisplayPreferences = DEFAULT_DISPLAY_PREFERENCES) {
+function releaseDateLabel(value: string, preferences: DisplayPreferences) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return formatShortDate(date, { ...preferences, showRelativeDates: false });
