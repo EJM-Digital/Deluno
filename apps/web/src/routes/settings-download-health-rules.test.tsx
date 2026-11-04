@@ -522,6 +522,35 @@ describe("the cards beside the rules", () => {
     expect(screen.getByText("Has not skipped a pass.")).toBeVisible();
   });
 
+  it("the connectivity check URLs save on their own and keep what the server sends back", async () => {
+    authedFetchMock.mockImplementation((path: string, init?: RequestInit) =>
+      String(path) === "/api/settings" && init?.method === "PATCH" ? reply({ downloadHealthConnectivityCheckEnabled: true, downloadHealthConnectivityCheckUrls: "https://9.9.9.9" }) : reply([]));
+    renderPage();
+    const urls = screen.getByLabelText("URLs to check");
+
+    fireEvent.change(urls, { target: { value: "https://9.9.9.9" } });
+    fireEvent.click(saveFor(urls));
+
+    await waitFor(() => expect(calls("PATCH", "/api/settings")).toHaveLength(1));
+    expect(bodyOf(calls("PATCH", "/api/settings")[0])).toEqual({ downloadHealthConnectivityCheckUrls: "https://9.9.9.9" });
+    await waitFor(() => expect(urls).toHaveValue("https://9.9.9.9"));
+  });
+
+  it("a connectivity check switch or URL list the server refuses goes back to what was saved", async () => {
+    authedFetchMock.mockImplementation((_path: string, init?: RequestInit) => init?.method === "PATCH" ? reply({}, false, 500) : reply([]));
+    renderPage();
+    const row = screen.getByText("Check before every pass").closest("label")!;
+    const urls = screen.getByLabelText("URLs to check");
+
+    fireEvent.click(document.getElementById(row.htmlFor)!);
+    await waitFor(() => expect(calls("PATCH", "/api/settings")).toHaveLength(1));
+    fireEvent.change(urls, { target: { value: "https://9.9.9.9" } });
+    fireEvent.click(saveFor(urls));
+
+    await waitFor(() => expect(calls("PATCH", "/api/settings")).toHaveLength(2));
+    expect(document.getElementById(row.htmlFor)).toHaveAttribute("aria-checked", String(false));
+  });
+
   it("Purge all strikes asks first and then says how many were cleared", async () => {
     authedFetchMock.mockImplementation((path: string) => String(path).endsWith("purge-strikes") ? reply({ purgedCount: 4 }) : reply([]));
     renderPage();
