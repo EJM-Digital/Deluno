@@ -414,13 +414,19 @@ export function scenarioViolations(plan, index) {
   const out = [];
   const seen = new Set();
   const scenarioText = [...index.files].filter(([f]) => /scenarios\/G\d+/.test(f)).map(([, v]) => v.text).join('\n');
+  const runUpdateText = [...index.files].find(([f]) => f === 'scripts/golden-path/suite/vm/Run-Update.ps1')?.[1].text ?? null;
   const functions = new Set([...scenarioText.matchAll(/^\s*function\s+([\w-]+)/gim)].map((m) => m[1].toLowerCase()));
   for (const { id, fn, group } of plan) {
     if (seen.has(id)) out.push({ id, why: 'id registered twice in ScenarioPlan.ps1' });
     seen.add(id);
     if (!/^[a-z][a-z0-9-]*(\.[a-z0-9-]+)*$/.test(id)) out.push({ id, why: 'id is not a plain dotted lower-case id, so -Scenarios cannot pick it' });
     if (fn && !functions.has(fn.toLowerCase())) out.push({ id, why: `group function ${fn} is not defined in the scenario scripts` });
-    if (!fn && !/^(githubpicker|update|updatepaths)$/.test(group)) out.push({ id, why: `group ${group} has no function and is not a host group` });
+    if (!fn && !/^(githubpicker|update|updatepaths|platformupdates)$/.test(group)) out.push({ id, why: `group ${group} has no function and is not a host group` });
+    // A host scenario runs on a machine of its own through Run-Update.ps1 (-Scenarios picks it): it must have its case there, or it
+    // is registered and cannot run alone. (githubpicker has its own phase in Invoke-ScenarioSuite.ps1.)
+    if (!fn && /^(update|updatepaths|platformupdates)$/.test(group) && runUpdateText !== null && !runUpdateText.includes(`'${id}' {`)) {
+      out.push({ id, why: 'host scenario has no case in Run-Update.ps1, so it cannot run alone' });
+    }
   }
   return out;
 }

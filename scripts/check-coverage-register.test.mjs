@@ -225,6 +225,17 @@ test('every wait in a test is named, bounded, and gives a reason for a limit of 
   }
 });
 
+test('a host scenario is runnable alone only when Run-Update.ps1 has its case', () => {
+  const root = makeRepo({ 'scripts/golden-path/suite/vm/Run-Update.ps1': "switch ($Scenario) {\n    'update.in-app' { Invoke-UpdateInApp }\n}\n" });
+  try {
+    const index = new TestIndex(root);
+    assert.deepEqual(scenarioViolations([{ id: 'update.in-app', group: 'updatepaths', fn: '' }], index), []);
+    assert.deepEqual(scenarioViolations([{ id: 'update.never-wired', group: 'platformupdates', fn: '' }], index).map((v) => v.why), ['host scenario has no case in Run-Update.ps1, so it cannot run alone']);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('a scenario is runnable alone only under its own plain id and a defined group function', () => {
   const root = makeRepo({ 'scripts/golden-path/suite/vm/scenarios/G02-Films.ps1': 'function Invoke-GroupFilms { }\n' });
   try {
