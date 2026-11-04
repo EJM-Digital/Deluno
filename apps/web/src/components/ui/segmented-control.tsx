@@ -33,10 +33,11 @@ export function SegmentedControl<T extends string>({
   const field = useFieldContext();
   const refs = React.useRef<Array<HTMLButtonElement | null>>([]);
 
-  function focusIndex(index: number) {
-    const enabled = options.map((option, i) => (option.disabled ? -1 : i)).filter((i) => i >= 0);
-    const wrapped = ((index % options.length) + options.length) % options.length;
-    const next = enabled.includes(wrapped) ? wrapped : enabled.find((i) => i > wrapped) ?? enabled[0]!;
+  /** Moves to the nearest enabled option in the direction pressed, wrapping round the ends. */
+  function focusFrom(index: number, step: 1 | -1) {
+    const count = options.length;
+    const order = options.map((_, k) => (((index + step * (k + 1)) % count) + count) % count);
+    const next = order.find((i) => !options[i]!.disabled)!;
     refs.current[next]!.focus();
     onValueChange(options[next]!.value);
   }
@@ -71,10 +72,10 @@ export function SegmentedControl<T extends string>({
             onKeyDown={(event) => {
               if (event.key === "ArrowRight" || event.key === "ArrowDown") {
                 event.preventDefault();
-                focusIndex(index + 1);
+                focusFrom(index, 1);
               } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
                 event.preventDefault();
-                focusIndex(index - 1);
+                focusFrom(index, -1);
               }
             }}
             className={cn(

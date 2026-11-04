@@ -1132,14 +1132,6 @@
     },
     {
       "project": "web",
-      "file": "apps/web/src/components/ui/segmented-control.tsx",
-      "mutator": "EqualityOperator",
-      "line": 39,
-      "replacement": "i >= wrapped",
-      "reason": "The position being looked past is never itself an enabled one at that point, so > and >= pick the same next option."
-    },
-    {
-      "project": "web",
       "file": "apps/web/src/lib/connection-tags.ts",
       "mutator": "ArrayDeclaration",
       "line": 29,

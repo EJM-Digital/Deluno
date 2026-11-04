@@ -81,10 +81,10 @@ describe("the segmented control", () => {
     press(radio("Alpha"), { key: "ArrowRight" });
     expect(change).toHaveBeenCalledTimes(1);
     expect(change).toHaveBeenLastCalledWith("c");
-    // Going left onto a disabled option looks forward for the next enabled one, which is where it started.
+    // Going left onto a disabled option goes on to the previous enabled one.
     press(radio("Gamma"), { key: "ArrowLeft" });
     expect(change).toHaveBeenCalledTimes(1);
-    expect(change).toHaveBeenLastCalledWith("c");
+    expect(change).toHaveBeenLastCalledWith("a");
   });
 
   it("goes back to the first enabled option when the ones after it are disabled", () => {
