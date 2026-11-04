@@ -26,8 +26,13 @@ namespace Deluno.Worker.HealthChecks.Checks;
 /// </summary>
 public sealed class RemotePathMappingHealthCheck(
     IConnectionsRepository connections,
-    IDownloadClientRegistry registry) : IHealthCheck
+    IDownloadClientRegistry registry,
+    Func<string, bool>? directoryExists = null,
+    Func<string, IEnumerable<string>>? listEntries = null) : IHealthCheck
 {
+    private readonly Func<string, bool> _directoryExists = directoryExists ?? Directory.Exists;
+    private readonly Func<string, IEnumerable<string>> _listEntries = listEntries ?? (path => Directory.EnumerateFileSystemEntries(path));
+
     private const string NotInUseId = "system:remote-path-mappings";
 
     public string Category => HealthCheckCategories.RemotePathMapping;
@@ -62,7 +67,7 @@ public sealed class RemotePathMappingHealthCheck(
         return outcomes;
     }
 
-    private static HealthCheckOutcome MappingOutcome(DownloadClientPathMappingItem mapping, IReadOnlyList<DownloadClientItem> clients)
+    private HealthCheckOutcome MappingOutcome(DownloadClientPathMappingItem mapping, IReadOnlyList<DownloadClientItem> clients)
     {
         var clientName = clients
             .FirstOrDefault(item => string.Equals(item.Id, mapping.DownloadClientId, StringComparison.OrdinalIgnoreCase))
@@ -142,7 +147,7 @@ public sealed class RemotePathMappingHealthCheck(
         return outcomes.Where(outcome => outcome is not null).Select(outcome => outcome!).ToArray();
     }
 
-    private static async Task<HealthCheckOutcome?> SavePathOutcomeAsync(
+    private async Task<HealthCheckOutcome?> SavePathOutcomeAsync(
         DownloadClientItem client,
         IDownloadClient implementation,
         string category,
@@ -241,26 +246,22 @@ public sealed class RemotePathMappingHealthCheck(
 
     private static string NormalizeSourceKey(string path) => path.Trim().Replace('\\', '/').TrimEnd('/');
 
-    private static FolderReadability ReadFolder(string path)
+    private FolderReadability ReadFolder(string path)
     {
         try
         {
-            if (!Directory.Exists(path))
+            if (!_directoryExists(path))
             {
                 return FolderReadability.Missing;
             }
 
             // Existing is not the same as readable: a mounted share can
             // answer "yes, I am a folder" and still refuse to be listed.
-            using var enumerator = Directory.EnumerateFileSystemEntries(path).GetEnumerator();
+            using var enumerator = _listEntries(path).GetEnumerator();
             enumerator.MoveNext();
             return FolderReadability.Ok;
         }
-        catch (UnauthorizedAccessException)
-        {
-            return FolderReadability.Unreadable;
-        }
-        catch (IOException)
+        catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
         {
             return FolderReadability.Unreadable;
         }
