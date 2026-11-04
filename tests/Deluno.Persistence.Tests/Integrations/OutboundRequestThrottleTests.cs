@@ -201,6 +201,70 @@ public sealed class OutboundRequestThrottleTests
         Assert.Equal([0, 2, 4, 6], waits.Select(wait => (int)wait!.Value.TotalSeconds).Order().ToArray());
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task A_blank_host_is_never_paced(string host)
+    {
+        var throttle = Create(new FakeTimeProvider(Start));
+
+        Assert.Equal(TimeSpan.Zero, await throttle.TryAcquireAsync(
+            host, OutboundRate.PerIndexerDefault, TimeSpan.FromSeconds(1), CancellationToken.None));
+        Assert.Empty(throttle.Describe());
+    }
+
+    [Fact]
+    public async Task A_caller_that_finds_the_host_busy_and_cannot_wait_is_refused_and_counted()
+    {
+        var time = new FakeTimeProvider(Start);
+        var throttle = Create(time);
+        var rate = OutboundRate.PerIndexerDefault;
+
+        await throttle.TryAcquireAsync("busy.example", rate, TimeSpan.FromSeconds(30), CancellationToken.None);
+        var holder = throttle.TryAcquireAsync("busy.example", rate, TimeSpan.FromSeconds(30), CancellationToken.None);
+        Assert.False(holder.IsCompleted);
+
+        Assert.Null(await throttle.TryAcquireAsync("busy.example", rate, TimeSpan.Zero, CancellationToken.None));
+        Assert.Equal(1, Assert.Single(throttle.Describe()).RefusedCount);
+
+        time.Advance(TimeSpan.FromSeconds(2));
+        Assert.NotNull(await holder);
+    }
+
+    [Fact]
+    public async Task A_cancelled_caller_throws_and_leaves_no_one_counted_as_waiting()
+    {
+        var throttle = Create(new FakeTimeProvider(Start));
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await throttle.TryAcquireAsync(
+            "gone.example", OutboundRate.PerIndexerDefault, TimeSpan.FromSeconds(30), cancelled.Token));
+
+        Assert.Equal(0, Assert.Single(throttle.Describe()).Waiting);
+    }
+
+    [Fact]
+    public async Task A_rate_with_no_permits_falls_back_to_one_request_every_two_seconds()
+    {
+        var time = new FakeTimeProvider(Start);
+        var throttle = Create(time);
+        var rate = new OutboundRate(0, TimeSpan.FromSeconds(1), 1);
+
+        await throttle.TryAcquireAsync("zero.example", rate, TimeSpan.FromSeconds(30), CancellationToken.None);
+        var second = throttle.TryAcquireAsync("zero.example", rate, TimeSpan.FromSeconds(30), CancellationToken.None);
+        time.Advance(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(TimeSpan.FromSeconds(2), await second);
+    }
+
+    [Fact]
+    public void An_interval_of_nothing_becomes_the_two_second_default()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(2), OutboundRate.FromInterval(TimeSpan.Zero).Per);
+        Assert.Equal(TimeSpan.FromSeconds(5), OutboundRate.FromInterval(TimeSpan.FromSeconds(5)).Per);
+    }
+
     /// <summary>A fake clock that says how many timers have been started on it.</summary>
     private sealed class TimerCountingTimeProvider(DateTimeOffset start) : FakeTimeProvider(start)
     {
