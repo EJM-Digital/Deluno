@@ -505,6 +505,22 @@
       "line": 557,
       "replacement": ";",
       "reason": "The early return stops a second flush loop starting while one runs. Without it the extra loop only waits on a timer, finds the batch already taken, and ends; the pushes and the resting flag are the same, so no test can reach a difference."
+    },
+    {
+      "project": "Deluno.Worker",
+      "file": "src/Deluno.Worker/Jobs/JobPayloads.cs",
+      "mutator": "Block removal mutation",
+      "line": 156,
+      "replacement": "{}",
+      "reason": "The catch block of the one reader returns nothing, and Stryker keeps the method returning its default, which is the same nothing, so a payload that is not JSON reads as null either way and no assertion can tell the two apart."
+    },
+    {
+      "project": "Deluno.Worker",
+      "file": "src/Deluno.Worker/Services/LaneRunner.cs",
+      "mutator": "Statement mutation",
+      "line": 164,
+      "replacement": ";",
+      "reason": "Which of the two waits finishes first when a job ends at the very moment the lane is stopped is decided by thread timing, not by anything a test can set; either way the lane asks for no more work, so this guard only closes a race."
     }
   ]
 }
