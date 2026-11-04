@@ -224,12 +224,8 @@ public static partial class ReleaseTitleMatch
         }
 
         var name = Extension().Replace(LeadingTags().Replace(releaseName.Trim(), string.Empty), string.Empty);
-        var marker = ReleaseNameReader.ReadEpisode(name);
-        if (marker is null)
-        {
-            return null;
-        }
-
+        // The mismatch above is only ever worded for a name that carries an episode marker, so there is one here.
+        var marker = ReleaseNameReader.ReadEpisode(name)!;
         var carried = TitleAfterMarker(name[(marker.Index + marker.Length)..]);
         return carried.Length > 0 && OtherEpisodeTitleCarried(carried, episode, titles) is { } other
             ? (other.Number, other.Title)
