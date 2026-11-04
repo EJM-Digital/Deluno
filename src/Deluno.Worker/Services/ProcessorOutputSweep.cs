@@ -259,7 +259,9 @@ public sealed class ProcessorOutputSweep(
         }
     }
 
+    // A guard before a delete, so it errs strict: the entry was listed from root, so its folder is root exactly, case and all;
+    // anything else is left alone.
     private static bool IsDirectChildOf(string root, string entry)
-        => string.Equals(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(entry))), root, StringComparison.OrdinalIgnoreCase);
+        => string.Equals(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(entry))), root, StringComparison.Ordinal);
 
 }
