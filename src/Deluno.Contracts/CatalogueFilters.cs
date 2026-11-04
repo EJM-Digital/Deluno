@@ -68,19 +68,6 @@ public sealed record CatalogueFilters(IReadOnlyList<CatalogueFilterCondition>? C
     public bool IsEmpty => Conditions is null || Conditions.Count == 0;
 
     /// <summary>
-    /// Whether answering this needs the wanted-state row joined on.
-    ///
-    /// <para>Asked precisely rather than "are there any filters at all", so
-    /// narrowing by year still costs a page nothing extra. The list page already
-    /// joins it for the columns it displays; the facets query does not, and that
-    /// is where the difference is paid.</para>
-    /// </summary>
-    public bool NeedsWantedState(MediaKind kind)
-        => Conditions is not null
-           && Conditions.Any(condition =>
-               CatalogueFilterFields.Find(kind, condition.FieldId) is { Source: CatalogueFilterSource.WantedState });
-
-    /// <summary>
     /// Reads the repeated <c>f=</c> parameters a catalogue request carries.
     ///
     /// <para>Anything the registry does not know for this kind lands in
@@ -205,7 +192,7 @@ public sealed record CatalogueFilters(IReadOnlyList<CatalogueFilterCondition>? C
             if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase) &&
                 property.Value.ValueKind == JsonValueKind.String)
             {
-                value = property.Value.GetString()?.Trim() ?? string.Empty;
+                value = property.Value.GetString()!.Trim();
                 return value.Length > 0;
             }
         }
@@ -268,7 +255,7 @@ public sealed record CatalogueFilters(IReadOnlyList<CatalogueFilterCondition>? C
                     return false;
                 }
 
-                parsed.Add(value.GetString() ?? string.Empty);
+                parsed.Add(value.GetString()!);
             }
 
             values = parsed;
