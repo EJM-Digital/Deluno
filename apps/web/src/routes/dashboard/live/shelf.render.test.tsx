@@ -34,7 +34,9 @@ beforeEach(() => { localStorage.clear(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); box = { width: 900, height: 330 }; charPx = null; });
 
 const NOW = new Date("2026-10-31T12:00:00Z").getTime();
-const item = (key: string, extra: object = {}) => ({ key, entity: { kind: "movie", id: key }, fallbackTitle: `Film ${key} (2001)`, release: null, quality: "Bluray 1080p", previousQuality: null, upgraded: false, sizeBytes: null, at: new Date().toISOString(), requestedBy: null, to: `/movies/${key}`, qualityMet: null, libraryId: null, libraryName: null, ...extra }) as never;
+// One time for every item: read per item, the clock could tick between two and reorder a newest-first shelf (CI, 5 Nov).
+const ARRIVED_AT = new Date().toISOString();
+const item = (key: string, extra: object = {}) => ({ key, entity: { kind: "movie", id: key }, fallbackTitle: `Film ${key} (2001)`, release: null, quality: "Bluray 1080p", previousQuality: null, upgraded: false, sizeBytes: null, at: ARRIVED_AT, requestedBy: null, to: `/movies/${key}`, qualityMet: null, libraryId: null, libraryName: null, ...extra }) as never;
 const counts = (libraryId: string, libraryName: string) => ({ libraryId, libraryName, mediaType: "movies", met: 1, upgradable: 1, downloading: 0, missing: 0, arrivedToday: 1 });
 const section = { movies: { qualityMet: 1, upgradable: 1, downloading: 0, missing: 0 }, shows: { qualityMet: 0, upgradable: 0, downloading: 0, missing: 0 }, libraryCounts: [counts("hd", "Movies HD"), counts("kids", "Kids")] } as never;
 const show = (items: unknown[], extra: Partial<Parameters<typeof Shelf>[0]> = {}) =>

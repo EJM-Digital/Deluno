@@ -25,7 +25,9 @@ describe("posterSize", () => {
 });
 
 describe("the shelf's small posters", () => {
-  const item = (key: string, extra: object = {}) => ({ key, entity: { kind: "movie", id: key }, fallbackTitle: `Film ${key} (2001)`, release: null, quality: "Bluray 1080p", previousQuality: "WEB 720p", upgraded: true, sizeBytes: null, at: new Date().toISOString(), requestedBy: null, to: `/movies/${key}`, qualityMet: false, libraryId: "kids", libraryName: "Kids", ...extra }) as never;
+  // One time for every item, so the clock cannot tick between two and reorder a newest-first shelf.
+  const arrivedAt = new Date().toISOString();
+  const item = (key: string, extra: object = {}) => ({ key, entity: { kind: "movie", id: key }, fallbackTitle: `Film ${key} (2001)`, release: null, quality: "Bluray 1080p", previousQuality: "WEB 720p", upgraded: true, sizeBytes: null, at: arrivedAt, requestedBy: null, to: `/movies/${key}`, qualityMet: false, libraryId: "kids", libraryName: "Kids", ...extra }) as never;
   const counts = (libraryId: string, libraryName: string) => ({ libraryId, libraryName, mediaType: "movies", met: 1, upgradable: 1, downloading: 0, missing: 0, arrivedToday: 1 });
   const section = { movies: { qualityMet: 1, upgradable: 1, downloading: 0, missing: 0 }, shows: { qualityMet: 0, upgradable: 0, downloading: 0, missing: 0 }, libraryCounts: [counts("hd", "Movies HD"), counts("kids", "Kids")] } as never;
   const show = () => render(<MemoryRouter><Shelf items={[item("2")]} titles={NO_TITLES} newest={new Set()} heading="1 arrived today" library={section} /></MemoryRouter>);

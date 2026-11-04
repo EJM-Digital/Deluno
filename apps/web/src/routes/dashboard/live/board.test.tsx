@@ -575,7 +575,9 @@ describe("flying into Arrived today", () => {
 });
 
 describe("arrived today", () => {
-  const item = (key: string, extra: object = {}) => ({ key, entity: { kind: "movie", id: key }, fallbackTitle: `Film ${key} (2001)`, release: null, quality: "WEB 1080p", previousQuality: null, upgraded: false, sizeBytes: null, at: new Date().toISOString(), requestedBy: null, to: `/movies/${key}`, ...extra }) as never;
+  // One time for every item, so the clock cannot tick between two and reorder a newest-first shelf.
+  const arrivedAt = new Date().toISOString();
+  const item = (key: string, extra: object = {}) => ({ key, entity: { kind: "movie", id: key }, fallbackTitle: `Film ${key} (2001)`, release: null, quality: "WEB 1080p", previousQuality: null, upgraded: false, sizeBytes: null, at: arrivedAt, requestedBy: null, to: `/movies/${key}`, ...extra }) as never;
 
   it("says the titles, the upgrades and the space added", () => {
     expect(arrivedHeading(12)).toBe("12 arrived today");
