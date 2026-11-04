@@ -394,4 +394,32 @@ describe("a block that cannot be done", () => {
     expect(toasts.success).toHaveBeenCalledWith(`"Arrival" blocked; every indexer's copy is refused from now on.`);
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
+
+  it("Escape cannot close the lift question while the block is being lifted", async () => {
+    vi.mocked(fetchJson).mockResolvedValue(blockedReleaseList({ id: "blocked-9" }));
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    vi.mocked(authedFetch).mockImplementation(async () => { await gate; return { ok: true } as Response; });
+
+    render(<BlockReleaseAction releaseName="Arrival.2016.2160p.UHD.BluRay" indexerName="Nebula" mediaType="movie" entityId="movie-1" title="Arrival" />);
+
+    await userEvent.click(await screen.findByRole("button", { name: 'Lift the block on "Arrival"' }));
+    await userEvent.click(await screen.findByRole("button", { name: "Lift the block" }));
+    await userEvent.keyboard("{Escape}");
+
+    expect(screen.getByRole("button", { name: "Lift the block" })).toBeInTheDocument();
+    release();
+  });
+
+  it("Cancel closes the lift question and leaves the block in place", async () => {
+    vi.mocked(fetchJson).mockResolvedValue(blockedReleaseList({ id: "blocked-9" }));
+
+    render(<BlockReleaseAction releaseName="Arrival.2016.2160p.UHD.BluRay" indexerName="Nebula" mediaType="movie" entityId="movie-1" title="Arrival" />);
+
+    await userEvent.click(await screen.findByRole("button", { name: 'Lift the block on "Arrival"' }));
+    await userEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull());
+    expect(authedFetch).not.toHaveBeenCalled();
+  });
 });

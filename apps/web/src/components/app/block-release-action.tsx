@@ -64,7 +64,6 @@ export function BlockReleaseAction({
   const [blockedMatch, setBlockedMatch] = useState<BlockedRelease | null>(null);
 
   const displayTitle = identity.title || identity.releaseName;
-  const isBlocked = blockedMatch !== null;
 
   useEffect(() => {
     let cancelled = false;
@@ -80,25 +79,19 @@ export function BlockReleaseAction({
 
   async function handleOpen() {
     setOpen(true);
-    if (isBlocked) return;
+    if (blockedMatch) return;
     setMatch(null);
     setStopToo(true);
     setChecking(true);
-    try {
-      setMatch(await checkQueueMatch(identity));
-    } catch {
-      // The check is a convenience before blocking; the dialog still opens and says so.
-      toast.error("Deluno could not check whether this release is in the queue. You can still block it.");
-    } finally {
-      setChecking(false);
-    }
+    // checkQueueMatch answers null when it cannot reach the queue: the dialog still opens and blocking still works.
+    setMatch(await checkQueueMatch(identity));
+    setChecking(false);
   }
 
-  async function handleLift() {
-    if (!blockedMatch) return;
+  async function handleLift(blockedRelease: BlockedRelease) {
     setBusy(true);
     try {
-      const response = await liftBlock(blockedMatch.id);
+      const response = await liftBlock(blockedRelease.id);
       if (!response.ok) throw new Error("lift-block-failed");
       // No search is started (DESIGN-007 decision 8): clearing several at
       // once would otherwise fire one search per row, and somebody lifting
@@ -133,13 +126,12 @@ export function BlockReleaseAction({
     }
   }
 
-  async function handleStopAndBlock() {
-    if (!match) return;
+  async function handleStopAndBlock(found: QueueMatch) {
     setBusy(true);
     try {
-      const response = await stopBlockAndSearchAgain(match.clientId, match.queueItemId);
+      const response = await stopBlockAndSearchAgain(found.clientId, found.queueItemId);
       if (!response.ok) throw new Error("stop-and-block-failed");
-      toast.success(`"${displayTitle}" stopped in ${match.clientName}, its files deleted, blocked everywhere, and a replacement search started.`);
+      toast.success(`"${displayTitle}" stopped in ${found.clientName}, its files deleted, blocked everywhere, and a replacement search started.`);
       setOpen(false);
       onBlocked?.();
     } catch (error) {
@@ -152,7 +144,7 @@ export function BlockReleaseAction({
 
   async function handleConfirm() {
     if (match && stopToo) {
-      await handleStopAndBlock();
+      await handleStopAndBlock(match);
     } else {
       await handleJustBlock();
     }
@@ -169,14 +161,14 @@ export function BlockReleaseAction({
         variant={variant}
         size={size}
         className={className}
-        aria-label={isBlocked ? `Lift the block on "${displayTitle}"` : `Block "${displayTitle}"`}
+        aria-label={blockedMatch ? `Lift the block on "${displayTitle}"` : `Block "${displayTitle}"`}
         onClick={() => void handleOpen()}
       >
-        {isBlocked ? <RotateCcw className="h-3.5 w-3.5" /> : <ShieldBan className="h-3.5 w-3.5" />}
-        {isBlocked ? "Lift the block" : "Block this release"}
+        {blockedMatch ? <RotateCcw className="h-3.5 w-3.5" /> : <ShieldBan className="h-3.5 w-3.5" />}
+        {blockedMatch ? "Lift the block" : "Block this release"}
       </Button>
 
-      {isBlocked ? (
+      {blockedMatch ? (
         <ConfirmDialog
           open={open}
           onOpenChange={(next) => {
@@ -187,7 +179,7 @@ export function BlockReleaseAction({
           confirmLabel="Lift the block"
           confirmVariant="default"
           busy={busy}
-          onConfirm={() => void handleLift()}
+          onConfirm={() => void handleLift(blockedMatch)}
         />
       ) : (
         <ConfirmDialog
