@@ -507,6 +507,598 @@
       "reason": "The early return stops a second flush loop starting while one runs. Without it the extra loop only waits on a timer, finds the batch already taken, and ends; the pushes and the resting flag are the same, so no test can reach a difference."
     },
     {
+      "project": "web",
+      "file": "apps/web/src/components/ui/checkbox.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 20,
+      "replacement": "true",
+      "reason": "Equivalent: the caller's props are spread onto the input after these two attributes, so the caller's own value wins whatever key is read here; and the ref is set once the input has mounted, so its check is always true by the time the effect runs."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/checkbox.tsx",
+      "mutator": "StringLiteral",
+      "line": 31,
+      "replacement": "\"\"",
+      "reason": "Equivalent: the caller's props are spread onto the input after these two attributes, so the caller's own value wins whatever key is read here; and the ref is set once the input has mounted, so its check is always true by the time the effect runs."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/checkbox.tsx",
+      "mutator": "StringLiteral",
+      "line": 32,
+      "replacement": "\"\"",
+      "reason": "Equivalent: the caller's props are spread onto the input after these two attributes, so the caller's own value wins whatever key is read here; and the ref is set once the input has mounted, so its check is always true by the time the effect runs."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/select.tsx",
+      "mutator": "MethodExpression",
+      "line": 36,
+      "replacement": "(className ?? \"\").split(/\\s+/)",
+      "reason": "Equivalent: the caller's props are spread onto the select after the aria attributes, so the caller's own value wins whatever key is read; and splitting on single spaces or keeping empty words leaves only empty class names, which the class merger drops."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/select.tsx",
+      "mutator": "Regex",
+      "line": 36,
+      "replacement": "/\\s/",
+      "reason": "Equivalent: the caller's props are spread onto the select after the aria attributes, so the caller's own value wins whatever key is read; and splitting on single spaces or keeping empty words leaves only empty class names, which the class merger drops."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/select.tsx",
+      "mutator": "StringLiteral",
+      "line": 53,
+      "replacement": "\"\"",
+      "reason": "Equivalent: the caller's props are spread onto the select after the aria attributes, so the caller's own value wins whatever key is read; and splitting on single spaces or keeping empty words leaves only empty class names, which the class merger drops."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/select.tsx",
+      "mutator": "StringLiteral",
+      "line": 54,
+      "replacement": "\"\"",
+      "reason": "Equivalent: the caller's props are spread onto the select after the aria attributes, so the caller's own value wins whatever key is read; and splitting on single spaces or keeping empty words leaves only empty class names, which the class merger drops."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/block-release-action.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 58,
+      "replacement": "false",
+      "reason": "Equivalent: both flags are set again at the top of handleOpen before the dialog can show them (checking and the tick), and the cancelled flag only guards a state update on a component that has already gone, which React ignores."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/block-release-action.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 53,
+      "replacement": "true",
+      "reason": "Equivalent: both flags are set again at the top of handleOpen before the dialog can show them (checking and the tick), and the cancelled flag only guards a state update on a component that has already gone, which React ignores."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/block-release-action.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 71,
+      "replacement": "true",
+      "reason": "Equivalent: both flags are set again at the top of handleOpen before the dialog can show them (checking and the tick), and the cancelled flag only guards a state update on a component that has already gone, which React ignores."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/block-release-action.tsx",
+      "mutator": "BlockStatement",
+      "line": 73,
+      "replacement": "{}",
+      "reason": "Equivalent: both flags are set again at the top of handleOpen before the dialog can show them (checking and the tick), and the cancelled flag only guards a state update on a component that has already gone, which React ignores."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/block-release-action.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 74,
+      "replacement": "false",
+      "reason": "Equivalent: both flags are set again at the top of handleOpen before the dialog can show them (checking and the tick), and the cancelled flag only guards a state update on a component that has already gone, which React ignores."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/outage-banner.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 31,
+      "replacement": "false",
+      "reason": "Equivalent: the active flag only guards a state update on a banner that has already gone, which React ignores; the hook lists are constant either way (a ref and a function made once); and the checked hosts are kept in state but never drawn."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/outage-banner.tsx",
+      "mutator": "BlockStatement",
+      "line": 33,
+      "replacement": "{}",
+      "reason": "Equivalent: the active flag only guards a state update on a banner that has already gone, which React ignores; the hook lists are constant either way (a ref and a function made once); and the checked hosts are kept in state but never drawn."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/outage-banner.tsx",
+      "mutator": "BlockStatement",
+      "line": 35,
+      "replacement": "{}",
+      "reason": "Equivalent: the active flag only guards a state update on a banner that has already gone, which React ignores; the hook lists are constant either way (a ref and a function made once); and the checked hosts are kept in state but never drawn."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/outage-banner.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 35,
+      "replacement": "true",
+      "reason": "Equivalent: the active flag only guards a state update on a banner that has already gone, which React ignores; the hook lists are constant either way (a ref and a function made once); and the checked hosts are kept in state but never drawn."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/outage-banner.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 36,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "Equivalent: the active flag only guards a state update on a banner that has already gone, which React ignores; the hook lists are constant either way (a ref and a function made once); and the checked hosts are kept in state but never drawn."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/outage-banner.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 41,
+      "replacement": "true",
+      "reason": "Equivalent: the active flag only guards a state update on a banner that has already gone, which React ignores; the hook lists are constant either way (a ref and a function made once); and the checked hosts are kept in state but never drawn."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/outage-banner.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 48,
+      "replacement": "[]",
+      "reason": "Equivalent: the active flag only guards a state update on a banner that has already gone, which React ignores; the hook lists are constant either way (a ref and a function made once); and the checked hosts are kept in state but never drawn."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/outage-banner.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 56,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "Equivalent: the active flag only guards a state update on a banner that has already gone, which React ignores; the hook lists are constant either way (a ref and a function made once); and the checked hosts are kept in state but never drawn."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/outage-banner.tsx",
+      "mutator": "LogicalOperator",
+      "line": 56,
+      "replacement": "current?.checkedHosts && []",
+      "reason": "Equivalent: the active flag only guards a state update on a banner that has already gone, which React ignores; the hook lists are constant either way (a ref and a function made once); and the checked hosts are kept in state but never drawn."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "StringLiteral",
+      "line": 28,
+      "replacement": "\"\"",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "ConditionalExpression",
+      "line": 40,
+      "replacement": "default:",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "StringLiteral",
+      "line": 44,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "StringLiteral",
+      "line": 50,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "ConditionalExpression",
+      "line": 54,
+      "replacement": "false",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "LogicalOperator",
+      "line": 54,
+      "replacement": "status === \"equivalent\" && status === \"current-better\"",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "StringLiteral",
+      "line": 54,
+      "replacement": "\"\"",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "StringLiteral",
+      "line": 58,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "StringLiteral",
+      "line": 69,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "StringLiteral",
+      "line": 79,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "Regex",
+      "line": 100,
+      "replacement": "/([.!?]\\s+)?Custom rule [·-] [^.;']*Tier\\s*\\d+/gi",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "Regex",
+      "line": 106,
+      "replacement": "/(?<=[.!?])\\s/",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/lan-access-notice.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 32,
+      "replacement": "true",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed read leaves the status as null, which it already was; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/lan-access-notice.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 33,
+      "replacement": "true",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed read leaves the status as null, which it already was; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/lan-access-notice.tsx",
+      "mutator": "CallExpression",
+      "line": 33,
+      "replacement": ";",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed read leaves the status as null, which it already was; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/lan-access-notice.tsx",
+      "mutator": "BlockStatement",
+      "line": 34,
+      "replacement": "{}",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed read leaves the status as null, which it already was; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/lan-access-notice.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 34,
+      "replacement": "true",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed read leaves the status as null, which it already was; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/lan-access-notice.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 35,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed read leaves the status as null, which it already was; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/component-recovery-notices.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 28,
+      "replacement": "true",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed first read leaves an empty list that was already empty; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/component-recovery-notices.tsx",
+      "mutator": "BlockStatement",
+      "line": 29,
+      "replacement": "{}",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed first read leaves an empty list that was already empty; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/component-recovery-notices.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 29,
+      "replacement": "true",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed first read leaves an empty list that was already empty; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/component-recovery-notices.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 29,
+      "replacement": "false",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed first read leaves an empty list that was already empty; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/component-recovery-notices.tsx",
+      "mutator": "BlockStatement",
+      "line": 30,
+      "replacement": "{}",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed first read leaves an empty list that was already empty; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/component-recovery-notices.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 30,
+      "replacement": "true",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed first read leaves an empty list that was already empty; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/component-recovery-notices.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 31,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed first read leaves an empty list that was already empty; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/connections/routing-status.ts",
+      "mutator": "ArrayDeclaration",
+      "line": 39,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "Equivalent: the default is only read for a library with no routing, which has already been answered as having no indexers; the optional chain is only reached after the sources check has passed; and the key text only has to differ when the clients differ, whatever words fill the gaps."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/connections/routing-status.ts",
+      "mutator": "OptionalChaining",
+      "line": 67,
+      "replacement": "item.snapshot.downloadClients",
+      "reason": "Equivalent: the default is only read for a library with no routing, which has already been answered as having no indexers; the optional chain is only reached after the sources check has passed; and the key text only has to differ when the clients differ, whatever words fill the gaps."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/connections/routing-status.ts",
+      "mutator": "StringLiteral",
+      "line": 68,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: the default is only read for a library with no routing, which has already been answered as having no indexers; the optional chain is only reached after the sources check has passed; and the key text only has to differ when the clients differ, whatever words fill the gaps."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/connections/routing-status.ts",
+      "mutator": "StringLiteral",
+      "line": 68,
+      "replacement": "\"\"",
+      "reason": "Equivalent: the default is only read for a library with no routing, which has already been answered as having no indexers; the optional chain is only reached after the sources check has passed; and the key text only has to differ when the clients differ, whatever words fill the gaps."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/detail.ts",
+      "mutator": "StringLiteral",
+      "line": 37,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: an unreadable time is NaN whether it starts empty or as a stray word; the duration text is never the dash because it is at least a minute; a zero size or place is already false before it is compared; and removing the empty default case changes nothing because no other case follows it."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/detail.ts",
+      "mutator": "ConditionalExpression",
+      "line": 40,
+      "replacement": "false",
+      "reason": "Equivalent: an unreadable time is NaN whether it starts empty or as a stray word; the duration text is never the dash because it is at least a minute; a zero size or place is already false before it is compared; and removing the empty default case changes nothing because no other case follows it."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/detail.ts",
+      "mutator": "StringLiteral",
+      "line": 40,
+      "replacement": "\"\"",
+      "reason": "Equivalent: an unreadable time is NaN whether it starts empty or as a stray word; the duration text is never the dash because it is at least a minute; a zero size or place is already false before it is compared; and removing the empty default case changes nothing because no other case follows it."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/detail.ts",
+      "mutator": "EqualityOperator",
+      "line": 45,
+      "replacement": "card.sizeBytes >= 0",
+      "reason": "Equivalent: an unreadable time is NaN whether it starts empty or as a stray word; the duration text is never the dash because it is at least a minute; a zero size or place is already false before it is compared; and removing the empty default case changes nothing because no other case follows it."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/detail.ts",
+      "mutator": "EqualityOperator",
+      "line": 73,
+      "replacement": "card.processorQueuePosition >= 0",
+      "reason": "Equivalent: an unreadable time is NaN whether it starts empty or as a stray word; the duration text is never the dash because it is at least a minute; a zero size or place is already false before it is compared; and removing the empty default case changes nothing because no other case follows it."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/detail.ts",
+      "mutator": "ConditionalExpression",
+      "line": 84,
+      "replacement": "default:",
+      "reason": "Equivalent: an unreadable time is NaN whether it starts empty or as a stray word; the duration text is never the dash because it is at least a minute; a zero size or place is already false before it is compared; and removing the empty default case changes nothing because no other case follows it."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/group.ts",
+      "mutator": "ArrayDeclaration",
+      "line": 75,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "Equivalent: the starting parts are replaced before they are read (a new group always sets them), and a group's tooltip and freshness are overwritten when the group is closed, which always happens before the list is returned."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/group.ts",
+      "mutator": "ArrayDeclaration",
+      "line": 98,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "Equivalent: the starting parts are replaced before they are read (a new group always sets them), and a group's tooltip and freshness are overwritten when the group is closed, which always happens before the list is returned."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/group.ts",
+      "mutator": "BooleanLiteral",
+      "line": 98,
+      "replacement": "true",
+      "reason": "Equivalent: the starting parts are replaced before they are read (a new group always sets them), and a group's tooltip and freshness are overwritten when the group is closed, which always happens before the list is returned."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/turned-down.ts",
+      "mutator": "StringLiteral",
+      "line": 58,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: an unreadable time is NaN whether the default is empty or a stray word, and a push whose own time cannot be read is counted either way because comparing NaN is false."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/turned-down.ts",
+      "mutator": "LogicalOperator",
+      "line": 64,
+      "replacement": "Number.isFinite(since) || Number.isFinite(at)",
+      "reason": "Equivalent: an unreadable time is NaN whether the default is empty or a stray word, and a push whose own time cannot be read is counted either way because comparing NaN is false."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/turned-down.ts",
+      "mutator": "ConditionalExpression",
+      "line": 64,
+      "replacement": "true",
+      "reason": "Equivalent: an unreadable time is NaN whether the default is empty or a stray word, and a push whose own time cannot be read is counted either way because comparing NaN is false."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/dispatch-final-state.ts",
+      "mutator": "ConditionalExpression",
+      "line": 31,
+      "replacement": "false",
+      "reason": "Equivalent: a failed import status is neither imported nor completed and is not empty, so the next lines return false anyway; the default list is only read for extra-copy matches, which a stray word never makes; and the failure text is only searched for the words refus, rejected, removed and vanished, which a stray word does not hold."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/dispatch-final-state.ts",
+      "mutator": "ArrayDeclaration",
+      "line": 62,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "Equivalent: a failed import status is neither imported nor completed and is not empty, so the next lines return false anyway; the default list is only read for extra-copy matches, which a stray word never makes; and the failure text is only searched for the words refus, rejected, removed and vanished, which a stray word does not hold."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/dispatch-final-state.ts",
+      "mutator": "StringLiteral",
+      "line": 67,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: a failed import status is neither imported nor completed and is not empty, so the next lines return false anyway; the default list is only read for extra-copy matches, which a stray word never makes; and the failure text is only searched for the words refus, rejected, removed and vanished, which a stray word does not hold."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/times.ts",
+      "mutator": "ConditionalExpression",
+      "line": 23,
+      "replacement": "false",
+      "reason": "Equivalent: an unreadable or missing time is NaN whether the default is empty or a stray word, and every comparison with NaN is false, so a span with one unreadable end is dropped either way; a finish time equal to the latest changes nothing; and Number.isFinite already rejects an undefined finish."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/times.ts",
+      "mutator": "EqualityOperator",
+      "line": 24,
+      "replacement": "card.finishAtMs >= latest",
+      "reason": "Equivalent: an unreadable or missing time is NaN whether the default is empty or a stray word, and every comparison with NaN is false, so a span with one unreadable end is dropped either way; a finish time equal to the latest changes nothing; and Number.isFinite already rejects an undefined finish."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/times.ts",
+      "mutator": "ConditionalExpression",
+      "line": 38,
+      "replacement": "false",
+      "reason": "Equivalent: an unreadable or missing time is NaN whether the default is empty or a stray word, and every comparison with NaN is false, so a span with one unreadable end is dropped either way; a finish time equal to the latest changes nothing; and Number.isFinite already rejects an undefined finish."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/times.ts",
+      "mutator": "StringLiteral",
+      "line": 58,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: an unreadable or missing time is NaN whether the default is empty or a stray word, and every comparison with NaN is false, so a span with one unreadable end is dropped either way; a finish time equal to the latest changes nothing; and Number.isFinite already rejects an undefined finish."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/times.ts",
+      "mutator": "StringLiteral",
+      "line": 59,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: an unreadable or missing time is NaN whether the default is empty or a stray word, and every comparison with NaN is false, so a span with one unreadable end is dropped either way; a finish time equal to the latest changes nothing; and Number.isFinite already rejects an undefined finish."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/times.ts",
+      "mutator": "ConditionalExpression",
+      "line": 60,
+      "replacement": "true",
+      "reason": "Equivalent: an unreadable or missing time is NaN whether the default is empty or a stray word, and every comparison with NaN is false, so a span with one unreadable end is dropped either way; a finish time equal to the latest changes nothing; and Number.isFinite already rejects an undefined finish."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/times.ts",
+      "mutator": "LogicalOperator",
+      "line": 60,
+      "replacement": "Number.isFinite(start) || Number.isFinite(end)",
+      "reason": "Equivalent: an unreadable or missing time is NaN whether the default is empty or a stray word, and every comparison with NaN is false, so a span with one unreadable end is dropped either way; a finish time equal to the latest changes nothing; and Number.isFinite already rejects an undefined finish."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/times.ts",
+      "mutator": "StringLiteral",
+      "line": 63,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: an unreadable or missing time is NaN whether the default is empty or a stray word, and every comparison with NaN is false, so a span with one unreadable end is dropped either way; a finish time equal to the latest changes nothing; and Number.isFinite already rejects an undefined finish."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/times.ts",
+      "mutator": "StringLiteral",
+      "line": 122,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: an unreadable or missing time is NaN whether the default is empty or a stray word, and every comparison with NaN is false, so a span with one unreadable end is dropped either way; a finish time equal to the latest changes nothing; and Number.isFinite already rejects an undefined finish."
+    },
+    {
       "project": "Deluno.Worker",
       "file": "src/Deluno.Worker/Jobs/JobPayloads.cs",
       "mutator": "Block removal mutation",

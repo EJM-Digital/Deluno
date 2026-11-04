@@ -276,6 +276,45 @@ function Invoke-GroupPlatformExtras {
         Add-Check 'It holds no failure, no "could not" and no stack trace' ($failures.Count -eq 0) (($failures | Select-Object -First 3) -join ' | ')
         Save-Evidence -Name 'install-hook.log' -Text $text
     }
+
+    Invoke-Scenario -Id 'update.blocked-note-shown' -Title 'An update that was not installed because the backup before it failed leaves a note; the next start says so once, as an Activity line and a "Deluno did not install the update" balloon, and a later start says nothing more' -Body {
+        Connect-Deluno
+        $noteFile = Join-Path $env:LOCALAPPDATA 'Deluno\logs\update-blocked-note.json'
+        $version = '9.9.9-golden'
+        $line = "The update to $version wasn't installed because Deluno couldn't back up its data first: the disk was full"
+        $balloon = 'Deluno did not install the update'
+        $lineKey = 'update to 9.9.9-golden wasn.{1,8}t installed because Deluno couldn.{1,8}t back up its data first: the disk was full' # the activity feed is read as JSON, which writes an apostrophe as a code
+        try {
+            $null = Quit-DelunoFromTray
+            New-Item -ItemType Directory -Force -Path (Split-Path $noteFile) | Out-Null
+            # The note is what the tray writes when the backup before an automatic install fails (its writing is covered by the tray's own tests); what is seen here is the next start saying it.
+            [IO.File]::WriteAllText($noteFile, (@{ Version = $version; Reason = 'the disk was full'; AtUtc = (Get-Date).ToUniversalTime().ToString('o') } | ConvertTo-Json -Compress))
+            $toastBefore = Get-ToastTextCount -Text $balloon
+            $exe = Get-DelunoExe
+            Start-ProgramUnelevated -Path $exe.FullName -WorkingDirectory $exe.DirectoryName -Elevated
+            $up = Wait-Until -TimeoutSec 240 -IntervalSec 2 -Condition { Test-DelunoAnswering }
+            Add-Check 'Deluno starts with the note in place' $up.Ok ''
+            if (-not $up.Ok) { return }
+            Connect-Deluno
+            $shown = Wait-ToastShown -Text $balloon -Before $toastBefore -TimeoutSec 90
+            Add-Check 'The tray says it in a balloon: "Deluno did not install the update"' $shown 'seen in Windows'' notification record'
+            $seen = Wait-Until -TimeoutSec 60 -IntervalSec 3 -Condition { @(Get-ActivityText | Where-Object { $_ -match $lineKey }).Count -ge 1 }
+            Add-Check 'Activity has the line, naming the version and why' $seen.Ok $line
+            Add-Check 'The note is taken (the file is gone), so it is said once' (-not (Test-Path -LiteralPath $noteFile)) $noteFile
+            # A later start says nothing more.
+            $null = Quit-DelunoFromTray
+            Start-ProgramUnelevated -Path $exe.FullName -WorkingDirectory $exe.DirectoryName -Elevated
+            $up2 = Wait-Until -TimeoutSec 240 -IntervalSec 2 -Condition { Test-DelunoAnswering }
+            Add-Check 'Deluno starts again' $up2.Ok ''
+            Start-Sleep -Seconds 45 # reason: a second balloon or line, if one were wrongly made, comes some seconds after the host answers; nothing signals that it will not
+            Connect-Deluno
+            Add-Check 'The second start made no second Activity line (the balloon is made from the same taken note, so it is not made again either)' (@(Get-ActivityText | Where-Object { $_ -match $lineKey }).Count -eq 1) ''
+        }
+        finally {
+            Remove-Item -LiteralPath $noteFile -Force -ErrorAction SilentlyContinue
+            $null = Restore-DelunoTray
+        }
+    }
 }
 
 # ---------------------------------------------------------------- the host's own: on a restored clean machine with the previous release installed
@@ -520,9 +559,15 @@ function Invoke-UninstallLeavesNothingBehind {
 }
 
 function Invoke-UninstallRemovesTheSignInEntry {
+    param([Parameter(Mandatory)] [string] $CandidateSetup, [Parameter(Mandatory)] [string] $CandidateVersion)
     Invoke-Scenario -Id 'uninstall.removes-the-sign-in-entry' -Title 'Uninstall with Start with Windows on takes the sign-in entry away, so Windows never tries to start a program that is gone' -Body {
-        $ctx = Start-PreviousForUpdate -CandidateVersion 'no-candidate-here'
+        $ctx = Start-PreviousForUpdate -CandidateVersion $CandidateVersion
         if (-not $ctx) { return }
+        # The uninstall hook under test is the CANDIDATE's: an older release does not remove the entry. Update to the candidate first.
+        $p = Start-Process -FilePath $CandidateSetup -ArgumentList '--silent' -PassThru
+        $done = $p.WaitForExit(600000)
+        Add-Check 'Setup.exe --silent over the previous release finished' ($done -and $p.ExitCode -eq 0) "exit $(if ($done) { $p.ExitCode } else { 'none' })"
+        if (-not (Test-CameBackAsCandidate -Context $ctx -CandidateVersion $CandidateVersion)) { return }
         $readEntry = { $p = Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue; if ($p) { $p.PSObject.Properties | Where-Object { [string]$_.Value -match 'Deluno\.exe' } | Select-Object -First 1 } }
         if (-not (& $readEntry)) { Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Start with Windows$' | Out-Null }
         $entry = (Wait-Until -TimeoutSec 15 -IntervalSec 0.5 -Condition { & $readEntry }).Value

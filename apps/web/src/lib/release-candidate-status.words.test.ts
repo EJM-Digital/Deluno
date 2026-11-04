@@ -151,4 +151,18 @@ describe("what a title's last search came to", () => {
   it("says nothing for an empty result", () => {
     expect(plainSearchResult("")).toBe("");
   });
+
+  it("keeps what the search came to in the order it was said, one sentence after another", () => {
+    expect(plainSearchResult("Found 3 releases. Best is Arrival.  Nothing else fits.")).toBe("Found 3 releases. Best is Arrival. Nothing else fits.");
+    expect(plainSearchResult("  Found 3 releases.  ")).toBe("Found 3 releases.");
+  });
+
+  it("puts a capital on the preferred-groups wording after another sentence, however many spaces follow it, and for a tier written without a space", () => {
+    expect(plainCandidateReason("Good.   Custom rule · WEB Tier 01 matched.")).toBe("Good.   Your preferred release groups matched.");
+    expect(plainCandidateReason("Custom rule · WEB Tier01 matched.")).toBe("your preferred release groups matched.");
+  });
+
+  it("folds sentences split by more than one space and trims the ends", () => {
+    expect(candidateExplanation({ summary: "  One.   Two.  One.  " })).toEqual({ summary: "One. Two.", reasons: [] });
+  });
 });

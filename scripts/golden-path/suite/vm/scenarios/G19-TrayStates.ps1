@@ -9,6 +9,8 @@
                              a manual restart says nothing about Deluno stopping by itself, and the host stops cleanly and starts again in the same process.
     tray.menu-details        Advanced holds the two recovery items, there is no Stop or Start item, the version line carries the installed version and is
                              greyed, Report a problem opens the logs folder, Check for updates is enabled and pressing it ends in a state the menu words.
+    tray.update-not-installed A copy of Deluno run from a plain folder (not an installed one): the tray's update item opens the Updates page
+                             in the browser instead of running a check, and the copy's Updates page offers no update controls.
     tray.quit                Quit Deluno: the icon shows busy, Deluno's process is gone within 30 s, the icon is removed and the host stopped; Deluno is then
                              started again the way a person starts it.
 #>
@@ -181,6 +183,52 @@ function Invoke-GroupTrayStates {
         Add-Check 'The tray says what happened in words (an update waiting, or the reason a check failed in the status line)' $ok "item '$($ended.Value.Name)', hover '$hover'"
     }
 
+    Invoke-Scenario -Id 'tray.update-not-installed' -Title 'A copy of Deluno that is not an installed one (run from a plain folder, no Velopack install around it): the tray cannot update it, so its update item opens the Updates page in the browser instead of running a check' -Body {
+        Connect-Deluno
+        $installedExe = Get-DelunoExe
+        $copyRoot = 'C:\golden\not-installed'
+        $copyApp = Join-Path $copyRoot 'app'
+        $watching = $false
+        try {
+            Remove-Item -LiteralPath $copyRoot -Recurse -Force -ErrorAction SilentlyContinue
+            New-Item -ItemType Directory -Force -Path $copyApp | Out-Null
+            & robocopy.exe $installedExe.DirectoryName $copyApp /E /NFL /NDL /NJH /NJS /NP | Out-Null
+            Add-Check 'The program is copied to a plain folder with no Update.exe beside it (nothing there is an installed Deluno)' ((Test-Path (Join-Path $copyApp 'Deluno.exe')) -and -not (Test-Path (Join-Path $copyRoot 'Update.exe'))) $copyApp
+            $null = Quit-DelunoFromTray
+            Start-ProgramUnelevated -Path (Join-Path $copyApp 'Deluno.exe') -WorkingDirectory $copyApp -Elevated
+            $up = Wait-Until -TimeoutSec 240 -IntervalSec 2 -Condition { Test-DelunoAnswering }
+            Add-Check 'The copy starts and answers' $up.Ok ''
+            if (-not $up.Ok) { return }
+            Connect-Deluno
+            $running = @(Get-CimInstance Win32_Process -Filter "Name='Deluno.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -like "$copyApp*" })
+            Add-Check 'It is the copy that runs, not the installed program' ($running.Count -ge 1) "$($running.Count) process(es) from the copy"
+            $st = Try-Deluno -Path '/api/updates/status'
+            Add-Check 'Its own Updates page says the copy cannot update itself (no update controls)' ($st.Status -eq 200 -and -not $st.Data.isInstalled -and -not $st.Data.canApply) $st.Raw
+            $null = Wait-Until -TimeoutSec 120 -IntervalSec 2 -Condition { Get-TrayMenuItemState -Pattern '^Quit Deluno' } # the copy's icon, found by its menu
+            $update = Get-TrayMenuItemState -Pattern '^(Check for updates|Checking for updates|Downloading update|Download update|Restart to update)'
+            Add-Check 'The update item reads "Check for updates" and is enabled' ($update -and $update.Name -eq 'Check for updates' -and $update.Enabled) ($update | ConvertTo-Json -Compress)
+            Start-EdgeLaunchWatch; $watching = $true
+            $stamp = Get-Date
+            $checkedBefore = $st.Data.lastCheckedUtc
+            $clicked = Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Check for updates$'
+            Add-Check 'Pressing it is accepted' $clicked "$script:TrayMenuMiss"
+            $opened = Wait-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
+                $p = Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CreationDate -gt $stamp -and $_.CommandLine -match 'system/updates' } | Select-Object -First 1
+                if ($p) { $p } elseif ((Get-EdgeLaunchCount) -ge 1) { 'a browser start' } else { $null }
+            }
+            Add-Check 'It opens the browser (at the Updates page) instead of running a check' $opened.Ok $(if ($opened.Ok -and $opened.Value.CommandLine) { ($opened.Value.CommandLine -replace '\d+\.\d+\.\d+\.\d+', '<address>').Substring(0, [math]::Min(160, $opened.Value.CommandLine.Length)) } elseif ($opened.Ok) { "$($opened.Value)" } else { 'no browser start was seen' })
+            $st2 = Try-Deluno -Path '/api/updates/status'
+            Add-Check 'No check was run by the press (the time of the last check is unchanged)' ($st2.Status -eq 200 -and $st2.Data.lastCheckedUtc -eq $checkedBefore) "before '$checkedBefore', after '$($st2.Data.lastCheckedUtc)'"
+            $after = Get-TrayMenuItemState -Pattern '^(Check for updates|Checking for updates|Downloading update|Download update|Restart to update)'
+            Add-Check 'The item still reads "Check for updates" (it never walks to Download or Restart)' ($after -and $after.Name -eq 'Check for updates') ($after | ConvertTo-Json -Compress)
+        }
+        finally {
+            if ($watching) { Stop-EdgeLaunchWatch }
+            $null = Quit-DelunoFromTray
+            Remove-Item -LiteralPath $copyRoot -Recurse -Force -ErrorAction SilentlyContinue
+            Add-Check 'The copy is removed and the installed Deluno is started again and answers' ((Restore-DelunoTray) -and -not (Test-Path $copyRoot)) ''
+        }
+    }
     Invoke-Scenario -Id 'tray.quit' -Title 'Quit Deluno from the menu: the icon shows busy, Deluno stops within 30 seconds, the icon is removed and the host is down; Deluno is then started again' -Body {
         Connect-Deluno
         $port = Get-LanPort
