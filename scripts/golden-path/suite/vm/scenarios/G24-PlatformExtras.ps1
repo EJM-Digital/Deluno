@@ -1103,6 +1103,28 @@ function Invoke-UpdateUpdatesPageFollows {
         try {
             Set-UpdateSourceToFeed | Out-Null
             Send-Cdp -Page $page -Method 'Emulation.setDeviceMetricsOverride' -Params @{ width = 1366; height = 900; deviceScaleFactor = 1; mobile = $false } | Out-Null
+            # Counts the live connection's messages that name UpdateStatusChanged, as they reach the page (a wrapper installed before the page loads).
+            $wsHook = @'
+(function () {
+  var Native = window.WebSocket;
+  window.__ws = { frames: 0, upd: 0, times: [] };
+  function Wrapped(url, protocols) {
+    var socket = protocols === undefined ? new Native(url) : new Native(url, protocols);
+    socket.addEventListener('message', function (event) {
+      var text = '';
+      try { text = typeof event.data === 'string' ? event.data : new TextDecoder('latin1').decode(event.data); } catch (e) { text = ''; }
+      window.__ws.frames++;
+      var hits = text.split('UpdateStatusChanged').length - 1;
+      if (hits > 0) { window.__ws.upd += hits; window.__ws.times.push(Date.now()); }
+    });
+    return socket;
+  }
+  Wrapped.prototype = Native.prototype;
+  Wrapped.CONNECTING = 0; Wrapped.OPEN = 1; Wrapped.CLOSING = 2; Wrapped.CLOSED = 3;
+  window.WebSocket = Wrapped;
+})();
+'@
+            Send-Cdp -Page $page -Method 'Page.addScriptToEvaluateOnNewDocument' -Params @{ source = $wsHook } | Out-Null
             Open-DelunoPage -Page $page -Path '/system/updates' -Login $script:S.Login
             $shown = Wait-Until -TimeoutSec 60 -IntervalSec 1 -Condition { if ((Get-PageText -Page $page) -match 'Check now') { $true } else { $null } }
             Add-Check 'The Updates page opens with its Check now button' $shown.Ok ''
@@ -1139,11 +1161,21 @@ function Invoke-UpdateUpdatesPageFollows {
             $pressedAt = Get-Date
             $words = New-Object System.Collections.ArrayList
             $percents = New-Object System.Collections.ArrayList
+            $apiTrace = New-Object System.Collections.ArrayList
             $deadline = (Get-Date).AddSeconds(240)
             $finished = $false
             while ((Get-Date) -lt $deadline -and -not $finished) {
                 $c = Get-UpdatesStatusCard -Page $page
                 if ($words.Count -eq 0 -or $words[-1].Text -ne $c) { [void]$words.Add([pscustomobject]@{ At = [math]::Round(((Get-Date) - $pressedAt).TotalSeconds, 1); Text = $c }) }
+                # What the server says at the same moment, so a percent the page misses can be told from one the server never reached.
+                $apiStarted = Get-Date
+                $api = Try-Deluno -Path '/api/updates/status' -TimeoutSec 10
+                $apiMs = [int]((Get-Date) - $apiStarted).TotalMilliseconds
+                # How many times the open page itself has read the status so far (its own requests, not this script's).
+                $pageReads = [string](Invoke-CdpEval -Page $page -Script 'performance.getEntriesByType("resource").filter(function(e){return e.name.indexOf("/api/updates/status")>=0}).length')
+                $wsNow = [string](Invoke-CdpEval -Page $page -Script 'JSON.stringify([window.__ws ? window.__ws.frames : -1, window.__ws ? window.__ws.upd : -1])')
+                $apiPct = if ($api.Raw -match '"progressPercent"\s*:\s*(\d+)') { [int]$Matches[1] } else { -1 }
+                [void]$apiTrace.Add(("+{0}s status {1} in {2} ms, progressPercent {3}, page has read the status {4} times, live connection [messages, UpdateStatusChanged] {5}" -f [math]::Round(((Get-Date) - $pressedAt).TotalSeconds, 1), $api.Status, $apiMs, $apiPct, $pageReads, $wsNow))
                 $pct = Get-UpdatesCardPercent -Card $c
                 if ($null -ne $pct -and ($percents.Count -eq 0 -or $percents[-1] -ne $pct)) { [void]$percents.Add($pct) }
                 if ($c -match 'Update downloaded\. Restart Deluno to apply it\.|State Ready to restart') { $finished = $true }
@@ -1154,6 +1186,7 @@ function Invoke-UpdateUpdatesPageFollows {
             Add-Check 'The download ends on the open page as Ready to restart' $finished ("{0} distinct wordings in {1} s" -f $words.Count, $(if ($words.Count) { $words[-1].At } else { 0 }))
             Add-Note ('Download wordings on the open page, with the seconds since Download update was pressed: ' + (($words | ForEach-Object { "+{0}s '{1}'" -f $_.At, ($_.Text.Substring(0, [math]::Min(110, $_.Text.Length))) }) -join ' -> '))
             Add-Check 'The page changed from the download being asked for to the finished wording by itself (a changed card, no reload)' ($words.Count -ge 2) "$($words.Count) distinct wordings"
+            Save-Evidence -Name 'updates-page-3-api-trace.txt' -Text ("each pass of the sampling loop, with the server's own status call" + "`n" + ($apiTrace -join "`n"))
             # #1469: each step of the download is pushed, so the percent climbs on the open page before it reaches 100.
             $middle = @($percents | Where-Object { $_ -gt 0 -and $_ -lt 100 })
             $rising = $true; for ($i = 1; $i -lt $percents.Count; $i++) { if ($percents[$i] -lt $percents[$i - 1]) { $rising = $false } }
