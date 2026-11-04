@@ -112,7 +112,7 @@ export const ACTIVITY_PROBLEM_WORDS = [
   "failed", "failure", "timeout", "timed-out", "unreachable", "unreadable", "stalled", "lost", "vanished", "missing", "files-gone",
   "abandoned", "dead-letter", "lease-expired", "setup-problem", "not-imported", "exhausted", "unmatched", "misplaced", "forbidden",
   "no-progress", "outage.started", "health.problem", "needs-attention", "script-failed", "rejected", "held-by", "given-up",
-  "dead-link", "not-reported", "records-failed", "rate-limited", "provider.paused"
+  "dead-link", "follow-up.refused", "not-reported", "records-failed", "rate-limited", "provider.paused"
 ] as const;
 
 /** Whether an Activity kind is a red one, decided the way the server decides it. */
