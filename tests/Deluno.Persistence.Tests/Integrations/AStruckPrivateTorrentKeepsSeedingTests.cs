@@ -13,6 +13,7 @@ using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Deluno.Persistence.Tests.Integrations;
@@ -444,6 +445,34 @@ public sealed class AStruckPrivateTorrentKeepsSeedingTests
         Assert.DoesNotContain("blocked this release", entry.Message, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(false, "")]
+    [InlineData(true, " (dry run)")]
+    public async Task The_log_names_the_rule_its_count_the_release_and_what_was_done_and_whether_it_was_a_dry_run(bool dryRun, string ending)
+    {
+        var lines = new Lines();
+        using var world = await World.CreateAsync(rule: Rule(DownloadHealthRuleKinds.NoProgress, move: true), siteIsPrivate: true, clientCategory: "keep-seeding", dryRun: dryRun, logger: lines);
+
+        await world.RemediateAsync();
+
+        var line = Assert.Single(lines.Messages, message => message.Contains("strike(s) for", StringComparison.Ordinal));
+        Assert.Contains(Release, line, StringComparison.Ordinal);
+        Assert.Contains(world.ClientName, line, StringComparison.Ordinal);
+        Assert.EndsWith(ending + ".", line, StringComparison.Ordinal);
+    }
+
+    private sealed class Lines : ILogger<DownloadClientTelemetryService>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Messages.Add(formatter(state, exception));
+    }
+
     [Fact]
     public async Task A_dry_run_says_what_it_would_move_and_touches_nothing()
     {
@@ -826,7 +855,8 @@ public sealed class AStruckPrivateTorrentKeepsSeedingTests
             Func<KeepSeedingSettings, KeepSeedingSettings>? settings = null,
             string? definitionPrivacy = null,
             bool dryRun = false,
-            string protocol = "qbittorrent")
+            string protocol = "qbittorrent",
+            ILogger<DownloadClientTelemetryService>? logger = null)
         {
             var storage = NewStorage();
             var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-11T10:00:00Z"));
@@ -908,7 +938,7 @@ public sealed class AStruckPrivateTorrentKeepsSeedingTests
                 platform, health, libraries, connections, jobs,
                 new DownloadClientRegistry([fake]), time, new PassThroughResiliencePolicy(),
                 jobs, dispatches, jobs, new Deluno.Recovery.Policies.DownloadHealthEvaluator(), processors, connectivity, blocklist,
-                keepSeedingStore: store, trackerDefinitionNames: names);
+                keepSeedingStore: store, trackerDefinitionNames: names, logger: logger);
             var world = new World(storage, time, service, client, jobs, blocklist, dispatches, dispatchId, fake, payloadPath, store, processors, library.Id, "movies", health, platform);
             world.SiteName = site.Name;
             world.ClientSaysPrivate = clientSaysPrivate;
