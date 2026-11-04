@@ -60,7 +60,8 @@ public sealed class SeasonSearchJobHandler(
             payload.SeasonNumber,
             triggeredBy: "automatic-season",
             activityClause: "was searched by the automatic library cycle.",
-            cancellationToken);
+            cancellationToken,
+            payload.IgnoreDispatchId);
 
         // Every status but a genuine no-match already says why nothing was
         // planned again immediately: SeriesNotFound/SeasonNotFound have
@@ -88,7 +89,8 @@ public sealed class SeasonSearchJobHandler(
                     payload.SeriesId,
                     payload.SeasonNumber,
                     episode.EpisodeNumber,
-                    episode.Title))
+                    episode.Title,
+                    payload.IgnoreDispatchId))
                 .ToArray();
             await jobQueueRepository.PlanEpisodeSearchesAsync(payload.LibraryId, fallback, cancellationToken);
             return $"Finished searching season S{payload.SeasonNumber:D2} of {payload.SeriesTitle}: no season pack was grabbed, {fallback.Length} episode search(es) queued.";

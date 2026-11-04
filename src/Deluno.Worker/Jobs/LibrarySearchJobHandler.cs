@@ -936,7 +936,8 @@ public abstract class LibrarySearchJobHandler(
             {
                 SeriesTitle = seasonInventoryBySeries.TryGetValue(season.SeriesId, out var seriesInventory)
                     ? seriesInventory.Title
-                    : season.SeriesTitle
+                    : season.SeriesTitle,
+                IgnoreDispatchId = SearchExecutionSupport.ReplacedDispatchId(job)
             })
             .ToArray();
 

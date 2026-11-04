@@ -2977,7 +2977,8 @@ public sealed class SqliteJobStore(
                     episodeId = episode.EpisodeId,
                     episodeNumber = episode.EpisodeNumber,
                     title = episode.Title
-                })
+                }),
+                ignoreDispatchId = season.IgnoreDispatchId
             });
             var idempotencyKey = $"season.search:{season.SeriesId}:{season.SeasonNumber}:schedule";
             var dedupeKey = $"season.search:{season.SeriesId}:{season.SeasonNumber}";

@@ -19,8 +19,8 @@ public sealed class SeasonSearchSearchingLaneEdgesTests
         var labels = new List<string>();
         var executor = new Mock<ISeasonSearchExecutor>();
         executor
-            .Setup(item => item.ExecuteAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Returns((string _, int _, string triggeredBy, string clause, CancellationToken _) =>
+            .Setup(item => item.ExecuteAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()))
+            .Returns((string _, int _, string triggeredBy, string clause, CancellationToken _, string? _) =>
             {
                 asked?.Add((triggeredBy, clause));
                 if (searching is not null)

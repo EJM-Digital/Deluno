@@ -3571,7 +3571,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                 seasonNumber,
                 triggeredBy: "manual-season",
                 activityClause: "was searched from the TV workspace.",
-                cancellationToken);
+                cancellationToken,
+                ignoreDispatchId: null);
 
             if (result.Status is SeasonSearchStatus.SeriesNotFound)
             {

@@ -20,4 +20,5 @@ public sealed record SeasonSearchPlanItem(
     string SeriesId,
     string SeriesTitle,
     int SeasonNumber,
-    IReadOnlyList<SeasonSearchPlanEpisode> Episodes);
+    IReadOnlyList<SeasonSearchPlanEpisode> Episodes,
+    string? IgnoreDispatchId = null);
