@@ -104,7 +104,7 @@ public sealed class DelunoFileLoggerEdgeTests : IDisposable
     }
 
     [Fact]
-    public void A_log_folder_that_cannot_be_made_never_stops_the_caller()
+    public void A_log_folder_that_cannot_be_made_never_stops_the_caller_and_every_line_lost_is_counted()
     {
         Directory.CreateDirectory(dataRoot);
         File.WriteAllText(Path.Combine(dataRoot, "logs"), "a file where the folder should be");
@@ -113,12 +113,14 @@ public sealed class DelunoFileLoggerEdgeTests : IDisposable
         using var factory = LoggerFactory.Create(builder => builder.AddProvider(provider));
         var logger = factory.CreateLogger("Deluno.Test");
 
-        // The writer gives up at once; logging goes on without a sound.
-        for (var i = 0; i < 25_000; i++)
+        // The writer gives up at once and the queue holds 10,000: the rest are lost, and each is counted (#1480).
+        const int logged = 25_000;
+        for (var i = 0; i < logged; i++)
         {
             logger.LogInformation("line {Number}", i);
         }
 
+        Assert.Equal(logged - 10_000, provider.DroppedCount);
         Assert.True(File.Exists(Path.Combine(dataRoot, "logs")));
     }
 
