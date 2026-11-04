@@ -48,6 +48,20 @@ public sealed class SearchVocabularyContractsTests
         Assert.False(SeasonPackDetector.CoversEpisode("Show.Name.S03.1080p.WEB-DL-GRP", 2, 5));
     }
 
+    [Theory]
+    [InlineData("Gppackmw2bs7e0.S01.1080p.WEB-DL.x264-E2E")]
+    [InlineData("Gppackmw2bs7e0.S01E03.1080p.WEB-DL.x264-E2E")]
+    public void A_show_name_that_holds_something_like_an_episode_code_is_not_read_as_one(string release)
+    {
+        // The e2e season-pack walk named its show from the clock, and one run's name held "s7e0" (issue 1472): the pack was read as
+        // season 7 episode 0, so the season search found no pack.
+        var classified = SeasonPackDetector.Classify(release);
+        Assert.Equal(1, classified.Season);
+        Assert.Equal(release.Contains("S01E03", StringComparison.Ordinal), classified.IsEpisode);
+        Assert.Equal(release.Contains("S01E03", StringComparison.Ordinal) ? 3 : null, classified.Episode);
+        Assert.Equal(!release.Contains("S01E03", StringComparison.Ordinal), classified.IsSeason);
+    }
+
     [Fact]
     public async Task The_routing_records_keep_what_they_are_given()
     {
