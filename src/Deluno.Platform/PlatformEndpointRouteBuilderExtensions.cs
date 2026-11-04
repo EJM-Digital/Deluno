@@ -1032,6 +1032,21 @@ public static class PlatformEndpointRouteBuilderExtensions
             errors["cloudflareHelperTimeoutSeconds"] = ["Choose a timeout between 1 and 180 seconds."];
         }
 
+        // #1475: every download health time takes 1 to 999 minutes and every strike count 1 to 999.
+        void Refuse(string key, string? problem)
+        {
+            if (problem is not null)
+            {
+                errors[key] = [problem];
+            }
+        }
+
+        Refuse("downloadHealthStrikeThreshold", DownloadHealthBounds.StrikesProblem(request.DownloadHealthStrikeThreshold, "The number of strikes"));
+        Refuse("downloadHealthDefaultStrikeWindowMinutes", DownloadHealthBounds.MinutesProblem(request.DownloadHealthDefaultStrikeWindowMinutes, "The time between strikes"));
+        Refuse("downloadHealthNoProgressMinutes", DownloadHealthBounds.MinutesProblem(request.DownloadHealthNoProgressMinutes, "The no-progress time"));
+        Refuse("downloadHealthMinSpeedMinutes", DownloadHealthBounds.MinutesProblem(request.DownloadHealthMinSpeedMinutes, "The too-slow time"));
+        Refuse("downloadHealthMinPeersMinutes", DownloadHealthBounds.MinutesProblem(request.DownloadHealthMinPeersMinutes, "The low-peers time"));
+
         if (!errors.ContainsKey("libraryFreeSpaceWarnPercent") &&
             !errors.ContainsKey("libraryFreeSpacePausePercent") &&
             request.LibraryFreeSpacePausePercent is { } pauseValue &&

@@ -238,7 +238,7 @@ public sealed record DownloadHealthRule(
     /// <summary>#1240: whether a move also blocks that release for the title, so the search does not pick it again. Read only with a move.</summary>
     bool BlocklistWhenMoved = true)
 {
-    public TimeSpan Timer => TimeSpan.FromMinutes(Math.Clamp(TimerMinutes, 1, 1440));
+    public TimeSpan Timer => TimeSpan.FromMinutes(DownloadHealthBounds.ClampMinutes(TimerMinutes));
 
     public bool CoversCompletion(double progressPercent)
         => progressPercent >= MinCompletionPercent && progressPercent <= MaxCompletionPercent;
@@ -304,14 +304,14 @@ public static class DownloadHealthRuleValidator
             return "The completion range must be between 0% and 100%, with the low end at or below the high end.";
         }
 
-        if (candidate.StrikeLimit < 1 || candidate.StrikeLimit > 100)
+        if (DownloadHealthBounds.StrikesProblem(candidate.StrikeLimit, "Strikes") is { } strikeProblem)
         {
-            return "Strikes must be between 1 and 100.";
+            return strikeProblem;
         }
 
-        if (candidate.TimerMinutes < 1 || candidate.TimerMinutes > 1440)
+        if (DownloadHealthBounds.MinutesProblem(candidate.TimerMinutes, "The timer") is { } timerProblem)
         {
-            return "The timer must be between 1 minute and 24 hours.";
+            return timerProblem;
         }
 
         switch (candidate.Kind)
@@ -489,4 +489,39 @@ public sealed record DownloadHealthIgnoreEntry(
         if (colon >= 0) text = text[..colon];
         return text.TrimStart('.');
     }
+}
+
+/// <summary>
+/// #1475: the one place the download health bounds live. Every time a person sets (strike spacing, no-progress,
+/// too-slow, low-peers, a rule's timer) takes 1 to 999 minutes and every strike count (the platform threshold and each
+/// rule's limit) takes 1 to 999. The web app's copy is <c>apps/web/src/lib/download-health-bounds.ts</c>.
+/// </summary>
+public static class DownloadHealthBounds
+{
+    public const int MinMinutes = 1;
+    public const int MaxMinutes = 999;
+    public const int MinStrikes = 1;
+    public const int MaxStrikes = 999;
+
+    /// <summary>Brings a stored or sent time to the nearest bound.</summary>
+    public static int ClampMinutes(int minutes) => Math.Clamp(minutes, MinMinutes, MaxMinutes);
+
+    /// <summary>Brings a stored or sent strike count to the nearest bound.</summary>
+    public static int ClampStrikes(int strikes) => Math.Clamp(strikes, MinStrikes, MaxStrikes);
+
+    public static bool MinutesInRange(int minutes) => minutes is >= MinMinutes and <= MaxMinutes;
+
+    public static bool StrikesInRange(int strikes) => strikes is >= MinStrikes and <= MaxStrikes;
+
+    /// <summary>The plain refusal for a time outside 1 to 999, or null when it is in range.</summary>
+    public static string? MinutesProblem(int? minutes, string what)
+        => minutes is { } value && !MinutesInRange(value)
+            ? $"{what} must be between {MinMinutes} and {MaxMinutes} minutes."
+            : null;
+
+    /// <summary>The plain refusal for a strike count outside 1 to 999, or null when it is in range.</summary>
+    public static string? StrikesProblem(int? strikes, string what)
+        => strikes is { } value && !StrikesInRange(value)
+            ? $"{what} must be between {MinStrikes} and {MaxStrikes}."
+            : null;
 }

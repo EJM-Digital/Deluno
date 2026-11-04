@@ -457,7 +457,15 @@ public sealed class SqliteDownloadHealthRepository(
             try
             {
                 var stored = JsonSerializer.Deserialize<List<DownloadHealthRule>>(json);
-                if (stored is not null) return stored;
+                // #1475: a rule saved under older bounds is brought to the nearest of 1 to 999.
+                if (stored is not null)
+                {
+                    return stored.Select(rule => rule with
+                    {
+                        StrikeLimit = DownloadHealthBounds.ClampStrikes(rule.StrikeLimit),
+                        TimerMinutes = DownloadHealthBounds.ClampMinutes(rule.TimerMinutes)
+                    }).ToList();
+                }
             }
             catch (JsonException)
             {
@@ -675,7 +683,7 @@ public sealed class SqliteDownloadHealthRepository(
     /// </summary>
     private static IReadOnlyList<DownloadHealthRule> LegacyRulesFrom(PlatformSettingsSnapshot legacy, DateTimeOffset now)
     {
-        var strikeLimit = Math.Clamp(legacy.DownloadHealthStrikeThreshold, 1, 100);
+        var strikeLimit = DownloadHealthBounds.ClampStrikes(legacy.DownloadHealthStrikeThreshold);
         var actionPreset = LegacyActionPreset(legacy);
 
         DownloadHealthRule Rule(string id, string kind, bool enabled, int timerMinutes, double threshold) => new(
@@ -683,7 +691,7 @@ public sealed class SqliteDownloadHealthRepository(
             Kind: kind,
             Enabled: enabled,
             StrikeLimit: strikeLimit,
-            TimerMinutes: Math.Clamp(timerMinutes, 1, 1440),
+            TimerMinutes: DownloadHealthBounds.ClampMinutes(timerMinutes),
             AppliesTo: DownloadHealthAppliesTo.Both,
             MinCompletionPercent: 0,
             MaxCompletionPercent: 100,

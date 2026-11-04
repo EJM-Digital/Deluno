@@ -158,10 +158,10 @@ public sealed class TheStrikeCountRangeTests
 
     [Theory]
     [InlineData(1, true)]
-    [InlineData(100, true)]
+    [InlineData(999, true)]
     [InlineData(0, false)]
-    [InlineData(101, false)]
-    public void A_rule_takes_one_to_a_hundred_strikes(int strikes, bool accepted)
+    [InlineData(1000, false)]
+    public void A_rule_takes_one_to_999_strikes(int strikes, bool accepted)
         => Assert.Equal(accepted, DownloadHealthRuleValidator.Validate(Rule(strikes), []) is null);
 
     [Fact]
