@@ -39,11 +39,15 @@ public sealed class TurnedDownReasonsTests
     [InlineData("This release is for something else: its name does not give the title \"Say Yes to the Dress\".", TurnedDownGroups.Fake)]
     [InlineData("This release is from 2012; The Kid is from 1921.", TurnedDownGroups.Fake)]
     // language
-    [InlineData("Required trait 'audio.language.en' is not known to be present.", TurnedDownGroups.Language)]
-    [InlineData("Required trait 'audio.language.en' is absent.", TurnedDownGroups.Language)]
-    [InlineData("Forbidden trait 'audio.language.dubbed' is present.", TurnedDownGroups.Language)]
-    [InlineData("At least one trait in required-any group 'audio.language.en, audio.language.original' must be proven, but evidence is incomplete.", TurnedDownGroups.Language)]
-    [InlineData("No trait in required-any group 'audio.language.en' is present.", TurnedDownGroups.Language)]
+    [InlineData("We cannot tell whether it matches the language English, which this profile requires.", TurnedDownGroups.Language)]
+    [InlineData("It does not match the language English, which this profile requires.", TurnedDownGroups.Language)]
+    [InlineData("It matches the language Dubbed, which this profile never takes.", TurnedDownGroups.Language)]
+    [InlineData("We cannot yet tell whether it matches any of the language English, the language Original, and this profile needs at least one.", TurnedDownGroups.Language)]
+    [InlineData("It matches none of the language English, and this profile needs at least one.", TurnedDownGroups.Language)]
+    // a custom format or built-in trait the profile rules on
+    [InlineData("It matches your custom format \"x265 (no HDR)\", which this profile never takes.", TurnedDownGroups.Rules)]
+    [InlineData("It does not match HEVC, which this profile requires.", TurnedDownGroups.Rules)]
+    [InlineData("It matches none of HEVC, AV1, and this profile needs at least one.", TurnedDownGroups.Rules)]
     // too few people sharing it
     [InlineData("No one is seeding this torrent, so it cannot download.", TurnedDownGroups.FewSeeders)]
     [InlineData("No seeders were reported.", TurnedDownGroups.FewSeeders)]

@@ -152,7 +152,7 @@ public static class TurnedDownReasons
         }
 
         if (Has("missing required term") || Has("contains excluded term") || Has("required word") || Has("ignored word")
-            || Has("required trait") || Has("forbidden trait") || Has("required-any group") || Has("hard safety gate") || Has("breaks one of your must-have rules")
+            || Has("which this profile requires") || Has("which this profile never takes") || Has("this profile needs at least one") || Has("hard safety gate") || Has("breaks one of your must-have rules")
             || Has("searches only") || Has("TRaSH rates this copy"))
         {
             return TurnedDownGroups.Rules;

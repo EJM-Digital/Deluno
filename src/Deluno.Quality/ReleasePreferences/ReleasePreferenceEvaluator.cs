@@ -18,7 +18,7 @@ public static class ReleasePreferenceEvaluator
             .ToDictionary(group => group.Key, ResolveFact, StringComparer.OrdinalIgnoreCase));
 
         var reasons = new List<string>();
-        var hardGateStatus = EvaluateHardGates(plan, factMap, reasons);
+        var hardGateStatus = EvaluateHardGates(plan, factMap, reasons, new PreferenceTraitWords(plan));
         // Keep one typed result for every family, including transient
         // tie-break families. They are intentionally excluded from target
         // status and installed-file upgrade comparison below, but missing
@@ -459,7 +459,8 @@ public static class ReleasePreferenceEvaluator
     private static PreferenceEvaluationStatus EvaluateHardGates(
         ReleasePreferencePlan plan,
         IReadOnlyDictionary<string, PreferenceFact> facts,
-        ICollection<string> reasons)
+        ICollection<string> reasons,
+        PreferenceTraitWords words)
     {
         var needsReview = false;
         foreach (var traitId in plan.RequiredTraitIds ?? [])
@@ -469,11 +470,11 @@ public static class ReleasePreferenceEvaluator
             if (state is PreferenceFactState.Unknown or PreferenceFactState.Conflicting)
             {
                 needsReview = true;
-                reasons.Add($"Required trait '{traitId}' is not known to be present.");
+                reasons.Add(words.RequiredUnknown(traitId));
             }
             else
             {
-                reasons.Add($"Required trait '{traitId}' is absent.");
+                reasons.Add(words.RequiredAbsent(traitId));
                 return PreferenceEvaluationStatus.Missing;
             }
         }
@@ -494,16 +495,16 @@ public static class ReleasePreferenceEvaluator
             if (states.Contains(PreferenceFactState.Conflicting))
             {
                 needsReview = true;
-                reasons.Add($"At least one trait in required-any group '{string.Join(", ", traits)}' must be proven, but evidence conflicts.");
+                reasons.Add(words.GroupConflicting(traits));
             }
             else if (states.Contains(PreferenceFactState.Unknown))
             {
                 needsReview = true;
-                reasons.Add($"At least one trait in required-any group '{string.Join(", ", traits)}' must be proven, but evidence is incomplete.");
+                reasons.Add(words.GroupIncomplete(traits));
             }
             else
             {
-                reasons.Add($"No trait in required-any group '{string.Join(", ", traits)}' is present.");
+                reasons.Add(words.GroupMissing(traits));
                 return PreferenceEvaluationStatus.Missing;
             }
         }
@@ -514,12 +515,12 @@ public static class ReleasePreferenceEvaluator
             if (state == PreferenceFactState.Absent) continue;
             if (state == PreferenceFactState.Present)
             {
-                reasons.Add($"Forbidden trait '{traitId}' is present.");
+                reasons.Add(words.ForbiddenPresent(traitId));
                 return PreferenceEvaluationStatus.Missing;
             }
 
             needsReview = true;
-            reasons.Add($"Forbidden trait '{traitId}' is unknown.");
+            reasons.Add(words.ForbiddenUnknown(traitId));
         }
 
         return needsReview ? PreferenceEvaluationStatus.NeedsReview : PreferenceEvaluationStatus.MeetsPlan;
