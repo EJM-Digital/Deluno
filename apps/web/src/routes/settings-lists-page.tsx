@@ -625,9 +625,7 @@ export function SettingsListsPage() {
 
       <Drawer
         open={isOpen}
-        onOpenChange={(open) => {
-          if (!open) requestClose();
-        }}
+        onOpenChange={() => requestClose()}
         title={mode.kind === "create" ? "New import list" : editing?.name ?? form.name}
         description={mode.kind === "create" ? "A watchlist, curated list or feed Deluno should follow." : `${providerLabel(form.provider)} · ${form.mediaType === "tv" ? "TV" : "Movies"} · ${editing?.libraryName ? `adds to ${editing.libraryName}` : "no library yet"}`}
         onSubmit={handleSubmit}
@@ -852,10 +850,7 @@ export function SettingsListsPage() {
       />
       <ConfirmDialog
         open={confirmDiscard}
-        onOpenChange={(open) => {
-          if (open) return;
-          setConfirmDiscard(false);
-        }}
+        onOpenChange={() => setConfirmDiscard(false)}
         title="Discard unsaved changes?"
         description="Your edits to this list haven't been saved."
         confirmLabel="Discard"
@@ -1113,9 +1108,8 @@ function parseTmdbPersonAddress(feedUrl: string): { personId: string; creditType
 
 function buildTmdbPersonAddress(feedUrl: string, creditTypes: TmdbPersonCreditType[]) {
   const parsed = parseTmdbPersonAddress(feedUrl);
-  const selected = creditTypes.length ? creditTypes : ["cast"] as TmdbPersonCreditType[];
   if (!parsed.personId) return feedUrl.trim();
-  return `https://www.themoviedb.org/person/${parsed.personId}?credits=${selected.join(",")}`;
+  return `https://www.themoviedb.org/person/${parsed.personId}?credits=${creditTypes.join(",")}`;
 }
 
 /**
@@ -1131,7 +1125,6 @@ export function OffListTagCard({ enabled, tag, onSaved }: { enabled: boolean; ta
   const missingTag = on && !name.trim();
 
   async function save() {
-    if (missingTag || busy) return;
     setBusy(true);
     try {
       const response = await authedFetch("/api/settings", {
