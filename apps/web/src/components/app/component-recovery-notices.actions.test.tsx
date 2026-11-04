@@ -118,6 +118,17 @@ describe("an installed app that was set up again", () => {
     expect(fetchJson).toHaveBeenNthCalledWith(2, "/api/system/component-recovery/qbittorrent/dismiss", { method: "POST" });
   });
 
+  it("shows nothing rather than an old notice when the list cannot be read again after a dismiss", async () => {
+    fetchJson.mockResolvedValueOnce([notice()]);
+    fetchJson.mockResolvedValueOnce(undefined);
+    fetchJson.mockRejectedValueOnce(new Error("offline"));
+    const { container } = render(<ComponentRecoveryNotices />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Dismiss" }));
+
+    await waitFor(() => expect(container.textContent).toBe(""));
+  });
+
   it("says why when dismissing fails, in the error's words or plain ones", async () => {
     fetchJson.mockResolvedValueOnce([notice()]);
     fetchJson.mockRejectedValueOnce(new Error("The server said no."));
