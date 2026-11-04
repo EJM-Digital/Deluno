@@ -10,6 +10,10 @@ export function fitDetails(host: HTMLElement): void {
     const block = card.querySelector<HTMLElement>(".lj-x");
     if (!block) continue;
     const lines = Array.from(block.children) as HTMLElement[];
+    // Shown again before it is measured: a block hidden by the last fit has no box, its top reads 0, and every line
+    // would then seem to fit (the Pipeline overflow CI caught when this reset was taken out as redundant). Each line is
+    // set below, so the lines need no reset.
+    block.style.display = "";
     const room = detailRoom(card.getBoundingClientRect().bottom, block.getBoundingClientRect().top);
     lines.forEach((line, index) => {
       line.style.display = index < room ? "" : "none";
