@@ -121,6 +121,12 @@ describe("fetchJson retries", () => {
     expect(authedFetch).toHaveBeenCalledTimes(2);
   });
 
+  it("tries again after a network failure when the caller gave no way to stop it", async () => {
+    vi.mocked(authedFetch).mockReset().mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValueOnce(new Response("[2]", { status: 200 }));
+    await expect(fetchJson<number[]>("/api/x")).resolves.toEqual([2]);
+    expect(authedFetch).toHaveBeenCalledTimes(2);
+  });
+
   it("stops at once when the caller gives up while it waits to try again (#1396)", async () => {
     vi.mocked(authedFetch).mockReset().mockImplementation(async () => busy());
     const caller = new AbortController();

@@ -158,7 +158,7 @@ public sealed class TagRoutingHealthCheck(
             $"Some {mediaLabel} have no {connectionNoun} because of tags",
             $"{count} in {mediaLabel} can't use any {connectionNoun} because of tags: {names}{more}.",
             cause: $"Every {connectionNoun} is tagged, and none shares a tag with {these}.",
-            fix: $"Tag {these} for one of your {connectionNoun}s, or add a {connectionNoun} with no tags.",
+            fix: $"Tag {these} for one of your {connectionNoun}s, or add {(connectionNoun == "indexer" ? "an" : "a")} {connectionNoun} with no tags.",
             detailsJson: JsonSerializer.Serialize(new { link, kind, count = stranded.Length })));
     }
 

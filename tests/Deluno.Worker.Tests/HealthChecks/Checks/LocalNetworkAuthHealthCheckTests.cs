@@ -58,4 +58,38 @@ public sealed class LocalNetworkAuthHealthCheckTests
         Assert.Equal(HealthCheckStatuses.Ok, outcome.Status);
         Assert.Contains("On", outcome.Message, StringComparison.Ordinal);
     }
+
+    [Theory]
+    [InlineData(1, "On. Devices on your local network skip sign-in. Narrowed to 1 chosen address.")]
+    [InlineData(3, "On. Devices on your local network skip sign-in. Narrowed to 3 chosen addresses.")]
+    public async Task On_with_a_chosen_list_says_how_many_addresses_in_the_right_number(int count, string expected)
+    {
+        var repository = new Mock<ILocalNetworkAuthRepository>();
+        repository.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LocalNetworkAuthSettings(true, [], Enumerable.Range(1, count).Select(n => $"192.168.1.{n}").ToArray(), []));
+        var allowedHosts = new Mock<IAllowedHostsRepository>();
+        allowedHosts.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AllowedHostsSettings(true, ["localhost"]));
+        var check = new LocalNetworkAuthHealthCheck(repository.Object, allowedHosts.Object);
+
+        var outcome = Assert.Single(await check.RunAsync(CancellationToken.None));
+
+        Assert.Equal(expected, outcome.Message);
+    }
+
+    [Fact]
+    public async Task On_with_no_chosen_list_says_nothing_about_a_narrowing()
+    {
+        var repository = new Mock<ILocalNetworkAuthRepository>();
+        repository.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LocalNetworkAuthSettings(true, [], [], []));
+        var allowedHosts = new Mock<IAllowedHostsRepository>();
+        allowedHosts.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AllowedHostsSettings(true, ["localhost"]));
+        var check = new LocalNetworkAuthHealthCheck(repository.Object, allowedHosts.Object);
+
+        var outcome = Assert.Single(await check.RunAsync(CancellationToken.None));
+
+        Assert.Equal("On. Devices on your local network skip sign-in.", outcome.Message);
+    }
 }

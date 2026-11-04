@@ -27,9 +27,10 @@ function isTransientNetworkError(error: unknown) {
 
 /** Waits before the next try, or less if the caller gives up first: a page that has gone stops its retries at once (#1396). */
 function waitForRetry(attempt: number, signal?: AbortSignal | null) {
+  // attempt is always below the number of delays: fetchJson stops trying before it runs out of them.
   return new Promise<void>((resolve) => {
-    const timer = globalThis.setTimeout(resolve, RETRY_DELAYS_MS[attempt] ?? RETRY_DELAYS_MS.at(-1)!);
-    signal?.addEventListener("abort", () => { globalThis.clearTimeout(timer); resolve(); }, { once: true });
+    globalThis.setTimeout(resolve, RETRY_DELAYS_MS[attempt]);
+    signal?.addEventListener("abort", () => resolve());
   });
 }
 

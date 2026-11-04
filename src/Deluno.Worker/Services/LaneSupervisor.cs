@@ -66,10 +66,6 @@ public sealed class LaneSupervisor(
             {
                 await runLane(stoppingToken);
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                return;
-            }
             catch (Exception exception)
             {
                 failure = exception;
@@ -99,7 +95,7 @@ public sealed class LaneSupervisor(
             }
             catch (OperationCanceledException)
             {
-                return;
+                // Deluno is stopping: the loop ends on its condition.
             }
         }
     }

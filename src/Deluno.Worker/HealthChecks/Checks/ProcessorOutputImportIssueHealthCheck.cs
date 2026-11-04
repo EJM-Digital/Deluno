@@ -77,14 +77,17 @@ public sealed class ProcessorOutputImportIssueHealthCheck(
     /// </summary>
     private static string WithIssue(string? detailsJson, string caseId, string mediaType)
     {
-        JsonObject details;
-        try
+        var details = new JsonObject();
+        if (!string.IsNullOrWhiteSpace(detailsJson))
         {
-            details = JsonNode.Parse(string.IsNullOrWhiteSpace(detailsJson) ? "{}" : detailsJson) as JsonObject ?? new JsonObject();
-        }
-        catch (JsonException)
-        {
-            details = new JsonObject();
+            try
+            {
+                details = JsonNode.Parse(detailsJson) as JsonObject ?? details;
+            }
+            catch (JsonException)
+            {
+                // Details that cannot be read are replaced by just the issue the row mirrors.
+            }
         }
 
         details["recoveryCaseId"] = caseId;

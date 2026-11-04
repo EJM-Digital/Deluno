@@ -40,4 +40,21 @@ public sealed class AllowedHostsHealthCheckTests
 
         Assert.Equal(HealthCheckStatuses.Ok, outcome.Status);
     }
+
+    [Theory]
+    [InlineData(1, "Deluno only answers on 1 chosen address.")]
+    [InlineData(2, "Deluno only answers on 2 chosen addresses.")]
+    public async Task On_says_how_many_addresses_in_the_right_number(int count, string expected)
+    {
+        var repository = new Mock<IAllowedHostsRepository>();
+        repository.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AllowedHostsSettings(true, Enumerable.Range(1, count).Select(n => $"host-{n}").ToArray()));
+        var check = new AllowedHostsHealthCheck(repository.Object);
+
+        var outcome = Assert.Single(await check.RunAsync(CancellationToken.None));
+
+        Assert.Equal(expected, outcome.Message);
+        Assert.Equal(AllowedHostsHealthCheck.Id, outcome.Id);
+        Assert.Equal(HealthCheckCategories.System, outcome.Category);
+    }
 }
