@@ -1,8 +1,7 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { Captions, FileInput, FolderTree, HelpCircle, Image, MapPinned, SlidersHorizontal, Tags, Wand2, Workflow } from "lucide-react";
 import { CONFIGURATION_AREAS } from "../../lib/configuration-areas";
-import { cn } from "../../lib/utils";
 import { GlossaryModal } from "../ui/glossary-modal";
 import { PageToolbar } from "../ui/page-toolbar";
 
@@ -169,18 +168,6 @@ export const maintenanceNavItems = [
 ] as const;
 
 const SettingsWorkspaceContext = createContext(false);
-const SystemWorkspaceContext = createContext(false);
-
-const systemNavItems = [
-  { to: "/system", label: "Health", end: true, tip: "Provider health, background jobs, and system status" },
-  { to: "/system/audit", label: "Audit", end: false, tip: "Searchable event timeline and live activity stream" },
-  { to: "/system/security", label: "Security", end: false, tip: "Allowed Hosts and every other security setting, in one place" },
-  { to: "/system/api", label: "API", end: false, tip: "Generate and revoke API keys for integrations and automation" },
-  { to: "/system/docs", label: "Guide", end: false, tip: "Plain-English workflow guide for setup, routing, scoring, imports, and integrations" },
-  { to: "/system/backups", label: "Backups", end: false, tip: "Manual backups, automatic schedule, restore preview, and downloads" },
-  { to: "/system/recycle-bin", label: "Recycle bin", end: false, tip: "Recover removed library files or permanently delete expired items" },
-  { to: "/system/updates", label: "Updates", end: false, tip: "Version status, update mode, download progress, and restart flow" }
-] as const;
 
 /**
  * The name of every settings page, and the one place it is defined.
@@ -355,9 +342,7 @@ export function SystemWorkspaceLayout() {
   return (
     <div className="flex flex-col gap-(--page-gap)">
       <PageToolbar tabs={systemHealthNavItems} />
-      <SystemWorkspaceContext.Provider value>
-        <Outlet />
-      </SystemWorkspaceContext.Provider>
+      <Outlet />
     </div>
   );
 }
@@ -404,68 +389,6 @@ export function SettingsShell({
 
 export function ConfigurationWorkspaceLayout() {
   return <Outlet />;
-}
-
-function SettingsNavLink({
-  item,
-  compact = false
-}: {
-  item: (typeof systemNavItems)[number];
-  compact?: boolean;
-}) {
-  return (
-    <NavLink
-      to={item.to}
-      end={item.end}
-      title={item.tip}
-      className={({ isActive }) =>
-        cn(
-          "group relative flex items-center rounded-xl border border-transparent font-semibold transition-all duration-200",
-          compact ? "min-h-[calc(var(--shell-pill-height)*0.78)]" : "min-h-(--shell-pill-height)",
-          "text-muted-foreground hover:bg-surface-1 hover:text-foreground",
-          isActive && "border-primary/30 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.08)]"
-        )
-      }
-      style={{
-        fontSize: "var(--settings-nav-size)",
-        paddingInline: compact ? "calc(var(--settings-nav-pad-x) * 1.08)" : "var(--settings-nav-pad-x)",
-        paddingBlock: compact ? "calc(var(--settings-nav-pad-y) * 1.08)" : "var(--settings-nav-pad-y)"
-      }}
-    >
-      {({ isActive }) => (
-        <>
-          {!compact ? (
-            <span
-              aria-hidden
-              className={cn("absolute left-0 h-6 w-[3px] rounded-full", isActive ? "bg-primary" : "bg-transparent")}
-            />
-          ) : null}
-          <span className="whitespace-nowrap">{item.label}</span>
-        </>
-      )}
-    </NavLink>
-  );
-}
-
-function SectionSubnav({
-  groups
-}: {
-  groups: readonly { label: string; items: readonly (typeof systemNavItems)[number][] }[];
-}) {
-  return (
-    <div className="no-scrollbar overflow-x-auto">
-      <nav className="flex min-w-max items-center gap-1 rounded-2xl border border-hairline/80 bg-card/85 p-2 shadow-card dark:border-white/[0.07] dark:bg-white/[0.035]">
-        {groups.map((group, groupIndex) => (
-          <div key={group.label} className="flex items-center gap-1">
-            {groupIndex > 0 ? <div className="mx-1.5 h-6 w-px bg-hairline/80" aria-hidden /> : null}
-            {group.items.map((item) => (
-              <SettingsNavLink key={item.to} item={item} compact />
-            ))}
-          </div>
-        ))}
-      </nav>
-    </div>
-  );
 }
 
 /**

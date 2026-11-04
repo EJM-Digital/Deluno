@@ -38,6 +38,7 @@ describe("what the live judgement says", () => {
   it("colours accepted, keep-looking and refused apart", () => {
     expect(verdictTone("meetsPlan")).toBe("ok");
     expect(verdictTone("belowGoal")).toBe("warn");
+    expect(verdictTone("needsReview")).toBe("warn");
     expect(verdictTone("missing")).toBe("bad");
   });
 });

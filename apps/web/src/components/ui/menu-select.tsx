@@ -76,7 +76,7 @@ export function MenuSelect({
     function onPointerDown(event: PointerEvent) {
       const target = event.target as Node;
       // The menu is portalled out of this subtree, so "inside" means either.
-      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      if (rootRef.current!.contains(target) || menuRef.current?.contains(target)) return;
       setOpen(false);
     }
 
@@ -99,8 +99,7 @@ export function MenuSelect({
     if (!open) return;
 
     function measure() {
-      const rect = triggerRef.current?.getBoundingClientRect();
-      if (!rect) return;
+      const rect = triggerRef.current!.getBoundingClientRect();
       setAnchor({ top: rect.bottom + 8, left: rect.left, right: window.innerWidth - rect.right, width: rect.width });
     }
 
@@ -122,17 +121,17 @@ export function MenuSelect({
   // to focus yet. Without that, focus stayed on the trigger and the arrow keys
   // did nothing — the one thing the native control had given away for free.
   React.useEffect(() => {
-    if (open && anchor) itemRefs.current[selectedIndex]?.focus();
+    if (open && anchor) itemRefs.current[selectedIndex]!.focus();
   }, [open, anchor, selectedIndex]);
 
-  function close(returnFocus: boolean) {
+  function close() {
     setOpen(false);
-    if (returnFocus) triggerRef.current?.focus();
+    triggerRef.current!.focus();
   }
 
   function moveFocus(from: number, delta: number) {
     const next = (from + delta + options.length) % options.length;
-    itemRefs.current[next]?.focus();
+    itemRefs.current[next]!.focus();
   }
 
   function onOptionKeyDown(event: React.KeyboardEvent, index: number) {
@@ -147,15 +146,15 @@ export function MenuSelect({
         break;
       case "Home":
         event.preventDefault();
-        itemRefs.current[0]?.focus();
+        itemRefs.current[0]!.focus();
         break;
       case "End":
         event.preventDefault();
-        itemRefs.current[options.length - 1]?.focus();
+        itemRefs.current[options.length - 1]!.focus();
         break;
       case "Escape":
         event.preventDefault();
-        close(true);
+        close();
         break;
       case "Tab":
         setOpen(false);
@@ -226,7 +225,7 @@ export function MenuSelect({
                 aria-selected={isSelected}
                 onClick={() => {
                   onChange(option.value);
-                  close(true);
+                  close();
                 }}
                 onKeyDown={(event) => onOptionKeyDown(event, index)}
                 className={cn(

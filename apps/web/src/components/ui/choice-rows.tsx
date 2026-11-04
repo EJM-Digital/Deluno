@@ -42,12 +42,11 @@ export function ChoiceRows<T extends string>({
   const selectable = options.filter((option) => !option.disabled);
 
   function move(delta: number) {
-    if (!selectable.length) return;
     const current = selectable.findIndex((option) => option.value === value);
     const nextIndex = ((current + delta) % selectable.length + selectable.length) % selectable.length;
     const next = selectable[nextIndex]!;
     onValueChange(next.value);
-    refs.current[options.indexOf(next)]?.focus();
+    refs.current[options.indexOf(next)]!.focus();
   }
 
   return (

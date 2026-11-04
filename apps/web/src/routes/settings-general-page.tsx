@@ -196,11 +196,9 @@ function ReachabilityCard() {
   const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
-    let active = true;
     void fetchJson<LanAccessStatus>("/api/system/lan-access")
-      .then((next) => { if (active) setStatus(next); })
-      .catch(() => { if (active) setLoadFailed(true); });
-    return () => { active = false; };
+      .then(setStatus)
+      .catch(() => setLoadFailed(true));
   }, []);
 
   const reachabilityLabel =
@@ -254,15 +252,12 @@ function TrackerDefinitionsCard() {
   const [running, setRunning] = useState(false);
 
   useEffect(() => {
-    let active = true;
     void fetchJson<TrackerDefinitionUpdateState>("/api/trackers/definitions/update-check")
       .then((next) => {
-        if (!active) return;
         setState(next);
         setIntervalInput(String(next.intervalHours));
       })
-      .catch(() => { if (active) setLoadFailed(true); });
-    return () => { active = false; };
+      .catch(() => setLoadFailed(true));
   }, []);
 
   async function saveSettings(isEnabled: boolean, intervalHours: number) {
@@ -422,11 +417,9 @@ function LogLevelCard() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    let active = true;
     void fetchJson<{ level: string }>("/api/system/log-level")
-      .then((next) => { if (active) setLevel(next.level); })
-      .catch(() => { if (active) setLoadFailed(true); });
-    return () => { active = false; };
+      .then((next) => setLevel(next.level))
+      .catch(() => setLoadFailed(true));
   }, []);
 
   async function changeLevel(next: string) {
