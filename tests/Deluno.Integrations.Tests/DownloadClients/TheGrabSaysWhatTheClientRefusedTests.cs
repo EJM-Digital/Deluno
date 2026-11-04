@@ -175,7 +175,7 @@ public sealed class TheGrabSaysWhatTheClientRefusedTests
                     return new ActivityEventItem(Guid.NewGuid().ToString("n"), category, message, details, job, entityType, entityId, DateTimeOffset.UnixEpoch);
                 });
             var health = new Mock<IHealthCheckRepository>();
-            health.Setup(instance => instance.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(() => Earlier);
+            health.Setup(instance => instance.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync((string id, CancellationToken _) => Earlier is not null && Earlier.Id == id ? Earlier : null);
             health.Setup(instance => instance.UpsertResultsAsync(It.IsAny<IReadOnlyList<HealthCheckOutcome>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IReadOnlyList<HealthCheckOutcome> outcomes, CancellationToken _) =>
                 {

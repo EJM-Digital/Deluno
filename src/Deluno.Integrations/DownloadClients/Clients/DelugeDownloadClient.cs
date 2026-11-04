@@ -117,15 +117,29 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
             return DownloadClientHelpers.GrabFailure(client, request, "Deluge did not add the release: it may already hold it.");
         }
 
-        await TryLabelAsync(http, baseUri, added.Result, DownloadClientHelpers.ResolveCategory(client, request), cancellationToken);
+        // #1470: a follow-up call Deluge refuses is handed back so the grab service says so; the grab itself stands.
+        var refusals = new List<DownloadClientFollowUpRefusal>();
+        var sent = new List<string>();
+        if (!string.IsNullOrWhiteSpace(DownloadClientHelpers.ResolveCategory(client, request)))
+        {
+            sent.Add("label.set_torrent");
+            refusals.AddRange(await TryLabelAsync(http, baseUri, added.Result, DownloadClientHelpers.ResolveCategory(client, request), cancellationToken));
+        }
+
         if (!string.IsNullOrWhiteSpace(request.SaveFolder))
         {
-            await TryPinFolderAsync(http, baseUri, added.Result, request.SaveFolder, cancellationToken);
+            sent.Add("core.set_torrent_options");
+            refusals.AddRange(await TryPinFolderAsync(http, baseUri, added.Result, request.SaveFolder, cancellationToken));
         }
 
         // The torrent id Deluge returns is its hash and its queue id, so the
         // import can find this grab by it (#617).
-        return DownloadClientHelpers.GrabSuccess(client, request, request.TorrentFile is null ? "Release sent to Deluge." : "Torrent file sent to Deluge.") with { ExternalId = added.Result };
+        return DownloadClientHelpers.GrabSuccess(client, request, request.TorrentFile is null ? "Release sent to Deluge." : "Torrent file sent to Deluge.") with
+        {
+            ExternalId = added.Result,
+            FollowUpRefusals = refusals.Count > 0 ? refusals : null,
+            FollowUpCallsSent = sent
+        };
     }
 
     public override async Task<DownloadClientTelemetrySnapshot?> GetSnapshotAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
@@ -747,35 +761,62 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         await DownloadClientHelpers.PostJsonAsync<DelugeResponse<object>>(http, json, new DelugeRequest("web.connect", [hostId], 4), cancellationToken);
     }
 
-    /// <summary>The category as a label, when the Label plugin is on; a Deluge without it still downloads.</summary>
-    private static async Task TryLabelAsync(HttpClient http, Uri baseUri, string torrentId, string category, CancellationToken cancellationToken)
+    /// <summary>
+    /// The category as a label. A Deluge without the Label plugin, or one that refuses the label, still downloads, so the grab
+    /// stands; what it said is handed back (#1470) because the download then carries no label to import by.
+    /// </summary>
+    private static async Task<IReadOnlyList<DownloadClientFollowUpRefusal>> TryLabelAsync(HttpClient http, Uri baseUri, string torrentId, string category, CancellationToken cancellationToken)
     {
         var label = category.Trim().ToLowerInvariant();
         if (label.Length == 0)
         {
-            return;
+            return [];
         }
 
+        var what = $"the {label} label";
         var json = new Uri(baseUri, "json");
         try
         {
             var labels = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<string[]>>(http, json, new DelugeRequest("label.get_labels", [], 5), cancellationToken);
+            if (labels?.Error is { } listError)
+            {
+                // No Label plugin: the download still lands in Deluge's own folder, so this says so in Activity but stops nothing.
+                return [DownloadClientHelpers.Refusal("label.set_torrent", what, false, ReasonOf(listError.Message))];
+            }
+
             if (labels?.Result is null)
             {
-                return;
+                return [];
             }
 
             if (!labels.Result.Contains(label, StringComparer.OrdinalIgnoreCase))
             {
+                // Not read: Deluge refuses a label that already exists ("Label already exists", recorded), which is no
+                // problem; setting the label on the torrent just below is the call whose answer says whether it worked.
                 await DownloadClientHelpers.PostJsonAsync<DelugeResponse<object>>(http, json, new DelugeRequest("label.add", [label], 6), cancellationToken);
             }
 
-            await DownloadClientHelpers.PostJsonAsync<DelugeResponse<object>>(http, json, new DelugeRequest("label.set_torrent", [torrentId, label], 7), cancellationToken);
+            var set = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<object>>(http, json, new DelugeRequest("label.set_torrent", [torrentId, label], 7), cancellationToken);
+            return set?.Error is { } setError
+                ? [DownloadClientHelpers.Refusal("label.set_torrent", what, true, ReasonOf(setError.Message))]
+                : [];
         }
         catch (Exception exception) when (exception is HttpRequestException or JsonException or NotSupportedException)
         {
-            // No Label plugin: the torrent is added, just unlabelled.
+            return [DownloadClientHelpers.Refusal("label.set_torrent", what, true, exception.Message)];
         }
+    }
+
+    /// <summary>
+    /// Deluge's own words for a refusal. Its errors arrive as a whole Python traceback; the last "Exception:" line is what it
+    /// said ("Unknown Label"), and anything else is cut to its first line.
+    /// </summary>
+    internal static string ReasonOf(string? message)
+    {
+        var lines = (message ?? string.Empty).Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var said = lines.LastOrDefault(line => line.StartsWith("Exception: ", StringComparison.Ordinal));
+        var text = said is not null ? said["Exception: ".Length..] : lines.FirstOrDefault() ?? string.Empty;
+        return text.Length > 200 ? text[..200] : text;
     }
 
     /// <summary>
@@ -783,19 +824,21 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
     /// torrent when the label is set, over what the add said. Said again after
     /// the label, the library's folder is the one that stays (#1073).
     /// </summary>
-    private static async Task TryPinFolderAsync(HttpClient http, Uri baseUri, string torrentId, string folder, CancellationToken cancellationToken)
+    private static async Task<IReadOnlyList<DownloadClientFollowUpRefusal>> TryPinFolderAsync(HttpClient http, Uri baseUri, string torrentId, string folder, CancellationToken cancellationToken)
     {
+        var what = $"the save folder {folder}";
         try
         {
-            await DownloadClientHelpers.PostJsonAsync<DelugeResponse<object>>(
+            var set = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<object>>(
                 http,
                 new Uri(baseUri, "json"),
                 new DelugeRequest("core.set_torrent_options", [new[] { torrentId }, new Dictionary<string, object> { ["move_completed"] = true, ["move_completed_path"] = folder }], 13),
                 cancellationToken);
+            return set?.Error is { } error ? [DownloadClientHelpers.Refusal("core.set_torrent_options", what, true, ReasonOf(error.Message))] : [];
         }
         catch (Exception exception) when (exception is HttpRequestException or JsonException or NotSupportedException)
         {
-            // The add already carried the folder; only the label override is unguarded.
+            return [DownloadClientHelpers.Refusal("core.set_torrent_options", what, true, exception.Message)];
         }
     }
 

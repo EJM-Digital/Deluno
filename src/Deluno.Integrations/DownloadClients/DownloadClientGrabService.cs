@@ -532,7 +532,7 @@ public sealed class DownloadClientGrabService(
             }
 
             var refused = refusals.Select(refusal => refusal.Call).ToHashSet(StringComparer.Ordinal);
-            foreach (var call in (grabResult.FollowUpCallsSent ?? []).Where(call => call is "setCategory" or "setLocation" && !refused.Contains(call)))
+            foreach (var call in (grabResult.FollowUpCallsSent ?? []).Where(call => !refused.Contains(call)))
             {
                 var id = $"grab-follow-up:{client.Id}:{call}";
                 if (await healthCheckRepository.GetAsync(id, cancellationToken) is { } earlier)
