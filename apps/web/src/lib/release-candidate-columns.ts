@@ -27,10 +27,9 @@ export function defaultSortDirection(key: CandidateSortKey): SortDirection {
   return key === "protocol" ? "asc" : "desc";
 }
 
-function sortValue(candidate: CandidateColumnsInput, key: CandidateSortKey): number | string {
+/** The number a numeric column sorts by; a release with no value sorts below the rest (above them for age). */
+function numericSortValue(candidate: CandidateColumnsInput, key: Exclude<CandidateSortKey, "protocol">): number {
   switch (key) {
-    case "protocol":
-      return (candidate.indexerProtocol ?? "").toLowerCase();
     case "age":
       // Ties (unknown age) always sort last regardless of direction.
       return candidate.releaseAgeHours ?? Number.POSITIVE_INFINITY;
@@ -68,14 +67,11 @@ export function sortCandidates<T extends CandidateColumnsInput>(
   key: CandidateSortKey,
   direction: SortDirection
 ): T[] {
-  const sorted = [...candidates].sort((a, b) => {
-    const left = sortValue(a, key);
-    const right = sortValue(b, key);
-    if (typeof left === "string" || typeof right === "string") {
-      return String(left).localeCompare(String(right));
-    }
-    return left - right;
-  });
+  const sorted = [...candidates].sort((a, b) =>
+    key === "protocol"
+      ? (a.indexerProtocol ?? "").localeCompare(b.indexerProtocol ?? "", undefined, { sensitivity: "base" })
+      : numericSortValue(a, key) - numericSortValue(b, key)
+  );
   return direction === "asc" ? sorted : sorted.reverse();
 }
 
@@ -89,7 +85,7 @@ export function filterCandidates<T extends CandidateColumnsInput>(
   filters: CandidateColumnFilters
 ): T[] {
   return candidates.filter((candidate) => {
-    if (filters.protocol && (candidate.indexerProtocol ?? "").toLowerCase() !== filters.protocol.toLowerCase()) {
+    if (filters.protocol && candidate.indexerProtocol?.toLowerCase() !== filters.protocol.toLowerCase()) {
       return false;
     }
     if (filters.indexerName && candidate.indexerName !== filters.indexerName) {
