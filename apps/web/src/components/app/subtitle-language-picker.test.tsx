@@ -98,6 +98,12 @@ describe("the subtitle language picker", () => {
     expect(onChange).toHaveBeenCalledWith({ languages: ["fr", "en"], mode: "first" });
   });
 
+  it("can go back to all of them from the first one found", () => {
+    const onChange = show({ languages: ["fr", "en"], mode: "first" });
+    fireEvent.click(screen.getByRole("radio", { name: "All of them" }));
+    expect(onChange).toHaveBeenCalledWith({ languages: ["fr", "en"], mode: "all" });
+  });
+
   it("says what each mode means for the languages in order", () => {
     show({ languages: ["fr"], mode: "all" });
     expect(screen.getByText("Every file on this shelf gets French subtitles.")).toBeInTheDocument();

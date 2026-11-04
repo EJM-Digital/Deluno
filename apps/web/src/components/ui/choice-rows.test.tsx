@@ -13,8 +13,11 @@ const options: ChoiceRowOption<"a" | "b" | "c">[] = [
 const show = (over: Partial<Parameters<typeof ChoiceRows<"a" | "b" | "c">>[0]> = {}) => {
   const onValueChange = vi.fn();
   render(<ChoiceRows value="a" onValueChange={onValueChange} options={options} aria-label="Pick one" {...over} />);
+  lastChange = onValueChange;
   return onValueChange;
 };
+let lastChange: ReturnType<typeof vi.fn> | null = null;
+const press = (element: Element, init: { key: string }) => { lastChange?.mockClear(); return fireEvent.keyDown(element, init); };
 const radio = (name: RegExp | string) => screen.getByRole("radio", { name });
 
 describe("the choice rows", () => {
@@ -35,48 +38,55 @@ describe("the choice rows", () => {
 
   it("moves down or right to the next option and up or left to the previous one, taking focus with it", () => {
     const change = show({ value: "b" });
-    fireEvent.keyDown(radio(/Beta/), { key: "ArrowDown" });
+    press(radio(/Beta/), { key: "ArrowDown" });
+    expect(change).toHaveBeenCalledTimes(1);
     expect(change).toHaveBeenLastCalledWith("c");
     expect(radio(/Gamma/)).toHaveFocus();
-    fireEvent.keyDown(radio(/Beta/), { key: "ArrowRight" });
+    press(radio(/Beta/), { key: "ArrowRight" });
+    expect(change).toHaveBeenCalledTimes(1);
     expect(change).toHaveBeenLastCalledWith("c");
-    fireEvent.keyDown(radio(/Beta/), { key: "ArrowUp" });
+    press(radio(/Beta/), { key: "ArrowUp" });
+    expect(change).toHaveBeenCalledTimes(1);
     expect(change).toHaveBeenLastCalledWith("a");
     expect(radio(/Alpha/)).toHaveFocus();
-    fireEvent.keyDown(radio(/Beta/), { key: "ArrowLeft" });
+    press(radio(/Beta/), { key: "ArrowLeft" });
+    expect(change).toHaveBeenCalledTimes(1);
     expect(change).toHaveBeenLastCalledWith("a");
   });
 
   it("goes round at either end", () => {
     const change = show({ value: "c" });
-    fireEvent.keyDown(radio(/Gamma/), { key: "ArrowDown" });
+    press(radio(/Gamma/), { key: "ArrowDown" });
+    expect(change).toHaveBeenCalledTimes(1);
     expect(change).toHaveBeenLastCalledWith("a");
     cleanup();
     const again = show({ value: "a" });
-    fireEvent.keyDown(radio(/Alpha/), { key: "ArrowUp" });
+    press(radio(/Alpha/), { key: "ArrowUp" });
     expect(again).toHaveBeenLastCalledWith("c");
   });
 
   it("holds the arrow keys back from the page, and ignores every other key", () => {
     const change = show();
-    expect(fireEvent.keyDown(radio(/Alpha/), { key: "ArrowDown" })).toBe(false);
-    expect(fireEvent.keyDown(radio(/Alpha/), { key: "ArrowUp" })).toBe(false);
+    expect(press(radio(/Alpha/), { key: "ArrowDown" })).toBe(false);
+    expect(press(radio(/Alpha/), { key: "ArrowUp" })).toBe(false);
     change.mockClear();
-    expect(fireEvent.keyDown(radio(/Alpha/), { key: "Enter" })).toBe(true);
+    expect(press(radio(/Alpha/), { key: "Enter" })).toBe(true);
     expect(change).not.toHaveBeenCalled();
   });
 
   it("skips an option that cannot be chosen", () => {
     const change = show({ value: "a", options: [options[0], { ...options[1], disabled: true }, options[2]] });
     expect(radio(/Beta/)).toBeDisabled();
-    fireEvent.keyDown(radio(/Alpha/), { key: "ArrowDown" });
+    press(radio(/Alpha/), { key: "ArrowDown" });
+    expect(change).toHaveBeenCalledTimes(1);
     expect(change).toHaveBeenLastCalledWith("c");
     expect(radio(/Gamma/)).toHaveFocus();
   });
 
   it("moves to the first option when the chosen one is not among those that can be chosen", () => {
     const change = show({ value: "b", options: [options[0], { ...options[1], disabled: true }, options[2]] });
-    fireEvent.keyDown(radio(/Alpha/), { key: "ArrowDown" });
+    press(radio(/Alpha/), { key: "ArrowDown" });
+    expect(change).toHaveBeenCalledTimes(1);
     expect(change).toHaveBeenLastCalledWith("a");
   });
 

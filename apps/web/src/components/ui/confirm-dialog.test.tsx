@@ -136,6 +136,7 @@ describe("the confirmation dialog", () => {
     expect(screen.getByText("This takes it away.").className).toContain("max-w-prose");
     expect(screen.getByText("This takes it away.").className).toContain("mt-1 text-muted-foreground");
     expect(screen.getByText("Remove it?").parentElement!.parentElement!.className).toContain("mb-8");
+    expect(screen.getByRole("dialog").firstElementChild!.className).toContain("p-8");
     cleanup();
     show({ presentation: "default" });
     expect(screen.getByText("Remove it?").className).not.toContain("text-(length:--type-title-md)");
@@ -143,5 +144,6 @@ describe("the confirmation dialog", () => {
     expect(screen.getByText("This takes it away.").className).toContain("mt-1 text-sm text-muted-foreground leading-relaxed");
     expect(screen.getByText("Remove it?").parentElement!.parentElement!.className).not.toContain("mb-8");
     expect(screen.getByText("Remove it?").parentElement!.parentElement!.className).toContain("mb-4");
+    expect(screen.getByRole("dialog").firstElementChild!.className).toBe("p-6");
   });
 });

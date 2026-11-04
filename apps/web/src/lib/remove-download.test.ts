@@ -43,6 +43,11 @@ describe("removing a download from its client", () => {
     await expect(submitQueueRemoval("c", "i", "forget")).rejects.toThrow(/Client is offline|could not be completed/);
   });
 
+  it("says the removal could not be completed when a good reply is not a result at all", async () => {
+    vi.mocked(authedFetch).mockResolvedValue(reply("<html>ok</html>", 200));
+    await expect(submitQueueRemoval("c", "i", "forget")).rejects.toThrow(/could not be completed/);
+  });
+
   it("says the removal could not be completed when the server says nothing useful", async () => {
     vi.mocked(authedFetch).mockResolvedValue(reply("", 500));
     await expect(submitQueueRemoval("c", "i", "forget")).rejects.toThrow("That removal could not be completed.");

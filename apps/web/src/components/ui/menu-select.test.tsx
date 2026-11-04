@@ -167,8 +167,10 @@ describe("the menu select", () => {
     expect(screen.getByRole("listbox").style.top).toBe("208px");
     expect(screen.getByRole("listbox").style.left).toBe("60px");
     expect(screen.getByRole("listbox").style.minWidth).toBe("400px");
+    rect.mockReturnValue({ top: 0, bottom: 300, left: 70, right: 470, width: 400, height: 80, x: 70, y: 0, toJSON: () => ({}) } as DOMRect);
     fireEvent.scroll(document.body);
-    expect(screen.getByRole("listbox").style.top).toBe("208px");
+    expect(screen.getByRole("listbox").style.top).toBe("308px");
+    expect(screen.getByRole("listbox").style.left).toBe("70px");
     open();
     const calls = rect.mock.calls.length;
     fireEvent(window, new Event("resize"));

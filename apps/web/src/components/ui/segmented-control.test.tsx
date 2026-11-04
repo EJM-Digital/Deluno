@@ -13,8 +13,11 @@ const options: SegmentedOption<"a" | "b" | "c">[] = [
 const show = (over: Partial<Parameters<typeof SegmentedControl<"a" | "b" | "c">>[0]> = {}) => {
   const onValueChange = vi.fn();
   render(<SegmentedControl value="a" onValueChange={onValueChange} options={options} aria-label="Pick one" {...over} />);
+  lastChange = onValueChange;
   return onValueChange;
 };
+let lastChange: ReturnType<typeof vi.fn> | null = null;
+const press = (element: Element, init: { key: string }) => { lastChange?.mockClear(); return fireEvent.keyDown(element, init); };
 const radio = (name: string) => screen.getByRole("radio", { name });
 
 describe("the segmented control", () => {
@@ -34,53 +37,76 @@ describe("the segmented control", () => {
 
   it("moves to the next option with the right or down arrow, and the previous with the left or up arrow", () => {
     const change = show({ value: "b" });
-    fireEvent.keyDown(radio("Beta"), { key: "ArrowRight" });
+    press(radio("Beta"), { key: "ArrowRight" });
+    expect(change).toHaveBeenCalledTimes(1);
     expect(change).toHaveBeenLastCalledWith("c");
     expect(radio("Gamma")).toHaveFocus();
-    fireEvent.keyDown(radio("Beta"), { key: "ArrowDown" });
+    press(radio("Beta"), { key: "ArrowDown" });
+    expect(change).toHaveBeenCalledTimes(1);
     expect(change).toHaveBeenLastCalledWith("c");
-    fireEvent.keyDown(radio("Beta"), { key: "ArrowLeft" });
+    press(radio("Beta"), { key: "ArrowLeft" });
+    expect(change).toHaveBeenCalledTimes(1);
     expect(change).toHaveBeenLastCalledWith("a");
     expect(radio("Alpha")).toHaveFocus();
-    fireEvent.keyDown(radio("Beta"), { key: "ArrowUp" });
+    press(radio("Beta"), { key: "ArrowUp" });
+    expect(change).toHaveBeenCalledTimes(1);
     expect(change).toHaveBeenLastCalledWith("a");
   });
 
   it("goes round from the last option to the first and from the first to the last", () => {
     const change = show({ value: "c" });
-    fireEvent.keyDown(radio("Gamma"), { key: "ArrowRight" });
+    press(radio("Gamma"), { key: "ArrowRight" });
+    expect(change).toHaveBeenCalledTimes(1);
     expect(change).toHaveBeenLastCalledWith("a");
-    fireEvent.keyDown(radio("Alpha"), { key: "ArrowLeft" });
+    press(radio("Alpha"), { key: "ArrowLeft" });
+    expect(change).toHaveBeenCalledTimes(1);
     expect(change).toHaveBeenLastCalledWith("c");
   });
 
   it("holds the arrow keys back from the page, and ignores every other key", () => {
     const change = show();
-    const right = fireEvent.keyDown(radio("Alpha"), { key: "ArrowRight" });
+    const right = press(radio("Alpha"), { key: "ArrowRight" });
     expect(right).toBe(false);
-    const left = fireEvent.keyDown(radio("Alpha"), { key: "ArrowLeft" });
+    const left = press(radio("Alpha"), { key: "ArrowLeft" });
     expect(left).toBe(false);
     change.mockClear();
-    expect(fireEvent.keyDown(radio("Alpha"), { key: "Enter" })).toBe(true);
-    expect(fireEvent.keyDown(radio("Alpha"), { key: "a" })).toBe(true);
+    expect(press(radio("Alpha"), { key: "Enter" })).toBe(true);
+    expect(press(radio("Alpha"), { key: "a" })).toBe(true);
     expect(change).not.toHaveBeenCalled();
   });
 
   it("skips an option that is disabled, going on to the next one that is not", () => {
     const change = show({ options: [options[0], { ...options[1], disabled: true }, options[2]] });
     expect(radio("Beta")).toBeDisabled();
-    fireEvent.keyDown(radio("Alpha"), { key: "ArrowRight" });
+    press(radio("Alpha"), { key: "ArrowRight" });
+    expect(change).toHaveBeenCalledTimes(1);
     expect(change).toHaveBeenLastCalledWith("c");
     // Going left onto a disabled option looks forward for the next enabled one, which is where it started.
-    fireEvent.keyDown(radio("Gamma"), { key: "ArrowLeft" });
+    press(radio("Gamma"), { key: "ArrowLeft" });
+    expect(change).toHaveBeenCalledTimes(1);
     expect(change).toHaveBeenLastCalledWith("c");
   });
 
   it("goes back to the first enabled option when the ones after it are disabled", () => {
     const change = show({ value: "a", options: [options[0], options[1], { ...options[2], disabled: true }] });
-    fireEvent.keyDown(radio("Beta"), { key: "ArrowRight" });
+    press(radio("Beta"), { key: "ArrowRight" });
+    expect(change).toHaveBeenCalledTimes(1);
     expect(change).toHaveBeenLastCalledWith("a");
     expect(radio("Alpha")).toHaveFocus();
+  });
+
+  it("goes to the first enabled option when none after it is, even if the first option is disabled", () => {
+    const change = show({ value: "b", options: [{ ...options[0], disabled: true }, options[1], { ...options[2], disabled: true }] });
+    press(radio("Beta"), { key: "ArrowRight" });
+    expect(change).toHaveBeenCalledTimes(1);
+    expect(change).toHaveBeenLastCalledWith("b");
+  });
+
+  it("has no name from a field when it has neither a label nor a field", () => {
+    render(<SegmentedControl value="a" onValueChange={() => undefined} options={options} />);
+    const group = screen.getByRole("radiogroup");
+    expect(group).not.toHaveAttribute("aria-labelledby");
+    expect(group).not.toHaveAttribute("aria-label");
   });
 
   it("holds every option while it is disabled, and dims itself", () => {

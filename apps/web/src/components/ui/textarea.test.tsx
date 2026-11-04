@@ -24,6 +24,10 @@ describe("the text area", () => {
     expect(box).toHaveAttribute("placeholder", "Say more");
   });
 
+  it("is called Textarea in the developer tools", () => {
+    expect(Textarea.displayName).toBe("Textarea");
+  });
+
   it("hands its element to a ref", () => {
     const ref = createRef<HTMLTextAreaElement>();
     render(<Textarea ref={ref} aria-label="Notes" />);

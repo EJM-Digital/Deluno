@@ -7,10 +7,12 @@ import { authedFetch } from "../lib/use-auth";
 /** Settings > General, every card: what it shows, what each control sends, and what it says when that fails. */
 
 vi.mock("../lib/use-auth", () => ({ authedFetch: vi.fn() }));
-vi.mock("../hooks/use-unsaved-changes", () => ({ useUnsavedChanges: () => undefined }));
+const unsaved = vi.hoisted(() => vi.fn());
+vi.mock("../hooks/use-unsaved-changes", () => ({ useUnsavedChanges: unsaved }));
+const liveRefresh = vi.hoisted(() => vi.fn());
 const toasts = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
 vi.mock("../components/shell/toaster", () => ({ toast: toasts }));
-vi.mock("../lib/live-refresh", () => ({ useLiveRefresh: () => undefined }));
+vi.mock("../lib/live-refresh", () => ({ useLiveRefresh: liveRefresh }));
 
 const loaderData = { libraries: [], qualityProfiles: [], settings: { ...emptyPlatformSettingsSnapshot } as Record<string, unknown> };
 vi.mock("react-router-dom", async (importOriginal) => ({
@@ -27,6 +29,8 @@ let responder: Responder = () => undefined;
 const definitions = { isEnabled: false, intervalHours: 24, lastCheckedUtc: null, lastUpdatedUtc: null, status: "disabled", error: null, updatedTrackerIds: [] as string[] };
 
 beforeEach(() => {
+  unsaved.mockReset();
+  liveRefresh.mockReset();
   toasts.error.mockReset();
   toasts.success.mockReset();
   loaderData.settings = { ...emptyPlatformSettingsSnapshot, cloudflareHelperUrl: "", cloudflareHelperTimeoutSeconds: 60, cloudflareHelperKind: "auto", keepComputerAwake: false };
@@ -47,6 +51,7 @@ afterEach(cleanup);
 const renderPage = () => render(<MemoryRouter><SettingsGeneralPage /></MemoryRouter>);
 const calls = (url: string, method: string) => vi.mocked(authedFetch).mock.calls.filter(([target, init]) => target === url && ((init as RequestInit | undefined)?.method ?? "GET") === method);
 const result = () => screen.queryAllByRole("status").find((node) => /text-(success|destructive)/.test(node.className));
+const footerStatus = () => screen.getAllByRole("status").find((node) => /text-(success|warning|muted-foreground|destructive)/.test(node.className) && node.className.includes("inline-flex"))!;
 const body = (url: string, method: string) => JSON.parse(String((calls(url, method).at(-1)![1] as RequestInit).body));
 
 describe("the Cloudflare helper form", () => {
@@ -62,6 +67,64 @@ describe("the Cloudflare helper form", () => {
     expect(screen.getByPlaceholderText("http://127.0.0.1:8191")).toHaveValue("");
     expect(screen.getByPlaceholderText("60")).toHaveValue(60);
     expect(screen.getByDisplayValue("Auto-detect")).toBeInTheDocument();
+  });
+
+  it("refreshes itself when settings change elsewhere", () => {
+    renderPage();
+    expect(liveRefresh).toHaveBeenCalledWith({ events: ["SettingsChanged"] });
+  });
+
+  it("asks for the address without autofill or spell checking, as a code-like field", () => {
+    renderPage();
+    const url = screen.getByPlaceholderText("http://127.0.0.1:8191");
+    expect(url).toHaveAttribute("autocomplete", "off");
+    expect(url).toHaveAttribute("spellcheck", "false");
+    expect(url.className).toContain("font-mono");
+  });
+
+  it("tells the page about unsaved changes while the form differs from what is saved", async () => {
+    renderPage();
+    expect(unsaved).toHaveBeenLastCalledWith(false);
+    fireEvent.change(screen.getByPlaceholderText("http://127.0.0.1:8191"), { target: { value: "http://a" } });
+    expect(unsaved).toHaveBeenLastCalledWith(true);
+    fireEvent.change(screen.getByPlaceholderText("http://127.0.0.1:8191"), { target: { value: "" } });
+    expect(unsaved).toHaveBeenLastCalledWith(false);
+  });
+
+  it("is clean again after taking a changed setting from the server", async () => {
+    const view = renderPage();
+    loaderData.settings = { ...loaderData.settings, cloudflareHelperUrl: "http://new" };
+    view.rerender(<MemoryRouter><SettingsGeneralPage /></MemoryRouter>);
+    await waitFor(() => expect(screen.getByPlaceholderText("http://127.0.0.1:8191")).toHaveValue("http://new"));
+    expect(unsaved).toHaveBeenLastCalledWith(false);
+  });
+
+  it("keeps the browser from submitting the form itself", () => {
+    const { container } = renderPage();
+    expect(fireEvent.submit(container.querySelector("form")!)).toBe(false);
+  });
+
+  it("saves the default kind, auto, when none was saved", async () => {
+    loaderData.settings = { ...emptyPlatformSettingsSnapshot, cloudflareHelperUrl: null, cloudflareHelperTimeoutSeconds: null, cloudflareHelperKind: null };
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText("http://127.0.0.1:8191"), { target: { value: "http://a" } });
+    fireEvent.click(screen.getByRole("button", { name: /Save general settings/ }));
+    await waitFor(() => expect(calls("/api/settings", "PATCH")).toHaveLength(1));
+    expect(body("/api/settings", "PATCH")).toEqual({ cloudflareHelperUrl: "http://a", cloudflareHelperTimeoutSeconds: 60, cloudflareHelperKind: "auto" });
+  });
+
+  it("is saved, then clean again, when the person edits and puts it back", async () => {
+    const view = renderPage();
+    fireEvent.change(screen.getByPlaceholderText("http://127.0.0.1:8191"), { target: { value: "http://a" } });
+    fireEvent.click(screen.getByRole("button", { name: /Save general settings/ }));
+    await waitFor(() => expect(footerStatus()).toHaveClass("text-success"));
+    loaderData.settings = { ...loaderData.settings, cloudflareHelperUrl: "http://a" };
+    view.rerender(<MemoryRouter><SettingsGeneralPage /></MemoryRouter>);
+    fireEvent.change(screen.getByPlaceholderText("http://127.0.0.1:8191"), { target: { value: "http://b" } });
+    await waitFor(() => expect(footerStatus()).toHaveClass("text-warning"));
+    fireEvent.change(screen.getByPlaceholderText("http://127.0.0.1:8191"), { target: { value: "http://a" } });
+    await waitFor(() => expect(footerStatus()).toHaveClass("text-muted-foreground"));
+    expect(footerStatus()).not.toHaveClass("text-success");
   });
 
   it("offers the three kinds of helper", () => {
@@ -210,7 +273,8 @@ describe("How Deluno is reached", () => {
   it("says yes with the port when other devices can connect, and shows the reason", async () => {
     reach({ state: "open", port: 5099, message: "Reachable" });
     renderPage();
-    expect(screen.getAllByDisplayValue("Loading…").length).toBeGreaterThan(0);
+    expect(screen.getAllByDisplayValue("Loading…")).toHaveLength(4);
+    expect(screen.queryByDisplayValue("Unavailable")).toBeNull();
     await waitFor(() => expect(screen.getByDisplayValue("5099")).toBeInTheDocument());
     expect(screen.getByDisplayValue("Yes")).toBeInTheDocument();
     expect(screen.getByText("Reachable")).toBeInTheDocument();
@@ -242,7 +306,9 @@ describe("Log level", () => {
     renderPage();
     expect(screen.getAllByDisplayValue("Loading…").length).toBeGreaterThan(0);
     await waitFor(() => expect(select().value).toBe("Information"));
+    expect(select()).not.toBeDisabled();
     expect(within(select()).getAllByRole("option").map((option) => option.textContent)).toEqual(["Trace", "Debug", "Info", "Warning", "Error"]);
+    expect(within(select()).getAllByRole("option").map((option) => option.getAttribute("value"))).toEqual(["Trace", "Debug", "Information", "Warning", "Error"]);
   });
 
   it("says unavailable when it cannot read the level", async () => {
@@ -275,6 +341,14 @@ describe("Log level", () => {
     await waitFor(() => expect(toasts.error).toHaveBeenCalled());
     expect(String(toasts.error.mock.calls[0][0])).toMatch(/Not allowed|log level could not be changed/);
     expect(select().value).toBe("Information");
+  });
+
+  it("says plainly that the level could not be changed when the server refuses without saying why", async () => {
+    renderPage();
+    await waitFor(() => expect(select().value).toBe("Information"));
+    responder = (url, init) => (url === logUrl && init?.method === "PUT" ? new Response("", { status: 500 }) : undefined);
+    fireEvent.change(select(), { target: { value: "Error" } });
+    await waitFor(() => expect(toasts.error).toHaveBeenCalledWith("The log level could not be changed."));
   });
 
   it("puts the old level back and says so plainly when the failure has no words", async () => {
@@ -334,6 +408,13 @@ describe("Keep awake", () => {
     await waitFor(() => expect(toggle()).not.toBeDisabled());
   });
 
+  it("says plainly that it could not save when the server refuses without saying why", async () => {
+    responder = (url, init) => (url === "/api/settings" && init?.method === "PATCH" ? new Response("", { status: 500 }) : undefined);
+    renderPage();
+    fireEvent.click(toggle());
+    await waitFor(() => expect(toasts.error).toHaveBeenCalledWith("That could not be saved."));
+  });
+
   it("switches back and says why when the server refuses, or plainly when it gives no reason", async () => {
     responder = (url, init) => (url === "/api/settings" && init?.method === "PATCH" ? new Response("Read only", { status: 500 }) : undefined);
     renderPage();
@@ -365,6 +446,7 @@ describe("Tracker definitions", () => {
   it("waits for the state, with its switch and button held until it arrives", async () => {
     renderPage();
     expect(toggle()).toBeDisabled();
+    expect(toggle()).not.toBeChecked();
     expect(updateNow()).toBeDisabled();
     expect(lastUpdated()).toHaveValue("Loading…");
     await waitFor(() => expect(toggle()).not.toBeDisabled());
@@ -440,6 +522,17 @@ describe("Tracker definitions", () => {
     fireEvent.click(toggle());
     await waitFor(() => expect(calls(updateUrl, "PUT")).toHaveLength(1));
     expect(body(updateUrl, "PUT")).toEqual({ isEnabled: false, intervalHours: 24 });
+  });
+
+  it("shows the hours the server settled on after a save", async () => {
+    state({ isEnabled: true, intervalHours: 6 });
+    renderPage();
+    const hours = await screen.findByDisplayValue("6");
+    responder = (url, init) => (url === updateUrl && init?.method === "PUT" ? json({ ...definitions, isEnabled: true, intervalHours: 8 }) : undefined);
+    fireEvent.change(hours, { target: { value: "12" } });
+    fireEvent.blur(hours);
+    await waitFor(() => expect(screen.getByDisplayValue("8")).toBeInTheDocument());
+    expect(screen.queryByDisplayValue("12")).toBeNull();
   });
 
   it("holds the controls while it saves, and tells why when the save fails", async () => {

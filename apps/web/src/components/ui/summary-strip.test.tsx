@@ -47,6 +47,7 @@ describe("the summary strip", () => {
     expect(help).toHaveAttribute("title", "Free of 200 GB");
     expect(help.className).toContain("truncate");
     expect(document.querySelectorAll("[title]")).toHaveLength(1);
+    expect(document.querySelectorAll(".truncate")).toHaveLength(1);
   });
 
   it("draws a help of zero, which is still something to say", () => {

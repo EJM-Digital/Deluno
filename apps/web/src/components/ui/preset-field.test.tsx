@@ -92,6 +92,29 @@ describe("the preset field", () => {
     expect(select().value).toBe("__custom");
   });
 
+  it("closes the custom box when what was typed becomes one of the presets", () => {
+    const view = show({ value: "24" });
+    fireEvent.change(select(), { target: { value: "__custom" } });
+    view.rerender(<PresetField value="" onChange={view.onChange} options={options} />);
+    expect(screen.getByRole("textbox")).toBeInTheDocument();
+    view.rerender(<PresetField value="168" onChange={view.onChange} options={options} />);
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(select().value).toBe("168");
+  });
+
+  it("leaves custom for the empty preset when that is picked", () => {
+    const withNever: PresetOption[] = [{ label: "Never", value: "" }, ...options];
+    const view = show({ value: "24", options: withNever });
+    fireEvent.change(select(), { target: { value: "__custom" } });
+    view.rerender(<PresetField value="" onChange={view.onChange} options={withNever} />);
+    expect(screen.getByRole("textbox")).toBeInTheDocument();
+    fireEvent.change(select(), { target: { value: "" } });
+    expect(view.onChange).toHaveBeenLastCalledWith("");
+    view.rerender(<PresetField value="" onChange={view.onChange} options={withNever} />);
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(select().value).toBe("");
+  });
+
   it("has no custom choice when custom is not allowed", () => {
     show({ allowCustom: false, value: "6" });
     expect(optionTexts().some(([value]) => value === "__custom")).toBe(false);
