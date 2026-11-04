@@ -89,7 +89,7 @@ public static class ClientSaveFolders
     }
 
     /// <summary>True when the client runs on this machine: localhost, a loopback or local address, or this computer's own name.</summary>
-    public static bool IsSameMachine(DownloadClientItem client)
+    public static bool IsSameMachine(DownloadClientItem client, Func<IEnumerable<System.Net.IPAddress>>? ownAddresses = null)
     {
         var host = client.Host?.Trim();
         if (string.IsNullOrWhiteSpace(host) && Uri.TryCreate(client.EndpointUrl, UriKind.Absolute, out var endpoint))
@@ -122,15 +122,18 @@ public static class ClientSaveFolders
 
         try
         {
-            return System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
-                .SelectMany(nic => nic.GetIPProperties().UnicastAddresses)
-                .Any(unicast => unicast.Address.Equals(address));
+            return (ownAddresses ?? OwnAddresses)().Any(own => own.Equals(address));
         }
         catch (Exception)
         {
             return false;
         }
     }
+
+    private static IEnumerable<System.Net.IPAddress> OwnAddresses()
+        => System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+            .SelectMany(nic => nic.GetIPProperties().UnicastAddresses)
+            .Select(unicast => unicast.Address);
 
     /// <summary>
     /// The one downloads folder the libraries routed to this client for this
