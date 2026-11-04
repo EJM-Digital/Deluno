@@ -173,7 +173,6 @@ export function SettingsMigrationPage() {
   );
 
   async function validateImportedConnections() {
-    if (!importedConnections.length) return;
     setBusy("validate");
     const results: Record<string, ConnectionValidationResult> = {};
     try {
