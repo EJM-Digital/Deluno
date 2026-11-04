@@ -99,7 +99,7 @@ export function LibraryResults({
     ) : view === "grid" ? (
       <ProgressiveGrid items={items} cardSize={cardSize} displayOptions={displayOptions} selectedIds={selectedIds} keyBust={keyBust} sortField={sortField} sortDirection={sortDirection} isComplete={isComplete} onSelect={onSelect} onToggle={onToggle} onEndReached={onEndReached} />
     ) : (
-      <GlassTile className="p-0"><LibraryTable variant={variant} items={items} selectedIds={selectedIds} onSelect={onSelect} onToggle={onToggle} onToggleAll={onToggleAll} allSelected={items.length > 0 && items.every((item) => selectedIds.includes(item.id))} someSelected={selectedIds.length > 0 && !items.every((item) => selectedIds.includes(item.id))} sortField={sortField} sortDirection={sortDirection} onSortChange={onSortChange} isComplete={isComplete} onEndReached={onEndReached} columnOrder={listColumnOrder} onColumnOrderChange={onListColumnOrderChange} /></GlassTile>
+      <GlassTile className="p-0"><LibraryTable variant={variant} items={items} selectedIds={selectedIds} onSelect={onSelect} onToggle={onToggle} onToggleAll={onToggleAll} allSelected={items.every((item) => selectedIds.includes(item.id))} someSelected={selectedIds.length > 0 && !items.every((item) => selectedIds.includes(item.id))} sortField={sortField} sortDirection={sortDirection} onSortChange={onSortChange} isComplete={isComplete} onEndReached={onEndReached} columnOrder={listColumnOrder} onColumnOrderChange={onListColumnOrderChange} /></GlassTile>
     )}
     {/*
       `Previous 100` / `Next 100` and the line "Only this page is kept in
