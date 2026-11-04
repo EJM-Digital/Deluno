@@ -18,7 +18,7 @@ export const AREAS: ReadonlyArray<{ key: HealthArea; name: string }> = [
   { key: "machine", name: "Machine" }
 ];
 
-export const areaName = (key: HealthArea) => AREAS.find((area) => area.key === key)?.name ?? "Machine";
+export const areaName = (key: HealthArea) => (AREAS.find((area) => area.key === key) as { name: string }).name;
 
 const SECURITY = /password|sign-?in|allowed host|security|lan access|certificate|https|api key|authenticat/i;
 const STORAGE = /drive|disk|free space|storage|space|full\b/i;
@@ -59,7 +59,7 @@ export function areaOf(check: Pick<HealthCheckResultItem, "id" | "category" | "n
 export function areaOfAttention(id: string): HealthArea {
   if (id.startsWith("stalled") || id.includes("download") || id.startsWith("queue")) return "downloads";
   if (id.includes("handoff") || id.includes("processor")) return "processing";
-  if (id === "clients" || id === "indexers" || id === "processors") return "connections";
+  if (id === "clients" || id === "indexers") return "connections";
   if (id.includes("leftover") || id.includes("folder") || id.includes("recovery") || id.includes("import") || id.includes("library")) return "library";
   if (id.includes("storage") || id.includes("disk") || id.includes("space")) return "storage";
   if (id.includes("security") || id.includes("password")) return "security";
@@ -84,8 +84,8 @@ export function mbps(bytesPerSecond: number | null | undefined): string {
 
 /** "up 6 days", "up 3 h". */
 export function upText(seconds: number | null | undefined): string {
-  if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) return "";
-  const minutes = Math.floor(seconds / 60);
+  if (!Number.isFinite(seconds)) return "";
+  const minutes = Math.floor((seconds as number) / 60);
   if (minutes < 60) return `up ${Math.max(1, minutes)} min`;
   const hours = Math.floor(minutes / 60);
   if (hours < 48) return `up ${hours} h`;
@@ -125,8 +125,8 @@ export function sinceText(iso: string | null | undefined, now = Date.now()): str
 
 /** "full in ~3 weeks" style, from days. */
 export function fullIn(days: number | null | undefined): string | null {
-  if (days === null || days === undefined || !Number.isFinite(days) || days <= 0) return null;
-  const rounded = Math.round(days);
+  if (!Number.isFinite(days) || (days as number) <= 0) return null;
+  const rounded = Math.round(days as number);
   return rounded > 90 ? `${Math.round(rounded / 30)} months` : `${rounded} days`;
 }
 
@@ -161,7 +161,7 @@ export const clockText = (at: Date) => at.toLocaleTimeString("en-AU", { hour: "n
 
 /** "03:00" (a time-of-day setting) as "3:00 am". */
 export function timeOfDayText(value: string | null | undefined): string {
-  const match = /^(\d{1,2}):(\d{2})/.exec(value ?? "");
+  const match = /^(\d{1,2}):(\d{2})/.exec(String(value));
   if (!match) return value ?? "";
   return clockText(new Date(2000, 0, 1, Number(match[1]), Number(match[2])));
 }

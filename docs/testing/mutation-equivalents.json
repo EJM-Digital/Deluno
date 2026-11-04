@@ -681,6 +681,30 @@
       "line": 27,
       "replacement": "/\\/system\\/(api|docs|security)/",
       "reason": "Equivalent: the pattern is only tried on paths that already start with /system/, and that text occurs nowhere but at the start of such a path, so naming the start of the path changes nothing."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/system/logic.ts",
+      "mutator": "Regex",
+      "line": 113,
+      "replacement": "/[a-z]+:\\/\\//i",
+      "reason": "Equivalent: the changed pattern gives the same host and port for every address, because a greedy rest-of-line match and a start-of-text match find the same text whether or not the start or end is named, and a scheme can only be written at the start."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/system/logic.ts",
+      "mutator": "Regex",
+      "line": 113,
+      "replacement": "/\\/.*/",
+      "reason": "Equivalent: the changed pattern gives the same host and port for every address, because a greedy rest-of-line match and a start-of-text match find the same text whether or not the start or end is named, and a scheme can only be written at the start."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/system/logic.ts",
+      "mutator": "Regex",
+      "line": 114,
+      "replacement": "/(.*):(\\d+)$/",
+      "reason": "Equivalent: the changed pattern gives the same host and port for every address, because a greedy rest-of-line match and a start-of-text match find the same text whether or not the start or end is named, and a scheme can only be written at the start."
     }
   ]
 }
