@@ -1,5 +1,5 @@
-import { Fragment, useEffect, useState, type CSSProperties } from "react";
-import { ChevronRight, LogOut, MoreHorizontal } from "lucide-react";
+import { Fragment, type CSSProperties } from "react";
+import { LogOut, MoreHorizontal } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { Sheet, SheetClose, SheetContent, SheetTrigger } from "../ui/sheet";
 import { AttentionDot, type Severity } from "./attention-dot";
@@ -15,8 +15,6 @@ interface MobileNavArea {
   label: string;
   icon: DelunoNavGlyphKind;
   to: string;
-  tabsInToolbar: boolean;
-  items: readonly { to: string; label: string; end: boolean }[];
 }
 
 const PRIMARY = [
@@ -193,8 +191,8 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
                 {group}
               </p>
               <ul className="space-y-0.5">
-                {group === "Setup" ? <MobileConfigurationTree pathname={pathname} /> : null}
-                {group === "Deluno" ? <MobileMaintenanceTree pathname={pathname} /> : null}
+                {group === "Setup" ? <MobileAreaTree areas={configurationNavAreas} pathname={pathname} /> : null}
+                {group === "Deluno" ? <MobileAreaTree areas={maintenanceNavItems} pathname={pathname} /> : null}
                 {DRAWER_LINKS.filter((l) => l.group === group).map((item) => {
                   const isActive = pathname === item.to || pathname.startsWith(`${item.to}/`);
                   return (
@@ -255,21 +253,9 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
 }
 
 /**
- * Same rule as the desktop sidebar: an area whose pages carry a `PageToolbar`
- * shows no children here, because the toolbar tabs already are the sub-navigation.
+ * Every area's pages are the tabs of its own toolbar, so the sheet lists each area once, with no children to open.
  */
-function MobileAreaRow({
-  area,
-  pathname,
-  open,
-  onToggle
-}: {
-  area: MobileNavArea;
-  pathname: string;
-  open: boolean;
-  onToggle: () => void;
-}) {
-  const showChildren = !area.tabsInToolbar && area.items.some((item) => item.to !== area.to);
+function MobileAreaRow({ area, pathname }: { area: MobileNavArea; pathname: string }) {
   const isActive = area.match(pathname);
 
   return (
@@ -291,77 +277,16 @@ function MobileAreaRow({
             <span className="min-w-0 truncate">{area.label}</span>
           </NavLink>
         </SheetClose>
-        {showChildren ? (
-          <button
-            type="button"
-            aria-label={`${open ? "Collapse" : "Expand"} ${area.label}`}
-            aria-expanded={open}
-            onClick={onToggle}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition hover:text-(--nav-accent)"
-          >
-            <ChevronRight className={cn("h-4 w-4 transition-transform", open && "rotate-90 text-(--nav-accent)")} />
-          </button>
-        ) : null}
       </div>
-      {showChildren && open ? (
-        <div className="ml-7 mt-0.5 space-y-1 pl-3">
-          {area.items.filter((item) => item.to !== area.to).map((item) => (
-            <SheetClose asChild key={item.to}>
-              <NavLink
-                to={item.to}
-                end={item.end}
-                className={({ isActive: routeIsActive }) => cn(
-                  "relative block rounded-lg px-3 py-1.5 text-(length:--type-body-sm) font-medium transition before:absolute before:left-0 before:top-1/2 before:h-1 before:w-1 before:-translate-y-1/2 before:rounded-full",
-                  routeIsActive ? "text-(--nav-accent) before:bg-(--nav-accent)" : "text-muted-foreground before:bg-muted-foreground/35 hover:text-(--nav-accent)"
-                )}
-              >
-                {item.label}
-              </NavLink>
-            </SheetClose>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }
 
-function useMobileAreaTree(areas: readonly MobileNavArea[], pathname: string) {
-  const activeArea = areas.find((area) => area.match(pathname));
-  const [openAreas, setOpenAreas] = useState<Set<string>>(() => new Set(activeArea ? [activeArea.label] : []));
-
-  useEffect(() => {
-    if (activeArea) setOpenAreas((current) => new Set([...current, activeArea.label]));
-  }, [activeArea?.label]);
-
-  return {
-    openAreas,
-    toggleArea: (label: string) =>
-      setOpenAreas((current) => {
-        const next = new Set(current);
-        if (next.has(label)) next.delete(label);
-        else next.add(label);
-        return next;
-      })
-  };
-}
-
-function MobileConfigurationTree({ pathname }: { pathname: string }) {
-  const { openAreas, toggleArea } = useMobileAreaTree(configurationNavAreas, pathname);
+function MobileAreaTree({ areas, pathname }: { areas: readonly MobileNavArea[]; pathname: string }) {
   return (
     <li className="space-y-1.5">
-      {configurationNavAreas.map((area) => (
-        <MobileAreaRow key={area.label} area={area} pathname={pathname} open={openAreas.has(area.label)} onToggle={() => toggleArea(area.label)} />
-      ))}
-    </li>
-  );
-}
-
-function MobileMaintenanceTree({ pathname }: { pathname: string }) {
-  const { openAreas, toggleArea } = useMobileAreaTree(maintenanceNavItems, pathname);
-  return (
-    <li className="space-y-1.5">
-      {maintenanceNavItems.map((area) => (
-        <MobileAreaRow key={area.label} area={area} pathname={pathname} open={openAreas.has(area.label)} onToggle={() => toggleArea(area.label)} />
+      {areas.map((area) => (
+        <MobileAreaRow key={area.label} area={area} pathname={pathname} />
       ))}
     </li>
   );
