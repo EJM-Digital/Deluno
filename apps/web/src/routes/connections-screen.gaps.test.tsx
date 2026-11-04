@@ -299,8 +299,7 @@ describe("editing a library's routing", () => {
     fireEvent.change(drawer.getByLabelText("Excluded tags for Alpha"), { target: { value: "cam" } });
     fireEvent.click(await drawer.findByRole("button", { name: "Create new tag cam for Excluded tags for Alpha" }));
     await waitFor(() => expect(drawer.getByLabelText("Excluded tags for Alpha chosen")).toBeTruthy());
-    // Save follows the lists and categories; a change to the tags alone does not wake it (reported on #1329), so the category is changed too.
-    fireEvent.change(drawer.getByLabelText("Optional category sent to the download client"), { target: { value: "kids" } });
+    // #1477: a change to the tags alone wakes Save.
     fireEvent.click(drawer.getByRole("button", { name: "Save routing" }));
     expect(await drawer.findByText("Routing saved")).toBeTruthy();
     expect(bodyOf(callTo("PUT", "/api/libraries/l1/routing")).sources).toEqual([{ indexerId: "i1", priority: 1, requiredTags: "hd", excludedTags: "cam" }]);

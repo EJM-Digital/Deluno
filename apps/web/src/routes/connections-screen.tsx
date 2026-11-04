@@ -581,7 +581,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
     if (drawer.kind === "proxy") return !sameProxy(proxyForm, proxyInitial);
     if (drawer.kind === "routing") return !sameSet(routeSources, routeInitial.sources) || !sameSet(routeClients, routeInitial.clients) || !sameRouteCategories(routeCategories, routeInitial.categories) || !sameRouteSourceTags(routeSourceTags, routeInitial.sourceTags, routeSources);
     return false;
-  }, [drawer.kind, indexerForm, indexerInitial, clientForm, clientInitial, proxyForm, proxyInitial, routeSources, routeClients, routeCategories, routeInitial]);
+  }, [drawer.kind, indexerForm, indexerInitial, clientForm, clientInitial, proxyForm, proxyInitial, routeSources, routeClients, routeCategories, routeSourceTags, routeInitial]);
   const footerState: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   /**
    * A create drawer opens with values the user is entitled to accept as-is, so
@@ -885,16 +885,34 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
   }
 
   async function handleRemove() {
+    let url: string;
+    let failure: string;
+    let name: string;
     if (drawer.kind === "indexer" && drawer.id) {
-      await run("remove", () => send(`/api/indexers/${drawer.id}`, "DELETE", undefined, "Indexer could not be removed."), `${editingIndexer?.name ?? "Indexer"} removed`);
+      url = `/api/indexers/${drawer.id}`; failure = "Indexer could not be removed."; name = editingIndexer?.name ?? "Indexer";
     } else if (drawer.kind === "client" && drawer.id) {
-      await run("remove", () => send(`/api/download-clients/${drawer.id}`, "DELETE", undefined, "Download client could not be removed."), `${editingClient?.name ?? "Client"} removed`);
+      url = `/api/download-clients/${drawer.id}`; failure = "Download client could not be removed."; name = editingClient?.name ?? "Client";
     } else if (drawer.kind === "proxy" && drawer.id) {
-      await run("remove", () => send(`/api/indexer-proxies/${drawer.id}`, "DELETE", undefined, "Proxy could not be removed."), `${editingProxy?.name ?? "Proxy"} removed`);
+      url = `/api/indexer-proxies/${drawer.id}`; failure = "Proxy could not be removed."; name = editingProxy?.name ?? "Proxy";
     } else {
       return;
     }
+    let reason = failure;
+    const removed = await run("remove", async () => {
+      try {
+        await send(url, "DELETE", undefined, failure);
+      } catch (error) {
+        reason = error instanceof Error ? error.message : failure;
+        throw error;
+      }
+    }, `${name} removed`);
     setConfirmRemove(false);
+    if (!removed) {
+      // #1477: a failed delete leaves the drawer where it was and says why.
+      setSaveState("error");
+      setSaveMessage(reason);
+      return;
+    }
     setIndexerInitial(indexerForm);
     setClientInitial(clientForm);
     setProxyInitial(proxyForm);
