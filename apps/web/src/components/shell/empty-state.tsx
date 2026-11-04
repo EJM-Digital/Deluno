@@ -36,10 +36,9 @@ export function EmptyState({
   action,
   secondaryAction,
   learnMore,
-  size = "default",
+  size,
   className
 }: EmptyStateProps) {
-  const isSmall = size === "compact" || size === "sm";
   const illoSize = size === "sm" ? 88 : size === "compact" ? 112 : 150;
   const illustration =
     art ?? (
@@ -60,7 +59,7 @@ export function EmptyState({
     <div
       className={cn(
         "relative overflow-hidden rounded-2xl border border-dashed border-hairline/80 bg-card/40 dark:bg-white/1.5",
-        size === "sm" ? "px-4 py-6" : isSmall ? "px-6 py-10" : "px-8 py-14",
+        size === "sm" ? "px-4 py-6" : size === "compact" ? "px-6 py-10" : "px-8 py-14",
         "flex flex-col items-center justify-center text-center",
         className
       )}

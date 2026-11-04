@@ -11,7 +11,8 @@ function board(cards: { bottom: number; blockTop: number; lines: number; block?:
     if (spec.block !== false) {
       const block = document.createElement("div");
       block.className = "lj-x";
-      block.getBoundingClientRect = () => ({ top: spec.blockTop }) as DOMRect;
+      // As in a browser, a block that is not displayed has no box: its top reads 0.
+      block.getBoundingClientRect = () => ({ top: block.style.display === "none" ? 0 : spec.blockTop }) as DOMRect;
       for (let i = 0; i < spec.lines; i += 1) block.appendChild(document.createElement("span"));
       card.appendChild(block);
     }
@@ -43,6 +44,14 @@ describe("fitting a card's detail lines to its height", () => {
     fitDetails(host);
     expect(shown(host)).toEqual(["", ""]);
     expect((host.querySelector(".lj-x") as HTMLElement).style.display).toBe("");
+  });
+
+  it("fitting again leaves a short card's block hidden: it is shown to be measured, not measured while hidden", () => {
+    const host = board([{ bottom: 60, blockTop: 40, lines: 2 }]);
+    fitDetails(host);
+    fitDetails(host);
+    expect(shown(host)).toEqual(["none", "none"]);
+    expect((host.querySelector(".lj-x") as HTMLElement).style.display).toBe("none");
   });
 
   it("fits each card on its own, and skips a card with no detail block", () => {

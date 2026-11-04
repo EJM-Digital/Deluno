@@ -36,7 +36,7 @@ export function ColumnPicker({
 
     function onPointerDown(event: PointerEvent) {
       const target = event.target as Node;
-      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      if (rootRef.current!.contains(target) || menuRef.current?.contains(target)) return;
       setOpen(false);
     }
 
@@ -44,7 +44,7 @@ export function ColumnPicker({
       if (event.key === "Escape") {
         event.preventDefault();
         setOpen(false);
-        triggerRef.current?.focus();
+        triggerRef.current!.focus();
       }
     }
 
@@ -60,8 +60,7 @@ export function ColumnPicker({
     if (!open) return;
 
     function measure() {
-      const rect = triggerRef.current?.getBoundingClientRect();
-      if (!rect) return;
+      const rect = triggerRef.current!.getBoundingClientRect();
       setAnchor({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
     }
 

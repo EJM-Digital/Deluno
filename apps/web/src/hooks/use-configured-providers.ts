@@ -19,20 +19,13 @@ export function useConfiguredProviders() {
   const [configured, setConfigured] = useState<string[]>([]);
 
   useEffect(() => {
-    let active = true;
-
     void fetchJson<MetadataProviderStatus>("/api/metadata/status")
       .then((status) => {
-        if (!active) return;
         setConfigured((status.sources ?? []).filter((source) => source.isConfigured).map((source) => source.source));
       })
       .catch(() => {
         // Deliberately silent. See above.
       });
-
-    return () => {
-      active = false;
-    };
   }, []);
 
   return configured;

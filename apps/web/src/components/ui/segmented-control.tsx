@@ -35,10 +35,9 @@ export function SegmentedControl<T extends string>({
 
   function focusIndex(index: number) {
     const enabled = options.map((option, i) => (option.disabled ? -1 : i)).filter((i) => i >= 0);
-    if (!enabled.length) return;
     const wrapped = ((index % options.length) + options.length) % options.length;
     const next = enabled.includes(wrapped) ? wrapped : enabled.find((i) => i > wrapped) ?? enabled[0]!;
-    refs.current[next]?.focus();
+    refs.current[next]!.focus();
     onValueChange(options[next]!.value);
   }
 

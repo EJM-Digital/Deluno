@@ -1075,7 +1075,8 @@ function Save-PageShot {
 function Get-UpdatesStatusCard {
     param($Page)
     $t = (Get-PageText -Page $Page) -replace '\s+', ' '
-    if ($t -match 'How this works (.*?) Update behaviour') { $Matches[1] } else { $t }
+    # The status card runs from the "Version status" caption to the "Update behaviour" panel; the page's other text (the host's settings, the sidebar) is left out.
+    if ($t -match 'Version status, channel, behaviour mode, and restart flow\.? (.*?) Update behaviour') { $Matches[1] } elseif ($t -match 'How this works (.*?) Update behaviour') { $Matches[1] } else { $t }
 }
 
 # One timed line of what the status card says, for the scenario's log.
@@ -1145,12 +1146,12 @@ function Invoke-UpdateUpdatesPageFollows {
                 if ($words.Count -eq 0 -or $words[-1].Text -ne $c) { [void]$words.Add([pscustomobject]@{ At = [math]::Round(((Get-Date) - $pressedAt).TotalSeconds, 1); Text = $c }) }
                 $pct = Get-UpdatesCardPercent -Card $c
                 if ($null -ne $pct -and ($percents.Count -eq 0 -or $percents[-1] -ne $pct)) { [void]$percents.Add($pct) }
-                if ($c -match 'Update downloaded\. Restart Deluno to apply it\.') { $finished = $true }
+                if ($c -match 'Update downloaded\. Restart Deluno to apply it\.|State Ready to restart') { $finished = $true }
                 Start-Sleep -Milliseconds 300 # reason: the open page is read every 300 ms, as a person watching would see it change
             }
             Save-Evidence -Name 'updates-page-3-download-sequence.txt' -Text (($words | ForEach-Object { "+{0}s {1}" -f $_.At, $_.Text }) -join "`n")
             Save-Evidence -Name 'updates-page-log.txt' -Text ($log -join "`n")
-            Add-Check 'The download ends on the open page with "Update downloaded. Restart Deluno to apply it."' $finished ("{0} distinct wordings in {1} s" -f $words.Count, $(if ($words.Count) { $words[-1].At } else { 0 }))
+            Add-Check 'The download ends on the open page as Ready to restart' $finished ("{0} distinct wordings in {1} s" -f $words.Count, $(if ($words.Count) { $words[-1].At } else { 0 }))
             Add-Note ('Download wordings on the open page, with the seconds since Download update was pressed: ' + (($words | ForEach-Object { "+{0}s '{1}'" -f $_.At, ($_.Text.Substring(0, [math]::Min(110, $_.Text.Length))) }) -join ' -> '))
             Add-Check 'The page changed from the download being asked for to the finished wording by itself (a changed card, no reload)' ($words.Count -ge 2) "$($words.Count) distinct wordings"
             # #1469: each step of the download is pushed, so the percent climbs on the open page before it reaches 100.

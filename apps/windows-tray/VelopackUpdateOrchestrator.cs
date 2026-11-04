@@ -201,16 +201,14 @@ public sealed class VelopackUpdateOrchestrator(
     public async Task<UpdateStatusResponse> GetStatusAsync(CancellationToken cancellationToken)
     {
         await RefreshAppliedAsync(cancellationToken);
-        await _gate.WaitAsync(cancellationToken);
-        try
+        // Never waits for the gate: a check or a download holds it for its whole length, and the open Updates page reads
+        // the status on each push, so waiting here showed nothing between "Syncing" and 100% (#1469). The tray menu's
+        // Snapshot reads the same state the same way.
+        lock (_snapshotLock)
         {
             var settings = AppSettings.Load();
             var manager = GetOrCreateManager(settings);
             return BuildStatus(settings, manager, messageOverride: null);
-        }
-        finally
-        {
-            _gate.Release();
         }
     }
 
