@@ -86,9 +86,9 @@ public sealed class ClientRulesSurvivorsTests
     [Fact]
     public async Task The_last_poll_is_cut_short_to_what_is_left_of_the_window()
     {
-        var (_, elapsed) = await NeverChanges(TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(40));
+        var (_, elapsed) = await NeverChanges(TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(150));
 
-        Assert.True(elapsed < TimeSpan.FromMilliseconds(600), elapsed.ToString());
+        Assert.True(elapsed < TimeSpan.FromMilliseconds(400), elapsed.ToString());
     }
 
     [Fact]
