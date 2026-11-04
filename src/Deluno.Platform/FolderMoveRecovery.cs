@@ -32,13 +32,23 @@ public static class FolderMoveRecovery
     /// </summary>
     public static string DescribeDiskFailure(string title, string source, string destination, Exception exception)
     {
+        return DescribeDiskFailure(
+            title,
+            source,
+            Path.GetPathRoot(Path.GetFullPath(source)),
+            destination,
+            Path.GetPathRoot(Path.GetFullPath(destination)),
+            exception);
+    }
+
+    /// <summary>The same words once the two drives are known, so the other-drive case can be shown on any system.</summary>
+    public static string DescribeDiskFailure(string title, string source, string? sourceRoot, string destination, string? destinationRoot, Exception exception)
+    {
         if (exception is UnauthorizedAccessException)
         {
             return $"{title}: Deluno is not allowed to move the folder {source}. Check its permissions and try again.";
         }
 
-        var sourceRoot = Path.GetPathRoot(Path.GetFullPath(source));
-        var destinationRoot = Path.GetPathRoot(Path.GetFullPath(destination));
         if (!string.Equals(sourceRoot, destinationRoot, StringComparison.OrdinalIgnoreCase))
         {
             return $"{title}: the folder is on another drive ({sourceRoot}) from the new library ({destinationRoot}), and Deluno moves a whole folder only within one drive, so nothing was moved. Move the folder yourself, then run Rescan folder on the new library.";
