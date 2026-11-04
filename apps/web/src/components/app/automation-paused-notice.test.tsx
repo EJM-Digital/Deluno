@@ -85,4 +85,40 @@ describe("automation paused notice (#936)", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: "Resume automation" })).toBeNull());
     expect(authedFetch).toHaveBeenCalledWith("/api/settings/automation", expect.objectContaining({ method: "PUT", body: JSON.stringify({ isEnabled: true }) }));
   });
+  it("toasts a plain sentence when Resume fails for a reason that is not an error", async () => {
+    fetchJson.mockResolvedValue({ autoStartJobs: false });
+    authedFetch.mockRejectedValue("offline");
+    render(<AutomationPausedNotice context="dashboard" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Resume automation" }));
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Deluno could not resume automation."));
+  });
+
+  it("draws nothing when the settings do not say whether automation is running", async () => {
+    fetchJson.mockResolvedValue({});
+    const { container } = render(<AutomationPausedNotice context="dashboard" />);
+    await waitFor(() => expect(fetchJson).toHaveBeenCalled());
+    expect(container.textContent).toBe("");
+  });
+
+  it("does not touch the screen when it is closed before the answer arrives", async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    fetchJson.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    const { container, unmount } = render(<AutomationPausedNotice context="dashboard" />);
+    unmount();
+    answer({ autoStartJobs: false });
+    await Promise.resolve();
+    expect(container.textContent).toBe("");
+  });
+
+  it("does not touch the screen when it is closed while Resume is still running", async () => {
+    fetchJson.mockResolvedValue({ autoStartJobs: false });
+    let finish: (value: unknown) => void = () => undefined;
+    authedFetch.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    const { unmount } = render(<AutomationPausedNotice context="dashboard" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Resume automation" }));
+    unmount();
+    finish({ ok: true });
+    await Promise.resolve();
+    expect(authedFetch).toHaveBeenCalledTimes(1);
+  });
 });
