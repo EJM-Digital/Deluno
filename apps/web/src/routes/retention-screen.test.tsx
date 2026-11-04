@@ -235,6 +235,32 @@ describe("Editing and switching a rule", () => {
     expect(screen.getByText("Unwatched films")).toBeVisible();
   });
 
+  it("Run now asks the server to check the rule and says what it found", async () => {
+    authedFetchMock.mockImplementation((path: string, init?: RequestInit) =>
+      String(path).endsWith("/check") && init?.method === "POST" ? reply({ summary: "Checked 12 titles; 2 are leaving soon." }) : reply(String(path).includes("/trial") ? { considered: 5, stepCounts: [], matchedCount: 0, matchedBytes: 0, undecidedCount: 0, unreachableServers: [], problems: [], unmanaged: [], expiryAction: "log", expiryDescription: "" } : []));
+    render_();
+
+    fireEvent.click(screen.getByText("Unwatched films"));
+    const drawer = within(await screen.findByRole("dialog"));
+    fireEvent.click(drawer.getByRole("button", { name: "Run now" }));
+
+    expect(await drawer.findByText("Checked 12 titles; 2 are leaving soon.")).toBeVisible();
+    expect(calls("POST", "/api/retention/rules/rule-1/check")).toHaveLength(1);
+    await waitFor(() => expect(revalidateMock).toHaveBeenCalled());
+  });
+
+  it("Run now says why when the server refuses", async () => {
+    authedFetchMock.mockImplementation((path: string, init?: RequestInit) =>
+      String(path).endsWith("/check") && init?.method === "POST" ? reply({}, false, 500) : reply(String(path).includes("/trial") ? { considered: 5, stepCounts: [], matchedCount: 0, matchedBytes: 0, undecidedCount: 0, unreachableServers: [], problems: [], unmanaged: [], expiryAction: "log", expiryDescription: "" } : []));
+    render_();
+
+    fireEvent.click(screen.getByText("Unwatched films"));
+    const drawer = within(await screen.findByRole("dialog"));
+    fireEvent.click(drawer.getByRole("button", { name: "Run now" }));
+
+    expect(await drawer.findByText("The rule could not be checked (HTTP 500).")).toBeVisible();
+  });
+
   it("Delete asks first by name and only then deletes the rule", async () => {
     render_();
     fireEvent.click(screen.getByText("Unwatched films"));
