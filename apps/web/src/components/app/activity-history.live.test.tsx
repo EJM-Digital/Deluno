@@ -431,13 +431,15 @@ describe("measuring the room on the header's title line", () => {
     const watched: Element[] = [];
     vi.stubGlobal("ResizeObserver", class {
       observe(element: Element) {
+        if (!(element instanceof Element)) throw new TypeError("not an element");
         watched.push(element);
       }
       disconnect() {}
     });
     headerWith({});
+    document.getElementById("topbar-page-actions")!.remove();
     expect(await place()).toBe("header");
-    expect(watched).toHaveLength(3);
+    expect(watched).toHaveLength(2);
   });
 
   it("measures again when the header changes size or the fonts arrive", async () => {
@@ -605,5 +607,46 @@ describe("how much room the Activity filters count on the title line", () => {
 
   it("takes off nothing for buttons that are not there, however wide their box is", async () => {
     expect(await compactAt(689, { gap: "", button: false })).toEqual({ placement: "header", compact: true, magnifier: true });
+  });
+});
+
+describe("the Activity filters when the header's title line goes away", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("go back to a full-size search in their own row, even after measuring narrow", async () => {
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(300);
+    let wide = true;
+    const listeners = new Set<() => void>();
+    window.matchMedia = ((query: string) => ({
+      get matches() { return wide; }, media: query, onchange: null,
+      addEventListener: (_: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_: string, listener: () => void) => listeners.delete(listener),
+      addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false
+    })) as unknown as typeof window.matchMedia;
+    // No page buttons at all in this header; 689 leaves room for the compact stage only.
+    document.body.innerHTML = '<div id="topbar-main"><div><span id="topbar-title"></span></div><div id="topbar-page-tabs"></div></div>';
+    document.getElementById("topbar-main")!.getBoundingClientRect = () => ({ width: 689 }) as DOMRect;
+    document.getElementById("topbar-title")!.getBoundingClientRect = () => ({ width: 200 }) as DOMRect;
+    await act(async () => {
+      render(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <ActivityFilters filters={emptyActivityFilters} setFilters={() => undefined} chips={<div><span>chips</span></div>} />
+          </MemoryRouter>
+        </QueryClientProvider>,
+        { container: document.body.appendChild(document.createElement("div")) }
+      );
+    });
+    const box = () => screen.getByRole("searchbox", { name: "Find a title" });
+    expect(screen.getByTestId("activity-filters").getAttribute("data-placement")).toBe("header");
+    expect(box().className).toContain("cursor-pointer");
+
+    wide = false;
+    await act(async () => listeners.forEach((listener) => listener()));
+    expect(screen.getByTestId("activity-filters").getAttribute("data-placement")).toBe("row");
+    expect(box().className).not.toContain("cursor-pointer");
+    expect(screen.getByTestId("activity-filters").querySelector("[data-activity-scope] button")!.className).toContain("h-9.5");
   });
 });

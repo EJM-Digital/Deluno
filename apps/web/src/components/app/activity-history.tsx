@@ -172,10 +172,10 @@ export function ActivityFilters({
     const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
     const chipsWidth = chipsBox.scrollWidth;
     const actions = document.getElementById("topbar-page-actions");
-    const buttons = actions && actions.childElementCount ? actions.getBoundingClientRect().width : 0;
     const mainGap = parseFloat(getComputedStyle(main).columnGap) || 0;
+    const buttons = actions?.childElementCount ? actions.getBoundingClientRect().width + mainGap : 0;
     const titleGap = parseFloat(getComputedStyle(title.parentElement as HTMLElement).columnGap) || 0;
-    const room = main.getBoundingClientRect().width - (buttons > 0 ? buttons + mainGap : 0) - title.getBoundingClientRect().width - titleGap;
+    const room = main.getBoundingClientRect().width - buttons - title.getBoundingClientRect().width - titleGap;
     // Each stage's least width, with the 16px of gaps between the three parts.
     const need = (search: number, chipsMin: number, scope: number) => (search + scope) * rem + chipsMin + 16;
     const stages = [
@@ -203,11 +203,11 @@ export function ActivityFilters({
 
   const inHeader = slot !== null && stage !== null;
   // In the row under the header there is room for everything, at full size.
-  const level = slot !== null && stage !== null ? stage : 0;
+  const level = inHeader ? (stage as number) : 0;
   const magnifier = level >= 1;
   const compact = level >= 2;
   const searchOpen = searchFocused || titleDraft !== "";
-  const customSince = filters.since !== "" && !isQuickSince(filters.since);
+  const customSince = !isQuickSince(filters.since);
   const typeOptions = [{ value: "", label: "Any step" }, ...(choices.data?.types ?? []), ...LIVE_STEPS.map((step) => ({ value: step.value, label: step.label }))];
   const sinceOptions = customSince
     ? [...ACTIVITY_SINCE_CHOICES, { value: filters.since, label: `Since ${filters.since}` }]
