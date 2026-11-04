@@ -121,6 +121,13 @@ describe("the choice rows", () => {
     expect(group).not.toHaveAttribute("aria-label");
   });
 
+  it("has no name from a field when it has neither a label nor a field", () => {
+    render(<ChoiceRows value="a" onValueChange={() => undefined} options={options} />);
+    const group = screen.getByRole("radiogroup");
+    expect(group).not.toHaveAttribute("aria-labelledby");
+    expect(group).not.toHaveAttribute("aria-label");
+  });
+
   it("keeps its own label over the field's, and has no id or description outside a field", () => {
     render(<Field label="Mode"><ChoiceRows value="a" onValueChange={() => undefined} options={options} aria-label="Own" /></Field>);
     expect(screen.getByRole("radiogroup", { name: "Own" })).not.toHaveAttribute("aria-labelledby");

@@ -391,6 +391,8 @@ describe("the caption tiers", () => {
     expect(caps[1].querySelector(".lsh-detail")).toHaveTextContent("from WEB 720p");
     expect(caps[0].querySelector(".lsh-when")).toHaveTextContent(/now|ago/);
     expect(caps[0].querySelector(".lsh-status")).toHaveAttribute("data-tone", "met");
+    expect(caps[0].querySelector(".lsh-status")).toHaveTextContent("Quality met · Bluray 1080p");
+    expect(caps[1].querySelector(".lsh-status")).toHaveTextContent("Upgraded · Bluray 1080p");
     expect(caps[1].querySelector(".lsh-status")).toHaveAttribute("data-tone", "upgradable");
   });
 
@@ -402,6 +404,7 @@ describe("the caption tiers", () => {
     expect(cap.getAttribute("data-tier")).toBe("compact");
     expect(Array.from(cap.children).map((child) => child.className)).toEqual(["lsh-title", "lsh-status"]);
     expect(cap.className).toBe("lsh-cap");
+    expect(cap.querySelector(".lsh-status")).toHaveTextContent("Quality met · Bluray 1080p");
     expect(document.querySelector(".lsh-poster")).toHaveAttribute("data-caption", "compact");
   });
 

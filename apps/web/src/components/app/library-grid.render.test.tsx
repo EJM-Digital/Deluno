@@ -234,6 +234,20 @@ describe("a poster", () => {
     expect(view.props.onToggle).toHaveBeenLastCalledWith("2");
   });
 
+  it("keeps the look of a poster: its toggle, its artwork box, its title, its rows and its round actions", () => {
+    grid({ selectedIds: ["2"], displayOptions: { showTitle: true, showRating: true }, items: [movie("1", { rating: 7.6 }), movie("2")] });
+    const toggle = screen.getByRole("button", { name: "Select Film 1" });
+    expect(toggle).toHaveClass("absolute", "left-2", "top-2", "z-10", "flex", "shrink-0", "items-center", "justify-center", "rounded-full", "transition-all", "duration-200");
+    expect(screen.getByRole("button", { name: "Deselect Film 2" }).className).toContain("hsl(var(--primary)/0.6)");
+    const art = document.querySelector(".aspect-2\\/3") as HTMLElement;
+    expect(art).toHaveClass("pointer-events-none", "relative", "z-2", "overflow-hidden", "rounded-xl", "bg-muted", "transition-all", "duration-300", "shadow-card", "group-hover:-translate-y-1", "group-hover:shadow-lg");
+    expect(screen.getByText("Film 1")).toHaveClass("h-lh", "truncate", "font-semibold", "text-foreground", "max-md:h-auto", "max-md:whitespace-normal", "max-md:break-words");
+    expect(screen.getByTitle("Rating: 7.6").querySelector("svg")).toHaveClass("h-3", "w-3", "shrink-0");
+    const search = screen.getAllByRole("button", { name: "Search for Film 1 now" })[0];
+    expect(search).toHaveClass("pointer-events-auto", "inline-flex", "h-7", "w-7", "items-center", "justify-center", "rounded-full", "bg-black/55", "text-white", "ring-1", "ring-inset", "ring-white/25", "backdrop-blur-xs", "transition", "hover:bg-primary", "hover:text-primary-foreground", "hover:ring-primary", "focus-visible:outline-hidden", "focus-visible:ring-2", "focus-visible:ring-primary");
+    expect(search.querySelector("svg")).toHaveClass("h-3.5", "w-3.5");
+  });
+
   it("keeps the toggle's classes apart, selected and not", () => {
     grid({ selectedIds: ["2"] });
     const selected = screen.getByRole("button", { name: "Deselect Film 2" }).className.split(/\s+/);

@@ -24,7 +24,8 @@ describe("the Companion Tools count covers every installed app", () => {
     const merged = withInstalledApps(page([tool("sabnzbd", "installed")]), [app("sabnzbd", true), app("deluge", false)]);
 
     expect(merged.tools.map((item) => item.id)).toEqual(["sabnzbd", "deluge"]);
-    expect(merged.tools.find((item) => item.id === "deluge")).toMatchObject({ state: "not-installed", installedByTray: true, installedByInstaller: false });
+    expect(merged.tools.find((item) => item.id === "deluge")).toMatchObject({ state: "not-installed", installedByTray: true, installedByInstaller: false, description: "Deluno's installer can put this on this computer." });
+    expect(merged.tools.find((item) => item.id === "deluge")!.description).not.toBe("Installed with Deluno.");
   });
 
   it("lists NZBGet before it is installed, as GitHub's limit can leave it uninstalled", () => {
