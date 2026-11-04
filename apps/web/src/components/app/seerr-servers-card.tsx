@@ -214,7 +214,7 @@ export function SeerrServersCard({
   }
 
   async function fieldErrors(response: Response) {
-    const problem = await readValidationProblem(response.clone()).catch(() => null);
+    const problem = await readValidationProblem(response.clone());
     if (problem?.errors) setErrors(Object.fromEntries(Object.entries(problem.errors).map(([key, value]) => [key, value[0] ?? ""])));
     return Boolean(problem?.errors);
   }
@@ -268,10 +268,9 @@ export function SeerrServersCard({
   }
 
   async function regenerateWebhookSecret() {
-    if (!editing) return;
     setBusy("webhook-secret");
     try {
-      const response = await authedFetch(`/api/seerr-servers/${editing.id}/webhook-secret`, { method: "POST" });
+      const response = await authedFetch(`/api/seerr-servers/${editing!.id}/webhook-secret`, { method: "POST" });
       if (!response.ok) throw new Error();
       const result = (await response.json()) as { secret: string };
       setWebhookSecret(result.secret);
@@ -385,13 +384,11 @@ export function SeerrServersCard({
 
       <Drawer
         open={drawer.open}
-        onOpenChange={(next) => {
-          if (!next) {
-            if (dirty) setConfirmDiscard(true);
-            else close();
-          }
+        onOpenChange={() => {
+          if (dirty) setConfirmDiscard(true);
+          else close();
         }}
-        title={editing?.name ?? (form.name || "New Seerr server")}
+        title={editing?.name ?? form.name}
         description={editing ? `Seerr · ${editing.baseUrl}` : "Jellyseerr or Overseerr, where people request titles."}
         onSubmit={handleSubmit}
         footer={
@@ -558,9 +555,7 @@ export function SeerrServersCard({
       />
       <ConfirmDialog
         open={confirmDiscard}
-        onOpenChange={(next) => {
-          if (!next) setConfirmDiscard(false);
-        }}
+        onOpenChange={() => setConfirmDiscard(false)}
         title="Discard unsaved changes?"
         description="Your edits haven't been saved."
         confirmLabel="Discard"
