@@ -25,8 +25,12 @@ function isTransientNetworkError(error: unknown) {
   return error instanceof TypeError || (typeof DOMException !== "undefined" && error instanceof DOMException && error.name !== "AbortError");
 }
 
-function waitForRetry(attempt: number) {
-  return new Promise<void>((resolve) => globalThis.setTimeout(resolve, RETRY_DELAYS_MS[attempt] ?? RETRY_DELAYS_MS.at(-1)!));
+/** Waits before the next try, or less if the caller gives up first: a page that has gone stops its retries at once (#1396). */
+function waitForRetry(attempt: number, signal?: AbortSignal | null) {
+  return new Promise<void>((resolve) => {
+    const timer = globalThis.setTimeout(resolve, RETRY_DELAYS_MS[attempt] ?? RETRY_DELAYS_MS.at(-1)!);
+    signal?.addEventListener("abort", () => { globalThis.clearTimeout(timer); resolve(); }, { once: true });
+  });
 }
 
 /**
@@ -109,7 +113,8 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
       response = await authedFetch(path, requestInit);
     } catch (error) {
       if (!retryable || attempt >= RETRY_DELAYS_MS.length || !isTransientNetworkError(error)) throw error;
-      await waitForRetry(attempt);
+      await waitForRetry(attempt, requestInit.signal);
+      requestInit.signal?.throwIfAborted();
       continue;
     }
 
@@ -117,7 +122,8 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
       break;
     }
 
-    await waitForRetry(attempt);
+    await waitForRetry(attempt, requestInit.signal);
+    requestInit.signal?.throwIfAborted();
   }
 
   if (!response.ok) {

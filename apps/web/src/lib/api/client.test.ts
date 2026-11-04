@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { readErrorMessage, readErrorText } from "./client";
+vi.mock("../use-auth", () => ({ authedFetch: vi.fn() }));
+
+const { authedFetch } = await import("../use-auth");
+const { fetchJson, readErrorMessage, readErrorText } = await import("./client");
 
 /**
  * Deluno refuses things for good reasons and then has to say them. A refusal
@@ -106,5 +109,37 @@ describe("readErrorText", () => {
   it("passes a plain-text body straight through", async () => {
     await expect(readErrorText(asResponse("Upstream timed out.", 504), "Search could not be requested."))
       .resolves.toBe("Upstream timed out.");
+  });
+});
+
+describe("fetchJson retries", () => {
+  const busy = () => new Response(JSON.stringify({ message: "Busy." }), { status: 503 });
+
+  it("tries a busy GET again and answers once it is through", async () => {
+    vi.mocked(authedFetch).mockReset().mockResolvedValueOnce(busy()).mockResolvedValueOnce(new Response("[1]", { status: 200 }));
+    await expect(fetchJson<number[]>("/api/x")).resolves.toEqual([1]);
+    expect(authedFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops at once when the caller gives up while it waits to try again (#1396)", async () => {
+    vi.mocked(authedFetch).mockReset().mockImplementation(async () => busy());
+    const caller = new AbortController();
+    const started = Date.now();
+    const answer = fetchJson("/api/x", { signal: caller.signal });
+    await vi.waitFor(() => expect(authedFetch).toHaveBeenCalledTimes(1));
+    caller.abort();
+    await expect(answer).rejects.toThrow();
+    expect(Date.now() - started).toBeLessThan(140);
+    expect(authedFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops at once when the caller gives up while a network failure waits to be tried again", async () => {
+    vi.mocked(authedFetch).mockReset().mockRejectedValue(new TypeError("Failed to fetch"));
+    const caller = new AbortController();
+    const answer = fetchJson("/api/x", { signal: caller.signal });
+    await vi.waitFor(() => expect(authedFetch).toHaveBeenCalledTimes(1));
+    caller.abort();
+    await expect(answer).rejects.toThrow();
+    expect(authedFetch).toHaveBeenCalledTimes(1);
   });
 });

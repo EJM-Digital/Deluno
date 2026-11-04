@@ -108,12 +108,10 @@ export function SettingsMigrationPage() {
   const openOperation = openOperationId ? report?.operations.find((operation) => operation.id === openOperationId) ?? null : null;
 
   useEffect(() => {
-    // An answer that arrives after the page has gone is dropped, not written into a page that no longer exists.
-    let left = false;
-    void fetchJson<MigrationAuditReport[]>("/api/migration/reports")
-      .then((reports) => { if (!left) setAuditReports(reports); })
-      .catch(() => { if (!left) setAuditReports([]); });
-    return () => { left = true; };
+    // Leaving the page stops the request, its retries included.
+    const leaving = new AbortController();
+    void fetchJson<MigrationAuditReport[]>("/api/migration/reports", { signal: leaving.signal }).then(setAuditReports).catch(() => setAuditReports([]));
+    return () => leaving.abort();
   }, []);
 
   async function handlePreview(event?: FormEvent<HTMLFormElement>) {

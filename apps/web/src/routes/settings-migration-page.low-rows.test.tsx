@@ -33,18 +33,17 @@ describe("the applied history", () => {
     expect(screen.queryByText(/not answering/)).toBeNull();
   });
 
-  it("drops an answer that arrives after the page has gone (#1396)", async () => {
-    let answer: (response: Response) => void = () => {};
-    vi.mocked(authedFetch).mockImplementation((input: RequestInfo | URL) =>
-      String(input) === "/api/migration/reports" ? new Promise<Response>((resolve) => { answer = resolve; }) : Promise.resolve(json({})));
-    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("stops asking for the past records when the page is left, retries included (#1396)", async () => {
+    vi.mocked(authedFetch).mockImplementation(async (input: RequestInfo | URL) => String(input) === "/api/migration/reports" ? json({ message: "Busy." }, 503) : json({}));
     const { unmount } = render(<MemoryRouter><SettingsMigrationPage /></MemoryRouter>);
-    await waitFor(() => expect(vi.mocked(authedFetch).mock.calls.some(([url]) => url === "/api/migration/reports")).toBe(true));
+    const asks = () => vi.mocked(authedFetch).mock.calls.filter(([url]) => url === "/api/migration/reports");
+    await waitFor(() => expect(asks()).toHaveLength(1));
+    const signal = (asks()[0]![1] as RequestInit).signal!;
+    expect(signal.aborted).toBe(false);
     unmount();
-    answer(json([audit]));
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(errors).not.toHaveBeenCalled();
-    errors.mockRestore();
+    expect(signal.aborted).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(asks()).toHaveLength(1);
   });
 
   it("is simply absent when the server refuses the list", async () => {
