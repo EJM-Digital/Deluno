@@ -30,7 +30,7 @@ internal static class RecordedClientCalls
 
         public HttpMessageHandler Build() => RecordedReplies.Handler(app, recordings, (request, body) =>
         {
-            Log.Add($"{request.Method} {request.RequestUri!.PathAndQuery} {body}".TrimEnd());
+            lock (Log) Log.Add($"{request.Method} {request.RequestUri!.PathAndQuery} {body}".TrimEnd());
             return answer?.Invoke(request, body);
         });
 

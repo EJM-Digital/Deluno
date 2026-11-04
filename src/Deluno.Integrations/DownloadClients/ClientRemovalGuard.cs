@@ -157,13 +157,8 @@ internal static class DownloadFolderRemoval
             return false;
         }
 
-        var root = Path.GetPathRoot(resolved);
-        if (string.IsNullOrEmpty(root))
-        {
-            return false;
-        }
-
-        var trimmedRoot = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        // A resolved path always has a root.
+        var trimmedRoot = Path.GetPathRoot(resolved)!.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var trimmedResolved = resolved.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         if (trimmedResolved.Length == 0 || string.Equals(trimmedResolved, trimmedRoot, StringComparison.OrdinalIgnoreCase))
         {

@@ -245,19 +245,6 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
     /// </summary>
     public override async Task<IReadOnlyList<string>?> GetFilesAsync(DownloadClientItem client, string queueItemId, CancellationToken cancellationToken)
     {
-        try
-        {
-            return await GetFilesCoreAsync(client, queueItemId, cancellationToken);
-        }
-        catch (Exception exception) when (ClientCredentials.MessageFor(client, exception) is { } message)
-        {
-            // #1312: a refused key or login is the snapshot's to say (once, in the client's health); this call keeps its contract.
-            return null;
-        }
-    }
-
-    private async Task<IReadOnlyList<string>?> GetFilesCoreAsync(DownloadClientItem client, string queueItemId, CancellationToken cancellationToken)
-    {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null || string.IsNullOrWhiteSpace(queueItemId)) return null;
 
@@ -273,7 +260,8 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
                 .Select(path => path!)
                 .ToArray();
         }
-        catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException)
+        // #1312: a refused key or login (an InvalidOperationException) is the snapshot's to say (once, in the client's health); this call keeps its contract.
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException or InvalidOperationException)
         {
             return null;
         }
@@ -471,8 +459,8 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
               && finalFolders.TryGetValue(item.Label.Trim().ToLowerInvariant(), out var finalFolder)
               && !SameFolder(item.SavePath, finalFolder);
 
-    private static bool SameFolder(string? left, string? right)
-        => string.Equals((left ?? string.Empty).TrimEnd('\\', '/'), (right ?? string.Empty).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
+    private static bool SameFolder(string? left, string right)
+        => string.Equals((left ?? string.Empty).TrimEnd('\\', '/'), right.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// For each label with a finished torrent that has no move of its own, the
