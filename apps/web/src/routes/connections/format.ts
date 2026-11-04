@@ -63,6 +63,28 @@ export function relative(iso: string | null | undefined) { if (!iso) return "Nev
 export function scopeLabel(scope: string | null | undefined) { return scope === "movies" ? "Movies" : scope === "tv" ? "TV" : "Movies · TV"; }
 export function protocolLabel(protocol: string) { return CLIENT_PRESETS.find((preset) => preset.protocol === protocol)?.label ?? INDEXER_PRESETS.find((preset) => preset.protocol === protocol)?.label ?? protocol; }
 export function indexerHost(baseUrl: string) { try { return new URL(baseUrl).hostname.toLowerCase(); } catch { return null; } }
+
+/**
+ * The name Deluno gives an indexer left unnamed, by the backend's rule (ConnectionNames.SiteName, #1466): the tracker's id
+ * for an address inside Jackett, otherwise the host with a leading "www." or "api." taken off when two dots remain.
+ */
+export function indexerSiteName(baseUrl: string) {
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    return null;
+  }
+  const parts = url.pathname.split("/").map((part) => decodeURIComponent(part));
+  const at = parts.findIndex((part, index) => part.toLowerCase() === "indexers" && parts[index + 1]?.toLowerCase() !== "all" && parts[index + 2]?.toLowerCase() === "results");
+  if (at !== -1) return parts[at + 1]!;
+  // An IPv6 host comes back in brackets; brackets appear nowhere else in a host name.
+  let host = url.hostname.toLowerCase().replace(/[[\]]/g, "");
+  for (const prefix of ["www.", "api."]) {
+    if (host.startsWith(prefix) && host.split(".").length > 2) host = host.slice(prefix.length);
+  }
+  return host;
+}
 export function formatSeconds(seconds: number) { return seconds < 1 ? "less than a second" : plural(Math.ceil(seconds), "second"); }
 
 /**

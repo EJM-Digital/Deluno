@@ -547,6 +547,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
   const testAbort = useRef<AbortController | null>(null);
   const [showKey, setShowKey] = useState(false);
   const [fineTuneOpen, setFineTuneOpen] = useState(false);
+  const [timingOpen, setTimingOpen] = useState(false);
   const [newMapping, setNewMapping] = useState({ remotePath: "", localPath: "" });
   // The shared Remote Path Mappings screen (#809). `anchorClientId` is
   // whichever client the mapping is filed under — required by the existing
@@ -606,6 +607,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
     setFieldErrors({});
     setShowKey(false);
     setFineTuneOpen(false);
+    setTimingOpen(false);
     setNewMapping({ remotePath: "", localPath: "" });
   }, []);
   function openIndexer(item: IndexerItem | null) {
@@ -1498,6 +1500,8 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
             setShowKey={setShowKey}
             fineTuneOpen={fineTuneOpen}
             setFineTuneOpen={setFineTuneOpen}
+            timingOpen={timingOpen}
+            setTimingOpen={setTimingOpen}
             busy={busy}
             onReset={() => editingIndexer && void run(`reset:${editingIndexer.id}`, () => send(`/api/indexers/${editingIndexer.id}/reset-circuit`, "POST", undefined, "Could not reset."), `Circuit reset for ${editingIndexer.name}`)}
             onAcknowledgeVip={() => editingIndexer && void run(`acknowledge-vip:${editingIndexer.id}`, () => send(`/api/indexers/${editingIndexer.id}`, "PUT", { acknowledgeVipExpiry: true }, "Could not acknowledge."), `VIP warning acknowledged for ${editingIndexer.name}`)}

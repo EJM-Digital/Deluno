@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { describeCallLimitStatus, formatSeconds, healthChip, indexerFlagSelected, indexerHost, indexerReadiness, protocolLabel, relative, scopeLabel, splitIndexerFlags, toggleIndexerFlag, unusedChip, vipWarningActive } from "./format";
+import { describeCallLimitStatus, formatSeconds, healthChip, indexerFlagSelected, indexerHost, indexerReadiness, indexerSiteName, protocolLabel, relative, scopeLabel, splitIndexerFlags, toggleIndexerFlag, unusedChip, vipWarningActive } from "./format";
 
 const NOW = Date.parse("2026-11-04T12:00:00Z");
 const DAY = 24 * 3_600_000;
@@ -176,5 +176,31 @@ describe("what the Indexers header counts", () => {
 
   it("counts a paused indexer as paused whatever its health", () => {
     expect(indexerReadiness([ix("a", "degraded", false)], used, 1).notReady).toEqual(["1 paused"]);
+  });
+});
+
+describe("the name an unnamed indexer is given (#1466)", () => {
+  it.each([
+    ["https://nzbgeek.info/api", "nzbgeek.info"],
+    ["https://www.example.org/", "example.org"],
+    ["https://api.nzbplanet.net", "nzbplanet.net"],
+    ["https://api.example", "api.example"],
+    ["https://www.example", "www.example"],
+    ["https://apiary.example/feed", "apiary.example"],
+    ["https://WWW.Example.ORG", "example.org"],
+    ["http://192.168.1.10:9117/api/v2.0/indexers/1337x/results/torznab", "1337x"],
+    ["http://192.168.1.10:9117/api/v2.0/indexers/all/results/torznab", "192.168.1.10"],
+    ["http://192.168.1.10:9117/api/v2.0/indexers/1337x", "192.168.1.10"],
+    ["http://[::1]:9117/api", "::1"],
+    ["https://example.org/a/b/results", "example.org"],
+    ["https://example.org/api/v2.0/indexers", "example.org"],
+    ["http://192.168.1.10:9117/indexers/1337x/results", "1337x"],
+    ["http://192.168.1.10:9117/api/v2.0/indexers/My%20Tracker/results/torznab", "My Tracker"]
+  ])("%s is named %s, as Deluno names it", (address, name) => {
+    expect(indexerSiteName(address)).toBe(name);
+  });
+
+  it("has no name to offer for something that is not an address", () => {
+    expect(indexerSiteName("not an address")).toBeNull();
   });
 });

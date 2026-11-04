@@ -18,7 +18,7 @@ import { INDEXER_PRESETS, PRIORITY_OPTIONS, type IndexerProtocol, type MediaScop
 import type { IndexerForm, SharingRule } from "./forms";
 import { describeCustomSharingRule, describeGlobalSharingRule, describeSeasonPackSeedTime, describeStrictSharingRule } from "../../lib/sharing-rule";
 import { STRICT_SHARING } from "./forms";
-import { describeCallLimitStatus, formatSeconds, healthChip, indexerHost, relative, vipWarningActive } from "./format";
+import { describeCallLimitStatus, formatSeconds, healthChip, indexerSiteName, relative, vipWarningActive } from "./format";
 import { CategoryPicker } from "./category-picker";
 import { IndexerFlagPicker } from "./indexer-flag-picker";
 import { TrackerFields } from "./tracker-fields";
@@ -37,6 +37,8 @@ export function IndexerDrawerBody({
   setShowKey,
   fineTuneOpen,
   setFineTuneOpen,
+  timingOpen,
+  setTimingOpen,
   busy,
   onReset,
   onAcknowledgeVip,
@@ -59,6 +61,8 @@ export function IndexerDrawerBody({
   setShowKey: (value: boolean) => void;
   fineTuneOpen: boolean;
   setFineTuneOpen: (value: boolean) => void;
+  timingOpen: boolean;
+  setTimingOpen: (value: boolean) => void;
   busy: string | null;
   onReset: () => void;
   onAcknowledgeVip: () => void;
@@ -110,7 +114,7 @@ export function IndexerDrawerBody({
           <Input
             value={form.name}
             onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-            placeholder={indexerHost(form.baseUrl)?.replace(/^(www|api)./, "") ?? "The indexer's name"}
+            placeholder={indexerSiteName(form.baseUrl) ?? "The indexer's name"}
             autoComplete="off"
             spellCheck={false}
           />
@@ -299,7 +303,7 @@ export function IndexerDrawerBody({
         <p className="text-(length:--type-caption) text-muted-foreground">
           These rules decide which feed results Deluno can use. An empty limit keeps the indexer unrestricted.
         </p>
-        <Disclosure title="Timing, limits, and flags" summary="Applied before a release can be sent to a download client." open={fineTuneOpen} onOpenChange={setFineTuneOpen}>
+        <Disclosure title="Timing, limits, and flags" summary="Applied before a release can be sent to a download client." open={timingOpen} onOpenChange={setTimingOpen}>
           <FieldRow>
             <Field label="Minimum age" error={errors.minimumAgeMinutes} help="Wait for a Usenet or torrent post to propagate before grabbing it.">
               <div className="flex items-center gap-2">

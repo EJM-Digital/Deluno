@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { IndexerDrawerBody } from "./indexer-drawer-body";
 import { emptyIndexerForm } from "./forms";
@@ -28,6 +28,8 @@ function renderDrawer(scope: "movies" | "tv" | "both") {
       setShowKey={() => {}}
       fineTuneOpen
       setFineTuneOpen={() => {}}
+      timingOpen
+      setTimingOpen={() => {}}
       busy={null}
       onReset={() => {}}
       onAcknowledgeVip={() => {}}
@@ -69,6 +71,8 @@ describe("IndexerDrawerBody name field", () => {
         setShowKey={() => {}}
         fineTuneOpen
         setFineTuneOpen={() => {}}
+        timingOpen
+        setTimingOpen={() => {}}
         busy={null}
         onReset={() => {}}
         onAcknowledgeVip={() => {}}
@@ -83,7 +87,10 @@ describe("IndexerDrawerBody name field", () => {
   });
 
   it("hints the address as written for an indexer on this computer", () => {
-    expect(renderWith("http://localhost:9117/api/v2.0/indexers/x/results/torznab/").placeholder).toBe("localhost");
+    expect(renderWith("http://localhost:9117/api").placeholder).toBe("localhost");
+    // Inside Jackett the name is the tracker's, as Deluno names it when Name is left blank (#1466).
+    cleanup();
+    expect(renderWith("http://localhost:9117/api/v2.0/indexers/x/results/torznab/").placeholder).toBe("x");
   });
 
   it("shows a name that was typed", () => {
@@ -108,6 +115,8 @@ describe("IndexerDrawerBody Remove while something else is running", () => {
         setShowKey={() => {}}
         fineTuneOpen
         setFineTuneOpen={() => {}}
+        timingOpen
+        setTimingOpen={() => {}}
         busy={busy}
         onReset={() => {}}
         onAcknowledgeVip={() => {}}
@@ -150,6 +159,8 @@ describe("IndexerDrawerBody unreadable saved key notice", () => {
         setShowKey={() => {}}
         fineTuneOpen
         setFineTuneOpen={() => {}}
+        timingOpen
+        setTimingOpen={() => {}}
         busy={null}
         onReset={() => {}}
         onAcknowledgeVip={() => {}}

@@ -23,6 +23,8 @@ describe("IndexerDrawerBody tags (#1042)", () => {
         setShowKey={() => {}}
         fineTuneOpen
         setFineTuneOpen={() => {}}
+        timingOpen
+        setTimingOpen={() => {}}
         busy={null}
         onReset={() => {}}
         onAcknowledgeVip={() => {}}

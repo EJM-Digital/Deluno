@@ -60,13 +60,14 @@ type Options = {
   throttle?: OutboundThrottleHostState | null;
   testMessage?: string | null;
   fineTuneOpen?: boolean;
+  timingOpen?: boolean;
   showKey?: boolean;
   routeOnAdd?: boolean;
   noRouteHandler?: boolean;
 };
 
 function open(options: Options = {}) {
-  const seen = { form: { ...emptyIndexerForm(), ...options.form }, fineTuneOpen: options.fineTuneOpen ?? true, showKey: options.showKey ?? false };
+  const seen = { form: { ...emptyIndexerForm(), ...options.form }, fineTuneOpen: options.fineTuneOpen ?? true, timingOpen: options.timingOpen ?? options.fineTuneOpen ?? true, showKey: options.showKey ?? false };
   const spies = {
     clearError: vi.fn(),
     onReset: vi.fn(),
@@ -78,9 +79,11 @@ function open(options: Options = {}) {
   function Live() {
     const [form, setForm] = useState(seen.form);
     const [fineTuneOpen, setFineTuneOpen] = useState(seen.fineTuneOpen);
+    const [timingOpen, setTimingOpen] = useState(seen.timingOpen);
     const [showKey, setShowKey] = useState(seen.showKey);
     seen.form = form;
     seen.fineTuneOpen = fineTuneOpen;
+    seen.timingOpen = timingOpen;
     seen.showKey = showKey;
     return (
       <MemoryRouter>
@@ -97,6 +100,8 @@ function open(options: Options = {}) {
           setShowKey={(value) => { spies.setShowKey(value); setShowKey(value); }}
           fineTuneOpen={fineTuneOpen}
           setFineTuneOpen={setFineTuneOpen}
+          timingOpen={timingOpen}
+          setTimingOpen={setTimingOpen}
           busy={options.busy ?? null}
           onReset={spies.onReset}
           onAcknowledgeVip={spies.onAcknowledgeVip}
@@ -778,8 +783,20 @@ describe("the fine-tune section", () => {
     expect(screen.getByText("These rules decide which feed results Deluno can use. An empty limit keeps the indexer unrestricted.")).toBeInTheDocument();
     expect(screen.getByText("Applied before a release can be sent to a download client.")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Timing, limits, and flags/ }));
-    expect(seen.fineTuneOpen).toBe(true);
+    expect(seen.timingOpen).toBe(true);
     expect(screen.getByText("The timing rules hold or reject a candidate; they do not alter the indexer's results.")).toBeInTheDocument();
+  });
+
+  it("opens Fine-tune and Timing, limits, and flags each on its own (#1466)", async () => {
+    const user = userEvent.setup();
+    const { seen } = open({ fineTuneOpen: false, timingOpen: false, form: { protocol: "torznab" } });
+    await user.click(screen.getByRole("button", { name: /Fine-tune/ }));
+    expect(screen.getByRole("button", { name: /Fine-tune/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /Timing, limits, and flags/ })).toHaveAttribute("aria-expanded", "false");
+    await user.click(screen.getByRole("button", { name: /Timing, limits, and flags/ }));
+    await user.click(screen.getByRole("button", { name: /Fine-tune/ }));
+    expect(seen.fineTuneOpen).toBe(false);
+    expect(seen.timingOpen).toBe(true);
   });
 
   it("shows the limits unit only once a limit is set", async () => {
