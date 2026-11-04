@@ -39,26 +39,21 @@ public static class ReleasePreferencePlanCodec
                 })
                 .ToArray(),
             RequiredTraitIds = (plan.RequiredTraitIds ?? [])
-                .Where(trait => !string.IsNullOrWhiteSpace(trait))
                 .Select(Normalize)
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(trait => trait, StringComparer.Ordinal)
                 .ToArray(),
             ForbiddenTraitIds = (plan.ForbiddenTraitIds ?? [])
-                .Where(trait => !string.IsNullOrWhiteSpace(trait))
                 .Select(Normalize)
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(trait => trait, StringComparer.Ordinal)
                 .ToArray(),
             RequiredAnyTraitGroups = (plan.RequiredAnyTraitGroups ?? [])
-                .Where(group => group is { Count: > 0 })
                 .Select(group => (IReadOnlyList<string>)group
-                    .Where(trait => !string.IsNullOrWhiteSpace(trait))
                     .Select(Normalize)
                     .Distinct(StringComparer.Ordinal)
                     .OrderBy(trait => trait, StringComparer.Ordinal)
                     .ToArray())
-                .Where(group => group.Count > 0)
                 .OrderBy(group => string.Join("|", group), StringComparer.Ordinal)
                 .ToArray(),
             Relationships = (plan.Relationships ?? [])
@@ -104,7 +99,7 @@ public static class ReleasePreferencePlanCodec
                 .ThenBy(source => Normalize(source.RuleId), StringComparer.Ordinal)
                 .ThenBy(source => Normalize(source.RuleName), StringComparer.Ordinal)
                 .ThenBy(source => Normalize(source.ProfileIntent), StringComparer.Ordinal)
-                .ThenBy(source => string.Join("|", source.MappedTraitIds ?? []), StringComparer.Ordinal)
+                .ThenBy(source => string.Join("|", source.MappedTraitIds!), StringComparer.Ordinal)
                 .ToArray()
         };
 
