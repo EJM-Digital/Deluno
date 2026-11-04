@@ -544,6 +544,14 @@ function Invoke-UpdateTrayMenu {
             # The feed is not up yet: a check that cannot reach it says so plainly and the menu item stays "Check for updates".
             $down = Try-Deluno -Method POST -Path '/api/updates/check' -TimeoutSec 120
             Add-Check 'A check against a feed that is down says it could not check (never "up to date")' ($down.Status -eq 200 -and $down.Data.status.state -eq 'error' -and $down.Data.message -match "Couldn't check for updates") $(if ($down.Data) { "$($down.Data.message) | state $($down.Data.status.state)" } else { "answered $($down.Status)" })
+            # The same check pressed from the tray's menu: the reason is told in a balloon and in the menu's status line (#1278).
+            $toastBefore = Get-ToastTextCount -Text "Couldn't check for updates"
+            $pressedDown = $false
+            for ($i = 0; $i -lt 3 -and -not $pressedDown; $i++) { try { $pressedDown = [bool](Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Check for updates$') } catch { $pressedDown = $false }; if (-not $pressedDown) { Start-Sleep -Seconds 2 <# reason: a retry pause before reading the tray menu again; no event says the menu is ready #> } }
+            Add-Check 'Pressing Check for updates in the tray menu while the feed is down is accepted' $pressedDown ''
+            Add-Check 'The tray says why in a balloon: "Couldn''t check for updates"' (Wait-ToastShown -Text "Couldn't check for updates" -Before $toastBefore -TimeoutSec 90) 'seen in Windows'' notification record'
+            $statusWords = Wait-Until -TimeoutSec 30 -IntervalSec 2 -Condition { $l = (Get-TrayMenuStates | Where-Object { $_.Name -match '^Deluno - ' } | Select-Object -First 1); if ($l -and $l.Name -match "Couldn't check for updates") { $l.Name } else { $null } }
+            Add-Check 'The menu''s status line carries the same reason' $statusWords.Ok $(if ($statusWords.Ok) { $statusWords.Value } else { (Get-TrayMenuStates | ForEach-Object { $_.Name }) -join ' | ' })
             $feed = Start-UpdateFeed -Folder (Get-UpdateFeedFolder) -ThrottleMs 150
             $backupsBefore = @(Get-BackupFiles)
             $press = {

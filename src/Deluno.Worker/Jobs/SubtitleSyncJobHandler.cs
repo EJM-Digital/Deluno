@@ -118,9 +118,14 @@ public sealed class SubtitleSyncJobHandler(
 
     private static SubtitleSyncPayload? ParsePayload(string? payloadJson)
     {
+        if (string.IsNullOrWhiteSpace(payloadJson))
+        {
+            return null;
+        }
+
         try
         {
-            return JsonSerializer.Deserialize<SubtitleSyncPayload>(payloadJson ?? "{}", JobPayloads.Options);
+            return JsonSerializer.Deserialize<SubtitleSyncPayload>(payloadJson, JobPayloads.Options);
         }
         catch (JsonException)
         {
