@@ -9,9 +9,11 @@ owner's font-scale setting, so the ratios below hold at any scale.
 | Page eyebrow (the line above the title) | 11px | 700 | uppercase | 0.14em | 14px | 14px |
 | Page title | 26px | 600 | as written | -0.03em | the app's own | 32px |
 | Top-card label (Speed, Working on now, Next) | 11px | 600 | uppercase | 0.12em | 16px | follows from the header |
-| Panel title (Pipeline, Sources, Your library, Activity ...) | 15px | 600 | as written | the app's own | 23px | follows from the header |
+| Panel title (Pipeline, Sources, Your library, Activity ...) | 15px | 600 | as written | the app's own | 23px | 12px below the panel's top edge |
 
-The header row's height and the gap to the first cards are the same in both apps. No size is a fraction of a step:
+The header row's height and the gap to the first cards are the same in both apps. A panel's header is 48px high with
+its title centred in it, which puts the title's box 12px below the panel's top edge (measured on the golden VM on 5 Nov
+2026: Deluno 12px, Weir rc.24 11px, the only difference left). No size is a fraction of a step:
 11px is 11px, never 10.3125px.
 
 ## In Deluno
