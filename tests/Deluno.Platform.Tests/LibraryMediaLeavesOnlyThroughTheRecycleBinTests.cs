@@ -49,7 +49,9 @@ public sealed class LibraryMediaLeavesOnlyThroughTheRecycleBinTests
         ["src/Deluno.Worker/Services/ProcessorOutputSweep.cs"] = (2, "Stale processor output inside the library's output folder. " + DownloadArea),
     };
 
-    private static readonly Regex Delete = new(@"\b(?:File|Directory)\.Delete\(|\.Delete\(\)", RegexOptions.Compiled);
+    // A delete passed as a method group (`deleteFile ?? File.Delete`) is a delete too: it hid one from this count until
+    // ProcessorOutputSweep's test seam was written as a call (#1268).
+    private static readonly Regex Delete = new(@"\b(?:File|Directory)\.Delete\b(?!\s*\()|\b(?:File|Directory)\.Delete\(|\.Delete\(\)", RegexOptions.Compiled);
 
     [Fact]
     public void Every_delete_in_the_product_is_either_listed_with_a_reason_or_goes_through_the_recycle_bin()

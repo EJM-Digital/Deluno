@@ -43,7 +43,7 @@ public sealed class ProcessorOutputSweep(
     private readonly Func<string, IEnumerable<string>> _listFiles = listFiles ?? (path => Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories));
     private readonly Func<string, FileAttributes> _attributesOf = attributesOf ?? File.GetAttributes;
     private readonly Action<string> _deleteFolder = deleteFolder ?? (path => Directory.Delete(path, recursive: true));
-    private readonly Action<string> _deleteFile = deleteFile ?? File.Delete;
+    private readonly Action<string> _deleteFile = deleteFile ?? (path => File.Delete(path)); // written as a call so the delete audit sees it
 
     public const string ActivityCategory = "processing.output.deleted";
 
