@@ -673,6 +673,14 @@
       "line": 118,
       "replacement": "/\\s+S\\d{1,2}E\\d.*$/i",
       "reason": "Equivalent: the changed pattern strips the same text, because the greedy rest of the line that follows the episode code removes everything after it whether or not the end of the line is named or the code has one digit more."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/route-prefetch.ts",
+      "mutator": "Regex",
+      "line": 27,
+      "replacement": "/\\/system\\/(api|docs|security)/",
+      "reason": "Equivalent: the pattern is only tried on paths that already start with /system/, and that text occurs nowhere but at the start of such a path, so naming the start of the path changes nothing."
     }
   ]
 }
