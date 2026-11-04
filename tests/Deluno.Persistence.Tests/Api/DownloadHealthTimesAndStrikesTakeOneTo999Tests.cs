@@ -2,6 +2,10 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Deluno.Contracts;
+using Deluno.Infrastructure.Storage;
+using Deluno.Infrastructure.Storage.Migrations;
+using Deluno.Platform.Data;
+using Microsoft.Extensions.Logging.Abstractions;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Contracts;
 
@@ -110,5 +114,48 @@ public sealed class DownloadHealthTimesAndStrikesTakeOneTo999Tests
         }
 
         Assert.Equal(TimeSpan.FromMinutes(Math.Clamp(value, 1, 999)), (rule with { TimerMinutes = value }).Timer);
+    }
+
+    [Fact]
+    public async Task Values_stored_under_the_old_bounds_read_back_at_the_nearest_bound_on_a_real_database()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(Start);
+        await new PlatformSchemaInitializer(storage.Factory, new SqliteDatabaseMigrator(storage.Factory, time), NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var rule = new DownloadHealthRule(
+            Id: "old", Kind: DownloadHealthRuleKinds.NoProgress, Enabled: true, StrikeLimit: 0, TimerMinutes: 1440,
+            AppliesTo: DownloadHealthAppliesTo.Both, MinCompletionPercent: 0, MaxCompletionPercent: 100,
+            ResetStrikesOnProgress: true, ActionPreset: DownloadHealthActionPresets.JustTellMe,
+            CreatedUtc: Start, UpdatedUtc: Start);
+        var stored = new Dictionary<string, string>
+        {
+            ["cleanup.strikeThreshold"] = "1000",
+            ["download-health.defaultStrikeWindowMinutes"] = "1440",
+            ["download-health.noProgress.minutes"] = "1440",
+            ["download-health.minSpeed.minutes"] = "0",
+            ["download-health.minPeers.minutes"] = "5000",
+            ["download-health.rules.v1"] = System.Text.Json.JsonSerializer.Serialize(new[] { rule })
+        };
+        await using (var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform, CancellationToken.None))
+        {
+            foreach (var (key, value) in stored)
+            {
+                await using var command = connection.CreateCommand();
+                command.CommandText = "INSERT INTO system_settings (setting_key, setting_value, updated_utc) VALUES ('" + key + "', '" + value.Replace("'", "''") + "', '2026-11-05T00:00:00Z') ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value;";
+                await command.ExecuteNonQueryAsync();
+            }
+        }
+
+        var settings = await new SqlitePlatformSettingsRepository(storage.Factory, time, TestSecretProtection.Create(storage)).GetAsync(CancellationToken.None);
+        var rules = await new SqliteDownloadHealthRepository(storage.Factory, time).GetDownloadHealthRulesAsync(settings, CancellationToken.None);
+
+        Assert.Equal(999, settings.DownloadHealthStrikeThreshold);
+        Assert.Equal(999, settings.DownloadHealthDefaultStrikeWindowMinutes);
+        Assert.Equal(999, settings.DownloadHealthNoProgressMinutes);
+        Assert.Equal(1, settings.DownloadHealthMinSpeedMinutes);
+        Assert.Equal(999, settings.DownloadHealthMinPeersMinutes);
+        var read = Assert.Single(rules);
+        Assert.Equal(1, read.StrikeLimit);
+        Assert.Equal(999, read.TimerMinutes);
     }
 }
