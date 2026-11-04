@@ -729,6 +729,30 @@
       "line": 23,
       "replacement": "\"\"",
       "reason": "The title given to a drawer that has no job. The drawer is shut then and draws neither its title nor its description, so no test can see it."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/countdowns.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 27,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "The fallback for a summary with no libraries list: iterating one string instead of an empty list reads library.nextSearchUtc and library.status as undefined, so the row is skipped exactly as no row would be."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/countdowns.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 40,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "The fallback for a summary with no tasks list: the one string has no nextRunUtc, so the task is skipped exactly as no task would be."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/countdowns.tsx",
+      "mutator": "StringLiteral",
+      "line": 54,
+      "replacement": "\"\"",
+      "reason": "The sort key of a running search with no next time: an empty key parses to NaN, which a sort comparator treats as equal, and a running search never has to move past a timed one that follows it, so the order comes out the same."
     }
   ]
 }

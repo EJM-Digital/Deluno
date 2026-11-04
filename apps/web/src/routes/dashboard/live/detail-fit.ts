@@ -10,8 +10,6 @@ export function fitDetails(host: HTMLElement): void {
     const block = card.querySelector<HTMLElement>(".lj-x");
     if (!block) continue;
     const lines = Array.from(block.children) as HTMLElement[];
-    block.style.display = "";
-    for (const line of lines) line.style.display = "";
     const room = detailRoom(card.getBoundingClientRect().bottom, block.getBoundingClientRect().top);
     lines.forEach((line, index) => {
       line.style.display = index < room ? "" : "none";
