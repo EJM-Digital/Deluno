@@ -17,46 +17,33 @@ interface Config {
   dot: string;
   label: string;
   ring: string;
-  animate: boolean;
-  visible: boolean;
 }
 
-const STATUS_CONFIG: Record<SignalRStatus, Config> = {
-  connected: {
-    dot: "bg-success",
-    label: "Live",
-    ring: "border-success/25 bg-success/10 text-success",
-    animate: false,
-    visible: false
-  },
+/** Connected has no entry: it is silent. */
+const STATUS_CONFIG: Record<Exclude<SignalRStatus, "connected">, Config> = {
   connecting: {
     dot: "bg-muted-foreground",
     label: "Connecting…",
-    ring: "border-hairline bg-card text-muted-foreground",
-    animate: true,
-    visible: true
+    ring: "border-hairline bg-card text-muted-foreground"
   },
   reconnecting: {
     dot: "bg-warning animate-pulse",
     label: "Not live: reconnecting",
-    ring: "border-warning/25 bg-warning/10 text-warning",
-    animate: false,
-    visible: true
+    ring: "border-warning/25 bg-warning/10 text-warning"
   },
   disconnected: {
     dot: "bg-destructive",
     label: "Not live: trying again",
-    ring: "border-destructive/25 text-destructive",
-    animate: false,
-    visible: true
+    ring: "border-destructive/25 text-destructive"
   }
 };
 
 export function WsStatusBadge({ className }: { className?: string }) {
   const status = useSignalRStatus();
-  const cfg = STATUS_CONFIG[status];
 
-  if (!cfg.visible) return null;
+  if (status === "connected") return null;
+
+  const cfg = STATUS_CONFIG[status];
 
   return (
     <span
@@ -74,30 +61,5 @@ export function WsStatusBadge({ className }: { className?: string }) {
       <span className={cn("h-1.5 w-1.5 rounded-full", cfg.dot)} />
       {cfg.label}
     </span>
-  );
-}
-
-/**
- * Simpler dot-only variant for tight spaces (e.g. beside the notification bell).
- */
-export function WsStatusDot({ className }: { className?: string }) {
-  const status = useSignalRStatus();
-
-  if (status === "connected") return null;
-
-  const colors: Record<SignalRStatus, string> = {
-    connected: "bg-success",
-    connecting: "bg-muted-foreground",
-    reconnecting: "bg-warning animate-pulse",
-    disconnected: "bg-destructive"
-  };
-
-  return (
-    <span
-      role="status"
-      aria-live="polite"
-      aria-label={`Connection: ${status}`}
-      className={cn("h-2 w-2 rounded-full shadow-xs", colors[status], className)}
-    />
   );
 }

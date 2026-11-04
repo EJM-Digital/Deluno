@@ -59,3 +59,41 @@ describe("the live connection badge", () => {
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+describe("the live connection badge, status by status", () => {
+  const paused = "Live updates are paused, so the numbers on screen may be out of date.";
+
+  it("while connecting: grey, and no claim that updates are paused", () => {
+    state.status = "connecting";
+    render(<WsStatusBadge className="ml-2" />);
+    const badge = screen.getByRole("status");
+    expect(badge).toHaveAttribute("aria-label", "Connecting…");
+    expect(badge).not.toHaveAttribute("title");
+    expect(badge).toHaveAttribute("aria-live", "polite");
+    expect(badge).toHaveAttribute("data-realtime-status", "connecting");
+    expect(badge).toHaveClass("border-hairline", "bg-card", "text-muted-foreground", "ml-2", "inline-flex", "rounded-full");
+    expect(badge.firstElementChild).toHaveClass("h-1.5", "w-1.5", "rounded-full", "bg-muted-foreground");
+    expect(badge.firstElementChild).not.toHaveClass("animate-pulse");
+  });
+
+  it("while reconnecting: amber, saying updates are paused and Deluno keeps trying", () => {
+    state.status = "reconnecting";
+    render(<WsStatusBadge />);
+    const badge = screen.getByRole("status");
+    expect(badge).toHaveAttribute("aria-label", `Not live: reconnecting. ${paused}`);
+    expect(badge).toHaveAttribute("title", `${paused} Deluno keeps trying to reconnect.`);
+    expect(badge).toHaveAttribute("data-realtime-status", "reconnecting");
+    expect(badge).toHaveClass("border-warning/25", "bg-warning/10", "text-warning");
+  });
+
+  it("when disconnected: red, saying updates are paused and Deluno keeps trying", () => {
+    state.status = "disconnected";
+    render(<WsStatusBadge />);
+    const badge = screen.getByRole("status");
+    expect(badge).toHaveAttribute("aria-label", `Not live: trying again. ${paused}`);
+    expect(badge).toHaveAttribute("title", `${paused} Deluno keeps trying to reconnect.`);
+    expect(badge).toHaveAttribute("data-realtime-status", "disconnected");
+    expect(badge).toHaveClass("border-destructive/25", "text-destructive");
+    expect(badge.firstElementChild).toHaveClass("bg-destructive");
+  });
+});
