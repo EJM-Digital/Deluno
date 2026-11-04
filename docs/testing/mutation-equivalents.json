@@ -555,6 +555,14 @@
       "reason": "The catch block of the payload reader returns nothing, and Stryker keeps the method returning its default, which is the same nothing, so a payload that is not JSON reads as null either way and no assertion can tell the two apart."
     },
     {
+      "project": "Deluno.Worker",
+      "file": "src/Deluno.Worker/Services/ProcessorOutputSweep.cs",
+      "mutator": "String mutation",
+      "line": 43,
+      "replacement": "\"\"",
+      "reason": "An empty search pattern lists every file, exactly as the star does, so the folder listing is the same and no test can tell the two apart."
+    },
+    {
       "project": "web",
       "file": "apps/web/src/components/ui/select.tsx",
       "mutator": "Regex",

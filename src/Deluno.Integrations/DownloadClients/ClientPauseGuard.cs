@@ -64,7 +64,7 @@ internal static class ClientPauseGuard
         var window = settleWindow > TimeSpan.Zero ? settleWindow : SettleWindow;
         while (after.Has == ClientHas.Yes && after.Paused != pausing && waited < window)
         {
-            var step = pause < window - waited ? pause : window - waited;
+            var step = TimeSpan.FromTicks(Math.Min(pause.Ticks, (window - waited).Ticks));
             await Task.Delay(step, cancellationToken);
             waited += step;
             after = await read();

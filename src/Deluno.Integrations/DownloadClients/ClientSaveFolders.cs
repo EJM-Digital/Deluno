@@ -80,7 +80,8 @@ public static class ClientSaveFolders
 
         var clientStyle = StyleOf(clientReportedPath);
         var hostStyle = StyleOf(hostFolder);
-        if (clientStyle == PathStyle.Unknown || hostStyle == PathStyle.Unknown || clientStyle != hostStyle)
+        // An unknown style never equals a known one, so only the host being unknown needs saying.
+        if (hostStyle == PathStyle.Unknown || clientStyle != hostStyle)
         {
             return false;
         }
@@ -89,7 +90,7 @@ public static class ClientSaveFolders
     }
 
     /// <summary>True when the client runs on this machine: localhost, a loopback or local address, or this computer's own name.</summary>
-    public static bool IsSameMachine(DownloadClientItem client)
+    public static bool IsSameMachine(DownloadClientItem client, Func<IEnumerable<System.Net.IPAddress>>? ownAddresses = null)
     {
         var host = client.Host?.Trim();
         if (string.IsNullOrWhiteSpace(host) && Uri.TryCreate(client.EndpointUrl, UriKind.Absolute, out var endpoint))
@@ -122,15 +123,18 @@ public static class ClientSaveFolders
 
         try
         {
-            return System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
-                .SelectMany(nic => nic.GetIPProperties().UnicastAddresses)
-                .Any(unicast => unicast.Address.Equals(address));
+            return (ownAddresses ?? OwnAddresses)().Any(own => own.Equals(address));
         }
         catch (Exception)
         {
             return false;
         }
     }
+
+    private static IEnumerable<System.Net.IPAddress> OwnAddresses()
+        => System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+            .SelectMany(nic => nic.GetIPProperties().UnicastAddresses)
+            .Select(unicast => unicast.Address);
 
     /// <summary>
     /// The one downloads folder the libraries routed to this client for this
@@ -147,7 +151,7 @@ public static class ClientSaveFolders
         CancellationToken cancellationToken,
         Func<CancellationToken, Task<string?>>? clientReportedPath = null)
     {
-        var folders = new List<string>();
+        var folders = new List<string?>();
         foreach (var library in (await libraries.ListLibrariesAsync(cancellationToken))
                      .Where(item => string.Equals(item.MediaType, mediaType, StringComparison.OrdinalIgnoreCase)))
         {
@@ -157,17 +161,17 @@ public static class ClientSaveFolders
                 && string.Equals(RoutedCategory(client, library, link.Category), category, StringComparison.OrdinalIgnoreCase)) ?? false;
             if (routed)
             {
-                folders.Add(library.DownloadsPath?.Trim() ?? string.Empty);
+                folders.Add(library.DownloadsPath?.Trim());
             }
         }
 
         var distinct = folders.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        if (distinct.Length != 1 || string.IsNullOrWhiteSpace(distinct[0]) || !ClientPaths.IsFullClientPath(distinct[0]))
+        if (distinct.Length != 1 || string.IsNullOrWhiteSpace(distinct[0]) || !ClientPaths.IsFullClientPath(distinct[0]!))
         {
             return null;
         }
 
-        var host = distinct[0].TrimEnd('/', '\\');
+        var host = distinct[0]!.TrimEnd('/', '\\');
         var clientFolder = ToClientPath(host, mappings);
         var mapped = !string.Equals(clientFolder, host, StringComparison.Ordinal) || IsCovered(host, mappings);
         if (mapped)
