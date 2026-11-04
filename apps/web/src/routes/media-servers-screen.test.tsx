@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { authedFetch } from "../lib/use-auth";
+import { toast } from "../components/shell/toaster";
 
 /**
  * Find & Download > Media servers: the list, the On switch, the Add server drawer (kinds, address example per kind, token
@@ -10,6 +11,7 @@ import { authedFetch } from "../lib/use-auth";
 
 vi.setConfig({ testTimeout: 30_000 });
 vi.mock("../lib/use-auth", () => ({ authedFetch: vi.fn() }));
+vi.mock("../components/shell/toaster", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("../hooks/use-unsaved-changes", () => ({ useUnsavedChanges: () => undefined }));
 vi.mock("../lib/live-refresh", () => ({ useLiveRefresh: () => undefined }));
 vi.mock("../lib/connection-versions", () => ({ useConnectionVersions: () => ({ versions: new Map() }), versionKey: (kind: string, id: string) => `${kind}:${id}` }));
@@ -64,6 +66,29 @@ describe("the list", () => {
     expect(calls("PUT")[0][0]).toBe("/api/media-servers/s1");
     expect(bodyOf(calls("PUT")[0])).toEqual({ kind: "jellyfin", name: "Jellyfin on lounge", baseUrl: "http://lounge.example.test:8096", token: "", isEnabled: false, leavingSoonOnHome: false });
     expect(revalidate).toHaveBeenCalled();
+  });
+
+  it("tells the person why when the switch is refused, with the server's own words or the code", async () => {
+    loaderData.servers = [server()];
+    renderPage();
+    vi.mocked(authedFetch).mockResolvedValueOnce(json({ message: "That server is busy." }, 409));
+    fireEvent.click(screen.getByRole("switch", { name: "Pause Jellyfin on lounge" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("That server is busy."));
+    vi.mocked(authedFetch).mockResolvedValueOnce(new Response("", { status: 500 }));
+    fireEvent.click(screen.getByRole("switch", { name: "Pause Jellyfin on lounge" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Jellyfin on lounge could not be switched off (HTTP 500)."));
+    expect(revalidate).not.toHaveBeenCalled();
+  });
+
+  it("tells the person why when the switch request fails outright", async () => {
+    loaderData.servers = [server({ isEnabled: false })];
+    renderPage();
+    vi.mocked(authedFetch).mockRejectedValueOnce(new Error("offline"));
+    fireEvent.click(screen.getByRole("switch", { name: "Enable Jellyfin on lounge" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("offline"));
+    vi.mocked(authedFetch).mockRejectedValueOnce("boom");
+    fireEvent.click(screen.getByRole("switch", { name: "Enable Jellyfin on lounge" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Jellyfin on lounge could not be switched on."));
   });
 });
 

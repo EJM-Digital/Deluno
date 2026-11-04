@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { authedFetch } from "../../lib/use-auth";
+import { toast } from "../shell/toaster";
 
 /**
  * Find & Download > Request servers (Seerr): what the drawer does with the server's answers (field errors, a key that is never shown, a failed
@@ -11,6 +12,7 @@ import { authedFetch } from "../../lib/use-auth";
 
 vi.setConfig({ testTimeout: 30_000 });
 vi.mock("../../lib/use-auth", () => ({ authedFetch: vi.fn() }));
+vi.mock("../shell/toaster", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("../../hooks/use-unsaved-changes", () => ({ useUnsavedChanges: () => undefined }));
 vi.mock("../../lib/connection-versions", () => ({ useConnectionVersions: () => ({ versions: new Map() }), versionKey: (kind: string, id: string) => `${kind}:${id}` }));
 vi.mock("./connection-update-panel", () => ({ ConnectionUpdatePanel: () => null }));
@@ -44,6 +46,7 @@ beforeEach(() => {
   vi.mocked(authedFetch).mockReset();
   vi.mocked(authedFetch).mockImplementation(async (input: RequestInfo | URL) => String(input).includes("/acquisitions") ? json([]) : json({}));
   onChanged.mockReset();
+  vi.mocked(toast.error).mockClear();
 });
 
 describe("what the server says about the form", () => {
@@ -116,17 +119,34 @@ describe("Test connection", () => {
 });
 
 describe("the On switch", () => {
-  it("keeps the fallback libraries and profiles it was saved with, and stays silent when the answer is a refusal", async () => {
-    answering((url, init) => url === "/api/seerr-servers/z1" && init?.method === "PUT" ? json({}, 500) : undefined);
+  it("keeps the fallback libraries and profiles it was saved with, and tells the person why when the answer is a refusal", async () => {
+    answering((url, init) => url === "/api/seerr-servers/z1" && init?.method === "PUT" ? json({ message: "Seerr is not reachable from here." }, 409) : undefined);
     renderCard([server({ movieLibraryId: "lib-films", movieQualityProfileId: "prof-1", seriesLibraryId: "lib-shows", seriesQualityProfileId: "prof-1" })]);
 
     fireEvent.click(screen.getByRole("switch", { name: "Pause Seerr on den" }));
 
     await waitFor(() => expect(calls("PUT")).toHaveLength(1));
     expect(bodyOf(calls("PUT")[0])).toMatchObject({ isEnabled: false, movieLibraryId: "lib-films", movieQualityProfileId: "prof-1", seriesLibraryId: "lib-shows", seriesQualityProfileId: "prof-1" });
-    await waitFor(() => expect(onChanged).toHaveBeenCalled());
-    expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.queryByText(/could not/i)).toBeNull();
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Seerr is not reachable from here."));
+    expect(onChanged).not.toHaveBeenCalled();
+    expect(screen.getByRole("switch", { name: "Pause Seerr on den" })).toBeChecked();
+  });
+
+  it("says it could not be switched, with the code, when the refusal has no words", async () => {
+    answering((url, init) => url === "/api/seerr-servers/z1" && init?.method === "PUT" ? new Response("", { status: 500 }) : undefined);
+    renderCard([server()]);
+    fireEvent.click(screen.getByRole("switch", { name: "Pause Seerr on den" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Seerr on den could not be switched off (HTTP 500)."));
+  });
+
+  it("says why when the request does not get an answer, and when the failure gives no reason", async () => {
+    answering((url, init) => { if (url === "/api/seerr-servers/z1" && init?.method === "PUT") throw new Error("offline"); return undefined; });
+    renderCard([server({ isEnabled: false })]);
+    fireEvent.click(screen.getByRole("switch", { name: "Enable Seerr on den" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("offline"));
+    answering((url, init) => { if (url === "/api/seerr-servers/z1" && init?.method === "PUT") throw "boom"; return undefined; });
+    fireEvent.click(screen.getByRole("switch", { name: "Enable Seerr on den" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Seerr on den could not be switched on."));
   });
 });
 
