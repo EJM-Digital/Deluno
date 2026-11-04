@@ -767,12 +767,8 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
     /// </summary>
     private static async Task<IReadOnlyList<DownloadClientFollowUpRefusal>> TryLabelAsync(HttpClient http, Uri baseUri, string torrentId, string category, CancellationToken cancellationToken)
     {
+        // The caller sends only a category that says something, so there is always a label here.
         var label = category.Trim().ToLowerInvariant();
-        if (label.Length == 0)
-        {
-            return [];
-        }
-
         var what = $"the {label} label";
         var json = new Uri(baseUri, "json");
         try

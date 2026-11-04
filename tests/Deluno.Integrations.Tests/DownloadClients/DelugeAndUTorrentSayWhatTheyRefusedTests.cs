@@ -133,11 +133,72 @@ public sealed class DelugeAndUTorrentSayWhatTheyRefusedTests
     }
 
     [Fact]
+    public async Task A_release_whose_hash_Deluno_could_not_know_is_followed_by_the_new_torrent_and_its_refused_label_is_still_said()
+    {
+        var recorded = RecordedReplies.Utorrent("label-refused");
+        var result = await new UTorrentDownloadClient(() => UTorrentEveryBranchTests.Adding((request, _) => SetProps(request) ? recorded.Exchanges[3].Reply.ToResponse() : null))
+            .GrabAsync(UTorrentEveryBranchTests.Item(), UTorrentEveryBranchTests.Magnet() with { DownloadUrl = "http://indexer.test/download/1" }, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        var refusal = Assert.Single(result.FollowUpRefusals!);
+        Assert.Equal("invalid request", refusal.Reason);
+        Assert.Equal(["setprops"], result.FollowUpCallsSent);
+    }
+
+    [Fact]
     public void Deluges_traceback_is_cut_down_to_what_it_said()
     {
         Assert.Equal("Unknown Label", DelugeDownloadClient.ReasonOf("Failure: [Failure instance]\nTraceback\n  File x\nException: Unknown Label\n\n]"));
         Assert.Equal("Unknown method", DelugeDownloadClient.ReasonOf("Unknown method"));
         Assert.Equal(string.Empty, DelugeDownloadClient.ReasonOf(null));
         Assert.Equal(200, DelugeDownloadClient.ReasonOf(new string('x', 500)).Length);
+        // A reply of nothing but closing brackets has no error line to give.
+        Assert.Equal(string.Empty, DelugeDownloadClient.ReasonOf("]\n]"));
+    }
+
+    [Fact]
+    public async Task A_release_whose_hash_Deluno_could_not_know_is_followed_by_the_new_torrent_and_its_refused_label_is_still_said()
+    {
+        var recorded = RecordedReplies.Utorrent("label-refused");
+        var result = await new UTorrentDownloadClient(() => UTorrentEveryBranchTests.Adding((request, _) => SetProps(request) ? recorded.Exchanges[3].Reply.ToResponse() : null))
+            .GrabAsync(UTorrentEveryBranchTests.Item(), UTorrentEveryBranchTests.Magnet() with { DownloadUrl = "http://indexer.test/download/1" }, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        var refusal = Assert.Single(result.FollowUpRefusals!);
+        Assert.Equal("invalid request", refusal.Reason);
+        Assert.Equal(["setprops"], result.FollowUpCallsSent);
+    }
+
+    [Fact]
+    public void Deluges_traceback_is_cut_down_to_what_it_said()
+    {
+        Assert.Equal("Unknown Label", DelugeDownloadClient.ReasonOf("Failure: [Failure instance]\nTraceback\n  File x\nException: Unknown Label\n\n]"));
+        Assert.Equal("Unknown method", DelugeDownloadClient.ReasonOf("Unknown method"));
+        Assert.Equal(string.Empty, DelugeDownloadClient.ReasonOf(null));
+        Assert.Equal(200, DelugeDownloadClient.ReasonOf(new string('x', 500)).Length);
+        // A reply of nothing but closing brackets has no error line to give.
+        Assert.Equal(string.Empty, DelugeDownloadClient.ReasonOf("]\n]"));
+    }
+
+    /// <summary>Answers each call only after the caller has really been suspended, as a client over a network does.</summary>
+    private sealed class SuspendingHandler(HttpMessageHandler inner) : DelegatingHandler(inner)
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            await Task.Delay(1, cancellationToken);
+            return await base.SendAsync(request, cancellationToken);
+        }
+    }
+
+    [Fact]
+    public async Task A_paused_uTorrent_grab_whose_calls_really_wait_for_the_network_follows_the_same_steps()
+    {
+        var result = await new UTorrentDownloadClient(() => new SuspendingHandler(UTorrentEveryBranchTests.Adding((request, _) =>
+                request.RequestUri!.Query.Contains("action=stop", StringComparison.Ordinal) ? RecordedReplies.Json("{\"build\":1}") : null)))
+            .GrabAsync(UTorrentEveryBranchTests.Item() with { AddPaused = true }, UTorrentEveryBranchTests.Magnet(), CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Null(result.FollowUpRefusals);
+        Assert.Equal(["setprops"], result.FollowUpCallsSent);
     }
 }
