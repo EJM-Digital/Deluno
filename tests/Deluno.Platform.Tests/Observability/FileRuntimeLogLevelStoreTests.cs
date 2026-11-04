@@ -34,6 +34,20 @@ public sealed class FileRuntimeLogLevelStoreTests : IDisposable
         Assert.Equal(LogLevel.Trace, second.Current);
     }
 
+    [Theory]
+    [InlineData("not json")]
+    [InlineData("null")]
+    [InlineData("{\"level\":\"Loud\"}")]
+    public void A_saved_file_that_says_nothing_usable_leaves_the_configured_level(string content)
+    {
+        Directory.CreateDirectory(dataRoot);
+        File.WriteAllText(Path.Combine(dataRoot, "log-level.json"), content);
+
+        var store = CreateStore(new DelunoFileLogOptions { MinLevel = LogLevel.Warning });
+
+        Assert.Equal(LogLevel.Warning, store.Current);
+    }
+
     private FileRuntimeLogLevelStore CreateStore(DelunoFileLogOptions? options = null)
         => new(
             Options.Create(new StoragePathOptions { DataRoot = dataRoot }),

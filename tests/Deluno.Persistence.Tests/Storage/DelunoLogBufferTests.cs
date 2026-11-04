@@ -94,7 +94,8 @@ public sealed class DelunoLogBufferTests : IDisposable
             Line("Debug", "Deluno.Api.Thing", "not notable"),
             Line("Error", "Deluno.Api.Thing", "  "),
             "{\"timestamp\":\"2026-11-05T10:01:00Z\",\"level\":\"Warning\"}",
-            "{\"timestamp\":\"2026-11-05T10:02:00Z\",\"level\":\"Warning\",\"category\":null,\"message\":\"no category\"}");
+            "{\"timestamp\":\"2026-11-05T10:02:00Z\",\"level\":\"Warning\",\"category\":null,\"message\":\"no category\"}",
+            "{\"timestamp\":\"2026-11-05T10:03:00Z\",\"level\":\"Warning\",\"category\":\"A\",\"message\":null}");
         WriteLog("deluno-20261105.1.jsonl", Line("Warning", "Deluno.Api.Other", "second part"));
         WriteLog("deluno-20261104.jsonl", Line("Error", "Deluno.Api.Thing", "yesterday"));
 
