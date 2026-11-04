@@ -422,7 +422,14 @@ function Invoke-UpdateSetupInteractive {
         $backupsBefore = @(Get-BackupFiles)
         $began = Get-Date
         $p = Start-Process -FilePath $CandidateSetup -PassThru
-        $done = $p.WaitForExit(90000)
+        # A reinstall over a Deluno that is already set up asks nothing again: no download-client picker and no firewall question (#1278).
+        $sawPicker = $false
+        $watchUntil = (Get-Date).AddSeconds(90)
+        while (-not $p.HasExited -and (Get-Date) -lt $watchUntil) {
+            if (@(Get-DesktopWindows | Where-Object { $_.Name -match 'Set up download clients and Weir|Windows Security Alert|Allow other devices' }).Count -gt 0) { $sawPicker = $true }
+            Start-Sleep -Seconds 1 # reason: looking for a window that should never appear; nothing signals that one will not
+        }
+        $done = $p.WaitForExit(1000)
         if (-not $done) {
             $dlg = Wait-DesktopWindow -NamePattern '^Deluno Setup' -Process 'Deluno-Setup' -TimeoutSec 20
             if ($dlg) {
@@ -440,6 +447,7 @@ function Invoke-UpdateSetupInteractive {
         if (-not (Test-CameBackAsCandidate -Context $ctx -CandidateVersion $CandidateVersion)) { return }
         Start-Sleep -Seconds 60 # reason: give a second start (Setup's own launch and the install hook's helper both starting Deluno) time to show itself
         $procs = @(Get-DelunoProcess)
+        Add-Check 'The reinstall asked nothing again: no download-client picker and no firewall question appeared' (-not $sawPicker) ''
         Add-Check 'Exactly one Deluno is running (Setup''s launch and the install hook did not start two)' ($procs.Count -eq 1) "$($procs.Count) process(es): $(($procs | ForEach-Object { $_.Id }) -join ', ')"
         Add-Check 'The previous release''s process is gone' (@($procs | Where-Object { $_.Id -in $ctx.OldPids }).Count -eq 0) ''
         # Setup run by hand over a running copy takes no pre-update backup (only the in-app update does): this pins that down (#1278).

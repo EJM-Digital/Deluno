@@ -50,6 +50,8 @@ try {
         'uninstall.custom-data-root' { Invoke-UninstallCustomDataRoot -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
         'update.with-bundled-clients' { Invoke-UpdateWithBundledClients -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
         'update.locked-install-folder' { Invoke-UpdateLockedInstallFolder -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
+        'update.background-check-repeats' { Invoke-UpdateBackgroundCheckRepeats -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
+        'uninstall.keeps-bundled-apps' { Invoke-UninstallKeepsBundledApps -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
         'update.tray-menu' { Invoke-UpdateTrayMenu -CandidateVersion $CandidateVersion }
         default { throw "Unknown update scenario '$Scenario'." }
     }

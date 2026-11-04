@@ -963,3 +963,98 @@ function Invoke-UpdateLockedInstallFolder {
         }
     }
 }
+
+function Invoke-UpdateBackgroundCheckRepeats {
+    param([Parameter(Mandatory)] [string] $CandidateSetup, [Parameter(Mandatory)] [string] $CandidateVersion)
+    Invoke-Scenario -Id 'update.background-check-repeats' -Title 'With auto-check on, the check Deluno makes by itself after it starts is made again after the interval, and again (the interval is the six hours; a test setting shortens it to 40 seconds so the repeat can be seen), and with auto-check off nothing is asked' -Body {
+        Assert-UpdateFeedFiles | Out-Null
+        $ctx = Start-PreviousForUpdate -CandidateVersion $CandidateVersion
+        if (-not $ctx) { return }
+        # The interval setting is the candidate's: update to it first.
+        $p = Start-Process -FilePath $CandidateSetup -ArgumentList '--silent' -PassThru
+        $done = $p.WaitForExit(600000)
+        Add-Check 'Setup.exe --silent over the previous release finished' ($done -and $p.ExitCode -eq 0) "exit $(if ($done) { $p.ExitCode } else { 'none' })"
+        if (-not (Test-CameBackAsCandidate -Context $ctx -CandidateVersion $CandidateVersion)) { return }
+        $name = 'DELUNO_TEST_UPDATE_CHECK_INTERVAL_SECONDS'
+        $feed = $null
+        try {
+            $feed = Start-UpdateFeed -Folder (Get-UpdateFeedFolder) -ThrottleMs 0
+            Set-UpdateSourceToFeed | Out-Null
+            Try-Deluno -Method PUT -Path '/api/updates/preferences' -Body @{ mode = 'notify-only'; autoCheck = $true } | Out-Null
+            $null = Quit-DelunoFromTray
+            # The tray is started from the user's own profile, so the setting is put there (and taken away again after).
+            [Environment]::SetEnvironmentVariable($name, '40', 'User')
+            $exe = Get-InstalledDelunoExe
+            Start-ProgramUnelevated -Path $exe.FullName -WorkingDirectory $exe.DirectoryName -Elevated
+            $up = Wait-Until -TimeoutSec 240 -IntervalSec 2 -Condition { Test-DelunoAnswering }
+            Add-Check 'Deluno starts with auto-check on' $up.Ok ''
+            if (-not $up.Ok) { return }
+            $asks = { @(Get-UpdateFeedRequests | Where-Object { $_ -match 'releases\.|RELEASES' } | ForEach-Object { [DateTime]::Parse(($_ -split ' ')[0]).ToUniversalTime() }) }
+            $three = Wait-Until -TimeoutSec 300 -IntervalSec 3 -Condition { if (@(& $asks).Count -ge 3) { $true } else { $null } }
+            $times = @(& $asks)
+            Add-Check 'The feed is asked for the release list by itself three times in a row (the start-up check, then the repeat twice)' $three.Ok "$($times.Count) asks"
+            if ($three.Ok) {
+                $gap1 = ($times[1] - $times[0]).TotalSeconds; $gap2 = ($times[2] - $times[1]).TotalSeconds
+                Add-Check 'The repeats come after the set interval (40 seconds), not at once and not at the six hours' ($gap1 -ge 35 -and $gap1 -le 120 -and $gap2 -ge 35 -and $gap2 -le 120) ("{0:N0} s then {1:N0} s" -f $gap1, $gap2)
+            }
+            # With auto-check off nothing is asked, however often the interval comes round.
+            Try-Deluno -Method PUT -Path '/api/updates/preferences' -Body @{ autoCheck = $false } | Out-Null
+            Start-Sleep -Seconds 5 # reason: a check that was already under way when the setting changed ends before the count is taken
+            $before = @(& $asks).Count
+            Start-Sleep -Seconds 130 # reason: three full intervals must pass with nothing asked; nothing signals that a check will not come
+            Add-Check 'With auto-check off the feed is not asked again, through three intervals' (@(& $asks).Count -eq $before) "$before asks, then $(@(& $asks).Count)"
+        }
+        finally {
+            [Environment]::SetEnvironmentVariable($name, $null, 'User')
+            if ($feed) { Stop-UpdateFeed $feed }
+        }
+    }
+}
+
+function Invoke-UninstallKeepsBundledApps {
+    param([Parameter(Mandatory)] [string] $CandidateSetup, [Parameter(Mandatory)] [string] $CandidateVersion)
+    Invoke-Scenario -Id 'uninstall.keeps-bundled-apps' -Title 'Uninstalling Deluno leaves the apps it installed (SABnzbd and qBittorrent here) installed, running on their ports, with their settings as they were' -Body {
+        $ctx = Start-PreviousForUpdate -CandidateVersion $CandidateVersion
+        if (-not $ctx) { return }
+        foreach ($c in @(Get-DownloadClients | Where-Object { $_.protocol -eq 'qbittorrent' })) { Try-Deluno -Method DELETE -Path "/api/download-clients/$($c.id)" | Out-Null }
+        $ask = Try-Deluno -Method POST -Path '/api/companion-tools/install' -Body @{ toolIds = @('sabnzbd', 'qbittorrent') }
+        Add-Check 'Asking for SABnzbd and qBittorrent is accepted (HTTP 202)' ($ask.Status -eq 202) "HTTP $($ask.Status) $($ask.Raw)"
+        if ($ask.Status -ne 202) { return }
+        $final = $null
+        $deadline = (Get-Date).AddMinutes(20)
+        while ((Get-Date) -lt $deadline) {
+            $r = Try-Deluno -Path '/api/companion-tools'
+            if ($r.Status -eq 200) {
+                $jobs = @($r.Data.tools | Where-Object { $_.job })
+                if ($jobs.Count -ge 2 -and @($jobs | Where-Object { $_.job.status -in 'queued', 'running' }).Count -eq 0) { $final = $r.Data; break }
+            }
+            Start-Sleep -Seconds 2 # reason: polling the install's progress; the page reads it the same way
+        }
+        Add-Check 'Both are installed within 20 minutes' ($null -ne $final -and @($final.tools | Where-Object { $_.job -and $_.job.status -ne 'done' }).Count -eq 0) ''
+        if (-not $final) { return }
+        # The uninstall hook under test is the candidate's.
+        $ctx.Before = Get-DelunoStateSummary
+        $p = Start-Process -FilePath $CandidateSetup -ArgumentList '--silent' -PassThru
+        $done = $p.WaitForExit(600000)
+        Add-Check 'Setup.exe --silent over the previous release finished' ($done -and $p.ExitCode -eq 0) "exit $(if ($done) { $p.ExitCode } else { 'none' })"
+        if (-not (Test-CameBackAsCandidate -Context $ctx -CandidateVersion $CandidateVersion)) { return }
+        $cfgBefore = @(Get-ClientConfigLines)
+        $wanted = @($cfgBefore | ForEach-Object { if ($_ -match '^qb:WebUI\\Port=(\d+)') { [int]$Matches[1] } elseif ($_ -match '^sab:port\s*=\s*(\d+)') { [int]$Matches[1] } })
+        $portsOf = { @($wanted | Where-Object { Get-NetTCPConnection -State Listen -LocalPort $_ -ErrorAction SilentlyContinue }) }
+        $up = Wait-Until -TimeoutSec 240 -IntervalSec 5 -Condition { if (@(& $portsOf).Count -eq 2 -and $wanted.Count -eq 2) { $true } else { $null } }
+        Add-Check 'Before the uninstall both answer on their ports' $up.Ok "ports $($wanted -join ',')"
+        if (-not $up.Ok) { return }
+        $qbFolder = Join-Path $env:APPDATA 'qBittorrent'
+        $sabFolder = Join-Path $env:LOCALAPPDATA 'sabnzbd'
+        $r = Invoke-DelunoUninstall
+        Add-Check 'The uninstaller finished with exit code 0' $r.Ok $r.Detail
+        $gone = Wait-Until -TimeoutSec 120 -IntervalSec 2 -Condition { -not (Test-Path (Join-Path (Join-Path $env:LOCALAPPDATA 'Deluno') 'current\Deluno.exe')) -and @(Get-DelunoProcess).Count -eq 0 }
+        Add-Check 'Deluno is removed' $gone.Ok ''
+        $null = Wait-Until -TimeoutSec 90 -IntervalSec 2 -Condition { -not (Get-Process -Name 'Update' -ErrorAction SilentlyContinue) }
+        Start-Sleep -Seconds 20 # reason: an app that the uninstall was going to stop would be stopped some seconds after Deluno goes; nothing signals that it will not
+        Add-Check 'SABnzbd and qBittorrent still answer on the same ports' (@(& $portsOf).Count -eq 2) "now $((@(& $portsOf)) -join ',')"
+        Add-Check 'Their settings folders and files are still there, as they were' ((Test-Path $qbFolder) -and (Test-Path $sabFolder) -and (@(Get-ClientConfigLines) -join "`n") -eq ($cfgBefore -join "`n")) ''
+        $apps = @(Get-Process -Name 'qbittorrent', 'SABnzbd', 'SABnzbd-console' -ErrorAction SilentlyContinue)
+        Add-Check 'Their programs are still running' ($apps.Count -ge 1) (($apps | ForEach-Object { $_.ProcessName }) -join ', ')
+    }
+}
