@@ -2,6 +2,7 @@ using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.Metadata;
 using Deluno.Jobs.Contracts;
+using Deluno.Jobs.Data;
 using Moq;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
@@ -89,5 +90,20 @@ public sealed class InterfaceDefaultsTests
         await provider.ClearServiceTroubleAsync(CancellationToken.None);
         Assert.Same(groups, await provider.GetSeriesEpisodeGroupsAsync("tv-1", MetadataCatalogueSource.Preferred, CancellationToken.None));
         Assert.Empty(await provider.GetDiscoverListAsync("movie", new DiscoverListQuery(DiscoverListQuery.Popular, 1), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_dispatch_store_that_does_not_override_the_optional_members_keeps_nothing_and_closes_nothing()
+    {
+        var found = (DownloadDispatchItem)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(DownloadDispatchItem));
+        var mock = new Mock<IDownloadDispatchesRepository> { CallBase = true };
+        mock.Setup(store => store.FindDispatchByHashAsync("held", "hash", It.IsAny<CancellationToken>())).ReturnsAsync(found);
+        mock.Setup(store => store.FindDispatchByHashAsync("empty", "hash", It.IsAny<CancellationToken>())).ReturnsAsync((DownloadDispatchItem?)null);
+        var store = mock.Object;
+
+        await store.SetFollowUpRefusalsAsync("dispatch-1", null, CancellationToken.None);
+        Assert.Equal(0, await store.CloseContainedDispatchesAsync("held", "hash", "reason", CancellationToken.None));
+        Assert.Same(found, Assert.Single(await store.FindOpenDispatchesByHashAsync("held", "hash", CancellationToken.None)));
+        Assert.Empty(await store.FindOpenDispatchesByHashAsync("empty", "hash", CancellationToken.None));
     }
 }
