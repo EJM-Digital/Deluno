@@ -36,16 +36,13 @@ public sealed class MetadataProviderHealthCheck(IMetadataProvider metadataProvid
             return [HealthCheckOutcome.Ok(Id, Category, Name, status.Message)];
         }
 
-        var failureMessage = status.LastFailure.Summary;
         return
         [
             HealthCheckOutcome.Problem(
                 Id,
                 Category,
                 Name,
-                string.IsNullOrWhiteSpace(failureMessage)
-                    ? "Deluno could not reach its metadata provider."
-                    : $"Deluno could not reach its metadata provider: {failureMessage}",
+                $"Deluno could not reach its metadata provider: {status.LastFailure.Summary}",
                 cause: "TMDb, or the metadata broker, did not answer Deluno's reachability check.",
                 fix: "Check the connection from this server to the internet, and confirm the key or broker URL in Settings → Metadata is still correct.",
                 detailsJson: $$"""{"provider":"{{status.Provider}}","mode":"{{status.Mode}}"}""")
