@@ -623,8 +623,8 @@
       "branch": 89.39
     },
     "apps/web/src/components/ui/tooltip.tsx": {
-      "line": 83.33,
-      "branch": 0
+      "line": 100,
+      "branch": null
     },
     "apps/web/src/hooks/use-bulk-edit.ts": {
       "line": 89.77,
