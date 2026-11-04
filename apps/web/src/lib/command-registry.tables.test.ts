@@ -103,6 +103,14 @@ describe("the action commands", () => {
 });
 
 describe("the shortcuts listed for the keyboard", () => {
+  it("lists every navigation command's own key, so none can be left out (#1465)", () => {
+    const listed = getGlobalShortcuts("Win32").filter((s) => s.group === "Navigation");
+    const withKeys = navigationCommands.filter((command) => command.shortcut);
+    expect(withKeys.length).toBeGreaterThan(0);
+    expect(listed.map((s) => [s.keys, s.label])).toEqual(withKeys.map((command) => [command.shortcut, `Go to ${command.label}`]));
+  });
+
+
   it("lists them by group, in order", () => {
     const shortcuts = getGlobalShortcuts("Win32");
     expect(shortcuts.map((s) => [s.keys.join("+"), s.label, s.group])).toEqual([
@@ -113,11 +121,12 @@ describe("the shortcuts listed for the keyboard", () => {
       ["g+o", "Go to Dashboard", "Navigation"],
       ["g+m", "Go to Movies", "Navigation"],
       ["g+t", "Go to TV", "Navigation"],
-      ["g+q", "Go to In progress", "Navigation"],
       ["g+i", "Go to Find & Download", "Navigation"],
       ["g+x", "Go to Automation & Recovery", "Navigation"],
+      ["g+q", "Go to In progress", "Navigation"],
       ["g+a", "Go to Activity", "Navigation"],
       ["g+c", "Go to Schedule", "Navigation"],
+      ["g+d", "Go to Discover", "Navigation"],
       ["g+s", "Go to Media Management", "Navigation"],
       ["g+y", "Go to System & Settings", "Navigation"],
       ["j", "Focus next row", "Table"],
