@@ -6,9 +6,6 @@ import { RealtimeGroups, useSignalREvent, useSignalRResync } from "../../lib/use
 export type ConnectivityStatus = {
   isOutage: boolean;
   sinceUtc: string | null;
-  checkedUtc: string;
-  checkedHosts: string[];
-  message: string;
 };
 
 function formatSince(sinceUtc: string | null): string {
@@ -28,17 +25,11 @@ function formatSince(sinceUtc: string | null): string {
  */
 export function OutageBanner() {
   const [status, setStatus] = useState<ConnectivityStatus | null>(null);
-  const active = useRef(true);
-
-  useEffect(() => {
-    active.current = true;
-    return () => { active.current = false; };
-  }, []);
 
   const read = useRef(async () => {
     try {
       const next = await fetchJson<ConnectivityStatus>("/api/system/connectivity");
-      if (active.current) setStatus(next);
+      setStatus({ isOutage: next.isOutage, sinceUtc: next.sinceUtc });
     } catch {
       // A failed poll says nothing about connectivity; the banner just
       // keeps whatever it last knew until the next successful check.
@@ -49,13 +40,7 @@ export function OutageBanner() {
 
   // The server says when the state flips, even while Deluno sits hidden or minimised.
   useSignalREvent("ConnectivityChanged", RealtimeGroups.Dashboard, (event) => {
-    setStatus((current) => ({
-      isOutage: event.isOutage,
-      sinceUtc: event.sinceUtc,
-      checkedUtc: event.checkedUtc,
-      checkedHosts: current?.checkedHosts ?? [],
-      message: event.message
-    }));
+    setStatus({ isOutage: event.isOutage, sinceUtc: event.sinceUtc });
   });
   // Events that could not be replayed after a dropped connection: ask once.
   useSignalRResync(() => void read());

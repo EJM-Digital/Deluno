@@ -17,7 +17,7 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
     React.useImperativeHandle(ref, () => inputRef.current as HTMLInputElement);
 
     React.useEffect(() => {
-      if (inputRef.current) inputRef.current.indeterminate = indeterminate;
+      (inputRef.current as HTMLInputElement).indeterminate = indeterminate;
     }, [indeterminate]);
 
     return (
@@ -28,8 +28,8 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
           id={id ?? field?.id}
           checked={checked}
           disabled={disabled}
-          aria-describedby={props["aria-describedby"] ?? field?.describedBy}
-          aria-invalid={props["aria-invalid"] ?? (field?.invalid ? true : undefined)}
+          aria-describedby={field?.describedBy}
+          aria-invalid={field?.invalid ? true : undefined}
           onChange={(event) => onCheckedChange(event.target.checked)}
           className={cn(
             "peer h-4 w-4 appearance-none rounded-sm border border-hairline bg-surface-1 shadow-none",

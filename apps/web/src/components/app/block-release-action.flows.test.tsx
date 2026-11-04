@@ -67,6 +67,20 @@ describe("blocking a release from every angle", () => {
     await waitFor(() => expect(lib.checkBlockedMatch).toHaveBeenCalledTimes(3));
   });
 
+  it("ignores an old answer about a release that is no longer shown", async () => {
+    let answerOld: (value: unknown) => void = () => undefined;
+    lib.checkBlockedMatch.mockReturnValueOnce(new Promise((resolve) => { answerOld = resolve; }));
+    lib.checkBlockedMatch.mockResolvedValueOnce(null);
+    const view = render(<BlockReleaseAction releaseName="One" indexerName="Nebula" mediaType="movie" entityId="m1" title="One" />);
+    view.rerender(<BlockReleaseAction releaseName="Two" indexerName="Nebula" mediaType="movie" entityId="m1" title="Two" />);
+    await waitFor(() => expect(lib.checkBlockedMatch).toHaveBeenCalledTimes(2));
+
+    answerOld(blockedRow);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(screen.getByRole("button", { name: 'Block "Two"' })).toBeInTheDocument();
+  });
+
   it("does not turn into Lift the block from an answer that arrives after it has gone", async () => {
     let answer: (value: unknown) => void = () => undefined;
     lib.checkBlockedMatch.mockReturnValue(new Promise((resolve) => { answer = resolve; }));

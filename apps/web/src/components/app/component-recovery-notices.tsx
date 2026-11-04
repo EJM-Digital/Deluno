@@ -23,11 +23,9 @@ export function ComponentRecoveryNotices() {
   }
 
   useEffect(() => {
-    let active = true;
     void fetchJson<ComponentRecoveryNotice[]>("/api/system/component-recovery")
-      .then((next) => { if (active) setNotices(next); })
-      .catch(() => { if (active) setNotices([]); });
-    return () => { active = false; };
+      .then(setNotices)
+      .catch(() => undefined);
   }, []);
 
   async function readd(notice: ComponentRecoveryNotice) {

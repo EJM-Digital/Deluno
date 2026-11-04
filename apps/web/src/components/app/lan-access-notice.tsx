@@ -27,11 +27,9 @@ export function LanAccessNotice({ showResult = false, address }: {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    let active = true;
     void fetchJson<LanAccessStatus>("/api/system/lan-access")
-      .then((next) => { if (active) { setStatus(next); setChecked(true); } })
-      .catch(() => { if (active) { setStatus(null); setChecked(true); } });
-    return () => { active = false; };
+      .then((next) => { setStatus(next); setChecked(true); })
+      .catch(() => setChecked(true));
   }, []);
 
   async function allow() {

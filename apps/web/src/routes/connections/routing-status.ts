@@ -35,9 +35,8 @@ export function clientProblemOf(report: Pick<FolderChainReport, "clients">): { p
  * or whose Label plugin is off, is not Ready (#1133): the same check the drawer's folder check runs decides.
  */
 export function routingStatus(snapshot: LibraryRoutingSnapshot | undefined, check?: RoutingCheck): RoutingStatus {
-  const sources = snapshot?.sources ?? [];
-  const targets = snapshot?.downloadClients ?? [];
-  if (!sources.length) return { tone: "warn", label: "No indexers" };
+  if (!snapshot?.sources.length) return { tone: "warn", label: "No indexers" };
+  const targets = snapshot.downloadClients;
   if (!targets.length) return { tone: "warn", label: "No client" };
   if (check?.state === "done" && check.problem) {
     return { tone: "warn", label: "Needs a fix", hint: check.problem, needsFix: true };
@@ -64,8 +63,8 @@ export function useRoutingChecks(
   const targets = useMemo(
     () => libraries
       .map((library) => ({ id: library.id, snapshot: routing.find((item) => item.libraryId === library.id) }))
-      .filter((item) => (item.snapshot?.sources.length ?? 0) > 0 && (item.snapshot?.downloadClients.length ?? 0) > 0)
-      .map((item) => `${item.id}:${item.snapshot!.downloadClients.map((link) => `${link.downloadClientId}/${link.category ?? ""}`).join(",")}`),
+      .filter((item) => item.snapshot && item.snapshot.sources.length > 0 && item.snapshot.downloadClients.length > 0)
+      .map((item) => `${item.id}:${item.snapshot!.downloadClients.map((link) => `${link.downloadClientId}/${link.category}`)}`),
     [libraries, routing]
   );
   const key = targets.join("|");
