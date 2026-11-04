@@ -383,17 +383,10 @@ internal static class DownloadClientHelpers
     internal static DateTimeOffset? FromUnixOrNull(long? value)
         => value is > 0 ? DateTimeOffset.FromUnixTimeSeconds(value.Value) : null;
 
-    internal static int ParseId(string value) => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
-
     /// <summary>
-    /// The same parse, for the clients that address downloads by number, but
-    /// admitting when it cannot.
-    ///
-    /// <para><see cref="ParseId"/> answers 0 for anything it cannot read, and 0
-    /// is a torrent id — so an id in the wrong shape produced a well-formed
-    /// request aimed at nothing, which the client accepted and Deluno reported
-    /// as done. Silence in the shape of success. Transmission and NZBGet use
-    /// this instead and refuse the action outright.</para>
+    /// Reads an id for the clients that address downloads by number, admitting when it cannot. An id in the wrong shape is
+    /// refused outright: reading it as 0 (a torrent id) made a well-formed request aimed at nothing, which the client
+    /// accepted and Deluno reported as done.
     /// </summary>
     internal static bool TryParseId(string value, out int id)
         => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out id);

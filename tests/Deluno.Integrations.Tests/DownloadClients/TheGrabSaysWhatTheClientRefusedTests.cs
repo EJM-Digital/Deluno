@@ -269,6 +269,19 @@ public sealed class TheGrabSaysWhatTheClientRefusedTests
         Assert.Empty(world.Kept);
     }
 
+    [Fact]
+    public async Task A_refusal_that_cannot_be_kept_written_or_raised_never_undoes_the_grab()
+    {
+        var world = new World(Rig(refuseCategory: true, refuseShareLimits: false), shareLimits: false, dispatchFails: true, activityFails: true, healthFails: true);
+
+        var result = await world.GrabAsync(Request() with { DispatchId = "dispatch-1" });
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Empty(world.Kept);
+        Assert.Empty(world.Activity);
+        Assert.Empty(world.Health);
+    }
+
     private sealed class World
     {
         private readonly DownloadClientGrabService service;
@@ -281,7 +294,7 @@ public sealed class TheGrabSaysWhatTheClientRefusedTests
 
         public List<(string Id, string? Json)> Kept { get; } = [];
 
-        public World(QbittorrentDownloadClient adapter, bool shareLimits)
+        public World(QbittorrentDownloadClient adapter, bool shareLimits, bool dispatchFails = false, bool activityFails = false, bool healthFails = false)
         {
             var client = Client(shareLimits);
             var connections = new Mock<IConnectionsRepository>();
@@ -296,6 +309,7 @@ public sealed class TheGrabSaysWhatTheClientRefusedTests
             dispatches.Setup(instance => instance.SetFollowUpRefusalsAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
                 .Returns((string id, string? json, CancellationToken _) =>
                 {
+                    if (dispatchFails) throw new InvalidOperationException("The dispatch could not be written.");
                     Kept.Add((id, json));
                     return Task.CompletedTask;
                 });
@@ -303,6 +317,7 @@ public sealed class TheGrabSaysWhatTheClientRefusedTests
             activity.Setup(instance => instance.RecordActivityAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((string category, string message, string? details, string? job, string? entityType, string? entityId, CancellationToken _) =>
                 {
+                    if (activityFails) throw new InvalidOperationException("Activity could not be written.");
                     Assert.Equal("download.follow-up.refused", category);
                     Activity.Add(message);
                     return new ActivityEventItem(Guid.NewGuid().ToString("n"), category, message, details, job, entityType, entityId, DateTimeOffset.UnixEpoch);
@@ -312,6 +327,7 @@ public sealed class TheGrabSaysWhatTheClientRefusedTests
             health.Setup(instance => instance.UpsertResultsAsync(It.IsAny<IReadOnlyList<HealthCheckOutcome>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IReadOnlyList<HealthCheckOutcome> outcomes, CancellationToken _) =>
                 {
+                    if (healthFails) throw new InvalidOperationException("Health could not be written.");
                     Health.AddRange(outcomes);
                     return [];
                 });
