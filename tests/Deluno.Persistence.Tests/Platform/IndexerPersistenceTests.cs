@@ -56,6 +56,25 @@ public sealed class IndexerPersistenceTests
         Assert.Equal("untested", created.HealthStatus);
     }
 
+    // #1484: a torrent indexer created blank starts at 1; Usenet has no seeder count and stays blank.
+    [Theory]
+    [InlineData("torznab", null, 1)]
+    [InlineData("rss", null, 1)]
+    [InlineData("tracker", null, 1)]
+    [InlineData("torznab", 0, 0)]
+    [InlineData("torznab", 3, 3)]
+    [InlineData("newznab", null, null)]
+    public async Task CreateIndexerAsync_stores_1_for_a_torrent_indexer_with_a_blank_minimum_seeders(string protocol, int? given, int? stored)
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+
+        var created = await repo.CreateIndexerAsync(BaseCreateRequest() with { Protocol = protocol, MinimumSeeders = given }, CancellationToken.None);
+
+        Assert.Equal(stored, created.MinimumSeeders);
+        Assert.Equal(stored, Assert.Single(await repo.ListIndexersAsync(CancellationToken.None)).MinimumSeeders);
+    }
+
     [Fact]
     public async Task CreateIndexerAsync_disabled_indexer_starts_with_disabled_health_status()
     {

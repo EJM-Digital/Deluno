@@ -397,7 +397,8 @@ public sealed class SqliteConnectionsRepository(
             MinimumAgeMinutes = request.MinimumAgeMinutes,
             RetentionDays = request.RetentionDays,
             MaximumSizeMb = request.MaximumSizeMb,
-            MinimumSeeders = request.MinimumSeeders,
+            // A torrent indexer created blank starts at 1; Usenet has no seeder count (#1484).
+            MinimumSeeders = request.MinimumSeeders ?? (DownloadProtocols.SourceKind(IndexerProtocols.Normalize(request.Protocol)) == DownloadProtocols.Torrent ? 1 : null),
             PreferIndexerFlags = request.PreferIndexerFlags,
             RequiredWords = NormalizeBlankToNull(request.RequiredWords),
             IgnoredWords = NormalizeBlankToNull(request.IgnoredWords),

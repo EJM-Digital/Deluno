@@ -29,7 +29,7 @@ describe("what an indexer sends", () => {
   });
 
   it("sends nothing for blank fields, and asks the server to clear them only when a saved indexer is edited", () => {
-    const blank = { ...emptyIndexerForm(), name: "Alpha", baseUrl: "https://alpha.example", priority: "" };
+    const blank = { ...emptyIndexerForm(), name: "Alpha", baseUrl: "https://alpha.example", priority: "", minimumSeeders: "" };
     const cleared = buildIndexerSavePayload(blank, blank, true);
     const added = buildIndexerSavePayload(blank, blank, false);
     const nulls = {

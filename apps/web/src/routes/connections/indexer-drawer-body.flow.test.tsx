@@ -299,7 +299,7 @@ describe("what each box does to the form", () => {
 
   it.each(boxes)("%s changes only %s, and clears the error for %s", async (label, key, errorKey) => {
     const user = userEvent.setup();
-    const { seen, clearError } = open({ form: { protocol: "torznab", priority: "25" } });
+    const { seen, clearError } = open({ form: { protocol: "torznab", priority: "25", minimumSeeders: "" } });
     await user.type(screen.getByLabelText(label), "7");
     expect(seen.form[key as keyof IndexerForm]).toBe("7");
     expect(seen.form.priority).toBe("25");
@@ -349,8 +349,8 @@ describe("what each box does to the form", () => {
     expect(screen.getByLabelText("Maximum size")).toHaveAttribute("min", "0");
     expect(screen.getByLabelText("Availability delay")).toHaveAttribute("min", "0");
     expect(screen.getByLabelText("Minimum seeders")).toHaveAttribute("min", "0");
-    // #1483: the owner's words, 5 Nov - 0 is no minimum, 2 or 3 is the advice.
-    expect(screen.getByText("0 means no minimum. 2 or 3 is recommended: a torrent with fewer seeders than this is refused before it can be grabbed.")).toBeInTheDocument();
+    // #1483/#1484: the owner's words, 5 Nov - 0 is no minimum, 1 is the default, 2 or 3 is the advice.
+    expect(screen.getByText("0 means no minimum, so even a torrent nobody is sharing can be grabbed. 1, the default, refuses only those. 2 or 3 is recommended.")).toBeInTheDocument();
     expect(screen.getByText("Custom intervals must be between 2 and 60 seconds. The default is 2 seconds.")).toBeInTheDocument();
   });
 

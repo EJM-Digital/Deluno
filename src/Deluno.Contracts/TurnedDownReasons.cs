@@ -116,7 +116,7 @@ public static class TurnedDownReasons
             return TurnedDownGroups.Language;
         }
 
-        if (Has("No one is seeding") || Has("No seeders") || Has("seeder(s), below") || Has("Very low seed count") || Has("seeders, below"))
+        if (Has("No one is seeding") || Has("No seeders") || Has("seeder(s), below") || Has("seeder(s), under") || Has("Very low seed count") || Has("seeders, below"))
         {
             return TurnedDownGroups.FewSeeders;
         }
