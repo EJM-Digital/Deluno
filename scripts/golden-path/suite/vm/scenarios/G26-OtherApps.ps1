@@ -981,11 +981,16 @@ function Set-PickerBox {
 }
 
 function Invoke-PickerUsenetLoginAndSubset {
-    param([Parameter(Mandatory)] [string] $CandidateVersion)
+    param([Parameter(Mandatory)] [string] $CandidateSetup, [Parameter(Mandatory)] [string] $CandidateVersion)
     Invoke-Scenario -Id 'picker.usenet-login-and-subset' -Title "The picker with only NZBGet ticked: the Usenet login is asked for, an empty login and an unsafe one are refused in words with the window still open and nothing installed, a good one is accepted once and written to NZBGet's own settings, only NZBGet is installed, the finish screen offers Open Deluno, and the browser opens only if that is pressed" -Body {
         # A machine with none of the clients: the previous release, installed without the picker.
         $ctx = Start-PreviousForUpdate -CandidateVersion $CandidateVersion
         if (-not $ctx) { return }
+        # The picker under test is the candidate's: update to it first (the previous release's picker is the one #1468 was found in).
+        $setupRun = Start-Process -FilePath $CandidateSetup -ArgumentList '--silent' -PassThru
+        $setupDone = $setupRun.WaitForExit(600000)
+        Add-Check 'Setup.exe --silent over the previous release finished' ($setupDone -and $setupRun.ExitCode -eq 0) "exit $(if ($setupDone) { $setupRun.ExitCode } else { 'none' })"
+        if (-not (Test-CameBackAsCandidate -Context $ctx -CandidateVersion $CandidateVersion)) { return }
         $dataRoot = Join-Path $env:LOCALAPPDATA 'DelunoData'
         $pending = Join-Path $dataRoot 'config\pending-component-installs.json'
         $hadPending = Test-Path $pending
@@ -1034,7 +1039,7 @@ function Invoke-PickerUsenetLoginAndSubset {
             Click-WindowButton -Window $again -NamePattern '^Install selected$' | Out-Null
             $finished = Wait-Until -TimeoutSec 1200 -IntervalSec 5 -Condition {
                 $w = Wait-DesktopWindow -NamePattern $title -Process 'Deluno' -TimeoutSec 2
-                if ($w -and @(Get-WindowControls -Window $w | Where-Object { $_.Type -eq 'Button' -and $_.Name -eq 'Open Deluno' -and -not $_.Offscreen }).Count -gt 0) { $w } else { $null }
+                if ($w -and @(Get-WindowControls -Window $w | Where-Object { $_.Type -eq 'Button' -and $_.Name -eq 'Open Deluno' -and -not $_.Offscreen -and $_.Enabled }).Count -gt 0) { $w } else { $null }
             }
             Add-Check 'The install finishes and the finish screen offers Open Deluno and Close' ($finished.Ok -and @(Get-WindowControls -Window $finished.Value | Where-Object { $_.Type -eq 'Button' -and $_.Name -eq 'Close' }).Count -gt 0) $(if ($finished.Ok) { Get-WindowText -Window $finished.Value } else { 'windows: ' + (Format-DesktopWindows) })
             if (-not $finished.Ok) { return }
