@@ -195,8 +195,7 @@ export function FitList({
   const signature = rows.map((row) => String(row.key)).join("|");
 
   const measure = useCallback(() => {
-    const box = boxRef.current;
-    if (!box) return;
+    const box = boxRef.current!;
     const boxTop = box.getBoundingClientRect().top;
     const marked = Array.from(box.querySelectorAll<HTMLElement>("[data-fit-row]"));
     // A row that could not be measured is never hidden: show everything rather than guess.
