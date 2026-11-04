@@ -152,7 +152,7 @@ public sealed class KeepAwakeServiceTests
         {
             Answer = async (_, token) =>
             {
-                await Task.Delay(Timeout.Infinite, token);
+                await Task.Delay(Timeout.Infinite, token); // reason: stands for a read that never answers; the stop cancels it
                 return true;
             }
         };

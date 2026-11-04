@@ -156,7 +156,7 @@ public sealed class HistoryRetentionWorkerPruneTests
         await using var _ = provider;
         settings.Setup(repository => repository.GetAsync(It.IsAny<CancellationToken>())).Returns(async (CancellationToken token) =>
         {
-            await Task.Delay(Timeout.Infinite, token);
+            await Task.Delay(Timeout.Infinite, token); // reason: stands for a read that never answers; the stop cancels it
             return DefaultSettings(30);
         });
 

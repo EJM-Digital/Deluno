@@ -67,7 +67,7 @@ public sealed class LaneSupervisorStopAndWordsTests
         var supervisor = new LaneSupervisor(new RecordingLogger<LaneSupervisor>(), reports);
         using var stop = new CancellationTokenSource();
 
-        var task = supervisor.SuperviseAsync("import", token => Task.Delay(Timeout.Infinite, token), stop.Token);
+        var task = supervisor.SuperviseAsync("import", token => Task.Delay(Timeout.Infinite, token), stop.Token); // reason: a lane that runs until the stop cancels it
         await stop.CancelAsync();
         await task.WaitAsync(TimeSpan.FromSeconds(3));
 
