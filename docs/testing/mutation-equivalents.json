@@ -953,6 +953,30 @@
       "line": 84,
       "replacement": "default:",
       "reason": "Equivalent: an unreadable time is NaN whether it starts empty or as a stray word; the duration text is never the dash because it is at least a minute; a zero size or place is already false before it is compared; and removing the empty default case changes nothing because no other case follows it."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/group.ts",
+      "mutator": "ArrayDeclaration",
+      "line": 75,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "Equivalent: the starting parts are replaced before they are read (a new group always sets them), and a group's tooltip and freshness are overwritten when the group is closed, which always happens before the list is returned."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/group.ts",
+      "mutator": "ArrayDeclaration",
+      "line": 98,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "Equivalent: the starting parts are replaced before they are read (a new group always sets them), and a group's tooltip and freshness are overwritten when the group is closed, which always happens before the list is returned."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/group.ts",
+      "mutator": "BooleanLiteral",
+      "line": 98,
+      "replacement": "true",
+      "reason": "Equivalent: the starting parts are replaced before they are read (a new group always sets them), and a group's tooltip and freshness are overwritten when the group is closed, which always happens before the list is returned."
     }
   ]
 }
