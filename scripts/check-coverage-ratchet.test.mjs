@@ -67,6 +67,16 @@ test("update raises and never lowers", () => {
   assert.equal(next.note, "keep");
 });
 
+test("update records a file simplified to no branches as having none, so the check that follows passes", () => {
+  // CI run 41888609091: two files lost every branch to a simplification; update kept their old 0 and the check then
+  // failed on "was 0% and now has no branches".
+  const baseline = { version: 1, files: { "src/S.ts": { line: 50, branch: 0 } } };
+  const report = { files: { "src/S.ts": file(4, 4, 0, 0) } };
+  const next = update(baseline, report);
+  assert.deepEqual(next.files["src/S.ts"], { line: 100, branch: null });
+  assert.deepEqual(compare(next, report).failures, []);
+});
+
 test("update keeps entries for missing files unless pruning", () => {
   const baseline = { files: { "src/Gone.cs": { line: 90, branch: 90 } } };
   assert.ok("src/Gone.cs" in update(baseline, { files: {} }).files);

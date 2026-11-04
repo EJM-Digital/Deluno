@@ -3,318 +3,358 @@
   "note": "Per file: line and branch percent rounded down to two places; only ever raised. First filled from CI run 38639740644 (docs/testing/COVERAGE.md, How the baseline is filled). After raising it, run node scripts/coverage/coverage-docs.mjs --write.",
   "files": {
     "apps/web/src/components/app/acquisition-blockers-card.tsx": {
-      "line": 94.11,
-      "branch": 83.33
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/activity-history.tsx": {
-      "line": 77.77,
-      "branch": 52.41
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/already-downloading-prompt.tsx": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/automation-paused-notice.tsx": {
-      "line": 96,
-      "branch": 73.68
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/block-release-action.tsx": {
-      "line": 87.69,
-      "branch": 78.26
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/blocked-releases-console.tsx": {
-      "line": 83.33,
-      "branch": 64.1
+      "line": 95.83,
+      "branch": 87.5
     },
     "apps/web/src/components/app/bulk-remove-dialog.tsx": {
-      "line": 83.33,
-      "branch": 57.14
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/bulk-tag-field.tsx": {
       "line": 100,
       "branch": 100
     },
     "apps/web/src/components/app/bundled-components-detected.tsx": {
-      "line": 83.33,
-      "branch": 64.28
+      "line": 91.66,
+      "branch": 78.57
     },
     "apps/web/src/components/app/calendar-subscribe-drawer.tsx": {
-      "line": 79.54,
-      "branch": 68.75
+      "line": 97.95,
+      "branch": 88.23
     },
     "apps/web/src/components/app/component-recovery-notices.tsx": {
-      "line": 90.62,
-      "branch": 61.11
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/connect-installed-apps.tsx": {
-      "line": 90.81,
-      "branch": 84.03
+      "line": 98.97,
+      "branch": 92.43
     },
     "apps/web/src/components/app/connection-tags-dialog.tsx": {
-      "line": 78.78,
-      "branch": 45.71
+      "line": 93.93,
+      "branch": 80
     },
     "apps/web/src/components/app/connection-update-panel.tsx": {
       "line": 81.25,
       "branch": 71.87
     },
     "apps/web/src/components/app/connection-version.tsx": {
-      "line": 90,
-      "branch": 96.87
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/country-release-row.tsx": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/credits-row.tsx": {
-      "line": 86.36,
-      "branch": 90.76
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/decision-explanation-list.tsx": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
+    },
+    "apps/web/src/components/app/detail-title-row.tsx": {
+      "line": 100,
+      "branch": 100
+    },
+    "apps/web/src/components/app/discover-filter-bar.tsx": {
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/download-dispatch-drawer.tsx": {
-      "line": 70.96,
-      "branch": 74.07
+      "line": 96.77,
+      "branch": 87.03
     },
     "apps/web/src/components/app/existing-media-import-dialog.tsx": {
-      "line": null,
-      "branch": null
+      "line": 98.48,
+      "branch": 84.7
     },
     "apps/web/src/components/app/failure-rules-console.tsx": {
-      "line": 94.44,
-      "branch": 91.66
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/failure-schedules-console.tsx": {
-      "line": 96.42,
-      "branch": 84.21
+      "line": 100,
+      "branch": 94.73
     },
     "apps/web/src/components/app/hero-backdrop.tsx": {
-      "line": 5.26,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/host-name-tip.tsx": {
       "line": 100,
       "branch": 100
     },
+    "apps/web/src/components/app/indexer-link.tsx": {
+      "line": 100,
+      "branch": 100
+    },
     "apps/web/src/components/app/job-drawer.tsx": {
-      "line": 83.33,
-      "branch": 88.23
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/lan-access-notice.tsx": {
-      "line": 95.65,
-      "branch": 77.14
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/library-actions.tsx": {
       "line": 100,
-      "branch": 70.58
+      "branch": 100
     },
     "apps/web/src/components/app/library-bulk-action.tsx": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/library-bulk-tools-dialog.tsx": {
-      "line": 27.27,
-      "branch": 10.9
+      "line": 100,
+      "branch": 100
+    },
+    "apps/web/src/components/app/library-collections.tsx": {
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/library-control-rail.tsx": {
-      "line": 54.09,
-      "branch": 48.41
+      "line": 100,
+      "branch": 93.65
     },
     "apps/web/src/components/app/library-create-dialog.tsx": {
-      "line": 57.14,
-      "branch": 72.22
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/library-filter-panel.tsx": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/library-grid.tsx": {
-      "line": 24.07,
-      "branch": 20.63
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/library-jump-rail.tsx": {
-      "line": 43.33,
-      "branch": 17.5
+      "line": 96.66,
+      "branch": 97.36
     },
     "apps/web/src/components/app/library-membership-card.tsx": {
-      "line": 42.55,
-      "branch": 42.85
+      "line": 87.75,
+      "branch": 78.57
     },
     "apps/web/src/components/app/library-overview.tsx": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/library-results.tsx": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/library-select-all-toggle.tsx": {
       "line": 100,
-      "branch": 48.27
+      "branch": 100
     },
     "apps/web/src/components/app/library-selection-command-bar.tsx": {
-      "line": 16.66,
-      "branch": 37.5
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/library-table.tsx": {
-      "line": 37.87,
-      "branch": 51.33
+      "line": 82.57,
+      "branch": 82.66
     },
     "apps/web/src/components/app/library-view.tsx": {
-      "line": 37.85,
-      "branch": 24.68
+      "line": 91.7,
+      "branch": 77.77
     },
     "apps/web/src/components/app/log-files-card.tsx": {
-      "line": 73.68,
-      "branch": 55
+      "line": 92.98,
+      "branch": 76.31
     },
     "apps/web/src/components/app/media-metadata-drawer.tsx": {
-      "line": 46.3,
-      "branch": 41.04
+      "line": 83.22,
+      "branch": 77.61
     },
     "apps/web/src/components/app/media-workspace-shell.tsx": {
-      "line": null,
+      "line": 100,
       "branch": null
     },
     "apps/web/src/components/app/metadata-maintenance-card.tsx": {
-      "line": 40,
-      "branch": 15.38
+      "line": 92.5,
+      "branch": 90.9
     },
     "apps/web/src/components/app/metadata-provider-issue-notice.tsx": {
-      "line": 94.11,
-      "branch": 90.62
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/movie-edit-drawer.tsx": {
-      "line": 88.46,
-      "branch": 75.94
+      "line": 96.15,
+      "branch": 86.41
     },
     "apps/web/src/components/app/movie-files-card.tsx": {
-      "line": 85.5,
-      "branch": 74.44
+      "line": 89.85,
+      "branch": 77.27
     },
     "apps/web/src/components/app/naming-format-field.tsx": {
-      "line": 26.22,
-      "branch": 39.72
+      "line": 90.16,
+      "branch": 84.93
     },
     "apps/web/src/components/app/outage-banner.tsx": {
       "line": 100,
-      "branch": 64.28
+      "branch": 100
     },
     "apps/web/src/components/app/page-link.tsx": {
       "line": 100,
       "branch": 100
     },
+    "apps/web/src/components/app/password-prompt.tsx": {
+      "line": 100,
+      "branch": 100
+    },
     "apps/web/src/components/app/profile-size-steps.tsx": {
-      "line": 4.87,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/provider-health-drawer.tsx": {
-      "line": 65.51,
-      "branch": 63.75
+      "line": 93.1,
+      "branch": 83.75
     },
     "apps/web/src/components/app/quality-build-steps.tsx": {
-      "line": 46.15,
-      "branch": 33.33
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/rating-strip.tsx": {
-      "line": 4.34,
-      "branch": 0
+      "line": 100,
+      "branch": 100
+    },
+    "apps/web/src/components/app/recovery-codes-manager.tsx": {
+      "line": 100,
+      "branch": 100
+    },
+    "apps/web/src/components/app/recovery-codes-panel.tsx": {
+      "line": 100,
+      "branch": 100
+    },
+    "apps/web/src/components/app/recovery-codes-prompt.tsx": {
+      "line": 95,
+      "branch": 88.23
     },
     "apps/web/src/components/app/release-filter-menus.tsx": {
-      "line": 25,
-      "branch": 37.5
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/removal-toast.ts": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/remove-download-action.tsx": {
-      "line": 96.29,
-      "branch": 64.28
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/remove-media-dialog.tsx": {
-      "line": 89.47,
-      "branch": 56.75
+      "line": 100,
+      "branch": 77.14
     },
     "apps/web/src/components/app/retention-add-title-dialog.tsx": {
-      "line": null,
-      "branch": null
+      "line": 100,
+      "branch": 85.71
     },
     "apps/web/src/components/app/retention-keep-dialog.tsx": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/retention-postpone-dialog.tsx": {
-      "line": 17.64,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/retention-step-builder.tsx": {
-      "line": 29.06,
-      "branch": 15.23
+      "line": 88.37,
+      "branch": 76.82
     },
     "apps/web/src/components/app/retention-title-card.tsx": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/search-result-note.tsx": {
       "line": 100,
-      "branch": 88.46
+      "branch": 100
     },
     "apps/web/src/components/app/secret-unreadable-notice.tsx": {
       "line": 100,
       "branch": 100
     },
     "apps/web/src/components/app/seerr-servers-card.tsx": {
-      "line": null,
-      "branch": null
+      "line": 84.75,
+      "branch": 80.54
     },
     "apps/web/src/components/app/settings-shell.tsx": {
-      "line": 24.19,
-      "branch": 3.7
+      "line": 100,
+      "branch": 100
+    },
+    "apps/web/src/components/app/signed-api-link.tsx": {
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/source-mark.tsx": {
-      "line": 20,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/subtitle-language-picker.tsx": {
-      "line": 47.05,
-      "branch": 45.45
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/subtitle-manual-search-dialog.tsx": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/subtitle-override-card.tsx": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/subtitle-timing-actions.tsx": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/tag-picker.tsx": {
       "line": 98.68,
-      "branch": 80.23
+      "branch": 83.33
     },
     "apps/web/src/components/app/title-action-grid.tsx": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "apps/web/src/components/app/title-folder-actions.tsx": {
-      "line": 46.29,
-      "branch": 59.25
+      "line": 92.59,
+      "branch": 85.18
     },
     "apps/web/src/components/app/title-synopsis.tsx": {
-      "line": 1.35,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/app/title-tags-editor.tsx": {
-      "line": 51.06,
-      "branch": 33.33
+      "line": 97.87,
+      "branch": 93.33
     },
     "apps/web/src/components/app/tmdb-attribution.tsx": {
+      "line": 100,
+      "branch": 100
+    },
+    "apps/web/src/components/app/transfers-view-chips.tsx": {
       "line": 100,
       "branch": 100
     },
@@ -323,104 +363,104 @@
       "branch": null
     },
     "apps/web/src/components/app/usenet-provider-panel.tsx": {
-      "line": 86.48,
-      "branch": 79.31
+      "line": 97.22,
+      "branch": 100
     },
     "apps/web/src/components/shell/app-mark.tsx": {
       "line": 100,
       "branch": 100
     },
     "apps/web/src/components/shell/attention-dot.tsx": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/shell/audit-timeline.tsx": {
-      "line": 80.24,
-      "branch": 59.82
+      "line": 100,
+      "branch": 90.9
     },
     "apps/web/src/components/shell/command-palette.tsx": {
-      "line": 4.34,
-      "branch": 0
+      "line": 97.91,
+      "branch": 75
     },
     "apps/web/src/components/shell/deluno-nav-glyph.tsx": {
       "line": 100,
-      "branch": 86.84
+      "branch": 100
     },
     "apps/web/src/components/shell/empty-state.tsx": {
       "line": 100,
-      "branch": 52.77
+      "branch": 100
     },
     "apps/web/src/components/shell/error-state.tsx": {
-      "line": null,
-      "branch": null
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/shell/illustrations.tsx": {
-      "line": 16.66,
-      "branch": 25
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/shell/keyboard-hint-overlay.tsx": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/shell/mobile-shell-nav.tsx": {
-      "line": 82.69,
-      "branch": 54.21
+      "line": 84.31,
+      "branch": 77.77
     },
     "apps/web/src/components/shell/motion.tsx": {
-      "line": 26.31,
-      "branch": 0
+      "line": 100,
+      "branch": null
     },
     "apps/web/src/components/shell/navigation-progress.tsx": {
       "line": 100,
       "branch": 100
     },
     "apps/web/src/components/shell/notifications-bell.tsx": {
-      "line": 97.33,
-      "branch": 80.76
+      "line": 98.66,
+      "branch": 86.84
     },
     "apps/web/src/components/shell/onboarding-banner.tsx": {
-      "line": 60,
+      "line": 100,
       "branch": 100
     },
     "apps/web/src/components/shell/page-hero.tsx": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/shell/route-error-boundary.tsx": {
-      "line": 61.11,
-      "branch": 42.85
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/shell/route-source-gate.tsx": {
       "line": 100,
-      "branch": 78.57
+      "branch": 100
     },
     "apps/web/src/components/shell/save-status.tsx": {
-      "line": 60.71,
-      "branch": 57.14
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/shell/setup-progress-ladder.tsx": {
       "line": 100,
-      "branch": 94.59
+      "branch": 100
     },
     "apps/web/src/components/shell/skeleton.tsx": {
-      "line": 90,
+      "line": 100,
       "branch": 100
     },
     "apps/web/src/components/shell/toaster.tsx": {
       "line": 100,
-      "branch": 87.5
+      "branch": 100
     },
     "apps/web/src/components/shell/unsaved-changes-provider.tsx": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/shell/ws-status-badge.tsx": {
-      "line": 55.55,
-      "branch": 37.5
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/ui/artwork-image.tsx": {
       "line": 100,
-      "branch": 75
+      "branch": 100
     },
     "apps/web/src/components/ui/badge.tsx": {
       "line": 100,
@@ -436,39 +476,43 @@
     },
     "apps/web/src/components/ui/checkbox.tsx": {
       "line": 100,
-      "branch": 86.66
+      "branch": 100
     },
     "apps/web/src/components/ui/chip.tsx": {
       "line": 100,
       "branch": 100
     },
     "apps/web/src/components/ui/choice-rows.tsx": {
-      "line": 35,
-      "branch": 50
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/ui/column-picker.tsx": {
-      "line": 30.55,
-      "branch": 28.57
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/ui/columns-menu.tsx": {
-      "line": 91.37,
-      "branch": 85.29
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/ui/confirm-dialog.tsx": {
       "line": 100,
-      "branch": 83.67
+      "branch": 100
     },
     "apps/web/src/components/ui/count-up.tsx": {
       "line": 100,
       "branch": 100
     },
+    "apps/web/src/components/ui/dialog-primitives.tsx": {
+      "line": 100,
+      "branch": 100
+    },
     "apps/web/src/components/ui/disclosure.tsx": {
       "line": 100,
-      "branch": 83.33
+      "branch": 100
     },
     "apps/web/src/components/ui/drawer.tsx": {
       "line": 100,
-      "branch": 95.83
+      "branch": 97.91
     },
     "apps/web/src/components/ui/field.tsx": {
       "line": 100,
@@ -478,37 +522,45 @@
       "line": 97.95,
       "branch": 91.83
     },
+    "apps/web/src/components/ui/filter-menu.tsx": {
+      "line": 100,
+      "branch": 100
+    },
     "apps/web/src/components/ui/glossary-modal.tsx": {
-      "line": 14.28,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/ui/header-tabs.tsx": {
-      "line": 90.4,
-      "branch": 67.64
+      "line": 98.4,
+      "branch": 86.27
+    },
+    "apps/web/src/components/ui/info-hint.tsx": {
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/ui/input.tsx": {
       "line": 100,
       "branch": 100
     },
     "apps/web/src/components/ui/kbd.tsx": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "apps/web/src/components/ui/library-impact.tsx": {
-      "line": 11.11,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/ui/list-card.tsx": {
-      "line": 82.01,
-      "branch": 86.95
+      "line": 83.8,
+      "branch": 89.95
     },
     "apps/web/src/components/ui/media-type-split.tsx": {
-      "line": 78.57,
-      "branch": 43.47
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/ui/menu-select.tsx": {
-      "line": 55.55,
-      "branch": 59.09
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/ui/metric-chart.tsx": {
       "line": null,
@@ -519,36 +571,36 @@
       "branch": 100
     },
     "apps/web/src/components/ui/page-toolbar.tsx": {
-      "line": 65.95,
-      "branch": 62.74
+      "line": 97.82,
+      "branch": 96
     },
     "apps/web/src/components/ui/path-input.tsx": {
-      "line": 52,
-      "branch": 55.19
+      "line": 94.4,
+      "branch": 81.81
     },
     "apps/web/src/components/ui/preset-field.tsx": {
       "line": 100,
-      "branch": 90
+      "branch": 100
     },
     "apps/web/src/components/ui/range-slider.tsx": {
-      "line": 2.08,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/ui/removal-reason-dialog.tsx": {
-      "line": 83.33,
-      "branch": 50
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/ui/segmented-control.tsx": {
-      "line": 36.84,
-      "branch": 38.46
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/components/ui/select.tsx": {
       "line": 100,
-      "branch": 89.47
+      "branch": 100
     },
     "apps/web/src/components/ui/sheet.tsx": {
       "line": 100,
-      "branch": 88.23
+      "branch": 100
     },
     "apps/web/src/components/ui/status-led.tsx": {
       "line": 100,
@@ -556,7 +608,7 @@
     },
     "apps/web/src/components/ui/summary-strip.tsx": {
       "line": 100,
-      "branch": 66.66
+      "branch": 100
     },
     "apps/web/src/components/ui/switch.tsx": {
       "line": 100,
@@ -564,23 +616,27 @@
     },
     "apps/web/src/components/ui/textarea.tsx": {
       "line": 100,
-      "branch": 88.88
+      "branch": 100
     },
     "apps/web/src/components/ui/title-mark.tsx": {
       "line": 97.52,
-      "branch": 86.86
+      "branch": 89.39
     },
     "apps/web/src/components/ui/tooltip.tsx": {
-      "line": null,
-      "branch": null
+      "line": 83.33,
+      "branch": 0
     },
     "apps/web/src/hooks/use-bulk-edit.ts": {
-      "line": 45.58,
-      "branch": 35.84
+      "line": 89.77,
+      "branch": 71.86
     },
     "apps/web/src/hooks/use-configured-providers.ts": {
-      "line": 77.77,
-      "branch": 0
+      "line": 100,
+      "branch": null
+    },
+    "apps/web/src/hooks/use-follow-loaded.ts": {
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/hooks/use-latest-request.ts": {
       "line": 100,
@@ -588,35 +644,35 @@
     },
     "apps/web/src/hooks/use-library-address.ts": {
       "line": 100,
-      "branch": 94.44
+      "branch": 100
     },
     "apps/web/src/hooks/use-library-create.ts": {
-      "line": 64.51,
-      "branch": 25
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/hooks/use-library-filters.ts": {
-      "line": 87.17,
-      "branch": 84.37
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/hooks/use-live-interval.ts": {
       "line": 100,
-      "branch": 75
+      "branch": 100
     },
     "apps/web/src/hooks/use-live-series.ts": {
       "line": null,
       "branch": null
     },
     "apps/web/src/hooks/use-sliding-pill.ts": {
-      "line": 98.24,
-      "branch": 83.33
+      "line": 100,
+      "branch": 88.88
     },
     "apps/web/src/hooks/use-unsaved-changes.ts": {
-      "line": 63.63,
-      "branch": 40
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/layouts/app-layout.tsx": {
-      "line": 27.47,
-      "branch": 41.96
+      "line": 94.65,
+      "branch": 84.12
     },
     "apps/web/src/layouts/topbar-tokens.ts": {
       "line": 100,
@@ -627,16 +683,16 @@
       "branch": 88.37
     },
     "apps/web/src/lib/activity-history.ts": {
-      "line": 98.83,
-      "branch": 93.1
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/activity-live-patch.ts": {
       "line": 100,
       "branch": 94.25
     },
     "apps/web/src/lib/activity-live-steps.ts": {
-      "line": 94.73,
-      "branch": 86.2
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/alert-actions.ts": {
       "line": 93.82,
@@ -647,20 +703,20 @@
       "branch": null
     },
     "apps/web/src/lib/api/client.ts": {
-      "line": 70.96,
-      "branch": 80
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/api/guides.ts": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/api/release-preferences.ts": {
-      "line": 11.11,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/api/scenarios.ts": {
-      "line": 16.66,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/api/settings.ts": {
       "line": null,
@@ -739,20 +795,24 @@
       "branch": 100
     },
     "apps/web/src/lib/bell-rows.ts": {
-      "line": 92.85,
-      "branch": 89.23
+      "line": 95.65,
+      "branch": 91.93
     },
     "apps/web/src/lib/block-release.ts": {
       "line": 100,
-      "branch": 82.75
+      "branch": 100
+    },
+    "apps/web/src/lib/bootstrap-status.ts": {
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/card-design.ts": {
       "line": 100,
       "branch": null
     },
     "apps/web/src/lib/command-registry.ts": {
-      "line": 39.13,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/config-areas.ts": {
       "line": 100,
@@ -763,76 +823,84 @@
       "branch": 100
     },
     "apps/web/src/lib/connection-tags.ts": {
-      "line": 65,
-      "branch": 50
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/connection-updates.ts": {
-      "line": 91.66,
-      "branch": 85.71
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/connection-versions.ts": {
-      "line": 75,
-      "branch": 30.76
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/detail-fields.ts": {
-      "line": 91.66,
-      "branch": 82.19
+      "line": 100,
+      "branch": 100
+    },
+    "apps/web/src/lib/discover-filters.ts": {
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/dispatch-final-state.ts": {
-      "line": 97.67,
-      "branch": 92.22
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/dispatch-provenance.ts": {
       "line": 100,
-      "branch": 72.22
+      "branch": 100
     },
     "apps/web/src/lib/dispatch-target.ts": {
-      "line": 80,
-      "branch": 50
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/display-preferences.tsx": {
-      "line": 96.87,
-      "branch": 86.82
+      "line": 100,
+      "branch": 94.81
     },
     "apps/web/src/lib/download-telemetry.ts": {
-      "line": 70.96,
-      "branch": 40.62
+      "line": 100,
+      "branch": 100
+    },
+    "apps/web/src/lib/download-wait.ts": {
+      "line": 97.67,
+      "branch": 84.5
     },
     "apps/web/src/lib/drawer-save-state.ts": {
       "line": 100,
       "branch": 100
     },
     "apps/web/src/lib/episode-progress.ts": {
-      "line": 95.45,
-      "branch": 93.75
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/episode-search-groups.ts": {
       "line": 100,
-      "branch": 80.76
+      "branch": 100
     },
     "apps/web/src/lib/failed-jobs.ts": {
       "line": 100,
-      "branch": 81.81
+      "branch": 100
     },
     "apps/web/src/lib/failure-reasons.ts": {
-      "line": 86.66,
-      "branch": 75
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/guide-formats.ts": {
-      "line": 22.5,
-      "branch": 18.51
+      "line": 100,
+      "branch": 94.44
     },
     "apps/web/src/lib/guide-names.ts": {
-      "line": 75,
-      "branch": 50
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/health-snooze.ts": {
       "line": 100,
       "branch": 100
     },
     "apps/web/src/lib/held-releases.ts": {
-      "line": 52.94,
-      "branch": 24.13
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/import-job-payload.ts": {
       "line": 100,
@@ -846,41 +914,53 @@
       "line": 100,
       "branch": 100
     },
+    "apps/web/src/lib/in-progress.ts": {
+      "line": 100,
+      "branch": 100
+    },
     "apps/web/src/lib/indexer-history-outcomes.ts": {
       "line": 100,
       "branch": 100
     },
+    "apps/web/src/lib/intake-sync-interval.ts": {
+      "line": 100,
+      "branch": null
+    },
     "apps/web/src/lib/job-status-constants.ts": {
-      "line": 81.57,
-      "branch": 71.42
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/library-buckets.ts": {
       "line": 98.03,
       "branch": 94.82
     },
     "apps/web/src/lib/library-controls.ts": {
-      "line": 90.9,
-      "branch": 65.27
+      "line": 98.24,
+      "branch": 86.48
     },
     "apps/web/src/lib/library-filters.ts": {
-      "line": 92.3,
-      "branch": 71.42
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/library-list-columns.ts": {
       "line": 100,
-      "branch": 95.45
+      "branch": 100
+    },
+    "apps/web/src/lib/library-pair.ts": {
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/library-paths.ts": {
       "line": 100,
-      "branch": 91.66
+      "branch": 100
     },
     "apps/web/src/lib/list-column-drag.ts": {
       "line": 93.5,
       "branch": 69.23
     },
     "apps/web/src/lib/live-refresh.ts": {
-      "line": 95.45,
-      "branch": 88.23
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/live-ticker.ts": {
       "line": 100,
@@ -891,40 +971,48 @@
       "branch": null
     },
     "apps/web/src/lib/metadata-check.ts": {
-      "line": 96.15,
-      "branch": 86.48
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/move-refusals.tsx": {
       "line": 100,
-      "branch": 70
+      "branch": 100
     },
     "apps/web/src/lib/needs-action.ts": {
-      "line": 89.56,
-      "branch": 92
+      "line": 96.52,
+      "branch": 97.98
     },
     "apps/web/src/lib/page-motion.ts": {
       "line": 100,
-      "branch": 80
+      "branch": 100
     },
     "apps/web/src/lib/plain-title.ts": {
       "line": 100,
       "branch": 100
     },
     "apps/web/src/lib/platform-shortcuts.ts": {
-      "line": 66.66,
-      "branch": 71.42
+      "line": 100,
+      "branch": 100
+    },
+    "apps/web/src/lib/plural.ts": {
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/processor-outcome.ts": {
-      "line": 90.9,
-      "branch": 82.35
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/progress-format.ts": {
       "line": 100,
       "branch": 100
     },
+    "apps/web/src/lib/protocol.ts": {
+      "line": 100,
+      "branch": 100
+    },
     "apps/web/src/lib/quality-label.ts": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/quality-limits.ts": {
       "line": 100,
@@ -932,11 +1020,11 @@
     },
     "apps/web/src/lib/quality-steps.ts": {
       "line": 100,
-      "branch": 83.78
+      "branch": 88.57
     },
     "apps/web/src/lib/realtime-cache.ts": {
       "line": 100,
-      "branch": 80
+      "branch": 100
     },
     "apps/web/src/lib/realtime-position.ts": {
       "line": 100,
@@ -946,49 +1034,65 @@
       "line": 100,
       "branch": 100
     },
+    "apps/web/src/lib/recovery.ts": {
+      "line": 100,
+      "branch": 100
+    },
     "apps/web/src/lib/recycle-bin-words.ts": {
       "line": 100,
       "branch": 100
     },
     "apps/web/src/lib/release-candidate-columns.ts": {
-      "line": 76.19,
-      "branch": 63.75
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/release-candidate-status.ts": {
-      "line": 82.92,
-      "branch": 68.18
+      "line": 100,
+      "branch": 100
+    },
+    "apps/web/src/lib/removal-download-words.ts": {
+      "line": 100,
+      "branch": null
     },
     "apps/web/src/lib/remove-download.ts": {
-      "line": 80,
-      "branch": 50
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/reset-times.ts": {
       "line": 100,
       "branch": 100
     },
+    "apps/web/src/lib/return-address.ts": {
+      "line": 93.75,
+      "branch": 94.73
+    },
     "apps/web/src/lib/route-cache.tsx": {
-      "line": 91.3,
-      "branch": 93.54
+      "line": 91.66,
+      "branch": 93.93
     },
     "apps/web/src/lib/route-prefetch.ts": {
-      "line": 65,
-      "branch": 44.44
+      "line": 100,
+      "branch": 100
+    },
+    "apps/web/src/lib/search-history-format.ts": {
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/search-history.ts": {
       "line": 100,
-      "branch": 95.65
+      "branch": 100
     },
     "apps/web/src/lib/search-interval-format.ts": {
       "line": 100,
       "branch": 100
     },
     "apps/web/src/lib/search-reasons.ts": {
-      "line": 74.13,
-      "branch": 67.59
+      "line": 100,
+      "branch": 91.37
     },
     "apps/web/src/lib/season-pack-leftovers.ts": {
       "line": 100,
-      "branch": 75
+      "branch": 100
     },
     "apps/web/src/lib/settle-form-after-save.ts": {
       "line": 100,
@@ -996,31 +1100,39 @@
     },
     "apps/web/src/lib/setup-status.ts": {
       "line": 100,
-      "branch": 88.37
+      "branch": 100
     },
     "apps/web/src/lib/shared-sources.ts": {
-      "line": 89.47,
-      "branch": 20
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/sharing-rule.ts": {
-      "line": 87.5,
-      "branch": 84.61
+      "line": 100,
+      "branch": 100
+    },
+    "apps/web/src/lib/sign-in-failure.ts": {
+      "line": 100,
+      "branch": 100
+    },
+    "apps/web/src/lib/signed-download.ts": {
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/stale-build.ts": {
       "line": 100,
-      "branch": 88.23
+      "branch": 100
     },
     "apps/web/src/lib/status-tones.ts": {
-      "line": 92,
-      "branch": 84.74
+      "line": 96,
+      "branch": 88.13
     },
     "apps/web/src/lib/subtitle-display.ts": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/tag-users.ts": {
       "line": 100,
-      "branch": 60.71
+      "branch": 100
     },
     "apps/web/src/lib/title-case.ts": {
       "line": 100,
@@ -1028,43 +1140,47 @@
     },
     "apps/web/src/lib/title-routing.ts": {
       "line": 100,
-      "branch": 92.85
+      "branch": 100
     },
     "apps/web/src/lib/transfer-stages.ts": {
-      "line": 93.75,
-      "branch": 83.33
+      "line": 100,
+      "branch": 100
+    },
+    "apps/web/src/lib/transfers-view.ts": {
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/ui-adapters.ts": {
       "line": 91.66,
-      "branch": 87.09
+      "branch": 88.7
     },
     "apps/web/src/lib/update-headline.ts": {
       "line": 100,
-      "branch": 92.85
+      "branch": 100
     },
     "apps/web/src/lib/use-api-mutation.ts": {
-      "line": 23.8,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/use-attention.ts": {
-      "line": 89.18,
-      "branch": 81.6
+      "line": 90.59,
+      "branch": 87.36
     },
     "apps/web/src/lib/use-auth.tsx": {
-      "line": 47.86,
-      "branch": 41.66
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/use-color-mode.tsx": {
-      "line": 29.62,
-      "branch": 20
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/use-column-visibility.ts": {
-      "line": 38.09,
-      "branch": 12.5
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/use-cut-value-titles.ts": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/use-host-name.ts": {
       "line": 100,
@@ -1072,71 +1188,71 @@
     },
     "apps/web/src/lib/use-list-columns.ts": {
       "line": 100,
-      "branch": 89.47
+      "branch": 92.37
     },
     "apps/web/src/lib/use-sidebar-collapsed.ts": {
-      "line": 81.81,
-      "branch": 70
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/use-signalr.tsx": {
-      "line": 93.84,
-      "branch": 76.19
+      "line": 95.97,
+      "branch": 78.5
     },
     "apps/web/src/lib/use-title-live.ts": {
-      "line": 3.03,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/lib/utils.ts": {
-      "line": 96.15,
+      "line": 100,
       "branch": 100
     },
     "apps/web/src/main.tsx": {
-      "line": null,
-      "branch": null
+      "line": 75,
+      "branch": 66.66
     },
     "apps/web/src/router.tsx": {
-      "line": null,
-      "branch": null
+      "line": 45.67,
+      "branch": 73.68
     },
     "apps/web/src/routes/activity-page.tsx": {
-      "line": 79.85,
-      "branch": 72.37
+      "line": 91.16,
+      "branch": 86.28
     },
     "apps/web/src/routes/calendar-page.tsx": {
-      "line": 90.36,
-      "branch": 81.3
+      "line": 96.98,
+      "branch": 94.01
     },
     "apps/web/src/routes/collections-page.tsx": {
-      "line": 42.85,
-      "branch": 48.38
+      "line": 77.58,
+      "branch": 74.35
     },
     "apps/web/src/routes/companion-tools-merge.ts": {
       "line": 100,
-      "branch": 93.75
+      "branch": 100
     },
     "apps/web/src/routes/companion-tools-screen.tsx": {
-      "line": null,
-      "branch": null
+      "line": 92.06,
+      "branch": 92.85
     },
     "apps/web/src/routes/connections-screen.tsx": {
-      "line": 3.91,
-      "branch": 12.48
+      "line": 55.86,
+      "branch": 55.71
     },
     "apps/web/src/routes/connections/busy-reason.ts": {
-      "line": 50,
-      "branch": 50
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/connections/category-catalog.ts": {
       "line": 100,
       "branch": 100
     },
     "apps/web/src/routes/connections/category-picker.tsx": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/connections/client-drawer-body.tsx": {
-      "line": 29.03,
-      "branch": 51.16
+      "line": 63.44,
+      "branch": 86.3
     },
     "apps/web/src/routes/connections/connection-test-result.tsx": {
       "line": 100,
@@ -1144,91 +1260,95 @@
     },
     "apps/web/src/routes/connections/folder-chain-section.tsx": {
       "line": 100,
-      "branch": 80.48
+      "branch": 86.04
     },
     "apps/web/src/routes/connections/format.ts": {
-      "line": 83.72,
-      "branch": 56.09
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/connections/forms.ts": {
-      "line": 96.66,
-      "branch": 85.1
+      "line": 100,
+      "branch": 86.7
     },
     "apps/web/src/routes/connections/indexer-drawer-body.tsx": {
-      "line": 22.64,
-      "branch": 53.84
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/connections/indexer-flag-picker.tsx": {
       "line": 100,
       "branch": 100
     },
     "apps/web/src/routes/connections/indexer-list-controls.tsx": {
-      "line": 87.5,
-      "branch": 82.66
+      "line": 97.5,
+      "branch": 89.33
     },
     "apps/web/src/routes/connections/indexer-scoreboard.tsx": {
-      "line": 70.96,
-      "branch": 66.66
+      "line": 74.19,
+      "branch": 85.96
+    },
+    "apps/web/src/routes/connections/plain-text.ts": {
+      "line": 100,
+      "branch": null
     },
     "apps/web/src/routes/connections/preferences-link.tsx": {
-      "line": 50,
-      "branch": 60
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/connections/presets.ts": {
-      "line": 76.92,
-      "branch": 66.66
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/connections/proxy-drawer-body.tsx": {
-      "line": 28.57,
-      "branch": 59.09
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/connections/routing-drawer-body.tsx": {
-      "line": 50,
-      "branch": 35.44
+      "line": 87.5,
+      "branch": 74.68
     },
     "apps/web/src/routes/connections/routing-status.ts": {
-      "line": 42.85,
-      "branch": 50
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/connections/tracker-fields.tsx": {
-      "line": 0,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/connections/tracker-picker.tsx": {
       "line": 95.34,
-      "branch": 79.16
+      "branch": 86.95
     },
     "apps/web/src/routes/dashboard-page.tsx": {
-      "line": 93.93,
-      "branch": 81.57
+      "line": 97.01,
+      "branch": 84.21
     },
     "apps/web/src/routes/dashboard/chart-scale.tsx": {
-      "line": 93.42,
-      "branch": 83.9
+      "line": 94.73,
+      "branch": 90.8
     },
     "apps/web/src/routes/dashboard/downloads-fixtures.ts": {
       "line": 100,
       "branch": null
     },
     "apps/web/src/routes/dashboard/downloads-kit.tsx": {
-      "line": 91.52,
-      "branch": 75
+      "line": 93.1,
+      "branch": 80.24
     },
     "apps/web/src/routes/dashboard/format.ts": {
-      "line": 36.36,
-      "branch": 24
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/live-events.ts": {
       "line": 100,
-      "branch": 79.62
+      "branch": 82.69
     },
     "apps/web/src/routes/dashboard/live-tab.tsx": {
-      "line": 92.2,
-      "branch": 72.65
+      "line": 98.7,
+      "branch": 75
     },
     "apps/web/src/routes/dashboard/live/arrival-groups.ts": {
       "line": 100,
-      "branch": 90
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/live/arrivals.ts": {
       "line": 100,
@@ -1240,67 +1360,67 @@
     },
     "apps/web/src/routes/dashboard/live/band.tsx": {
       "line": 100,
-      "branch": 91.8
+      "branch": 93.22
     },
     "apps/web/src/routes/dashboard/live/caption-fit.ts": {
-      "line": 84,
-      "branch": 60
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/live/card.tsx": {
-      "line": 98.03,
-      "branch": 96.47
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/live/clients.ts": {
       "line": 100,
-      "branch": 89.83
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/live/connections.ts": {
       "line": 100,
-      "branch": 91.42
+      "branch": 94.28
     },
     "apps/web/src/routes/dashboard/live/countdown.ts": {
-      "line": 95.83,
-      "branch": 88.46
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/live/countdowns.tsx": {
       "line": 100,
-      "branch": 82.14
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/live/detail-fit.ts": {
       "line": 100,
-      "branch": 66.66
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/live/detail.ts": {
-      "line": 97.56,
-      "branch": 92.15
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/live/extras.ts": {
       "line": 100,
-      "branch": 83.87
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/live/fit-rows.ts": {
       "line": 100,
-      "branch": 88.88
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/live/flight-path.ts": {
       "line": 100,
-      "branch": 66.66
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/live/group.ts": {
-      "line": 95.74,
-      "branch": 85.1
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/live/hooks.ts": {
-      "line": 66.66,
-      "branch": 54.87
+      "line": 74.46,
+      "branch": 60.46
     },
     "apps/web/src/routes/dashboard/live/indexers.ts": {
       "line": 100,
-      "branch": 68.75
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/live/journey.ts": {
-      "line": 99.46,
-      "branch": 88.05
+      "line": 99.53,
+      "branch": 92.21
     },
     "apps/web/src/routes/dashboard/live/kinds.ts": {
       "line": 100,
@@ -1319,12 +1439,12 @@
       "branch": 70.58
     },
     "apps/web/src/routes/dashboard/live/motion.ts": {
-      "line": 54.14,
-      "branch": 38.61
+      "line": 98.08,
+      "branch": 77.22
     },
     "apps/web/src/routes/dashboard/live/plain.ts": {
-      "line": 89.47,
-      "branch": 83.33
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/live/poster-caption.ts": {
       "line": 100,
@@ -1335,32 +1455,32 @@
       "branch": 97.91
     },
     "apps/web/src/routes/dashboard/live/realtime.ts": {
-      "line": 97.43,
-      "branch": 68.75
+      "line": 97.52,
+      "branch": 72.77
     },
     "apps/web/src/routes/dashboard/live/scoreboard.ts": {
       "line": 100,
-      "branch": 90.1
+      "branch": 92.94
     },
     "apps/web/src/routes/dashboard/live/series.ts": {
       "line": 100,
       "branch": 100
     },
     "apps/web/src/routes/dashboard/live/shelf-motion.ts": {
-      "line": 97.77,
-      "branch": 61.11
+      "line": 100,
+      "branch": 63.88
     },
     "apps/web/src/routes/dashboard/live/shelf-slots.ts": {
       "line": 100,
-      "branch": 50
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/live/shelf.tsx": {
-      "line": 97.36,
-      "branch": 91.15
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/live/sources-card.tsx": {
-      "line": 85.48,
-      "branch": 77.02
+      "line": 90.32,
+      "branch": 94.28
     },
     "apps/web/src/routes/dashboard/live/speed-chart.tsx": {
       "line": 100,
@@ -1372,27 +1492,27 @@
     },
     "apps/web/src/routes/dashboard/live/stream.tsx": {
       "line": 93.54,
-      "branch": 66.66
+      "branch": 83.33
     },
     "apps/web/src/routes/dashboard/live/times.ts": {
-      "line": 98.46,
-      "branch": 86.04
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/live/titles.ts": {
-      "line": 85.93,
-      "branch": 78.57
+      "line": 92.18,
+      "branch": 86.73
     },
     "apps/web/src/routes/dashboard/live/track.tsx": {
-      "line": 98.14,
-      "branch": 86.36
+      "line": 100,
+      "branch": 90.76
     },
     "apps/web/src/routes/dashboard/live/turned-down-card.tsx": {
-      "line": 93.75,
-      "branch": 77.27
+      "line": 100,
+      "branch": 94.44
     },
     "apps/web/src/routes/dashboard/live/turned-down.ts": {
       "line": 100,
-      "branch": 82.05
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/live/use-live-board.ts": {
       "line": 100,
@@ -1404,15 +1524,15 @@
     },
     "apps/web/src/routes/dashboard/needs-you.tsx": {
       "line": 100,
-      "branch": 75
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/parts.tsx": {
       "line": 64.91,
       "branch": 62.02
     },
     "apps/web/src/routes/dashboard/sources.ts": {
-      "line": 87.8,
-      "branch": 66.66
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/summary-fixtures.ts": {
       "line": 100,
@@ -1424,206 +1544,214 @@
     },
     "apps/web/src/routes/dashboard/system/band.tsx": {
       "line": 95.23,
-      "branch": 67.74
+      "branch": 81.72
     },
     "apps/web/src/routes/dashboard/system/bottom.tsx": {
-      "line": 93.93,
-      "branch": 84
+      "line": 100,
+      "branch": 96.55
     },
     "apps/web/src/routes/dashboard/system/connections-card.tsx": {
-      "line": 86.76,
-      "branch": 67.3
+      "line": 97.05,
+      "branch": 84.61
     },
     "apps/web/src/routes/dashboard/system/connections-model.ts": {
-      "line": 85.07,
-      "branch": 64.8
+      "line": 100,
+      "branch": 87.2
     },
     "apps/web/src/routes/dashboard/system/data.ts": {
-      "line": 74.28,
-      "branch": 45.94
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/system/facts.ts": {
       "line": 100,
-      "branch": 63.46
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/system/health-card.tsx": {
-      "line": 89.74,
-      "branch": 83.6
+      "line": 100,
+      "branch": 93.44
     },
     "apps/web/src/routes/dashboard/system/logic.ts": {
-      "line": 73.97,
-      "branch": 60.97
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/system/problems.ts": {
-      "line": 93.18,
-      "branch": 75.92
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/dashboard/system/storage-card.tsx": {
-      "line": 91.66,
-      "branch": 48.07
+      "line": 100,
+      "branch": 84.61
     },
     "apps/web/src/routes/dashboard/system/use-resizing.ts": {
-      "line": 72.72,
-      "branch": 40
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/discover-page.tsx": {
-      "line": 82.1,
-      "branch": 60.34
+      "line": 88.09,
+      "branch": 81.7
     },
     "apps/web/src/routes/indexer-history-page.tsx": {
-      "line": 71.08,
-      "branch": 47.05
+      "line": 96.62,
+      "branch": 84.84
     },
     "apps/web/src/routes/library-page.tsx": {
       "line": 93.33,
       "branch": 100
     },
     "apps/web/src/routes/login-page.tsx": {
-      "line": null,
-      "branch": null
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/media-servers-screen.tsx": {
-      "line": null,
-      "branch": null
+      "line": 81.05,
+      "branch": 74.03
     },
     "apps/web/src/routes/movie-detail-page.tsx": {
-      "line": null,
-      "branch": null
+      "line": 79.28,
+      "branch": 82.11
     },
     "apps/web/src/routes/queue-live.ts": {
-      "line": 92.1,
-      "branch": 64.28
+      "line": 100,
+      "branch": 75.64
     },
     "apps/web/src/routes/queue-page.tsx": {
       "line": null,
       "branch": null
     },
     "apps/web/src/routes/queue-screen.tsx": {
-      "line": 50.12,
-      "branch": 44.57
+      "line": 84.9,
+      "branch": 75.2
+    },
+    "apps/web/src/routes/recovery-page.tsx": {
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/retention-screen.tsx": {
-      "line": null,
-      "branch": null
+      "line": 75.94,
+      "branch": 76.82
     },
     "apps/web/src/routes/search-cycles-page.tsx": {
-      "line": null,
-      "branch": null
+      "line": 92.96,
+      "branch": 78.71
     },
     "apps/web/src/routes/search-page.tsx": {
-      "line": 72.72,
-      "branch": 56.15
+      "line": 94.24,
+      "branch": 83.97
     },
     "apps/web/src/routes/season-pass-page.tsx": {
-      "line": 92.68,
-      "branch": 83.33
+      "line": 100,
+      "branch": 100
+    },
+    "apps/web/src/routes/settings-account-page.tsx": {
+      "line": 100,
+      "branch": null
     },
     "apps/web/src/routes/settings-auto-tagging-page.tsx": {
-      "line": 52.02,
-      "branch": 41.93
+      "line": 82.43,
+      "branch": 70
     },
     "apps/web/src/routes/settings-custom-formats-page.tsx": {
-      "line": 24.69,
-      "branch": 18.03
+      "line": 72.12,
+      "branch": 63.02
     },
     "apps/web/src/routes/settings-destination-rules-page.tsx": {
-      "line": null,
-      "branch": null
+      "line": 90.5,
+      "branch": 85.64
     },
     "apps/web/src/routes/settings-download-health-page.tsx": {
-      "line": 47.4,
-      "branch": 47.92
+      "line": 86.03,
+      "branch": 81.31
     },
     "apps/web/src/routes/settings-general-page.tsx": {
-      "line": 73.64,
-      "branch": 47.32
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/settings-keep-seeding-page.tsx": {
-      "line": 85.54,
-      "branch": 74.86
+      "line": 86.74,
+      "branch": 80.22
     },
     "apps/web/src/routes/settings-libraries-page.tsx": {
-      "line": null,
-      "branch": null
+      "line": 82.96,
+      "branch": 80.91
     },
     "apps/web/src/routes/settings-lists-page.tsx": {
-      "line": 5.08,
-      "branch": 3.49
+      "line": 82.88,
+      "branch": 73.02
     },
     "apps/web/src/routes/settings-media-management-page-v2.tsx": {
-      "line": 17.41,
-      "branch": 13.27
+      "line": 83.24,
+      "branch": 74.07
     },
     "apps/web/src/routes/settings-metadata-page.tsx": {
-      "line": 10.52,
-      "branch": 12.5
+      "line": 92.98,
+      "branch": 77.5
     },
     "apps/web/src/routes/settings-migration-page.tsx": {
-      "line": null,
-      "branch": null
+      "line": 73.84,
+      "branch": 60.8
     },
     "apps/web/src/routes/settings-notifications-page.tsx": {
-      "line": 45.41,
-      "branch": 34.35
+      "line": 85.06,
+      "branch": 83.65
     },
     "apps/web/src/routes/settings-overview-page.tsx": {
-      "line": 5.88,
-      "branch": 0
+      "line": 94.11,
+      "branch": 91.66
     },
     "apps/web/src/routes/settings-policy-sets-page.tsx": {
-      "line": null,
-      "branch": null
+      "line": 93.08,
+      "branch": 75.66
     },
     "apps/web/src/routes/settings-profiles-page.tsx": {
-      "line": 44.82,
-      "branch": 31.75
+      "line": 84.19,
+      "branch": 66.81
     },
     "apps/web/src/routes/settings-quality-page-v2.tsx": {
-      "line": null,
-      "branch": null
+      "line": 96.84,
+      "branch": 81.25
     },
     "apps/web/src/routes/settings-release-rules-page.tsx": {
-      "line": 49.26,
-      "branch": 49.05
+      "line": 85.43,
+      "branch": 72.05
     },
     "apps/web/src/routes/settings-tags-page.tsx": {
-      "line": 58.62,
-      "branch": 46.66
+      "line": 81.03,
+      "branch": 65.65
     },
     "apps/web/src/routes/settings-ui-page.tsx": {
-      "line": 65.07,
-      "branch": 52.63
+      "line": 100,
+      "branch": 70.58
     },
     "apps/web/src/routes/setup-guide-page.tsx": {
-      "line": 45.51,
-      "branch": 38.8
+      "line": 95.39,
+      "branch": 87.57
     },
     "apps/web/src/routes/setup-page.tsx": {
-      "line": null,
-      "branch": null
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/routes/show-detail-page.tsx": {
-      "line": 2.12,
-      "branch": 1.65
+      "line": 83.33,
+      "branch": 76.05
     },
     "apps/web/src/routes/subtitle-languages-screen.tsx": {
-      "line": 63.36,
-      "branch": 59.16
+      "line": 89.81,
+      "branch": 72.88
     },
     "apps/web/src/routes/subtitle-providers-screen.tsx": {
-      "line": null,
-      "branch": null
+      "line": 79.16,
+      "branch": 74.41
     },
     "apps/web/src/routes/subtitle-wanted-screen.tsx": {
-      "line": 74.35,
-      "branch": 48.14
+      "line": 88.52,
+      "branch": 82.35
     },
     "apps/web/src/routes/system-api-page.tsx": {
-      "line": null,
-      "branch": null
+      "line": 95.94,
+      "branch": 88.09
     },
     "apps/web/src/routes/system-docs-page.tsx": {
-      "line": null,
+      "line": 100,
       "branch": null
     },
     "apps/web/src/routes/system-page.tsx": {
@@ -1631,72 +1759,140 @@
       "branch": null
     },
     "apps/web/src/routes/system-screen.tsx": {
-      "line": 37.38,
-      "branch": 28.03
+      "line": 93.07,
+      "branch": 83.53
     },
     "apps/web/src/routes/system-security-page.tsx": {
-      "line": 79.27,
-      "branch": 57.47
+      "line": 97.5,
+      "branch": 79.12
+    },
+    "apps/web/src/routes/transfers-page.tsx": {
+      "line": 100,
+      "branch": 100
     },
     "apps/web/src/workers/live-ticker.worker.ts": {
       "line": null,
       "branch": null
     },
+    "scripts/check-branch-protection.mjs": {
+      "line": 74.38,
+      "branch": 89.47
+    },
     "scripts/check-component-pins.mjs": {
-      "line": 58.55,
-      "branch": 79.48
+      "line": 66.17,
+      "branch": 84.9
     },
     "scripts/check-coverage-ratchet.mjs": {
       "line": 65.49,
       "branch": 80.7
     },
     "scripts/check-coverage-register.mjs": {
-      "line": 89.39,
-      "branch": 81.19
+      "line": 95.11,
+      "branch": 89.81
+    },
+    "scripts/check-github-action-pins.mjs": {
+      "line": 83.72,
+      "branch": 68.75
+    },
+    "scripts/check-mutation-ratchet.mjs": {
+      "line": 60.6,
+      "branch": 85.24
+    },
+    "scripts/check-node-tests-run.mjs": {
+      "line": 65.38,
+      "branch": 83.33
+    },
+    "scripts/check-persistence-parts.mjs": {
+      "line": 70.68,
+      "branch": 93.33
+    },
+    "scripts/check-real-specs.mjs": {
+      "line": 87.95,
+      "branch": 83.33
     },
     "scripts/check-recorded-manifest.mjs": {
       "line": 77.77,
       "branch": 83.87
     },
     "scripts/check-recorded-replies.mjs": {
-      "line": 94.14,
-      "branch": 94.4
+      "line": 94.18,
+      "branch": 94.44
+    },
+    "scripts/check-recording-freshness.mjs": {
+      "line": 87.25,
+      "branch": 78.78
     },
     "scripts/check-release-workflow-gates.mjs": {
       "line": 96.6,
       "branch": 92.45
     },
+    "scripts/check-repository-references.mjs": {
+      "line": 87.5,
+      "branch": 93.1
+    },
+    "scripts/check-windows-icon.mjs": {
+      "line": 76.19,
+      "branch": 33.33
+    },
+    "scripts/check-workflow-hygiene.mjs": {
+      "line": 87.09,
+      "branch": 61.9
+    },
     "scripts/ci-passed.mjs": {
-      "line": 83.33,
-      "branch": 88
+      "line": 85.54,
+      "branch": 88.88
+    },
+    "scripts/coverage/coverage-docs.mjs": {
+      "line": 72.22,
+      "branch": 90.9
     },
     "scripts/coverage/inventory.mjs": {
-      "line": 79.83,
-      "branch": 65.97
+      "line": 82.38,
+      "branch": 69.94
     },
     "scripts/coverage/merge-coverage.mjs": {
-      "line": 83.04,
-      "branch": 90.42
+      "line": 100,
+      "branch": 99.15
     },
     "scripts/coverage/testindex.mjs": {
-      "line": 95.32,
-      "branch": 82.75
+      "line": 98.77,
+      "branch": 85.89
+    },
+    "scripts/mutation/run-changed.mjs": {
+      "line": 55.76,
+      "branch": 94.44
+    },
+    "scripts/mutation/test-filter.mjs": {
+      "line": 100,
+      "branch": 88.88
+    },
+    "scripts/persistence-parts.mjs": {
+      "line": 91.37,
+      "branch": 90.47
     },
     "scripts/recorded-replies/scrub.mjs": {
-      "line": 77.01,
-      "branch": 83.6
+      "line": 77.65,
+      "branch": 85.07
+    },
+    "scripts/report-nightly-issue.mjs": {
+      "line": 71.01,
+      "branch": 80.95
+    },
+    "scripts/ship-paths.mjs": {
+      "line": 91.74,
+      "branch": 70.58
     },
     "scripts/tag-release-checks.mjs": {
       "line": 100,
       "branch": 100
     },
     "scripts/verify-ci-for-release.mjs": {
-      "line": 48.59,
-      "branch": 86.36
+      "line": 55.48,
+      "branch": 91.66
     },
     "scripts/verify-golden-path-for-release.mjs": {
-      "line": 55.31,
-      "branch": 93.33
+      "line": 65.71,
+      "branch": 93.54
     },
     "src/Deluno.Api/ApiRateLimitPartitionKeyResolver.cs": {
       "line": 100,
@@ -2116,7 +2312,7 @@
     },
     "src/Deluno.Connections/UsenetProvider.cs": {
       "line": 97.87,
-      "branch": 81.11
+      "branch": 82.22
     },
     "src/Deluno.Connections/Versions/ConnectionProjects.cs": {
       "line": 100,
@@ -2370,6 +2566,10 @@
       "line": 94.73,
       "branch": 90
     },
+    "src/Deluno.Contracts/MountedVolumes.cs": {
+      "line": 87.5,
+      "branch": 90
+    },
     "src/Deluno.Contracts/MovieAvailability.cs": {
       "line": 94.11,
       "branch": 87.5
@@ -2460,7 +2660,7 @@
     },
     "src/Deluno.Contracts/ReleaseTitleMatch.cs": {
       "line": 99.4,
-      "branch": 97.08
+      "branch": 97.57
     },
     "src/Deluno.Contracts/ReleaseVersions.cs": {
       "line": 94.79,
@@ -2636,7 +2836,7 @@
     },
     "src/Deluno.Filesystem/ImportPipelineService.cs": {
       "line": 91.3,
-      "branch": 87.73
+      "branch": 87.79
     },
     "src/Deluno.Filesystem/ImportRestartMarkerFile.cs": {
       "line": 85.96,
@@ -2647,7 +2847,7 @@
       "branch": 90.54
     },
     "src/Deluno.Filesystem/LibraryAvailabilityService.cs": {
-      "line": 88.6,
+      "line": 89.24,
       "branch": 93.75
     },
     "src/Deluno.Filesystem/LibraryFileCheckService.cs": {
@@ -2979,75 +3179,75 @@
       "branch": 62.5
     },
     "src/Deluno.Integrations/CacheSchemaInitializer.cs": {
-      "line": 84.21,
-      "branch": 50
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Integrations/DownloadClients/ClientCategoryMove.cs": {
-      "line": 85.18,
-      "branch": 75
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Integrations/DownloadClients/ClientCredentialsRefused.cs": {
-      "line": 94.28,
-      "branch": 68
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Integrations/DownloadClients/ClientHeldFileProbe.cs": {
-      "line": 58.33,
-      "branch": 80
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Integrations/DownloadClients/ClientPaths.cs": {
-      "line": 90.9,
-      "branch": 92.3
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Integrations/DownloadClients/ClientPauseGuard.cs": {
-      "line": 87.17,
-      "branch": 87.5
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Integrations/DownloadClients/ClientRemovalGuard.cs": {
-      "line": 88.4,
-      "branch": 90.35
+      "line": 100,
+      "branch": 97.32
     },
     "src/Deluno.Integrations/DownloadClients/ClientSaveFolders.cs": {
-      "line": 95.06,
-      "branch": 80.76
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Integrations/DownloadClients/Clients/DelugeDownloadClient.cs": {
-      "line": 94.34,
-      "branch": 74.75
+      "line": 100,
+      "branch": 99.74
     },
     "src/Deluno.Integrations/DownloadClients/Clients/NzbGetDownloadClient.cs": {
-      "line": 94.02,
-      "branch": 75.96
+      "line": 99.14,
+      "branch": 98.07
     },
     "src/Deluno.Integrations/DownloadClients/Clients/QbittorrentDownloadClient.cs": {
-      "line": 93.97,
-      "branch": 76.2
+      "line": 99.16,
+      "branch": 100
     },
     "src/Deluno.Integrations/DownloadClients/Clients/RtorrentDownloadClient.cs": {
       "line": 90.86,
       "branch": 77.33
     },
     "src/Deluno.Integrations/DownloadClients/Clients/SabnzbdDownloadClient.cs": {
-      "line": 90.96,
-      "branch": 72.08
+      "line": 100,
+      "branch": 98.85
     },
     "src/Deluno.Integrations/DownloadClients/Clients/TransmissionDownloadClient.cs": {
-      "line": 96.8,
-      "branch": 78.57
+      "line": 100,
+      "branch": 98.32
     },
     "src/Deluno.Integrations/DownloadClients/Clients/UTorrentDownloadClient.cs": {
-      "line": 92.87,
-      "branch": 74.77
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Integrations/DownloadClients/DownloadAttempts.cs": {
-      "line": 97.14,
-      "branch": 93.18
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Integrations/DownloadClients/DownloadCleanupPreview.cs": {
       "line": 87.5,
       "branch": 47.5
     },
     "src/Deluno.Integrations/DownloadClients/DownloadClientBase.cs": {
-      "line": 82.27,
+      "line": 98.73,
       "branch": 90
     },
     "src/Deluno.Integrations/DownloadClients/DownloadClientCategoryModels.cs": {
@@ -3067,8 +3267,8 @@
       "branch": 83.68
     },
     "src/Deluno.Integrations/DownloadClients/DownloadClientHelpers.cs": {
-      "line": 93.46,
-      "branch": 86.4
+      "line": 98.46,
+      "branch": 92
     },
     "src/Deluno.Integrations/DownloadClients/DownloadClientRegistry.cs": {
       "line": 100,
@@ -3079,8 +3279,8 @@
       "branch": 100
     },
     "src/Deluno.Integrations/DownloadClients/DownloadClientTelemetryService.cs": {
-      "line": 90.82,
-      "branch": 78.98
+      "line": 90.84,
+      "branch": 79
     },
     "src/Deluno.Integrations/DownloadClients/DownloadClientWebhookModels.cs": {
       "line": 100,
@@ -3111,7 +3311,7 @@
       "branch": 77.58
     },
     "src/Deluno.Integrations/DownloadClients/FolderChain.cs": {
-      "line": 91.77,
+      "line": 92.08,
       "branch": 81.08
     },
     "src/Deluno.Integrations/DownloadClients/GrabAppearanceLookupService.cs": {
@@ -3195,8 +3395,8 @@
       "branch": null
     },
     "src/Deluno.Integrations/MediaServers/EmbyFamilyMediaServerClient.cs": {
-      "line": 96.2,
-      "branch": 81.14
+      "line": 96.24,
+      "branch": 81.28
     },
     "src/Deluno.Integrations/MediaServers/MediaServerContracts.cs": {
       "line": 96.59,
@@ -3215,12 +3415,12 @@
       "branch": 90.47
     },
     "src/Deluno.Integrations/MediaServers/MediaServerRefreshNotifier.cs": {
-      "line": 96.74,
-      "branch": 93.58
+      "line": 96.82,
+      "branch": 93.75
     },
     "src/Deluno.Integrations/MediaServers/PlexMediaServerClient.cs": {
-      "line": 95.27,
-      "branch": 85.99
+      "line": 95.3,
+      "branch": 86.14
     },
     "src/Deluno.Integrations/Metadata/ArtworkCacheCleanupResult.cs": {
       "line": 100,
@@ -4231,8 +4431,8 @@
       "branch": 88.37
     },
     "src/Deluno.Media/AcquisitionBlockerSources.cs": {
-      "line": 96.51,
-      "branch": 73.8
+      "line": 96.87,
+      "branch": 74.07
     },
     "src/Deluno.Media/AcquisitionOverrideService.cs": {
       "line": 81.76,
@@ -4315,7 +4515,7 @@
       "branch": 100
     },
     "src/Deluno.Media/MediaGrabHandler.cs": {
-      "line": 95.13,
+      "line": 95.17,
       "branch": 82.75
     },
     "src/Deluno.Media/MediaLibraryChoice.cs": {
@@ -4404,7 +4604,7 @@
     },
     "src/Deluno.Media/TitleSnapshot.cs": {
       "line": 92.05,
-      "branch": 88.48
+      "branch": 88.6
     },
     "src/Deluno.Media/WantedStateReevaluator.cs": {
       "line": 83.33,
@@ -5116,7 +5316,7 @@
     },
     "src/Deluno.Platform/FileNameSanitizer.cs": {
       "line": 100,
-      "branch": 98.36
+      "branch": 100
     },
     "src/Deluno.Platform/FolderMoveRecovery.cs": {
       "line": 53.33,
@@ -5747,8 +5947,8 @@
       "branch": 80.76
     },
     "src/Deluno.Platform/Processing/ProcessorOutputLayout.cs": {
-      "line": 87.09,
-      "branch": 82.92
+      "line": 90.32,
+      "branch": 86.58
     },
     "src/Deluno.Platform/Processing/ProcessorOutputPathPolicy.cs": {
       "line": 86.48,
@@ -6159,8 +6359,8 @@
       "branch": 99.39
     },
     "src/Deluno.Recovery/Policies/SharingFootprint.cs": {
-      "line": 83.33,
-      "branch": 83.33
+      "line": 92.3,
+      "branch": 89.47
     },
     "src/Deluno.Recovery/Policies/SharingPolicyEvaluator.cs": {
       "line": 94.73,
@@ -6311,7 +6511,7 @@
       "branch": 100
     },
     "src/Deluno.Security/Data/DelunoAlreadyConfiguredException.cs": {
-      "line": 0,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Security/Data/SqliteAllowedHostsRepository.cs": {
@@ -6323,8 +6523,8 @@
       "branch": 93.75
     },
     "src/Deluno.Security/Data/SqliteSecurityRepository.cs": {
-      "line": 92.9,
-      "branch": 84.05
+      "line": 93.11,
+      "branch": 84.78
     },
     "src/Deluno.Security/DataProtectionSecretProtector.cs": {
       "line": 100,
@@ -6443,7 +6643,7 @@
       "branch": 100
     },
     "src/Deluno.Security/SecurityEndpointRouteBuilderExtensions.cs": {
-      "line": 95.14,
+      "line": 96.49,
       "branch": 100
     },
     "src/Deluno.Security/SecurityServiceCollectionExtensions.cs": {
@@ -6915,7 +7115,7 @@
       "branch": 66.66
     },
     "src/Deluno.Worker/Attention/AttentionEndpoints.cs": {
-      "line": 98.4,
+      "line": 99.06,
       "branch": 100
     },
     "src/Deluno.Worker/Attention/AttentionSummary.cs": {
@@ -7004,7 +7204,7 @@
     },
     "src/Deluno.Worker/HealthChecks/Checks/AllowedHostsHealthCheck.cs": {
       "line": 100,
-      "branch": 75
+      "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/BackgroundServiceHealthCheck.cs": {
       "line": 100,
@@ -7012,15 +7212,15 @@
     },
     "src/Deluno.Worker/HealthChecks/Checks/ClientDownloadFolderFreeSpaceHealthCheck.cs": {
       "line": 100,
-      "branch": 92.85
+      "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/ClientScriptFailureHealthCheck.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/CloudflareHelperHealthCheck.cs": {
-      "line": 78.26,
-      "branch": 83.33
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/DangerousFileCheckHealthCheck.cs": {
       "line": 100,
@@ -7028,7 +7228,7 @@
     },
     "src/Deluno.Worker/HealthChecks/Checks/DatabaseIntegrityHealthCheck.cs": {
       "line": 100,
-      "branch": 83.33
+      "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/DispatchRecoveryPollerHealthCheck.cs": {
       "line": 100,
@@ -7036,7 +7236,7 @@
     },
     "src/Deluno.Worker/HealthChecks/Checks/DownloadClientHealthCheck.cs": {
       "line": 100,
-      "branch": 77.27
+      "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/DownloadHardlinkHealthCheck.cs": {
       "line": 100,
@@ -7048,7 +7248,7 @@
     },
     "src/Deluno.Worker/HealthChecks/Checks/HttpProxyReachabilityTester.cs": {
       "line": 100,
-      "branch": 96.42
+      "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/IProxyReachabilityTester.cs": {
       "line": 100,
@@ -7063,24 +7263,24 @@
       "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/LibraryFolderChainHealthCheck.cs": {
-      "line": 92.72,
-      "branch": 89.28
+      "line": 100,
+      "branch": 95.83
     },
     "src/Deluno.Worker/HealthChecks/Checks/LibraryFolderOverlapHealthCheck.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/LibraryRootHealthCheck.cs": {
-      "line": 97.56,
-      "branch": 95.65
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/LocalNetworkAuthHealthCheck.cs": {
       "line": 100,
-      "branch": 62.5
+      "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/MachineHealthChecks.cs": {
       "line": 100,
-      "branch": 97.82
+      "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/MediaServerRefreshHealthCheck.cs": {
       "line": 100,
@@ -7088,31 +7288,31 @@
     },
     "src/Deluno.Worker/HealthChecks/Checks/MetadataProviderHealthCheck.cs": {
       "line": 100,
-      "branch": 83.33
+      "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/ProcessorHandoffHoldHealthCheck.cs": {
       "line": 100,
-      "branch": 70
+      "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/ProcessorHealthCheck.cs": {
-      "line": 75.47,
-      "branch": 73.21
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/ProcessorOutputImportIssueHealthCheck.cs": {
-      "line": 93.02,
-      "branch": 75
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/ProcessorOutputSafetyNetHealthCheck.cs": {
-      "line": 90.54,
-      "branch": 86.44
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/ProxyHealthCheck.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/RemotePathMappingHealthCheck.cs": {
-      "line": 75.39,
-      "branch": 68.75
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/SearchQueuePauseHealthCheck.cs": {
       "line": 100,
@@ -7127,8 +7327,8 @@
       "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/TagRoutingHealthCheck.cs": {
-      "line": 97.46,
-      "branch": 86.11
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Checks/TrackerSiteHealthCheck.cs": {
       "line": 100,
@@ -7143,8 +7343,8 @@
       "branch": 92.85
     },
     "src/Deluno.Worker/HealthChecks/Machine/KeepAwakeService.cs": {
-      "line": 7.69,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/HealthChecks/Machine/MachineReaders.cs": {
       "line": 52.67,
@@ -7159,8 +7359,8 @@
       "branch": 65.11
     },
     "src/Deluno.Worker/Jobs/DownloadClientRetryGrabJobHandler.cs": {
-      "line": 93.06,
-      "branch": 66.66
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/Jobs/EpisodeSearchJobHandler.cs": {
       "line": 89.76,
@@ -7172,15 +7372,15 @@
     },
     "src/Deluno.Worker/Jobs/IntakeSyncJobHandler.cs": {
       "line": 100,
-      "branch": 75
+      "branch": 100
     },
     "src/Deluno.Worker/Jobs/JobHandlerRegistry.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Worker/Jobs/JobPayloads.cs": {
-      "line": 93.96,
-      "branch": 75
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/Jobs/LibraryImportExistingJobHandler.cs": {
       "line": 100,
@@ -7188,7 +7388,7 @@
     },
     "src/Deluno.Worker/Jobs/LibraryMediaProbeJobHandler.cs": {
       "line": 95.97,
-      "branch": 91.89
+      "branch": 93.24
     },
     "src/Deluno.Worker/Jobs/LibrarySearchJobHandler.cs": {
       "line": 91.7,
@@ -7207,12 +7407,12 @@
       "branch": 88.23
     },
     "src/Deluno.Worker/Jobs/MediaServerRefreshJobHandler.cs": {
-      "line": 90,
-      "branch": 75
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/Jobs/MediaServerRefreshRetryJobHandler.cs": {
-      "line": 91.66,
-      "branch": 83.33
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/Jobs/MovieCollectionSyncJobHandler.cs": {
       "line": 100,
@@ -7232,7 +7432,7 @@
     },
     "src/Deluno.Worker/Jobs/SearchExecutionSupport.cs": {
       "line": 95.45,
-      "branch": 83.33
+      "branch": 86.9
     },
     "src/Deluno.Worker/Jobs/SearchProfileBundles.cs": {
       "line": 100,
@@ -7240,11 +7440,11 @@
     },
     "src/Deluno.Worker/Jobs/SeasonSearchJobHandler.cs": {
       "line": 100,
-      "branch": 94.44
+      "branch": 100
     },
     "src/Deluno.Worker/Jobs/SeriesCatalogRefreshJobHandler.cs": {
       "line": 100,
-      "branch": 87.5
+      "branch": 100
     },
     "src/Deluno.Worker/Jobs/SeriesMetadataRefreshJobHandler.cs": {
       "line": 96.83,
@@ -7255,8 +7455,8 @@
       "branch": 100
     },
     "src/Deluno.Worker/Jobs/SubtitleSyncJobHandler.cs": {
-      "line": 95.52,
-      "branch": 75
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/Jobs/SubtitleTitleSearchJobHandler.cs": {
       "line": 74.76,
@@ -7275,7 +7475,7 @@
       "branch": 92.91
     },
     "src/Deluno.Worker/Security/ActivityAccountResetReporter.cs": {
-      "line": 75,
+      "line": 100,
       "branch": null
     },
     "src/Deluno.Worker/Security/ActivityLocalNetworkAuthChangeNotifier.cs": {
@@ -7291,8 +7491,8 @@
       "branch": null
     },
     "src/Deluno.Worker/Services/ArtworkRemoteUrls.cs": {
-      "line": 10,
-      "branch": 0
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/Services/BackgroundServiceFailureMonitor.cs": {
       "line": 82.91,
@@ -7323,8 +7523,8 @@
       "branch": 100
     },
     "src/Deluno.Worker/Services/GivenUpDownloadRemoval.cs": {
-      "line": 93.33,
-      "branch": 66.66
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/Services/HandledProblemsSettler.cs": {
       "line": 98.03,
@@ -7335,28 +7535,28 @@
       "branch": 82.14
     },
     "src/Deluno.Worker/Services/HistoryRetentionWorker.cs": {
-      "line": 94.11,
-      "branch": 83.33
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/Services/ImportedDownloads.cs": {
-      "line": 96.15,
-      "branch": 72.22
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/Services/JobLaneStateBoard.cs": {
       "line": 100,
       "branch": 100
     },
     "src/Deluno.Worker/Services/JobLanes.cs": {
-      "line": 99.39,
+      "line": 100,
       "branch": 100
     },
     "src/Deluno.Worker/Services/LaneRunner.cs": {
-      "line": 96.38,
-      "branch": 94.73
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/Services/LaneSupervisor.cs": {
-      "line": 96.15,
-      "branch": 93.33
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/Services/MachineTelemetrySampler.cs": {
       "line": 94.33,
@@ -7391,8 +7591,8 @@
       "branch": 95.23
     },
     "src/Deluno.Worker/Services/ProcessorOutcomeReporter.cs": {
-      "line": 85.24,
-      "branch": 62.5
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/Services/ProcessorOutputImportQueue.cs": {
       "line": 93.72,
@@ -7403,8 +7603,8 @@
       "branch": null
     },
     "src/Deluno.Worker/Services/ProcessorOutputSweep.cs": {
-      "line": 84.82,
-      "branch": 80.88
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/Services/QbittorrentBlocklistSyncService.cs": {
       "line": 68.08,
@@ -7419,16 +7619,16 @@
       "branch": 86.66
     },
     "src/Deluno.Worker/Services/SharingTrackedFileCache.cs": {
-      "line": 92.3,
-      "branch": 85.71
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/Services/SourceGoneRule.cs": {
-      "line": 95,
-      "branch": 90.62
+      "line": 100,
+      "branch": 100
     },
     "src/Deluno.Worker/Services/WorkPlanner.cs": {
-      "line": 90.8,
-      "branch": 78
+      "line": 90.97,
+      "branch": 78.59
     },
     "src/Deluno.Worker/SystemReadings/SlowValue.cs": {
       "line": 100,
@@ -7467,20 +7667,20 @@
       "branch": null
     },
     "src/cache.js": {
-      "line": 96.22,
-      "branch": 88.23
+      "line": 100,
+      "branch": 94.44
     },
     "src/index.js": {
-      "line": 87.68,
-      "branch": 80
+      "line": 98.16,
+      "branch": 90.38
     },
     "src/limits.js": {
       "line": 100,
       "branch": 100
     },
     "src/tvdb.js": {
-      "line": 93.16,
-      "branch": 85.9
+      "line": 96.28,
+      "branch": 88.28
     }
   }
 }

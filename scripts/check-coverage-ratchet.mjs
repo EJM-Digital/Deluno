@@ -76,9 +76,11 @@ export function update(baseline, report, { prune = false } = {}) {
     const old = files[file] ?? { line: null, branch: null };
     const line = floor2(percent(now.lines));
     const branch = floor2(percent(now.branches));
+    // A file the report measured with nothing of a kind left (a simplification took its last branch) has none to hold:
+    // keeping its old number would fail the check that follows on "now has no branches to measure".
     files[file] = {
-      line: line === null ? old.line ?? null : Math.max(line, old.line ?? 0),
-      branch: branch === null ? old.branch ?? null : Math.max(branch, old.branch ?? 0)
+      line: line === null ? null : Math.max(line, old.line ?? 0),
+      branch: branch === null ? null : Math.max(branch, old.branch ?? 0)
     };
   }
   if (prune) {
