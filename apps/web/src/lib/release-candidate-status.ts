@@ -21,11 +21,13 @@ export function isTypedCandidate(candidate: ReleaseCandidateStatusInput): boolea
     || (candidate.preferenceComparison !== null && candidate.preferenceComparison !== undefined);
 }
 
+const RECOMMENDABLE = new Set<string | undefined>(["preferred", "eligible"]);
+const TAKEN = new Set<string | undefined>(["preferred", "acceptable"]);
+
 export function candidateLabel(candidate: ReleaseCandidateStatusInput): string {
   if (isTypedCandidate(candidate)) {
     switch (candidate.decisionStatus?.toLowerCase()) {
       case "rejected": return "Rejected";
-      case "held": return "Needs review";
       case "equivalent": return "Equivalent";
       // Nothing rejected this release. Saying so would be untrue, and it
       // would hide the only fact that matters here: you already have better.
@@ -37,25 +39,23 @@ export function candidateLabel(candidate: ReleaseCandidateStatusInput): string {
       case "preferred": return "Preferred";
       case "acceptable": return "Acceptable";
       case "eligible": return "Eligible";
-      default: return "Needs review";
     }
   }
   if (candidate.decisionStatus === "rejected") return "Rejected";
-  if (["preferred", "eligible"].includes(candidate.decisionStatus || "") && candidate.meetsCutoff) return "Recommended";
+  if (RECOMMENDABLE.has(candidate.decisionStatus) && candidate.meetsCutoff) return "Recommended";
   return "Needs review";
 }
 
 export function candidateTone(candidate: ReleaseCandidateStatusInput): CandidateTone {
   if (isTypedCandidate(candidate)) {
-    const status = candidate.decisionStatus?.toLowerCase() ?? "";
+    const status = candidate.decisionStatus?.toLowerCase();
     // "bad" is the tone for something being wrong. A release you simply do
-    // not need is not wrong, so it reads as information, not as a failure.
+    // not need (equivalent, or your file is better) is not wrong, so it reads as a warning, not as a failure.
     if (status === "rejected") return "bad";
-    if (status === "equivalent" || status === "current-better") return "warn";
-    return ["preferred", "acceptable"].includes(status) ? "ok" : "warn";
+    return TAKEN.has(status) ? "ok" : "warn";
   }
   if (candidate.decisionStatus === "rejected") return "bad";
-  if (["preferred", "eligible"].includes(candidate.decisionStatus || "") && candidate.meetsCutoff) return "ok";
+  if (RECOMMENDABLE.has(candidate.decisionStatus) && candidate.meetsCutoff) return "ok";
   return "warn";
 }
 
@@ -66,7 +66,7 @@ export function candidateTone(candidate: ReleaseCandidateStatusInput): Candidate
  */
 export function likesCandidate(candidate: ReleaseCandidateStatusInput | null | undefined): boolean {
   if (!candidate) return true;
-  const status = candidate.decisionStatus?.toLowerCase() ?? "";
+  const status = candidate.decisionStatus?.toLowerCase();
   return status !== "rejected" && status !== "current-better" && status !== "equivalent";
 }
 
@@ -76,7 +76,7 @@ export function likesCandidate(candidate: ReleaseCandidateStatusInput | null | u
  * win; a list whose best row is one the installed file beats has no winner.
  */
 export function canWinSearch(candidate: ReleaseCandidateStatusInput): boolean {
-  const status = candidate.decisionStatus?.toLowerCase() ?? "";
+  const status = candidate.decisionStatus?.toLowerCase();
   return status !== "rejected"
     && status !== "held"
     && status !== "equivalent"
@@ -97,7 +97,7 @@ export function plainCandidateReason(text: string): string {
     .replace(/Eligible under the typed release plan\./g, "Usable, but not taken on its own.")
     .replace(/Candidate is acceptable but does not persistently improve the installed file\./g, "It isn't better than the file you have.")
     .replace(/Custom rule [·-] [^.]*? is below its target\./g, "It lacks something your quality profile prefers.")
-    .replace(/(^|[.!?]\s+)?Custom rule [·-] [^.;']*Tier\s*\d+/gi, (_match, lead?: string) =>
+    .replace(/([.!?]\s+)?Custom rule [·-] [^.;']*Tier\s*\d+/gi, (_match, lead?: string) =>
       lead === undefined ? "your preferred release groups" : `${lead}Your preferred release groups`)
     .replace(/Custom rule [·-] /g, "");
 }

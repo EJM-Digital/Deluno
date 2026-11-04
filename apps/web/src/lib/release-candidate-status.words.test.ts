@@ -34,7 +34,8 @@ describe("the label and colour of a typed candidate", () => {
     ["acceptable", "Acceptable", "ok"],
     ["eligible", "Eligible", "warn"],
     ["something-new", "Needs review", "warn"],
-    ["PREFERRED", "Preferred", "ok"]
+    ["PREFERRED", "Preferred", "ok"],
+    ["REJECTED", "Rejected", "bad"]
   ])("%s reads %s in %s", (status, label, tone) => {
     expect(candidateLabel(typedWith(status))).toBe(label);
     expect(candidateTone(typedWith(status))).toBe(tone);

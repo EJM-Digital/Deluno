@@ -20,8 +20,9 @@ export function clockTime(ms: number): string {
 export function allInBy(cards: readonly JourneyCard[]): number | undefined {
   let latest: number | undefined;
   for (const card of cards) {
-    if (card.stage === "imported" || card.stuck || card.finishAtMs === undefined || !Number.isFinite(card.finishAtMs)) continue;
-    if (latest === undefined || card.finishAtMs > latest) latest = card.finishAtMs;
+    if (card.stage === "imported" || card.stuck || !Number.isFinite(card.finishAtMs)) continue;
+    const finishAt = card.finishAtMs as number;
+    if (latest === undefined || finishAt > latest) latest = finishAt;
   }
   return latest;
 }
@@ -35,7 +36,7 @@ export function journeyHeading(onTheirWay: number, by: number | undefined): stri
 
 /** The time a download should be done, as the card says it. */
 export function doneAbout(finishAtMs: number | undefined): string | null {
-  return finishAtMs === undefined || !Number.isFinite(finishAtMs) ? null : `done about ${clockTime(finishAtMs)}`;
+  return Number.isFinite(finishAtMs) ? `done about ${clockTime(finishAtMs as number)}` : null;
 }
 
 /** What most journeys through each station took today: needs at least this many finished journeys to say. */
@@ -55,12 +56,12 @@ const sameDay = (a: number, b: number) => {
 export function usualTimes(dispatches: readonly DownloadDispatchItem[], handoffs: readonly ProcessorHandoffItem[], now: number): Partial<Record<Stage, string>> {
   const samples: Record<"grabbed" | "downloading" | "processor" | "importing", number[]> = { grabbed: [], downloading: [], processor: [], importing: [] };
   const span = (from: string | null | undefined, to: string | null | undefined): number | null => {
-    const start = Date.parse(from ?? "");
-    const end = Date.parse(to ?? "");
-    return Number.isFinite(start) && Number.isFinite(end) && end > start ? end - start : null;
+    const start = Date.parse(String(from));
+    const end = Date.parse(String(to));
+    return end > start ? end - start : null;
   };
   for (const dispatch of dispatches) {
-    const done = Date.parse(dispatch.importCompletedUtc ?? "");
+    const done = Date.parse(String(dispatch.importCompletedUtc));
     if (!Number.isFinite(done) || !sameDay(done, now)) continue;
     const waited = span(dispatch.createdUtc, dispatch.detectedUtc);
     if (waited !== null) samples.grabbed.push(waited);
@@ -119,7 +120,7 @@ export function buildNext(summary: DashboardSummary | undefined, upcoming: reado
   for (const row of buildCountdownRows(summary).filter(isMediaJob)) {
     const at = Date.parse(row.next);
     if (!row.running && !Number.isFinite(at)) continue;
-    const last = Date.parse(row.last ?? "");
+    const last = Date.parse(String(row.last));
     items.push({ key: row.key, label: row.label, at: row.running || !Number.isFinite(at) ? now : at, last: Number.isFinite(last) ? last : null, running: row.running, to: row.to, kind: "job" });
   }
   for (const episode of upcoming) {

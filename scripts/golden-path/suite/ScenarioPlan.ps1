@@ -11,7 +11,7 @@ $script:UsenetKinds = @('sabnzbd', 'nzbget')
 $script:AllClientKinds = $script:TorrentKinds + $script:UsenetKinds
 
 # The host's own scenarios of the platform extras group (scenarios/G24-PlatformExtras.ps1), run through Run-Update.ps1.
-$script:PlatformExtrasHostIds = @('update.preferences-and-background-check', 'update.killed-mid-apply', 'update.older-build-newer-database', 'uninstall.leaves-nothing-behind', 'uninstall.removes-the-sign-in-entry', 'uninstall.removes-the-windows-service', 'install.silent-first-install', 'companions.install-from-the-page')
+$script:PlatformExtrasHostIds = @('update.preferences-and-background-check', 'update.killed-mid-apply', 'update.older-build-newer-database', 'uninstall.leaves-nothing-behind', 'uninstall.removes-the-sign-in-entry', 'uninstall.removes-the-windows-service', 'install.silent-first-install', 'companions.install-from-the-page', 'uninstall.custom-data-root', 'update.with-bundled-clients', 'update.locked-install-folder', 'update.background-check-repeats', 'uninstall.keeps-bundled-apps')
 
 function Get-ScenarioPlan {
     $all = $script:AllClientKinds
@@ -35,7 +35,7 @@ function Get-ScenarioPlan {
         @{ Name = 'machine'; Function = 'Invoke-GroupMachine'; Ids = @('machine.system-readings', 'machine.guide-contract', 'machine.browse-errors', 'machine.browse-unc-large', 'machine.picker-timeout', 'machine.long-path', 'machine.automation-off', 'machine.processor-hold', 'machine.external-redownload', 'machine.hub-pushes') }
         @{ Name = 'firewall'; Function = 'Invoke-GroupFirewall'; Ids = @('firewall.first-run-rule', 'firewall.screen-allow', 'firewall.screen-declined', 'firewall.tray-allow-and-revoke') }
         @{ Name = 'tray'; Function = 'Invoke-GroupTray'; Ids = @('tray.menu-actions', 'tray.change-port', 'tray.allowed-hosts-recovery', 'tray.red-when-host-fails', 'tray.serves-front-end') }
-        @{ Name = 'traystates'; Function = 'Invoke-GroupTrayStates'; Ids = @('tray.dot-and-hover', 'tray.starting-dot', 'tray.menu-details', 'tray.update-not-installed', 'tray.quit') }
+        @{ Name = 'traystates'; Function = 'Invoke-GroupTrayStates'; Ids = @('tray.dot-and-hover', 'tray.starting-dot', 'tray.menu-details', 'tray.update-not-installed', 'tray.amber-sources', 'tray.quit') }
         @{ Name = 'trayplatform'; Function = 'Invoke-GroupTrayPlatform'; Ids = @('tray.clicks-and-second-launch') }
         @{ Name = 'service'; Function = 'Invoke-GroupService'; Ids = @('service.install-run-uninstall', 'service.let-any-address-in', 'service.wrong-password') }
         @{ Name = 'platformextras'; Function = 'Invoke-GroupPlatformExtras'; Ids = @('service.stop-and-clean-shutdown', 'service.updates-in-service-mode', 'tray.restarts-clients-at-start', 'tray.waiting-work-menu-lines', 'install.loopback-and-hook-log', 'install.second-picker-leaves-installed-apps', 'service.named-user-runs', 'update.blocked-note-shown') }

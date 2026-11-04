@@ -42,7 +42,7 @@ export async function fetchLiveExtras(): Promise<DashboardLiveExtras | null> {
   nextExtrasFresh = false;
   try {
     const extras = await fetchJson<DashboardLiveExtras>(`/api/dashboard/live-extras?sinceUtc=${encodeURIComponent(midnight.toISOString())}${fresh ? "&fresh=true" : ""}`);
-    return Array.isArray(extras?.arrivals) ? extras : null;
+    return Array.isArray(extras.arrivals) ? extras : null;
   } catch {
     return null;
   }

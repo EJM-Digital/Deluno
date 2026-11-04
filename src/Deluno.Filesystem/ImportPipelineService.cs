@@ -5862,20 +5862,33 @@ public sealed partial class ImportPipelineService(
             ? Path.GetFileNameWithoutExtension(request.SourcePath)
             : request.Title.Trim();
 
-    private static bool CanLikelyHardlink(string sourcePath, string destinationPath)
+    /// <summary>
+    /// Whether a hard link between the two paths is likely to work: they are on the same mounted volume. On Linux (the Docker
+    /// image) every path is rooted at "/", so the root alone said "yes" for a downloads mount and a media mount that are
+    /// different file systems; the mounted roots (the longest one a path is under) tell them apart (#1464, the same rule as the
+    /// library health row).
+    /// </summary>
+    internal static bool CanLikelyHardlink(string sourcePath, string destinationPath)
+        => CanLikelyHardlink(sourcePath, destinationPath, MountedVolumes.Roots());
+
+    internal static bool CanLikelyHardlink(string sourcePath, string destinationPath, IReadOnlyList<string> mountedRoots)
     {
         try
         {
-            var sourceRoot = Path.GetPathRoot(Path.GetFullPath(sourcePath));
-            var destinationRoot = Path.GetPathRoot(Path.GetFullPath(destinationPath));
-            return !string.IsNullOrWhiteSpace(sourceRoot) &&
-                   string.Equals(sourceRoot, destinationRoot, StringComparison.OrdinalIgnoreCase);
+            var source = VolumeRootOf(Path.GetFullPath(sourcePath), mountedRoots);
+            var destination = VolumeRootOf(Path.GetFullPath(destinationPath), mountedRoots);
+            return !string.IsNullOrWhiteSpace(source) &&
+                   string.Equals(source, destination, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
         }
         catch
         {
             return false;
         }
     }
+
+    // The longest mounted root the path is under; the path's own root when none holds it (a network share).
+    private static string? VolumeRootOf(string fullPath, IReadOnlyList<string> mountedRoots)
+        => MountedVolumes.RootOf(fullPath, mountedRoots) ?? Path.GetPathRoot(fullPath);
 
     private static bool IsSamePath(string first, string second)
     {

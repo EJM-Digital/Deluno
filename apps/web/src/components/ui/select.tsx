@@ -33,7 +33,7 @@ const BOX_CLASS = /^(?:[a-z0-9-]+:)*!?(?:w-|min-w-|max-w-|flex-|shrink|grow|basi
 function splitBoxClasses(className: string | undefined): [box: string, control: string] {
   const box: string[] = [];
   const control: string[] = [];
-  for (const token of (className ?? "").split(/\s+/).filter(Boolean)) (BOX_CLASS.test(token) ? box : control).push(token);
+  for (const token of (className ?? "").split(/\s+/)) (BOX_CLASS.test(token) ? box : control).push(token);
   return [box.join(" "), control.join(" ")];
 }
 
@@ -50,8 +50,8 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
         <select
           ref={ref}
           id={id ?? field?.id}
-          aria-describedby={props["aria-describedby"] ?? field?.describedBy}
-          aria-invalid={props["aria-invalid"] ?? (field?.invalid ? true : undefined)}
+          aria-describedby={field?.describedBy}
+          aria-invalid={field?.invalid ? true : undefined}
           className={cn(
             chrome ? controlClassName : bareControlClassName,
             // The right padding is the gutter the chevron below sits in, so it

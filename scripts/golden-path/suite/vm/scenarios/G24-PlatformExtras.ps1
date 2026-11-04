@@ -814,3 +814,251 @@ function Invoke-GroupPlatformExtrasNamedUser {
         }
     }
 }
+
+# ---------------------------------------------------------------- more host scenarios (#1278): a custom data folder, bundled clients and a locked install folder
+
+function Invoke-UninstallCustomDataRoot {
+    param([Parameter(Mandatory)] [string] $CandidateSetup, [Parameter(Mandatory)] [string] $CandidateVersion)
+    Invoke-Scenario -Id 'uninstall.custom-data-root' -Title 'With the data folder moved somewhere else (the pointer is in the settings file outside the install folder), an uninstall and a reinstall find the data where it was: not a first run, the same account and libraries, and no new data folder made beside the program' -Body {
+        $ctx = Start-PreviousForUpdate -CandidateVersion $CandidateVersion
+        if (-not $ctx) { return }
+        $p = Start-Process -FilePath $CandidateSetup -ArgumentList '--silent' -PassThru
+        $done = $p.WaitForExit(600000)
+        Add-Check 'Setup.exe --silent over the previous release finished' ($done -and $p.ExitCode -eq 0) "exit $(if ($done) { $p.ExitCode } else { 'none' })"
+        if (-not (Test-CameBackAsCandidate -Context $ctx -CandidateVersion $CandidateVersion)) { return }
+        $settingsFile = Join-Path $env:LOCALAPPDATA 'DelunoConfig\deluno.json'
+        $default = Join-Path $env:LOCALAPPDATA 'DelunoData'
+        $custom = 'C:\golden\custom-data'
+        $installFolder = Join-Path $env:LOCALAPPDATA 'Deluno'
+        $null = Quit-DelunoFromTray
+        Remove-Item -LiteralPath $custom -Recurse -Force -ErrorAction SilentlyContinue
+        & robocopy.exe $default $custom /E /NFL /NDL /NJH /NJS /NP | Out-Null
+        $s = Get-Content -Raw $settingsFile | ConvertFrom-Json
+        $s | Add-Member -NotePropertyName dataRoot -NotePropertyValue $custom -Force
+        [IO.File]::WriteAllText($settingsFile, ($s | ConvertTo-Json -Depth 8))
+        Remove-Item -LiteralPath "$default.moved" -Recurse -Force -ErrorAction SilentlyContinue
+        Rename-Item -LiteralPath $default -NewName 'DelunoData.moved'
+        Add-Check 'The data folder is moved: a copy is where the settings file now points, and the usual folder is out of the way' ((Test-Path $custom) -and -not (Test-Path $default)) $custom
+        $exe = Get-InstalledDelunoExe
+        Start-ProgramUnelevated -Path $exe.FullName -WorkingDirectory $exe.DirectoryName -Elevated
+        $up = Wait-Until -TimeoutSec 420 -IntervalSec 3 -Condition { Test-DelunoAnswering }
+        Add-Check 'Deluno starts on the moved data folder' $up.Ok ''
+        if (-not $up.Ok) { return }
+        $boot = Try-Deluno -Path '/api/auth/bootstrap-status'
+        $connected = $false; try { Connect-Deluno; $connected = $true } catch { }
+        Add-Check 'It is the moved data: the account is there and its libraries are there' ($boot.Data.requiresSetup -eq $false -and $connected -and @(Get-Library).Count -gt 0) $boot.Raw
+        Add-Check 'No data folder was made at the usual place' (@(Get-ChildItem -LiteralPath $default -Recurse -Filter '*.db' -ErrorAction SilentlyContinue).Count -eq 0) $default
+        $hashBefore = (Get-FileHash -LiteralPath $settingsFile -Algorithm SHA256).Hash
+        $keptBefore = @(Get-ChildItem -LiteralPath $custom -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '\.db$' } | ForEach-Object { $_.FullName.Substring($custom.Length) })
+        $r = Invoke-DelunoUninstall
+        Add-Check 'The uninstaller finished with exit code 0' $r.Ok $r.Detail
+        $gone = Wait-Until -TimeoutSec 120 -IntervalSec 2 -Condition { -not (Test-Path (Join-Path $installFolder 'current\Deluno.exe')) -and @(Get-DelunoProcess).Count -eq 0 }
+        Add-Check 'The program is removed' $gone.Ok ''
+        $null = Wait-Until -TimeoutSec 90 -IntervalSec 2 -Condition { -not (Test-Path (Join-Path $installFolder 'Update.exe')) -and -not (Get-Process -Name 'Update' -ErrorAction SilentlyContinue) }
+        $keptAfter = @(Get-ChildItem -LiteralPath $custom -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '\.db$' } | ForEach-Object { $_.FullName.Substring($custom.Length) })
+        Add-Check 'The moved data is kept whole (every database is still there)' ($keptBefore.Count -ge 3 -and @($keptBefore | Where-Object { $_ -notin $keptAfter }).Count -eq 0) "$($keptBefore.Count) databases"
+        Add-Check 'The settings file with the pointer is kept, byte for byte (it does not live in the install folder)' ((Test-Path -LiteralPath $settingsFile) -and (Get-FileHash -LiteralPath $settingsFile -Algorithm SHA256).Hash -eq $hashBefore) $settingsFile
+        $setup = 'C:\golden\candidate\Deluno-Setup.exe'
+        $p2 = Start-Process -FilePath $setup -ArgumentList '--silent' -PassThru
+        $done2 = $p2.WaitForExit(600000)
+        Add-Check 'Setup --silent over the uninstalled machine finished' ($done2 -and $p2.ExitCode -eq 0) "exit $(if ($done2) { $p2.ExitCode } else { 'none' })"
+        Wait-InstallerQuiet | Out-Null
+        $exe2 = Get-InstalledDelunoExe
+        Add-Check 'The reinstall put Deluno.exe back' ($null -ne $exe2) ''
+        if (-not $exe2) { return }
+        Start-ProgramUnelevated -Path $exe2.FullName -WorkingDirectory $exe2.DirectoryName -Elevated
+        $up2 = Wait-Until -TimeoutSec 420 -IntervalSec 3 -Condition { Test-DelunoAnswering }
+        Add-Check 'The reinstalled Deluno starts and answers' $up2.Ok ''
+        if (-not $up2.Ok) { return }
+        $boot2 = Try-Deluno -Path '/api/auth/bootstrap-status'
+        $connected2 = $false; try { Connect-Deluno; $connected2 = $true } catch { }
+        Add-Check 'It finds the moved data: not a first run, the old sign-in works and the libraries are there' ($boot2.Data.requiresSetup -eq $false -and $connected2 -and @(Get-Library).Count -gt 0) $boot2.Raw
+        $pointer = (Get-Content -Raw $settingsFile | ConvertFrom-Json).dataRoot
+        Add-Check 'The pointer still names the moved folder and no new data folder was made at the usual place' (($pointer -eq $custom) -and @(Get-ChildItem -LiteralPath $default -Recurse -Filter '*.db' -ErrorAction SilentlyContinue).Count -eq 0) "dataRoot '$pointer'"
+        # Put the machine back as it was found.
+        $null = Quit-DelunoFromTray
+        Remove-Item -LiteralPath $custom -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# The ports of the list that something is listening on.
+function Get-ListeningPorts {
+    param([int[]] $Ports = @())
+    @($Ports | Where-Object { Get-NetTCPConnection -State Listen -LocalPort $_ -ErrorAction SilentlyContinue })
+}
+
+function Get-ClientConfigLines {
+    $qb = Join-Path $env:APPDATA 'qBittorrent\qBittorrent.ini'
+    $sab = @(Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'sabnzbd') -Filter 'sabnzbd.ini' -ErrorAction SilentlyContinue | Select-Object -First 1)
+    $lines = New-Object System.Collections.ArrayList
+    if (Test-Path -LiteralPath $qb) { foreach ($l in Get-Content -LiteralPath $qb) { if ($l -match '^WebUI\\(Port|Username|Password_PBKDF2|Address)=') { [void]$lines.Add("qb:$l") } } }
+    if ($sab.Count) { foreach ($l in Get-Content -LiteralPath $sab[0].FullName) { if ($l -match '^\s*(port|username|api_key|password|host)\s*=') { [void]$lines.Add("sab:$($l.Trim())") } } }
+    @($lines | Sort-Object)
+}
+
+function Invoke-UpdateWithBundledClients {
+    param([Parameter(Mandatory)] [string] $CandidateSetup, [Parameter(Mandatory)] [string] $CandidateVersion)
+    Invoke-Scenario -Id 'update.with-bundled-clients' -Title 'An update over a running Deluno that has SABnzbd and qBittorrent installed (through the Companion Tools page) keeps both: they answer again on their ports and their settings (port, login) are the same' -Body {
+        $ctx = Start-PreviousForUpdate -CandidateVersion $CandidateVersion
+        if (-not $ctx) { return }
+        foreach ($c in @(Get-DownloadClients | Where-Object { $_.protocol -eq 'qbittorrent' })) { Try-Deluno -Method DELETE -Path "/api/download-clients/$($c.id)" | Out-Null }
+        $ask = Try-Deluno -Method POST -Path '/api/companion-tools/install' -Body @{ toolIds = @('sabnzbd', 'qbittorrent') }
+        Add-Check 'Asking for SABnzbd and qBittorrent is accepted (HTTP 202)' ($ask.Status -eq 202) "HTTP $($ask.Status) $($ask.Raw)"
+        if ($ask.Status -ne 202) { return }
+        $final = $null
+        $deadline = (Get-Date).AddMinutes(20)
+        while ((Get-Date) -lt $deadline) {
+            $r = Try-Deluno -Path '/api/companion-tools'
+            if ($r.Status -eq 200) {
+                $jobs = @($r.Data.tools | Where-Object { $_.job })
+                if ($jobs.Count -ge 2 -and @($jobs | Where-Object { $_.job.status -in 'queued', 'running' }).Count -eq 0) { $final = $r.Data; break }
+            }
+            Start-Sleep -Seconds 2 # reason: polling the install's progress; the page reads it the same way
+        }
+        Add-Check 'Both are installed within 20 minutes' ($null -ne $final -and @($final.tools | Where-Object { $_.job -and $_.job.status -ne 'done' }).Count -eq 0) ''
+        if (-not $final) { return }
+        $cfgBefore = @(Get-ClientConfigLines)
+        $wanted = @($cfgBefore | ForEach-Object { if ($_ -match '^qb:WebUI\\Port=(\d+)') { [int]$Matches[1] } elseif ($_ -match '^sab:port\s*=\s*(\d+)') { [int]$Matches[1] } })
+        $listenBefore = @(Get-ListeningPorts -Ports $wanted)
+        Add-Check 'Before the update both answer and have settings to keep' ($wanted.Count -eq 2 -and $listenBefore.Count -eq 2 -and ($cfgBefore | Where-Object { $_ -like 'qb:*' }).Count -ge 1 -and ($cfgBefore | Where-Object { $_ -like 'sab:*' }).Count -ge 1) ("ports: $($listenBefore -join ','); $($cfgBefore.Count) settings lines")
+        $ctx.Before = Get-DelunoStateSummary
+        $p = Start-Process -FilePath $CandidateSetup -ArgumentList '--silent' -PassThru
+        $done = $p.WaitForExit(600000)
+        Add-Check 'Setup.exe --silent over the running previous release finished' ($done -and $p.ExitCode -eq 0) "exit $(if ($done) { $p.ExitCode } else { 'none' })"
+        if (-not (Test-CameBackAsCandidate -Context $ctx -CandidateVersion $CandidateVersion)) { return }
+        $back = Wait-Until -TimeoutSec 240 -IntervalSec 5 -Condition { $now = @(Get-ListeningPorts -Ports $wanted); if (@($listenBefore | Where-Object { $_ -notin $now }).Count -eq 0) { $now } else { $null } }
+        Add-Check 'SABnzbd and qBittorrent answer again on the same ports (they survived or were started again)' $back.Ok "before $($listenBefore -join ','), now $((@(Get-ListeningPorts -Ports $wanted)) -join ',')"
+        $cfgAfter = @(Get-ClientConfigLines)
+        Add-Check 'Their settings are the same: web port, address, login and key' (($cfgAfter -join "`n") -eq ($cfgBefore -join "`n")) $(if (($cfgAfter -join "`n") -eq ($cfgBefore -join "`n")) { "$($cfgAfter.Count) lines" } else { 'changed: ' + (@(Compare-Object $cfgBefore $cfgAfter | ForEach-Object { ($_.InputObject -replace '(password|api_key|Password_PBKDF2)(=|\s*=\s*).*', '$1 ...') }) -join ' | ') })
+    }
+}
+
+function Invoke-UpdateLockedInstallFolder {
+    param([Parameter(Mandatory)] [string] $CandidateSetup, [Parameter(Mandatory)] [string] $CandidateVersion)
+    Invoke-Scenario -Id 'update.locked-install-folder' -Title 'A file in the install folder held open by something else (as an antivirus scan does) while Setup runs: whether the update goes through or not, Deluno starts afterwards, answers, and has its data' -Body {
+        $ctx = Start-PreviousForUpdate -CandidateVersion $CandidateVersion
+        if (-not $ctx) { return }
+        $installFolder = Join-Path $env:LOCALAPPDATA 'Deluno'
+        $null = Quit-DelunoFromTray
+        $target = @(Get-ChildItem -LiteralPath (Join-Path $installFolder 'current') -File | Where-Object { $_.Name -ne 'Deluno.exe' } | Sort-Object Length -Descending | Select-Object -First 1)
+        Add-Check 'There is a file in the install folder to hold open' ($target.Count -eq 1) $(if ($target.Count) { $target[0].Name } else { 'none' })
+        if ($target.Count -ne 1) { return }
+        $hold = [IO.File]::Open($target[0].FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        $setupExit = 'none'
+        try {
+            $p = Start-Process -FilePath $CandidateSetup -ArgumentList '--silent' -PassThru
+            $done = $p.WaitForExit(600000)
+            $setupExit = if ($done) { "$($p.ExitCode)" } else { 'timed out' }
+            Add-Note "Setup --silent with a file held open ended: $setupExit."
+        }
+        finally { $hold.Dispose() }
+        Wait-InstallerQuiet | Out-Null
+        $exe = Get-InstalledDelunoExe
+        Add-Check 'A Deluno.exe is still installed (the install folder was not left empty)' ($null -ne $exe) $(if ($exe) { $exe.VersionInfo.ProductVersion } else { 'none' })
+        if (-not $exe) { return }
+        if (@(Get-DelunoProcess).Count -eq 0) { Start-ProgramUnelevated -Path $exe.FullName -WorkingDirectory $exe.DirectoryName -Elevated }
+        $up = Wait-Until -TimeoutSec 420 -IntervalSec 3 -Condition { Test-DelunoAnswering }
+        Add-Check 'Deluno starts and answers after the update met a held file' $up.Ok $(if ($up.Ok) { "as $((Get-InstalledDelunoExe).VersionInfo.ProductVersion) after $($up.Seconds) s" } else { 'never answered' })
+        if (-not $up.Ok) { return }
+        $connected = $false; try { Connect-Deluno; $connected = $true } catch { }
+        Add-Check 'The signed-in account still works' $connected ''
+        if ($connected) {
+            $after = Get-DelunoStateSummary
+            Add-Check 'The data is intact: clients, libraries and Activity are the same' ((($after.Clients -join ';') -eq ($ctx.Before.Clients -join ';')) -and (($after.Libraries -join ';') -eq ($ctx.Before.Libraries -join ';')) -and $after.Activity -ge $ctx.Before.Activity) ''
+        }
+    }
+}
+
+function Invoke-UpdateBackgroundCheckRepeats {
+    param([Parameter(Mandatory)] [string] $CandidateSetup, [Parameter(Mandatory)] [string] $CandidateVersion)
+    Invoke-Scenario -Id 'update.background-check-repeats' -Title 'With auto-check on, the check Deluno makes by itself after it starts is made again after the interval, and again (the interval is the six hours; a test setting shortens it to 40 seconds so the repeat can be seen), and with auto-check off nothing is asked' -Body {
+        Assert-UpdateFeedFiles | Out-Null
+        $ctx = Start-PreviousForUpdate -CandidateVersion $CandidateVersion
+        if (-not $ctx) { return }
+        # The interval setting is the candidate's: update to it first.
+        $p = Start-Process -FilePath $CandidateSetup -ArgumentList '--silent' -PassThru
+        $done = $p.WaitForExit(600000)
+        Add-Check 'Setup.exe --silent over the previous release finished' ($done -and $p.ExitCode -eq 0) "exit $(if ($done) { $p.ExitCode } else { 'none' })"
+        if (-not (Test-CameBackAsCandidate -Context $ctx -CandidateVersion $CandidateVersion)) { return }
+        $name = 'DELUNO_TEST_UPDATE_CHECK_INTERVAL_SECONDS'
+        $feed = $null
+        try {
+            $feed = Start-UpdateFeed -Folder (Get-UpdateFeedFolder) -ThrottleMs 0
+            Set-UpdateSourceToFeed | Out-Null
+            Try-Deluno -Method PUT -Path '/api/updates/preferences' -Body @{ mode = 'notify-only'; autoCheck = $true } | Out-Null
+            $null = Quit-DelunoFromTray
+            # The tray is started from the user's own profile, so the setting is put there (and taken away again after).
+            [Environment]::SetEnvironmentVariable($name, '40', 'User')
+            $exe = Get-InstalledDelunoExe
+            Start-ProgramUnelevated -Path $exe.FullName -WorkingDirectory $exe.DirectoryName -Elevated
+            $up = Wait-Until -TimeoutSec 240 -IntervalSec 2 -Condition { Test-DelunoAnswering }
+            Add-Check 'Deluno starts with auto-check on' $up.Ok ''
+            if (-not $up.Ok) { return }
+            $asks = { @(Get-UpdateFeedRequests | Where-Object { $_ -match 'releases\.|RELEASES' } | ForEach-Object { [DateTime]::Parse(($_ -split ' ')[0]).ToUniversalTime() }) }
+            $three = Wait-Until -TimeoutSec 300 -IntervalSec 3 -Condition { if (@(& $asks).Count -ge 3) { $true } else { $null } }
+            $times = @(& $asks)
+            Add-Check 'The feed is asked for the release list by itself three times in a row (the start-up check, then the repeat twice)' $three.Ok "$($times.Count) asks"
+            if ($three.Ok) {
+                $gap1 = ($times[1] - $times[0]).TotalSeconds; $gap2 = ($times[2] - $times[1]).TotalSeconds
+                Add-Check 'The repeats come after the set interval (40 seconds), not at once and not at the six hours' ($gap1 -ge 35 -and $gap1 -le 120 -and $gap2 -ge 35 -and $gap2 -le 120) ("{0:N0} s then {1:N0} s" -f $gap1, $gap2)
+            }
+            # With auto-check off nothing is asked, however often the interval comes round.
+            Try-Deluno -Method PUT -Path '/api/updates/preferences' -Body @{ autoCheck = $false } | Out-Null
+            Start-Sleep -Seconds 5 # reason: a check that was already under way when the setting changed ends before the count is taken
+            $before = @(& $asks).Count
+            Start-Sleep -Seconds 130 # reason: three full intervals must pass with nothing asked; nothing signals that a check will not come
+            Add-Check 'With auto-check off the feed is not asked again, through three intervals' (@(& $asks).Count -eq $before) "$before asks, then $(@(& $asks).Count)"
+        }
+        finally {
+            [Environment]::SetEnvironmentVariable($name, $null, 'User')
+            if ($feed) { Stop-UpdateFeed $feed }
+        }
+    }
+}
+
+function Invoke-UninstallKeepsBundledApps {
+    param([Parameter(Mandatory)] [string] $CandidateSetup, [Parameter(Mandatory)] [string] $CandidateVersion)
+    Invoke-Scenario -Id 'uninstall.keeps-bundled-apps' -Title 'Uninstalling Deluno leaves the apps it installed (SABnzbd and qBittorrent here) installed, running on their ports, with their settings as they were' -Body {
+        $ctx = Start-PreviousForUpdate -CandidateVersion $CandidateVersion
+        if (-not $ctx) { return }
+        foreach ($c in @(Get-DownloadClients | Where-Object { $_.protocol -eq 'qbittorrent' })) { Try-Deluno -Method DELETE -Path "/api/download-clients/$($c.id)" | Out-Null }
+        $ask = Try-Deluno -Method POST -Path '/api/companion-tools/install' -Body @{ toolIds = @('sabnzbd', 'qbittorrent') }
+        Add-Check 'Asking for SABnzbd and qBittorrent is accepted (HTTP 202)' ($ask.Status -eq 202) "HTTP $($ask.Status) $($ask.Raw)"
+        if ($ask.Status -ne 202) { return }
+        $final = $null
+        $deadline = (Get-Date).AddMinutes(20)
+        while ((Get-Date) -lt $deadline) {
+            $r = Try-Deluno -Path '/api/companion-tools'
+            if ($r.Status -eq 200) {
+                $jobs = @($r.Data.tools | Where-Object { $_.job })
+                if ($jobs.Count -ge 2 -and @($jobs | Where-Object { $_.job.status -in 'queued', 'running' }).Count -eq 0) { $final = $r.Data; break }
+            }
+            Start-Sleep -Seconds 2 # reason: polling the install's progress; the page reads it the same way
+        }
+        Add-Check 'Both are installed within 20 minutes' ($null -ne $final -and @($final.tools | Where-Object { $_.job -and $_.job.status -ne 'done' }).Count -eq 0) ''
+        if (-not $final) { return }
+        # The uninstall hook under test is the candidate's.
+        $ctx.Before = Get-DelunoStateSummary
+        $p = Start-Process -FilePath $CandidateSetup -ArgumentList '--silent' -PassThru
+        $done = $p.WaitForExit(600000)
+        Add-Check 'Setup.exe --silent over the previous release finished' ($done -and $p.ExitCode -eq 0) "exit $(if ($done) { $p.ExitCode } else { 'none' })"
+        if (-not (Test-CameBackAsCandidate -Context $ctx -CandidateVersion $CandidateVersion)) { return }
+        $cfgBefore = @(Get-ClientConfigLines)
+        $wanted = @($cfgBefore | ForEach-Object { if ($_ -match '^qb:WebUI\\Port=(\d+)') { [int]$Matches[1] } elseif ($_ -match '^sab:port\s*=\s*(\d+)') { [int]$Matches[1] } })
+        $up = Wait-Until -TimeoutSec 240 -IntervalSec 5 -Condition { if (@(Get-ListeningPorts -Ports $wanted).Count -eq 2 -and $wanted.Count -eq 2) { $true } else { $null } }
+        Add-Check 'Before the uninstall both answer on their ports' $up.Ok "ports $($wanted -join ',')"
+        if (-not $up.Ok) { return }
+        $qbFolder = Join-Path $env:APPDATA 'qBittorrent'
+        $sabFolder = Join-Path $env:LOCALAPPDATA 'sabnzbd'
+        $r = Invoke-DelunoUninstall
+        Add-Check 'The uninstaller finished with exit code 0' $r.Ok $r.Detail
+        $gone = Wait-Until -TimeoutSec 120 -IntervalSec 2 -Condition { -not (Test-Path (Join-Path (Join-Path $env:LOCALAPPDATA 'Deluno') 'current\Deluno.exe')) -and @(Get-DelunoProcess).Count -eq 0 }
+        Add-Check 'Deluno is removed' $gone.Ok ''
+        $null = Wait-Until -TimeoutSec 90 -IntervalSec 2 -Condition { -not (Get-Process -Name 'Update' -ErrorAction SilentlyContinue) }
+        Start-Sleep -Seconds 20 # reason: an app that the uninstall was going to stop would be stopped some seconds after Deluno goes; nothing signals that it will not
+        Add-Check 'SABnzbd and qBittorrent still answer on the same ports' (@(Get-ListeningPorts -Ports $wanted).Count -eq 2) "now $((@(Get-ListeningPorts -Ports $wanted)) -join ',')"
+        Add-Check 'Their settings folders and files are still there, as they were' ((Test-Path $qbFolder) -and (Test-Path $sabFolder) -and (@(Get-ClientConfigLines) -join "`n") -eq ($cfgBefore -join "`n")) ''
+        $apps = @(Get-Process -Name 'qbittorrent', 'SABnzbd', 'SABnzbd-console' -ErrorAction SilentlyContinue)
+        Add-Check 'Their programs are still running' ($apps.Count -ge 1) (($apps | ForEach-Object { $_.ProcessName }) -join ', ')
+    }
+}

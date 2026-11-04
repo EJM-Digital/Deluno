@@ -422,7 +422,14 @@ function Invoke-UpdateSetupInteractive {
         $backupsBefore = @(Get-BackupFiles)
         $began = Get-Date
         $p = Start-Process -FilePath $CandidateSetup -PassThru
-        $done = $p.WaitForExit(90000)
+        # A reinstall over a Deluno that is already set up asks nothing again: no download-client picker and no firewall question (#1278).
+        $sawPicker = $false
+        $watchUntil = (Get-Date).AddSeconds(90)
+        while (-not $p.HasExited -and (Get-Date) -lt $watchUntil) {
+            if (@(Get-DesktopWindows | Where-Object { $_.Name -match 'Set up download clients and Weir|Windows Security Alert|Allow other devices' }).Count -gt 0) { $sawPicker = $true }
+            Start-Sleep -Seconds 1 # reason: looking for a window that should never appear; nothing signals that one will not
+        }
+        $done = $p.WaitForExit(1000)
         if (-not $done) {
             $dlg = Wait-DesktopWindow -NamePattern '^Deluno Setup' -Process 'Deluno-Setup' -TimeoutSec 20
             if ($dlg) {
@@ -440,6 +447,7 @@ function Invoke-UpdateSetupInteractive {
         if (-not (Test-CameBackAsCandidate -Context $ctx -CandidateVersion $CandidateVersion)) { return }
         Start-Sleep -Seconds 60 # reason: give a second start (Setup's own launch and the install hook's helper both starting Deluno) time to show itself
         $procs = @(Get-DelunoProcess)
+        Add-Check 'The reinstall asked nothing again: no download-client picker and no firewall question appeared' (-not $sawPicker) ''
         Add-Check 'Exactly one Deluno is running (Setup''s launch and the install hook did not start two)' ($procs.Count -eq 1) "$($procs.Count) process(es): $(($procs | ForEach-Object { $_.Id }) -join ', ')"
         Add-Check 'The previous release''s process is gone' (@($procs | Where-Object { $_.Id -in $ctx.OldPids }).Count -eq 0) ''
         # Setup run by hand over a running copy takes no pre-update backup (only the in-app update does): this pins that down (#1278).
@@ -544,6 +552,14 @@ function Invoke-UpdateTrayMenu {
             # The feed is not up yet: a check that cannot reach it says so plainly and the menu item stays "Check for updates".
             $down = Try-Deluno -Method POST -Path '/api/updates/check' -TimeoutSec 120
             Add-Check 'A check against a feed that is down says it could not check (never "up to date")' ($down.Status -eq 200 -and $down.Data.status.state -eq 'error' -and $down.Data.message -match "Couldn't check for updates") $(if ($down.Data) { "$($down.Data.message) | state $($down.Data.status.state)" } else { "answered $($down.Status)" })
+            # The same check pressed from the tray's menu: the reason is told in a balloon and in the menu's status line (#1278).
+            $toastBefore = Get-ToastTextCount -Text "Couldn't check for updates"
+            $pressedDown = $false
+            for ($i = 0; $i -lt 3 -and -not $pressedDown; $i++) { try { $pressedDown = [bool](Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Check for updates$') } catch { $pressedDown = $false }; if (-not $pressedDown) { Start-Sleep -Seconds 2 <# reason: a retry pause before reading the tray menu again; no event says the menu is ready #> } }
+            Add-Check 'Pressing Check for updates in the tray menu while the feed is down is accepted' $pressedDown ''
+            Add-Check 'The tray says why in a balloon: "Couldn''t check for updates"' (Wait-ToastShown -Text "Couldn't check for updates" -Before $toastBefore -TimeoutSec 90) 'seen in Windows'' notification record'
+            $statusWords = Wait-Until -TimeoutSec 30 -IntervalSec 2 -Condition { $l = (Get-TrayMenuStates | Where-Object { $_.Name -match '^Deluno - ' } | Select-Object -First 1); if ($l -and $l.Name -match "Couldn't check for updates") { $l.Name } else { $null } }
+            Add-Check 'The menu''s status line carries the same reason' $statusWords.Ok $(if ($statusWords.Ok) { $statusWords.Value } else { (Get-TrayMenuStates | ForEach-Object { $_.Name }) -join ' | ' })
             $feed = Start-UpdateFeed -Folder (Get-UpdateFeedFolder) -ThrottleMs 150
             $backupsBefore = @(Get-BackupFiles)
             $press = {

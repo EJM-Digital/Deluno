@@ -71,12 +71,8 @@ function searchSentence(parts: SearchPart[]): string {
  * merge when they say exactly the same sentence in the same kind.
  */
 export function groupActivity(rows: LiveActivityRow[], titles: TitleLookup, when: (row: LiveActivityRow) => string): ActivityGroup[] {
-  const groups: ActivityGroup[] = [];
+  const groups: Array<Pick<ActivityGroup, "first" | "rows" | "sentence">> = [];
   let parts: SearchPart[] = [];
-  const close = (group: ActivityGroup) => {
-    group.detail = group.rows.map((row) => `${sentenceOf(row, titles)} (${when(row)})`);
-    group.fresh = group.rows.some((row) => row.fresh);
-  };
   for (const row of rows) {
     const part = searchPart(row, titles);
     const last = groups[groups.length - 1];
@@ -93,11 +89,12 @@ export function groupActivity(rows: LiveActivityRow[], titles: TitleLookup, when
         continue;
       }
     }
-    if (last) close(last);
     parts = part ? [part] : [];
-    groups.push({ first: row, rows: [row], sentence: part ? searchSentence([part]) : sentenceOf(row, titles), detail: [], fresh: false });
+    groups.push({ first: row, rows: [row], sentence: part ? searchSentence([part]) : sentenceOf(row, titles) });
   }
-  const last = groups[groups.length - 1];
-  if (last) close(last);
-  return groups;
+  return groups.map((group) => ({
+    ...group,
+    detail: group.rows.map((row) => `${sentenceOf(row, titles)} (${when(row)})`),
+    fresh: group.rows.some((row) => row.fresh)
+  }));
 }

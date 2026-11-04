@@ -55,9 +55,8 @@ export function prefetchRoute(to: string, options: { data?: boolean } = {}): voi
 
   void entry.load().then((module) => {
     if (!options.data || !entry.startExport) return;
-    const start = module[entry.startExport];
     // The address goes with the hint: In progress reads its history from different places than its downloads.
-    if (typeof start === "function") (start as (args?: unknown) => unknown)(requestFor(to));
+    (module[entry.startExport] as (args?: unknown) => unknown)(requestFor(to));
   }).catch(() => undefined);
 }
 

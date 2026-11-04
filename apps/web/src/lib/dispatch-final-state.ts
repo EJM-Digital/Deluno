@@ -28,7 +28,6 @@ export function dispatchImportFailed(dispatch: DownloadDispatchItem): boolean {
  * so it alone never means Imported: a failed import wins over it.
  */
 export function dispatchWasImported(dispatch: DownloadDispatchItem): boolean {
-  if (dispatchImportFailed(dispatch)) return false;
   const importStatus = lower(dispatch.importStatus);
   if (importStatus === "imported" || importStatus === "completed") return true;
   if (importStatus) return false;
@@ -64,7 +63,7 @@ export function dispatchStanding(dispatch: DownloadDispatchItem, all: readonly D
   const grab = lower(dispatch.grabStatus);
   const importStatus = lower(dispatch.importStatus);
 
-  const reason = lower(`${dispatch.importFailureCode ?? ""} ${dispatch.importFailureMessage ?? ""}`);
+  const reason = lower(`${dispatch.importFailureCode} ${dispatch.importFailureMessage}`);
   const refusedByImport = reason.includes("refus") || reason.includes("rejected");
   const removedByImport = reason.includes("removed") || reason.includes("vanished");
   // A failed import wins over a completion time left on the row: only a real, completed import reads Imported (#1179).

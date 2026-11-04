@@ -34,15 +34,14 @@ export function sizePair(done: number, total: number): string {
 
 /** How long ago something happened, as a duration: "4 min". Nothing when the time is unknown. */
 export function spent(from: string | null | undefined, now: number): string | undefined {
-  const start = Date.parse(from ?? "");
+  const start = Date.parse(String(from));
   if (!Number.isFinite(start) || now <= start) return undefined;
-  const text = formatEta(Math.max(60, Math.round((now - start) / 1000)));
-  return text === "–" ? undefined : text;
+  return formatEta(Math.max(60, Math.round((now - start) / 1000)));
 }
 
 export function detailLines(card: JourneyCard, indexers: number, now: number): DetailLine[] {
   const lines: DetailLine[] = [];
-  const size = card.sizeBytes && card.sizeBytes > 0 ? card.sizeBytes : undefined;
+  const size = card.sizeBytes != null && card.sizeBytes > 0 ? card.sizeBytes : undefined;
   const release = card.release ? ({ parts: [card.release], mono: true } satisfies DetailLine) : undefined;
   switch (card.stage) {
     case "searching": {
@@ -70,7 +69,7 @@ export function detailLines(card: JourneyCard, indexers: number, now: number): D
     case "processor": {
       if (card.processorStep) lines.push({ parts: [bold(card.processorStep)] });
       lines.push({ parts: size ? [bold(formatBytes(size)), " handed over"] : ["Handed over"], right: spent(card.handedOverUtc, now) });
-      if (card.processorQueuePosition && card.processorQueuePosition > 0) lines.push({ parts: [`Number ${card.processorQueuePosition.toLocaleString("en-AU")} in its line`] });
+      if (card.processorQueuePosition != null && card.processorQueuePosition > 0) lines.push({ parts: [`Number ${card.processorQueuePosition.toLocaleString("en-AU")} in its line`] });
       if (release) lines.push(release);
       break;
     }
@@ -81,8 +80,6 @@ export function detailLines(card: JourneyCard, indexers: number, now: number): D
       if (release) lines.push(release);
       break;
     }
-    default:
-      break;
   }
   // Why Deluno is fetching it, when what it recorded says (a request already says so in its own line).
   if (card.startedBy && !(card.stage === "searching" && card.startedBy === "seerr")) lines.push({ parts: [bold(startedLabel(card.startedBy, card.entity, card.release))] });
