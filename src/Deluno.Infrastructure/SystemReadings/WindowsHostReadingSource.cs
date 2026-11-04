@@ -38,7 +38,7 @@ public sealed class WindowsHostReadingSource : IHostReadingSource
                 var caption = (item["Caption"] as string)?.Trim();
                 if (!string.IsNullOrWhiteSpace(caption))
                 {
-                    return _os = new OperatingSystemReading(caption.Replace("Microsoft ", string.Empty), item["Version"] as string);
+                    return _os = new OperatingSystemReading(WindowsReadingRules.PlainCaption(caption), item["Version"] as string);
                 }
             }
         }
@@ -64,7 +64,7 @@ public sealed class WindowsHostReadingSource : IHostReadingSource
             bool HasValue(string path, string name)
             {
                 using var key = local.OpenSubKey(path);
-                return key?.GetValue(name) is Array { Length: > 0 } or string { Length: > 0 };
+                return WindowsReadingRules.HasContent(key?.GetValue(name));
             }
 
             return RebootPendingRules.Evaluate(
@@ -115,7 +115,7 @@ public sealed class WindowsHostReadingSource : IHostReadingSource
 
                 if (WindowsNative.TryReadVolumeCounters(drive.RootDirectory.FullName) is { } counters)
                 {
-                    result[Key(drive.RootDirectory.FullName)] = counters;
+                    result[WindowsReadingRules.Key(drive.RootDirectory.FullName)] = counters;
                 }
             }
         }
@@ -123,27 +123,10 @@ public sealed class WindowsHostReadingSource : IHostReadingSource
         {
         }
 
-        // A volume is its own counter on Windows, so the machine's disks are the volumes added together.
-        return new DiskSnapshot(result, result.Count == 0 ? null : DiskCounterMath.Sum(result.Values));
+        return WindowsReadingRules.SnapshotOf(result);
     }
 
-    public string? VolumeKeyOf(string path)
-    {
-        if (string.IsNullOrWhiteSpace(path) || VolumeSpace.IsNetworkSharePath(path))
-        {
-            return null;
-        }
-
-        try
-        {
-            var root = Path.GetPathRoot(Path.GetFullPath(path));
-            return string.IsNullOrWhiteSpace(root) || !root.Contains(':') ? null : Key(root);
-        }
-        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            return null;
-        }
-    }
+    public string? VolumeKeyOf(string path) => WindowsReadingRules.VolumeKey(path, folder => Path.GetPathRoot(Path.GetFullPath(folder)));
 
     public NetworkAdapterReading? ReadDefaultRouteAdapter() => DefaultRouteAdapter.Read();
 
@@ -168,17 +151,15 @@ public sealed class WindowsHostReadingSource : IHostReadingSource
                 "SELECT DeviceId, HealthStatus, OperationalStatus FROM MSFT_PhysicalDisk");
             foreach (ManagementBaseObject item in searcher.Get())
             {
-                if (!string.Equals(item["DeviceId"]?.ToString(), disk.Value.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal))
+                if (!WindowsReadingRules.IsDisk(item["DeviceId"]?.ToString(), disk.Value))
                 {
                     continue;
                 }
 
-                var health = item["HealthStatus"] is { } h ? Convert.ToInt32(h, CultureInfo.InvariantCulture) : -1;
-                var states = item["OperationalStatus"] is ushort[] raw ? raw.Select(value => (int)value).ToArray() : [];
-                return DriveHealthRules.Map(health, states);
+                return DriveHealthRules.Map(WindowsReadingRules.HealthCode(item["HealthStatus"]), WindowsReadingRules.OperationalCodes(item["OperationalStatus"]));
             }
 
-            return PredictedFailure() ? new DriveHealthReading("failing", "The drive expects to fail soon.") : DriveHealthReading.Unknown;
+            return PredictedFailure() ? WindowsReadingRules.PredictedToFail : DriveHealthReading.Unknown;
         }
         catch (Exception exception) when (IsWmiFailure(exception))
         {
@@ -194,7 +175,7 @@ public sealed class WindowsHostReadingSource : IHostReadingSource
         foreach (ManagementBaseObject item in searcher.Get())
         {
             if (item["DriveLetter"] is { } value
-                && char.ToUpperInvariant(Convert.ToChar(value, CultureInfo.InvariantCulture)) == char.ToUpperInvariant(driveLetter)
+                && WindowsReadingRules.SameLetter(Convert.ToChar(value, CultureInfo.InvariantCulture), driveLetter)
                 && item["DiskNumber"] is { } number)
             {
                 return Convert.ToInt32(number, CultureInfo.InvariantCulture);
@@ -219,59 +200,9 @@ public sealed class WindowsHostReadingSource : IHostReadingSource
         return false;
     }
 
-    private static string Key(string root) => root.TrimEnd('\\', '/').ToUpperInvariant();
-
     private static bool IsWmiFailure(Exception exception)
         => exception is ManagementException or UnauthorizedAccessException or COMException or InvalidCastException
             or InvalidOperationException or PlatformNotSupportedException or System.Security.SecurityException;
 }
 
 /// <summary>When Windows wants a restart, from the three places it records that.</summary>
-public static class RebootPendingRules
-{
-    public static bool Evaluate(bool componentServicingPending, bool windowsUpdateRebootRequired, bool pendingFileRenames)
-        => componentServicingPending || windowsUpdateRebootRequired || pendingFileRenames;
-}
-
-public static class ThermalZoneRules
-{
-    /// <summary>The hottest plausible reading, from tenths of a kelvin (what ACPI reports), or null when there is none.</summary>
-    public static double? HottestCelsius(IEnumerable<double> tenthsKelvin)
-    {
-        var celsius = tenthsKelvin
-            .Select(value => Math.Round(value / 10d - 273.15d, 1))
-            .Where(value => value is > 0 and < 150)
-            .ToArray();
-        return celsius.Length == 0 ? null : celsius.Max();
-    }
-}
-
-public static class DriveHealthRules
-{
-    /// <summary>
-    /// Maps Windows' MSFT_PhysicalDisk HealthStatus (0 healthy, 1 warning, 2 unhealthy, anything else unknown)
-    /// and its OperationalStatus codes to Deluno's four states and a plain sentence for anything but good.
-    /// </summary>
-    public static DriveHealthReading Map(int healthStatus, IReadOnlyCollection<int> operationalStatus)
-    {
-        var note = operationalStatus.Select(Describe).FirstOrDefault(text => text is not null);
-        return healthStatus switch
-        {
-            0 => new DriveHealthReading("good", null),
-            1 => new DriveHealthReading("warning", note ?? "The drive reports a warning."),
-            2 => new DriveHealthReading("failing", note ?? "The drive reports that it is failing."),
-            _ => DriveHealthReading.Unknown
-        };
-    }
-
-    private static string? Describe(int code) => code switch
-    {
-        3 => "The drive is running in a reduced state.",
-        5 => "The drive expects to fail soon.",
-        6 => "The drive has an error.",
-        10 => "The drive has stopped.",
-        12 => "Windows lost contact with the drive.",
-        13 => "The drive is out of space to repair itself.",
-        _ => null
-    };
-}

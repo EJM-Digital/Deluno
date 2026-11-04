@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using Deluno.Contracts;
 using Deluno.Infrastructure.SystemReadings;
 
@@ -48,9 +47,21 @@ public sealed class MachineProbe(TimeProvider timeProvider) : IMachineProbe
         using var process = Process.GetCurrentProcess();
         var processorTime = process.TotalProcessorTime;
         var workingSet = process.WorkingSet64;
-        var io = ReadProcessIo();
-        var disk = ReadDiskCounters(volumePath);
+        return Sample(now, processorTime, workingSet, WindowsNative.TryReadProcessIo(), ReadDiskCounters(volumePath), TotalMemoryOf(WindowsNative.TryReadMemory(), GC.GetGCMemoryInfo().TotalAvailableMemoryBytes));
+    }
 
+    /// <summary>
+    /// One sample from readings already taken, set against the last one. The system's readings are handed in so the
+    /// arithmetic can be shown on any system.
+    /// </summary>
+    public MachineTelemetrySample Sample(
+        DateTimeOffset now,
+        TimeSpan processorTime,
+        long workingSet,
+        ProcessIoCounters? io,
+        DiskCounters? disk,
+        long? totalMemoryBytes)
+    {
         lock (_sync)
         {
             var elapsed = _lastReadUtc == default ? TimeSpan.Zero : now - _lastReadUtc;
@@ -104,7 +115,7 @@ public sealed class MachineProbe(TimeProvider timeProvider) : IMachineProbe
                 CapturedUtc: now,
                 CpuPercent: Math.Round(cpuPercent, 1),
                 MemoryBytes: workingSet,
-                TotalMemoryBytes: ReadTotalMemoryBytes(),
+                TotalMemoryBytes: totalMemoryBytes,
                 ProcessReadBytesPerSecond: readRate ?? 0,
                 ProcessWriteBytesPerSecond: writeRate ?? 0,
                 DiskBusyPercent: diskBusy,
@@ -133,85 +144,25 @@ public sealed class MachineProbe(TimeProvider timeProvider) : IMachineProbe
             ? (long)Math.Round((value - previous) / seconds)
             : null;
 
-    private static ProcessIoCounters? ReadProcessIo()
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            return null;
-        }
+    /// <summary>The machine's memory: what Windows says when it says, otherwise what the runtime can see.</summary>
+    public static long? TotalMemoryOf((long Total, long Available)? windows, long runtimeAvailableBytes)
+        => windows is { } known ? known.Total : runtimeAvailableBytes > 0 ? runtimeAvailableBytes : null;
 
-        try
-        {
-            return GetProcessIoCounters(Process.GetCurrentProcess().Handle, out var counters)
-                ? new ProcessIoCounters(counters.ReadTransferCount, counters.WriteTransferCount)
-                : null;
-        }
-        catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException or InvalidOperationException)
-        {
-            return null;
-        }
-    }
-
-    private static long? ReadTotalMemoryBytes()
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            return GC.GetGCMemoryInfo().TotalAvailableMemoryBytes is > 0 and var available ? available : null;
-        }
-
-        return WindowsNative.TryReadMemory()?.Total;
-    }
-
-    /// <summary>
-    /// Whole-volume load, straight from the volume. Opening it needs no
-    /// elevation and no counter service, but a locked, missing or network
-    /// volume will simply refuse, hence null rather than a throw.
-    /// </summary>
     private static DiskCounters? ReadDiskCounters(string? volumePath)
     {
-        if (!OperatingSystem.IsWindows() || string.IsNullOrWhiteSpace(volumePath))
+        if (string.IsNullOrWhiteSpace(volumePath))
         {
             return null;
         }
 
         try
         {
-            var root = Path.GetPathRoot(Path.GetFullPath(volumePath));
-            if (string.IsNullOrWhiteSpace(root) || !root.Contains(':'))
-            {
-                return null;
-            }
-
-            return WindowsNative.TryReadVolumeCounters(root) is { } counters
-                ? new DiskCounters(counters.BytesRead, counters.BytesWritten, counters.IdleTime, counters.QueryTime)
-                : null;
+            // A full path always has a root; the reader itself turns away one that is not a Windows drive.
+            return WindowsNative.TryReadVolumeCounters(Path.GetPathRoot(Path.GetFullPath(volumePath))!);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
         {
             return null;
         }
     }
-
-    private sealed record ProcessIoCounters(ulong ReadBytes, ulong WriteBytes);
-
-    private sealed record DiskCounters(long BytesRead, long BytesWritten, long IdleTime, long QueryTime);
-
-    // ── Windows interop ───────────────────────────────────────────────────
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct IoCounters
-    {
-        public ulong ReadOperationCount;
-        public ulong WriteOperationCount;
-        public ulong OtherOperationCount;
-        public ulong ReadTransferCount;
-        public ulong WriteTransferCount;
-        public ulong OtherTransferCount;
-    }
-
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetProcessIoCounters(IntPtr processHandle, out IoCounters counters);
-
 }

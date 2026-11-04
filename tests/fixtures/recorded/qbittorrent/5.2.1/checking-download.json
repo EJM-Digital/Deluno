@@ -1,0 +1,36 @@
+{
+  "app": "qbittorrent",
+  "version": "5.2.1",
+  "state": "checking-download",
+  "recordedAt": "2026-11-04T21:08:47Z",
+  "note": "A torrent that has half its data, rechecked: the recheck reply, then /api/v2/torrents/info read while qBittorrent was checking it (state checkingDL).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/api/v2/torrents/recheck",
+        "bodyText": "hashes=4808f1e641057c6860d3277c325ee09a4513394b"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain; charset=UTF-8"
+        },
+        "bodyText": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/torrents/info?hashes=4808f1e641057c6860d3277c325ee09a4513394b"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "bodyText": "[{\"added_on\":1793826523,\"amount_left\":1183318016,\"auto_tmm\":false,\"availability\":0.4480000138282776,\"category\":\"\",\"comment\":\"\",\"completed\":964165632,\"completion_on\":-1,\"connections_count\":0,\"connections_limit\":100,\"content_path\":\"C:\\\\Downloads\\\\Incomplete\\\\qBittorrent\\\\Recorded.Checking.qbittorrent.mkv\",\"created_by\":\"\",\"creation_date\":-1,\"dl_limit\":0,\"dlspeed\":0,\"download_path\":\"C:\\\\Downloads\\\\Incomplete\\\\qBittorrent\",\"downloaded\":0,\"downloaded_session\":0,\"eta\":8640000,\"f_l_piece_prio\":false,\"force_start\":false,\"has_metadata\":true,\"hash\":\"4808f1e641057c6860d3277c325ee09a4513394b\",\"inactive_seeding_time_limit\":-2,\"infohash_v1\":\"4808f1e641057c6860d3277c325ee09a4513394b\",\"infohash_v2\":\"\",\"last_activity\":1793826523,\"magnet_uri\":\"magnet:?xt=urn:btih:4808f1e641057c6860d3277c325ee09a4513394b&dn=Recorded.Checking.qbittorrent.mkv&xl=2147483648\",\"max_inactive_seeding_time\":-1,\"max_ratio\":-1,\"max_seeding_time\":-1,\"name\":\"Recorded.Checking.qbittorrent.mkv\",\"num_complete\":0,\"num_incomplete\":0,\"num_leechs\":0,\"num_seeds\":0,\"piece_size\":262144,\"pieces_have\":3678,\"pieces_num\":8192,\"popularity\":0,\"priority\":1,\"private\":false,\"progress\":0.44897401332855225,\"ratio\":0,\"ratio_limit\":-2,\"reannounce\":0,\"root_path\":\"\",\"save_path\":\"C:\\\\golden\\\\recorded\\\\qbittorrent\\\\part\",\"seeding_time\":0,\"seeding_time_limit\":-2,\"seen_complete\":-1,\"seq_dl\":false,\"share_limit_action\":\"Default\",\"size\":2147483648,\"state\":\"checkingDL\",\"super_seeding\":false,\"tags\":\"\",\"time_active\":2,\"total_size\":2147483648,\"total_wasted\":0,\"tracker\":\"\",\"trackers_count\":0,\"up_limit\":0,\"uploaded\":0,\"uploaded_session\":0,\"upspeed\":0}]"
+      }
+    }
+  ]
+}

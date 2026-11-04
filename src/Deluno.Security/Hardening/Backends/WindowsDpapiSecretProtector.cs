@@ -24,9 +24,24 @@ public sealed class WindowsDpapiSecretProtector : ISecretProtector
     public const string Prefix = "dpapi:v1:";
 
     private readonly DataProtectionScope _scope;
+    private readonly Func<byte[], byte[], DataProtectionScope, byte[]> _protect;
+    private readonly Func<byte[], byte[], DataProtectionScope, byte[]> _unprotect;
 
     public WindowsDpapiSecretProtector(DataProtectionScope scope = DataProtectionScope.CurrentUser)
-        => _scope = scope;
+        : this(scope, WindowsSecretProtectors.Protect, WindowsSecretProtectors.Unprotect)
+    {
+    }
+
+    /// <summary>Protects with the calls handed in, so everything around the calls can be tested on any system.</summary>
+    public WindowsDpapiSecretProtector(
+        DataProtectionScope scope,
+        Func<byte[], byte[], DataProtectionScope, byte[]> protect,
+        Func<byte[], byte[], DataProtectionScope, byte[]> unprotect)
+    {
+        _scope = scope;
+        _protect = protect;
+        _unprotect = unprotect;
+    }
 
     public string Protect(string purpose, string plaintext)
     {
@@ -35,7 +50,7 @@ public sealed class WindowsDpapiSecretProtector : ISecretProtector
 
         var entropy = PurposeEntropy(purpose);
         var plain = Encoding.UTF8.GetBytes(plaintext);
-        var cipher = ProtectedData.Protect(plain, entropy, _scope);
+        var cipher = _protect(plain, entropy, _scope);
         return Prefix + Convert.ToBase64String(cipher);
     }
 
@@ -48,7 +63,7 @@ public sealed class WindowsDpapiSecretProtector : ISecretProtector
 
         var entropy = PurposeEntropy(purpose);
         var cipher = Convert.FromBase64String(protectedValue[Prefix.Length..]);
-        var plain = ProtectedData.Unprotect(cipher, entropy, _scope);
+        var plain = _unprotect(cipher, entropy, _scope);
         return Encoding.UTF8.GetString(plain);
     }
 

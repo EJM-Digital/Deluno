@@ -202,16 +202,16 @@ describe("the rule list and its drawer", () => {
 });
 
 describe("what a rule is checked against before it is sent", () => {
-  it("refuses strikes outside 1 to 100 and a completion range that runs backwards, and sends nothing", async () => {
+  it("refuses strikes outside 1 to 999 and a completion range that runs backwards, and sends nothing", async () => {
     renderPage();
     const drawer = await openNewRule();
-    fireEvent.change(drawer.getByLabelText("Strikes before it acts"), { target: { value: "0" } });
+    fireEvent.change(drawer.getByLabelText("Strikes before it acts"), { target: { value: "1000" } });
     fireEvent.change(drawer.getByLabelText("From this % complete"), { target: { value: "80" } });
     fireEvent.change(drawer.getByLabelText("Up to this % complete"), { target: { value: "20" } });
 
     fireEvent.click(drawer.getByRole("button", { name: "Create rule" }));
 
-    expect(await drawer.findByText("Strikes must be between 1 and 100.")).toBeVisible();
+    expect(await drawer.findByText("Strikes must be between 1 and 999.")).toBeVisible();
     expect(drawer.getByText("The completion range must be between 0% and 100%, with the low end at or below the high end.")).toBeVisible();
     expect(calls("PUT", "/api/download-health/rules/new")).toHaveLength(0);
   });
@@ -404,14 +404,14 @@ describe("the cards beside the rules", () => {
 
   it("Timing refuses what is out of range with each field's own message and saves the three numbers together", async () => {
     renderPage();
-    fireEvent.change(screen.getByLabelText("Check every"), { target: { value: "2000" } });
-    fireEvent.change(screen.getByLabelText("Strikes before a stalled download is acted on"), { target: { value: "101" } });
+    fireEvent.change(screen.getByLabelText("Check every"), { target: { value: "1000" } });
+    fireEvent.change(screen.getByLabelText("Strikes before a stalled download is acted on"), { target: { value: "1000" } });
     fireEvent.change(screen.getByLabelText("Speed chart sampling"), { target: { value: "90" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Save timing" }));
 
-    expect(await screen.findByText("Must be between 1 and 1440 minutes.")).toBeVisible();
-    expect(screen.getByText("Must be between 1 and 100.")).toBeVisible();
+    expect(await screen.findByText("The time between checks must be between 1 and 999 minutes.")).toBeVisible();
+    expect(screen.getByText("Strikes must be between 1 and 999.")).toBeVisible();
     expect(screen.getByText("Must be between 1 and 60 minutes.")).toBeVisible();
     expect(calls("PATCH", "/api/settings")).toHaveLength(0);
 
@@ -422,8 +422,78 @@ describe("the cards beside the rules", () => {
 
     await waitFor(() => expect(calls("PATCH", "/api/settings")).toHaveLength(1));
     expect(bodyOf(calls("PATCH", "/api/settings")[0])).toEqual({
-      downloadHealthDefaultStrikeWindowMinutes: 10, downloadHealthStrikeThreshold: 4, downloadThroughputSamplerIntervalMinutes: 15
+      downloadHealthDefaultStrikeWindowMinutes: 10, downloadHealthStrikeThreshold: 4, downloadThroughputSamplerIntervalMinutes: 15,
+      downloadHealthNoProgressMinutes: 30, downloadHealthMinSpeedMinutes: 30, downloadHealthMinPeersMinutes: 30
     });
+  });
+
+  it("#1475: the spacing and the stall strikes take 1 to 999, say so in their hint, and refuse 0 and 1000", async () => {
+    renderPage();
+    const spacing = screen.getByLabelText("Check every");
+    const strikes = screen.getByLabelText("Strikes before a stalled download is acted on");
+    expect(spacing).toHaveAttribute("min", "1");
+    expect(spacing).toHaveAttribute("max", "999");
+    expect(strikes).toHaveAttribute("min", "1");
+    expect(strikes).toHaveAttribute("max", "999");
+    expect(screen.getByText(/1 to 999 minutes; 5 by default/)).toBeVisible();
+    expect(screen.getByText(/as chosen under When strikes run out. 1 to 999./)).toBeVisible();
+
+    for (const bad of ["0", "1000"]) {
+      fireEvent.change(spacing, { target: { value: bad } });
+      fireEvent.change(strikes, { target: { value: bad } });
+      fireEvent.click(screen.getByRole("button", { name: "Save timing" }));
+      expect(await screen.findByText("The time between checks must be between 1 and 999 minutes.")).toBeVisible();
+      expect(screen.getByText("Strikes must be between 1 and 999.")).toBeVisible();
+    }
+    expect(calls("PATCH", "/api/settings")).toHaveLength(0);
+
+    let saved = 0;
+    for (const good of ["999"]) {
+      fireEvent.change(spacing, { target: { value: good } });
+      fireEvent.change(strikes, { target: { value: good } });
+      await waitFor(() => expect(screen.getByRole("button", { name: "Save timing" })).toBeEnabled());
+      fireEvent.click(screen.getByRole("button", { name: "Save timing" }));
+      saved += 1;
+      await waitFor(() => expect(calls("PATCH", "/api/settings")).toHaveLength(saved));
+      expect(bodyOf(calls("PATCH", "/api/settings").at(-1)!)).toMatchObject({
+        downloadHealthDefaultStrikeWindowMinutes: Number(good), downloadHealthStrikeThreshold: Number(good)
+      });
+    }
+  });
+
+  it.each([
+    ["No-progress time", "The no-progress time", "downloadHealthNoProgressMinutes"],
+    ["Too-slow time", "The too-slow time", "downloadHealthMinSpeedMinutes"],
+    ["Low-peers time", "The low-peers time", "downloadHealthMinPeersMinutes"]
+  ])("#1475: %s is on screen, takes 1 to 999 minutes, says so, and refuses 0 and 1000 saying why", async (label, what, key) => {
+    renderPage();
+    const input = screen.getByLabelText(label);
+    expect(input).toHaveAttribute("min", "1");
+    expect(input).toHaveAttribute("max", "999");
+    for (const bad of ["0", "1000"]) {
+      fireEvent.change(input, { target: { value: bad } });
+      fireEvent.click(screen.getByRole("button", { name: "Save timing" }));
+      expect(await screen.findByText(`${what} must be between 1 and 999 minutes.`)).toBeVisible();
+    }
+    expect(calls("PATCH", "/api/settings")).toHaveLength(0);
+    fireEvent.change(input, { target: { value: "999" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save timing" }));
+    await waitFor(() => expect(calls("PATCH", "/api/settings")).toHaveLength(1));
+    expect(bodyOf(calls("PATCH", "/api/settings")[0])).toMatchObject({ [key]: 999 });
+  });
+
+  it("#1475: a rule's timer is in the rule editor, takes 1 to 999 minutes, and refuses 0 and 1000 saying why", async () => {
+    renderPage();
+    const drawer = await openNewRule();
+    const timer = drawer.getByLabelText("Rule timer");
+    expect(timer).toHaveAttribute("min", "1");
+    expect(timer).toHaveAttribute("max", "999");
+    for (const bad of ["0", "1000"]) {
+      fireEvent.change(timer, { target: { value: bad } });
+      fireEvent.click(drawer.getByRole("button", { name: "Create rule" }));
+      expect(await drawer.findByText("The rule timer must be between 1 and 999 minutes.")).toBeVisible();
+    }
+    expect(calls("POST", "/api/download-health/rules/new")).toHaveLength(0);
   });
 
   it("History retention refuses a number outside its range and saves both periods together", async () => {

@@ -53,9 +53,10 @@ param(
     # apps in -Apps), 'nzbget-config' (NZBGet paused over errors in its configuration, #1257) and 'weir-states' (the Weir states Record-Weir.ps1 does not reach).
     # No MISSING.md is rewritten in this mode: the lines it prints are added to that file by hand.
     # 'refusals' (the follow-up calls qBittorrent and Deluge refuse after a grab: a folder they cannot make, automatic management, torrent options, #1470).
+    # 'checking' (qBittorrent's checkingDL and Transmission's verifying and queued-to-verify, read mid-check, #1476).
     # 'weir-reports' (the reports Weir sends Deluno, through a proxy Weir's Deluno connection is pointed at for the run, and the Weir states that go
     # with them: #1239, #1262) and 'weir-errors' (Weir's 503 database_busy and JSON 500, on a second Weir server made for the purpose).
-    [ValidateSet('controls', 'refusals', 'nzbget-config', 'weir-states', 'weir-reports', 'weir-errors')] [string[]] $Extra,
+    [ValidateSet('controls', 'refusals', 'checking', 'nzbget-config', 'weir-states', 'weir-reports', 'weir-errors')] [string[]] $Extra,
     # With -Extra: also run the ordinary Weir recording first (capabilities, hand-offs, outcomes), so one run records the whole of a new Weir version.
     [switch] $IncludeBaseWeir,
     # With -Extra weir-reports: only these steps (takeover, collision, rejected, 'season packs', 'repeat after 503', 'answered 401', 'answered 403'), comma separated in one string.
@@ -108,6 +109,7 @@ if ($Extra -contains 'controls') {
     if ($torrentApps.Count -gt 0) { $null = $calls.AppendLine("Write-RunLog 'start torrent controls'; try { Invoke-RecordTorrentControls `$p @('$($torrentApps -join "','")') } catch { Add-Missing ('torrent controls stopped: ' + `$_.Exception.Message + ' at line ' + `$_.InvocationInfo.ScriptLineNumber) }") }
 }
 if ($Extra -contains 'refusals' -and $torrentApps.Count -gt 0) { $null = $calls.AppendLine("Write-RunLog 'start torrent refusals'; try { Invoke-RecordTorrentRefusals `$p @('$($torrentApps -join "','")') } catch { Add-Missing ('torrent refusals stopped: ' + `$_.Exception.Message + ' at line ' + `$_.InvocationInfo.ScriptLineNumber) }") }
+if ($Extra -contains 'checking' -and $torrentApps.Count -gt 0) { $null = $calls.AppendLine("Write-RunLog 'start torrent checking'; try { Invoke-RecordTorrentChecking `$p @('$($torrentApps -join "','")') } catch { Add-Missing ('torrent checking stopped: ' + `$_.Exception.Message + ' at line ' + `$_.InvocationInfo.ScriptLineNumber) }") }
 if ($Extra -contains 'nzbget-config') { $null = $calls.AppendLine("Write-RunLog 'start nzbget config error'; try { Invoke-RecordNzbgetRefusedLogin `$p; Invoke-RecordNzbgetConfigError `$p } catch { Add-Missing ('nzbget config error stopped: ' + `$_.Exception.Message + ' at line ' + `$_.InvocationInfo.ScriptLineNumber) }") }
 if ($Extra -contains 'weir-states') { $null = $calls.AppendLine("Write-RunLog 'start weir states'; try { Invoke-RecordWeirStates `$p } catch { Add-Missing ('weir states stopped: ' + `$_.Exception.Message + ' at line ' + `$_.InvocationInfo.ScriptLineNumber) }") }
 if (-not $Extra -and $torrentApps.Count -gt 0) {

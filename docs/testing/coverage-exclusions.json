@@ -1,5 +1,22 @@
 {
   "version": 1,
   "note": "The only place a file may be left out of coverage. `path` is a repository-relative path or a glob (* within a folder, ** across folders). Every entry needs a plain-sentence `reason`; scripts/check-coverage-ratchet.mjs fails without one. Generated code is not listed: coverlet already drops it by the compiler's GeneratedCode and CompilerGenerated marks and by the obj folder (tests/coverage.runsettings).",
-  "exclusions": []
+  "exclusions": [
+    {
+      "path": "src/Deluno.Infrastructure/SystemReadings/WindowsNative.cs",
+      "reason": "Only Windows system calls (processor times, memory, disk counters) and the handle loop around them; every decision about their answers is in WindowsNativeRules.cs, which is tested. The calls cannot run on the Linux coverage runner."
+    },
+    {
+      "path": "src/Deluno.Infrastructure/SystemReadings/WindowsHostReadingSource.cs",
+      "reason": "Only Windows WMI and registry questions; every decision about their answers is in WindowsReadingRules.cs, which is tested. The calls cannot run on the Linux coverage runner."
+    },
+    {
+      "path": "src/Deluno.Infrastructure/Storage/WindowsDiskFreeSpace.cs",
+      "reason": "One Windows call that sizes a network share; the volume reading around it is in VolumeSpace.cs, which is tested with the call replaced. The call cannot run on the Linux coverage runner."
+    },
+    {
+      "path": "src/Deluno.Security/Hardening/Backends/WindowsSecretProtectors.cs",
+      "reason": "Only the two Windows data-protection calls; the protector around them (WindowsDpapiSecretProtector.cs) is tested with the calls replaced. The calls cannot run on the Linux coverage runner."
+    }
+  ]
 }

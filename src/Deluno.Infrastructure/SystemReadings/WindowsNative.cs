@@ -21,7 +21,7 @@ internal static class WindowsNative
         public uint Low;
         public uint High;
 
-        public readonly ulong Value => ((ulong)High << 32) | Low;
+        public readonly ulong Value => WindowsNativeRules.Combine(High, Low);
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -60,6 +60,41 @@ internal static class WindowsNative
         // unsupported call. Do not "tidy" it back.
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
         public ushort[] StorageManagerName;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct IoCounters
+    {
+        public ulong ReadOperationCount;
+        public ulong WriteOperationCount;
+        public ulong OtherOperationCount;
+        public ulong ReadTransferCount;
+        public ulong WriteTransferCount;
+        public ulong OtherTransferCount;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetProcessIoCounters(IntPtr processHandle, out IoCounters counters);
+
+    public static ProcessIoCounters? TryReadProcessIo()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return null;
+        }
+
+        try
+        {
+            using var process = System.Diagnostics.Process.GetCurrentProcess();
+            return GetProcessIoCounters(process.Handle, out var counters)
+                ? new ProcessIoCounters(counters.ReadTransferCount, counters.WriteTransferCount)
+                : null;
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException or InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -107,7 +142,7 @@ internal static class WindowsNative
         try
         {
             return GetSystemTimes(out var idle, out var kernel, out var user)
-                ? new CpuTimes(idle.Value, kernel.Value + user.Value)
+                ? WindowsNativeRules.CpuTimesOf(idle.Value, kernel.Value, user.Value)
                 : null;
         }
         catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException)
@@ -141,7 +176,7 @@ internal static class WindowsNative
     /// </summary>
     public static DiskCounters? TryReadVolumeCounters(string volumeRoot)
     {
-        if (!OperatingSystem.IsWindows() || string.IsNullOrWhiteSpace(volumeRoot) || !volumeRoot.Contains(':'))
+        if (!OperatingSystem.IsWindows() || !WindowsNativeRules.IsDriveRoot(volumeRoot))
         {
             return null;
         }
@@ -149,7 +184,7 @@ internal static class WindowsNative
         var handle = IntPtr.Zero;
         try
         {
-            var device = @"\\.\" + volumeRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var device = WindowsNativeRules.DeviceNameFor(volumeRoot);
 
             // Opened with no access rights at all: GENERIC_READ on a raw volume needs administrator,
             // while an IOCTL that only reads counters does not need to read the volume. Falling back to
@@ -157,7 +192,7 @@ internal static class WindowsNative
             foreach (var access in new[] { 0u, GenericRead })
             {
                 var opened = CreateFileW(device, access, FileShareReadWrite, IntPtr.Zero, OpenExisting, 0, IntPtr.Zero);
-                if (opened != IntPtr.Zero && opened != new IntPtr(-1))
+                if (WindowsNativeRules.IsOpened(opened))
                 {
                     handle = opened;
                     break;
@@ -179,10 +214,11 @@ internal static class WindowsNative
                 }
 
                 var performance = Marshal.PtrToStructure<DiskPerformance>(buffer);
-                return new DiskCounters(
+                return WindowsNativeRules.CountersOf(
                     performance.BytesRead,
                     performance.BytesWritten,
-                    (long)performance.ReadCount + performance.WriteCount,
+                    performance.ReadCount,
+                    performance.WriteCount,
                     performance.IdleTime,
                     performance.QueryTime);
             }

@@ -35,30 +35,19 @@ public static class ChildProcess
         startInfo.RedirectStandardError = true;
         startInfo.RedirectStandardInput = true;
 
-        Process? started;
+        Process started;
         try
         {
-            started = Process.Start(startInfo);
+            started = Process.Start(startInfo)!;
         }
         catch (Exception exception) when (exception is Win32Exception or InvalidOperationException or FileNotFoundException)
         {
             return new ChildProcessResult(false, null, string.Empty, exception.Message, false);
         }
 
-        if (started is null)
-        {
-            return new ChildProcessResult(false, null, string.Empty, "The program did not start.", false);
-        }
-
+        // Never null here: only a start through the shell, which is switched off above, can answer with nothing.
         using var process = started;
-        try
-        {
-            process.StandardInput.Close();
-        }
-        catch (Exception exception) when (exception is IOException or InvalidOperationException)
-        {
-            // It already ended; its output is still read below.
-        }
+        process.StandardInput.Close();
 
         var output = DrainAsync(process.StandardOutput);
         var error = DrainAsync(process.StandardError);
@@ -88,7 +77,8 @@ public static class ChildProcess
     public static ChildProcessResult Run(ProcessStartInfo startInfo, TimeSpan timeout)
         => Task.Run(() => RunAsync(startInfo, timeout, CancellationToken.None)).GetAwaiter().GetResult();
 
-    private static async Task<string> DrainAsync(StreamReader reader)
+    /// <summary>Reads a program's output to its end, keeping at most <see cref="MaxKeptCharacters"/>; a pipe that closes under the read ends it early.</summary>
+    public static async Task<string> DrainAsync(TextReader reader)
     {
         var kept = new StringBuilder();
         var buffer = new char[8192];
@@ -127,11 +117,14 @@ public static class ChildProcess
     private static async Task<string> Kept(Task<string> drain)
         => drain.IsCompletedSuccessfully ? await drain.ConfigureAwait(false) : string.Empty;
 
-    private static void KillTree(Process process)
+    private static void KillTree(Process process) => TryKill(() => process.Kill(entireProcessTree: true));
+
+    /// <summary>Stops a program, saying nothing when it is already gone or not ours to stop.</summary>
+    public static void TryKill(Action kill)
     {
         try
         {
-            process.Kill(entireProcessTree: true);
+            kill();
         }
         catch (Exception exception) when (exception is InvalidOperationException or Win32Exception or NotSupportedException)
         {

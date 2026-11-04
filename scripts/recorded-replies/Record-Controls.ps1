@@ -367,3 +367,91 @@ function Invoke-RecordTorrentRefusals($p, [string[]] $Apps) {
     $keepStates = @{ qbittorrent = @('location-refused', 'auto-management-refused'); deluge = @('torrent-options-refused') }
     $null = $script:Recordings.RemoveAll([Predicate[object]]{ param($r) $keepStates.ContainsKey($r.app) -and ($keepStates[$r.app] -notcontains $r.state) })
 }
+
+# ---------------------------------------------------------------- a torrent being checked (#1476)
+# A client that is hashing a torrent's data reports it in a state of its own, and Deluno must not read that as a dead torrent. Recorded from the
+# real clients, mid-check, on data this run makes (a zero-filled file, so the check lasts seconds):
+#   qBittorrent   checking-download   a torrent that has half its data, rechecked: /api/v2/torrents/info while state is checkingDL
+#   Transmission  verifying           torrent-get while status is 2 (verifying) and queued-to-verify while status is 1 (check pending)
+function New-CheckingData([string] $App, [string] $Name, [long] $Bytes) {
+    $dir = "C:\golden\recorded\$App\check"
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    $file = Join-Path $dir $Name
+    $null = & fsutil file createnew $file $Bytes
+    $file
+}
+
+function Invoke-RecordTorrentChecking($p, [string[]] $Apps) {
+    Assert-FreeSpace 12 'the torrent checks'
+    New-Item -ItemType Directory -Force -Path 'C:\golden\recorded\feed' | Out-Null
+    foreach ($f in $p.FeedFiles) { Set-Content -LiteralPath (Join-Path 'C:\golden\recorded\feed' $f.name) -Value $f.text -Encoding utf8 }
+    $adapters = [ordered]@{}
+    if ($Apps -contains 'qbittorrent') { $a = New-QbitAdapter $p; if ($a) { $adapters.qbittorrent = $a } }
+    if ($Apps -contains 'transmission') { $a = New-TransmissionAdapter $p; if ($a) { $adapters.transmission = $a } }
+    $gb = [long]1GB
+    foreach ($app in $adapters.Keys) {
+        $A = $adapters[$app]
+        $ver = & $A.VersionOf (& $A.Version)
+        if (-not $ver) { Add-Missing "$app checking: it did not answer its version call"; continue }
+        $added = @()
+        try {
+            if ($app -eq 'qbittorrent') {
+                # The torrent is made from a 2 GB file; the client is given only the first 1 GB, so what it checks is a torrent with half its data.
+                $full = New-CheckingData $app "Recorded.Checking.$app.mkv" (2 * $gb)
+                $t = Add-FeedRelease -Title "Recorded.Checking.$app" -File $full
+                $partDir = "C:\golden\recorded\$app\part"
+                New-Item -ItemType Directory -Force -Path $partDir | Out-Null
+                $null = & fsutil file createnew (Join-Path $partDir (Split-Path $full -Leaf)) $gb
+                $added += $t
+                $null = & $A.Add $t $partDir $false
+                $null = Wait-Until -Seconds 120 { $x = @(Get-ReplyJson (& $A.List $t.InfoHash))[0]; $x -and $x.state -notmatch '^checking' -and $x.state -notmatch 'metaDL' }
+                $caught = $null; $recheck = $null
+                for ($try = 0; $try -lt 4 -and -not $caught; $try++) {
+                    $recheck = & $A.Recheck $t.InfoHash
+                    $until = (Get-Date).AddSeconds(30)
+                    while ((Get-Date) -lt $until -and -not $caught) {
+                        $list = & $A.List $t.InfoHash
+                        $x = @(Get-ReplyJson $list)[0]
+                        if ($x -and $x.state -eq 'checkingDL') { $caught = $list }
+                        Start-Sleep -Milliseconds 120
+                        if ($x -and $x.state -ne 'checkingDL' -and $x.state -notmatch '^checking' -and ((Get-Date) - $until).TotalSeconds -gt -25) { break }
+                    }
+                }
+                if ($caught) { Save-State qbittorrent $ver 'checking-download' 'A torrent that has half its data, rechecked: the recheck reply, then /api/v2/torrents/info read while qBittorrent was checking it (state checkingDL).' @($recheck, $caught) }
+                else { Add-Missing 'qbittorrent checking-download: no read caught the torrent in state checkingDL in four rechecks' }
+            }
+            if ($app -eq 'transmission') {
+                # Two torrents over 2 GB of data each, both verified at once: one verifies (status 2) while the other waits its turn (status 1).
+                $ts = @()
+                foreach ($n in 'One', 'Two') {
+                    $file = New-CheckingData $app "Recorded.Checking.$n.$app.mkv" (2 * $gb)
+                    $t = Add-FeedRelease -Title "Recorded.Checking.$n.$app" -File $file
+                    $added += $t
+                    $null = & $A.Add $t (Split-Path $file) $true
+                    $ts += $t
+                }
+                Start-Sleep -Seconds 3
+                $seen = @{}
+                foreach ($try in 1..4) {
+                    foreach ($t in $ts) { $null = & $A.Recheck $t.InfoHash }
+                    $until = (Get-Date).AddSeconds(40)
+                    while ((Get-Date) -lt $until -and $seen.Count -lt 2) {
+                        $list = & $A.List $null
+                        foreach ($x in @((Get-ReplyJson $list).arguments.torrents)) {
+                            if ($x.status -in 1, 2 -and -not $seen.ContainsKey([int]$x.status)) { $seen[[int]$x.status] = $list }
+                        }
+                        Start-Sleep -Milliseconds 120
+                    }
+                    if ($seen.Count -ge 2) { break }
+                }
+                if ($seen.ContainsKey(2)) { Save-State transmission $ver 'verifying' 'Two torrents with all their data verified at once: torrent-get read while one was being verified (status 2).' @($seen[2]) } else { Add-Missing 'transmission verifying: no read caught a torrent with status 2' }
+                if ($seen.ContainsKey(1)) { Save-State transmission $ver 'queued-to-verify' 'Two torrents with all their data verified at once: torrent-get read while one waited to be verified (status 1).' @($seen[1]) } else { Add-Missing 'transmission queued-to-verify: no read caught a torrent with status 1' }
+            }
+        } finally {
+            foreach ($t in $added) { $null = & $A.Remove $t.InfoHash $true }
+            Remove-Item "C:\golden\recorded\$app" -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+    $keepStates = @{ qbittorrent = @('checking-download'); transmission = @('verifying', 'queued-to-verify') }
+    $null = $script:Recordings.RemoveAll([Predicate[object]]{ param($r) $keepStates.ContainsKey($r.app) -and ($keepStates[$r.app] -notcontains $r.state) })
+}

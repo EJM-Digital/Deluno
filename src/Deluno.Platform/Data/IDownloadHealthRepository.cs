@@ -28,6 +28,12 @@ public interface IDownloadHealthRepository
     /// longer, gap a download can go without being observed before Deluno
     /// treats the problem as over rather than merely paused (#825) -
     /// independent of any rule's own timer.</para>
+    ///
+    /// <para><paramref name="pausedQueueItemIds"/> is the listed downloads whose reading shows the client not moving
+    /// bytes (checking, queued, paused; see <see cref="DownloadHealthStrikes.PausesTransferFindings"/>). A transfer
+    /// finding's record (no progress, low availability, 0% and the like) for one of them is paused, not ended: no
+    /// strike is added, and the record ends only when the download really recovers (bytes gained since the record
+    /// began, finished, or left the client), so a dead torrent that flips through checking keeps its strikes (#1476).</para>
     /// </summary>
     Task<IReadOnlyList<DownloadHealthRecord>> RecordDownloadHealthObservationsAsync(
         string clientId,
@@ -36,7 +42,8 @@ public interface IDownloadHealthRepository
         TimeSpan defaultStrikeWindow,
         TimeSpan strikeInactivityWindow,
         CancellationToken cancellationToken,
-        IReadOnlyCollection<string>? everythingTheClientHolds = null);
+        IReadOnlyCollection<string>? everythingTheClientHolds = null,
+        IReadOnlyCollection<string>? pausedQueueItemIds = null);
 
     Task<IReadOnlyList<DownloadHealthRecord>> ListDownloadHealthRecordsAsync(
         int take,
