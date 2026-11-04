@@ -72,6 +72,66 @@ public sealed class DelugeAndUTorrentSayWhatTheyRefusedTests
         Assert.Equal(["label.set_torrent"], result.FollowUpCallsSent);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public async Task A_folder_on_a_missing_drive_or_values_of_the_wrong_type_are_accepted_by_deluge_so_nothing_is_said(int exchange)
+    {
+        var recorded = RecordedReplies.Deluge("torrent-options-refused");
+        var result = await Grab((_, body) => body.Contains("core.set_torrent_options", StringComparison.Ordinal) ? recorded.Exchanges[exchange].Reply.ToResponse() : null, saveFolder: "/golden/recorded/deluge/save");
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Null(result.FollowUpRefusals);
+        Assert.Equal(["label.set_torrent", "core.set_torrent_options"], result.FollowUpCallsSent);
+    }
+
+    [Fact]
+    public async Task A_torrent_id_deluge_never_had_is_handed_back_with_the_error_line_of_its_traceback()
+    {
+        var recorded = RecordedReplies.Deluge("torrent-options-refused");
+        var result = await Grab((_, body) => body.Contains("core.set_torrent_options", StringComparison.Ordinal) ? recorded.Exchanges[2].Reply.ToResponse() : null, saveFolder: "/golden/recorded/deluge/save");
+
+        Assert.True(result.Succeeded, result.Message);
+        var refusal = Assert.Single(result.FollowUpRefusals!);
+        Assert.Equal("core.set_torrent_options", refusal.Call);
+        Assert.Equal("the save folder /golden/recorded/deluge/save", refusal.What);
+        Assert.True(refusal.CanStopImport);
+        Assert.Equal("KeyError: '0000000000000000000000000000000000000000'", refusal.Reason);
+    }
+
+    // ---- uTorrent's label, from label-refused ----
+
+    private static bool SetProps(HttpRequestMessage request) => request.RequestUri!.Query.Contains("action=setprops", StringComparison.Ordinal);
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task An_unknown_property_a_missing_hash_or_a_400_character_label_are_answered_200_by_uTorrent_so_nothing_is_said(int exchange)
+    {
+        var recorded = RecordedReplies.Utorrent("label-refused");
+        var result = await new UTorrentDownloadClient(() => UTorrentEveryBranchTests.Adding((request, _) => SetProps(request) ? recorded.Exchanges[exchange].Reply.ToResponse() : null))
+            .GrabAsync(UTorrentEveryBranchTests.Item(), UTorrentEveryBranchTests.Magnet(), CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Null(result.FollowUpRefusals);
+        Assert.Equal(["setprops"], result.FollowUpCallsSent);
+    }
+
+    [Fact]
+    public async Task A_label_call_uTorrent_refuses_for_want_of_a_token_is_handed_back_in_its_own_words()
+    {
+        var recorded = RecordedReplies.Utorrent("label-refused");
+        var result = await new UTorrentDownloadClient(() => UTorrentEveryBranchTests.Adding((request, _) => SetProps(request) ? recorded.Exchanges[3].Reply.ToResponse() : null))
+            .GrabAsync(UTorrentEveryBranchTests.Item(), UTorrentEveryBranchTests.Magnet(), CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        var refusal = Assert.Single(result.FollowUpRefusals!);
+        Assert.Equal("setprops", refusal.Call);
+        Assert.True(refusal.CanStopImport);
+        Assert.Equal("invalid request", refusal.Reason);
+    }
+
     [Fact]
     public void Deluges_traceback_is_cut_down_to_what_it_said()
     {

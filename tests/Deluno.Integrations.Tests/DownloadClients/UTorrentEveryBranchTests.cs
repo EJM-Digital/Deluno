@@ -15,7 +15,7 @@ public sealed class UTorrentEveryBranchTests
 {
     private const string Hash = "d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c";
 
-    private static DownloadClientItem Item() => Client("utorrent", "user", "pw");
+    internal static DownloadClientItem Item() => Client("utorrent", "user", "pw");
 
     private static HttpMessageHandler Answering(Func<HttpRequestMessage, string, HttpResponseMessage?> otherwise)
         => new Calls("utorrent", [RecordedReplies.Utorrent("token")], (request, body) =>
@@ -113,7 +113,7 @@ public sealed class UTorrentEveryBranchTests
     private static string AddedReply(string error) => RecordedReplies.Utorrent("add-refused").Body("action=add-file", ("error", error));
 
     /// <summary>A uTorrent that lists nothing before the add and the torrent from then on, answering the add and the stop and label calls as given.</summary>
-    private static HttpMessageHandler Adding(Func<HttpRequestMessage, string, HttpResponseMessage?> others)
+    internal static HttpMessageHandler Adding(Func<HttpRequestMessage, string, HttpResponseMessage?> others)
     {
         var lists = 0;
         return Answering((request, body) =>
@@ -124,7 +124,7 @@ public sealed class UTorrentEveryBranchTests
         });
     }
 
-    private static DownloadClientGrabRequest Magnet() => EveryCallOnAnOddReply.GrabRequests(false).First() with { SaveFolder = null };
+    internal static DownloadClientGrabRequest Magnet() => EveryCallOnAnOddReply.GrabRequests(false).First() with { SaveFolder = null };
 
     private static bool Action(HttpRequestMessage request, string name) => request.RequestUri!.Query.Contains("action=" + name, StringComparison.Ordinal);
 

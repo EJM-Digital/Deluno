@@ -206,6 +206,13 @@ public interface IDownloadDispatchesRepository
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Keeps (or, with null, clears) the refusals of follow-up calls the client gave after this dispatch's grab, in its notes under
+    /// <c>followUpRefusals</c> (#1470). The rest of the notes are left as they are.
+    /// </summary>
+    Task SetFollowUpRefusalsAsync(string dispatchId, string? refusalsJson, CancellationToken cancellationToken)
+        => Task.CompletedTask;
+
+    /// <summary>
     /// Find dispatches that have been in a failed state for longer than <paramref name="minAge"/>.
     /// </summary>
     Task<IReadOnlyList<DownloadDispatchItem>> FindStaleFailedDispatchesAsync(
