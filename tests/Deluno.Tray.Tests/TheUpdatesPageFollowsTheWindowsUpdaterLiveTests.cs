@@ -151,4 +151,26 @@ public sealed class TheUpdatesPageFollowsTheWindowsUpdaterLiveTests : IDisposabl
             gate.Release();
         }
     }
+
+    [Fact]
+    public async Task The_preferences_can_be_read_while_a_download_holds_the_updater()
+    {
+        // Seen on the golden VM (#1469, run with frame counts): every push reloads the page's update preferences, and that
+        // read waited behind the download's lock. After about five pushes the browser's six connections to Deluno were all
+        // held by those reads, so the status reads queued until the download ended: 10% on the page, then 100%.
+        var orchestrator = Orchestrator();
+        var gate = (SemaphoreSlim)typeof(VelopackUpdateOrchestrator)
+            .GetField("_gate", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(orchestrator)!;
+        await gate.WaitAsync();
+        try
+        {
+            var read = orchestrator.GetPreferencesAsync(CancellationToken.None);
+            var finished = await Task.WhenAny(read, Task.Delay(TimeSpan.FromSeconds(5))); // reason: the longest the read may take before it counts as waiting behind the download
+            Assert.Same(read, finished);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
 }

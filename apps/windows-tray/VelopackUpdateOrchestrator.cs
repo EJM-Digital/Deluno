@@ -405,21 +405,18 @@ public sealed class VelopackUpdateOrchestrator(
         }
     }
 
-    public async Task<UpdatePreferencesResponse> GetPreferencesAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// A read of the saved settings, so it does not wait for the updater's lock: every push reloads it on the Updates page,
+    /// and while a download held the lock those reads piled up until they took every connection the browser has to Deluno
+    /// (#1469). A save still takes the lock.
+    /// </summary>
+    public Task<UpdatePreferencesResponse> GetPreferencesAsync(CancellationToken cancellationToken)
     {
-        await _gate.WaitAsync(cancellationToken);
-        try
-        {
-            var settings = AppSettings.Load();
-            return new UpdatePreferencesResponse(
-                Mode: settings.UpdateMode,
-                Channel: settings.UpdateChannel,
-                AutoCheck: settings.AutoCheckUpdates);
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        var settings = AppSettings.Load();
+        return Task.FromResult(new UpdatePreferencesResponse(
+            Mode: settings.UpdateMode,
+            Channel: settings.UpdateChannel,
+            AutoCheck: settings.AutoCheckUpdates));
     }
 
     public async Task<UpdatePreferencesResponse> SavePreferencesAsync(UpdatePreferencesRequest request, CancellationToken cancellationToken)
