@@ -106,14 +106,25 @@ public static class VolumeSpace
         }
     }
 
+    /// <summary>
+    /// A share path's parent, read from the text with either slash: Path.GetDirectoryName follows the host's own rules, and on
+    /// Linux it folds the leading "//" of a share, so the walk below fell short of the share there (CI, 5 Nov).
+    /// </summary>
+    public static string? ShareParentOf(string path)
+    {
+        var trimmed = path.TrimEnd('/', '\\');
+        var cut = trimmed.LastIndexOfAny(['/', '\\']);
+        return cut <= 1 ? null : trimmed[..cut];
+    }
+
     private static VolumeSpaceReading? TryReadShare(string share, string path, VolumeProbes system)
     {
         // A folder that is not there yet is read through the nearest one that is, down to the share itself.
         var probe = path;
         while (!system.DirectoryExists(probe))
         {
-            var parent = Path.GetDirectoryName(probe);
-            if (string.IsNullOrEmpty(parent) || parent.Length < share.Length)
+            var parent = ShareParentOf(probe);
+            if (parent is null || parent.Length < share.Length)
             {
                 return null;
             }
