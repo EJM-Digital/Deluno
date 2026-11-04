@@ -116,4 +116,97 @@ describe("a connection's new version in its drawer (#1118)", () => {
     expect(await screen.findByText(/You dismissed 5\.0\.2\. The notice comes back only for a newer version\./)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Dismiss this version" })).not.toBeInTheDocument();
   });
+
+  it("keeps what Update now said after the check clears the notice, so the result is never lost", async () => {
+    const user = userEvent.setup();
+    const updates = [base];
+    renderPanel(updates, (path) => {
+      if (!path?.endsWith("/update")) return undefined;
+      updates.splice(0);
+      return { outcome: "updated", message: "Updated to 5.0.2.", version: "5.0.2" };
+    });
+
+    await confirmUpdate(user);
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Updated to 5.0.2.");
+    await waitFor(() => expect(screen.queryByTestId("connection-update-panel")).not.toBeInTheDocument());
+    expect(screen.getByText("New version")).toBeInTheDocument();
+  });
+
+  it("says why when the update request itself fails, and lets it be tried again", async () => {
+    const user = userEvent.setup();
+    renderPanel([base], (path) => {
+      if (path?.endsWith("/update")) throw new Error("The server did not answer.");
+      return undefined;
+    });
+
+    await confirmUpdate(user);
+
+    expect(await screen.findByText("Failed: The server did not answer.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update now" })).toBeEnabled();
+  });
+
+  it("says Deluno could not update it when the failure gives no reason", async () => {
+    const user = userEvent.setup();
+    renderPanel([base], (path) => {
+      if (path?.endsWith("/update")) throw "boom";
+      return undefined;
+    });
+
+    await confirmUpdate(user);
+
+    expect(await screen.findByText("Failed: Deluno could not update it.")).toBeInTheDocument();
+  });
+
+  it("says why when dismissing fails, and keeps the notice", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("../shell/toaster");
+    renderPanel([base], (path) => {
+      if (path?.endsWith("/dismiss")) throw new Error("Could not reach the server.");
+      return undefined;
+    });
+
+    await user.click(await screen.findByRole("button", { name: "Dismiss this version" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Could not reach the server."));
+    expect(screen.getByRole("button", { name: "Dismiss this version" })).toBeEnabled();
+  });
+
+  it("says it could not be dismissed when the failure gives no reason", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("../shell/toaster");
+    renderPanel([base], (path) => {
+      if (path?.endsWith("/dismiss")) throw "boom";
+      return undefined;
+    });
+
+    await user.click(await screen.findByRole("button", { name: "Dismiss this version" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("That could not be dismissed."));
+  });
+
+  it("closes the question without updating when Cancel is pressed, but cannot be closed while the update runs", async () => {
+    const user = userEvent.setup();
+    let finish!: (value: unknown) => void;
+    renderPanel([base], (path) => (path?.endsWith("/update") ? new Promise((resolve) => { finish = resolve; }) : undefined));
+
+    await user.click(await screen.findByRole("button", { name: "Update now" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(vi.mocked(fetchJson).mock.calls.some(([path]) => String(path).endsWith("/update"))).toBe(false);
+
+    await confirmUpdate(user);
+    await waitFor(() => expect(vi.mocked(fetchJson).mock.calls.some(([path]) => String(path).endsWith("/update"))).toBe(true));
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    finish({ outcome: "unchanged", message: "Already on 5.0.2.", version: "5.0.2" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("offers no release notes when there is no page for them, and names the latest version when none was dismissed", async () => {
+    renderPanel([{ ...base, releaseUrl: null, notice: false, dismissedVersion: null }]);
+
+    expect(await screen.findByText(/You dismissed 5.0.2./)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Release notes/ })).not.toBeInTheDocument();
+  });
 });

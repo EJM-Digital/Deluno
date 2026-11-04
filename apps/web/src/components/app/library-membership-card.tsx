@@ -72,7 +72,7 @@ export function LibraryMembershipCard({
         body: body ? JSON.stringify(body) : undefined
       });
       if (!response.ok) {
-        const problem = await readValidationProblem(response.clone()).catch(() => null);
+        const problem = await readValidationProblem(response.clone());
         const message = problem?.errors ? Object.values(problem.errors)[0]?.[0] : ((await response.json().catch(() => null)) as { message?: string } | null)?.message;
         toast.error(message ?? `That could not be done (HTTP ${response.status}).`);
         return false;
@@ -91,19 +91,17 @@ export function LibraryMembershipCard({
 
   function open(next: Pending) {
     setPending(next);
-    setTarget(others[0]?.id ?? "");
+    setTarget(others[0].id);
   }
 
-  async function confirm() {
-    if (!pending || !target) return;
-    const name = libraries.find((library) => library.id === target)?.name ?? "that library";
-    const ok = pending.kind === "keep"
+  async function confirm(chosen: Pending) {
+    const name = libraries.find((library) => library.id === target)!.name;
+    const ok = chosen.kind === "keep"
       ? await send(`${route}/${mediaId}/libraries/`, "POST", { libraryId: target }, `Also kept in ${name}.`)
-      : await send(`${route}/${mediaId}/libraries/${pending.from.libraryId}`, "PUT", { libraryId: target }, `Moved to ${name}.`);
-    if (ok) {
-      setPending(null);
-      if (pending.kind === "move" && selectedLibraryId === pending.from.libraryId) onSelect(target);
-    }
+      : await send(`${route}/${mediaId}/libraries/${chosen.from.libraryId}`, "PUT", { libraryId: target }, `Moved to ${name}.`);
+    if (!ok) return;
+    setPending(null);
+    if (chosen.kind === "move" && selectedLibraryId === chosen.from.libraryId) onSelect(target);
   }
 
   return (
@@ -161,7 +159,7 @@ export function LibraryMembershipCard({
         </ListTable>
       </ListCard>
 
-      <Dialog.Root open={pending !== null} onOpenChange={(next) => { if (!next) setPending(null); }}>
+      <Dialog.Root open={pending !== null} onOpenChange={() => setPending(null)}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-50 bg-black/55 backdrop-blur-[2px] data-[state=open]:animate-fade-in" />
           <Dialog.Content
@@ -194,7 +192,7 @@ export function LibraryMembershipCard({
               <Dialog.Close asChild>
                 <Button type="button" variant="ghost" disabled={busy}>Cancel</Button>
               </Dialog.Close>
-              <Button type="button" onClick={() => void confirm()} disabled={busy || !target}>
+              <Button type="button" onClick={() => void confirm(pending!)} disabled={busy}>
                 {pending?.kind === "move" ? "Move" : "Keep it there too"}
               </Button>
             </div>
@@ -204,18 +202,16 @@ export function LibraryMembershipCard({
 
       <ConfirmDialog
         open={removing !== null}
-        onOpenChange={(next) => {
-          if (!next) setRemoving(null);
-        }}
+        onOpenChange={() => setRemoving(null)}
         title={`Stop wanting it in ${removing?.libraryName ?? "this library"}?`}
         description={`It holds no file there. It stays in ${plural(memberships.length - 1, "other library")}.`}
         confirmLabel="Remove from library"
         busy={busy}
         onConfirm={() => {
-          if (!removing) return;
-          void send(`${route}/${mediaId}/libraries/${removing.libraryId}`, "DELETE", null, `No longer in ${removing.libraryName}.`).then((ok) => {
+          const leaving = removing!;
+          void send(`${route}/${mediaId}/libraries/${leaving.libraryId}`, "DELETE", null, `No longer in ${leaving.libraryName}.`).then((ok) => {
             if (ok) {
-              if (selectedLibraryId === removing.libraryId) onSelect(memberships.find((membership) => membership.libraryId !== removing.libraryId)?.libraryId ?? "");
+              if (selectedLibraryId === leaving.libraryId) onSelect(memberships.find((membership) => membership.libraryId !== leaving.libraryId)?.libraryId ?? "");
               setRemoving(null);
             }
           });

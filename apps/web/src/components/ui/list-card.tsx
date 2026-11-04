@@ -50,7 +50,6 @@ export function ListCard({ title, count, titleCase = true, info, filter, actions
   const register = React.useCallback((id: string, controls: ColumnsControls | null) => {
     setTables((current) => {
       if (!controls) {
-        if (!(id in current)) return current;
         const rest = { ...current };
         delete rest[id];
         return rest;
@@ -226,15 +225,12 @@ export function ListTable<T = never>({ columns, listId, items, list, startOverWh
     const movable = state.movableOrder;
     const from = movable.indexOf(id);
     const to = from + delta;
-    if (from < 0 || to < 0 || to >= movable.length) return;
-    const headerRow = headerRowRef.current;
-    if (headerRow) {
-      const snapshot: Record<string, number> = {};
-      headerRow.querySelectorAll<HTMLElement>('[role="columnheader"][data-col-id]').forEach((header) => {
-        snapshot[header.dataset.colId as string] = header.getBoundingClientRect().left;
-      });
-      flipRef.current = snapshot;
-    }
+    if (to < 0 || to >= movable.length) return;
+    const snapshot: Record<string, number> = {};
+    headerRowRef.current!.querySelectorAll<HTMLElement>('[role="columnheader"][data-col-id]').forEach((header) => {
+      snapshot[header.dataset.colId as string] = header.getBoundingClientRect().left;
+    });
+    flipRef.current = snapshot;
     const next = [...movable];
     next.splice(to, 0, next.splice(from, 1)[0]);
     state.setMovableOrder(next);
@@ -247,14 +243,14 @@ export function ListTable<T = never>({ columns, listId, items, list, startOverWh
   React.useLayoutEffect(() => {
     const snapshot = flipRef.current;
     flipRef.current = null;
-    const headerRow = headerRowRef.current;
-    const body = bodyRef.current;
-    if (!snapshot || !headerRow || !body || prefersReducedMotion()) return;
+    if (!snapshot || prefersReducedMotion()) return;
+    const headerRow = headerRowRef.current!;
+    const body = bodyRef.current!;
     const rows = Array.from(body.querySelectorAll<HTMLElement>('[role="row"]')).filter((row) => row.querySelector(":scope > [role=cell]"));
     const moving: HTMLElement[] = [];
     headerRow.querySelectorAll<HTMLElement>('[role="columnheader"][data-col-id]').forEach((header) => {
       const id = header.dataset.colId as string;
-      const dx = (snapshot[id] ?? 0) - header.getBoundingClientRect().left;
+      const dx = snapshot[id] - header.getBoundingClientRect().left;
       if (Math.abs(dx) < 1) return;
       const position = displayOrder.indexOf(id);
       const elements = [header, ...rows.map((row) => row.children[position] as HTMLElement | undefined).filter((cell): cell is HTMLElement => Boolean(cell))];
@@ -278,12 +274,9 @@ export function ListTable<T = never>({ columns, listId, items, list, startOverWh
   }, [orderKey]);
 
   const startDrag = (event: React.PointerEvent, id: string) => {
-    const headerRow = headerRowRef.current;
-    const body = bodyRef.current;
-    if (!headerRow || !body || !movableById(id)) return;
     trackColumnDrag(event.nativeEvent, id, {
-      headerRow,
-      body,
+      headerRow: headerRowRef.current!,
+      body: bodyRef.current!,
       order: displayOrder,
       isMovable: movableById,
       commit: (order) => state.setMovableOrder(order.filter(movableById))
@@ -337,7 +330,7 @@ export function ListTable<T = never>({ columns, listId, items, list, startOverWh
                   <button
                     type="button"
                     onClick={() => state.toggleSort(id)}
-                    aria-describedby={movable ? describedBy : undefined}
+                    aria-describedby={describedBy}
                     className="inline-flex max-w-full cursor-[inherit] items-center gap-1 border-0 bg-transparent p-0 uppercase tracking-widest text-inherit hover:text-foreground focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     <span title={typeof col.label === "string" ? col.label : undefined} className={HEADING_LABEL}>{col.label}</span>

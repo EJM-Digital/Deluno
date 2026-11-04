@@ -233,7 +233,7 @@ function StepList({ steps, onChange, fields, serverKinds, counts, label, nested 
                     <Plus className="h-3.5 w-3.5" />
                     Keep only…
                   </Button>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => replace(index, { ...step, steps: [...(step.steps ?? []), newCondition("include", fields)] })} disabled={(step.steps ?? []).length === 0}>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => replace(index, { ...step, steps: [...step.steps!, newCondition("include", fields)] })} disabled={(step.steps ?? []).length === 0}>
                     <Plus className="h-3.5 w-3.5" />
                     Also include…
                   </Button>

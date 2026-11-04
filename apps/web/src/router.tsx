@@ -25,7 +25,7 @@ function SearchCyclesRedirect() {
 
 function LegacyShowDetailRedirect() {
   const { id } = useParams();
-  return <Navigate to={id ? `/tv/${id}` : "/tv"} replace />;
+  return <Navigate to={`/tv/${id}`} replace />;
 }
 
 type LazyRouteModule = {
@@ -71,7 +71,7 @@ const requiresSetup = readRequiresSetup;
  * safeReturnAddress.
  */
 function returnAddressOf(url: URL): string {
-  const hash = url.hash || (typeof window !== "undefined" && window.location.pathname === url.pathname ? window.location.hash : "");
+  const hash = url.hash || (window.location.pathname === url.pathname ? window.location.hash : "");
   return `${url.pathname}${url.search}${hash}`;
 }
 
@@ -115,11 +115,6 @@ async function setupLoader({ request }: { request: Request }) {
   if (!(await requiresSetup())) {
     const url = new URL(request.url);
     throw redirect(safeReturnAddress(url.searchParams.get("return"), "/login"));
-  }
-
-  const { token, user } = readStored();
-  if (token && user) {
-    return null;
   }
 
   return null;

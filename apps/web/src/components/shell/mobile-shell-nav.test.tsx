@@ -64,3 +64,38 @@ describe("the phone menu's areas", () => {
     expect(screen.queryAllByRole("button", { name: /^(Expand|Collapse) / })).toHaveLength(0);
   });
 });
+
+describe("the phone menu, with and without a signed-in person, and inside an area", () => {
+  const open = (path: string, user: { displayName: string; username: string; avatarInitials?: string } | null = null) => {
+    render(
+      <MemoryRouter initialEntries={[path]}>
+        <MobileShellNav attention={attention} user={user} onLogout={vi.fn()} />
+      </MemoryRouter>
+    );
+    fireEvent.click(screen.getByRole("button", { name: /more/i }));
+  };
+
+  it("shows no account line when nobody is known, but still offers Sign out", () => {
+    open("/");
+    expect(screen.queryByText("Sam Example")).toBeNull();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+  });
+
+  it("shows DU in the avatar when the person has no initials", () => {
+    open("/", { displayName: "Sam Example", username: "sam" });
+    expect(screen.getByText("DU")).toBeTruthy();
+  });
+
+  it("shows the person's own initials in the avatar", () => {
+    open("/", { displayName: "Sam Example", username: "sam", avatarInitials: "SE" });
+    expect(screen.getByText("SE")).toBeTruthy();
+  });
+
+  it("marks the area the person is in, and no other, with the accent colour", () => {
+    open("/settings/libraries");
+    const area = screen.getByRole("link", { name: "Media Management" });
+    expect(area.className).toContain("text-(--nav-accent)");
+    expect(area.className).not.toContain("text-muted-foreground");
+    expect(screen.getByRole("link", { name: "Quality & Release" }).className).toContain("text-muted-foreground");
+  });
+});
