@@ -113,4 +113,10 @@ describe("the other-devices answer shown in setup", () => {
     await Promise.resolve();
     expect(second.container.textContent).toBe("");
   });
+
+  it("asks the server about the firewall when it opens", async () => {
+    fetchJson.mockResolvedValueOnce(open);
+    render(<LanAccessNotice />);
+    await vi.waitFor(() => expect(fetchJson).toHaveBeenCalledWith("/api/system/lan-access"));
+  });
 });

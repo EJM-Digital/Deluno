@@ -16,7 +16,8 @@ describe("an installed app that was set up again", () => {
     fetchJson.mockResolvedValueOnce([]);
     const { container } = render(<ComponentRecoveryNotices />);
     await waitFor(() => expect(fetchJson).toHaveBeenCalledTimes(1));
-    expect(container.textContent).toBe("");
+    expect(container).toBeEmptyDOMElement();
+    expect(fetchJson).toHaveBeenCalledWith("/api/system/component-recovery");
   });
 
   it("shows nothing when the notices cannot be read", async () => {
@@ -70,7 +71,8 @@ describe("an installed app that was set up again", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "Add them back" }));
 
-    expect(await screen.findByText("3 torrents were added back.")).toBeInTheDocument();
+    expect(await screen.findByText("3 torrents were added back.")).toHaveClass("text-sm", "text-muted-foreground");
+    expect(screen.getByRole("status")).toHaveTextContent("3 torrents were added back.");
     expect(fetchJson).toHaveBeenNthCalledWith(2, "/api/system/component-recovery/qbittorrent/readd", { method: "POST" });
     expect(fetchJson).toHaveBeenNthCalledWith(3, "/api/system/component-recovery");
     expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
@@ -165,5 +167,32 @@ describe("an installed app that was set up again", () => {
     expect(buttons[0].querySelector("svg.animate-spin")).not.toBeNull();
     expect(buttons[1].querySelector("svg.animate-spin")).toBeNull();
     expect(buttons[1]).toBeDisabled();
+  });
+
+  it("keeps every button still while a dismiss is being sent", async () => {
+    fetchJson.mockResolvedValueOnce([notice()]);
+    fetchJson.mockReturnValueOnce(new Promise(() => undefined));
+    render(<ComponentRecoveryNotices />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Dismiss" }));
+
+    expect(screen.getByRole("button", { name: "Dismiss" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Add them back" })).toBeDisabled();
+  });
+
+  it("leaves one line saying what happened for each app that was added back, side by side", async () => {
+    const first = notice({ kind: "a", displayName: "Alpha" });
+    const second = notice({ kind: "b", displayName: "Beta" });
+    fetchJson.mockResolvedValueOnce([first, second]);
+    fetchJson.mockResolvedValueOnce({ done: true, message: "Alpha is back." });
+    fetchJson.mockResolvedValueOnce([second]);
+    fetchJson.mockResolvedValueOnce({ done: true, message: "Beta is back." });
+    fetchJson.mockResolvedValueOnce([]);
+    render(<ComponentRecoveryNotices />);
+
+    await userEvent.click((await screen.findAllByRole("button", { name: "Add them back" }))[0]);
+    await userEvent.click(await screen.findByRole("button", { name: "Add them back" }));
+
+    expect(await screen.findByText("Alpha is back. Beta is back.")).toBeInTheDocument();
   });
 });

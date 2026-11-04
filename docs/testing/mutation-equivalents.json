@@ -769,6 +769,110 @@
       "line": 106,
       "replacement": "/(?<=[.!?])\\s/",
       "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/lan-access-notice.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 32,
+      "replacement": "true",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed read leaves the status as null, which it already was; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/lan-access-notice.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 33,
+      "replacement": "true",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed read leaves the status as null, which it already was; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/lan-access-notice.tsx",
+      "mutator": "CallExpression",
+      "line": 33,
+      "replacement": ";",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed read leaves the status as null, which it already was; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/lan-access-notice.tsx",
+      "mutator": "BlockStatement",
+      "line": 34,
+      "replacement": "{}",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed read leaves the status as null, which it already was; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/lan-access-notice.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 34,
+      "replacement": "true",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed read leaves the status as null, which it already was; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/lan-access-notice.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 35,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed read leaves the status as null, which it already was; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/component-recovery-notices.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 28,
+      "replacement": "true",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed first read leaves an empty list that was already empty; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/component-recovery-notices.tsx",
+      "mutator": "BlockStatement",
+      "line": 29,
+      "replacement": "{}",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed first read leaves an empty list that was already empty; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/component-recovery-notices.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 29,
+      "replacement": "true",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed first read leaves an empty list that was already empty; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/component-recovery-notices.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 29,
+      "replacement": "false",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed first read leaves an empty list that was already empty; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/component-recovery-notices.tsx",
+      "mutator": "BlockStatement",
+      "line": 30,
+      "replacement": "{}",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed first read leaves an empty list that was already empty; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/component-recovery-notices.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 30,
+      "replacement": "true",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed first read leaves an empty list that was already empty; and the hook list is constant either way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/component-recovery-notices.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 31,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "Equivalent: the active flag only guards a state update on a notice that has already gone, which React ignores; the failed first read leaves an empty list that was already empty; and the hook list is constant either way."
     }
   ]
 }
