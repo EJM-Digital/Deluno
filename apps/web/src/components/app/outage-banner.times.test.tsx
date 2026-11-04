@@ -64,4 +64,11 @@ describe("the outage banner's wording", () => {
     await act(async () => { answer(status({})); await Promise.resolve(); });
     expect(container.textContent).toBe("");
   });
+
+  it("reads the connectivity once when the app opens", async () => {
+    fetchJson.mockResolvedValueOnce(status({ isOutage: false }));
+    render(<OutageBanner />);
+    await vi.waitFor(() => expect(fetchJson).toHaveBeenCalledWith("/api/system/connectivity"));
+    expect(fetchJson).toHaveBeenCalledTimes(1);
+  });
 });

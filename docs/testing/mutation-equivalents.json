@@ -601,6 +601,174 @@
       "line": 74,
       "replacement": "false",
       "reason": "Equivalent: both flags are set again at the top of handleOpen before the dialog can show them (checking and the tick), and the cancelled flag only guards a state update on a component that has already gone, which React ignores."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/outage-banner.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 31,
+      "replacement": "false",
+      "reason": "Equivalent: the active flag only guards a state update on a banner that has already gone, which React ignores; the hook lists are constant either way (a ref and a function made once); and the checked hosts are kept in state but never drawn."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/outage-banner.tsx",
+      "mutator": "BlockStatement",
+      "line": 33,
+      "replacement": "{}",
+      "reason": "Equivalent: the active flag only guards a state update on a banner that has already gone, which React ignores; the hook lists are constant either way (a ref and a function made once); and the checked hosts are kept in state but never drawn."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/outage-banner.tsx",
+      "mutator": "BlockStatement",
+      "line": 35,
+      "replacement": "{}",
+      "reason": "Equivalent: the active flag only guards a state update on a banner that has already gone, which React ignores; the hook lists are constant either way (a ref and a function made once); and the checked hosts are kept in state but never drawn."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/outage-banner.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 35,
+      "replacement": "true",
+      "reason": "Equivalent: the active flag only guards a state update on a banner that has already gone, which React ignores; the hook lists are constant either way (a ref and a function made once); and the checked hosts are kept in state but never drawn."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/outage-banner.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 36,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "Equivalent: the active flag only guards a state update on a banner that has already gone, which React ignores; the hook lists are constant either way (a ref and a function made once); and the checked hosts are kept in state but never drawn."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/outage-banner.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 41,
+      "replacement": "true",
+      "reason": "Equivalent: the active flag only guards a state update on a banner that has already gone, which React ignores; the hook lists are constant either way (a ref and a function made once); and the checked hosts are kept in state but never drawn."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/outage-banner.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 48,
+      "replacement": "[]",
+      "reason": "Equivalent: the active flag only guards a state update on a banner that has already gone, which React ignores; the hook lists are constant either way (a ref and a function made once); and the checked hosts are kept in state but never drawn."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/outage-banner.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 56,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "Equivalent: the active flag only guards a state update on a banner that has already gone, which React ignores; the hook lists are constant either way (a ref and a function made once); and the checked hosts are kept in state but never drawn."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/outage-banner.tsx",
+      "mutator": "LogicalOperator",
+      "line": 56,
+      "replacement": "current?.checkedHosts && []",
+      "reason": "Equivalent: the active flag only guards a state update on a banner that has already gone, which React ignores; the hook lists are constant either way (a ref and a function made once); and the checked hosts are kept in state but never drawn."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "StringLiteral",
+      "line": 28,
+      "replacement": "\"\"",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "ConditionalExpression",
+      "line": 40,
+      "replacement": "default:",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "StringLiteral",
+      "line": 44,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "StringLiteral",
+      "line": 50,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "ConditionalExpression",
+      "line": 54,
+      "replacement": "false",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "LogicalOperator",
+      "line": 54,
+      "replacement": "status === \"equivalent\" && status === \"current-better\"",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "StringLiteral",
+      "line": 54,
+      "replacement": "\"\"",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "StringLiteral",
+      "line": 58,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "StringLiteral",
+      "line": 69,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "StringLiteral",
+      "line": 79,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "Regex",
+      "line": 100,
+      "replacement": "/([.!?]\\s+)?Custom rule [·-] [^.;']*Tier\\s*\\d+/gi",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/release-candidate-status.ts",
+      "mutator": "Regex",
+      "line": 106,
+      "replacement": "/(?<=[.!?])\\s/",
+      "reason": "Equivalent: each lands on the same answer by another road. A missing status is compared to fixed words and matches none whether it is empty or a stray word; held and unknown typed statuses both read Needs review; equivalent and current-better are warn through the final test as well; an optional group that matches only the start of the text never takes part in a JavaScript match; and splitting on one space instead of several leaves only empty sentences, which are dropped."
     }
   ]
 }
