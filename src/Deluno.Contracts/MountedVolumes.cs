@@ -42,7 +42,11 @@ public static class MountedVolumes
     /// Windows compares without case, as its file system does.
     /// </summary>
     public static string? RootOf(string fullPath, IReadOnlyList<string> roots)
-        => RootOf(fullPath, roots, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+        => RootOf(fullPath, roots, PathComparison);
+
+    /// <summary>How this system compares folder names: without case on Windows, with case elsewhere.</summary>
+    public static StringComparison PathComparison
+        => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
     public static string? RootOf(string fullPath, IReadOnlyList<string> roots, StringComparison comparison)
         => roots
