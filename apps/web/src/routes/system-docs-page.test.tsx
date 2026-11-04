@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
+import { systemHealthNavItems } from "../components/app/settings-shell";
 import { SystemDocsPage } from "./system-docs-page";
 import { CLIENT_PRESETS } from "./connections/presets";
 
@@ -28,8 +29,7 @@ describe("System > Help & Guides", () => {
     expect(routerSource).toMatch(docsRoute);
     // Under the System route, not at the top.
     expect(routerSource.slice(0, routerSource.search(docsRoute)).lastIndexOf('path: "system"')).toBeGreaterThan(-1);
-    const shellSource = readFileSync(path.join(here, "..", "components", "app", "settings-shell.tsx"), "utf8");
-    expect(shellSource).toContain('{ to: "/system/docs", label: "Help & Guides"');
+    expect(systemHealthNavItems).toContainEqual({ to: "/system/docs", label: "Help & Guides", end: false });
   });
 
   function renderGuide() {
