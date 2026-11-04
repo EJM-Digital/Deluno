@@ -195,6 +195,21 @@ describe("More matches in the Add dialog (#1473)", () => {
     expect(moreButton(dialog)).toBeNull();
   });
 
+  it("searches once on Enter, so the typed search's late reply cannot wipe the matches More matches added (#1486)", async () => {
+    const pageOne = recordedPage("search-movie-kickboxer-page1");
+    const pageTwo = recordedPage("search-movie-kickboxer-page2");
+    metadataReply = () => (searches().some((c) => c.url.includes("page=2")) && searches().at(-1)!.url.includes("page=2") ? pageTwo.slice(0, 18) : pageOne);
+    const dialog = await openDialog();
+
+    await searchKickboxer(dialog);
+    fireEvent.click(moreButton(dialog)!);
+    await waitFor(() => expect(within(dialog).getByTestId("add-matches").querySelectorAll("button[title^='Select']").length).toBe(38));
+    await new Promise((resolve) => setTimeout(resolve, 600)); // reason: longer than the 350 ms typing pause, so a pending typed search would have run
+
+    expect(searches().filter((c) => !c.url.includes("page="))).toHaveLength(1);
+    expect(within(dialog).getByTestId("add-matches").querySelectorAll("button[title^='Select']").length).toBe(38);
+  });
+
   it("offers no More matches after a short first page, and a short page ends the list", async () => {
     metadataReply = () => recordedPage("search-movie-kickboxer-page1").slice(5, 15);
     const dialog = await openDialog();

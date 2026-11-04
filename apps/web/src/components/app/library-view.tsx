@@ -257,6 +257,8 @@ export function LibraryView({
   const [metadataNextPage, setMetadataNextPage] = useState<number | null>(null);
   const [isLoadingMoreMatches, setIsLoadingMoreMatches] = useState(false);
   const lastMetadataSearch = useRef<URLSearchParams | null>(null);
+  // The typed search waiting out its 350 ms pause; a search asked for on Enter cancels it, so one query is one request (#1486).
+  const typedMetadataSearch = useRef<number | null>(null);
 
   // Opened from elsewhere with a title to look for, such as a film on a media
   // server that Deluno does not manage yet (#494): start with that title.
@@ -596,8 +598,10 @@ export function LibraryView({
     }
 
     const timer = window.setTimeout(() => {
+      typedMetadataSearch.current = null;
       void handleMetadataSearch({ silent: true });
     }, 350);
+    typedMetadataSearch.current = timer;
 
     return () => window.clearTimeout(timer);
   }, [
@@ -840,6 +844,10 @@ export function LibraryView({
   }
 
   async function handleMetadataSearch(options: { silent?: boolean } = {}) {
+    if (typedMetadataSearch.current !== null) {
+      window.clearTimeout(typedMetadataSearch.current);
+      typedMetadataSearch.current = null;
+    }
     const searchTitle = createForm.title.trim();
     if (!searchTitle) {
       toast.info(`Type a ${singular} name first.`);
