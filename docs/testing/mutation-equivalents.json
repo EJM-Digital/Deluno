@@ -561,6 +561,46 @@
       "line": 54,
       "replacement": "\"\"",
       "reason": "Equivalent: the caller's props are spread onto the select after the aria attributes, so the caller's own value wins whatever key is read; and splitting on single spaces or keeping empty words leaves only empty class names, which the class merger drops."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/block-release-action.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 58,
+      "replacement": "false",
+      "reason": "Equivalent: both flags are set again at the top of handleOpen before the dialog can show them (checking and the tick), and the cancelled flag only guards a state update on a component that has already gone, which React ignores."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/block-release-action.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 53,
+      "replacement": "true",
+      "reason": "Equivalent: both flags are set again at the top of handleOpen before the dialog can show them (checking and the tick), and the cancelled flag only guards a state update on a component that has already gone, which React ignores."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/block-release-action.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 71,
+      "replacement": "true",
+      "reason": "Equivalent: both flags are set again at the top of handleOpen before the dialog can show them (checking and the tick), and the cancelled flag only guards a state update on a component that has already gone, which React ignores."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/block-release-action.tsx",
+      "mutator": "BlockStatement",
+      "line": 73,
+      "replacement": "{}",
+      "reason": "Equivalent: both flags are set again at the top of handleOpen before the dialog can show them (checking and the tick), and the cancelled flag only guards a state update on a component that has already gone, which React ignores."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/block-release-action.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 74,
+      "replacement": "false",
+      "reason": "Equivalent: both flags are set again at the top of handleOpen before the dialog can show them (checking and the tick), and the cancelled flag only guards a state update on a component that has already gone, which React ignores."
     }
   ]
 }
