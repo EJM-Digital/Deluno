@@ -1993,6 +1993,20 @@ public sealed class DownloadClientTelemetryService(
                 : item).ToArray();
         }
 
+        // #1470: a category or save folder the client refused after the grab is kept in the dispatch's notes; it can stop the
+        // import, so the download's own row says it, with the fix, until a later grab has the same call taken.
+        if (queue.Length > 0)
+        {
+            queue = queue.Select(item =>
+            {
+                var refused = clientDispatches
+                    .Where(dispatch => DispatchProvesItem(dispatch, item.Id, item.ReleaseName))
+                    .SelectMany(dispatch => FollowUpRefusalNotes.FindingsFrom(dispatch.NotesJson, snapshot.ClientName))
+                    .ToArray();
+                return refused.Length == 0 ? item : item with { HealthFindings = [.. item.HealthFindings ?? [], .. refused] };
+            }).ToArray();
+        }
+
         // #981: the sharing pass (WorkPlanner) already checked the real files
         // and knows which of this client's items lost their hardlink into the
         // library - upgraded or deleted out from under a still-seeding
