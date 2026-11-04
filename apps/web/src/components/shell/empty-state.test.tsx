@@ -108,4 +108,14 @@ describe("the EmptyState card", () => {
     const none = render(<EmptyState title="Nothing else" />);
     expect(none.container.querySelectorAll(".mt-5, .mt-3")).toHaveLength(0);
   });
+
+  it("is a dashed card with a soft accent wash behind its words, and a display-type title", () => {
+    const { container } = render(<EmptyState title="Look" />);
+    const card = container.firstElementChild as HTMLElement;
+    expect(card.className).toContain("relative overflow-hidden rounded-2xl border border-dashed border-hairline/80");
+    expect(card.className).toContain("flex flex-col items-center justify-center text-center");
+    const wash = card.firstElementChild as HTMLElement;
+    expect(wash.getAttribute("style")).toContain("radial-gradient");
+    expect(screen.getByRole("heading", { name: "Look" }).className).toContain("font-display font-bold tracking-tight text-foreground");
+  });
 });

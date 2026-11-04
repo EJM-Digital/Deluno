@@ -33,14 +33,14 @@ export function ColumnsButton({ onReset, className }: { onReset: () => void; cla
     if (!open) return;
     function onPointerDown(event: PointerEvent) {
       const target = event.target as Node;
-      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      if (rootRef.current!.contains(target) || menuRef.current?.contains(target)) return;
       setOpen(false);
     }
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
         setOpen(false);
-        triggerRef.current?.focus();
+        triggerRef.current!.focus();
       }
     }
     document.addEventListener("pointerdown", onPointerDown);
@@ -54,8 +54,8 @@ export function ColumnsButton({ onReset, className }: { onReset: () => void; cla
   React.useLayoutEffect(() => {
     if (!open) return;
     function measure() {
-      const rect = triggerRef.current?.getBoundingClientRect();
-      if (rect) setAnchor({ top: rect.bottom + 6, right: window.innerWidth - rect.right });
+      const rect = triggerRef.current!.getBoundingClientRect();
+      setAnchor({ top: rect.bottom + 6, right: window.innerWidth - rect.right });
     }
     measure();
     window.addEventListener("resize", measure);
@@ -102,7 +102,7 @@ export function ColumnsButton({ onReset, className }: { onReset: () => void; cla
                 onClick={() => {
                   setOpen(false);
                   onReset();
-                  triggerRef.current?.focus();
+                  triggerRef.current!.focus();
                 }}
                 className="flex min-h-(--control-height-sm) w-full items-center rounded-lg px-3 text-left text-(length:--shell-nav-size) font-medium text-foreground transition hover:bg-muted/45 focus-visible:bg-muted/45 focus-visible:outline-hidden"
               >
@@ -141,7 +141,7 @@ export function useSharedColumnsHint(sortable: boolean): string {
       document.body.appendChild(element);
     }
     return () => {
-      const remaining = (sharedHints.get(id) ?? 1) - 1;
+      const remaining = sharedHints.get(id)! - 1;
       if (remaining > 0) {
         sharedHints.set(id, remaining);
         return;

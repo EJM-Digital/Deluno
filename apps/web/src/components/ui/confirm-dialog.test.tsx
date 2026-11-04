@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { Button } from "./button";
 import { ConfirmDialog } from "./confirm-dialog";
 
 afterEach(cleanup);
@@ -109,5 +110,38 @@ describe("the confirmation dialog", () => {
     show({ presentation: "default" });
     expect(screen.getByText("Remove it?").className).not.toBe(decisionTitle);
     expect(screen.getByText("This takes it away.").className).not.toBe(decisionWords);
+  });
+
+  it("styles its buttons exactly as the button component would with the same size, variant and layout classes", () => {
+    const wide = "w-full order-X h-auto min-h-(--control-height-lg) justify-center whitespace-normal px-5 py-3 text-center";
+    const buttonClass = (size: "lg" | "sm", variant: "destructive-solid" | "default" | "secondary" | "outline" | "destructive", className: string) => {
+      const { container } = render(<Button size={size} variant={variant} className={className}>x</Button>);
+      const result = container.firstElementChild!.className;
+      cleanup();
+      return result;
+    };
+    const expectedDecision = [buttonClass("lg", "destructive-solid", wide.replace("X", "1")), buttonClass("lg", "secondary", wide.replace("X", "3")), buttonClass("lg", "outline", wide.replace("X", "2"))];
+    const expectedPlain = [buttonClass("sm", "default", "w-full sm:w-auto"), buttonClass("sm", "secondary", "w-full sm:w-auto"), buttonClass("sm", "destructive", "w-full sm:w-auto")];
+    show({ secondaryLabel: "Other", onSecondary: vi.fn() });
+    expect([screen.getByRole("button", { name: "Confirm" }), screen.getByRole("button", { name: "Cancel" }), screen.getByRole("button", { name: "Other" })].map((button) => button.className)).toEqual(expectedDecision);
+    cleanup();
+    show({ presentation: "default", confirmVariant: "default", secondaryLabel: "Other", secondaryVariant: "destructive", onSecondary: vi.fn() });
+    expect([screen.getByRole("button", { name: "Confirm" }), screen.getByRole("button", { name: "Cancel" }), screen.getByRole("button", { name: "Other" })].map((button) => button.className)).toEqual(expectedPlain);
+  });
+
+  it("spaces and sizes its heading and words by presentation", () => {
+    show();
+    expect(screen.getByText("Remove it?").className).toContain("text-(length:--type-title-md)");
+    expect(screen.getByText("Remove it?").className).toContain("font-semibold text-foreground");
+    expect(screen.getByText("This takes it away.").className).toContain("max-w-prose");
+    expect(screen.getByText("This takes it away.").className).toContain("mt-1 text-muted-foreground");
+    expect(screen.getByText("Remove it?").parentElement!.parentElement!.className).toContain("mb-8");
+    cleanup();
+    show({ presentation: "default" });
+    expect(screen.getByText("Remove it?").className).not.toContain("text-(length:--type-title-md)");
+    expect(screen.getByText("This takes it away.").className).not.toContain("max-w-prose");
+    expect(screen.getByText("This takes it away.").className).toContain("mt-1 text-sm text-muted-foreground leading-relaxed");
+    expect(screen.getByText("Remove it?").parentElement!.parentElement!.className).not.toContain("mb-8");
+    expect(screen.getByText("Remove it?").parentElement!.parentElement!.className).toContain("mb-4");
   });
 });
