@@ -614,7 +614,9 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
                     Supported: false, Found: false);
             }
 
-            var folder = CategoryFolder(session.Arguments?.DownloadDir, name);
+            // The version was read from the arguments, so they are there.
+            var arguments = session.Arguments!;
+            var folder = CategoryFolder(arguments.DownloadDir, name);
             return folder is null
                 ? new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Configuration,
                     "Transmission did not say where it saves downloads.", Supported: true, Found: false)
@@ -622,7 +624,7 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
                     $"Transmission has no categories of its own; Deluno sends each {name} download to {folder}, inside Transmission's download folder.",
                     Supported: true, Found: true, SavePath: folder,
                     // Transmission writes a download here while it is in progress (#1164); with its incomplete folder off that is the folder itself.
-                    IncompletePath: session.Arguments?.IncompleteDirEnabled == true && !string.IsNullOrWhiteSpace(session.Arguments.IncompleteDir) ? session.Arguments.IncompleteDir : folder);
+                    IncompletePath: arguments.IncompleteDirEnabled == true && !string.IsNullOrWhiteSpace(arguments.IncompleteDir) ? arguments.IncompleteDir : folder);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or System.Text.Json.JsonException)
         {

@@ -178,4 +178,20 @@ public sealed class TransmissionEveryBranchTests
         Assert.Contains("Enter a category", blank.Message);
         Assert.Contains("address", noAddress.Message);
     }
+
+    [Fact]
+    public async Task A_removal_with_data_whose_name_and_folder_cannot_be_read_still_removes_the_torrent()
+    {
+        foreach (var weak in new[] { "null", "{\"result\":\"success\"}", "{\"result\":\"success\",\"arguments\":{\"torrents\":[]}}", "{\"result\":\"success\",\"arguments\":{\"torrents\":[{}]}}" })
+        {
+            var client = ClientAnswering((_, body) => RecordedReplies.Json(body.Contains("\"name\",\"downloadDir\"", StringComparison.Ordinal) ? weak : Rich), out _);
+
+            var result = await client.ExecuteActionAsync(Item(), DownloadClientActions.DeleteWithData, "7", CancellationToken.None);
+
+            Assert.NotNull(result);
+        }
+
+        var dropped = ClientAnswering((_, body) => body.Contains("\"name\",\"downloadDir\"", StringComparison.Ordinal) ? throw new HttpRequestException("The connection dropped.") : RecordedReplies.Json(Rich), out _);
+        Assert.NotNull(await dropped.ExecuteActionAsync(Item(), DownloadClientActions.DeleteWithData, "7", CancellationToken.None));
+    }
 }
