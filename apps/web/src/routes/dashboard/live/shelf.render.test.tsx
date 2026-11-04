@@ -442,10 +442,15 @@ describe("the caption tiers", () => {
     charPx = 6;
     const ready = Promise.resolve();
     Object.defineProperty(document, "fonts", { configurable: true, value: { ready } });
-    two();
-    await act(async () => { await ready; });
-    await waitFor(() => expect(words()).toEqual(["Met", "Upgraded"]));
-    delete (document as unknown as { fonts?: unknown }).fonts;
+    try {
+      two();
+      await act(async () => { await ready; });
+      // reason: the re-measure runs on the next frame after the fonts promise; a busy test machine took over the 1 s default
+      await waitFor(() => expect(words()).toEqual(["Met", "Upgraded"]), { timeout: 5_000 });
+    } finally {
+      // Taken away however the test ends, so no later test sees these fonts.
+      delete (document as unknown as { fonts?: unknown }).fonts;
+    }
   });
 
   it("draws small posters at under 64px wide and full ones from there", () => {
