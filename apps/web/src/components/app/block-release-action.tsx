@@ -77,15 +77,17 @@ export function BlockReleaseAction({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [identity.releaseName, identity.hash]);
 
-  async function handleOpen() {
+  function handleOpen() {
     setOpen(true);
     if (blockedMatch) return;
     setMatch(null);
     setStopToo(true);
     setChecking(true);
-    // checkQueueMatch answers null when it cannot reach the queue: the dialog still opens and blocking still works.
-    setMatch(await checkQueueMatch(identity));
-    setChecking(false);
+    // checkQueueMatch never fails: it answers null when it cannot reach the queue, so the dialog still opens and blocking still works.
+    void checkQueueMatch(identity).then((found) => {
+      setMatch(found);
+      setChecking(false);
+    });
   }
 
   async function handleLift(blockedRelease: BlockedRelease) {

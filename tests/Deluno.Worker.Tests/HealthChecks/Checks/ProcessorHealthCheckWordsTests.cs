@@ -158,7 +158,12 @@ public sealed class ProcessorHealthCheckWordsTests
         Assert.Equal("Weir says it is watching /data/other, but the Films library's downloads folder is /data/films.", outcome.Message);
         Assert.Equal("The folder Weir watches and the Films library's downloads folder no longer agree.", outcome.Cause);
         Assert.Equal("Point Weir at /data/films, or update the Films library's downloads folder to match Weir.", outcome.Fix);
-        Assert.Equal("""{"processorId":"connection-1","libraryId":"library-1","watchedPath":"/data/other","expectedPath":"/data/films"}""", outcome.DetailsJson);
+        // Deluno's own details for the row, not a reply from Weir.
+        using var details = System.Text.Json.JsonDocument.Parse(outcome.DetailsJson!);
+        Assert.Equal(
+            ["connection-1", "library-1", "/data/other", "/data/films"],
+            new[] { "processorId", "libraryId", "watchedPath", "expectedPath" }.Select(key => details.RootElement.GetProperty(key).GetString()));
+        Assert.Equal(4, details.RootElement.EnumerateObject().Count());
     }
 
     [Fact]
