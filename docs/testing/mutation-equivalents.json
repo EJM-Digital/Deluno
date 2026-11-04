@@ -713,6 +713,14 @@
       "line": 114,
       "replacement": "/(.*):(\\d+)$/",
       "reason": "Equivalent: the changed pattern gives the same host and port for every address, because a greedy rest-of-line match and a start-of-text match find the same text whether or not the start or end is named, and a scheme can only be written at the start."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/library-create-dialog.tsx",
+      "mutator": "StringLiteral",
+      "line": 64,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "The last fallback for the quality profile select when neither the form nor the library names one. A native select whose value matches no option shows its first option, so an empty string and any other string look the same."
     }
   ]
 }
