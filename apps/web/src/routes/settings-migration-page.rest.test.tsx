@@ -74,6 +74,14 @@ describe("a preview or apply that fails", () => {
     expect(await screen.findByText("Migration preview failed.")).toBeTruthy();
   });
 
+  it("says why under the toolbar when the very first preview fails and there is no report yet (#1478)", async () => {
+    route({ "/api/migration/preview": () => json({ message: "That is not valid JSON." }, 400) });
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText(/qualityProfiles/), { target: { value: "{" } });
+    fireEvent.click(screen.getByRole("button", { name: /Preview import/ }));
+    expect((await screen.findByRole("alert")).textContent).toContain("That is not valid JSON.");
+  });
+
   it("an apply that is rejected without a message says the apply failed", async () => {
     await preview();
     const calls = vi.mocked(authedFetch).getMockImplementation()!;
@@ -243,7 +251,7 @@ describe("the drawer for one change", () => {
     expect(drawer.queryByText("empty")).toBeNull();
     expect(drawer.getByText("Check this.")).toBeTruthy();
     fireEvent.click(drawer.getByRole("switch", { name: "Apply Aa" }));
-    fireEvent.click(drawer.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(drawer.getAllByRole("button", { name: "Close" }).at(-1)!);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(screen.getByRole("button", { name: /Apply 0 selected/ })).toBeTruthy();
   });
@@ -256,6 +264,17 @@ describe("the drawer for one change", () => {
     expect(drawer.queryByText("What would be created")).toBeNull();
     expect(drawer.queryByText("Warnings")).toBeNull();
     fireEvent.keyDown(drawer.getAllByRole("button", { name: "Close" })[0], { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("has one way out that works: every Close is enabled, there is no dead Cancel beside it, and pressing it closes the drawer (#1478)", async () => {
+    await preview();
+    fireEvent.click(screen.getByText("Bb"));
+    const drawer = within(await screen.findByRole("dialog"));
+    const closes = drawer.getAllByRole("button", { name: "Close" });
+    for (const button of closes) expect((button as HTMLButtonElement).disabled).toBe(false);
+    expect(drawer.queryByRole("button", { name: "Cancel" })).toBeNull();
+    fireEvent.click(closes[closes.length - 1]);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 

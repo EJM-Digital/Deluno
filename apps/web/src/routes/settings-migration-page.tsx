@@ -270,6 +270,12 @@ export function SettingsMigrationPage() {
         </div>
       </ListCard>
 
+      {message && !report ? (
+        <p role="alert" className="rounded-(--radius-control) border border-hairline bg-surface-muted px-3 py-2.5 text-(length:--type-body-sm) text-destructive">
+          {message}
+        </p>
+      ) : null}
+
       {report ? (
         <SummaryStrip
           cells={[
@@ -448,7 +454,7 @@ export function SettingsMigrationPage() {
         }}
         title={openOperation?.name ?? "Change"}
         description={openOperation ? `${openOperation.action} · ${openOperation.targetType}` : undefined}
-        footer={<DrawerFooter state="clean" saveType="button" saveLabel="Close" saveEnabled={false} onCancel={() => setOpenOperationId(null)} />}
+        footer={<DrawerFooter state="clean" saveType="button" saveLabel="Close" readOnly onCancel={() => setOpenOperationId(null)} />}
       >
         {openOperation ? (
           <>

@@ -182,14 +182,13 @@ export function SettingsListsPage() {
     }
   }
 
-  async function checkTraktConnect() {
-    if (!traktDevice) return;
+  async function checkTraktConnect(device: { deviceCode: string; userCode: string; verificationUrl: string }) {
     setTraktBusy(true);
     try {
       const response = await authedFetch("/api/trakt/connect/poll", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deviceCode: traktDevice.deviceCode })
+        body: JSON.stringify({ deviceCode: device.deviceCode })
       });
       if (!response.ok) throw new Error(await readErrorText(response, "Could not check Trakt."));
       const data = await response.json();
@@ -201,7 +200,7 @@ export function SettingsListsPage() {
         setTraktDevice(null);
         toast.error(data.status === "expired" ? "That code expired — start again." : "Trakt declined the request — start again.");
       } else {
-        toast.error(`Not approved yet — open ${traktDevice.verificationUrl} and enter ${traktDevice.userCode}.`);
+        toast.error(`Not approved yet — open ${device.verificationUrl} and enter ${device.userCode}.`);
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not check Trakt.");
@@ -245,6 +244,8 @@ export function SettingsListsPage() {
 
   const isOpen = mode.kind !== "closed";
   const editing = mode.kind === "edit" ? intakeSources.find((item) => item.id === mode.id) ?? null : null;
+  /** The open list's id: read only by the handlers behind buttons that exist while an existing list is open. */
+  const editId = (mode as Extract<DrawerMode, { kind: "edit" }>).id;
   const dirty = useMemo(() => isOpen && !sameForm(form, initialForm), [isOpen, form, initialForm]);
   const footerState: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);
@@ -344,11 +345,10 @@ export function SettingsListsPage() {
   }
 
   async function handleRemove() {
-    if (mode.kind !== "edit") return;
-    const id = mode.id;
+    const id = editId;
     const ok = await run("remove", async () => {
       const response = await authedFetch(`/api/intake-sources/${id}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) throw new Error(await readErrorText(response, "Import list could not be removed."));
+      if (!response.ok) throw new Error(await readErrorText(response, "Import list could not be removed."));
     }, `${editing?.name ?? "List"} removed`);
     if (!ok) return;
     setConfirmRemove(false);
@@ -376,8 +376,7 @@ export function SettingsListsPage() {
   }
 
   async function syncNow() {
-    if (mode.kind !== "edit") return;
-    const id = mode.id;
+    const id = editId;
     const ok = await run("sync", async () => {
       const response = await authedFetch(`/api/intake-sources/${id}/sync`, { method: "POST" });
       if (!response.ok) throw new Error(await readErrorText(response, "Sync could not be queued."));
@@ -386,8 +385,7 @@ export function SettingsListsPage() {
   }
 
   async function loadPreview() {
-    if (mode.kind !== "edit") return;
-    const id = mode.id;
+    const id = editId;
     setPreviewNote(null);
     await run("preview", async () => {
       const response = await authedFetch(`/api/intake-sources/${id}/preview`, { method: "POST" });
@@ -402,15 +400,10 @@ export function SettingsListsPage() {
     });
   }
 
-  async function approvePreview(searchAfterAdd: boolean) {
-    if (mode.kind !== "edit" || !preview) return;
-    const id = mode.id;
+  async function approvePreview(shown: IntakeListPreviewResult, searchAfterAdd: boolean) {
+    const id = editId;
     const keys = new Set(selectedKeys);
-    const entries = preview.items.filter((item) => keys.has(previewEntryKey(item)) && item.action === "would add").map((item) => ({ title: item.title, year: item.year, imdbId: item.imdbId }));
-    if (!entries.length) {
-      setPreviewNote("Choose at least one eligible entry first.");
-      return;
-    }
+    const entries = shown.items.filter((item) => keys.has(previewEntryKey(item)) && item.action === "would add").map((item) => ({ title: item.title, year: item.year, imdbId: item.imdbId }));
     await run(`approve:${searchAfterAdd ? "search" : "add"}`, async () => {
       const response = await authedFetch(`/api/intake-sources/${id}/approve-preview`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entries, searchAfterAdd }) });
       if (!response.ok) {
@@ -425,8 +418,7 @@ export function SettingsListsPage() {
   }
 
   async function excludeEntry(entry: IntakeListPreviewItem, durationDays: number | null) {
-    if (mode.kind !== "edit" || !preview) return;
-    const id = mode.id;
+    const id = editId;
     await run(`exclude:${previewEntryKey(entry)}`, async () => {
       const response = await authedFetch(`/api/intake-sources/${id}/exclude-preview`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: entry.title, year: entry.year, imdbId: entry.imdbId, durationDays, reason: "Excluded during import list preview" }) });
       if (!response.ok) throw new Error(await readErrorText(response, "This entry could not be excluded."));
@@ -442,11 +434,10 @@ export function SettingsListsPage() {
   }
 
   async function restoreEntry(entry: IntakeListPreviewItem) {
-    if (mode.kind !== "edit" || !entry.exclusionId) return;
-    const id = mode.id;
+    const id = editId;
     await run(`restore:${entry.exclusionId}`, async () => {
       const response = await authedFetch(`/api/intake-sources/${id}/exclusions/${entry.exclusionId}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) throw new Error(await readErrorText(response, "This entry could not be restored."));
+      if (!response.ok) throw new Error(await readErrorText(response, "This entry could not be restored."));
       setPreview((current) =>
         current
           ? { ...current, items: current.items.map((item) => (previewEntryKey(item) === previewEntryKey(entry) ? { ...item, action: "would add", reason: "Eligible again. Choose it when you are ready to add it.", exclusionId: null } : item)) }
@@ -460,7 +451,7 @@ export function SettingsListsPage() {
     setRestoringExclusionId(exclusion.id);
     try {
       const response = await authedFetch(`/api/exclusions/${exclusion.id}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 204) throw new Error(await readErrorText(response, "This exclusion could not be restored."));
+      if (!response.ok) throw new Error(await readErrorText(response, "This exclusion could not be restored."));
       toast.success(`${exclusion.title} can be added again.`);
       revalidator.revalidate();
     } catch (error) {
@@ -509,7 +500,7 @@ export function SettingsListsPage() {
                 <span className="text-(length:--type-caption)">
                   Open <a className="underline" href={traktDevice.verificationUrl} target="_blank" rel="noreferrer">{traktDevice.verificationUrl}</a> and enter code <strong className="font-mono">{traktDevice.userCode}</strong>
                 </span>
-                <Button type="button" size="sm" variant="outline" disabled={traktBusy} onClick={() => void checkTraktConnect()}>
+                <Button type="button" size="sm" variant="outline" disabled={traktBusy} onClick={() => void checkTraktConnect(traktDevice)}>
                   I&rsquo;ve approved it — check now
                 </Button>
               </>
@@ -634,9 +625,7 @@ export function SettingsListsPage() {
 
       <Drawer
         open={isOpen}
-        onOpenChange={(open) => {
-          if (!open) requestClose();
-        }}
+        onOpenChange={() => requestClose()}
         title={mode.kind === "create" ? "New import list" : editing?.name ?? form.name}
         description={mode.kind === "create" ? "A watchlist, curated list or feed Deluno should follow." : `${providerLabel(form.provider)} · ${form.mediaType === "tv" ? "TV" : "Movies"} · ${editing?.libraryName ? `adds to ${editing.libraryName}` : "no library yet"}`}
         onSubmit={handleSubmit}
@@ -835,7 +824,7 @@ export function SettingsListsPage() {
                 selectedKeys={selectedKeys}
                 busy={busy?.startsWith("approve:") ?? false}
                 onSelectionChange={(key, selected) => setSelectedKeys((current) => (selected ? [...new Set([...current, key])] : current.filter((item) => item !== key)))}
-                onApprove={(searchAfterAdd) => void approvePreview(searchAfterAdd)}
+                onApprove={(searchAfterAdd) => void approvePreview(preview, searchAfterAdd)}
                 onExclude={(entry, durationDays) => void excludeEntry(entry, durationDays)}
                 onRestore={(entry) => void restoreEntry(entry)}
               />
@@ -861,10 +850,7 @@ export function SettingsListsPage() {
       />
       <ConfirmDialog
         open={confirmDiscard}
-        onOpenChange={(open) => {
-          if (open) return;
-          setConfirmDiscard(false);
-        }}
+        onOpenChange={() => setConfirmDiscard(false)}
         title="Discard unsaved changes?"
         description="Your edits to this list haven't been saved."
         confirmLabel="Discard"
@@ -1122,9 +1108,8 @@ function parseTmdbPersonAddress(feedUrl: string): { personId: string; creditType
 
 function buildTmdbPersonAddress(feedUrl: string, creditTypes: TmdbPersonCreditType[]) {
   const parsed = parseTmdbPersonAddress(feedUrl);
-  const selected = creditTypes.length ? creditTypes : ["cast"] as TmdbPersonCreditType[];
   if (!parsed.personId) return feedUrl.trim();
-  return `https://www.themoviedb.org/person/${parsed.personId}?credits=${selected.join(",")}`;
+  return `https://www.themoviedb.org/person/${parsed.personId}?credits=${creditTypes.join(",")}`;
 }
 
 /**
@@ -1140,7 +1125,6 @@ export function OffListTagCard({ enabled, tag, onSaved }: { enabled: boolean; ta
   const missingTag = on && !name.trim();
 
   async function save() {
-    if (missingTag || busy) return;
     setBusy(true);
     try {
       const response = await authedFetch("/api/settings", {

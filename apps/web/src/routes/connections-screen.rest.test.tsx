@@ -386,9 +386,11 @@ describe("removing an item from its drawer", () => {
     fireEvent.click(drawer.getByRole("button", { name: /^Remove/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Remove indexer" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("It is still in use."));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // #1477: a failed Remove keeps the drawer open, with the reason on screen.
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Remove indexer" })).toBeNull());
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByText("It is still in use.")).toBeTruthy();
     authedFetch.mockImplementation(async () => new Response(null, { status: 204 }));
-    fireEvent.click(screen.getByText("Alpha"));
     fireEvent.click((await dialog()).getByRole("button", { name: /^Remove/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Remove indexer" }));
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Alpha removed"));
