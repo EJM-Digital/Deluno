@@ -227,7 +227,7 @@ describe("The System tab following the server", () => {
 
   it("adds a pushed log line once at the top and counts it, and ignores the same line pushed again", async () => {
     world.log = {
-      errorsToday: 0, warningsToday: 0, latestLogFile: "deluno.jsonl",
+      errorsToday: 0, warningsToday: 0, latestLogFile: "deluno.jsonl", droppedLines: 0,
       entries: [{ id: "a", timeUtc: "2026-10-01T11:57:00Z", level: "info", message: "Backup complete.", source: "Backup" }]
     };
     renderDashboard();
@@ -295,7 +295,7 @@ describe("The System tab following the server", () => {
   }, 20_000);
 
   it("keeps at most 200 pushed log lines", async () => {
-    world.log = { errorsToday: 0, warningsToday: 0, latestLogFile: "deluno.jsonl", entries: [] };
+    world.log = { errorsToday: 0, warningsToday: 0, latestLogFile: "deluno.jsonl", droppedLines: 0, entries: [] };
     renderDashboard();
     const log = await screen.findByRole("region", { name: "Log" });
     await waitFor(() => expect(log.textContent).toContain("Nothing notable"));

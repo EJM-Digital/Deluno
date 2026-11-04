@@ -100,6 +100,14 @@ public sealed class VolumeSpaceProbesTests
         Assert.Equal(2, reading!.TotalBytes);
     }
 
+    [Theory]
+    [InlineData("//nas/share/films/new", "//nas/share/films")]
+    [InlineData("//nas/share/films/", "//nas/share")]
+    [InlineData(@"\\nas\share\films", @"\\nas\share")]
+    [InlineData("//nas", null)]
+    public void A_share_paths_parent_is_read_from_its_text_on_every_system(string path, string? parent)
+        => Assert.Equal(parent, VolumeSpace.ShareParentOf(path));
+
     [Fact]
     public void A_share_with_nothing_that_exists_down_to_the_share_itself_has_no_reading()
         => Assert.Null(VolumeSpace.TryRead("//nas/share/films", System(windows: true, exists: _ => false)));

@@ -90,17 +90,24 @@ public sealed class DelunoFileLoggerProvider : ILoggerProvider, ISupportExternal
         this.timeProvider = timeProvider;
         this.runtimeLogLevelStore = runtimeLogLevelStore;
         LogDirectory = ResolveDirectory(storage.Value.DataRoot, this.options.Directory);
-        queue = Channel.CreateBounded<string>(new BoundedChannelOptions(10_000)
-        {
-            FullMode = BoundedChannelFullMode.DropWrite,
-            SingleReader = true
-        });
+        // DropWrite keeps logging from ever blocking Deluno, but TryWrite then answers true for a line it threw away;
+        // the item-dropped callback is what says so (#1480).
+        queue = Channel.CreateBounded<string>(
+            new BoundedChannelOptions(10_000)
+            {
+                FullMode = BoundedChannelFullMode.DropWrite,
+                SingleReader = true
+            },
+            _ => Interlocked.Increment(ref dropped));
         writer = this.options.Enabled ? Task.Run(WriteLoopAsync) : Task.CompletedTask;
     }
 
     public string LogDirectory { get; }
 
-    /// <summary>Lines refused because the queue was full.</summary>
+    /// <summary>How an expired or surplus log file is removed. A test replaces it to make a removal fail.</summary>
+    public Action<FileInfo> Remover { get; init; } = static file => file.Delete();
+
+    /// <summary>Lines lost because the queue was full, since Deluno started.</summary>
     public long DroppedCount => Interlocked.Read(ref dropped);
 
     public ILogger CreateLogger(string categoryName) => new DelunoFileLogger(this, categoryName);
@@ -159,10 +166,7 @@ public sealed class DelunoFileLoggerProvider : ILoggerProvider, ISupportExternal
             logBuffer.Add(level, category, message);
         }
 
-        if (!queue.Writer.TryWrite(line))
-        {
-            Interlocked.Increment(ref dropped);
-        }
+        queue.Writer.TryWrite(line);
     }
 
     private string Format<TState>(
@@ -457,15 +461,12 @@ public sealed class DelunoFileLoggerProvider : ILoggerProvider, ISupportExternal
             {
                 if (file.LastWriteTimeUtc < cutoff)
                 {
-                    file.Delete();
+                    Remover(file);
                 }
             }
-            catch (IOException)
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                // Held open elsewhere; the next roll tries again.
-            }
-            catch (UnauthorizedAccessException)
-            {
+                // Held open elsewhere or not ours to remove; the next roll tries again.
             }
         }
     }
@@ -491,13 +492,11 @@ public sealed class DelunoFileLoggerProvider : ILoggerProvider, ISupportExternal
             try
             {
                 total -= files[index].Length;
-                files[index].Delete();
+                Remover(files[index]);
             }
-            catch (IOException)
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-            }
-            catch (UnauthorizedAccessException)
-            {
+                // Held open elsewhere or not ours to remove; the next roll tries again.
             }
         }
     }

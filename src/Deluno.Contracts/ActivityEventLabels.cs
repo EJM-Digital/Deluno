@@ -100,6 +100,7 @@ public static class ActivityEventLabels
             ["download.dispatch.planned"] = "Chosen, not sent yet",
             ["download.dispatch.paused"] = "Held back, client is paused",
             ["download.dispatch.failed"] = "Could not send to the download client",
+            ["download.follow-up.refused"] = "The download client refused a setting",
             ["download.grab.duplicate"] = "Skipped, already downloading",
             ["download.grab.unreachable"] = "Download client could not be reached",
             ["download.grab.foundElsewhere"] = "Found the release already in the download client",

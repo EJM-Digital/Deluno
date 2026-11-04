@@ -12,6 +12,8 @@ export interface SystemLogResponse {
   errorsToday: number;
   warningsToday: number;
   latestLogFile: string | null;
+  /** Log lines lost since Deluno started because the writer could not keep up (#1480). */
+  droppedLines: number;
 }
 
 export interface SystemDatabaseItem {

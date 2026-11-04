@@ -40,6 +40,7 @@ public sealed class SystemLogAndDatabasesEndpointTests
         Assert.All(warnings!.Entries, entry => Assert.Equal("warning", entry.Level));
         Assert.True(all.ErrorsToday >= 1);
         Assert.True(all.WarningsToday >= 1);
+        Assert.Equal(0, all.DroppedLines);
     }
 
     [Fact]
@@ -229,7 +230,7 @@ public sealed class SystemLogAndDatabasesEndpointTests
         Assert.Contains("\"lastError\"", tasks);
     }
 
-    private sealed record LogBody(List<LogEntryBody> Entries, int ErrorsToday, int WarningsToday, string? LatestLogFile);
+    private sealed record LogBody(List<LogEntryBody> Entries, int ErrorsToday, int WarningsToday, string? LatestLogFile, long DroppedLines);
 
     private sealed record LogEntryBody(string Id, DateTimeOffset TimeUtc, string Level, string Message, string? Source);
 
