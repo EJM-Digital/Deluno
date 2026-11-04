@@ -244,9 +244,15 @@ function TimingCard({ settings }: { settings: PlatformSettingsSnapshot }) {
   const [windowMinutes, setWindowMinutes] = useState(String(settings.downloadHealthDefaultStrikeWindowMinutes));
   const [samplerMinutes, setSamplerMinutes] = useState(String(settings.downloadThroughputSamplerIntervalMinutes));
   const [strikeLimit, setStrikeLimit] = useState(String(settings.downloadHealthStrikeThreshold));
+  const [noProgressMinutes, setNoProgressMinutes] = useState(String(settings.downloadHealthNoProgressMinutes));
+  const [tooSlowMinutes, setTooSlowMinutes] = useState(String(settings.downloadHealthMinSpeedMinutes));
+  const [lowPeersMinutes, setLowPeersMinutes] = useState(String(settings.downloadHealthMinPeersMinutes));
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [errors, setErrors] = useState<{ window?: string; sampler?: string; strikes?: string }>({});
-  const dirty = strikeLimit !== String(settings.downloadHealthStrikeThreshold) ||
+  const [errors, setErrors] = useState<{ window?: string; sampler?: string; strikes?: string; noProgress?: string; tooSlow?: string; lowPeers?: string }>({});
+  const dirty = noProgressMinutes !== String(settings.downloadHealthNoProgressMinutes) ||
+    tooSlowMinutes !== String(settings.downloadHealthMinSpeedMinutes) ||
+    lowPeersMinutes !== String(settings.downloadHealthMinPeersMinutes) ||
+    strikeLimit !== String(settings.downloadHealthStrikeThreshold) ||
     windowMinutes !== String(settings.downloadHealthDefaultStrikeWindowMinutes) ||
     samplerMinutes !== String(settings.downloadThroughputSamplerIntervalMinutes);
 
@@ -254,7 +260,14 @@ function TimingCard({ settings }: { settings: PlatformSettingsSnapshot }) {
     const window = Number(windowMinutes);
     const sampler = Number(samplerMinutes);
     const strikes = Number(strikeLimit);
-    const nextErrors: { window?: string; sampler?: string; strikes?: string } = {};
+    const noProgress = Number(noProgressMinutes);
+    const tooSlow = Number(tooSlowMinutes);
+    const lowPeers = Number(lowPeersMinutes);
+    const nextErrors: { window?: string; sampler?: string; strikes?: string; noProgress?: string; tooSlow?: string; lowPeers?: string } = {};
+    nextErrors.noProgress = downloadHealthMinutesProblem(noProgress, "The no-progress time");
+    nextErrors.tooSlow = downloadHealthMinutesProblem(tooSlow, "The too-slow time");
+    nextErrors.lowPeers = downloadHealthMinutesProblem(lowPeers, "The low-peers time");
+    for (const key of ["noProgress", "tooSlow", "lowPeers"] as const) if (!nextErrors[key]) delete nextErrors[key];
     const strikesProblem = downloadHealthStrikesProblem(strikes, "Strikes");
     if (strikesProblem) nextErrors.strikes = strikesProblem;
     const windowProblem = downloadHealthMinutesProblem(window, "The time between checks");
@@ -268,10 +281,16 @@ function TimingCard({ settings }: { settings: PlatformSettingsSnapshot }) {
       const next = await mutation.mutate({
         downloadHealthDefaultStrikeWindowMinutes: window,
         downloadHealthStrikeThreshold: strikes,
+        downloadHealthNoProgressMinutes: noProgress,
+        downloadHealthMinSpeedMinutes: tooSlow,
+        downloadHealthMinPeersMinutes: lowPeers,
         downloadThroughputSamplerIntervalMinutes: sampler
       });
       setStrikeLimit(String(next.downloadHealthStrikeThreshold));
       setWindowMinutes(String(next.downloadHealthDefaultStrikeWindowMinutes));
+      setNoProgressMinutes(String(next.downloadHealthNoProgressMinutes));
+      setTooSlowMinutes(String(next.downloadHealthMinSpeedMinutes));
+      setLowPeersMinutes(String(next.downloadHealthMinPeersMinutes));
       setSamplerMinutes(String(next.downloadThroughputSamplerIntervalMinutes));
       setSaveState("saved");
     } catch {
@@ -291,6 +310,24 @@ function TimingCard({ settings }: { settings: PlatformSettingsSnapshot }) {
           </Field>
           <Field label="Strikes before a stalled download is acted on" error={errors.strikes} help={`For a download the client itself reports stalled or errored, when no rule above covers it. Each check where it is still stuck adds a strike, the first check where it moves again clears them, and at this many it is removed and cleaned up as chosen under When strikes run out. ${DOWNLOAD_HEALTH_STRIKES_RANGE}.`}>
             <Input type="number" min={DOWNLOAD_HEALTH_MIN_STRIKES} max={DOWNLOAD_HEALTH_MAX_STRIKES} step="1" value={strikeLimit} onChange={(event) => setStrikeLimit(event.target.value)} />
+          </Field>
+          <Field label="No-progress time" error={errors.noProgress} help={`How long a download can sit with nothing arriving before the no-progress setting counts it as stuck. ${DOWNLOAD_HEALTH_MINUTES_RANGE}; 30 by default.`}>
+            <div className="flex items-center gap-2">
+              <Input type="number" min={DOWNLOAD_HEALTH_MIN_MINUTES} max={DOWNLOAD_HEALTH_MAX_MINUTES} step="1" value={noProgressMinutes} onChange={(event) => setNoProgressMinutes(event.target.value)} />
+              <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">min</span>
+            </div>
+          </Field>
+          <Field label="Too-slow time" error={errors.tooSlow} help={`How long a download can stay under the speed limit before the too-slow setting counts it as slow. ${DOWNLOAD_HEALTH_MINUTES_RANGE}; 30 by default.`}>
+            <div className="flex items-center gap-2">
+              <Input type="number" min={DOWNLOAD_HEALTH_MIN_MINUTES} max={DOWNLOAD_HEALTH_MAX_MINUTES} step="1" value={tooSlowMinutes} onChange={(event) => setTooSlowMinutes(event.target.value)} />
+              <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">min</span>
+            </div>
+          </Field>
+          <Field label="Low-peers time" error={errors.lowPeers} help={`How long a download can stay under the peer floor before the low-peers setting counts it as short of peers. ${DOWNLOAD_HEALTH_MINUTES_RANGE}; 30 by default.`}>
+            <div className="flex items-center gap-2">
+              <Input type="number" min={DOWNLOAD_HEALTH_MIN_MINUTES} max={DOWNLOAD_HEALTH_MAX_MINUTES} step="1" value={lowPeersMinutes} onChange={(event) => setLowPeersMinutes(event.target.value)} />
+              <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">min</span>
+            </div>
           </Field>
           <Field label="Speed chart sampling" error={errors.sampler} help="How often Deluno records a throughput sample for the speed chart.">
             <div className="flex items-center gap-2">
@@ -925,6 +962,12 @@ export function SettingsDownloadHealthPage() {
             <Field label="Strikes before it acts" error={errors.strikeLimit} help={`${DOWNLOAD_HEALTH_STRIKES_RANGE}. Each check where the problem is still there adds one strike, and the first check where it is gone clears them. At this many strikes the download is removed and cleaned up as chosen below. 1 acts the moment the problem is first seen.`}>
               <Input type="number" min={DOWNLOAD_HEALTH_MIN_STRIKES} max={DOWNLOAD_HEALTH_MAX_STRIKES} step="1" value={form.strikeLimit} onChange={(event) => setForm((current) => ({ ...current, strikeLimit: event.target.value }))} />
             </Field>
+            <Field label="Rule timer" error={errors.timerMinutes} help={`How long this rule waits before a problem counts. ${DOWNLOAD_HEALTH_MINUTES_RANGE}.`}>
+              <div className="flex items-center gap-2">
+                <Input type="number" min={DOWNLOAD_HEALTH_MIN_MINUTES} max={DOWNLOAD_HEALTH_MAX_MINUTES} step="1" value={form.timerMinutes} onChange={(event) => setForm((current) => ({ ...current, timerMinutes: event.target.value }))} />
+                <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">min</span>
+              </div>
+            </Field>
           </FieldRow>
           <p className="text-(length:--type-body-sm) text-muted-foreground">
             {strikeTimeline(Number(form.strikeLimit), settings.downloadHealthDefaultStrikeWindowMinutes)}
@@ -1082,6 +1125,8 @@ function validate(form: RuleForm): Record<string, string> {
   const strikeLimit = Number(form.strikeLimit);
   const strikeProblem = downloadHealthStrikesProblem(strikeLimit, "Strikes");
   if (strikeProblem) errors.strikeLimit = strikeProblem;
+  const timerProblem = downloadHealthMinutesProblem(Number(form.timerMinutes), "The rule timer");
+  if (timerProblem) errors.timerMinutes = timerProblem;
   const min = Number(form.minCompletionPercent);
   const max = Number(form.maxCompletionPercent);
   if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max > 100 || min > max) {

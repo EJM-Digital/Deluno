@@ -422,7 +422,8 @@ describe("the cards beside the rules", () => {
 
     await waitFor(() => expect(calls("PATCH", "/api/settings")).toHaveLength(1));
     expect(bodyOf(calls("PATCH", "/api/settings")[0])).toEqual({
-      downloadHealthDefaultStrikeWindowMinutes: 10, downloadHealthStrikeThreshold: 4, downloadThroughputSamplerIntervalMinutes: 15
+      downloadHealthDefaultStrikeWindowMinutes: 10, downloadHealthStrikeThreshold: 4, downloadThroughputSamplerIntervalMinutes: 15,
+      downloadHealthNoProgressMinutes: 30, downloadHealthMinSpeedMinutes: 30, downloadHealthMinPeersMinutes: 30
     });
   });
 
@@ -458,6 +459,41 @@ describe("the cards beside the rules", () => {
         downloadHealthDefaultStrikeWindowMinutes: Number(good), downloadHealthStrikeThreshold: Number(good)
       });
     }
+  });
+
+  it.each([
+    ["No-progress time", "The no-progress time", "downloadHealthNoProgressMinutes"],
+    ["Too-slow time", "The too-slow time", "downloadHealthMinSpeedMinutes"],
+    ["Low-peers time", "The low-peers time", "downloadHealthMinPeersMinutes"]
+  ])("#1475: %s is on screen, takes 1 to 999 minutes, says so, and refuses 0 and 1000 saying why", async (label, what, key) => {
+    renderPage();
+    const input = screen.getByLabelText(label);
+    expect(input).toHaveAttribute("min", "1");
+    expect(input).toHaveAttribute("max", "999");
+    for (const bad of ["0", "1000"]) {
+      fireEvent.change(input, { target: { value: bad } });
+      fireEvent.click(screen.getByRole("button", { name: "Save timing" }));
+      expect(await screen.findByText(`${what} must be between 1 and 999 minutes.`)).toBeVisible();
+    }
+    expect(calls("PATCH", "/api/settings")).toHaveLength(0);
+    fireEvent.change(input, { target: { value: "999" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save timing" }));
+    await waitFor(() => expect(calls("PATCH", "/api/settings")).toHaveLength(1));
+    expect(bodyOf(calls("PATCH", "/api/settings")[0])).toMatchObject({ [key]: 999 });
+  });
+
+  it("#1475: a rule's timer is in the rule editor, takes 1 to 999 minutes, and refuses 0 and 1000 saying why", async () => {
+    renderPage();
+    const drawer = await openNewRule();
+    const timer = drawer.getByLabelText("Rule timer");
+    expect(timer).toHaveAttribute("min", "1");
+    expect(timer).toHaveAttribute("max", "999");
+    for (const bad of ["0", "1000"]) {
+      fireEvent.change(timer, { target: { value: bad } });
+      fireEvent.click(drawer.getByRole("button", { name: "Create rule" }));
+      expect(await drawer.findByText("The rule timer must be between 1 and 999 minutes.")).toBeVisible();
+    }
+    expect(calls("POST", "/api/download-health/rules/new")).toHaveLength(0);
   });
 
   it("History retention refuses a number outside its range and saves both periods together", async () => {
