@@ -1025,6 +1025,78 @@
       "line": 67,
       "replacement": "\"Stryker was here!\"",
       "reason": "Equivalent: a failed import status is neither imported nor completed and is not empty, so the next lines return false anyway; the default list is only read for extra-copy matches, which a stray word never makes; and the failure text is only searched for the words refus, rejected, removed and vanished, which a stray word does not hold."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/times.ts",
+      "mutator": "ConditionalExpression",
+      "line": 23,
+      "replacement": "false",
+      "reason": "Equivalent: an unreadable or missing time is NaN whether the default is empty or a stray word, and every comparison with NaN is false, so a span with one unreadable end is dropped either way; a finish time equal to the latest changes nothing; and Number.isFinite already rejects an undefined finish."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/times.ts",
+      "mutator": "EqualityOperator",
+      "line": 24,
+      "replacement": "card.finishAtMs >= latest",
+      "reason": "Equivalent: an unreadable or missing time is NaN whether the default is empty or a stray word, and every comparison with NaN is false, so a span with one unreadable end is dropped either way; a finish time equal to the latest changes nothing; and Number.isFinite already rejects an undefined finish."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/times.ts",
+      "mutator": "ConditionalExpression",
+      "line": 38,
+      "replacement": "false",
+      "reason": "Equivalent: an unreadable or missing time is NaN whether the default is empty or a stray word, and every comparison with NaN is false, so a span with one unreadable end is dropped either way; a finish time equal to the latest changes nothing; and Number.isFinite already rejects an undefined finish."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/times.ts",
+      "mutator": "StringLiteral",
+      "line": 58,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: an unreadable or missing time is NaN whether the default is empty or a stray word, and every comparison with NaN is false, so a span with one unreadable end is dropped either way; a finish time equal to the latest changes nothing; and Number.isFinite already rejects an undefined finish."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/times.ts",
+      "mutator": "StringLiteral",
+      "line": 59,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: an unreadable or missing time is NaN whether the default is empty or a stray word, and every comparison with NaN is false, so a span with one unreadable end is dropped either way; a finish time equal to the latest changes nothing; and Number.isFinite already rejects an undefined finish."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/times.ts",
+      "mutator": "ConditionalExpression",
+      "line": 60,
+      "replacement": "true",
+      "reason": "Equivalent: an unreadable or missing time is NaN whether the default is empty or a stray word, and every comparison with NaN is false, so a span with one unreadable end is dropped either way; a finish time equal to the latest changes nothing; and Number.isFinite already rejects an undefined finish."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/times.ts",
+      "mutator": "LogicalOperator",
+      "line": 60,
+      "replacement": "Number.isFinite(start) || Number.isFinite(end)",
+      "reason": "Equivalent: an unreadable or missing time is NaN whether the default is empty or a stray word, and every comparison with NaN is false, so a span with one unreadable end is dropped either way; a finish time equal to the latest changes nothing; and Number.isFinite already rejects an undefined finish."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/times.ts",
+      "mutator": "StringLiteral",
+      "line": 63,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: an unreadable or missing time is NaN whether the default is empty or a stray word, and every comparison with NaN is false, so a span with one unreadable end is dropped either way; a finish time equal to the latest changes nothing; and Number.isFinite already rejects an undefined finish."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/times.ts",
+      "mutator": "StringLiteral",
+      "line": 122,
+      "replacement": "\"Stryker was here!\"",
+      "reason": "Equivalent: an unreadable or missing time is NaN whether the default is empty or a stray word, and every comparison with NaN is false, so a span with one unreadable end is dropped either way; a finish time equal to the latest changes nothing; and Number.isFinite already rejects an undefined finish."
     }
   ]
 }
