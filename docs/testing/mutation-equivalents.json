@@ -777,6 +777,422 @@
       "line": 103,
       "replacement": "[\"Stryker was here\"]",
       "reason": "A React dependency list that is constant either way: the callback uses only the query client and a constant key, so an empty list and a list of one fixed string both keep one callback for the life of the hook."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/card.tsx",
+      "mutator": "Regex",
+      "line": 40,
+      "replacement": "/[^A-Za-z0-9]/",
+      "reason": "Equivalent: the changed pattern splits on one character instead of a run of them, which only leaves empty pieces, and the next step drops empty pieces."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/settings-shell.tsx",
+      "mutator": "LogicalOperator",
+      "line": 316,
+      "replacement": "\"chrome\" in meta || meta.chrome === \"none\"",
+      "reason": "Every settings page that names a chrome names none, so \"has a chrome\" and \"has a chrome that is none\" give the same answer for every page there is."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/settings-shell.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 316,
+      "replacement": "true",
+      "reason": "Every settings page that names a chrome names none, so \"has a chrome\" and \"has a chrome that is none\" give the same answer for every page there is."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/settings-shell.tsx",
+      "mutator": "ArrowFunction",
+      "line": 53,
+      "replacement": "() => undefined",
+      "reason": "Runs once while the module loads, before the test run can switch a mutant on; a missing area is proved by the test that loads the module without one."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/settings-shell.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 53,
+      "replacement": "false",
+      "reason": "Runs once while the module loads, before the test run can switch a mutant on; a missing area is proved by the test that loads the module without one."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/settings-shell.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 54,
+      "replacement": "area",
+      "reason": "Runs once while the module loads, before the test run can switch a mutant on; a missing area is proved by the test that loads the module without one."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/settings-shell.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 54,
+      "replacement": "true",
+      "reason": "Runs once while the module loads, before the test run can switch a mutant on; a missing area is proved by the test that loads the module without one."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/quality-build-steps.tsx",
+      "mutator": "OptionalChaining",
+      "line": 241,
+      "replacement": "rules.find(format => format.id === id).name",
+      "reason": "The ids come from the chosen list, which is filtered to the rules that exist, so the rule is always found and ?. and . behave the same."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/quality-build-steps.tsx",
+      "mutator": "UpdateOperator",
+      "line": 429,
+      "replacement": "--requestId.current",
+      "reason": "Request numbers are only compared with each other for equality, so counting down gives the same answer as counting up."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/shelf.tsx",
+      "mutator": "StringLiteral",
+      "line": 73,
+      "replacement": "\"\"",
+      "reason": "The remembered library is only compared with the libraries' own ids, so \"\", undefined and \"all\" all choose no library."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/shelf.tsx",
+      "mutator": "BlockStatement",
+      "line": 74,
+      "replacement": "{}",
+      "reason": "The remembered library is only compared with the libraries' own ids, so \"\", undefined and \"all\" all choose no library."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/shelf.tsx",
+      "mutator": "StringLiteral",
+      "line": 75,
+      "replacement": "\"\"",
+      "reason": "The remembered library is only compared with the libraries' own ids, so \"\", undefined and \"all\" all choose no library."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/dashboard/live/shelf.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 214,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list of stable values (a ref, a function made once, or nothing): an empty list and a list of one fixed string both run the effect once and never again, so no test can tell them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/settings-general-page.tsx",
+      "mutator": "MethodExpression",
+      "line": 112,
+      "replacement": "form.cloudflareHelperTimeoutSeconds",
+      "reason": "The timeout box is a number box, which the browser never lets hold only spaces, so trimming it changes nothing a person or test can reach."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/settings-general-page.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 202,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list of stable values (a ref, a function made once, or nothing): an empty list and a list of one fixed string both run the effect once and never again, so no test can tell them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/settings-general-page.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 261,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list of stable values (a ref, a function made once, or nothing): an empty list and a list of one fixed string both run the effect once and never again, so no test can tell them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/settings-general-page.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 423,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list of stable values (a ref, a function made once, or nothing): an empty list and a list of one fixed string both run the effect once and never again, so no test can tell them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/settings-general-page.tsx",
+      "mutator": "StringLiteral",
+      "line": 212,
+      "replacement": "\"\"",
+      "reason": "A space of text between a sentence and a link, which no test reads."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/settings-general-page.tsx",
+      "mutator": "StringLiteral",
+      "line": 313,
+      "replacement": "\"\"",
+      "reason": "A space of text between a sentence and a link, which no test reads."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/settings-general-page.tsx",
+      "mutator": "StringLiteral",
+      "line": 250,
+      "replacement": "\"\"",
+      "reason": "The first hours text is replaced as soon as the state loads, and a blank or missing one is read as a day anyway."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/settings-general-page.tsx",
+      "mutator": "LogicalOperator",
+      "line": 364,
+      "replacement": "settings.keepComputerAwake && false",
+      "reason": "The switch's first state is replaced by the effect beside it the moment it mounts, so a different starting value shows nowhere."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/routes/settings-general-page.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 364,
+      "replacement": "true",
+      "reason": "The switch's first state is replaced by the effect beside it the moment it mounts, so a different starting value shows nowhere."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/bulk-remove-dialog.tsx",
+      "mutator": "BooleanLiteral",
+      "line": 36,
+      "replacement": "false",
+      "reason": "The choice is set to on again by the effect beside it each time the dialog opens, so its first value shows nowhere."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/app/bulk-remove-dialog.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 39,
+      "replacement": "true",
+      "reason": "The choice is only read while the dialog is open, so setting it on again when it closes changes nothing a person can reach."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/choice-rows.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 41,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list of stable values (a ref, a function made once, or nothing): an empty list and a list of one fixed string both run the effect once and never again, so no test can tell them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/column-picker.tsx",
+      "mutator": "OptionalChaining",
+      "line": 39,
+      "replacement": "menuRef.current.contains",
+      "reason": "The menu is only portalled after the button has measured itself, so the menu ref is always set when a press is judged; ?. and . behave the same."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/column-picker.tsx",
+      "mutator": "StringLiteral",
+      "line": 54,
+      "replacement": "\"\"",
+      "reason": "Removing a listener under another event name leaves a listener that only ever closes a menu that is already closed, so no person or test can tell the difference."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/columns-menu.tsx",
+      "mutator": "OptionalChaining",
+      "line": 36,
+      "replacement": "menuRef.current.contains",
+      "reason": "The menu is only portalled after the button has measured itself, so the menu ref is always set when a press is judged; ?. and . behave the same."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/columns-menu.tsx",
+      "mutator": "StringLiteral",
+      "line": 49,
+      "replacement": "\"\"",
+      "reason": "Removing a listener under another event name leaves a listener that only ever closes a menu that is already closed, so no person or test can tell the difference."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/columns-menu.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 136,
+      "replacement": "true",
+      "reason": "The count is only above nothing when the line already exists, which the element check guards as well, so either check alone gives the same result."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/menu-select.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 68,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list of stable values (a ref, a function made once, or nothing): an empty list and a list of one fixed string both run the effect once and never again, so no test can tell them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/menu-select.tsx",
+      "mutator": "StringLiteral",
+      "line": 43,
+      "replacement": "\"\"",
+      "reason": "Anything but \"end\" opens the list from the left edge, so a different default name changes nothing."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/menu-select.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 74,
+      "replacement": "false",
+      "reason": "Listening for presses while closed only ever closes a list that is already closed."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/menu-select.tsx",
+      "mutator": "OptionalChaining",
+      "line": 79,
+      "replacement": "menuRef.current.contains",
+      "reason": "The menu is only portalled after the button has measured itself, so the menu ref is always set when a press is judged; ?. and . behave the same."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/menu-select.tsx",
+      "mutator": "StringLiteral",
+      "line": 84,
+      "replacement": "\"\"",
+      "reason": "Removing a listener under another event name leaves a listener that only ever closes a menu that is already closed, so no person or test can tell the difference."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/menu-select.tsx",
+      "mutator": "ArrowFunction",
+      "line": 84,
+      "replacement": "() => undefined",
+      "reason": "Removing a listener under another event name leaves a listener that only ever closes a menu that is already closed, so no person or test can tell the difference."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/menu-select.tsx",
+      "mutator": "ConditionalExpression",
+      "line": 162,
+      "replacement": "default:",
+      "reason": "An empty default branch and no default branch do the same thing."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/preset-field.tsx",
+      "mutator": "StringLiteral",
+      "line": 32,
+      "replacement": "\"\"",
+      "reason": "The text type of the custom box is the browser's own default type, so naming it or not gives the same box."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/segmented-control.tsx",
+      "mutator": "ArrayDeclaration",
+      "line": 34,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list of stable values (a ref, a function made once, or nothing): an empty list and a list of one fixed string both run the effect once and never again, so no test can tell them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/segmented-control.tsx",
+      "mutator": "EqualityOperator",
+      "line": 39,
+      "replacement": "i >= wrapped",
+      "reason": "The position being looked past is never itself an enabled one at that point, so > and >= pick the same next option."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/connection-tags.ts",
+      "mutator": "ArrayDeclaration",
+      "line": 29,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list that is constant either way: an empty list and a list of one fixed string both run the hook once and never again, so no test can tell them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/connection-tags.ts",
+      "mutator": "ArrayDeclaration",
+      "line": 37,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list that is constant either way: an empty list and a list of one fixed string both run the hook once and never again, so no test can tell them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/connection-tags.ts",
+      "mutator": "ArrayDeclaration",
+      "line": 38,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list that is constant either way: an empty list and a list of one fixed string both run the hook once and never again, so no test can tell them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/connection-tags.ts",
+      "mutator": "ArrayDeclaration",
+      "line": 39,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list that is constant either way: an empty list and a list of one fixed string both run the hook once and never again, so no test can tell them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/use-column-visibility.ts",
+      "mutator": "ConditionalExpression",
+      "line": 46,
+      "replacement": "false",
+      "reason": "An empty remembered value fails to read as a list a line later and falls back the same way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/use-column-visibility.ts",
+      "mutator": "ConditionalExpression",
+      "line": 48,
+      "replacement": "false",
+      "reason": "Something that is not a list fails when it is filtered and falls back the same way."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/lib/use-column-visibility.ts",
+      "mutator": "ConditionalExpression",
+      "line": 50,
+      "replacement": "true",
+      "reason": "Only text is in the table of known columns, so asking whether a value is text first changes nothing."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/hooks/use-configured-providers.ts",
+      "mutator": "ArrayDeclaration",
+      "line": 24,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A source list that is missing falls back to a list of text, which has no configured sources either, so both give nothing."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/hooks/use-configured-providers.ts",
+      "mutator": "ArrayDeclaration",
+      "line": 29,
+      "replacement": "[\"Stryker was here\"]",
+      "reason": "A React dependency list that is constant either way: an empty list and a list of one fixed string both run the hook once and never again, so no test can tell them apart."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/confirm-dialog.tsx",
+      "mutator": "StringLiteral",
+      "line": 100,
+      "replacement": "\"\"",
+      "reason": "A decision's buttons are given their own height and padding, which win over the large size, so the size name changes nothing a person or test can read."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/confirm-dialog.tsx",
+      "mutator": "StringLiteral",
+      "line": 113,
+      "replacement": "\"\"",
+      "reason": "A decision's buttons are given their own height and padding, which win over the large size, so the size name changes nothing a person or test can read."
+    },
+    {
+      "project": "web",
+      "file": "apps/web/src/components/ui/confirm-dialog.tsx",
+      "mutator": "StringLiteral",
+      "line": 127,
+      "replacement": "\"\"",
+      "reason": "A decision's buttons are given their own height and padding, which win over the large size, so the size name changes nothing a person or test can read."
     }
   ]
 }

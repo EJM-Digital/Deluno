@@ -115,6 +115,14 @@ describe("the preset field", () => {
     expect(select().value).toBe("");
   });
 
+  it("follows a change in its presets", () => {
+    const view = show({ value: "6" });
+    expect(screen.getByRole("textbox")).toBeInTheDocument();
+    view.rerender(<PresetField value="6" onChange={view.onChange} options={[...options, { label: "Six hours", value: "6" }]} />);
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(select().value).toBe("6");
+  });
+
   it("has no custom choice when custom is not allowed", () => {
     show({ allowCustom: false, value: "6" });
     expect(optionTexts().some(([value]) => value === "__custom")).toBe(false);

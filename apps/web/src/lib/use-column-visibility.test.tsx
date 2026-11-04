@@ -70,6 +70,14 @@ describe("which optional columns a table shows", () => {
     expect(result.current.isVisible("added")).toBe(true);
   });
 
+  it("remembers a toggle under the name of the table it is now for", () => {
+    const { result, rerender } = renderHook(({ key }) => useColumnVisibility(key, columns), { initialProps: { key: "first" } });
+    rerender({ key: "second" });
+    act(() => result.current.toggle("added"));
+    expect(localStorage.getItem("second")).not.toBeNull();
+    expect(localStorage.getItem("first")).toBeNull();
+  });
+
   it("keeps the same toggle for the same table, and a new answer once something is toggled", () => {
     const { result, rerender } = renderHook(() => useColumnVisibility(KEY, columns));
     const first = result.current;
