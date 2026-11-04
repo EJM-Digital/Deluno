@@ -155,8 +155,10 @@ describe("the journey of a title", () => {
   });
 
   it("lists what was imported today, newest first, and the last search", () => {
-    const dispatch = (id: string, hoursAgo: number) => ({ id, libraryId: "l", mediaType: "movies", entityType: "movie", entityId: `m-${id}`, releaseName: `Film.${2000 + Number(id)}.1080p`, indexerName: "NZBgeek", downloadClientId: "c1", downloadClientName: "Deluge", status: "done", notesJson: null, createdUtc: iso(-hoursAgo * 3_600_000 - 600_000), importCompletedUtc: iso(-hoursAgo * 3_600_000), decisionQuality: "Bluray 1080p" }) as never;
-    const grouped = byStage(buildJourney({ ...base, dispatches: [dispatch("1", 3), dispatch("2", 1)], now: NOW }));
+    const dispatch = (id: string, hoursAgo: number) => ({ id, libraryId: "l", mediaType: "movies", entityType: "movie", entityId: `m-${id}`, releaseName: `Film.${2000 + Number(id)}.1080p`, indexerName: "NZBgeek", downloadClientId: "c1", downloadClientName: "Deluge", status: "done", importStatus: "imported", notesJson: null, createdUtc: iso(-hoursAgo * 3_600_000 - 600_000), importCompletedUtc: iso(-hoursAgo * 3_600_000), decisionQuality: "Bluray 1080p" }) as never;
+    // A refused import has a finish time too, and is not in the library (#1467).
+    const refused = { ...(dispatch("3", 2) as object), importStatus: "failed", importFailureCode: "download-integrity-failed" } as never;
+    const grouped = byStage(buildJourney({ ...base, dispatches: [dispatch("1", 3), dispatch("2", 1), refused], now: NOW }));
     expect(grouped.imported.map((card) => card.title)).toEqual(["Film (2002)", "Film (2001)"]);
     expect(grouped.imported[0]).toMatchObject({ to: "/movies/m-2", quality: "Bluray 1080p", state: { tone: "ok" } });
   });
@@ -250,8 +252,21 @@ describe("stuck downloads", () => {
   });
 
   it("holds a title whose import has just finished at Importing, full and green, for a moment before it leaves", () => {
-    const [card] = buildJourney({ ...base, queue: [queue({ status: "completed", progress: 100, downloadedBytes: 2e9 })], dispatches: [{ ...(dispatch as object), importCompletedUtc: iso(-1_000) } as never] }).filter((item) => item.stage !== "imported");
+    const [card] = buildJourney({ ...base, queue: [queue({ status: "completed", progress: 100, downloadedBytes: 2e9 })], dispatches: [{ ...(dispatch as object), importStatus: "imported", importCompletedUtc: iso(-1_000) } as never] }).filter((item) => item.stage !== "imported");
     expect(card).toMatchObject({ stage: "importing", landed: true, progress: 100, state: { tone: "ok", label: "Imported" } });
+  });
+
+  it("holds an import for exactly its moment: from the second it finished, not before and not once the moment is over", () => {
+    const at = (offsetMs: number) => buildJourney({ ...base, queue: [queue({ status: "completed", progress: 100, downloadedBytes: 2e9 })], dispatches: [{ ...(dispatch as object), importStatus: "imported", importCompletedUtc: iso(offsetMs) } as never] }).filter((item) => item.stage !== "imported");
+    expect(at(0)[0]).toMatchObject({ landed: true });
+    expect(at(-(LANDED_MS - 1))[0]).toMatchObject({ landed: true });
+    expect(at(-LANDED_MS)).toEqual([]);
+    expect(at(1_000)).toEqual([]);
+  });
+
+  it("never holds a refused import as Imported, though it has a finish time too (#1467)", () => {
+    const cards = buildJourney({ ...base, queue: [queue({ status: "completed", progress: 100, downloadedBytes: 2e9 })], dispatches: [{ ...(dispatch as object), importStatus: "failed", importFailureCode: "download-integrity-failed", importCompletedUtc: iso(-1_000) } as never] });
+    expect(cards).toEqual([]);
   });
 
   it("never calls a finished download stuck: one the client reports stalled at 100% is downloaded", () => {

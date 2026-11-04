@@ -103,7 +103,13 @@ export function applyJourneyStage(client: Cache, event: JourneyStageChangedEvent
   for (const key of SENT_KEYS()) {
     patch<DownloadDispatchItem[]>(client, key, (list) => {
       const known = list.find((item) => item.id === event.dispatchId);
-      if (stage === "archived") return known ? list.filter((item) => item.id !== event.dispatchId) : undefined;
+      // The open list of sent downloads lets an archived one go; the board's list holds archived ones on purpose, so it keeps
+      // the row, closed. Dropping it there left the client's still-listed download as a card with no record to end it (#1467).
+      if (stage === "archived") {
+        return key === liveSources.boardDispatches.key
+          ? list.map((item) => (item.id === event.dispatchId ? { ...item, status: "archived" } : item))
+          : list.filter((item) => item.id !== event.dispatchId);
+      }
       const change = (item: DownloadDispatchItem): DownloadDispatchItem => {
         if (stage === "import_succeeded") return { ...item, importStatus: "imported", importCompletedUtc: event.at };
         if (stage === "import_failed" || stage.startsWith("webhook-failed")) return { ...item, importStatus: "failed", importCompletedUtc: event.at, importFailureMessage: event.detail ?? item.importFailureMessage };

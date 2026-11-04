@@ -219,3 +219,33 @@ describe("a download the check refused and removed is on no lane (#1467)", () =>
     }
   });
 });
+
+describe("an open Dashboard keeps a refused download's record when the server says it was archived (#1467)", () => {
+  // The golden VM's run on b941d55e6 (5 Nov 2026): the board-dispatches row as the server answered it after the refusal.
+  const refused = { status: "archived", importStatus: "failed", importFailureCode: "download-integrity-failed", importFailureMessage: "The file will not open or play. The file can't be read as video; it may be incomplete or damaged.", importCompletedUtc: iso(-1_000), downloadedBytes: 96_702_574 };
+
+  it("the archived event keeps the row in the board's list, closed, so the client's still-listed download draws no card", () => {
+    const qc = new QueryClient();
+    qc.setQueryData(sharedSources.dispatches.key, [dispatch()]);
+    qc.setQueryData(liveSources.boardDispatches.key, [dispatch()]);
+
+    applyJourneyStage(qc, { dispatchId: "d1", releaseName: RELEASE, mediaType: null, entityType: null, entityId: null, libraryId: null, stage: "import_failed", detail: refused.importFailureMessage, at: iso(-1_000) });
+    applyJourneyStage(qc, { dispatchId: "d1", releaseName: RELEASE, mediaType: null, entityType: null, entityId: null, libraryId: null, stage: "archived", detail: null, at: iso(-500) });
+
+    // The open list of sent downloads lets it go; the board's list, which holds archived ones, keeps it as archived.
+    expect(qc.getQueryData<unknown[]>(sharedSources.dispatches.key)).toEqual([]);
+    const board = qc.getQueryData<Array<{ id: string; status: string }>>(liveSources.boardDispatches.key)!;
+    expect(board.map((item) => [item.id, item.status])).toEqual([["d1", "archived"]]);
+
+    // The client's last reading still lists it, waiting for the processor, as the open page held it on the VM.
+    const cards = buildJourney({ ...base, dispatches: board as never, queue: [queue({ status: "waitingForProcessor", progress: 100, sizeBytes: refused.downloadedBytes, downloadedBytes: refused.downloadedBytes })] });
+    expect(cards).toEqual([]);
+  });
+
+  it("an archived event for a row the board does not hold changes nothing", () => {
+    const qc = new QueryClient();
+    qc.setQueryData(liveSources.boardDispatches.key, [dispatch({ id: "other" })]);
+    applyJourneyStage(qc, { dispatchId: "d1", releaseName: RELEASE, mediaType: null, entityType: null, entityId: null, libraryId: null, stage: "archived", detail: null, at: iso(-500) });
+    expect(qc.getQueryData<Array<{ id: string; status: string }>>(liveSources.boardDispatches.key)!.map((item) => [item.id, item.status])).toEqual([["other", "sent"]]);
+  });
+});

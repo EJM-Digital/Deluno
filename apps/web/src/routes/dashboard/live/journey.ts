@@ -282,7 +282,8 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
     // Imported means in the library: it leaves the journey once the import has landed (and flies to Arrived today), even
     // while the client keeps seeding it. For a moment after the import finishes the card stays, full and green.
     const importedAt = Date.parse(dispatch?.importCompletedUtc ?? "");
-    const landed = Number.isFinite(importedAt) && now - importedAt >= 0 && now - importedAt < LANDED_MS;
+    // Only an import that succeeded lands: a refused one also has a finish time, and must not hold a green "Imported" (#1467).
+    const landed = dispatch?.importStatus === "imported" && Number.isFinite(importedAt) && now - importedAt >= 0 && now - importedAt < LANDED_MS;
     if (dispatchClosed(dispatch) && !landed) {
       // Its import has ended (in the library, or refused): the hand-off that brought it back must not draw it again.
       endedReleases.add(releaseKey(item.releaseName));
@@ -477,8 +478,9 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
 
   // What was imported today, newest first: the last stop (the shelf draws today's real imports when the server has them).
   for (const dispatch of dispatches) {
+    // Only an import that succeeded is in the library: a refused one also has a finish time (#1467).
     const done = Date.parse(dispatch.importCompletedUtc ?? "");
-    if (!Number.isFinite(done) || !sameLocalDay(done, now)) continue;
+    if (dispatch.importStatus !== "imported" || !Number.isFinite(done) || !sameLocalDay(done, now)) continue;
     const entity = entityOf(dispatch);
     cards.push({
       key: `imported:${dispatch.id}`,
