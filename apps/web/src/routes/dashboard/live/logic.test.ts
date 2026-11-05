@@ -119,6 +119,11 @@ describe("the journey of a title", () => {
     expect(cards.some((card) => card.key === "c1:e")).toBe(false);
   });
 
+  it("carries the seeders and swarm seeders onto the card (#1516)", () => {
+    const cards = buildJourney({ ...base, queue: [queue({ id: "s", peers: 5, seeders: 3, swarmSeeders: 41 })] });
+    expect(byStage(cards).downloading[0]).toMatchObject({ peers: 5, seeders: 3, swarmSeeders: 41 });
+  });
+
   it("follows a pushed reading only when it is newer than the stored queue", () => {
     const live = new Map([["b", { progress: 77, speedMbps: 5, status: "downloading", at: NOW }]]);
     const fresh = buildJourney({ ...base, queue: [queue({ id: "b" })], live, queueCapturedUtc: iso(-5000) });

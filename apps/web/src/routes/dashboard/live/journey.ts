@@ -76,6 +76,9 @@ export interface JourneyCard {
   downloadedBytes?: number;
   /** Peers (a torrent) or connections (Usenet) the client reports for it; absent when it says none. */
   peers?: number;
+  /** #1516: how many of those peers are seeders, and in the whole swarm, when the client says. */
+  seeders?: number;
+  swarmSeeders?: number;
   /** The way the client fetches it: "usenet" or "torrent", when it says. */
   protocol?: "usenet" | "torrent";
   /** When the file was handed to the processor, for how long it has been there. */
@@ -409,6 +412,8 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
       progress: landed ? 100 : Number.isFinite(item.progress) ? Math.min(100, Math.max(0, item.progress)) : 0,
       downloadedBytes: item.downloadedBytes > 0 ? item.downloadedBytes : undefined,
       peers: item.peers > 0 ? item.peers : undefined,
+      seeders: item.seeders ?? undefined,
+      swarmSeeders: item.swarmSeeders ?? undefined,
       protocol: protocolOf(item.protocol),
       handedOverUtc: handoff?.createdUtc ?? null,
       processorStep: handoff?.processor?.message?.trim() || null,

@@ -9,6 +9,7 @@ import { formatBytes } from "../../../lib/utils";
 import type { JourneyCard } from "./journey";
 import { startedLabel } from "./provenance";
 import { isUsenetProtocol } from "../../../lib/protocol";
+import { sharingParts } from "../../../lib/sharing-wording";
 import { doneAbout } from "./times";
 import { pluralNoun } from "../../../lib/plural";
 
@@ -63,7 +64,7 @@ export function detailLines(card: JourneyCard, indexers: number, now: number): D
       if (size && have !== undefined) lines.push({ parts: [bold(sizePair(have, size))], right: doneBy });
       else if (doneBy) lines.push({ parts: [], right: doneBy });
       if (card.stuck) break;
-      if (card.peers) lines.push({ parts: [bold(card.peers.toLocaleString("en-AU")), ` ${pluralNoun(card.peers, isUsenetProtocol(card.protocol) ? "connection" : "peer")}`] });
+      if (card.peers) lines.push({ parts: sharingParts(card.peers, card.seeders, card.swarmSeeders, isUsenetProtocol(card.protocol)).map((part) => (part.strong ? bold(part.text) : part.text)) });
       if (release) lines.push(release);
       break;
     }

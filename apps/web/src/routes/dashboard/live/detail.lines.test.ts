@@ -93,6 +93,13 @@ describe("a downloading card", () => {
     expect(detailLines(card({ stage: "downloading", sizeBytes: 4 * GB }), 0, NOW)).toEqual([]);
   });
 
+  it("says seeders beside peers, with the swarm when the client reports it (#1516)", () => {
+    expect(detailLines(card({ stage: "downloading", peers: 5, seeders: 2, protocol: "torrent" }), 0, NOW)[0].parts).toEqual([bold("2"), " seeders · ", bold("5"), " peers"]);
+    expect(detailLines(card({ stage: "downloading", peers: 1, seeders: 1, protocol: "torrent" }), 0, NOW)[0].parts).toEqual([bold("1"), " seeder · ", bold("1"), " peer"]);
+    expect(detailLines(card({ stage: "downloading", peers: 5, seeders: 3, swarmSeeders: 41, protocol: "torrent" }), 0, NOW)[0].parts).toEqual([bold("3 of 41"), " seeders · ", bold("5"), " peers"]);
+    expect(detailLines(card({ stage: "downloading", peers: 8, seeders: 3, protocol: "usenet" }), 0, NOW)[0].parts).toEqual([bold("8"), " connections"]);
+  });
+
   it("calls them connections on Usenet, and one peer a peer", () => {
     expect(detailLines(card({ stage: "downloading", peers: 8, protocol: "usenet" }), 0, NOW)[0].parts).toEqual([bold("8"), " connections"]);
     expect(detailLines(card({ stage: "downloading", peers: 1, protocol: "torrent" }), 0, NOW)[0].parts).toEqual([bold("1"), " peer"]);

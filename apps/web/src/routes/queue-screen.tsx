@@ -100,6 +100,8 @@ import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences, type
 import { useColumnVisibility, type ColumnDefinition } from "../lib/use-column-visibility";
 import { formatProgressPercent } from "../lib/progress-format";
 import { plural } from "../lib/plural";
+import { sharingText } from "../lib/sharing-wording";
+import { isUsenetProtocol } from "../lib/protocol";
 import { formatSpeed } from "../lib/format-speed";
 import { plainFailureMessage } from "../lib/network-failure";
 
@@ -1818,7 +1820,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                 <Fact label="Done" value={`${formatProgressPercent(openQueueItem.progress)} — ${formatBytes(openQueueItem.downloadedBytes)} of ${formatBytes(openQueueItem.sizeBytes)}`} />
                 <Fact label="Speed" value={formatSpeed(openQueueItem.speedMbps, { zero: "Not moving" })} />
                 <Fact label="Time left" value={openQueueItem.etaSeconds > 0 ? formatEta(openQueueItem.etaSeconds) : "Unknown"} />
-                <Fact label="Peers" value={String(openQueueItem.peers)} />
+                <Fact label="Peers" value={sharingText(openQueueItem.peers, openQueueItem.seeders, openQueueItem.swarmSeeders, isUsenetProtocol(openQueueItem.protocol))} />
                 {openQueueItem.availability != null ? (
                   <Fact label="Availability" value={`${openQueueItem.availability.toFixed(2)} (1.0 is one full copy across all peers)`} />
                 ) : null}

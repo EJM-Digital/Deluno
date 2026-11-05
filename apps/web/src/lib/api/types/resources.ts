@@ -1263,6 +1263,10 @@ export interface DownloadQueueItem {
   sizeBytes: number;
   downloadedBytes: number;
   peers: number;
+  /** #1516: how many of the connected peers are seeders, as the client reports it. Null where it does not say (Usenet, rTorrent). */
+  seeders?: number | null;
+  /** #1516: seeders in the whole swarm, where the client reports it. Null when unknown. */
+  swarmSeeders?: number | null;
   indexerName: string;
   errorMessage: string | null;
   addedUtc: string;
