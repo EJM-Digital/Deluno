@@ -88,7 +88,7 @@ test("a whole risky project, and a risky folder at a folder boundary, are risky;
   };
   assert.equal(isRisky(risky, "Deluno.Filesystem", "src/Deluno.Filesystem/Any.cs"), true);
   assert.equal(isRisky(risky, "Deluno.Infrastructure", "Storage/StagedRestore.cs"), true);
-  assert.equal(isRisky(risky, "Deluno.Infrastructure", "src/Deluno.Infrastructure/Storage\SStagedRestore.cs"), true);
+  assert.equal(isRisky(risky, "Deluno.Infrastructure", "src/Deluno.Infrastructure/Storage\StagedRestore.cs"), true);
   assert.equal(isRisky(risky, "Deluno.Infrastructure", "src/Deluno.Infrastructure/MyStorage/X.cs"), false);
   assert.equal(isRisky(risky, "Deluno.Infrastructure", "src/Deluno.Infrastructure/Other.cs"), false);
   assert.equal(isRisky(risky, "Deluno.Api", "Storage/X.cs"), false);
