@@ -216,7 +216,7 @@ describe("the change report table's columns (#1329)", () => {
   });
 });
 
-describe("a report's own errors and warnings (#1478)", () => {
+describe("a report's own errors (#1478)", () => {
   it("shows why a preview found nothing when the payload itself was refused, not a hint that the export was cut short", async () => {
     // The server's own words for broken JSON (MigrationAssistantService), as the rig returned them on 5 Nov.
     const refused = "The migration payload is not valid JSON: Expected depth to be zero at the end of the JSON payload. There is an open JSON object or array that should be closed. LineNumber: 0 | BytePositionInLine: 33.";
@@ -230,10 +230,10 @@ describe("a report's own errors and warnings (#1478)", () => {
     expect(screen.queryByText(/Check that you exported the whole snapshot/)).not.toBeInTheDocument();
   });
 
-  it("lists a report-level warning beside the changes it came with", async () => {
-    await preview({ warnings: ["2 tags were not found in Deluno and will be created."] });
+  it("does not repeat a report's warnings in the card: each change's drawer already says its own", async () => {
+    await preview({ warnings: ["Quality rules need review before they become a Media Plan."] });
 
-    expect(screen.getByText("2 tags were not found in Deluno and will be created.")).toBeInTheDocument();
+    expect(screen.queryByText("Quality rules need review before they become a Media Plan.")).not.toBeInTheDocument();
     expect(screen.getByText("Migrated UHD")).toBeInTheDocument();
   });
 });

@@ -337,15 +337,12 @@ export function SettingsMigrationPage() {
             </div>
           }
         >
-          {/* #1478: the report's own errors and warnings (a payload refused outright, a tag to be created) were never drawn,
-              so a refused payload read as an export cut short. */}
-          {report.errors.length || report.warnings.length ? (
+          {/* #1478: the report's own errors (a payload refused outright) were never drawn, so a refused payload read as an
+              export cut short. Its warnings repeat each change's own, which its drawer already lists. */}
+          {report.errors.length ? (
             <div className="grid gap-1.5 border-b border-hairline px-(--card-pad-x) py-3">
               {report.errors.map((error) => (
                 <p key={error} className="text-(length:--type-body-sm) text-destructive">{error}</p>
-              ))}
-              {report.warnings.map((warning) => (
-                <p key={warning} className="text-(length:--type-body-sm) text-warning">{warning}</p>
               ))}
             </div>
           ) : null}
