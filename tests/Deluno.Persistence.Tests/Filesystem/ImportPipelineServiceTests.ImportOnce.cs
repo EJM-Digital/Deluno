@@ -6,6 +6,7 @@ using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform;
+using Deluno.Series.Data;
 
 namespace Deluno.Persistence.Tests.Filesystem;
 
@@ -250,6 +251,117 @@ public sealed partial class ImportPipelineServiceTests
         Assert.False(NamingTemplateRenderer.HasUnknownYear("E:/Movies/Gladiator II (2024)/x.mkv"));
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("   ")]
+    [InlineData("a-series-id-that-is-not-in-the-library")]
+    public async Task An_episode_with_no_title_and_no_show_Deluno_has_is_never_written_and_no_show_is_made_for_it(string? seriesId)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-11-05T05:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+        var sourcePath = Path.Combine(downloadsPath, "Say.Yes.to.the.Dress.S08E12.1080p.WEB-DL.x264-DELUNO.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(sourcePath, null, "tv", null, null, [], [], null, null, SeriesId: seriesId),
+                TransferMode: "copy", Overwrite: false, AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(File.Exists(sourcePath), "the download is untouched");
+        Assert.Empty(Directory.EnumerateFiles(seriesRootPath, "*", SearchOption.AllDirectories));
+        Assert.Empty(await seriesRepository.ListAsync(CancellationToken.None));
+        var recovery = Assert.Single((await seriesRepository.GetImportRecoverySummaryAsync(CancellationToken.None)).RecentCases);
+        Assert.Equal("unmatched", recovery.FailureKind);
+        Assert.False(result.Succeeded);
+        Assert.Equal(409, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task An_episode_with_no_title_whose_show_id_no_longer_exists_is_never_written_even_when_the_folder_name_has_no_year()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-11-05T05:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath, seriesFolderFormat: "{Series Title}");
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+        var sourcePath = Path.Combine(downloadsPath, "Say.Yes.to.the.Dress.S08E12.1080p.WEB-DL.x264-DELUNO.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(sourcePath, null, "tv", null, null, [], [], null, null, SeriesId: "a-series-id-that-is-not-in-the-library"),
+                TransferMode: "copy", Overwrite: false, AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.Empty(Directory.EnumerateFiles(seriesRootPath, "*", SearchOption.AllDirectories));
+        Assert.False(result.Succeeded);
+    }
+
+    [Fact]
+    public async Task An_episode_with_no_title_and_no_show_Deluno_has_is_refused_with_the_reason_before_anything_is_written()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-11-05T05:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+        var sourcePath = Path.Combine(downloadsPath, "Say.Yes.to.the.Dress.S08E12.1080p.WEB-DL.x264-DELUNO.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(sourcePath, null, "tv", null, null, [], [], null, null),
+                TransferMode: "copy", Overwrite: false, AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Contains("could not tell which show", result.Message);
+        Assert.Empty(Directory.EnumerateFiles(seriesRootPath, "*", SearchOption.AllDirectories));
+        Assert.Empty(await seriesRepository.ListAsync(CancellationToken.None));
+        var recovery = Assert.Single((await seriesRepository.GetImportRecoverySummaryAsync(CancellationToken.None)).RecentCases);
+        Assert.Equal("unmatched", recovery.FailureKind);
+    }
+
     private static string FindRepoRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
@@ -269,6 +381,11 @@ public sealed class ShelfNeverShowsAPathTests
     [InlineData("/data/ready/Movies/Sintel.2010.mkv", "Sintel.2010.mkv")]
     [InlineData("Sintel.2010.1080p", "Sintel.2010.1080p")]
     [InlineData(null, null)]
+    [InlineData("", "")]
+    [InlineData("   ", "   ")]
+    [InlineData("E:\\Weir\\Ready\\Movies\\", "Movies")]
+    [InlineData("/", null)]
+    [InlineData("\\", null)]
     public void An_arrivals_release_is_a_name_never_a_path(string? evidence, string? expected)
         => Assert.Equal(expected, Deluno.Worker.Dashboard.DashboardLiveStore.NameOnly(evidence));
 }

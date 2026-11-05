@@ -135,6 +135,28 @@ public sealed partial class ImportPipelineServiceTests
     }
 
     [Fact]
+    public async Task A_season_pack_with_no_title_is_found_by_its_folder_name_when_the_show_exists_and_places_nothing_when_it_does_not()
+    {
+        using var scene = await PackSceneAsync("Nameless", [1], 2);
+        ImportExecuteRequest NoTitle(string folder) => new(
+            new ImportPreviewRequest(folder, null, "tv", null, null, [], [], null, null),
+            "copy", false, true);
+
+        var known = await WritePackAsync(scene.Downloads, "Nameless.S01.WEB-DL", (1, 1), (1, 2));
+        var imported = await scene.Service.ExecuteAsync(NoTitle(known), CancellationToken.None);
+        Assert.True(imported.Succeeded);
+        Assert.Equal(2, scene.PlacedFileCount);
+
+        var stranger = await WritePackAsync(scene.Downloads, "Stranger.S01.WEB-DL", (1, 1), (1, 2));
+        var refused = await scene.Service.ExecuteAsync(NoTitle(stranger), CancellationToken.None);
+        Assert.False(refused.Succeeded);
+        Assert.Equal(409, refused.StatusCode);
+        Assert.Equal(2, scene.PlacedFileCount);
+        Assert.Single(await scene.Repository.ListAsync(CancellationToken.None));
+        Assert.Equal(2, Directory.GetFiles(stranger, "*.mkv").Length);
+    }
+
+    [Fact]
     public async Task A_season_pack_checks_free_space_once_for_its_folder_and_places_nothing_when_it_is_short()
     {
         var asked = new List<string>();

@@ -10321,7 +10321,8 @@ public sealed partial class ImportPipelineServiceTests
         bool renameOnImport = true,
         bool renameFoldersOnImport = false,
         int? minimumFreeSpaceMb = null,
-        bool skipFreeSpaceCheck = false)
+        bool skipFreeSpaceCheck = false,
+        string seriesFolderFormat = "{Series Title} ({Series Year})")
     {
         await platform.SaveAsync(
             new UpdatePlatformSettingsRequest(
@@ -10335,7 +10336,7 @@ public sealed partial class ImportPipelineServiceTests
                 UseHardlinks: false,
                 CleanupEmptyFolders: false,
                 MovieFolderFormat: "{Movie Title} ({Release Year})",
-                SeriesFolderFormat: "{Series Title} ({Series Year})",
+                SeriesFolderFormat: seriesFolderFormat,
                 MovieFileFormat: movieFileFormat,
                 EpisodeFileFormat: episodeFileFormat,
                 HostBindAddress: null,

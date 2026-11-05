@@ -3843,35 +3843,6 @@ public sealed partial class ImportPipelineService(
         // an import from the unconfirmed-title guards below either.
 
         if (mediaType == "tv"
-            && string.IsNullOrWhiteSpace(request.Title)
-            && knownSeriesId is null
-            && request.TvDbId is null)
-        {
-            // The TV side of #417, and #617: with no grab found and no title,
-            // the only name left is the file's, and a show made from it holds
-            // the episode under something that is not a show at all.
-            await seriesCatalogRepository.AddImportRecoveryCaseAsync(
-                new CreateSeriesImportRecoveryCaseRequest(
-                    title,
-                    "unmatched",
-                    $"Deluno imported the file but could not tell which show it belongs to, so it has not been added to the library. The only name available was the file's own: {title}",
-                    "Open this case and choose the show, or add the show first and import again.",
-                    null),
-                cancellationToken);
-
-            return new CatalogImportResult
-            {
-                CatalogUpdated = false,
-                CatalogId = null,
-                Dispatch = dispatch,
-                EntityId = await EntityIdForImportAsync(dispatch, mediaType, title, request, imported: false, cancellationToken),
-                ReleaseNameEvidence = dispatchReleaseName ?? Path.GetFileName(preview.SourcePath),
-                PreferenceEvaluations = preferenceEvaluations,
-                MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
-            };
-        }
-
-        if (mediaType == "tv"
             && knownSeriesId is null
             && request.TvDbId is null
             && string.IsNullOrWhiteSpace(request.ImdbId)
@@ -4020,43 +3991,8 @@ public sealed partial class ImportPipelineService(
             };
         }
 
-        // A film Deluno cannot name is not a film Deluno should invent.
-        //
-        // TitleForActivity falls back to the source filename when the request
-        // carries no title, which is right for an activity line and wrong for a
-        // catalogue entry: an unmatched import used to create a movie called
-        // "Sintel.2010.2160p.WEB-DL.x265-DELUNO" with no metadata provider and
-        // no ids, marked as meeting its target quality - so nothing would ever
-        // search for it or correct it, and it sat in the library looking like a
-        // film for ever (#417).
-        //
-        // Import recovery is where an unidentified file belongs. It already
-        // exists, it already explains itself, and it can be resolved by hand.
-        if (string.IsNullOrWhiteSpace(request.Title) && string.IsNullOrWhiteSpace(request.ImdbId))
-        {
-            await movieCatalogRepository.AddImportRecoveryCaseAsync(
-                new CreateMovieImportRecoveryCaseRequest(
-                    title,
-                    "unmatched",
-                    $"Deluno imported the file but could not tell which film it is, so it has not been added to the library. The only name available was the file's own: {title}",
-                    "Open this case and choose the film, or add the film first and import again.",
-                    null),
-                cancellationToken);
-
-            return new CatalogImportResult
-            {
-                CatalogUpdated = false,
-                CatalogId = null,
-                Dispatch = dispatch,
-                EntityId = await EntityIdForImportAsync(dispatch, mediaType, title, request, imported: false, cancellationToken) ?? request.SeriesId,
-                ReleaseNameEvidence = dispatchReleaseName ?? Path.GetFileName(preview.SourcePath),
-                PreferenceEvaluations = preferenceEvaluations,
-                MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
-            };
-        }
-
-        // #643's movie mirror: the guard above only catches a Title that is
-        // completely empty. A present-but-unconfirmed Title -- text-matched
+        // #643's movie mirror. A film with no title and no id never gets here: UnplacedReasonAsync refuses it before
+        // anything is written (#1498). A present-but-unconfirmed Title -- text-matched
         // from a release filename, never checked against a metadata provider
         // -- sailed through it, and ImportExistingAsync below would do its
         // own title+year lookup and, on a miss, insert a brand-new film from
@@ -4228,8 +4164,9 @@ public sealed partial class ImportPipelineService(
         var preview0 = request.Preview;
         if (mediaType == "tv")
         {
-            // A folder of episodes goes through the pack path, which names every file from the show.
-            if (!string.IsNullOrWhiteSpace(preview0.SeriesId) || preview0.TvDbId is not null
+            // Only a show Deluno really has counts: an id that no longer exists names nothing (#643), so it does not excuse
+            // a file with no title from the refusal.
+            if (preview0.TvDbId is not null
                 || await KnownSeriesIdAsync(preview0, dispatch, cancellationToken) is not null)
             {
                 return null;
