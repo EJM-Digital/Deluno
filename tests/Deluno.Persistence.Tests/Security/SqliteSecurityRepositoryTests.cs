@@ -65,4 +65,24 @@ public sealed class SqliteSecurityRepositoryTests
         Assert.Equal("read", created.Item.Scopes);
         Assert.DoesNotContain("all", created.Item.Scopes);
     }
+
+    [Fact]
+    public async Task A_second_first_account_is_refused_and_leaves_the_first_alone()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-20T00:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, time),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteSecurityRepository(storage.Factory, time);
+        var first = await repository.BootstrapUserAsync(
+            new BootstrapUserRequest("first", "First", "a-long-password-1"), CancellationToken.None);
+
+        var refused = await Assert.ThrowsAsync<DelunoAlreadyConfiguredException>(() => repository.BootstrapUserAsync(
+            new BootstrapUserRequest("second", "Second", "a-long-password-2"), CancellationToken.None));
+
+        Assert.Equal("Deluno has already been configured.", refused.Message);
+        Assert.Equal(first.Id, (await repository.GetSoleUserAsync(CancellationToken.None))!.Id);
+    }
 }

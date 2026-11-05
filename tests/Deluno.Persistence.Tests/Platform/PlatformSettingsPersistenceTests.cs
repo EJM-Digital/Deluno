@@ -304,6 +304,38 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.Equal(3650, (await repository.GetAsync(CancellationToken.None)).HistoryRetentionDays);
     }
 
+    /// <summary>
+    /// A setting that names one of a few choices keeps each of them as the person chose it, and anything else falls back to the one
+    /// default, so the page never shows a choice Deluno does not have.
+    /// </summary>
+    [Fact]
+    public async Task Each_named_choice_is_kept_as_chosen_and_an_unknown_one_becomes_the_default()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T01:02:03Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqlitePlatformSettingsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+
+        async Task<PlatformSettingsSnapshot> SaveAsync(string? shortDate, string? repack, string? providerMode)
+        {
+            await repository.SaveAsync(MinimalRequest(30) with { ShortDateFormat = shortDate, ProperRepackAcquisitionMode = repack, MetadataProviderMode = providerMode }, CancellationToken.None);
+            return await repository.GetAsync(CancellationToken.None);
+        }
+
+        var chosen = await SaveAsync("mdy", "do-not-prefer", "broker-first");
+        Assert.Equal("mdy", chosen.ShortDateFormat);
+        Assert.Equal("do-not-prefer", chosen.ProperRepackAcquisitionMode);
+        Assert.Equal("hybrid", chosen.MetadataProviderMode);
+
+        var unknown = await SaveAsync("sideways", "whenever", "somewhere");
+        Assert.Equal("dmy", unknown.ShortDateFormat);
+        Assert.Equal("prefer-and-upgrade", unknown.ProperRepackAcquisitionMode);
+        Assert.Equal("direct", unknown.MetadataProviderMode);
+    }
+
     private static UpdatePlatformSettingsRequest MinimalRequest(int historyRetentionDays)
         => new(
             MovieRootPath: null, SeriesRootPath: null, DownloadsPath: null,

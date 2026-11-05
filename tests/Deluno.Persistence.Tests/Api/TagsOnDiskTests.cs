@@ -54,6 +54,23 @@ public sealed class TagsOnDiskTests
         Assert.Equal("1", await StoredAsync(app, "SELECT count(*) FROM tags"));
     }
 
+    [Theory]
+    [InlineData("emerald", "emerald")]
+    [InlineData("TEAL", "teal")]
+    [InlineData("blue", "blue")]
+    [InlineData(" violet ", "violet")]
+    [InlineData("amber", "amber")]
+    [InlineData("rose", "rose")]
+    [InlineData("chartreuse", "slate")]
+    public async Task A_tag_keeps_each_of_the_colours_the_page_offers_and_any_other_becomes_slate(string sent, string stored)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+
+        var id = await CreateTagAsync(app, "Colour", sent);
+
+        Assert.Equal(stored, await StoredAsync(app, $"SELECT color FROM tags WHERE id = '{id}'"));
+    }
+
     [Fact]
     public async Task A_new_tag_with_a_name_another_tag_already_has_is_refused_in_plain_words_and_stores_nothing()
     {

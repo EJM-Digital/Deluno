@@ -345,4 +345,27 @@ public sealed class AccountRoutesEveryAnswerTests
         Assert.Equal(1, results.Count(response => response.StatusCode == HttpStatusCode.OK));
         Assert.All(results.Where(response => response.StatusCode != HttpStatusCode.OK), response => Assert.Equal(HttpStatusCode.Conflict, response.StatusCode));
     }
+
+    [Fact]
+    public async Task A_first_run_request_whose_insert_finds_an_account_made_a_moment_earlier_is_told_Deluno_is_set_up()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        await EmptyTheAccountsAsync(app);
+        // The other request's insert wins in the gap after this one's check: the trigger makes this insert write nothing,
+        // as the insert's own "only while there is no account" guard does when an account has just appeared.
+        var factory = app.Services.GetRequiredService<IDelunoDatabaseConnectionFactory>();
+        await using (var connection = await factory.OpenConnectionAsync(DelunoDatabaseNames.Platform, CancellationToken.None))
+        {
+            using var trigger = connection.CreateCommand();
+            trigger.CommandText = "CREATE TRIGGER lose_the_race BEFORE INSERT ON users BEGIN SELECT RAISE(IGNORE); END;";
+            await trigger.ExecuteNonQueryAsync();
+        }
+
+        var response = await app.CreateAnonymousClient().PostAsJsonAsync(
+            "/api/auth/bootstrap", new BootstrapUserRequest("owner", "Owner", "a-long-password-1"));
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Contains("Deluno has already been configured.", await response.Content.ReadAsStringAsync());
+        Assert.Equal(0, await UserCountAsync(app));
+    }
 }

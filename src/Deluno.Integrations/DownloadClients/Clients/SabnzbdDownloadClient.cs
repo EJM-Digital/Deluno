@@ -167,7 +167,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
             {
                 progress = 99.99d;
             }
-            var rowStatus = QueueRowStatus(item.Status, progress, payload?.Queue?.Paused == true);
+            var rowStatus = QueueRowStatus(item.Status, progress, payload!.Queue!.Paused == true);
             return new DownloadQueueItem(item.NzoId ?? item.Filename ?? Guid.CreateVersion7().ToString("N"), client.Id, client.Name, client.Protocol,
                 DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.Filename ?? "Unknown SABnzbd item"),
                 item.Filename ?? "Unknown SABnzbd item", item.Category ?? string.Empty, rowStatus, progress,

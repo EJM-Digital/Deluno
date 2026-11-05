@@ -57,6 +57,26 @@ public sealed class ABlockIsPushedToTheActivityPanelTests : IDisposable
         Assert.Empty(_realtime.ActivityEvents);
     }
 
+    [Fact]
+    public async Task A_block_that_names_no_title_is_still_pushed_once()
+    {
+        await _blocked.BlockAsync(Release("Unmatched.Release.2023") with { EntityId = null, Title = null }, CancellationToken.None);
+
+        Assert.Equal("release.blocked", Assert.Single(_realtime.ActivityEvents).Category);
+    }
+
+    [Fact]
+    public async Task The_blocks_listed_for_a_title_are_that_titles_only_whatever_the_case_it_is_asked_in()
+    {
+        await _blocked.BlockAsync(Release("Barbie.2023.BluRay.1080p"), CancellationToken.None);
+        await _blocked.BlockAsync(Release("Oppenheimer.2023.BluRay.1080p") with { EntityId = "movie-oppenheimer" }, CancellationToken.None);
+        await _blocked.BlockAsync(Release("Barbie.S01E01.1080p") with { MediaType = "series" }, CancellationToken.None);
+
+        Assert.Equal(["Barbie.2023.BluRay.1080p"], (await _blocked.ListForAsync("MOVIES", "MOVIE-BARBIE", CancellationToken.None)).Select(item => item.ReleaseName));
+        Assert.Equal(["Oppenheimer.2023.BluRay.1080p"], (await _blocked.ListForAsync("movies", "movie-oppenheimer", CancellationToken.None)).Select(item => item.ReleaseName));
+        Assert.Empty(await _blocked.ListForAsync("movies", "movie-nobody", CancellationToken.None));
+    }
+
     /// <summary>
     /// Every category Deluno labels goes through the one writer, and the one writer pushes: no category is written
     /// quietly, so the panel can show whatever its table says is shown.

@@ -235,7 +235,7 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             // #1194: Transmission's alternate speed limit ("turtle mode"), so a Too slow rule can skip while it is on.
             alternateSpeedLimit = session.Arguments?.AltSpeedEnabled;
             // #1493: how many downloads Transmission runs at once; the rest wait in its queue.
-            activeLimit = session.Arguments?.DownloadQueueEnabled == true ? session.Arguments?.DownloadQueueSize : null;
+            activeLimit = session.Arguments?.DownloadQueueEnabled == true ? session.Arguments!.DownloadQueueSize : null;
             var downloadDir = session.Arguments?.DownloadDir;
             if (string.IsNullOrWhiteSpace(downloadDir))
             {
