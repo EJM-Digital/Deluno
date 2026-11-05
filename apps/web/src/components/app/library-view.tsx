@@ -40,7 +40,7 @@ import { useCoalescedRevalidate } from "../../hooks/use-live-interval";
 import { RealtimeGroups, useSignalREvent } from "../../lib/use-signalr";
 import { useBulkEdit } from "../../hooks/use-bulk-edit";
 import { parseTagList } from "./tag-picker";
-import { createInitialLibraryForm, metadataCreatePayload, parseIdPrefixedSearch, readRememberedAddTags, rememberAddTags,useLibraryCreate, type CreateFormDraft } from "../../hooks/use-library-create";
+import { createInitialLibraryForm, metadataCreatePayload, parseIdPrefixedSearch, readRememberedAddTags, rememberAddTags, useLibraryCreate, setAsideAddDraft, clearAddDraft, type CreateFormDraft } from "../../hooks/use-library-create";
 import { authedFetch } from "../../lib/use-auth";
 import { describeRequestFailure } from "../../lib/search-reasons";
 import { toast } from "../shell/toaster";
@@ -251,7 +251,7 @@ export function LibraryView({
   const {
     showCreate, setShowCreate, isCreating, setIsCreating, createForm, setCreateForm,
     metadataResults, setMetadataResults, selectedMetadataResults, setSelectedMetadataResults,
-    isSearchingMetadata, setIsSearchingMetadata, metadataSearchSequence
+    isSearchingMetadata, setIsSearchingMetadata, metadataSearchSequence, restoredSearchTitle
   } = useLibraryCreate(variant, searchParams.get("add") === "true");
   // The next page of matches for the title last searched, or null when TMDb has no more (#1473).
   const [metadataNextPage, setMetadataNextPage] = useState<number | null>(null);
@@ -595,6 +595,11 @@ export function LibraryView({
       selectedTitle === query.toLocaleLowerCase()
     ) {
       return;
+    }
+    // Back from a held title: the matches came with the search text, so do not ask again (#1507).
+    if (restoredSearchTitle.current !== null) {
+      if (restoredSearchTitle.current === query) return;
+      restoredSearchTitle.current = null;
     }
 
     const timer = window.setTimeout(() => {
@@ -1038,7 +1043,9 @@ export function LibraryView({
    */
   function openHeldMetadataResult(result: MetadataSearchResult) {
     if (!result.libraryEntryId) return;
-    closeCreate();
+    // The add screen is set aside, not closed: Back returns to the same search, matches and selections (#1507).
+    setAsideAddDraft(variant, { createForm, metadataResults, selectedMetadataResults });
+    setSearchParams((current) => { const next = new URLSearchParams(current); next.set("add", "true"); return next; }, { replace: true });
     navigate(variant === "movies" ? `/movies/${result.libraryEntryId}` : `/tv/${result.libraryEntryId}`);
   }
 
@@ -1109,6 +1116,7 @@ export function LibraryView({
   }
 
   function closeCreate() {
+    clearAddDraft(variant);
     metadataSearchSequence.current += 1;
     setIsSearchingMetadata(false);
     setSelectedMetadataResults([]);

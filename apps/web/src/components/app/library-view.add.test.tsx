@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { cleanup, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -376,9 +376,9 @@ describe("closing the Add dialog (#1329)", () => {
   });
 });
 
-describe("a result already in the library (#1329)", () => {
-  it("opening it goes to that title's page and closes the dialog, and adds nothing", async () => {
-    metadataReply = () => [{ ...match("1", "Arrival"), libraryEntryId: "entry-1" }];
+describe("a result already in the library (#1329, #1507)", () => {
+  it("opening it goes to that title's page, adds nothing, and Back returns to the same search and picks", async () => {
+    metadataReply = () => [{ ...match("1", "Arrival"), libraryEntryId: "entry-1" }, match("2", "Sicario")];
     const router = createMemoryRouter([{ path: "/", element: <LibraryView variant="movies" /> }, { path: "*", element: <p>elsewhere</p> }], { initialEntries: ["/"] });
     render(<RouterProvider router={router} />);
     await screen.findByRole("button", { name: /^Search these \d+$/ });
@@ -386,11 +386,18 @@ describe("a result already in the library (#1329)", () => {
     const dialog = await screen.findByRole("dialog", { name: /Add movie/ });
     fireEvent.change(titleBox(dialog), { target: { value: "Arrival" } });
     fireEvent.submit(titleBox(dialog).closest("form")!);
+    fireEvent.click(await within(dialog).findByTitle("Select Sicario"));
+    expect(within(dialog).getByText("In your library")).toBeInTheDocument();
 
-    fireEvent.click(await within(dialog).findByTitle("Open Arrival — already in your library"));
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Open Arrival, already in your library" }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe("/movies/entry-1"));
-    expect(screen.queryByRole("dialog", { name: /Add movie/ })).toBeNull();
     expect(calls.filter((c) => c.url === "/api/movies" || c.url === "/api/movies/")).toHaveLength(0);
+
+    await act(async () => { await router.navigate(-1); });
+    const back = await screen.findByRole("dialog", { name: /Add movie/ });
+    expect(titleBox(back)).toHaveValue("Sicario");
+    expect(await within(back).findByText("In your library")).toBeInTheDocument();
+    expect(within(back).getByTitle("Select Sicario")).toHaveTextContent("Selected");
   });
 });

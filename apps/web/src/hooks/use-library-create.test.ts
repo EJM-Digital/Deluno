@@ -8,6 +8,7 @@ import {
   readRememberedAddTags,
   rememberAddTags,
   SHOW_MONITOR_PRESETS,
+  setAsideAddDraft,
   useLibraryCreate
 } from "./use-library-create";
 
@@ -214,5 +215,35 @@ describe("parseIdPrefixedSearch edge cases", () => {
     expect(parseIdPrefixedSearch("tmdb:12 34")).toBeNull();
     expect(parseIdPrefixedSearch("see tmdb:1234")).toBeNull();
     expect(parseIdPrefixedSearch("tmdbx:1234")).toBeNull();
+  });
+});
+
+describe.each(["movies", "shows"] as const)("the add screen set aside for a held %s title (#1507)", (variant) => {
+  beforeEach(() => window.sessionStorage.clear());
+  const held = { provider: "tmdb", providerId: "1", mediaType: variant === "movies" ? "movies" : "tv", title: "Held", libraryEntryId: "e1", genres: [], ratings: [], cast: [], crew: [] } as unknown as MetadataSearchResult;
+  const free = { ...held, providerId: "2", title: "Free", libraryEntryId: null } as MetadataSearchResult;
+
+  it("comes back with the search text, the matches and the selections", () => {
+    setAsideAddDraft(variant, { createForm: { ...createInitialLibraryForm(), title: "held" }, metadataResults: [held, free], selectedMetadataResults: [free] });
+    const { result } = renderHook(() => useLibraryCreate(variant, true));
+    expect(result.current.showCreate).toBe(true);
+    expect(result.current.createForm.title).toBe("held");
+    expect(result.current.metadataResults).toEqual([held, free]);
+    expect(result.current.selectedMetadataResults).toEqual([free]);
+    expect(result.current.restoredSearchTitle.current).toBe("held");
+  });
+
+  it("is not brought back once it is old", () => {
+    setAsideAddDraft(variant, { createForm: { ...createInitialLibraryForm(), title: "held" }, metadataResults: [held], selectedMetadataResults: [] });
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 2 * 60 * 60 * 1000);
+    const { result } = renderHook(() => useLibraryCreate(variant, true));
+    expect(result.current.createForm.title).toBe("");
+    expect(result.current.metadataResults).toEqual([]);
+  });
+
+  it("is ignored when the add screen was not asked for", () => {
+    setAsideAddDraft(variant, { createForm: { ...createInitialLibraryForm(), title: "held" }, metadataResults: [held], selectedMetadataResults: [] });
+    const { result } = renderHook(() => useLibraryCreate(variant, false));
+    expect(result.current.createForm.title).toBe("");
   });
 });

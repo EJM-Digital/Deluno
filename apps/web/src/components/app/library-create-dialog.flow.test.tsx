@@ -303,7 +303,7 @@ describe("the add dialog's match cards", () => {
     await user.click(screen.getByTitle("Select Free"));
     expect(onSelectResult).toHaveBeenCalledWith(free);
     expect(onOpenHeldResult).not.toHaveBeenCalled();
-    await user.click(screen.getByTitle("Open Held — already in your library"));
+    await user.click(screen.getByRole("button", { name: "Open Held, already in your library" }));
     expect(onOpenHeldResult).toHaveBeenCalledWith(held);
     expect(onSelectResult).toHaveBeenCalledTimes(1);
   });
@@ -589,7 +589,7 @@ describe("the add dialog's remaining details", () => {
       selectedMetadataResults: [picked]
     });
     expect(screen.getByTitle("Select Picked")).toHaveClass("border-primary/70", "bg-primary/10", "flex", "rounded-xl");
-    expect(screen.getByTitle("Open Held — already in your library")).toHaveClass("opacity-75");
+    expect(screen.getByRole("button", { name: "Open Held, already in your library" }).closest("[data-held]")).toHaveClass("border-dashed");
     expect(screen.getByTitle("Select Plain")).toHaveClass("border-hairline");
     expect(screen.getByTitle("Select Plain")).not.toHaveClass("border-primary/70");
     expect(screen.getByTitle("Select Plain")).not.toHaveClass("border-success/45");

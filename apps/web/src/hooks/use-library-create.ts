@@ -113,19 +113,70 @@ export function metadataCreatePayload(metadata: MetadataSearchResult | null) {
   };
 }
 
+const ADD_DRAFT_KEY = "deluno:add-draft:";
+
+type AddDraft = {
+  createForm: CreateFormDraft;
+  metadataResults: MetadataSearchResult[];
+  selectedMetadataResults: MetadataSearchResult[];
+  /** When it was set aside; an old one is not brought back. */
+  savedAt?: number;
+};
+
+/**
+ * Sets the add screen's search aside before the person leaves it to look at a title they already
+ * hold (#1507), so coming back shows the same search text, matches and selections.
+ */
+export function setAsideAddDraft(variant: LibraryVariant, draft: AddDraft) {
+  try {
+    window.sessionStorage.setItem(ADD_DRAFT_KEY + variant, JSON.stringify({ ...draft, savedAt: Date.now() }));
+  } catch {
+    // The add screen still works without it; the search just starts over.
+  }
+}
+
+function peekAddDraft(variant: LibraryVariant): AddDraft | null {
+  try {
+    const stored = window.sessionStorage.getItem(ADD_DRAFT_KEY + variant);
+    if (!stored) return null;
+    const draft = JSON.parse(stored) as AddDraft;
+    return Date.now() - (draft.savedAt ?? 0) < 60 * 60 * 1000 ? draft : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearAddDraft(variant: LibraryVariant) {
+  try {
+    window.sessionStorage.removeItem(ADD_DRAFT_KEY + variant);
+  } catch {
+    // Nothing to clear.
+  }
+}
+
+// The set-aside search stays until the add screen is closed, because the library screen can mount more than once on the way back.
 /** Keeps add-title state local to each movie or TV library screen. */
 export function useLibraryCreate(variant: LibraryVariant, addRequested: boolean) {
+  const [restored] = useState(() => (addRequested ? peekAddDraft(variant) : null));
   const [showCreate, setShowCreate] = useState(addRequested);
   const [isCreating, setIsCreating] = useState(false);
-  const [createForm, setCreateForm] = useState(createInitialLibraryForm);
-  const [metadataResults, setMetadataResults] = useState<MetadataSearchResult[]>([]);
-  const [selectedMetadataResults, setSelectedMetadataResults] = useState<MetadataSearchResult[]>([]);
+  const [createForm, setCreateForm] = useState(() => restored?.createForm ?? createInitialLibraryForm());
+  const [metadataResults, setMetadataResults] = useState<MetadataSearchResult[]>(() => restored?.metadataResults ?? []);
+  const [selectedMetadataResults, setSelectedMetadataResults] = useState<MetadataSearchResult[]>(() => restored?.selectedMetadataResults ?? []);
   const [isSearchingMetadata, setIsSearchingMetadata] = useState(false);
   const metadataSearchSequence = useRef(0);
+  /** The search text that came back with the set-aside matches; asking again would replace them. */
+  const restoredSearchTitle = useRef<string | null>(restored ? restored.createForm.title.trim() : null);
+  const firstRun = useRef(true);
 
   useEffect(() => {
+    if (firstRun.current && restored) {
+      firstRun.current = false;
+      return;
+    }
+    firstRun.current = false;
     setCreateForm(createInitialLibraryForm());
-  }, [variant]);
+  }, [variant, restored]);
 
   useEffect(() => {
     if (addRequested) setShowCreate(true);
@@ -134,6 +185,6 @@ export function useLibraryCreate(variant: LibraryVariant, addRequested: boolean)
   return {
     showCreate, setShowCreate, isCreating, setIsCreating, createForm, setCreateForm,
     metadataResults, setMetadataResults, selectedMetadataResults, setSelectedMetadataResults,
-    isSearchingMetadata, setIsSearchingMetadata, metadataSearchSequence
+    isSearchingMetadata, setIsSearchingMetadata, metadataSearchSequence, restoredSearchTitle
   };
 }
