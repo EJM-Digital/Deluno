@@ -211,8 +211,8 @@ describe.each([
       variant
     );
 
-    expect(screen.getByTitle(`Open ${held} — already in your library`)).toBeInTheDocument();
-    expect(screen.getByText(/Already in your library/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: `Open ${held}, already in your library` })).toBeInTheDocument();
+    expect(screen.getByText("In your library")).toBeInTheDocument();
 
     // And says nothing of the kind about the one it does not hold.
     expect(screen.getByTitle(`Select ${other}`)).toBeInTheDocument();
@@ -239,11 +239,35 @@ describe.each([
       variant
     );
 
-    await user.click(screen.getByTitle(`Open ${held} — already in your library`));
+    await user.click(screen.getByRole("button", { name: `Open ${held}, already in your library` }));
 
     expect(onOpenHeldResult).toHaveBeenCalledTimes(1);
     expect(onOpenHeldResult.mock.calls[0][0]).toMatchObject({ title: held, libraryEntryId: "entry-1" });
     expect(onSelectResult).not.toHaveBeenCalled();
+  });
+
+  it("says it in words, makes the row unselectable and looks different from an addable one (#1507)", async () => {
+    const user = userEvent.setup();
+    const { onSelectResult, onOpenHeldResult } = renderDialog(
+      [
+        result({ title: held, mediaType, libraryEntryId: "entry-1" }),
+        result({ title: other, mediaType, providerId: "273481" })
+      ],
+      variant
+    );
+
+    const heldRow = screen.getByText(held).closest("[data-held]") as HTMLElement;
+    expect(heldRow).not.toBeNull();
+    expect(heldRow.tagName).not.toBe("BUTTON");
+    expect(heldRow).toHaveTextContent("In your library");
+    expect(screen.queryByTitle(`Select ${held}`)).not.toBeInTheDocument();
+    expect(screen.getByTitle(`Select ${other}`).closest("[data-held]")).toBeNull();
+    expect(heldRow.className).toContain("border-dashed");
+
+    // Pressing the row itself does nothing: no add, and the add screen is not left.
+    await user.click(screen.getByText(held));
+    expect(onSelectResult).not.toHaveBeenCalled();
+    expect(onOpenHeldResult).not.toHaveBeenCalled();
   });
 
   it("still selects a title you do not have", async () => {

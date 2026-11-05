@@ -124,7 +124,7 @@ export function LibraryCreateDialog({
                       // has - so a card that said "Selected" and then added
                       // nothing would be the same silence in a different place.
                       const isHeld = Boolean(result.libraryEntryId);
-                      return <button key={`${result.provider}:${result.providerId}`} type="button" onClick={() => (isHeld ? onOpenHeldResult(result) : onSelectResult(result))} className={cn("flex min-w-0 items-start gap-3 rounded-xl border p-3 text-left transition sm:p-4", isHeld ? "border-hairline bg-surface-1/60 opacity-75 hover:border-success/50 hover:opacity-100" : isSelected ? "border-primary/70 bg-primary/10 ring-1 ring-primary/25 hover:border-primary/45 hover:bg-primary/5" : "border-hairline bg-surface-1 hover:border-primary/45 hover:bg-primary/5")} title={isHeld ? `Open ${result.title} — already in your library` : `Select ${result.title}`}>
+                      const card = <>
                         {result.posterUrl ? <ArtworkImage src={result.posterUrl} alt="" className="aspect-2/3 w-24 shrink-0 rounded-lg bg-muted object-cover sm:w-32" /> : <div className="flex aspect-2/3 w-24 shrink-0 items-center justify-center rounded-lg bg-muted text-(length:--type-caption) text-muted-foreground sm:w-32">No art</div>}
                         <span className="min-w-0 flex-1">
                           <span className="line-clamp-2 block font-display text-base font-semibold leading-snug text-foreground">{result.title}</span>
@@ -134,12 +134,15 @@ export function LibraryCreateDialog({
                           </span>
                           {result.overview ? <span className={cn("mt-2 block text-sm leading-relaxed text-muted-foreground", isSelected ? "" : "line-clamp-4")}>{result.overview}</span> : <span className="mt-2 block text-sm italic text-muted-foreground">No synopsis yet.</span>}
                           {isHeld
-                            ? <span className="mt-2 inline-flex items-center gap-1 text-(length:--type-micro) font-medium text-muted-foreground"><Check className="h-3 w-3 text-success" aria-hidden />Already in your library — open it<ArrowUpRight className="h-3 w-3" /></span>
+                            ? <span className="mt-3 flex flex-wrap items-center gap-2"><Badge variant="success"><Check className="h-3 w-3" aria-hidden />In your library</Badge><Button type="button" size="sm" variant="secondary" className="gap-1" aria-label={`Open ${result.title}, already in your library`} title={`Open ${result.title} — already in your library`} onClick={() => onOpenHeldResult(result)}>Open<ArrowUpRight className="h-3 w-3" aria-hidden /></Button></span>
                             : isSelected
                               ? <span className="mt-2 inline-flex rounded-full bg-primary/15 px-2 py-0.5 text-(length:--type-micro) font-semibold text-primary">Selected</span>
                               : <span className="mt-2 block text-(length:--type-micro) text-muted-foreground">Click to select</span>}
                         </span>
-                      </button>;
+                      </>;
+                      // Already in the library: said in words, not selectable, and opened only by its own Open button, so the search stays (#1507).
+                      if (isHeld) return <div key={`${result.provider}:${result.providerId}`} data-held="true" className="flex min-w-0 items-start gap-3 rounded-xl border border-dashed border-hairline bg-surface-1/40 p-3 text-left sm:p-4">{card}</div>;
+                      return <button key={`${result.provider}:${result.providerId}`} type="button" onClick={() => onSelectResult(result)} className={cn("flex min-w-0 items-start gap-3 rounded-xl border p-3 text-left transition sm:p-4", isSelected ? "border-primary/70 bg-primary/10 ring-1 ring-primary/25 hover:border-primary/45 hover:bg-primary/5" : "border-hairline bg-surface-1 hover:border-primary/45 hover:bg-primary/5")} title={`Select ${result.title}`}>{card}</button>;
                     })}
                   </div>
                   {hasMoreMatches && onMoreMatches ? (
