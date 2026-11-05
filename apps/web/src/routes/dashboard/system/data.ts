@@ -31,14 +31,11 @@ export function useSystemOverview(): SystemOverview | null {
   const query = useQuery({
     queryKey: OVERVIEW_KEY,
     queryFn: async (): Promise<SystemOverview | null> => {
-      try {
-        const overview = await fetchJson<SystemOverview>("/api/system/overview");
-        // An empty or non-object answer has no `instance` (or throws on null), and the catch below turns both into null.
-        return overview.instance ? overview : null;
-      } catch {
-        return null;
-      }
+      // A read that fails throws, so the last answer stays on screen (#1508); an empty or non-object answer is null.
+      const overview = await fetchJson<SystemOverview>("/api/system/overview");
+      return overview?.instance ? overview : null;
     },
+    retry: false,
     staleTime: 1_000
   });
   useLiveEvent("SystemOverviewChanged", useCallback((event: SystemOverview) => {
@@ -59,13 +56,10 @@ export function useSystemLog(): SystemLogResponse | null {
   const query = useQuery({
     queryKey: LOG_KEY,
     queryFn: async (): Promise<SystemLogResponse | null> => {
-      try {
-        const log = await fetchJson<SystemLogResponse>(`/api/system/log?level=all&take=${LOG_KEPT}`);
-        return log && Array.isArray(log.entries) ? log : null;
-      } catch {
-        return null;
-      }
+      const log = await fetchJson<SystemLogResponse>(`/api/system/log?level=all&take=${LOG_KEPT}`);
+      return log && Array.isArray(log.entries) ? log : null;
     },
+    retry: false,
     staleTime: 5_000
   });
   useLiveEvent("SystemLogEntry", useCallback((entry: SystemLogEntry) => {
@@ -87,19 +81,17 @@ export function useSystemLog(): SystemLogResponse | null {
 export function useSystemDatabases(): { databases: SystemDatabasesResponse | null; failed: boolean } {
   const query = useQuery({
     queryKey: DATABASES_KEY,
-    queryFn: async (): Promise<{ body: SystemDatabasesResponse | null; failed: boolean }> => {
-      try {
-        const body = await fetchJson<SystemDatabasesResponse>("/api/system/databases");
-        return { body: body && Array.isArray(body.databases) ? body : null, failed: false };
-      } catch {
-        return { body: null, failed: true };
-      }
+    queryFn: async (): Promise<SystemDatabasesResponse | null> => {
+      const body = await fetchJson<SystemDatabasesResponse>("/api/system/databases");
+      return body && Array.isArray(body.databases) ? body : null;
     },
+    // One try: a failed read says so at once and the last sizes stay on screen (#1508).
+    retry: false,
     staleTime: 30_000
   });
   // The sizes and the dates of the last check change on the server's say-so (#1179): no timer asks.
   useSignalREvent("SystemDatabasesChanged", RealtimeGroups.Dashboard, useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: DATABASES_KEY, exact: true });
   }, []));
-  return { databases: query.data?.body ?? null, failed: query.data?.failed ?? false };
+  return { databases: query.data ?? null, failed: query.isError };
 }

@@ -98,14 +98,11 @@ export function ActivityStream({ rows, titles, dense = false }: { rows: LiveActi
   ) : null;
   return (
     <Panel title="Activity" count={quiet} aside={moreLink} to={ACTIVITY_HISTORY} toLabel="All activity" className="lact min-h-0 flex-1">
-      {shown.length === 0 ? (
-        <Plain>Nothing has happened yet. What Deluno does shows up here as it works.</Plain>
-      ) : (
-        // The newest on top; as many whole entries as the box holds, and the rest one click away.
-        <ul ref={boxRef as unknown as RefObject<HTMLUListElement>} data-testid="live-stream" className="lact-stream">
-          {shown.slice(0, MAX_ROWS).map((group, index) => renderRow(group, titles, dense, index === 0))}
-        </ul>
-      )}
+      {shown.length === 0 ? <Plain>Nothing has happened yet. What Deluno does shows up here as it works.</Plain> : null}
+      {/* The list stays in the page when it empties, so the next entry is added to it and not to a list drawn anew (#1508). The newest on top; as many whole entries as the box holds, and the rest one click away. */}
+      <ul ref={boxRef as unknown as RefObject<HTMLUListElement>} data-testid="live-stream" style={shown.length === 0 ? { display: "none" } : undefined} className="lact-stream">
+        {shown.slice(0, MAX_ROWS).map((group, index) => renderRow(group, titles, dense, index === 0))}
+      </ul>
     </Panel>
   );
 }

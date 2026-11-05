@@ -49,12 +49,13 @@ import { TurnedDownCard } from "./live/turned-down-card";
 import { useConnections, useTurnedDown } from "./live/use-pushed";
 import { useLiveBoardEvents } from "./live/use-live-board";
 import { liveSources, storedLists, useSetupState } from "./sources";
+import { StaleNote } from "./parts-stale";
 
 const NO_ROWS: never[] = [];
 
 export function LiveTab({ summary }: { summary: DashboardSummary | undefined }): JSX.Element {
   const setup = useSetupState();
-  const { data } = useRouteSources({ ...storedLists, ...liveSources });
+  const { data, lastReadFailed } = useRouteSources({ ...storedLists, ...liveSources });
   const liveProgress = useLiveProgress();
   const latest = useLiveActivity(data.latestActivity?.length ? data.latestActivity : summary?.activity?.recent ?? []);
   // Every pushed change is applied to the list it changes, so the board below moves as it happens (#1097).
@@ -161,7 +162,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   }
 
   return (
-    <div ref={(node) => { root.current = node; pageRef.current = node; }} data-page-layout={side ? "beside" : "below"} className={cn("flex flex-col gap-(--grid-gap)", side && "h-full min-h-0 overflow-y-auto")}>
+    <div ref={(node) => { root.current = node; pageRef.current = node; }} data-page-layout={side ? "beside" : "below"} className={cn("relative flex flex-col gap-(--grid-gap)", side && "h-full min-h-0 overflow-y-auto")}>
       {showSetup ? (
         <div className="flex shrink-0 flex-col gap-(--grid-gap)">
           <OnboardingBanner isSetupSuppressed={setup.progress.isSkipped || setup.progress.isCompleted} onDismiss={dismissOnboarding} />
@@ -221,6 +222,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
           <TurnedDownCard view={turnedDown.view} lit={turnedDown.lit} />
         </div>
       </div>
+      <StaleNote show={(lastReadFailed.has("liveExtras") && data.liveExtras !== null) || (lastReadFailed.has("latestActivity") && (data.latestActivity?.length ?? 0) > 0)} />
     </div>
   );
 }

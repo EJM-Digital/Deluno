@@ -38,6 +38,9 @@ export function stationsFor(hasProcessor: boolean): Stage[] {
   return hasProcessor ? ["searching", "grabbed", "downloading", "processor", "importing"] : ["searching", "grabbed", "downloading", "importing"];
 }
 
+/** Room for each station's cards in the stacked order. */
+const STACK_STEP = 1000;
+
 /** The space under the lanes inside the card, in px. */
 const LANES_BOTTOM_PX = 10;
 
@@ -152,14 +155,19 @@ export function Journey({
           {stacked ? (
             <>
               {onTheirWay === 0 ? <p className="lj-calm" style={{ position: "static" }}>{calmLine(lastArrival)}</p> : null}
-              {stations.map((stage) => {
+              {/* One flat list of cards in one stable order, placed under their station by CSS order: a card that changes station keeps its element (#1508). */}
+              {stations.map((stage, stageIndex) => {
                 if (grouped[stage].length === 0 && counts[stage] === 0) return null;
                 return (
-                  <div key={`stacked-${stage}`} data-station={stage}>
+                  <div key={`stacked-${stage}`} data-station={stage} style={{ order: stageIndex * STACK_STEP }}>
                     <Station stage={stage} count={counts[stage]} usual={usual[stage]} noun={stationNoun(stage, grouped[stage])} />
-                    {grouped[stage].map((card) => <JourneyToken key={identOf(card)} card={card} {...context} />)}
                   </div>
                 );
+              })}
+              {everyCard.map((card) => {
+                const stageIndex = stations.indexOf(card.stage);
+                const row = grouped[card.stage].indexOf(card);
+                return <JourneyToken key={identOf(card)} card={card} {...context} order={stageIndex * STACK_STEP + 1 + row} />;
               })}
             </>
           ) : (

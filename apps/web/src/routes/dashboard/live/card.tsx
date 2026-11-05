@@ -154,7 +154,7 @@ export interface TokenPlace {
   hidden: boolean;
 }
 
-export function JourneyToken({ card, titles, arrivals, indexers, place }: CardContext & { card: JourneyCard; place?: TokenPlace }): ReactElement {
+export function JourneyToken({ card, titles, arrivals, indexers, place, order }: CardContext & { card: JourneyCard; place?: TokenPlace; /** Stacked: where the card sits in the one flat list. */ order?: number }): ReactElement {
   const lane = LANES[card.stage];
   const face = faceOf(card, titles);
   const status = statusOf(card, indexers);
@@ -169,6 +169,7 @@ export function JourneyToken({ card, titles, arrivals, indexers, place }: CardCo
     style.left = `calc(${place.column} * 100% / ${place.stations} + 6px)`;
     style.top = `${place.top}px`;
   }
+  if (order !== undefined) style.order = order;
   return (
     <Link
       to={face.to}

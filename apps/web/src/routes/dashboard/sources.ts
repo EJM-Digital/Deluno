@@ -35,18 +35,17 @@ export function refreshLiveExtrasNow() {
   return queryClient.invalidateQueries({ queryKey: ["src", "dashboard-live-extras"], exact: true });
 }
 
-/** The Live extras for the person's own day; null from an older server that has none. */
+/**
+ * The Live extras for the person's own day; null from an older server that has none.
+ * A read that fails throws: the cache then keeps the last answer on screen (a failed read behind a shown board must never turn it into the empty one, #1508).
+ */
 export async function fetchLiveExtras(): Promise<DashboardLiveExtras | null> {
   const midnight = new Date();
   midnight.setHours(0, 0, 0, 0);
   const fresh = nextExtrasFresh;
   nextExtrasFresh = false;
-  try {
-    const extras = await fetchJson<DashboardLiveExtras>(`/api/dashboard/live-extras?sinceUtc=${encodeURIComponent(midnight.toISOString())}${fresh ? "&fresh=true" : ""}`);
-    return Array.isArray(extras.arrivals) ? extras : null;
-  } catch {
-    return null;
-  }
+  const extras = await fetchJson<DashboardLiveExtras>(`/api/dashboard/live-extras?sinceUtc=${encodeURIComponent(midnight.toISOString())}${fresh ? "&fresh=true" : ""}`);
+  return Array.isArray(extras?.arrivals) ? extras : null;
 }
 
 export const SUMMARY_KEY = ["dashboard", "summary"] as const;

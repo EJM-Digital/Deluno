@@ -72,6 +72,9 @@ export interface LiveActivityRow {
 
 const LIVE_ACTIVITY_LIMIT = 60;
 
+/** How long a row that arrived live counts as new. After it the row is an ordinary one, so a redraw never slides it in again (#1508). */
+export const FRESH_ROW_MS = 6_000;
+
 /**
  * The newest activity: what arrived live above what the summary holds. A row is
  * one row however it reached the screen, so the summary catching up with an
@@ -79,8 +82,18 @@ const LIVE_ACTIVITY_LIMIT = 60;
  */
 export function useLiveActivity(recent: Array<Pick<DashboardActivityItem, "id" | "category" | "message" | "relatedEntityType" | "relatedEntityId" | "createdUtc"> & { label?: string | null; severity?: string | null }>): LiveActivityRow[] {
   const [arrived, setArrived] = useState<LiveActivityRow[]>([]);
+  const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
+  useEffect(() => {
+    const held = timers.current;
+    return () => { for (const timer of held) clearTimeout(timer); };
+  }, []);
 
   useSignalREvent("ActivityEventAdded", RealtimeGroups.Activity, (event) => {
+    const timer = setTimeout(() => {
+      timers.current.delete(timer);
+      setArrived((current) => (current.some((row) => row.id === event.id && row.fresh) ? current.map((row) => (row.id === event.id ? { ...row, fresh: false } : row)) : current));
+    }, FRESH_ROW_MS);
+    timers.current.add(timer);
     setArrived((current) => {
       if (current.some((row) => row.id === event.id)) return current;
       return [{ id: event.id, message: event.message, label: event.label, severity: event.severity, category: event.category, createdUtc: event.createdUtc, relatedEntityType: event.relatedEntityType, relatedEntityId: event.relatedEntityId, fresh: true }, ...current].slice(0, LIVE_ACTIVITY_LIMIT);

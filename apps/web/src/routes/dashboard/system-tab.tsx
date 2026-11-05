@@ -21,6 +21,7 @@ import { ConnectionsCard, useConnectionTesting } from "./system/connections-card
 import { buildConnections } from "./system/connections-model";
 import { systemSources, useSystemDatabases, useSystemLog, useSystemOverview } from "./system/data";
 import { HealthCard } from "./system/health-card";
+import { StaleNote } from "./parts-stale";
 import { buildHealth } from "./system/problems";
 import { StorageCard, drivesOf } from "./system/storage-card";
 import { useResizing } from "./system/use-resizing";
@@ -56,7 +57,7 @@ export function SystemTab({ summary }: { summary: DashboardSummary | undefined }
   const resizing = useResizing();
 
   return (
-    <div ref={pageRef} className={cn("sy flex flex-col", side && "h-full min-h-0", resizing && "sy-resizing", side && rows.band < 180 && "sy-short")}>
+    <div ref={pageRef} className={cn("sy relative flex flex-col", side && "h-full min-h-0", resizing && "sy-resizing", side && rows.band < 180 && "sy-short")}>
       <div
         ref={gridRef}
         data-live-grid={side ? "shared" : "stacked"}
@@ -64,7 +65,7 @@ export function SystemTab({ summary }: { summary: DashboardSummary | undefined }
         style={side ? { gridTemplateRows: rows.template, gridTemplateAreas: GRID_AREAS_SYSTEM, gridTemplateColumns: GRID_COLUMNS } : undefined}
       >
         <div className="sy-band">
-          <InstanceCard instance={overview?.instance ?? null} summary={summary} short={side && rows.band < 180} health={{ pass: health.pass, total: health.total, need: health.need, anyBad: health.tallies.some((tally) => tally.tone === "bad") }} onJump={() => setJump((n) => n + 1)} />
+          <InstanceCard instance={overview?.instance ?? null} summary={summary} short={side && rows.band < 180} health={{ pass: health.pass, total: health.total, need: health.need, anyBad: health.tallies.some((tally) => tally.tone === "bad"), read: Boolean(checks) }} onJump={() => setJump((n) => n + 1)} />
           <ComputerCard overview={overview} />
           <NetworkCard overview={overview} />
         </div>
@@ -79,6 +80,7 @@ export function SystemTab({ summary }: { summary: DashboardSummary | undefined }
         </div>
         <BackupsCard backups={data.backups ?? NO_ROWS} settings={data.backupSettings} databases={databases} backupsFailed={lastReadFailed.has("backups")} databasesFailed={databasesFailed} />
       </div>
+      <StaleNote show={(lastReadFailed.has("liveExtras") && data.liveExtras !== null) || (lastReadFailed.has("healthChecks") && data.healthChecks !== undefined)} />
     </div>
   );
 }

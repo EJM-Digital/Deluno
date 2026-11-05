@@ -192,7 +192,10 @@ export function DashboardPage() {
   return (
     <div ref={setRoot} className="flex flex-col gap-(--grid-gap)">
       {slot ? <HeaderTabsPortal slot={slot}>{bar}</HeaderTabsPortal> : bar}
-      <AutomationPausedNotice context="dashboard" />
+      {/* Drawn over the foot of the page, not in its flow: when the answer arrives (or automation is paused or resumed) nothing under it is pushed down and resized (#1508). */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-3 z-100 flex justify-center px-4 [&>*]:pointer-events-auto [&>*]:max-w-3xl [&>*]:bg-card [&>*]:shadow-card">
+        <AutomationPausedNotice context="dashboard" />
+      </div>
       {/* The tabs are drawn at the approved mockup's own sizes on every screen (see `.dash-mockup-size` in index.css). */}
       <div id="dashboard-tabpanel" role="tabpanel" aria-labelledby={`dashboard-tab-${tab}`} className="dash-mockup-size min-h-0 flex-1 lg:relative">
         <div className="lg:absolute lg:inset-0 lg:overflow-hidden">

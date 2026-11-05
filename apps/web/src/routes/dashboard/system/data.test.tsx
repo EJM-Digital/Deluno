@@ -75,8 +75,19 @@ describe("the machine's overview", () => {
     queryClient.clear();
     fetchJson.mockRejectedValueOnce(new Error("down"));
     const { result } = renderHook(() => useSystemOverview(), { wrapper });
-    await waitFor(() => expect(queryClient.getQueryState(OVERVIEW_KEY)?.status).toBe("success"));
+    await waitFor(() => expect(queryClient.getQueryState(OVERVIEW_KEY)?.status).toBe("error"));
     expect(result.current).toBeNull();
+  });
+
+  it("keeps the last answer on screen when a later read fails, instead of going blank (#1508)", async () => {
+    const overview = { instance: { version: "1" } };
+    fetchJson.mockResolvedValueOnce(overview);
+    const { result } = renderHook(() => useSystemOverview(), { wrapper });
+    await waitFor(() => expect(result.current).toBe(overview));
+    fetchJson.mockRejectedValueOnce(new Error("down"));
+    await act(async () => { await queryClient.refetchQueries({ queryKey: OVERVIEW_KEY }); });
+    expect(queryClient.getQueryState(OVERVIEW_KEY)?.status).toBe("error");
+    expect(result.current).toBe(overview);
   });
 
   it("takes the pushed overview, and ignores an empty or incomplete one", async () => {
@@ -116,8 +127,18 @@ describe("today's log", () => {
     queryClient.clear();
     fetchJson.mockRejectedValueOnce(new Error("down"));
     const { result } = renderHook(() => useSystemLog(), { wrapper });
-    await waitFor(() => expect(queryClient.getQueryState(LOG_KEY)?.status).toBe("success"));
+    await waitFor(() => expect(queryClient.getQueryState(LOG_KEY)?.status).toBe("error"));
     expect(result.current).toBeNull();
+  });
+
+  it("keeps the last log on screen when a later read fails (#1508)", async () => {
+    const body = log(entry("a"));
+    fetchJson.mockResolvedValueOnce(body);
+    const { result } = renderHook(() => useSystemLog(), { wrapper });
+    await waitFor(() => expect(result.current).toBe(body));
+    fetchJson.mockRejectedValueOnce(new Error("down"));
+    await act(async () => { await queryClient.refetchQueries({ queryKey: LOG_KEY }); });
+    expect(result.current).toBe(body);
   });
 
   it("puts a pushed entry at the top and counts errors and warnings", async () => {
@@ -192,6 +213,16 @@ describe("the databases", () => {
     const { result } = renderHook(() => useSystemDatabases(), { wrapper });
     await waitFor(() => expect(result.current.failed).toBe(true));
     expect(result.current.databases).toBeNull();
+  });
+
+  it("keep the last sizes on screen, and say the read failed, when a later read fails (#1508)", async () => {
+    const body = { databases: [] };
+    fetchJson.mockResolvedValueOnce(body);
+    const { result } = renderHook(() => useSystemDatabases(), { wrapper });
+    await waitFor(() => expect(result.current.databases).toBe(body));
+    fetchJson.mockRejectedValueOnce(new Error("down"));
+    await act(async () => { await queryClient.refetchQueries({ queryKey: DATABASES_KEY }); });
+    await waitFor(() => expect(result.current).toEqual({ databases: body, failed: true }));
   });
 
   it("are read again when the server says they changed, not on a timer", async () => {

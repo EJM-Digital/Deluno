@@ -75,6 +75,8 @@ export interface HealthFigures {
   total: number;
   need: number;
   anyBad: boolean;
+  /** The checks have been read. Until then nothing is said about them (not "All good", not "0 of 0"). Absent means read. */
+  read?: boolean;
 }
 
 export function InstanceCard({ instance, summary, health, short, onJump }: { instance: SystemOverview["instance"] | null; summary: DashboardSummary | undefined; health: HealthFigures; short: boolean; onJump: () => void }): JSX.Element {
@@ -113,11 +115,13 @@ export function InstanceCard({ instance, summary, health, short, onJump }: { ins
                 <circle className="sy-track" cx="38" cy="38" r="32" />
                 <circle className="sy-val" cx="38" cy="38" r="32" strokeDasharray={RING} style={{ strokeDashoffset: RING * (1 - fraction), stroke: health.anyBad ? "var(--sy-warning)" : "var(--sy-success)" }} />
               </svg>
-              <b className="sy-num">{health.pass}</b>
+              <b className="sy-num">{health.read === false ? "–" : health.pass}</b>
             </div>
           </div>
-          <small className="sy-rcap">{short ? `of ${plainCount(health.total)} checks` : `of ${plainCount(health.total)} health checks pass`}</small>
-          {health.need > 0 ? (
+          <small className="sy-rcap">{health.read === false ? (short ? "checks" : "health checks") : short ? `of ${plainCount(health.total)} checks` : `of ${plainCount(health.total)} health checks pass`}</small>
+          {health.read === false ? (
+            <span className="sy-needs" aria-hidden style={{ visibility: "hidden", display: "inline-block", minWidth: "4.5rem" }}>{" "}</span>
+          ) : health.need > 0 ? (
             <a className="sy-needs" href="#system-health" onClick={(event) => { event.preventDefault(); onJump(); }}>
               {plainCount(health.need)} need you →
             </a>

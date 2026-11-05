@@ -25,13 +25,22 @@ describe("the Live extras for the person's own day", () => {
     expect(api.fetchJson).toHaveBeenCalledWith(`/api/dashboard/live-extras?sinceUtc=${encodeURIComponent(midnight.toISOString())}`);
   });
 
-  it("answers nothing from an older server that sends no arrivals, or from a failure", async () => {
+  it("answers nothing from an older server that sends no arrivals", async () => {
     api.fetchJson.mockResolvedValueOnce({ other: 1 });
     expect(await fetchLiveExtras()).toBeNull();
     api.fetchJson.mockResolvedValueOnce(null);
     expect(await fetchLiveExtras()).toBeNull();
+  });
+
+  it("fails when the read fails, so the cache keeps the board it shows instead of an empty one (#1508)", async () => {
     api.fetchJson.mockRejectedValueOnce(new Error("offline"));
-    expect(await fetchLiveExtras()).toBeNull();
+    await expect(fetchLiveExtras()).rejects.toThrow("offline");
+    const first = { arrivals: [{ id: "a" }] };
+    api.fetchJson.mockResolvedValueOnce(first);
+    await queryClient.prefetchQuery({ queryKey: liveSources.liveExtras.key, queryFn: liveSources.liveExtras.fetch, retry: false });
+    api.fetchJson.mockRejectedValueOnce(new Error("offline"));
+    await queryClient.refetchQueries({ queryKey: liveSources.liveExtras.key });
+    expect(queryClient.getQueryData(liveSources.liveExtras.key)).toBe(first);
   });
 
   it("asks past the server's remembered copy once after a pushed change, and then no more", async () => {
