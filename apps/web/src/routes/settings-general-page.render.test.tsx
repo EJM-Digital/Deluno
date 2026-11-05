@@ -161,6 +161,28 @@ describe("the Cloudflare helper form", () => {
     await waitFor(() => expect(screen.queryByText("Saved just now")).toBeNull());
   });
 
+  it("keeps an edit made the instant the save finished, instead of putting back what the page loaded with", async () => {
+    // CI failed the test above for this: the edit landed in the moment between the "Saved just now" appearing and
+    // the page's effect (which takes the server's settings when they change) running, and the effect put the form
+    // back to what was loaded. The edit is made here from a DOM observer, which runs at exactly that moment, so the
+    // order no longer depends on how busy the machine is.
+    renderPage();
+    const input = screen.getByPlaceholderText("http://127.0.0.1:8191");
+    fireEvent.change(input, { target: { value: "http://a" } });
+    let edited = false;
+    const observer = new MutationObserver(() => {
+      if (edited || !screen.queryByText("Saved just now")) return;
+      edited = true;
+      fireEvent.change(input, { target: { value: "http://b" } });
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    fireEvent.click(screen.getByRole("button", { name: /Save general settings/ }));
+    await waitFor(() => expect(edited).toBe(true));
+    observer.disconnect();
+    await waitFor(() => expect(footerStatus()).toHaveTextContent("Unsaved changes"));
+    expect(input).toHaveValue("http://b");
+  });
+
   it("says why it could not save, or says so plainly when the failure has no words", async () => {
     responder = (url, init) => (url === "/api/settings" && init?.method === "PATCH" ? json({ title: "Nope", errors: { cloudflareHelperUrl: ["Not a web address"] } }, 400) : undefined);
     renderPage();
