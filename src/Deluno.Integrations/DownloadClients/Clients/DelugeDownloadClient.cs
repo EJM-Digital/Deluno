@@ -208,6 +208,30 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
     }
 
     /// <summary>
+    /// #1494: torrents Deluge is downloading now against <c>max_active_downloading</c> (-1 means no limit). A torrent in the
+    /// "Queued" state is waiting behind the limit and does not count.
+    /// </summary>
+    public override async Task<DownloadClientLoad?> GetLoadAsync(DownloadClientItem client, CancellationToken cancellationToken)
+    {
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null) return null;
+        var http = CreateHttp();
+        await LoginAsync(http, baseUri, client, cancellationToken);
+        var json = new Uri(baseUri, "json");
+        var config = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<JsonElement>>(http, json, new DelugeRequest("core.get_config_values", [new[] { "max_active_downloading" }], 20), cancellationToken);
+        if (config?.Result is not { ValueKind: JsonValueKind.Object } values
+            || !values.TryGetProperty("max_active_downloading", out var max) || max.ValueKind != JsonValueKind.Number || !max.TryGetInt32(out var limit) || limit <= 0)
+        {
+            return new DownloadClientLoad(0, null);
+        }
+
+        var list = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<DelugeUpdateResult>>(http, json,
+            new DelugeRequest("web.update_ui", [new[] { "state" }, new Dictionary<string, object>()], 21), cancellationToken);
+        var active = list?.Result?.Torrents?.Values.Count(torrent => string.Equals(torrent.State, "Downloading", StringComparison.OrdinalIgnoreCase)) ?? 0;
+        return new DownloadClientLoad(active, limit);
+    }
+
+    /// <summary>
     /// Deluge's own version (#1117): the daemon's <c>daemon.info</c> call, which answers the bare version
     /// string ("2.1.1"); an older daemon that only has <c>daemon.get_version</c> is asked that instead. Null
     /// when neither answers.

@@ -326,6 +326,27 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         }
     }
 
+    /// <summary>Transmission's torrent status for "downloading" (4); 3 is "waiting for a download slot" and does not count.</summary>
+    private const int DownloadingStatus = 4;
+
+    /// <summary>
+    /// #1494: torrents downloading now against <c>download-queue-size</c>, which applies only while <c>download-queue-enabled</c>
+    /// is on. Two small calls: the session setting, and just the status of each torrent.
+    /// </summary>
+    public override async Task<DownloadClientLoad?> GetLoadAsync(DownloadClientItem client, CancellationToken cancellationToken)
+    {
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null) return null;
+        var session = await SendAsync(client, baseUri, new TransmissionRequest("session-get", new() { ["fields"] = new[] { "download-queue-enabled", "download-queue-size" } }), cancellationToken);
+        if (session.Arguments is not { DownloadQueueEnabled: true, DownloadQueueSize: > 0 and var size })
+        {
+            return new DownloadClientLoad(0, null);
+        }
+
+        var response = await SendAsync(client, baseUri, new TransmissionRequest("torrent-get", new() { ["fields"] = new[] { "id", "status" } }), cancellationToken);
+        return new DownloadClientLoad(response.Arguments?.Torrents?.Count(torrent => torrent.Status == DownloadingStatus) ?? 0, size);
+    }
+
     public override async Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
     {
         try
@@ -721,7 +742,9 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         [property: JsonPropertyName("version")] string? Version = null,
         [property: JsonPropertyName("incomplete-dir")] string? IncompleteDir = null,
         [property: JsonPropertyName("incomplete-dir-enabled")] bool? IncompleteDirEnabled = null,
-        [property: JsonPropertyName("alt-speed-enabled")] bool? AltSpeedEnabled = null);
+        [property: JsonPropertyName("alt-speed-enabled")] bool? AltSpeedEnabled = null,
+        [property: JsonPropertyName("download-queue-enabled")] bool? DownloadQueueEnabled = null,
+        [property: JsonPropertyName("download-queue-size")] int? DownloadQueueSize = null);
     private sealed record TransmissionAdded([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("hashString")] string? HashString);
     private sealed record TransmissionTorrent([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("status")] int? Status, [property: JsonPropertyName("percentDone")] double? PercentDone, [property: JsonPropertyName("rateDownload")] long? RateDownload, [property: JsonPropertyName("rateUpload")] long? RateUpload, [property: JsonPropertyName("eta")] int? Eta, [property: JsonPropertyName("totalSize")] long? TotalSize, [property: JsonPropertyName("downloadedEver")] long? DownloadedEver, [property: JsonPropertyName("peersConnected")] int? PeersConnected, [property: JsonPropertyName("addedDate")] long? AddedDate, [property: JsonPropertyName("downloadDir")] string? DownloadDir, [property: JsonPropertyName("labels")] IReadOnlyList<string>? Labels, [property: JsonPropertyName("error")] int? Error, [property: JsonPropertyName("errorString")] string? ErrorString, [property: JsonPropertyName("peersSendingToUs")] int? PeersSendingToUs = null, [property: JsonPropertyName("isStalled")] bool? IsStalled = null, [property: JsonPropertyName("uploadRatio")] double? UploadRatio = null, [property: JsonPropertyName("secondsSeeding")] long? SecondsSeeding = null, [property: JsonPropertyName("isPrivate")] bool? IsPrivate = null, [property: JsonPropertyName("trackerStats")] IReadOnlyList<TransmissionTrackerStat>? TrackerStats = null, [property: JsonPropertyName("files")] IReadOnlyList<TransmissionFile>? Files = null, [property: JsonPropertyName("activityDate")] long? ActivityDate = null, [property: JsonPropertyName("doneDate")] long? DoneDate = null, [property: JsonPropertyName("queuePosition")] int? QueuePosition = null, [property: JsonPropertyName("seedRatioMode")] int? SeedRatioMode = null, [property: JsonPropertyName("seedRatioLimit")] double? SeedRatioLimit = null, [property: JsonPropertyName("seedIdleMode")] int? SeedIdleMode = null, [property: JsonPropertyName("seedIdleLimit")] int? SeedIdleLimit = null, [property: JsonPropertyName("hashString")] string? HashString = null);
 

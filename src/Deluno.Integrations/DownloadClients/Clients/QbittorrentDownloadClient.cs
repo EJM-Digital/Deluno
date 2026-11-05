@@ -647,6 +647,34 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         }
     }
 
+    /// <summary>States qBittorrent counts as an active download (#1494): downloading, stalled, fetching metadata, and forced.</summary>
+    internal static readonly string[] ActiveDownloadStates = ["downloading", "stalledDL", "metaDL", "forcedMetaDL", "forcedDL"];
+
+    /// <summary>
+    /// #1494: the downloads running now against <c>max_active_downloads</c>, which only applies while <c>queueing_enabled</c> is on
+    /// (otherwise, and for -1, there is no limit). Preferences and the torrent list, the two calls the client already answers.
+    /// </summary>
+    public override async Task<DownloadClientLoad?> GetLoadAsync(DownloadClientItem client, CancellationToken cancellationToken)
+    {
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null) return null;
+        using var handler = this.handlerFactory();
+        using var http = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(6) };
+        await AuthenticateAsync(http, client, cancellationToken);
+        using var preferences = await http.GetAsync("api/v2/app/preferences", cancellationToken);
+        if (!preferences.IsSuccessStatusCode) return null;
+        using var document = JsonDocument.Parse(await preferences.Content.ReadAsStringAsync(cancellationToken));
+        var root = document.RootElement;
+        int? limit = root.ValueKind == JsonValueKind.Object
+            && root.TryGetProperty("queueing_enabled", out var queueing) && queueing.ValueKind == JsonValueKind.True
+            && root.TryGetProperty("max_active_downloads", out var max) && max.ValueKind == JsonValueKind.Number && max.TryGetInt32(out var value) && value > 0
+                ? value
+                : null;
+        if (limit is null) return new DownloadClientLoad(0, null);
+        var torrents = await http.GetFromJsonAsync<IReadOnlyList<QbitTorrentItem>>("api/v2/torrents/info", cancellationToken) ?? [];
+        return new DownloadClientLoad(torrents.Count(item => item.State is not null && ActiveDownloadStates.Contains(item.State, StringComparer.Ordinal)), limit);
+    }
+
     /// <summary>qBittorrent's temporary path when "keep incomplete torrents in" is on; otherwise the save path, where it then writes them (#1164). Null when it cannot be read.</summary>
     private static async Task<string?> ReadIncompletePathAsync(HttpClient http, string? savePath, CancellationToken cancellationToken)
     {

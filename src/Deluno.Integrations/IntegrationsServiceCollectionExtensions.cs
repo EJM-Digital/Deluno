@@ -79,6 +79,7 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddSingleton<IDownloadClient, UTorrentDownloadClient>();
         services.AddSingleton<IDownloadClient, RtorrentDownloadClient>();
         services.AddSingleton<IDownloadClientRegistry, DownloadClientRegistry>();
+        services.AddSingleton<IDownloadClientLoadReader, DownloadClientLoadReader>();
         // Singleton: it is read from DownloadDispatchPollingService, itself a
         // singleton, and every dependency it takes (the connections repository,
         // the client registry) already is one.

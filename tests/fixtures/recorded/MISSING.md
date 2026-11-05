@@ -305,3 +305,7 @@ Real unauthenticated calls with a made-up key or login, so each recording is the
 ## Jellyfin recorded again from 12.4.0 in Docker (#1384, 28 Oct 2026)
 
 Every Jellyfin state of the 12.2.0 set is recorded again from `jellyfin/jellyfin:latest` (12.4.0) with `media.mjs jellyfin`, and the 12.2.0 folder is removed. `item-delete-refused` (a delete the server cannot carry out) came from the golden VM for 12.2.0; `media.mjs` now records it in Docker by making the film's file immutable (`chattr +i`) before `DELETE /Items/{id}`.
+
+## Deluge `max_active_downloading` (#1494)
+
+The reply to `core.get_config_values` asking for `max_active_downloading` was not recorded (the golden VM was not used in this change). `DownloadClientLoadOnRecordingsTests` answers it with the recorded `core.get_config_values` reply (`deluge/2.2.0/settings`) whose `result` holds only that one key, the value being the thing each test is about. Record it with `Record-Torrents.ps1` (add the key to the `core.get_config_values` call) to replace this.

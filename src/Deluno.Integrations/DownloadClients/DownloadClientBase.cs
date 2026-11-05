@@ -21,6 +21,9 @@ public abstract class DownloadClientBase : IDownloadClient
     public virtual Task<UsenetProviderClientResult?> SetUsenetProviderAsync(DownloadClientItem client, UsenetProviderRequest request, CancellationToken cancellationToken)
         => Task.FromResult<UsenetProviderClientResult?>(null);
 
+    public virtual Task<DownloadClientLoad?> GetLoadAsync(DownloadClientItem client, CancellationToken cancellationToken)
+        => Task.FromResult<DownloadClientLoad?>(null);
+
     public abstract Task<DownloadClientGrabResult> GrabAsync(
         DownloadClientItem client,
         DownloadClientGrabRequest request,

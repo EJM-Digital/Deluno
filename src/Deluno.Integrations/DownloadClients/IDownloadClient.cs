@@ -33,6 +33,13 @@ public interface IDownloadClient
     Task<UsenetProviderClientResult?> SetUsenetProviderAsync(DownloadClientItem client, UsenetProviderRequest request, CancellationToken cancellationToken)
         => Task.FromResult<UsenetProviderClientResult?>(null);
 
+    /// <summary>
+    /// #1494: how many downloads the client is actively running and the most it will run at once, from the client's own setting
+    /// and list. Null for a client with nothing to report (Usenet, or a torrent client that has no active limit setting).
+    /// </summary>
+    Task<DownloadClientLoad?> GetLoadAsync(DownloadClientItem client, CancellationToken cancellationToken)
+        => Task.FromResult<DownloadClientLoad?>(null);
+
     Task<DownloadClientGrabResult> GrabAsync(
         DownloadClientItem client,
         DownloadClientGrabRequest request,

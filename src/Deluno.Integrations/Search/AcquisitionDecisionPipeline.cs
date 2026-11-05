@@ -35,6 +35,17 @@ public interface IAcquisitionDecisionPipeline
         IReadOnlyList<string>? titleTags = null);
 
     /// <summary>
+    /// The same choice, and when the first client by priority was full (at its own active-download limit) and the grab went
+    /// to the next one with a free slot (#1494), the plain-English note saying so; null otherwise.
+    /// </summary>
+    async Task<(LibraryDownloadClientLinkItem? Client, string? FullnessNote)> ChooseDownloadClientWithNoteAsync(
+        string? indexerId,
+        IReadOnlyList<LibraryDownloadClientLinkItem> routedClients,
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<string>? titleTags = null)
+        => (await ChooseDownloadClientAsync(indexerId, routedClients, cancellationToken, titleTags), null);
+
+    /// <summary>
     /// Why <see cref="ChooseDownloadClientAsync"/> found nothing, when the reason is that every routed client is
     /// switched off; null for any other reason (no client of the right kind, say), which the caller words itself.
     /// </summary>
@@ -78,6 +89,7 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
     private readonly ITurnedDownReleaseRecorder? turnedDownRecorder;
     private readonly IRealtimeEventPublisher? realtimeEventPublisher;
     private readonly TimeProvider timeProvider;
+    private readonly IDownloadClientLoadReader? loadReader;
 
     public AcquisitionDecisionPipeline(
         IMediaSearchPlanner mediaSearchPlanner,
@@ -87,8 +99,10 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
         IBlockedReleaseRepository? blockedReleases = null,
         ITurnedDownReleaseRecorder? turnedDownRecorder = null,
         IRealtimeEventPublisher? realtimeEventPublisher = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IDownloadClientLoadReader? loadReader = null)
     {
+        this.loadReader = loadReader;
         this.mediaSearchPlanner = mediaSearchPlanner;
         this.rankingModelService = rankingModelService ?? DisabledRankingModelService;
         this.intelligentRoutingService = intelligentRoutingService;
@@ -195,7 +209,8 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             wouldDispatch,
             // The client's own priority, set on its drawer; the routing link only records the order it was ticked in.
             client => readyConnections.DownloadClientDetails.TryGetValue(client.DownloadClientId, out var detail) ? detail.Priority : client.Priority,
-            cancellationToken);
+            cancellationToken,
+            client => readyConnections.DownloadClientDetails.GetValueOrDefault(client.DownloadClientId));
         var outcome = sourceCount == 0 || clientCount == 0
             ? "blocked"
             : bestCandidate is null
@@ -317,11 +332,18 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
         IReadOnlyList<LibraryDownloadClientLinkItem> routedClients,
         CancellationToken cancellationToken = default,
         IReadOnlyList<string>? titleTags = null)
+        => (await ChooseDownloadClientWithNoteAsync(indexerId, routedClients, cancellationToken, titleTags)).Client;
+
+    public async Task<(LibraryDownloadClientLinkItem? Client, string? FullnessNote)> ChooseDownloadClientWithNoteAsync(
+        string? indexerId,
+        IReadOnlyList<LibraryDownloadClientLinkItem> routedClients,
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<string>? titleTags = null)
     {
         var byPriority = routedClients.OrderBy(client => client.Priority).ToArray();
         if (connectionsRepository is null)
         {
-            return byPriority.FirstOrDefault();
+            return (byPriority.FirstOrDefault(), null);
         }
 
         var clients = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
@@ -342,25 +364,74 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             ? null
             : (await connectionsRepository.ListIndexersAsync(cancellationToken))
                 .FirstOrDefault(item => string.Equals(item.Id, indexerId, StringComparison.OrdinalIgnoreCase));
+        LibraryDownloadClientLinkItem[] eligible;
         if (source is null)
         {
-            return DownloadClientTagMatch.PreferTagged(
+            eligible = DownloadClientTagMatch.PreferTagged(
                     byPriority.Where(client => !clients.ContainsKey(client.DownloadClientId)
                         || DownloadClientTagMatch.IsEligible(TagsOf(client), titleTags)),
                     TagsOf,
                     titleTags)
-                .FirstOrDefault();
+                .ToArray();
+        }
+        else
+        {
+            var kind = DownloadProtocols.SourceKind(source.Protocol);
+            eligible = DownloadClientTagMatch.PreferTagged(
+                    byPriority.Where(client =>
+                        clients.TryGetValue(client.DownloadClientId, out var detail)
+                        && string.Equals(DownloadProtocols.ClientKind(detail.Protocol), kind, StringComparison.OrdinalIgnoreCase)
+                        && DownloadClientTagMatch.IsEligible(detail.Tags, titleTags)),
+                    TagsOf,
+                    titleTags)
+                .ToArray();
         }
 
-        var kind = DownloadProtocols.SourceKind(source.Protocol);
-        return DownloadClientTagMatch.PreferTagged(
-                byPriority.Where(client =>
-                    clients.TryGetValue(client.DownloadClientId, out var detail)
-                    && string.Equals(DownloadProtocols.ClientKind(detail.Protocol), kind, StringComparison.OrdinalIgnoreCase)
-                    && DownloadClientTagMatch.IsEligible(detail.Tags, titleTags)),
-                TagsOf,
-                titleTags)
-            .FirstOrDefault();
+        // Only fullness is new: who is eligible was decided above.
+        return await PassOverFullClientsAsync(eligible, link => clients.GetValueOrDefault(link.DownloadClientId), cancellationToken);
+    }
+
+    /// <summary>
+    /// #1494: <paramref name="inOrder"/> is every eligible client, the one the rules chose first. When that one is at its own
+    /// active-download limit the grab goes to the next with a free slot (one whose limit is unknown counts as free), and the
+    /// note says which were full and where it went. When every one is full, or only one client is eligible, the first stays
+    /// and waits in its queue as before.
+    /// </summary>
+    private async Task<(LibraryDownloadClientLinkItem? Client, string? Note)> PassOverFullClientsAsync(
+        IReadOnlyList<LibraryDownloadClientLinkItem> inOrder,
+        Func<LibraryDownloadClientLinkItem, DownloadClientItem?> detailOf,
+        CancellationToken cancellationToken)
+    {
+        if (inOrder.Count == 0)
+        {
+            return (null, null);
+        }
+
+        var first = inOrder[0];
+        if (loadReader is null || inOrder.Count == 1)
+        {
+            return (first, null);
+        }
+
+        // One bounded look at each, together; the reader remembers an answer for a few seconds.
+        var loads = await Task.WhenAll(inOrder.Select(async link => detailOf(link) is { } detail
+            ? await loadReader.ReadAsync(detail, cancellationToken)
+            : null));
+        var full = new List<string>();
+        for (var index = 0; index < inOrder.Count; index++)
+        {
+            if (loads[index] is { IsFull: true } load)
+            {
+                full.Add($"{inOrder[index].DownloadClientName} was full ({load.Describe()})");
+                continue;
+            }
+
+            return index == 0
+                ? (first, null)
+                : (inOrder[index], $"{string.Join(" and ", full)}, so this went to {inOrder[index].DownloadClientName}.");
+        }
+
+        return (first, null);
     }
 
     public async Task<string?> ExplainNoDownloadClientAsync(
@@ -924,7 +995,8 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
         IReadOnlyList<LibraryDownloadClientLinkItem> clients,
         bool takeTurn,
         Func<LibraryDownloadClientLinkItem, int> priorityOf,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<LibraryDownloadClientLinkItem, DownloadClientItem?>? detailOf = null)
     {
         if (clients.Count == 0)
         {
@@ -1011,6 +1083,20 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 : ClientTurns.GetValueOrDefault(key);
             chosen = tied[turn % tied.Length];
             reason = $"{chosen.DownloadClientName} shares the top priority ({best}) with {tied.Length - 1} other client{(tied.Length == 2 ? "" : "s")}, and it was its turn.";
+        }
+
+        // #1494: the client the rules chose is full, so the grab goes to the next with a free slot, in priority order.
+        if (detailOf is not null)
+        {
+            var inOrder = new[] { chosen }
+                .Concat(pool.Where(client => client != chosen).OrderBy(priorityOf).ThenBy(client => client.DownloadClientId, StringComparer.Ordinal))
+                .ToArray();
+            var (elsewhere, fullnessNote) = await PassOverFullClientsAsync(inOrder, detailOf, cancellationToken);
+            if (fullnessNote is not null && elsewhere is not null)
+            {
+                chosen = elsewhere;
+                reason = fullnessNote;
+            }
         }
 
         if (passedOver.Count > 0)
