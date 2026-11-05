@@ -692,6 +692,10 @@ function SidebarItem({
 }) {
   const rail = useContext(SidebarRailContext);
   const railName = badge.map((entry) => entry.label).join(", ");
+  const countBadge = badge.find((entry) => entry.kind === "count");
+  const needsBadge = badge.find((entry) => entry.kind === "needs");
+  // Collapsed, one mark stands for the row: what needs the person wins over the plain count.
+  const railBadge = needsBadge ?? countBadge;
   return (
     <NavLink
       to={item.to}
@@ -725,30 +729,41 @@ function SidebarItem({
           >
             <DelunoNavGlyph kind={item.icon} className="h-(--shell-icon-size) w-(--shell-icon-size)" />
           </span>
-          {rail ? null : <span className="min-w-0 flex-1 whitespace-nowrap">{item.label}</span>}
-          {badge.map((entry) => (
-            <span
-              key={entry.kind}
-              title={entry.title}
-              aria-label={rail ? undefined : entry.label}
-              aria-hidden={rail || undefined}
-              data-badge={entry.kind}
-              className={cn(
-                "flex h-[calc(var(--shell-pill-height)*0.42)] min-w-[calc(var(--shell-pill-height)*0.42)] shrink-0 items-center justify-center gap-1 rounded-full px-1.5 text-(length:--shell-nav-badge-size) font-bold tabular-nums",
-                rail && "absolute h-[15px] min-w-[15px] px-1 text-(length:--type-micro)",
-                rail && (entry.kind === "needs" ? "right-[8px] top-[-9px]" : "right-[8px] top-[2px]"),
-                entry.kind === "needs"
-                  ? "border border-warning/40 bg-warning/10 text-warning"
-                  : isActive ? "bg-(--nav-accent) text-background" : "bg-surface-2 text-muted-foreground"
-              )}
-            >
-              {entry.kind === "needs" && !rail ? <span aria-hidden>{entry.count} need you</span> : entry.count}
+          {rail ? null : (
+            <span className="flex min-w-0 flex-1 flex-col items-start justify-center gap-0.5 py-1" data-nav-text>
+              <span className="flex w-full min-w-0 items-center gap-2">
+                <span className="whitespace-nowrap" data-nav-label>{item.label}</span>
+                {countBadge ? <SidebarBadgePill entry={countBadge} rail={false} isActive={isActive} /> : null}
+              </span>
+              {needsBadge ? <SidebarBadgePill entry={needsBadge} rail={false} isActive={isActive} /> : null}
             </span>
-          ))}
+          )}
+          {rail && railBadge ? <SidebarBadgePill entry={railBadge} rail isActive={isActive} /> : null}
         </>
         );
       }}
     </NavLink>
+  );
+}
+
+/** One number beside a sidebar item. The plain count sits on the label's row; what needs the person is an amber pill on its own line, so neither crowds the label (#1509). */
+export function SidebarBadgePill({ entry, rail, isActive }: { entry: SidebarBadge; rail: boolean; isActive: boolean }) {
+  return (
+    <span
+      title={entry.title}
+      aria-label={rail ? undefined : entry.label}
+      aria-hidden={rail || undefined}
+      data-badge={entry.kind}
+      className={cn(
+        "flex h-[calc(var(--shell-pill-height)*0.42)] min-w-[calc(var(--shell-pill-height)*0.42)] shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-full px-1.5 text-(length:--shell-nav-badge-size) font-bold tabular-nums",
+        rail && "absolute right-[8px] top-[2px] h-[15px] min-w-[15px] px-1 text-(length:--type-micro)",
+        entry.kind === "needs"
+          ? "border border-warning/40 bg-warning/10 text-warning"
+          : isActive ? "bg-(--nav-accent) text-background" : "bg-surface-2 text-muted-foreground"
+      )}
+    >
+      {entry.kind === "needs" && !rail ? <span aria-hidden>{entry.count} need you</span> : entry.count}
+    </span>
   );
 }
 
