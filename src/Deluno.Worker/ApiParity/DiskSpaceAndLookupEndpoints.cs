@@ -31,6 +31,38 @@ public sealed record DiskSpaceResource(string Path, string Label, long FreeSpace
 /// </summary>
 public static partial class DiskSpaceAndLookupEndpoints
 {
+    /// <summary>
+    /// One entry per drive: Deluno's own data first, then each library's folder (named for the library) and its downloads
+    /// folder (named "&lt;library&gt; downloads"). A folder on a drive already listed, or on one that cannot be read, adds nothing.
+    /// </summary>
+    internal static List<DiskSpaceResource> Describe(
+        string dataRoot,
+        IEnumerable<Deluno.Libraries.Contracts.LibraryItem> libraries,
+        Func<string?, VolumeSpaceReading?> read)
+    {
+        var places = new List<(string Path, string Label)> { (dataRoot, "Deluno's own data") };
+        foreach (var library in libraries)
+        {
+            places.Add((library.RootPath, library.Name));
+            if (!string.IsNullOrWhiteSpace(library.DownloadsPath))
+            {
+                places.Add((library.DownloadsPath, $"{library.Name} downloads"));
+            }
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var result = new List<DiskSpaceResource>();
+        foreach (var (path, label) in places)
+        {
+            if (read(path) is { } reading && seen.Add(reading.VolumeKey))
+            {
+                result.Add(new DiskSpaceResource(path, label, reading.FreeBytes, reading.TotalBytes));
+            }
+        }
+
+        return result;
+    }
+
     public static IEndpointRouteBuilder MapDelunoDiskSpaceEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet("/api/diskspace", async (
@@ -38,25 +70,10 @@ public static partial class DiskSpaceAndLookupEndpoints
             ILibrariesRepository libraries,
             CancellationToken cancellationToken) =>
         {
-            var places = new List<(string Path, string Label)> { (System.IO.Path.GetFullPath(storage.Value.DataRoot), "Deluno's own data") };
-            foreach (var library in await libraries.ListLibrariesAsync(cancellationToken))
-            {
-                places.Add((library.RootPath, library.Name));
-                if (!string.IsNullOrWhiteSpace(library.DownloadsPath))
-                {
-                    places.Add((library.DownloadsPath, $"{library.Name} downloads"));
-                }
-            }
-
-            var seen = new HashSet<string>(StringComparer.Ordinal);
-            var result = new List<DiskSpaceResource>();
-            foreach (var (path, label) in places)
-            {
-                if (VolumeSpace.TryRead(path) is { } reading && seen.Add(reading.VolumeKey))
-                {
-                    result.Add(new DiskSpaceResource(path, label, reading.FreeBytes, reading.TotalBytes));
-                }
-            }
+            var result = Describe(
+                System.IO.Path.GetFullPath(storage.Value.DataRoot),
+                await libraries.ListLibrariesAsync(cancellationToken),
+                VolumeSpace.TryRead);
 
             return Results.Ok(result);
         }).RequireAuthorization(DelunoAuthorizationPolicies.Read);
