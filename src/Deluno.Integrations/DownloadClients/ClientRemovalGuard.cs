@@ -43,8 +43,10 @@ internal static class ClientRemovalGuard
         Func<Task<DownloadClientActionResult>> remove,
         TimeSpan settleWindow = default,
         TimeSpan settlePoll = default,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Func<TimeSpan, CancellationToken, Task>? delay = null)
     {
+        delay ??= Task.Delay;
         switch (await has())
         {
             case ClientHas.No:
@@ -67,7 +69,7 @@ internal static class ClientRemovalGuard
         while (after == ClientHas.Yes && waited < settleWindow)
         {
             var step = pause < settleWindow - waited ? pause : settleWindow - waited;
-            await Task.Delay(step, cancellationToken);
+            await delay(step, cancellationToken);
             waited += step;
             pause = TimeSpan.FromTicks(Math.Min(pause.Ticks * 2, MaxPause.Ticks));
             after = await has();
@@ -190,8 +192,9 @@ internal static class DownloadFolderRemoval
     /// the file as the download is removed lets go within seconds, and a file left behind there makes a resend of the
     /// same release fail at the client. Null waits <see cref="LockedFileWait"/>.
     /// </param>
-    public static string? Remove(string? path, string? jobName, bool onThisMachine, IReadOnlyList<Deluno.Libraries.Contracts.LibraryItem>? libraries, TimeSpan? lockWait = null)
+    public static string? Remove(string? path, string? jobName, bool onThisMachine, IReadOnlyList<Deluno.Libraries.Contracts.LibraryItem>? libraries, TimeSpan? lockWait = null, Action<TimeSpan>? pause = null)
     {
+        pause ??= Thread.Sleep;
         if (string.IsNullOrWhiteSpace(path))
         {
             return onThisMachine ? null : "The client did not say where its files are, so Deluno could not look for them.";
@@ -235,7 +238,9 @@ internal static class DownloadFolderRemoval
             }
         }
 
-        var giveUp = DateTime.UtcNow + (lockWait ?? LockedFileWait);
+        // The wait is the sum of the pauses taken, so a test can count them instead of timing a real wait (#1506).
+        var giveUpAfter = lockWait ?? LockedFileWait;
+        var waited = TimeSpan.Zero;
         while (true)
         {
             try
@@ -256,18 +261,22 @@ internal static class DownloadFolderRemoval
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                if (DateTime.UtcNow >= giveUp)
+                if (waited >= giveUpAfter)
                 {
                     return $"Deluno could not delete {target}: {exception.Message}";
                 }
 
-                Thread.Sleep(250); // reason: a program that still has the file open (a processor reading it) lets go within seconds; there is no event to wait on
+                waited += LockedFilePause;
+                pause(LockedFilePause); // reason: a program that still has the file open (a processor reading it) lets go within seconds; there is no event to wait on
             }
         }
     }
 
     /// <summary>How long a delete waits for a file another program has open (see <c>Remove</c>).</summary>
     public static readonly TimeSpan LockedFileWait = TimeSpan.FromSeconds(10);
+
+    /// <summary>The pause between two tries at a file another program has open.</summary>
+    public static readonly TimeSpan LockedFilePause = TimeSpan.FromMilliseconds(250);
 
     /// <summary>
     /// The folder directly holding <paramref name="filePath"/> when it is the job's own: named after the job, and not

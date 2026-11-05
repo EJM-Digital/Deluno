@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
@@ -24,16 +23,30 @@ public sealed class ClientRemovalGuardSurvivorsTests
     private static DownloadClientActionResult Rejected
         => DownloadClientHelpers.ActionFailure(Client("nzbget"), "abc", DownloadClientActions.Delete, "x");
 
-    private static Task<DownloadClientActionResult> Run(Func<Task<ClientHas>> has, TimeSpan window = default, TimeSpan poll = default)
-        => ClientRemovalGuard.RunAsync(Client("nzbget"), "abc", DownloadClientActions.Delete, "NZBGet", has, () => Task.FromResult(Sent()), window, poll);
+    /// <summary>The pauses the guard asked for, in order. The guard is given a delay that records the pause and returns at once (#1506), so
+    /// the tests count and add up pauses instead of timing a real wait, which a busy runner distorts.</summary>
+    private sealed class Pauses
+    {
+        public List<TimeSpan> Asked { get; } = [];
+
+        public Task Delay(TimeSpan pause, CancellationToken cancellationToken)
+        {
+            Asked.Add(pause);
+            return Task.CompletedTask;
+        }
+    }
+
+    private static Task<DownloadClientActionResult> Run(Func<Task<ClientHas>> has, TimeSpan window = default, TimeSpan poll = default, Pauses? pauses = null)
+        => ClientRemovalGuard.RunAsync(Client("nzbget"), "abc", DownloadClientActions.Delete, "NZBGet", has, () => Task.FromResult(Sent()), window, poll,
+            delay: (pauses ?? new Pauses()).Delay);
 
     /// <summary>A client that lists the download before the removal and keeps listing it for <paramref name="stillThere"/> looks.</summary>
-    private static Func<Task<ClientHas>> StaysFor(int stillThere, List<TimeSpan> looks, Stopwatch clock)
+    private static Func<Task<ClientHas>> StaysFor(int stillThere, List<int> looks)
     {
         var asked = 0;
         return () =>
         {
-            looks.Add(clock.Elapsed);
+            looks.Add(asked);
             asked++;
             return Task.FromResult(asked <= 1 + stillThere ? ClientHas.Yes : ClientHas.No);
         };
@@ -85,60 +98,56 @@ public sealed class ClientRemovalGuardSurvivorsTests
     [Fact]
     public async Task The_looks_are_spaced_by_the_poll_that_doubles_and_never_run_past_the_window()
     {
-        // Poll 100 ms, window 350 ms: the looks come at about 0, 100, 300 and 350 ms (pauses 100, 200, then what is left, 50).
-        var looks = new List<TimeSpan>();
-        var clock = Stopwatch.StartNew();
-        var result = await Run(StaysFor(3, looks, clock), TimeSpan.FromMilliseconds(350), TimeSpan.FromMilliseconds(100));
+        // Poll 100 ms, window 350 ms: pauses of 100, 200, then what is left, 50.
+        var looks = new List<int>();
+        var pauses = new Pauses();
+        var result = await Run(StaysFor(3, looks), TimeSpan.FromMilliseconds(350), TimeSpan.FromMilliseconds(100), pauses);
 
         // The first look is before the removal, the second straight after; then one per pause: 1 + 1 + 3 looks, the last one saying No.
         Assert.Equal(5, looks.Count);
         Assert.True(result.Succeeded);
-        Assert.True(clock.Elapsed >= TimeSpan.FromMilliseconds(330), $"the pauses add up to the window, took {clock.Elapsed}");
-        Assert.True(looks[2] - looks[1] >= TimeSpan.FromMilliseconds(90));
-        Assert.True(looks[3] - looks[2] >= TimeSpan.FromMilliseconds(180), "the second pause is twice the first");
-        Assert.True(looks[4] - looks[3] >= TimeSpan.FromMilliseconds(40));
+        Assert.Equal([TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(50)], pauses.Asked);
     }
 
     [Fact]
     public async Task With_no_poll_given_the_first_pause_is_a_quarter_of_a_second()
     {
-        var looks = new List<TimeSpan>();
-        var clock = Stopwatch.StartNew();
-        var result = await Run(StaysFor(1, looks, clock), TimeSpan.FromMilliseconds(600));
+        var looks = new List<int>();
+        var pauses = new Pauses();
+        var result = await Run(StaysFor(1, looks), TimeSpan.FromMilliseconds(600), pauses: pauses);
 
         Assert.True(result.Succeeded);
         Assert.Equal(3, looks.Count);
-        Assert.True(looks[2] - looks[1] >= TimeSpan.FromMilliseconds(230), "a poll of nothing is a quarter of a second");
-        Assert.True(looks[2] - looks[1] < TimeSpan.FromMilliseconds(500));
+        Assert.Equal([TimeSpan.FromMilliseconds(250)], pauses.Asked);
     }
 
     [Fact]
     public async Task A_download_that_never_goes_is_waited_for_the_whole_window_and_the_wait_is_said_in_seconds()
     {
         // 1.4 s: pauses of 1 s and then the 0.4 s left. Waiting the poll's 2 s the second time would say 3 seconds.
-        var clock = Stopwatch.StartNew();
-        var result = await Run(() => Task.FromResult(ClientHas.Yes), TimeSpan.FromMilliseconds(1400), TimeSpan.FromSeconds(1));
+        var pauses = new Pauses();
+        var result = await Run(() => Task.FromResult(ClientHas.Yes), TimeSpan.FromMilliseconds(1400), TimeSpan.FromSeconds(1), pauses);
 
         Assert.False(result.Succeeded);
         Assert.Equal("NZBGet still has this download 1 seconds after being told to remove it, so it was not removed.", result.Message);
-        Assert.True(clock.Elapsed < TimeSpan.FromMilliseconds(2400), $"never past the window, took {clock.Elapsed}");
+        Assert.Equal([TimeSpan.FromSeconds(1), TimeSpan.FromMilliseconds(400)], pauses.Asked);
     }
 
     [Fact]
     public async Task The_pause_grows_to_five_seconds_and_no_further_than_the_window()
     {
         // Poll 3 s doubles to 6 s, but five seconds is the longest pause: a 9 s window is 3 s + 5 s + 1 s, three looks after the removal.
-        var looks = new List<TimeSpan>();
-        var clock = Stopwatch.StartNew();
-        var asked = 0;
+        var looks = new List<int>();
+        var pauses = new Pauses();
         var result = await ClientRemovalGuard.RunAsync(
             Client("nzbget"), "abc", DownloadClientActions.Delete, "NZBGet",
-            () => { looks.Add(clock.Elapsed); return Task.FromResult(++asked == 1 ? ClientHas.Yes : ClientHas.Yes); },
-            () => Task.FromResult(Sent()), TimeSpan.FromSeconds(9), TimeSpan.FromSeconds(3));
+            () => { looks.Add(looks.Count); return Task.FromResult(ClientHas.Yes); },
+            () => Task.FromResult(Sent()), TimeSpan.FromSeconds(9), TimeSpan.FromSeconds(3), delay: pauses.Delay);
 
         Assert.False(result.Succeeded);
         Assert.Equal(5, looks.Count);
         Assert.Contains("9 seconds", result.Message);
+        Assert.Equal([TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(1)], pauses.Asked);
     }
 
     [Fact]
@@ -307,13 +316,14 @@ public sealed class ClientRemovalGuardSurvivorsTests
                 return;
             }
 
-            var clock = Stopwatch.StartNew();
-            var problem = DownloadFolderRemoval.Remove(film, Job, true, [], TimeSpan.FromMilliseconds(600));
+            var pauses = new List<TimeSpan>();
+            var problem = DownloadFolderRemoval.Remove(film, Job, true, [], TimeSpan.FromMilliseconds(600), pauses.Add);
 
             Assert.StartsWith("Deluno could not delete ", problem);
             Assert.Contains(Job, problem);
-            Assert.True(clock.Elapsed >= TimeSpan.FromMilliseconds(500), $"it waited for the lock, took {clock.Elapsed}");
-            Assert.True(clock.Elapsed < TimeSpan.FromSeconds(8), $"it waited the time it was given, not the default ten seconds, took {clock.Elapsed}");
+            // Counted, not timed (#1506): it paused for the 600 ms it was given (three quarter-second pauses), not the default ten seconds.
+            Assert.Equal(3, pauses.Count);
+            Assert.All(pauses, pause => Assert.Equal(DownloadFolderRemoval.LockedFilePause, pause));
         }
         finally
         {

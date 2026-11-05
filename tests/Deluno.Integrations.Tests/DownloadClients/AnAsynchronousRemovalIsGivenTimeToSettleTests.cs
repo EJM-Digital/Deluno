@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Net;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
@@ -110,13 +109,12 @@ public sealed class AnAsynchronousRemovalIsGivenTimeToSettleTests
     public async Task A_removal_that_settles_at_once_is_not_made_to_wait()
     {
         var nzb = new SlowNzbGet(lookingLeftAfterDelete: 0);
-        var timer = Stopwatch.StartNew();
 
         var result = await new NzbGetDownloadClient(new StubHttpClientFactory(new StubHandler(nzb.Answer)))
             .ExecuteActionAsync(NzbGet(), DownloadClientActions.Delete, "26", CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
-        Assert.True(timer.Elapsed < TimeSpan.FromSeconds(1), $"took {timer.Elapsed}");
+        // One look after the delete is no waiting, because every pause is followed by another look (#1506: counted, not timed).
         Assert.Equal(1, nzb.ListLooksAfterDelete);
     }
 
@@ -124,21 +122,25 @@ public sealed class AnAsynchronousRemovalIsGivenTimeToSettleTests
     public async Task An_nzbget_that_refuses_the_removal_fails_at_once_without_waiting()
     {
         var nzb = new SlowNzbGet(lookingLeftAfterDelete: 2);
+        var refused = false;
+        var requestsAfterTheRefusal = 0;
         var handler = new StubHandler(request =>
         {
             var body = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? string.Empty;
-            return body.Contains("editqueue", StringComparison.Ordinal)
-                ? RecordedReplies.Json(RecordedReplies.Nzbget("rpc-error").Body("nosuchmethod", ("error.message", "Access denied")))
-                : nzb.Answer(request);
+            if (refused) requestsAfterTheRefusal++;
+            if (!body.Contains("editqueue", StringComparison.Ordinal)) return nzb.Answer(request);
+            refused = true;
+            return RecordedReplies.Json(RecordedReplies.Nzbget("rpc-error").Body("nosuchmethod", ("error.message", "Access denied")));
         });
-        var timer = Stopwatch.StartNew();
 
         var result = await new NzbGetDownloadClient(new StubHttpClientFactory(handler))
             .ExecuteActionAsync(NzbGet(), DownloadClientActions.DeleteWithData, "26", CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.Contains("Access denied", result.Message);
-        Assert.True(timer.Elapsed < TimeSpan.FromSeconds(1), $"took {timer.Elapsed}");
+        // Counted, not timed (#1506): after the refusal there is at most the one look at what the client has, where a wait would look
+        // again after each pause (the stand-in keeps the job listed for two more looks).
+        Assert.True(requestsAfterTheRefusal <= 1, $"{requestsAfterTheRefusal} requests followed the refusal");
     }
 
     [Fact]
@@ -180,14 +182,15 @@ public sealed class AnAsynchronousRemovalIsGivenTimeToSettleTests
                 ? RecordedReplies.Sabnzbd("finished-single-file").Response("mode=history")
                 : RecordedReplies.Sabnzbd("idle").Response("mode=queue");
         });
-        var timer = Stopwatch.StartNew();
 
         var result = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler))
             .ExecuteActionAsync(Client("sabnzbd", "SABnzbd", "api-key"), DownloadClientActions.DeleteWithData, jobId, CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.Contains("still has this download", result.Message);
-        Assert.True(timer.Elapsed < TimeSpan.FromSeconds(1), $"took {timer.Elapsed}");
+        // Counted, not timed (#1506): one look at the history after the delete, and no second one after a pause.
+        var deleteAt = asked.FindIndex(query => query.Contains("name=delete", StringComparison.Ordinal));
+        Assert.Equal(1, asked.Skip(deleteAt + 1).Count(query => query.Contains("mode=history", StringComparison.Ordinal)));
     }
 
     private static DownloadClientItem NzbGet() => Client("nzbget", "NZBGet", null);

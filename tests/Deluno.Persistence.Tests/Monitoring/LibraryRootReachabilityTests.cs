@@ -36,17 +36,19 @@ public sealed class LibraryRootReachabilityTests : IDisposable
     {
         var clock = new FakeTimeProvider();
         using var neverAnswers = new ManualResetEventSlim(false);
+        var probeReturned = false;
         var reach = new LibraryRootReachability(clock, _ =>
         {
             neverAnswers.Wait(TimeSpan.FromSeconds(30)); // reason: stands in for a share that never answers; the limit only frees the thread if the test dies
+            probeReturned = true;
             return true;
         });
-        var watch = System.Diagnostics.Stopwatch.StartNew();
 
         var first = await reach.UnreachableAsync(["//dead-nas/media"], CancellationToken.None);
 
-        // The first look gave the check a quarter of a second and moved on: it did not hold the request for the share.
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(3), $"the first look took {watch.Elapsed}");
+        // The first look gave the check a quarter of a second and moved on: it did not hold the request for the share. Seen from the
+        // probe, not a stopwatch (#1506): the look came back while the probe was still waiting for the share.
+        Assert.False(probeReturned, "the first look waited for the share to answer");
         Assert.Empty(first);
 
         clock.Advance(TimeSpan.FromSeconds(4.9));

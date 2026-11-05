@@ -199,6 +199,8 @@ public sealed class SubtitleTimingSyncTests
     /// smallest realistic unit of this work, and it runs on the subtitle sync
     /// lane beside everything else Deluno is doing.
     /// </summary>
+    // Wall time is the point here (the algorithm must not regress to per-frame comparison), so it runs with the Timing tests, alone (#1506).
+    [Trait("Category", "Timing")]
     [Fact]
     public void A_correlation_costs_a_fraction_of_a_second()
     {

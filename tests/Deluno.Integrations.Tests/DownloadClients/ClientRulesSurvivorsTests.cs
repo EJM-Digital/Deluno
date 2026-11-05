@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Deluno.Connections.Contracts;
 using Deluno.Contracts;
@@ -55,48 +54,53 @@ public sealed class ClientRulesSurvivorsTests
 
     // ---- pause guard timings
 
-    private static async Task<(int Reads, TimeSpan Elapsed)> NeverChanges(TimeSpan window, TimeSpan poll)
+    /// <summary>Runs the guard against a client that never changes, with a delay that records each pause and returns at once, so the
+    /// tests add up the pauses instead of timing a real wait (#1506).</summary>
+    private static async Task<(int Reads, List<TimeSpan> Pauses)> NeverChanges(TimeSpan window, TimeSpan poll)
     {
         var reads = 0;
-        var clock = Stopwatch.StartNew();
+        var pauses = new List<TimeSpan>();
         await ClientPauseGuard.RunAsync(Client(), "h", "pause", "qBit",
             () => { reads++; return Task.FromResult(new ClientPauseReading(ClientHas.Yes, false)); },
             () => Task.FromResult(new DownloadClientActionResult("c1", "h", "pause", true, "ok")),
-            window, poll);
-        return (reads, clock.Elapsed);
+            window, poll,
+            delay: (pause, _) => { pauses.Add(pause); return Task.CompletedTask; });
+        return (reads, pauses);
     }
+
+    private static TimeSpan Total(IEnumerable<TimeSpan> pauses) => pauses.Aggregate(TimeSpan.Zero, (sum, pause) => sum + pause);
 
     [Fact]
     public async Task The_wait_lasts_the_window_asked_for_and_polls_often_enough()
     {
-        var (reads, elapsed) = await NeverChanges(TimeSpan.FromMilliseconds(150), TimeSpan.FromMilliseconds(10));
+        var (reads, pauses) = await NeverChanges(TimeSpan.FromMilliseconds(150), TimeSpan.FromMilliseconds(10));
 
-        Assert.True(elapsed >= TimeSpan.FromMilliseconds(120), elapsed.ToString());
+        Assert.Equal(TimeSpan.FromMilliseconds(150), Total(pauses));
         Assert.True(reads >= 5, reads.ToString());
     }
 
     [Fact]
     public async Task A_poll_longer_than_the_window_never_waits_past_the_window()
     {
-        var (_, elapsed) = await NeverChanges(TimeSpan.FromMilliseconds(30), TimeSpan.FromSeconds(5));
+        var (_, pauses) = await NeverChanges(TimeSpan.FromMilliseconds(30), TimeSpan.FromSeconds(5));
 
-        Assert.True(elapsed < TimeSpan.FromSeconds(2), elapsed.ToString());
+        Assert.Equal([TimeSpan.FromMilliseconds(30)], pauses);
     }
 
     [Fact]
     public async Task The_last_poll_is_cut_short_to_what_is_left_of_the_window()
     {
-        var (_, elapsed) = await NeverChanges(TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(150));
+        var (_, pauses) = await NeverChanges(TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(150));
 
-        Assert.True(elapsed < TimeSpan.FromMilliseconds(400), elapsed.ToString());
+        Assert.Equal([TimeSpan.FromMilliseconds(150), TimeSpan.FromMilliseconds(50)], pauses);
     }
 
     [Fact]
     public async Task With_no_window_given_the_default_two_seconds_is_waited()
     {
-        var (reads, elapsed) = await NeverChanges(default, TimeSpan.FromMilliseconds(20));
+        var (reads, pauses) = await NeverChanges(default, TimeSpan.FromMilliseconds(20));
 
-        Assert.True(elapsed >= TimeSpan.FromMilliseconds(1500), elapsed.ToString());
+        Assert.Equal(ClientPauseGuard.SettleWindow, Total(pauses));
         Assert.True(reads >= 20, reads.ToString());
     }
 

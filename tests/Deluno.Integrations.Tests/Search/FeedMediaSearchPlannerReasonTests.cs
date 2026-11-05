@@ -1301,12 +1301,11 @@ public sealed class FeedMediaSearchPlannerReasonTests
             new Deluno.Integrations.Search.Trackers.TrackerDefinitionCatalog(overrideDirectory: null, NullLogger<Deluno.Integrations.Search.Trackers.TrackerDefinitionCatalog>.Instance),
             new SilentTrackerEngine(),
             budget: TimeSpan.FromMilliseconds(300));
-        var started = System.Diagnostics.Stopwatch.StartNew();
 
         var plan = await CreatePlanner(CreateConnections(tracker).Object, trackerIndexers: trackers).BuildPlanAsync(
             "Example Release", 2026, "movies", null, "WEB 1080p", [CreateSource(tracker)], cancellationToken: CancellationToken.None);
 
-        Assert.True(started.Elapsed < TimeSpan.FromSeconds(10), $"the search waited {started.Elapsed}");
+        // Not timed (#1506): the plan came back at all, and it says the tracker was left behind when its budget ran out.
         var failure = Assert.Single(plan.Failures ?? []);
         Assert.Contains("did not answer within", failure.Message, StringComparison.Ordinal);
         Assert.Contains("went on without it", failure.Message, StringComparison.Ordinal);

@@ -89,24 +89,48 @@ public sealed class SubtitleWantedApiTests
         Assert.Equal(130, jobs.Count(job => job.JobType == "subtitle.title.search"));
     }
 
+    /// <summary>
+    /// One page costs the same number of database commands whatever the library
+    /// holds. This used to time a page and fail at 303 ms on a busy CI runner
+    /// (#1506); commands are counted instead, which load cannot change. A page
+    /// that asked a question per title, or read every title to cut the page,
+    /// would run more commands in the large library than in the small one.
+    /// </summary>
     [Fact]
-    public async Task One_page_of_a_library_of_three_thousand_titles_comes_back_quickly()
+    public async Task One_page_of_a_library_of_three_thousand_titles_runs_as_many_commands_as_one_of_thirty()
     {
-        await using var app = await ApplicationTestHost.StartAsync();
-        var (libraryId, _) = await CreateLibraryAndMovieAsync(app);
-        await SeedFilmsAsync(app, libraryId, 2999);
+        var small = await CommandsForOnePageAsync(libraryTitles: 30);
+        var large = await CommandsForOnePageAsync(libraryTitles: 3000);
 
-        await app.Client.GetAsync("/api/subtitles/wanted?pageSize=100"); // warm the connection
-        var watch = System.Diagnostics.Stopwatch.StartNew();
-        var response = await app.Client.GetAsync("/api/subtitles/wanted?pageSize=100");
-        watch.Stop();
+        Assert.Equal(25, small.Items);
+        Assert.Equal(25, large.Items);
+        Assert.Equal(30, small.TotalCount);
+        Assert.Equal(3000, large.TotalCount);
+        Assert.True(large.Commands.Count > 0);
+        Assert.True(
+            large.Commands.Count <= 12,
+            $"one page ran {large.Commands.Count} commands:{Environment.NewLine}{string.Join(Environment.NewLine, large.Commands)}");
+        Assert.Equal(small.Commands.Count, large.Commands.Count);
+    }
+
+    private static async Task<(int Items, int TotalCount, IReadOnlyList<string> Commands)> CommandsForOnePageAsync(int libraryTitles)
+    {
+        var counter = new CommandCounter();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: CommandCountingConnectionFactory.Install(counter));
+        var (libraryId, _) = await CreateLibraryAndMovieAsync(app);
+        await SeedFilmsAsync(app, libraryId, libraryTitles - 1);
+
+        await app.Client.GetAsync("/api/subtitles/wanted?pageSize=25"); // warm anything cached
+        counter.Reset();
+        var response = await app.Client.GetAsync("/api/subtitles/wanted?pageSize=25");
+        var commands = counter.Commands;
 
         Assert.True(response.IsSuccessStatusCode);
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal(3000, document.RootElement.GetProperty("totalCount").GetInt32());
-        Assert.Equal(100, document.RootElement.GetProperty("items").GetArrayLength());
-        Console.WriteLine($"wanted page of 3000 titles: {watch.ElapsedMilliseconds} ms");
-        Assert.True(watch.ElapsedMilliseconds < 300, $"one page took {watch.ElapsedMilliseconds} ms");
+        return (
+            document.RootElement.GetProperty("items").GetArrayLength(),
+            document.RootElement.GetProperty("totalCount").GetInt32(),
+            commands);
     }
 
     private static Task SeedFilmsAsync(ApplicationTestHost app, string libraryId, int count)

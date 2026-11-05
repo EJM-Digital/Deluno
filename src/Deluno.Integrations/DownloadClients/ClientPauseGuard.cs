@@ -31,8 +31,10 @@ internal static class ClientPauseGuard
         Func<Task<DownloadClientActionResult>> send,
         TimeSpan settleWindow = default,
         TimeSpan settlePoll = default,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Func<TimeSpan, CancellationToken, Task>? delay = null)
     {
+        delay ??= Task.Delay;
         var pausing = string.Equals(action, DownloadClientActions.Pause, StringComparison.OrdinalIgnoreCase);
         var verb = pausing ? "paused" : "resumed";
         var before = await read();
@@ -65,7 +67,7 @@ internal static class ClientPauseGuard
         while (after.Has == ClientHas.Yes && after.Paused != pausing && waited < window)
         {
             var step = TimeSpan.FromTicks(Math.Min(pause.Ticks, (window - waited).Ticks));
-            await Task.Delay(step, cancellationToken);
+            await delay(step, cancellationToken);
             waited += step;
             after = await read();
         }

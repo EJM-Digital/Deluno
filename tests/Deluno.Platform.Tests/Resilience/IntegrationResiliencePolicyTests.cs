@@ -341,10 +341,10 @@ public sealed class IntegrationResiliencePolicyTests
         // #865: TMDb (and any other integration) can say exactly how long to
         // wait on a 429. A generic backoff here would use InitialDelay (5s
         // below); honoring Retry-After (20ms) finishes long before that.
-        var policy = CreatePolicy();
+        var waits = new RecordingTimeProvider();
+        var policy = CreatePolicy(waits);
         var calls = 0;
 
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var result = await policy.ExecuteAsync(
             new IntegrationResilienceRequest(
                 "metadata:rate-limited",
@@ -365,13 +365,11 @@ public sealed class IntegrationResiliencePolicyTests
                 ? IntegrationResilienceOutcome.Success
                 : IntegrationResilienceOutcome.RetryableFailure,
             CancellationToken.None);
-        stopwatch.Stop();
 
         Assert.Equal("ok", result.Value);
         Assert.Equal(2, result.Attempts);
-        Assert.True(
-            stopwatch.Elapsed < TimeSpan.FromSeconds(2),
-            $"Expected the short Retry-After wait, not the 5s generic backoff; took {stopwatch.Elapsed}.");
+        // The wait asked for is read off the clock, not timed (#1506): the 20 ms Retry-After, not the 5 s generic backoff.
+        Assert.Equal([TimeSpan.FromMilliseconds(20)], waits.Waits);
     }
 
     [Fact]
@@ -586,6 +584,18 @@ public sealed class IntegrationResiliencePolicyTests
 
         var secondAfterOutage = await policy.ExecuteAsync(request, _ => Task.FromResult("still-down"), _ => IntegrationResilienceOutcome.RetryableFailure, CancellationToken.None);
         Assert.Equal(TimeSpan.FromMinutes(5), secondAfterOutage.RetryAfterUtc - timeProvider.GetUtcNow());
+    }
+
+    /// <summary>Records each wait asked of the clock and lets it end at once.</summary>
+    private sealed class RecordingTimeProvider : TimeProvider
+    {
+        public List<TimeSpan> Waits { get; } = [];
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            lock (Waits) Waits.Add(dueTime);
+            return base.CreateTimer(callback, state, TimeSpan.Zero, Timeout.InfiniteTimeSpan);
+        }
     }
 
     private sealed class ManualTimeProvider(DateTimeOffset now) : TimeProvider

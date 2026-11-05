@@ -89,6 +89,8 @@ public sealed class AccountRoutesEveryAnswerTests
             (await app.CreateAnonymousClient().PostAsJsonAsync("/api/auth/login", new LoginRequest("intruder", "a-long-password-1"))).StatusCode);
     }
 
+    // Wall time is the point here (the answer must not betray which name exists), so it runs with the Timing tests, alone (#1506).
+    [Trait("Category", "Timing")]
     [Fact]
     public async Task A_wrong_password_and_an_unknown_user_get_the_same_refusal_after_the_same_work()
     {

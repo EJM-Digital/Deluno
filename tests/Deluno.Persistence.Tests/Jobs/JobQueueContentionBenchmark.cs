@@ -35,6 +35,8 @@ public sealed class JobQueueContentionBenchmark(ITestOutputHelper output)
     private const int Workers = 25;
     private const int JobsPerWorker = 40;
 
+    // Wall time is the point here (round trips a second), so it runs with the Timing tests, alone (#1506).
+    [Trait("Category", "Timing")]
     [Fact]
     public async Task Every_lane_leasing_at_once_does_not_starve_any_of_them()
     {

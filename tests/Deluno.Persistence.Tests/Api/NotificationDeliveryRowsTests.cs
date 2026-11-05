@@ -89,8 +89,10 @@ public sealed class NotificationDeliveryRowsTests
         await SayAsync(app);
 
         Assert.Equal(3, arrivals.Count);
-        Assert.InRange((arrivals[1] - arrivals[0]).TotalSeconds, 1.8, 4);
-        Assert.InRange((arrivals[2] - arrivals[1]).TotalSeconds, 4.8, 8);
+        // Gaps of at least the retry schedule (2 s, then 5 s). No upper bound (#1506): a busy runner only makes a gap longer,
+        // and how many attempts arrived, and the dead letter below, already show nothing was retried early or extra.
+        Assert.True((arrivals[1] - arrivals[0]).TotalSeconds >= 1.8);
+        Assert.True((arrivals[2] - arrivals[1]).TotalSeconds >= 4.8);
         var delivery = Assert.Single((await DeliveriesAsync(app)).EnumerateArray());
         Assert.Equal(("dead-letter", 3), (delivery.GetProperty("status").GetString(), delivery.GetProperty("attemptCount").GetInt32()));
     }

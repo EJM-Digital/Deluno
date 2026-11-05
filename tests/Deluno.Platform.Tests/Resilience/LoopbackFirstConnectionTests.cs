@@ -26,17 +26,19 @@ public sealed class LoopbackFirstConnectionTests
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
         var serving = ServeAsync(listener, requests: 3);
 
+        // The cost was IPv6 being tried first, so something listening on ::1 at the same port sees every connection that goes there.
+        // Counted, not timed (#1506): a busy runner can make three connections slow without anything being tried in the wrong order.
+        using var ipv6Watcher = ListenOnIPv6Loopback(port);
+
         using var http = new HttpClient(LoopbackFirstConnection.CreateHandler()) { Timeout = TimeSpan.FromSeconds(10) };
-        var clock = Stopwatch.StartNew();
         for (var i = 0; i < 3; i++)
         {
             // Connection: close, as several clients answer, so each request opens a new connection.
             Assert.Equal("ok", await http.GetStringAsync($"http://localhost:{port}/"));
         }
 
-        clock.Stop();
         await serving;
-        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(1.5), $"Three connections to localhost took {clock.Elapsed.TotalMilliseconds:N0} ms.");
+        Assert.False(ipv6Watcher?.Pending() ?? false, "A connection to localhost went to IPv6 (::1) before IPv4.");
     }
 
     [Fact]
@@ -122,6 +124,25 @@ public sealed class LoopbackFirstConnectionTests
         }
 
         Assert.True(offenders.Count == 0, "Build handlers from LoopbackFirstConnection: " + string.Join(", ", offenders));
+    }
+
+    private static TcpListener? ListenOnIPv6Loopback(int port)
+    {
+        if (!Socket.OSSupportsIPv6)
+        {
+            return null;
+        }
+
+        try
+        {
+            var listener = new TcpListener(IPAddress.IPv6Loopback, port);
+            listener.Start();
+            return listener;
+        }
+        catch (SocketException)
+        {
+            return null; // reason: the port is taken on ::1 or IPv6 loopback is off; then no connection can go there to be counted
+        }
     }
 
     private static async Task ServeAsync(TcpListener listener, int requests)

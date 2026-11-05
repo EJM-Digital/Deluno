@@ -32,6 +32,8 @@ namespace Deluno.Persistence.Tests.Movies;
 /// </summary>
 public sealed class CatalogueScaleBenchmark(ITestOutputHelper output)
 {
+    // Wall time is the point here (a keyset seek must not grow with the library), so it runs with the Timing tests, alone (#1506).
+    [Trait("Category", "Timing")]
     [Theory]
     [InlineData(10_000)]
     [InlineData(20_000)]

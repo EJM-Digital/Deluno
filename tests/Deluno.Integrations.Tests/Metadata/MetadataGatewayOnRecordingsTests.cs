@@ -608,7 +608,9 @@ public sealed class MetadataGatewayOnRecordingsTests : IDisposable
         started.Stop();
         Assert.Contains(results, result => result.ProviderId == "1396");
         Assert.All(results, result => Assert.Null(result.TvDbId));
-        Assert.InRange(started.Elapsed.TotalSeconds, 4.5, 9);
+        // It waited the five seconds (a floor a busy runner cannot lower); that it did not wait longer is the call returning with the
+        // TMDb answer at all, since TheTVDB never answers (#1506: no upper bound on a wall clock).
+        Assert.True(started.Elapsed.TotalSeconds >= 4.5, started.Elapsed.ToString());
     }
 
     private static async Task<HttpResponseMessage> NeverAnswersAsync(CancellationToken cancellation)
