@@ -11,26 +11,26 @@ $script:UsenetKinds = @('sabnzbd', 'nzbget')
 $script:AllClientKinds = $script:TorrentKinds + $script:UsenetKinds
 
 # The host's own scenarios of the platform extras group (scenarios/G24-PlatformExtras.ps1), run through Run-Update.ps1.
-$script:PlatformExtrasHostIds = @('update.preferences-and-background-check', 'update.killed-mid-apply', 'update.older-build-newer-database', 'uninstall.leaves-nothing-behind', 'uninstall.removes-the-sign-in-entry', 'uninstall.removes-the-windows-service', 'install.silent-first-install', 'companions.install-from-the-page', 'uninstall.custom-data-root', 'update.with-bundled-clients', 'update.locked-install-folder', 'update.background-check-repeats', 'uninstall.keeps-bundled-apps', 'picker.usenet-login-and-subset', 'update.updates-page-follows')
+$script:PlatformExtrasHostIds = @('update.preferences-and-background-check', 'update.killed-mid-apply', 'update.older-build-newer-database', 'uninstall.leaves-nothing-behind', 'uninstall.removes-the-sign-in-entry', 'uninstall.removes-the-windows-service', 'install.silent-first-install', 'companions.install-from-the-page', 'uninstall.custom-data-root', 'update.with-bundled-clients', 'update.locked-install-folder', 'update.background-check-repeats', 'uninstall.keeps-bundled-apps', 'picker.usenet-login-and-subset', 'update.updates-page-follows', 'update.with-all-bundled-clients', 'update.disk-full', 'companions.elevated-refusals')
 
 function Get-ScenarioPlan {
     $all = $script:AllClientKinds
     $groups = @(
         @{ Name = 'install';  Function = 'Invoke-GroupInstall';  Ids = @('install-first-run', 'install.clients-ready') }
         @{ Name = 'nzbgetsetup'; Function = 'Invoke-GroupNzbgetSetup'; Ids = @('nzbget.setup-twice') }
-        @{ Name = 'films';    Function = 'Invoke-GroupFilms';    Ids = @($all | ForEach-Object { "film.$_" }) + @('film.extra-left-out') + @($all | Where-Object { $_ -ne 'qbittorrent' } | ForEach-Object { "film.extra-left-out.$_" }) }
+        @{ Name = 'films';    Function = 'Invoke-GroupFilms';    Ids = @($all | ForEach-Object { "film.$_" }) + @('film.extra-left-out') + @($all | Where-Object { $_ -ne 'qbittorrent' } | ForEach-Object { "film.extra-left-out.$_" }) + @('film.4x3', 'film.tv-episode') }
         @{ Name = 'removal';  Function = 'Invoke-GroupRemoval';  Ids = @($all | ForEach-Object { "remove-copy.$_.folder" }) + @($script:TorrentKinds | ForEach-Object { "remove-copy.$_.file" }) }
         @{ Name = 'resend';   Function = 'Invoke-GroupResend';   Ids = @(foreach ($t in 'before', 'during', 'after') { foreach ($k in $all) { "resend.$t.$k" } }) + @('resend.single-file.takeover') }
         @{ Name = 'stuck';    Function = 'Invoke-GroupStuck';    Ids = @($all | ForEach-Object { "stuck.zero.$_" }) + @($all | ForEach-Object { "stuck.short.$_" }) + @($script:TorrentKinds | ForEach-Object { "stuck.peers.$_" }) + @($script:UsenetKinds | ForEach-Object { "stuck.slow.$_" }) }
         @{ Name = 'keepseeding'; Function = 'Invoke-GroupKeepSeeding'; Ids = @($script:TorrentKinds | ForEach-Object { "keepseeding.moved.$_" }) + @($script:TorrentKinds | ForEach-Object { "keepseeding.public-removed.$_" }) }
-        @{ Name = 'outage';   Function = 'Invoke-GroupOutage';   Ids = @('outage.idle', 'outage.inflight') }
+        @{ Name = 'outage';   Function = 'Invoke-GroupOutage';   Ids = @('outage.idle', 'outage.inflight', 'outage.failed-handoff-health') }
         @{ Name = 'tryagain'; Function = 'Invoke-GroupTryAgain'; Ids = @($all | ForEach-Object { "tryagain.$_" }) }
         @{ Name = 'vanish';   Function = 'Invoke-GroupVanish';   Ids = @(foreach ($t in 'before', 'waiting') { foreach ($k in $all) { "vanish.$t.$k" } }) }
         @{ Name = 'problems'; Function = 'Invoke-GroupProblems'; Ids = @('problems.dismiss-everywhere', 'activity.one-story') }
         @{ Name = 'seasonpack'; Function = 'Invoke-GroupSeasonPack'; Ids = @('seasonpack.no-library') }
         @{ Name = 'layout';   Function = 'Invoke-GroupLayout';   Ids = @('layout.390-folder-chain') }
         @{ Name = 'subtitleswanted'; Function = 'Invoke-GroupSubtitlesWanted'; Ids = @('subtitleswanted.paging') }
-        @{ Name = 'volumes'; Function = 'Invoke-GroupVolumes'; Ids = @('volumes.second-drive', 'volumes.exfat-volume', 'volumes.smb-share', 'volumes.dead-share') }
+        @{ Name = 'volumes'; Function = 'Invoke-GroupVolumes'; Ids = @('volumes.second-drive', 'volumes.exfat-volume', 'volumes.smb-share', 'volumes.dead-share', 'volumes.pack-hardlink', 'volumes.share-dropped-mid-move', 'volumes.unreadable-free-space') }
         @{ Name = 'importfaults'; Function = 'Invoke-GroupImportFaults'; Ids = @('importfaults.bad-files', 'importfaults.kill-mid-copy') }
         @{ Name = 'machine'; Function = 'Invoke-GroupMachine'; Ids = @('machine.system-readings', 'machine.guide-contract', 'machine.browse-errors', 'machine.browse-unc-large', 'machine.picker-timeout', 'machine.long-path', 'machine.automation-off', 'machine.processor-hold', 'machine.external-redownload', 'machine.hub-pushes') }
         @{ Name = 'firewall'; Function = 'Invoke-GroupFirewall'; Ids = @('firewall.first-run-rule', 'firewall.screen-allow', 'firewall.screen-declined', 'firewall.tray-allow-and-revoke') }

@@ -154,6 +154,8 @@ test.describe("A movie's page", () => {
     await page.getByRole("button", { name: "Remove from Deluno", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: `Remove ${movie.title}?` });
     await expect(dialog.getByText("Deluno has no imported files recorded for this movie.")).toBeVisible();
+    // A title with no files offers no way into the recycle bin.
+    await expect(dialog.getByRole("link", { name: "Open the recycle bin" })).toHaveCount(0);
     await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(dialog).toHaveCount(0);
     expect((await api(page, "GET", `/api/movies/${movie.id}`)).status).toBe(200);

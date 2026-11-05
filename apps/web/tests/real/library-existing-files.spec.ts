@@ -200,6 +200,10 @@ test.describe("Review existing files", () => {
     await expect(files).toBeEnabled();
     await expect(files).not.toBeChecked();
     await expect(dialog.getByRole("link", { name: "Open the recycle bin" })).toBeVisible();
+    await expect(dialog.getByRole("link", { name: "Open the recycle bin" })).toHaveAttribute("href", "/system/recycle-bin");
+    // The server's real keep period, in words: "for N days" (or the retention wording when none is set), never "cannot be undone".
+    await expect(dialog.getByText(/Deluno's recycle bin\. They are kept (for \d+ days?|until the recycle bin's retention runs out)/)).toBeVisible();
+    await expect(dialog.getByText(/cannot be undone/i)).toHaveCount(0);
     await files.click();
     await expect(files).toBeChecked();
     const requests = recordRequests(page);

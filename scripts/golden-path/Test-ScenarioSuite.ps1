@@ -286,7 +286,7 @@ foreach ($id in $allIds) {
 }
 Check "every planned scenario id ($($allIds.Count)) can be chosen alone, and only the VM ones need the VM" ($notAlone.Count -eq 0) ($notAlone -join ', ')
 Check 'a run of the update scenario alone needs no VM stage' (-not (Get-RunScope -Plan $plan -Scenarios @('update.over-running-previous')).NeedVm)
-Check 'a run of groups still lists their ids' ((@((Get-RunScope -Plan $plan -Groups @('outage')).ChosenIds) -join ',') -eq 'outage.idle,outage.inflight')
+Check 'a run of groups still lists their ids' ((@((Get-RunScope -Plan $plan -Groups @('outage')).ChosenIds) -join ',') -eq 'outage.idle,outage.inflight,outage.failed-handoff-health')
 $onlyOne = @(Merge-SuiteResults -Plan $plan -Reported @() -Scenarios @('film.deluge', 'stuck.zero.sabnzbd'))
 Check 'the results of a scenario run list only the chosen scenarios (a missing one is an error)' ($onlyOne.Count -eq 2 -and @($onlyOne | Where-Object { $_.Status -ne 'error' }).Count -eq 0)
 Check 'a run of a scenario never records a pass' ((Get-SuiteVerdict -Merged @([pscustomobject]@{ Group = 'films'; Id = 'film.deluge'; Title = ''; Status = 'pass'; Seconds = 1; Error = ''; Checks = @(); Notes = @() }) -FullRun $false).State -eq 'failure')

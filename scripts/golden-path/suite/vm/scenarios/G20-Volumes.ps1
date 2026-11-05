@@ -13,6 +13,10 @@
                              offline mid-check marks nothing missing and comes back
       volumes.dead-share     a share that never answers (a documentation address, nothing routes there): the library is reported not
                              reachable within the 5 s the check allows and the page that reads it is not held up
+      volumes.pack-hardlink  a season pack by hard link: rolled back whole when a file cannot be placed, a copy per file across volumes,
+                             and mode mixed for a pack split across two volumes
+      volumes.share-dropped-mid-move  a move onto a share whose server stops in the middle of the copy: never lost, no half copy left
+      volumes.unreadable-free-space   a destination whose free space cannot be read (a share) is never a block
 #>
 
 $script:VolDir = 'C:\golden\suite\vols'
@@ -588,6 +592,282 @@ public class StallProxy {
             if ($proxy) { $proxy.Stop() }
             Remove-SmbShare -Name $shareName -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath $shareDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+    # ------------------------------------------------------------------------------------------------ a season pack across volumes
+    Invoke-Scenario -Id 'volumes.pack-hardlink' -Title 'A season pack imported by hard link: a pack that cannot be finished is rolled back whole, a pack across two volumes falls back to a copy per file (mode copy), and a pack split across volumes is reported as mixed' -Body {
+        $token = New-FilmToken
+        $srcRoot = (Join-Path $script:VolDir "src_Pack$token")
+        $title = 'Breaking Bad'; $dotted = 'Breaking.Bad'; $year = 2008
+        $libs = @(); $seriesIds = @(); $minBefore = $null; $lock = $null
+        $tvProfile = (Get-Library -MediaType 'tv').qualityProfileId
+        $smallBytes = (Get-Item -LiteralPath $script:Fx.Base['small']).Length
+
+        # A TV library on a root, with the show in it and its first two episodes in the catalogue (a made-up title owns no episodes).
+        function New-PackShow {
+            param([Parameter(Mandatory)] [string] $Root, [Parameter(Mandatory)] [string] $Name)
+            New-Item -ItemType Directory -Force -Path $Root | Out-Null
+            $lib = Try-Deluno -Method POST -Path '/api/libraries' -Body @{
+                name = $Name; mediaType = 'tv'; purpose = 'Main library'; rootPath = $Root; qualityProfileId = $tvProfile
+                autoSearchEnabled = $false; missingSearchEnabled = $false; upgradeSearchEnabled = $false
+                removeEmptySourceFolders = $false; searchIntervalMinutes = 720; retryDelayHours = 6; maxItemsPerRun = 10
+            }
+            if ($lib.Status -lt 200 -or $lib.Status -ge 300) { throw (Hide-Secrets "Making the library $Name answered $($lib.Status). $($lib.Raw)") }
+            $series = Invoke-Deluno -Method POST -Path '/api/series/' -Body @{ title = $title; startYear = $year; monitored = $true; libraryId = $lib.Data.id }
+            $sid = $series.id
+            Try-Deluno -Method POST -Path "/api/series/$sid/metadata/refresh" -TimeoutSec 120 | Out-Null
+            $catalogued = Wait-Until -TimeoutSec 180 -IntervalSec 3 -Condition {
+                $inv = Try-Deluno -Path "/api/series/$sid/inventory"
+                $have = @($inv.Data.episodes | Where-Object { $_.seasonNumber -eq 1 -and $_.episodeNumber -in 1, 2 })
+                if ($have.Count -eq 2) { $have } else { $null }
+            }
+            [pscustomobject]@{ Library = $lib.Data; SeriesId = $sid; Catalogued = $catalogued.Ok }
+        }
+        function Get-PackEpisodeFiles {
+            param([Parameter(Mandatory)] [string] $SeriesId)
+            $inv = Try-Deluno -Path "/api/series/$SeriesId/inventory"
+            @($inv.Data.episodes | Where-Object { $_.hasFile -and $_.seasonNumber -eq 1 -and $_.episodeNumber -in 1, 2 })
+        }
+        function Invoke-PackImport {
+            param([Parameter(Mandatory)] [string] $Dir, [Parameter(Mandatory)] $Show, [Parameter(Mandatory)] [string] $Mode, [bool] $Fallback = $true)
+            $pv = [ordered]@{ sourcePath = $Dir; fileName = ((Split-Path $Dir -Leaf) + '.mkv'); mediaType = 'tv'; title = $title; year = $year; genres = @(); tags = @(); seriesId = $Show.SeriesId; libraryId = $Show.Library.id }
+            $run = Try-Deluno -Method POST -Path '/api/filesystem/import/execute-batch' -TimeoutSec 600 -Body @{
+                items = @(@{ preview = $pv; transferMode = $Mode; overwrite = $false; allowCopyFallback = $Fallback })
+            }
+            $item = if ($run.Data -and $run.Data.results) { @($run.Data.results)[0] } else { $null }
+            [pscustomobject]@{ Status = $run.Status; Item = $item; Raw = $run.Raw; Succeeded = [bool]($item -and $item.succeeded); Message = $(if ($item) { [string]$item.message } else { [string]$run.Raw }); Response = $(if ($item) { $item.response } else { $null }) }
+        }
+        # A pack folder of two small episodes (S01E01, S01E02), written an hour ago so they count as settled.
+        function New-PackFolder {
+            param([Parameter(Mandatory)] [string] $Name, [string] $SecondEpisodeIn)
+            $dir = Join-Path $srcRoot $Name
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            $paths = @()
+            foreach ($ep in 1, 2) {
+                $parent = if ($ep -eq 2 -and $SecondEpisodeIn) { $SecondEpisodeIn } else { $dir }
+                $f = Join-Path $parent ("{0}.S01E{1:d2}.720p.WEB-DL.x264-GOLDEN.mkv" -f $dotted, $ep)
+                Copy-Item -LiteralPath $script:Fx.Base['small'] -Destination $f -Force
+                (Get-Item -LiteralPath $f).LastWriteTime = (Get-Date).AddHours(-1)
+                $paths += $f
+            }
+            [pscustomobject]@{ Dir = $dir; Files = $paths }
+        }
+        function Get-PackLeftovers {
+            param([Parameter(Mandatory)] [string] $Root)
+            @(Get-VolumeFiles -Path $Root | Where-Object { $_.Extension -notin '.mkv', '.mp4', '.avi' })
+        }
+
+        try {
+            $minBefore = Get-MinimumFreeSpaceMb
+            Set-MinimumFreeSpaceMb -Mb 20
+
+            # ---------------------------------------------- 1. a pack that cannot be finished is rolled back whole (same volume, hard links)
+            $rootC = "C:\Media\Pack$token"
+            $showC = New-PackShow -Root $rootC -Name "Pack on C $token"
+            $libs += $showC.Library; $seriesIds += $showC.SeriesId
+            Add-Check 'The show''s first two episodes are in its catalogue (from its metadata)' $showC.Catalogued ''
+            if (-not $showC.Catalogued) { return }
+            $pk1 = New-PackFolder -Name "Rollback.$token"
+            # The second episode is held open with no sharing, so it can neither be linked nor copied: the pack stops after the first
+            # episode may already be placed, and everything placed must go again. (If the import refuses the pack before placing
+            # anything, the checks below hold just the same: nothing of it is in the library and nothing is lost.)
+            $lock = [System.IO.File]::Open($pk1.Files[1], 'Open', 'Read', 'None')
+            $r1 = Invoke-PackImport -Dir $pk1.Dir -Show $showC -Mode 'hardlink' -Fallback $true
+            if ($lock) { $lock.Dispose(); $lock = $null }
+            Save-Evidence -Name 'volumes-pack-rollback.json' -Text ($r1 | Select-Object Status, Succeeded, Message, Response | ConvertTo-Json -Depth 6)
+            Add-Check 'A pack with a file that cannot be linked or copied is not reported as imported' (-not $r1.Succeeded) $r1.Message
+            $videos1 = @(Get-VolumeFiles -Path $rootC | Where-Object { $_.Extension -in '.mkv', '.mp4', '.avi' })
+            Add-Check 'Nothing of the pack is left in the library: no episode file, not even the first one' ($videos1.Count -eq 0) (($videos1 | ForEach-Object { $_.FullName }) -join ', ')
+            $left1 = Get-PackLeftovers -Root $rootC
+            Add-Check 'No staging file or backup is left beside where it would have gone' ($left1.Count -eq 0) (($left1 | ForEach-Object { $_.Name }) -join ', ')
+            Add-Check 'Both source episodes are still there and whole' ((@($pk1.Files | Where-Object { (Test-Path -LiteralPath $_) -and (Get-Item -LiteralPath $_).Length -eq $smallBytes }).Count) -eq 2) ''
+            Add-Check 'The show owns no episode file, so the catalogue agrees with the disk' ((Get-PackEpisodeFiles -SeriesId $showC.SeriesId).Count -eq 0) ''
+            # The same pack with nothing in the way goes through: the rollback left nothing half done behind it.
+            $r1b = Invoke-PackImport -Dir $pk1.Dir -Show $showC -Mode 'hardlink' -Fallback $true
+            Save-Evidence -Name 'volumes-pack-retry.json' -Text ($r1b | Select-Object Status, Succeeded, Message, Response | ConvertTo-Json -Depth 6)
+            Add-Check 'Once nothing holds the file the same pack imports, both episodes, by hard link' ($r1b.Succeeded -and (Get-PackEpisodeFiles -SeriesId $showC.SeriesId).Count -eq 2 -and $r1b.Response -and $r1b.Response.transferModeUsed -eq 'hardlink') "$($r1b.Message); mode: $($r1b.Response.transferModeUsed)"
+
+            # ---------------------------------------------- 2. a library on a second volume: every file falls back to a copy
+            New-TestVolume -Name 'packlib' -SizeMb 320 -Fs ntfs -Letter 'V' | Out-Null
+            $showV = New-PackShow -Root 'V:\TV' -Name "Pack on V $token"
+            $libs += $showV.Library; $seriesIds += $showV.SeriesId
+            Add-Check 'The show on the second volume has its first two episodes in the catalogue' $showV.Catalogued ''
+            if ($showV.Catalogued) {
+                $pk2 = New-PackFolder -Name "Cross.$token"
+                $r2 = Invoke-PackImport -Dir $pk2.Dir -Show $showV -Mode 'hardlink' -Fallback $true
+                Save-Evidence -Name 'volumes-pack-crossvolume.json' -Text ($r2 | Select-Object Status, Succeeded, Message, Response | ConvertTo-Json -Depth 6)
+                Add-Check 'A pack whose hard links the volume refuses still imports, file by file, by copy' $r2.Succeeded $r2.Message
+                Add-Check 'It reports the copy fallback and the mode copy' ($r2.Response -and $r2.Response.usedFallback -eq $true -and $r2.Response.transferModeUsed -eq 'copy') "used fallback: $($r2.Response.usedFallback), mode: $($r2.Response.transferModeUsed)"
+                $onV = @(Get-VolumeFiles -Path 'V:\TV' | Where-Object { $_.Extension -eq '.mkv' })
+                Add-Check 'Both episodes are on the second volume, whole' ($onV.Count -eq 2 -and @($onV | Where-Object { $_.Length -ne $smallBytes }).Count -eq 0) (($onV | ForEach-Object { "$($_.Name) $($_.Length)" }) -join ', ')
+                Add-Check 'No staging file or restart mark is left on the second volume' ((Get-PackLeftovers -Root 'V:\TV').Count -eq 0) ''
+            }
+            Remove-TestVolume -Name 'packlib'
+
+            # ---------------------------------------------- 3. a pack split across two volumes: one episode links, the other copies: mixed
+            $rootC2 = "C:\Media\PackMix$token"
+            $showM = New-PackShow -Root $rootC2 -Name "Pack mixed $token"
+            $libs += $showM.Library; $seriesIds += $showM.SeriesId
+            Add-Check 'The show for the mixed pack has its first two episodes in the catalogue' $showM.Catalogued ''
+            if ($showM.Catalogued) {
+                $packDir = Join-Path $srcRoot "Mixed.$token"
+                $mount = Join-Path $packDir 'part2'
+                New-Item -ItemType Directory -Force -Path $packDir | Out-Null
+                New-TestVolume -Name 'packpart' -SizeMb 320 -Fs ntfs -MountFolder $mount | Out-Null
+                $pk3 = New-PackFolder -Name "Mixed.$token" -SecondEpisodeIn $mount
+                $r3 = Invoke-PackImport -Dir $pk3.Dir -Show $showM -Mode 'hardlink' -Fallback $true
+                Save-Evidence -Name 'volumes-pack-mixed.json' -Text ($r3 | Select-Object Status, Succeeded, Message, Response | ConvertTo-Json -Depth 6)
+                Add-Check 'A pack with one episode on this volume and one on another imports' $r3.Succeeded $r3.Message
+                Add-Check 'It reports the mode as mixed, with the copy fallback used' ($r3.Response -and $r3.Response.transferModeUsed -eq 'mixed' -and $r3.Response.usedFallback -eq $true) "used fallback: $($r3.Response.usedFallback), mode: $($r3.Response.transferModeUsed)"
+                $onC = @(Get-VolumeFiles -Path $rootC2 | Where-Object { $_.Extension -eq '.mkv' })
+                Add-Check 'Both episodes are in the library, whole' ($onC.Count -eq 2 -and @($onC | Where-Object { $_.Length -ne $smallBytes }).Count -eq 0) (($onC | ForEach-Object { "$($_.Name) $($_.Length)" }) -join ', ')
+                Remove-TestVolume -Name 'packpart'
+            }
+        }
+        finally {
+            if ($lock) { $lock.Dispose() }
+            if ($null -ne $minBefore) { try { Set-MinimumFreeSpaceMb -Mb $minBefore } catch { } }
+            foreach ($sid in $seriesIds) { Try-Deluno -Method POST -Path '/api/series/bulk' -Body @{ seriesIds = @($sid); operation = 'remove' } | Out-Null }
+            foreach ($l in $libs) { Remove-VolumeLibrary -Library $l }
+            Remove-TestVolume -Name 'packlib'
+            Remove-TestVolume -Name 'packpart'
+            Remove-Item -LiteralPath $srcRoot, "C:\Media\Pack$token", "C:\Media\PackMix$token" -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    # ------------------------------------------------------------------------------------------------ a share that drops in the middle of a move
+    Invoke-Scenario -Id 'volumes.share-dropped-mid-move' -Title 'A move onto a network share while the share drops in the middle of the copy: the film is still whole in the source or on the share, never lost, and the restart recovery clears the half copy once the share is back' -Body {
+        $token = New-FilmToken
+        $shareName = "goldmove$token".ToLower()
+        $shareDir = Join-Path $script:VolDir "smbmove-$token"
+        $srcRoot = (Join-Path $script:VolDir "src_SmbMove$token")
+        $unc = "\\localhost\$shareName"
+        $lib = $null; $movie = $null; $minBefore = $null; $serverStopped = $false; $job = $null
+        try {
+            New-Item -ItemType Directory -Force -Path $shareDir | Out-Null
+            New-SmbShare -Name $shareName -Path $shareDir -FullAccess 'Everyone' | Out-Null
+            $up = Wait-Until -TimeoutSec 30 -IntervalSec 1 -Condition { Test-Path -LiteralPath $unc }
+            Add-Check 'The loopback share answers' $up.Ok $unc
+            if (-not $up.Ok) { return }
+            $lib = New-VolumeLibrary -Name "Dropping share $token" -Root "$unc\Movies"
+            $minBefore = Get-MinimumFreeSpaceMb
+            Set-MinimumFreeSpaceMb -Mb 20
+
+            # A real video with zeros after it, large enough that the copy to the share lasts long enough to catch.
+            $size = [long]6GB
+            if ((Get-FreeBytes -Drive 'C') -lt [long]20GB) { $size = [long]2GB }
+            $title = "Smb Drop $token"
+            $src = New-VolumeSource -Folder $srcRoot -Title $title
+            $fs = [System.IO.File]::Open($src, 'Open', 'ReadWrite', 'None')
+            try { $fs.SetLength($size) } finally { $fs.Dispose() }
+            (Get-Item -LiteralPath $src).LastWriteTime = (Get-Date).AddHours(-1)
+            $movie = New-VolumeMovie -Title $title -Library $lib
+
+            $pv = [ordered]@{ sourcePath = $src; fileName = (Split-Path $src -Leaf); mediaType = 'movies'; title = $title; year = 2008; genres = @(); tags = @(); libraryId = $lib.id }
+            $job = Start-Job -ScriptBlock {
+                param($url, $token, $body)
+                try {
+                    Invoke-WebRequest -Uri "$url/api/filesystem/import/execute-batch" -Method Post -ContentType 'application/json' -Headers @{ Authorization = "Bearer $token" } -Body $body -UseBasicParsing -TimeoutSec 900 | Out-Null
+                } catch { }
+            } -ArgumentList $script:S.DelunoUrl, $script:S.Token, (@{ items = @(@{ preview = $pv; transferMode = 'move'; overwrite = $false; allowCopyFallback = $true }) } | ConvertTo-Json -Depth 8)
+            # Look at the share's folder until the temporary copy of the film appears there, then drop the share.
+            $caught = $null
+            $until = (Get-Date).AddSeconds(180)
+            while (-not $caught -and (Get-Date) -lt $until) {
+                foreach ($p in [System.IO.Directory]::EnumerateFiles($shareDir, '*', [System.IO.SearchOption]::AllDirectories)) {
+                    if ((Split-Path $p -Leaf) -match 'deluno' -and $p -notmatch '[.]json$') { $caught = (Split-Path $p -Leaf); break }
+                }
+                if (-not $caught) { Start-Sleep -Milliseconds 15 } # reason: a pause between looks inside a loop bounded by its deadline
+            }
+            Add-Check 'The move was under way (the temporary copy was on the share, not yet in place)' ([bool]$caught) $(if ($caught) { $caught } else { 'the copy finished or never began before it could be caught' })
+            Stop-Service -Name LanmanServer -Force
+            $serverStopped = $true
+            $gone = Wait-Until -TimeoutSec 30 -IntervalSec 1 -Condition { -not (Test-Path -LiteralPath $unc) }
+            Add-Check 'The share dropped in the middle of the copy' $gone.Ok ''
+            $ended = Wait-Job $job -Timeout 300
+            Add-Check 'The import ended instead of hanging on the dead share' ([bool]$ended) ''
+            Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue; $job = $null
+            $srcWhole = (Test-Path -LiteralPath $src) -and (Get-Item -LiteralPath $src).Length -eq $size
+            Add-Check 'The source film is still there and whole (a move deletes it only after the copy is checked)' $srcWhole "exists: $(Test-Path -LiteralPath $src)"
+
+            Start-Service -Name LanmanServer
+            $serverStopped = $false
+            $back = Wait-Until -TimeoutSec 90 -IntervalSec 2 -Condition { Test-Path -LiteralPath $unc }
+            Add-Check 'The share comes back' $back.Ok ''
+            # Recovery runs on its own once the share answers: the half copy and its restart mark are dealt with, whichever way.
+            $settled = Wait-Until -TimeoutSec 300 -IntervalSec 3 -Condition {
+                $rest = @(Get-ChildItem -LiteralPath $shareDir -Recurse -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.Extension -notin '.mkv', '.mp4', '.avi' })
+                if ($rest.Count -eq 0) { $true } else { $null }
+            }
+            $files = @(Get-ChildItem -LiteralPath $shareDir -Recurse -File -Force -ErrorAction SilentlyContinue)
+            Save-Evidence -Name 'volumes-share-dropped-after.json' -Text (($files | ForEach-Object { [pscustomobject]@{ name = $_.FullName; length = $_.Length } }) | ConvertTo-Json)
+            Add-Check 'No half-copied file, staging file or restart mark is left on the share' $settled.Ok (($files | ForEach-Object { '{0} {1}' -f $_.Name, $_.Length }) -join '; ')
+            $videos = @($files | Where-Object { $_.Extension -in '.mkv', '.mp4', '.avi' })
+            Add-Check 'Either one whole film is on the share or nothing is (never a partial one)' (($videos.Count -eq 0) -or ($videos.Count -eq 1 -and $videos[0].Length -eq $size)) (($videos | ForEach-Object { '{0} {1} of {2}' -f $_.Name, $_.Length, $size }) -join '; ')
+            $srcNow = (Test-Path -LiteralPath $src) -and (Get-Item -LiteralPath $src).Length -eq $size
+            Add-Check 'The film is never lost: the share has it whole or the source still does' ($srcNow -or ($videos.Count -eq 1 -and $videos[0].Length -eq $size)) "source whole: $srcNow; share: $($videos.Count) file(s)"
+        }
+        finally {
+            if ($job) { Stop-Job $job -ErrorAction SilentlyContinue; Remove-Job $job -Force -ErrorAction SilentlyContinue }
+            if ($serverStopped -or (Get-Service -Name LanmanServer).Status -ne 'Running') { try { Start-Service -Name LanmanServer } catch { } }
+            if ($null -ne $minBefore) { try { Set-MinimumFreeSpaceMb -Mb $minBefore } catch { } }
+            Remove-VolumeMovie -Movie $movie
+            Remove-VolumeLibrary -Library $lib
+            Remove-SmbShare -Name $shareName -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $shareDir, $srcRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    # ------------------------------------------------------------------------------------------------ a volume that cannot report its free space
+    Invoke-Scenario -Id 'volumes.unreadable-free-space' -Title 'A destination whose free space cannot be read (a network share has no drive to ask) is never treated as a block, while the same minimum on a local drive is enforced' -Body {
+        $token = New-FilmToken
+        $shareName = "goldfree$token".ToLower()
+        $shareDir = Join-Path $script:VolDir "smbfree-$token"
+        $srcRoot = (Join-Path $script:VolDir "src_Free$token")
+        $unc = "\\localhost\$shareName"
+        $libShare = $null; $libC = $null; $movies = @(); $minBefore = $null
+        try {
+            New-Item -ItemType Directory -Force -Path $shareDir | Out-Null
+            New-SmbShare -Name $shareName -Path $shareDir -FullAccess 'Everyone' | Out-Null
+            $up = Wait-Until -TimeoutSec 30 -IntervalSec 1 -Condition { Test-Path -LiteralPath $unc }
+            Add-Check 'The loopback share answers' $up.Ok $unc
+            if (-not $up.Ok) { return }
+            # The probe asks the .NET DriveInfo for the destination; it refuses a share's \\server\name path, which is how a volume that
+            # cannot report its free space looks to Deluno.
+            $unreadable = $false
+            try { [void](New-Object System.IO.DriveInfo("$unc\Movies")) } catch { $unreadable = $true }
+            Add-Check 'The share is a destination whose free space the drive query cannot read' $unreadable $unc
+            $libShare = New-VolumeLibrary -Name "Unreadable space $token" -Root "$unc\Movies"
+            $libC = New-VolumeLibrary -Name "Readable space $token" -Root "C:\Media\Free$token"
+            $minBefore = Get-MinimumFreeSpaceMb
+            # More than any disk has free: a drive that can be read must refuse, a share that cannot be read must not.
+            Set-MinimumFreeSpaceMb -Mb 900000000
+
+            $t1 = "Free Local $token"
+            $s1 = New-VolumeSource -Folder $srcRoot -Title $t1
+            $movies += New-VolumeMovie -Title $t1 -Library $libC
+            $r1 = Invoke-VolumeImport -Source $s1 -Library $libC -Title $t1 -Mode 'copy' -Fallback $true
+            Save-Evidence -Name 'volumes-free-local.json' -Text ($r1 | Select-Object Status, Succeeded, Message | ConvertTo-Json -Depth 6)
+            Add-Check 'On a drive that reports its space the huge minimum refuses the import and says so' (-not $r1.Succeeded -and $r1.Message -match 'below the configured minimum') $r1.Message
+            Add-Check 'The refused import left its source alone and put nothing in the library' ((Test-Path -LiteralPath $s1) -and $null -eq (Find-VolumeFilm -Root "C:\Media\Free$token" -Title $t1)) ''
+
+            $t2 = "Free Share $token"
+            $s2 = New-VolumeSource -Folder $srcRoot -Title $t2
+            $size2 = (Get-Item -LiteralPath $s2).Length
+            $movies += New-VolumeMovie -Title $t2 -Library $libShare
+            $r2 = Invoke-VolumeImport -Source $s2 -Library $libShare -Title $t2 -Mode 'copy' -Fallback $true
+            Save-Evidence -Name 'volumes-free-share.json' -Text ($r2 | Select-Object Status, Succeeded, Message | ConvertTo-Json -Depth 6)
+            Add-Check 'On the share the same minimum does not block: space that cannot be read is never a refusal' ($r2.Succeeded -and $r2.Message -notmatch 'below the configured minimum') $r2.Message
+            $f2 = Find-VolumeFilm -Root "$unc\Movies" -Title $t2
+            Add-Check 'The film is on the share, whole' ($f2 -and $f2.Length -eq $size2) $(if ($f2) { "$($f2.FullName) $($f2.Length) bytes" } else { 'not found' })
+        }
+        finally {
+            if ($null -ne $minBefore) { try { Set-MinimumFreeSpaceMb -Mb $minBefore } catch { } }
+            foreach ($m in $movies) { Remove-VolumeMovie -Movie $m }
+            Remove-VolumeLibrary -Library $libShare
+            Remove-VolumeLibrary -Library $libC
+            Remove-SmbShare -Name $shareName -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $shareDir, $srcRoot, "C:\Media\Free$token" -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
 }

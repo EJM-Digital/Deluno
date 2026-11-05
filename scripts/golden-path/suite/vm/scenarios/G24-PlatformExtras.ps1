@@ -1203,3 +1203,260 @@ function Invoke-UpdateUpdatesPageFollows {
         }
     }
 }
+
+# The six apps' web ports, by name: SABnzbd and qBittorrent take the first free port from 8080 and are read from their own settings.
+function Get-BundledClientPorts {
+    $qb = Join-Path $env:APPDATA 'qBittorrent\qBittorrent.ini'
+    $sab = @(Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'sabnzbd') -Filter 'sabnzbd.ini' -ErrorAction SilentlyContinue | Select-Object -First 1)
+    $qbText = if (Test-Path -LiteralPath $qb) { Get-Content -Raw -LiteralPath $qb } else { '' }
+    $sabText = if ($sab.Count) { Get-Content -Raw -LiteralPath $sab[0].FullName } else { '' }
+    [ordered]@{
+        qbittorrent = $(if ($qbText -match 'WebUI\\Port=(\d+)') { [int]$Matches[1] } else { 0 })
+        sabnzbd = $(if ($sabText -match '(?m)^\s*port\s*=\s*(\d+)') { [int]$Matches[1] } else { 0 })
+        transmission = 9091
+        deluge = 8112
+        nzbget = 6789
+        weir = 9347
+    }
+}
+
+# Which process listens on each port (a port nobody listens on is left out), so a later look can say whether the same program is still running.
+function Get-ListenerPids {
+    param([Parameter(Mandatory)] $Ports)
+    $map = [ordered]@{}
+    foreach ($k in $Ports.Keys) {
+        $c = @(Get-NetTCPConnection -State Listen -LocalPort $Ports[$k] -ErrorAction SilentlyContinue | Select-Object -First 1)
+        if ($c.Count) { $map[$k] = [int]$c[0].OwningProcess }
+    }
+    $map
+}
+
+function Invoke-UpdateWithAllBundledClients {
+    param([Parameter(Mandatory)] [string] $CandidateSetup, [Parameter(Mandatory)] [string] $CandidateVersion)
+    Invoke-Scenario -Id 'update.with-all-bundled-clients' -Title 'An update over a running Deluno that has all five download clients and Weir installed: every one answers again on its port, their settings, the component folders (Transmission config and torrents, Deluge, NZBGet) and the data-folder pointer are untouched by the update' -Body {
+        $ctx = Start-PreviousForUpdate -CandidateVersion $CandidateVersion
+        if (-not $ctx) { return }
+        foreach ($c in @(Get-DownloadClients | Where-Object { $_.protocol -in 'qbittorrent', 'sabnzbd' })) { Try-Deluno -Method DELETE -Path "/api/download-clients/$($c.id)" | Out-Null }
+
+        # SABnzbd, qBittorrent and Weir through the Companion Tools page.
+        $ask = Try-Deluno -Method POST -Path '/api/companion-tools/install' -Body @{ toolIds = @('sabnzbd', 'qbittorrent', 'weir') }
+        Add-Check 'Asking for SABnzbd, qBittorrent and Weir is accepted (HTTP 202)' ($ask.Status -eq 202) "HTTP $($ask.Status) $($ask.Raw)"
+        if ($ask.Status -ne 202) { return }
+        $final = $null
+        $deadline = (Get-Date).AddMinutes(25)
+        while ((Get-Date) -lt $deadline) {
+            $r = Try-Deluno -Path '/api/companion-tools'
+            if ($r.Status -eq 200) {
+                $jobs = @($r.Data.tools | Where-Object { $_.job })
+                if ($jobs.Count -ge 3 -and @($jobs | Where-Object { $_.job.status -in 'queued', 'running' }).Count -eq 0) { $final = $r.Data; break }
+            }
+            Start-Sleep -Seconds 2 # reason: polling the install's progress; the page reads it the same way
+        }
+        Add-Check 'The three are installed within 25 minutes' ($null -ne $final -and @($final.tools | Where-Object { $_.job -and $_.job.status -ne 'done' }).Count -eq 0) ''
+        if (-not $final) { return }
+
+        # Transmission, Deluge and NZBGet through the tray's picker, as a person would tick them.
+        $dataRoot = Join-Path $env:LOCALAPPDATA 'DelunoData'
+        $pending = Join-Path $dataRoot 'config\pending-component-installs.json'
+        $title = '^Set up download clients and Weir$'
+        $user = 'golden-nzb'; $password = 'Gp-Nzb-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
+        Remove-Item -LiteralPath $pending -ErrorAction SilentlyContinue
+        $pick = Try-Deluno -Method POST -Path '/api/companion-tools/tray-install' -Body @{ toolIds = @('transmission', 'deluge', 'nzbget') }
+        $dlg = Wait-DesktopWindow -NamePattern $title -Process 'Deluno' -TimeoutSec 90
+        Add-Check 'The picker opens for Transmission, Deluge and NZBGet' ($pick.Status -eq 202 -and $null -ne $dlg) $(if ($dlg) { "HTTP $($pick.Status)" } else { 'windows: ' + (Format-DesktopWindows) })
+        if (-not $dlg) { return }
+        try {
+            [void](Set-PickerBox -Window $dlg -Name 'NZBGet username' -Value $user)
+            [void](Set-PickerBox -Window $dlg -Name 'NZBGet password' -Value $password)
+            Click-WindowButton -Window $dlg -NamePattern '^Install selected$' | Out-Null
+            $finished = Wait-Until -TimeoutSec 1800 -IntervalSec 5 -Condition {
+                $w = Wait-DesktopWindow -NamePattern $title -Process 'Deluno' -TimeoutSec 2
+                if ($w -and @(Get-WindowControls -Window $w | Where-Object { $_.Type -eq 'Button' -and $_.Name -eq 'Close' -and -not $_.Offscreen -and $_.Enabled }).Count -gt 0) { $w } else { $null }
+            }
+            Add-Check 'The three install and the picker shows Close' $finished.Ok ''
+            if ($finished.Ok) { Click-WindowButton -Window $finished.Value -NamePattern '^Close$' | Out-Null }
+        }
+        finally { Remove-Item -LiteralPath $pending -ErrorAction SilentlyContinue }
+
+        $ports = Get-BundledClientPorts
+        $up = Wait-Until -TimeoutSec 240 -IntervalSec 5 -Condition { $now = Get-ListenerPids -Ports $ports; if ($now.Count -eq 6) { $now } else { $null } }
+        Add-Check 'Before the update all six answer on their ports' $up.Ok "ports: $(($ports.Keys | ForEach-Object { "$_=$($ports[$_])" }) -join ', '); listening: $((Get-ListenerPids -Ports $ports).Keys -join ', ')"
+        if (-not $up.Ok) { return }
+        $pidsBefore = Get-ListenerPids -Ports $ports
+
+        # Things the update must not touch: markers in the component folders, the settings with the data-folder pointer, the clients' settings.
+        $components = Join-Path $dataRoot 'components'
+        $markers = [ordered]@{
+            (Join-Path $components 'transmission\torrents\golden-marker.torrent') = 'torrent-marker'
+            (Join-Path $components 'transmission\golden-marker.txt') = 'transmission-marker'
+            (Join-Path $components 'deluge\golden-marker.txt') = 'deluge-marker'
+            (Join-Path $components 'nzbget\golden-marker.txt') = 'nzbget-marker'
+        }
+        foreach ($m in $markers.Keys) { New-Item -ItemType Directory -Force -Path (Split-Path $m) | Out-Null; Set-Content -LiteralPath $m -Value $markers[$m] -Encoding ascii }
+        $pointer = Join-Path $env:LOCALAPPDATA 'DelunoConfig\deluno.json'
+        $pointerBefore = if (Test-Path -LiteralPath $pointer) { (Get-FileHash -LiteralPath $pointer -Algorithm SHA256).Hash } else { '' }
+        $nzbConf = Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'NZBGet\nzbget.conf'
+        $nzbLines = @(if (Test-Path -LiteralPath $nzbConf) { Get-Content -LiteralPath $nzbConf | Where-Object { $_ -match '^(ControlPort|ControlUsername|ControlPassword|ControlIP)=' } })
+        $cfgBefore = @(Get-ClientConfigLines)
+        $foldersBefore = @(Get-ChildItem -LiteralPath $components -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name } | Sort-Object)
+        Add-Check 'Before the update the component folders and the settings to keep are there' ($foldersBefore.Count -ge 3 -and $nzbLines.Count -ge 3 -and $cfgBefore.Count -ge 2) "folders: $($foldersBefore -join ', '); NZBGet lines: $($nzbLines.Count); sab/qb lines: $($cfgBefore.Count)"
+        Save-Evidence -Name 'update-all-clients-before.json' -Text (@{ ports = $ports; pids = $pidsBefore; folders = $foldersBefore } | ConvertTo-Json -Depth 4)
+
+        $ctx.Before = Get-DelunoStateSummary
+        $p = Start-Process -FilePath $CandidateSetup -ArgumentList '--silent' -PassThru
+        $done = $p.WaitForExit(600000)
+        Add-Check 'Setup.exe --silent over the running previous release finished' ($done -and $p.ExitCode -eq 0) "exit $(if ($done) { $p.ExitCode } else { 'none' })"
+        if (-not (Test-CameBackAsCandidate -Context $ctx -CandidateVersion $CandidateVersion)) { return }
+
+        $back = Wait-Until -TimeoutSec 300 -IntervalSec 5 -Condition { $now = Get-ListenerPids -Ports $ports; if ($now.Count -eq 6) { $now } else { $null } }
+        $pidsAfter = Get-ListenerPids -Ports $ports
+        Add-Check 'All six answer again on the same ports (they survived or were started again)' $back.Ok "listening now: $($pidsAfter.Keys -join ', ')"
+        $same = @($pidsBefore.Keys | Where-Object { $pidsAfter.Contains($_) -and $pidsAfter[$_] -eq $pidsBefore[$_] })
+        Add-Note ("Still the same program after the update: {0}; started again: {1}" -f ($same -join ', '), ((@($pidsBefore.Keys | Where-Object { $_ -notin $same })) -join ', '))
+        $cfgAfter = @(Get-ClientConfigLines)
+        Add-Check 'SABnzbd''s and qBittorrent''s settings (port, address, login, key) are the same' (($cfgAfter -join "`n") -eq ($cfgBefore -join "`n")) $(if (($cfgAfter -join "`n") -eq ($cfgBefore -join "`n")) { "$($cfgAfter.Count) lines" } else { 'changed' })
+        $nzbAfter = @(if (Test-Path -LiteralPath $nzbConf) { Get-Content -LiteralPath $nzbConf | Where-Object { $_ -match '^(ControlPort|ControlUsername|ControlPassword|ControlIP)=' } })
+        Add-Check 'NZBGet''s port and login are the same' (($nzbAfter -join "`n") -eq ($nzbLines -join "`n")) ''
+        $lost = @($markers.Keys | Where-Object { -not (Test-Path -LiteralPath $_) -or ((Get-Content -Raw -LiteralPath $_).Trim() -ne $markers[$_]) })
+        Add-Check 'Transmission''s config folder and torrents folder, and the Deluge and NZBGet folders, are untouched (every marker is there, unchanged)' ($lost.Count -eq 0) (($lost | ForEach-Object { Split-Path $_ -Leaf }) -join ', ')
+        $foldersAfter = @(Get-ChildItem -LiteralPath $components -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name } | Sort-Object)
+        Add-Check 'The component folders are all still there' (@($foldersBefore | Where-Object { $_ -notin $foldersAfter }).Count -eq 0) ($foldersAfter -join ', ')
+        $pointerAfter = if (Test-Path -LiteralPath $pointer) { (Get-FileHash -LiteralPath $pointer -Algorithm SHA256).Hash } else { '' }
+        Add-Check 'The settings file with the data-folder pointer is the same, byte for byte (it does not live in the install folder)' ($pointerBefore -ne '' -and $pointerAfter -eq $pointerBefore) $pointer
+        $tools = Try-Deluno -Path '/api/companion-tools'
+        Add-Check 'The Companion Tools page still shows none of the three it installed as not installed' ($tools.Status -eq 200 -and @($tools.Data.tools | Where-Object { $_.state -eq 'not-installed' }).Count -eq 0) ''
+    }
+}
+
+function Invoke-UpdateDiskFull {
+    param([Parameter(Mandatory)] [string] $CandidateSetup, [Parameter(Mandatory)] [string] $CandidateVersion)
+    Invoke-Scenario -Id 'update.disk-full' -Title 'An update whose disk fills up part-way (the install folder is a small volume with no room for the new build): whatever Setup does, the old Deluno still starts and answers, with its data' -Body {
+        $ctx = Start-PreviousForUpdate -CandidateVersion $CandidateVersion
+        if (-not $ctx) { return }
+        $installFolder = Join-Path $env:LOCALAPPDATA 'Deluno'
+        $aside = "$installFolder.golden-old"
+        $volume = $false
+        try {
+            $null = Quit-DelunoFromTray
+            $gone = Wait-Until -TimeoutSec 60 -IntervalSec 2 -Condition { @(Get-DelunoProcess).Count -eq 0 }
+            Add-Check 'Deluno is stopped' $gone.Ok ''
+            if (-not $gone.Ok) { return }
+            $usedMb = [int][math]::Ceiling((Get-ChildItem -LiteralPath $installFolder -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum / 1MB)
+            # The install folder becomes a small volume: the current build fits with only a few megabytes to spare, so the new build cannot.
+            $sizeMb = $usedMb + 24
+            Remove-Item -LiteralPath $aside -Recurse -Force -ErrorAction SilentlyContinue
+            Rename-Item -LiteralPath $installFolder -NewName (Split-Path $aside -Leaf)
+            New-TestVolume -Name 'installdisk' -SizeMb $sizeMb -Fs ntfs -MountFolder $installFolder | Out-Null
+            $volume = $true
+            & robocopy.exe $aside $installFolder /E /COPY:DAT /DCOPY:DAT /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
+            $mounted = Get-CimInstance Win32_Volume -Filter "Name='$($installFolder.TrimEnd('\') + '\')'" -ErrorAction SilentlyContinue | Select-Object -First 1
+            $freeMb = if ($mounted) { [math]::Round($mounted.FreeSpace / 1MB, 1) } else { -1 }
+            Add-Check 'The install folder is now a small volume with only a few megabytes free' ($null -ne $mounted -and $freeMb -ge 0 -and $freeMb -lt 40) "volume $sizeMb MB, $freeMb MB free, the build is $usedMb MB"
+            if (-not $mounted) { return }
+            $exeBefore = Get-InstalledDelunoExe
+            Add-Check 'Deluno.exe is on the small volume, as the previous release' ($null -ne $exeBefore -and $exeBefore.VersionInfo.ProductVersion -notlike "*$CandidateVersion*") $(if ($exeBefore) { $exeBefore.VersionInfo.ProductVersion } else { 'none' })
+            if (-not $exeBefore) { return }
+
+            $p = Start-Process -FilePath $CandidateSetup -ArgumentList '--silent' -PassThru
+            $done = $p.WaitForExit(600000)
+            Add-Note "Setup --silent on a volume with no room ended: $(if ($done) { "exit $($p.ExitCode)" } else { 'timed out' })."
+            Wait-InstallerQuiet | Out-Null
+            $exe = Get-InstalledDelunoExe
+            Add-Check 'A Deluno.exe is still installed (the install folder was not left empty)' ($null -ne $exe) $(if ($exe) { $exe.VersionInfo.ProductVersion } else { 'none' })
+            if (-not $exe) { return }
+            if (@(Get-DelunoProcess).Count -eq 0) { Start-ProgramUnelevated -Path $exe.FullName -WorkingDirectory $exe.DirectoryName -Elevated }
+            $up = Wait-Until -TimeoutSec 420 -IntervalSec 3 -Condition { Test-DelunoAnswering }
+            Add-Check 'Deluno starts and answers after the update met a full disk' $up.Ok $(if ($up.Ok) { "as $((Get-InstalledDelunoExe).VersionInfo.ProductVersion) after $($up.Seconds) s" } else { 'never answered' })
+            if (-not $up.Ok) { return }
+            $connected = $false; try { Connect-Deluno; $connected = $true } catch { }
+            Add-Check 'The signed-in account still works' $connected ''
+            if ($connected) {
+                $after = Get-DelunoStateSummary
+                Add-Check 'The data is intact: clients, libraries and Activity are the same' ((($after.Clients -join ';') -eq ($ctx.Before.Clients -join ';')) -and (($after.Libraries -join ';') -eq ($ctx.Before.Libraries -join ';')) -and $after.Activity -ge $ctx.Before.Activity) ''
+            }
+            Add-Note "After the update met a full disk the installed build is $((Get-InstalledDelunoExe).VersionInfo.ProductVersion) (previous $($ctx.PreviousVersion), candidate $CandidateVersion)."
+        }
+        finally {
+            # The machine as it was: Deluno stopped, the volume's files put back in the usual folder, the volume gone.
+            try { $null = Quit-DelunoFromTray } catch { }
+            if ($volume) {
+                & robocopy.exe $installFolder $aside /E /COPY:DAT /DCOPY:DAT /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
+                Remove-TestVolume -Name 'installdisk'
+                Remove-MountFolder -Path $installFolder
+            }
+            if (-not (Test-Path -LiteralPath $installFolder) -and (Test-Path -LiteralPath $aside)) { Rename-Item -LiteralPath $aside -NewName (Split-Path $installFolder -Leaf) }
+        }
+    }
+}
+
+function Invoke-CompanionsRefusals {
+    Invoke-Scenario -Id 'companions.elevated-refusals' -Title 'The elevated installer script refuses a folder that is a link and an installer that changed after it was checked: each ends the install in plain words, nothing is installed, nothing is written through the link, and the script cleans up after itself' -Body {
+        $ctx = Start-PreviousForUpdate -CandidateVersion 'no-candidate-here'
+        if (-not $ctx) { return }
+        $installerFolder = Join-Path $env:ProgramFiles 'Deluno installer'
+        $target = 'C:\golden\link-target'
+        $dataRoot = Join-Path $env:LOCALAPPDATA 'DelunoData'
+        $downloads = Join-Path $dataRoot 'companions\downloads'
+        Remove-Item -LiteralPath $installerFolder -Recurse -Force -ErrorAction SilentlyContinue
+        foreach ($c in @(Get-DownloadClients | Where-Object { $_.protocol -eq 'sabnzbd' })) { Try-Deluno -Method DELETE -Path "/api/download-clients/$($c.id)" | Out-Null }
+        $sabBefore = @((Try-Deluno -Path '/api/companion-tools').Data.tools | Where-Object { $_.id -eq 'sabnzbd' } | Select-Object -First 1)
+        Add-Check 'SABnzbd is not installed to begin with' ($sabBefore.Count -eq 1 -and $sabBefore[0].state -eq 'not-installed') $(if ($sabBefore.Count) { $sabBefore[0].state } else { 'not listed' })
+        if ($sabBefore.Count -ne 1 -or $sabBefore[0].state -ne 'not-installed') { return }
+
+        function Wait-CompanionJob {
+            param([int] $TimeoutSec = 900)
+            Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 1 -Condition {
+                $t = @((Try-Deluno -Path '/api/companion-tools').Data.tools | Where-Object { $_.id -eq 'sabnzbd' -and $_.job } | Select-Object -First 1)
+                if ($t.Count -and $t[0].job.status -in 'done', 'failed', 'skipped') { $t[0] } else { $null }
+            }
+        }
+        try {
+            # ---------------------------------------------- 1. the install folder is a link to somewhere else
+            New-Item -ItemType Directory -Force -Path $target | Out-Null
+            Get-ChildItem -LiteralPath $target -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+            & cmd.exe /c mklink /J "`"$installerFolder`"" "`"$target`"" | Out-Null
+            $isLink = (Test-Path -LiteralPath $installerFolder) -and (((Get-Item -LiteralPath $installerFolder -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)
+            Add-Check 'Where the elevated script makes its folder there is a link to another folder' $isLink $installerFolder
+            if (-not $isLink) { return }
+            $ask1 = Try-Deluno -Method POST -Path '/api/companion-tools/install' -Body @{ toolIds = @('sabnzbd') }
+            Add-Check 'Asking for SABnzbd is accepted (HTTP 202)' ($ask1.Status -eq 202) "HTTP $($ask1.Status) $($ask1.Raw)"
+            $end1 = Wait-CompanionJob
+            Save-Evidence -Name 'companions-refusal-link.json' -Text ($end1.Value | ConvertTo-Json -Depth 5)
+            Add-Check 'The install fails, saying in plain words that no safe folder could be made and nothing was installed' ($end1.Ok -and $end1.Value.job.status -eq 'failed' -and "$($end1.Value.job.message)" -match 'safe folder' -and "$($end1.Value.job.message)" -match 'Nothing was installed') $(if ($end1.Ok) { "$($end1.Value.job.status): $($end1.Value.job.message)" } else { 'the job never ended' })
+            Add-Check 'Nothing was written through the link' (@(Get-ChildItem -LiteralPath $target -Force -Recurse -ErrorAction SilentlyContinue).Count -eq 0) (@(Get-ChildItem -LiteralPath $target -Force -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) -join ', ')
+            Add-Check 'The link itself was left alone (the script does not delete through it)' ((Test-Path -LiteralPath $installerFolder) -and (Test-Path -LiteralPath $target)) ''
+            & cmd.exe /c rmdir "`"$installerFolder`"" | Out-Null
+            Add-Check 'SABnzbd is still not installed' ((@((Try-Deluno -Path '/api/companion-tools').Data.tools | Where-Object { $_.id -eq 'sabnzbd' } | Select-Object -First 1)[0]).state -eq 'not-installed') ''
+
+            # ---------------------------------------------- 2. the installer changes after Deluno checked it
+            $ask2 = Try-Deluno -Method POST -Path '/api/companion-tools/install' -Body @{ toolIds = @('sabnzbd') }
+            Add-Check 'Asking again is accepted (HTTP 202)' ($ask2.Status -eq 202) "HTTP $($ask2.Status) $($ask2.Raw)"
+            # The moment the install step starts (the check of the download is done, Windows is about to be asked for permission), the
+            # downloaded installer gets one more byte, as something else on the computer could change it before the elevated copy.
+            $tampered = $null
+            $watch = Wait-Until -TimeoutSec 900 -IntervalSec 0.2 -Condition {
+                $t = @((Try-Deluno -Path '/api/companion-tools').Data.tools | Where-Object { $_.id -eq 'sabnzbd' -and $_.job } | Select-Object -First 1)
+                if ($t.Count -and $t[0].job.status -in 'done', 'failed', 'skipped') { return 'ended' }
+                if ($t.Count -and $t[0].job.step -eq 'install') {
+                    $f = @(Get-ChildItem -LiteralPath $downloads -File -ErrorAction SilentlyContinue | Where-Object { $_.Length -gt 1MB } | Select-Object -First 1)
+                    if ($f.Count) {
+                        try { $fs = [IO.File]::Open($f[0].FullName, 'Append', 'Write', 'ReadWrite'); $fs.WriteByte(0); $fs.Dispose(); $script:tamperedName = $f[0].Name; return 'tampered' } catch { return $null }
+                    }
+                }
+                $null
+            }
+            $tampered = $script:tamperedName
+            Add-Check 'The downloaded installer was changed after the check, while Windows was being asked' ($watch.Ok -and $watch.Value -eq 'tampered') $(if ($tampered) { $tampered } else { "watch ended: $($watch.Value)" })
+            $end2 = Wait-CompanionJob
+            Save-Evidence -Name 'companions-refusal-hash.json' -Text ($end2.Value | ConvertTo-Json -Depth 5)
+            Add-Check 'The install fails saying the installer changed after it was checked and nothing was installed' ($end2.Ok -and $end2.Value.job.status -eq 'failed' -and "$($end2.Value.job.message)" -match 'changed after it was checked' -and "$($end2.Value.job.message)" -match 'Nothing was installed') $(if ($end2.Ok) { "$($end2.Value.job.status): $($end2.Value.job.message)" } else { 'the job never ended' })
+            Add-Check 'SABnzbd was not installed' ((@((Try-Deluno -Path '/api/companion-tools').Data.tools | Where-Object { $_.id -eq 'sabnzbd' } | Select-Object -First 1)[0]).state -eq 'not-installed') ''
+            Add-Check 'The script cleaned up after itself: no "Deluno installer" folder is left in Program Files' (-not (Test-Path -LiteralPath $installerFolder)) $installerFolder
+            Add-Check 'The changed installer was removed from the download folder' (@(Get-ChildItem -LiteralPath $downloads -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq $tampered }).Count -eq 0) ''
+        }
+        finally {
+            if (Test-Path -LiteralPath $installerFolder) { & cmd.exe /c rmdir "`"$installerFolder`"" 2>$null | Out-Null; if (Test-Path -LiteralPath $installerFolder) { Remove-Item -LiteralPath $installerFolder -Recurse -Force -ErrorAction SilentlyContinue } }
+            Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
