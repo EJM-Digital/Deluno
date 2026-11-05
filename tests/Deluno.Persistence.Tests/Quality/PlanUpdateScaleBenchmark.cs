@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Deluno.Infrastructure.Storage.Migrations;
@@ -29,24 +28,20 @@ namespace Deluno.Persistence.Tests.Quality;
 public sealed class PlanUpdateScaleBenchmark(ITestOutputHelper output)
 {
     /// <summary>
-    /// How many times the floor re-deciding is allowed to cost.
+    /// How many database commits re-deciding the whole library may take.
     ///
-    /// <para>This was 4 and failed CI on a change to a stylesheet: 837 µs per
-    /// title against a 175 µs floor, a ratio of 4.77, in a run where seeding
-    /// 20,000 rows took 100 seconds. Relative-to-a-floor was already the right
-    /// idea — an absolute millisecond budget here is a coin toss — but it only
-    /// cancels the machine out if load is steady across both measurements, and
-    /// they are taken minutes apart on a runner shared with three other
-    /// jobs. The two operations do not degrade alike under contention, so the
-    /// ratio itself moves with the load.</para>
-    ///
-    /// <para>6 rather than 4, because of what this is for. The regression it
-    /// exists to catch is a change of shape — a query per row, or a transaction
-    /// per row — and that is an order of magnitude, not a factor of five. A
-    /// threshold tight enough to fail on runner noise fails often enough that
-    /// people learn to re-run it, which is the same as not having it.</para>
+    /// <para>This test used to compare the time re-deciding took with the time
+    /// of a floor measurement taken minutes later, and failed CI on loaded
+    /// runners (8.35x against a budget of 6x): the two operations do not slow
+    /// alike under contention, so any ratio of times moves with the load.
+    /// What it defends is a shape, and a shape can be counted. Re-deciding is
+    /// written in a few transactions; the regression is a transaction per
+    /// title (9 seconds against 1.6 for a 20,000-title plan change), which is
+    /// a commit per title. Commits do not depend on how busy the machine is, so
+    /// this cannot flake, and a per-row write fails it by three orders of
+    /// magnitude.</para>
     /// </summary>
-    private const double MaxCostOverFloor = 6;
+    private const int MaxCommitsToRedecideTheLibrary = 20;
 
     [Theory]
     [InlineData(5_000)]
@@ -61,110 +56,48 @@ public sealed class PlanUpdateScaleBenchmark(ITestOutputHelper output)
             NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
         var movies = new SqliteMovieCatalogRepository(storage.Factory, clock);
 
-        var seeding = Stopwatch.StartNew();
         await SeedAsync(storage, total);
-        seeding.Stop();
-        output.WriteLine($"seeded {total:N0} held titles in {seeding.ElapsedMilliseconds:N0} ms");
+        output.WriteLine($"seeded {total:N0} held titles");
 
-        // Compiling the plan is once per change, not once per title. A plan is
-        // cached by its immutable hash, so this is the cost of the change
-        // itself and it must not grow with the library.
+        // Compiling the plan is once per change, not once per title.
         var package = GuidePackageCatalog.Current;
         var profile = package.QualityProfiles[0];
-        var compile = Stopwatch.StartNew();
         var compiled = GuidePlanCompiler.Compile(profile.Id, profile.MediaType, package);
-        compile.Stop();
         Assert.NotEmpty(compiled.Plan.OrderedFamilies);
-        output.WriteLine($"compiled the new plan  {compile.ElapsedMilliseconds,6:N0} ms  ({compiled.Plan.OrderedFamilies.Count} families)");
+        output.WriteLine($"compiled the new plan ({compiled.Plan.OrderedFamilies.Count} families)");
 
         // And the part that does scale: every held title re-decided under the
         // activated plan, which is what has to finish before automatic
-        // upgrades resume.
-        var reevaluate = Stopwatch.StartNew();
+        // upgrades resume. Counted in commits, not seconds.
+        var commitsBefore = storage.Factory.GetWriteGeneration(DelunoDatabaseNames.Movies);
         var updated = await movies.ReevaluateLibraryWantedStateAsync(
             "library-films",
             cutoffQuality: "Bluray 2160p",
             upgradeUntilCutoff: true,
             upgradeUnknownItems: true,
             CancellationToken.None);
-        reevaluate.Stop();
+        var commits = storage.Factory.GetWriteGeneration(DelunoDatabaseNames.Movies) - commitsBefore;
 
         Assert.Equal(total, updated);
-        var perTitleMicroseconds = reevaluate.Elapsed.TotalMilliseconds * 1000 / total;
-        output.WriteLine(
-            $"re-decided {updated:N0} titles {reevaluate.ElapsedMilliseconds,6:N0} ms  ({perTitleMicroseconds:F1} µs per title)");
+        output.WriteLine($"re-decided {updated:N0} titles in {commits} commit(s) (budget {MaxCommitsToRedecideTheLibrary})");
+
+        Assert.True(
+            commits <= MaxCommitsToRedecideTheLibrary,
+            $"Re-deciding {total:N0} titles took {commits} commits. It should write in a few transactions; "
+            + "a commit per title means it is writing a row at a time again.");
 
         // A second pass over an already-settled library, because a plan update
         // is not the only time this runs.
-        var second = Stopwatch.StartNew();
+        var settledBefore = storage.Factory.GetWriteGeneration(DelunoDatabaseNames.Movies);
         await movies.ReevaluateLibraryWantedStateAsync(
             "library-films",
             cutoffQuality: "Bluray 2160p",
             upgradeUntilCutoff: true,
             upgradeUnknownItems: true,
             CancellationToken.None);
-        second.Stop();
-        output.WriteLine($"settled second pass    {second.ElapsedMilliseconds,6:N0} ms");
-
-        // The budget is relative to a floor measured in the same run, not to a
-        // number of milliseconds.
-        //
-        // An absolute budget on a timing test is a coin toss: the whole suite
-        // runs in parallel, so the same code costs 88 µs per title alone and
-        // several times that under load. The floor below is the cheapest
-        // possible shape of this work — one indexed UPDATE per row inside one
-        // transaction — measured on the same disk, at the same size, at the
-        // same moment. Comparing against it cancels the machine out, and it
-        // measures the thing that actually regressed: whether re-deciding a
-        // library costs about one write per title, or several.
-        var floorMicroseconds = await MeasureSingleTransactionWriteFloorAsync(storage, total);
-        var ratio = perTitleMicroseconds / floorMicroseconds;
-        output.WriteLine($"floor: one indexed UPDATE per row in one transaction — {floorMicroseconds:F1} µs per row");
-
-        // Printed on every run, pass or fail. The number this test defends is a
-        // shape, and a shape drifts long before it breaks: a ratio creeping
-        // from 2 to 5 is visible here while it is still cheap to look into,
-        // where a bare pass tells nobody anything.
-        output.WriteLine($"re-deciding costs {ratio:F2}x the floor (budget {MaxCostOverFloor}x)");
-
-        Assert.True(
-            ratio < MaxCostOverFloor,
-            $"Re-deciding cost {perTitleMicroseconds:F1} µs per title against a {floorMicroseconds:F1} µs floor "
-            + $"at {total:N0} titles — {ratio:F2}x. It should be within a small multiple of one write per row; "
-            + "a large multiple means it is writing a row at a time again, or asking a question per row.");
-        Assert.True(
-            compile.ElapsedMilliseconds < 2_000,
-            $"Compiling one plan took {compile.ElapsedMilliseconds:N0} ms, which should not depend on the library at all.");
-    }
-
-    /// <summary>
-    /// The cheapest shape this work can have on this machine right now: one
-    /// indexed UPDATE per row, in one transaction, over the same table.
-    /// </summary>
-    private static async Task<double> MeasureSingleTransactionWriteFloorAsync(TestStorage storage, int total)
-    {
-        await using var connection = await storage.Factory.OpenConnectionAsync(
-            DelunoDatabaseNames.Movies, CancellationToken.None);
-        var clock = Stopwatch.StartNew();
-        await using (var transaction = await connection.BeginTransactionAsync(CancellationToken.None))
-        {
-            using var update = connection.CreateCommand();
-            update.Transaction = transaction;
-            update.CommandText =
-                "UPDATE movie_wanted_state SET wanted_reason = @reason WHERE movie_id = @movieId AND library_id = 'library-films';";
-            AddParameter(update, "@reason", "floor measurement");
-            AddParameter(update, "@movieId", "movie-000000");
-            for (var index = 0; index < total; index++)
-            {
-                update.Parameters["@movieId"].Value = $"movie-{index:D6}";
-                await update.ExecuteNonQueryAsync(CancellationToken.None);
-            }
-
-            await transaction.CommitAsync(CancellationToken.None);
-        }
-
-        clock.Stop();
-        return clock.Elapsed.TotalMilliseconds * 1000 / total;
+        var settledCommits = storage.Factory.GetWriteGeneration(DelunoDatabaseNames.Movies) - settledBefore;
+        output.WriteLine($"settled second pass took {settledCommits} commit(s)");
+        Assert.True(settledCommits <= MaxCommitsToRedecideTheLibrary, $"The settled second pass took {settledCommits} commits.");
     }
 
     private static async Task SeedAsync(TestStorage storage, int total)
