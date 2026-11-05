@@ -91,6 +91,27 @@ public sealed class CompanionAndPickerRoutesOnTheRealHostTests
         Assert.False(Directory.Exists(Path.Combine(app.DataRoot, "companions", "downloads")), "no installer was fetched");
     }
 
+    /// <summary>
+    /// On a computer that cannot install these tools (not Windows, or Deluno running as a service) the install route answers 409 with
+    /// the reason, for a right ticked tool too, and fetches nothing. On Windows from the tray the install is possible and the
+    /// refusals above are the ones that apply, so there is nothing to refuse here; CI's Linux run is where this one bites.
+    /// </summary>
+    [Theory]
+    [InlineData("/api/companion-tools/install")]
+    [InlineData("/api/companion-tools/tray-install")]
+    public async Task Where_installing_is_not_possible_a_right_ticked_tool_is_still_refused_with_the_reason_and_nothing_is_fetched(string path)
+    {
+        if (CanInstallHere) return;
+        await using var app = await ApplicationTestHost.StartAsync();
+
+        var response = await app.Client.PostAsJsonAsync(path, new { toolIds = new[] { "sabnzbd" } });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal(CompanionToolsService.Availability().Reason, (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("message").GetString());
+        Assert.False(File.Exists(PendingFile(app)));
+        Assert.False(Directory.Exists(Path.Combine(app.DataRoot, "companions", "downloads")));
+    }
+
     [Fact]
     public async Task Both_install_routes_need_a_signed_in_person()
     {

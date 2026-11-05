@@ -109,6 +109,53 @@ public sealed class PerGrabSavePathTests
             Times.Once);
     }
 
+    [Fact]
+    public async Task A_save_path_the_library_does_not_watch_writes_health_problem_to_Activity_and_sends_it_once()
+    {
+        var (activity, notifications) = await GrabWithAsync("/data/downloads/wrong-folder", HealthCheckTransition.Started);
+
+        activity.Verify(feed => feed.RecordActivityAsync(
+            "health.problem", It.Is<string>(message => message.Contains("saved Example.Movie.2026 to /data/downloads/wrong-folder, but Movies expects /data/downloads/movies.")),
+            It.IsAny<string?>(), It.IsAny<string?>(), "health-check", It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+        notifications.Verify(service => service.DispatchAsync(
+            "health.problem", It.IsAny<string>(), It.Is<string>(message => message.Contains("Change the movies category's folder in Test Client")),
+            It.IsAny<string?>(), It.IsAny<CancellationToken>(), It.IsAny<IReadOnlyList<string>?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_save_path_that_recovers_writes_health_resolved_to_Activity_and_sends_nothing()
+    {
+        var (activity, notifications) = await GrabWithAsync("/data/downloads/movies", HealthCheckTransition.Cleared);
+
+        activity.Verify(feed => feed.RecordActivityAsync(
+            "health.resolved", It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), "health-check", It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+        notifications.Verify(service => service.DispatchAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>(), It.IsAny<IReadOnlyList<string>?>()), Times.Never);
+    }
+
+    private static async Task<(Mock<IActivityFeedRepository> Activity, Mock<IOutboundNotificationService> Notifications)> GrabWithAsync(string reportedPath, HealthCheckTransition transition)
+    {
+        var client = Client();
+        var library = Library(downloadsPath: "/data/downloads/movies");
+        var healthChecks = new Mock<IHealthCheckRepository>();
+        healthChecks.Setup(repository => repository.UpsertResultsAsync(It.IsAny<IReadOnlyList<HealthCheckOutcome>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<HealthCheckOutcome> outcomes, CancellationToken _) => outcomes
+                .Select(outcome => new HealthCheckTransitionResult(
+                    new HealthCheckResultItem(outcome.Id, outcome.Category, outcome.Name, outcome.Status, outcome.Message, outcome.Cause, outcome.Fix, outcome.DetailsJson, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null),
+                    transition))
+                .ToArray());
+        var activity = new Mock<IActivityFeedRepository>();
+        var notifications = new Mock<IOutboundNotificationService>();
+        var service = new DownloadClientGrabService(
+            ConnectionsReturning(client), RegistryReturning(reportedPath), new PassThrough(), Mock.Of<IDownloadDispatchesRepository>(), Mock.Of<IRealtimeEventPublisher>(),
+            trackerIndexers: null, librariesRepository: LibrariesReturning(library, "movies", client.Id), healthCheckRepository: healthChecks.Object,
+            activityFeedRepository: activity.Object, notificationService: notifications.Object);
+
+        await service.GrabAsync(client.Id, new DownloadClientGrabRequest(
+            ReleaseName: "Example.Movie.2026", DownloadUrl: "magnet:?xt=urn:btih:de4158016fbc49ebf35641903cec65a0ad0d30b5", MediaType: "movies", Category: "movies", IndexerName: null), CancellationToken.None);
+        return (activity, notifications);
+    }
+
     private static DownloadClientItem Client()
     {
         var now = DateTimeOffset.UnixEpoch;

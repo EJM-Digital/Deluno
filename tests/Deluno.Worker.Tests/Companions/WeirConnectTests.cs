@@ -75,6 +75,18 @@ public sealed class WeirConnectTests : IDisposable
     }
 
     [Fact]
+    public void Weirs_Open_link_is_the_port_its_own_process_listens_on_and_the_lowest_when_it_has_several_and_none_when_it_is_not_running()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "weir-test-local", "Weir");
+        _system.Setup(item => item.ListeningPortsOf(folder)).Returns([9400, 9347]);
+
+        Assert.Equal("http://localhost:9347", NewCompanion().LocalUrl());
+
+        _system.Setup(item => item.ListeningPortsOf(folder)).Returns([]);
+        Assert.Null(NewCompanion().LocalUrl());
+    }
+
+    [Fact]
     public async Task A_Weir_that_takes_nearly_three_minutes_to_answer_after_an_update_is_still_waited_for()
     {
         var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();

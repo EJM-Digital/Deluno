@@ -278,6 +278,8 @@ $workflowChecks = @(
     @{ Label = "Deluno's recordings of its side of the Deluno-Weir talk match their manifest (#1239)"; Args = @("scripts/check-recorded-manifest.mjs") },
     @{ Label = "the recordings manifest check works"; Args = @("--test", "scripts/check-recorded-manifest.test.mjs") },
     @{ Label = "the check that main and the release tags stay protected works (GAT-10; CI reads the live rules)"; Args = @("--test", "scripts/check-branch-protection.test.mjs") },
+    @{ Label = "Deluno's hand-off, report and connection code names no Weir except where the release feed is picked"; Args = @("--test", "scripts/deluno-stays-independent-of-weir.test.mjs") },
+    @{ Label = "the bundled-components and guide-packages documents name the pinned versions, ports and routes the code has"; Args = @("--test", "scripts/bundled-components-docs.test.mjs") },
     @{ Label = "the recording freshness check works"; Args = @("--test", "scripts/check-recording-freshness.test.mjs") },
     @{ Label = "a repeated nightly finding comments on the open issue"; Args = @("--test", "scripts/report-nightly-issue.test.mjs") },
     @{ Label = "the mutation test filter works"; Args = @("--test", "scripts/mutation/test-filter.test.mjs") },

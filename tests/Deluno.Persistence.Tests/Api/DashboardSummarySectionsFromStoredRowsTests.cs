@@ -126,6 +126,23 @@ public sealed class DashboardSummarySectionsFromStoredRowsTests
     }
 
     [Fact]
+    public async Task The_pipeline_averages_are_null_with_no_dispatches_and_with_a_grab_nothing_has_detected_yet()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+
+        var empty = (await SummaryAsync(app)).GetProperty("pipeline");
+        Assert.Equal(JsonValueKind.Null, empty.GetProperty("averageGrabToDetectionSeconds").ValueKind);
+        Assert.Equal(JsonValueKind.Null, empty.GetProperty("averageDetectionToImportSeconds").ValueKind);
+
+        var now = DateTimeOffset.UtcNow.AddMinutes(-30);
+        await Dispatch(app, "d1", created: now, grab: "succeeded", attempted: now, detected: null, import: null, completed: null);
+
+        var undetected = (await SummaryAsync(app)).GetProperty("pipeline");
+        Assert.Equal(JsonValueKind.Null, undetected.GetProperty("averageGrabToDetectionSeconds").ValueKind);
+        Assert.Equal(JsonValueKind.Null, undetected.GetProperty("averageDetectionToImportSeconds").ValueKind);
+    }
+
+    [Fact]
     public async Task The_imports_section_counts_open_recovery_cases_by_kind_across_films_and_shows_and_the_failed_jobs_and_hand_offs()
     {
         await using var app = await ApplicationTestHost.StartAsync();
