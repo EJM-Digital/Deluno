@@ -504,18 +504,26 @@ public sealed class LibraryDownloadFolderPerGrabTests
             .ReturnsAsync([.. new[] { "client-a", "client-b", "client-c" }.Select(id => Client("deluge") with { Id = id, Name = id })]);
         connections.Setup(instance => instance.ListDownloadClientPathMappingsAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
         var fake = FakeClient(perGrab: false, reportedFolder: LibraryFolder);
+        // A barrier, not a clock: no client answers until all three have been asked. Checks run one after another
+        // would never get the third client asked, so the wait below times out and the test fails.
+        var arrived = 0;
+        var allAsked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         fake.Setup(instance => instance.CheckCategoryAsync(It.IsAny<DownloadClientItem>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Returns(async (DownloadClientItem item, string category, CancellationToken _) =>
             {
-                await Task.Delay(500); // reason: each client takes a moment to answer, so checks run one after another would take three times as long
+                if (Interlocked.Increment(ref arrived) == 3)
+                {
+                    allAsked.TrySetResult();
+                }
+
+                await allAsked.Task.WaitAsync(TimeSpan.FromSeconds(30)); // the timeout only bounds a failure; a pass releases at once
                 return new DownloadClientCategoryCheckResult(item.Id, item.Name, category, DownloadClientCategoryStatuses.Ready, "Ready.", true, true, LibraryFolder);
             });
         var service = new FolderChainService(repository.Object, connections.Object, Registry(fake.Object));
 
-        var started = DateTimeOffset.UtcNow;
         var report = await service.CheckAsync("lib-1", CancellationToken.None);
 
-        Assert.True(DateTimeOffset.UtcNow - started < TimeSpan.FromMilliseconds(1300), "three 500 ms clients took as long as one after another");
+        Assert.Equal(3, arrived);
         Assert.Equal(["client-a", "client-b", "client-c"], report!.Clients.Select(chain => chain.ClientId).ToArray());
     }
 

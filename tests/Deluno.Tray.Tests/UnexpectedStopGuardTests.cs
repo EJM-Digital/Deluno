@@ -78,7 +78,10 @@ public sealed class UnexpectedStopGuardTests
 
     private static async Task<bool> AnswersAsync(string url)
     {
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+        // A refused connection answers at once, so a long timeout costs nothing when the host is down; it only stops
+        // a loaded runner's slow first request (Kestrel warming up, a proxy lookup) reading as "not serving".
+        using var handler = new HttpClientHandler { UseProxy = false };
+        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
         try
         {
             using var response = await client.GetAsync(url + "/api/health/ready");
