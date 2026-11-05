@@ -11,7 +11,7 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     /// <summary>ffprobe reads a file's headers in seconds; this is for a share that stalls, not for a slow disk.</summary>
-    private static readonly TimeSpan ProbeLimit = TimeSpan.FromMinutes(5);
+    internal static TimeSpan ProbeLimit = TimeSpan.FromMinutes(5);
 
     public async Task<MediaProbeInfo> ProbeAsync(string path, CancellationToken cancellationToken)
     {
