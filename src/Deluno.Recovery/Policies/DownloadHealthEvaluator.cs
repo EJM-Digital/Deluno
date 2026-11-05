@@ -163,7 +163,7 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
                     DownloadHealthStrikes.LowSpeed,
                     "This download is slower than the configured floor.",
                     underFloorTooLong
-                        ? $"{item.SpeedMbps * 1000:0.#} KB/s at this check, under the limit of {tooSlow.Threshold:0} KB/s."
+                        ? $"{SpeedText.FromMbps(item.SpeedMbps)} at this check, under the limit of {SpeedText.FromKbps(tooSlow.Threshold)}."
                         : $"Still downloading after {PluralWords.Minutes(elapsed.TotalMinutes)}, past its {tooSlow.TooSlowMaxTotalMinutes:0}-minute maximum total time, whatever its current speed.",
                     "Check the indexer's health and the client's connection, then Resume or Recheck if appropriate."));
             }

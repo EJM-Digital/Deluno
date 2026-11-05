@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { areaOf, fullIn, mbps, sizeText, splitAddress, tracePaths, wholeRows } from "./logic";
+import { areaOf, fullIn, sizeText, splitAddress, tracePaths, wholeRows } from "./logic";
 import { buildConnections, connectionsLine, groupConnections } from "./connections-model";
 
 describe("System logic", () => {
@@ -11,7 +11,6 @@ describe("System logic", () => {
   });
   it("words readings plainly", () => {
     expect(sizeText(387 * 1024 * 1024)).toBe("387 MB");
-    expect(mbps(3.4e6)).toBe("3.4");
     expect(splitAddress("http://192.168.1.51:5099/")).toEqual({ host: "192.168.1.51", port: "5099" });
     expect(fullIn(null)).toBeNull();
     expect(fullIn(45)).toBe("45 days");

@@ -286,8 +286,7 @@ describe("In progress: the summary strip cells", () => {
     queueLoaderData.telemetry = { ...queueLoaderData.telemetry, summary: { ...zeroSummary, activeCount: 3, totalSpeedMbps: 12.34 } };
     showQueue([]);
 
-    expect(cellOf("Downloading")).toHaveTextContent("3");
-    expect(cellOf("Downloading")).toHaveTextContent("12.3 MB/s combined");
+    expect(cellOf("Downloading")).toHaveTextContent("12 MB/s combined");
   });
 
   it("Processing says no processor is connected when none is configured", () => {

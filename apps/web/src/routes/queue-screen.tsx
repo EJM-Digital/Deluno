@@ -100,6 +100,7 @@ import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences, type
 import { useColumnVisibility, type ColumnDefinition } from "../lib/use-column-visibility";
 import { formatProgressPercent } from "../lib/progress-format";
 import { plural } from "../lib/plural";
+import { formatSpeed } from "../lib/format-speed";
 
 /** Downloads still in their client: moving, waiting, stopped or stalled, as the Downloading tile counts them (#1448). */
 const DOWNLOADING_IN_CLIENT: string[] = [downloadQueueStatuses.downloading, downloadQueueStatuses.queued, downloadQueueStatuses.stalled, downloadQueueStatuses.paused, downloadQueueStatuses.notTransferring];
@@ -1277,7 +1278,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       <SummaryStrip
         cells={[
           // The rows under it, stalled and waiting ones included, so the tile and the list say the same number (#1448).
-          { label: "Downloading", value: String(inTheClient.length), help: inTheClientStalled ? `${inTheClientStalled} not moving · ${telemetry.summary.totalSpeedMbps.toFixed(1)} MB/s combined` : `${telemetry.summary.totalSpeedMbps.toFixed(1)} MB/s combined` },
+          { label: "Downloading", value: String(inTheClient.length), help: inTheClientStalled ? `${inTheClientStalled} not moving · ${formatSpeed(telemetry.summary.totalSpeedMbps)} combined` : `${formatSpeed(telemetry.summary.totalSpeedMbps)} combined` },
           { label: "Processing", value: String(processing.length + activeProcessorHandoffs.length), help: activeProcessorHandoffs.length ? `${activeProcessorHandoffs.length} with the processor` : processorConnections.length ? `${plural(processorConnections.length, "connector")} configured` : "no processor connected" },
           { label: "Importing", value: String(activeImportJobs), help: activeImportJobs ? "writing into your library" : "nothing being written" },
           // Automation picks these up on its next pass; "waiting on you" asked
@@ -1366,7 +1367,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
                   </ListCell>
                   <ListCell
                     numeric
-                    primary={transferring ? `${item.speedMbps.toFixed(1)} MB/s` : "—"}
+                    primary={transferring ? formatSpeed(item.speedMbps) : "—"}
                     secondary={transferring && item.etaSeconds > 0 ? formatEta(item.etaSeconds) : undefined}
                   />
                   <ListCell primary={item.clientName} secondary={item.indexerName || undefined} />
@@ -1812,7 +1813,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
               <ProgressBar value={openQueueItem.progress} />
               <div className="grid gap-1.5">
                 <Fact label="Done" value={`${formatProgressPercent(openQueueItem.progress)} — ${formatBytes(openQueueItem.downloadedBytes)} of ${formatBytes(openQueueItem.sizeBytes)}`} />
-                <Fact label="Speed" value={openQueueItem.speedMbps > 0 ? `${openQueueItem.speedMbps.toFixed(1)} MB/s` : "Not moving"} />
+                <Fact label="Speed" value={formatSpeed(openQueueItem.speedMbps, { zero: "Not moving" })} />
                 <Fact label="Time left" value={openQueueItem.etaSeconds > 0 ? formatEta(openQueueItem.etaSeconds) : "Unknown"} />
                 <Fact label="Peers" value={String(openQueueItem.peers)} />
                 {openQueueItem.availability != null ? (

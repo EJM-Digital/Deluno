@@ -49,8 +49,8 @@ describe("the Dashboard's wording helpers", () => {
   it("writes speeds with a decimal under ten and whole numbers from ten, never negative or NaN", () => {
     expect(speedText(2.46)).toBe("2.5 MB/s");
     expect(speedText(12.4)).toBe("12 MB/s");
-    expect(speedText(-3)).toBe("0.0 MB/s");
-    expect(speedText(Number.NaN)).toBe("0.0 MB/s");
+    expect(speedText(-3)).toBe("0 KB/s");
+    expect(speedText(Number.NaN)).toBe("0 KB/s");
   });
 
   it("adds up a record of counts and a missing one is nothing", () => {

@@ -2650,7 +2650,7 @@ public sealed class DownloadClientTelemetryService(
 
             var floor = rule?.Threshold ?? 0;
             return floor > 0
-                ? $"It stayed under {floor:0.#} KB/s for {checks}"
+                ? $"It stayed under {SpeedText.FromKbps(floor)} for {checks}"
                 : $"It was too slow for {checks}";
         }
 

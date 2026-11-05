@@ -18,7 +18,7 @@ describe("a scale in quarters (the owner: 25 / 50 / 75 / 100)", () => {
   });
 
   it("draws four lines from the top down, labelled at each quarter, the 75% and 25% ones minor", () => {
-    const ticks = quarterTicks(10, "MB/s", 0, 100);
+    const ticks = quarterTicks(10, "speed", 0, 100);
     expect(ticks.map((tick) => [tick.top, tick.label, tick.minor])).toEqual([
       [0, "10 MB/s", false],
       [25, "7.5 MB/s", true],
@@ -27,9 +27,9 @@ describe("a scale in quarters (the owner: 25 / 50 / 75 / 100)", () => {
     ]);
     expect(quarterTicks(100, "%", 8, 100).map((tick) => tick.label)).toEqual(["100%", "75%", "50%", "25%"]);
     // Under 1 MB/s the whole scale is in KB/s, so no quarter is rounded away.
-    expect(quarterTicks(0.1, "MB/s", 8, 100).map((tick) => tick.label)).toEqual(["100 KB/s", "75 KB/s", "50 KB/s", "25 KB/s"]);
-    expect(quarterTicks(0.4, "MB/s", 8, 100).map((tick) => tick.label)).toEqual(["400 KB/s", "300 KB/s", "200 KB/s", "100 KB/s"]);
-    expect(quarterTicks(4, "MB/s", 8, 100).map((tick) => tick.label)).toEqual(["4 MB/s", "3 MB/s", "2 MB/s", "1 MB/s"]);
+    expect(quarterTicks(0.1, "speed", 8, 100).map((tick) => tick.label)).toEqual(["100 KB/s", "75 KB/s", "50 KB/s", "25 KB/s"]);
+    expect(quarterTicks(0.4, "speed", 8, 100).map((tick) => tick.label)).toEqual(["400 KB/s", "300 KB/s", "200 KB/s", "100 KB/s"]);
+    expect(quarterTicks(4, "speed", 8, 100).map((tick) => tick.label)).toEqual(["4 MB/s", "3 MB/s", "2 MB/s", "1 MB/s"]);
   });
 
   it("leaves the minor labels off a chart too short for four, keeping their lines", () => {
@@ -45,11 +45,14 @@ describe("a scale in quarters (the owner: 25 / 50 / 75 / 100)", () => {
 
 describe("labels", () => {
   it("says the scale in plain units", () => {
-    expect(scaleLabel(10, "MB/s")).toBe("10 MB/s");
-    expect(scaleLabel(2.5 / 2, "MB/s")).toBe("1.25 MB/s");
+    expect(scaleLabel(10, "speed")).toBe("10 MB/s");
+    expect(scaleLabel(2.5 / 2, "speed")).toBe("1.25 MB/s");
+    expect(scaleLabel(0.025, "speed", 0.1)).toBe("25 KB/s");
+    expect(scaleLabel(750, "speed", 1000)).toBe("0.8 GB/s");
     expect(scaleLabel(50, "%")).toBe("50%");
     expect(rateText(6.24)).toBe("6.2 MB/s");
-    expect(rateText(0)).toBe("0 MB/s");
+    expect(rateText(0)).toBe("0 KB/s");
+    expect(rateText(0.12)).toBe("120 KB/s");
   });
 });
 
@@ -71,7 +74,7 @@ describe("the reading under the pointer", () => {
     const hit = speedHitAt(series, 0.5);
     expect(hit?.text).toBe("6.2 MB/s down · 1.1 MB/s up");
     expect(hit?.time).toBe(clockAt(now - 3 * 3_600_000));
-    expect(speedHitAt(series, 0.9)?.text).toBe("2.0 MB/s down · 0 MB/s up");
+    expect(speedHitAt(series, 0.9)?.text).toBe("2.0 MB/s down · 0 KB/s up");
   });
 
   it("reads a trace of ten-second readings, newest last", () => {

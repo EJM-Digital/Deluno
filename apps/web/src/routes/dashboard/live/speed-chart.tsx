@@ -11,7 +11,7 @@ import { useCallback, useMemo } from "react";
 import type { DashboardSummary } from "../../../lib/api/types/operations";
 import type { DownloadThroughputSample } from "../../../lib/api";
 import { CountUp } from "../../../components/ui/count-up";
-import { formatSpeed } from "../downloads-kit";
+import { formatSpeed, speedParts } from "../../../lib/format-speed";
 import { BandCard, FigureUnit } from "./band-card";
 import { useNow } from "./hooks";
 import { linePath, shapeSpeedSeries, type SpeedSeries } from "./series";
@@ -23,12 +23,6 @@ const HEIGHT = 110;
 const PAD_TOP = 10;
 const PLOT = HEIGHT - PAD_TOP - 6;
 const HOURS = 6;
-
-/** The figure's number and its unit apart, so the unit can be small: "6.2" and "MB/s". */
-function speedParts(mbps: number): { value: string; unit: string } {
-  const [value, ...unit] = formatSpeed(mbps).split(" ");
-  return { value, unit: unit.join(" ") };
-}
 
 /**
  * What the quiet note beside "Speed" says: the peak of what the big figure measures (download), and the upload's peak
@@ -112,7 +106,7 @@ export function SpeedCell({ samples, summary }: { samples: DownloadThroughputSam
         </g>
       </svg>
       <ChartLayer
-        ticks={quarterTicks(top, "MB/s", (PAD_TOP / HEIGHT) * 100, ((PAD_TOP + PLOT) / HEIGHT) * 100)}
+        ticks={quarterTicks(top, "speed", (PAD_TOP / HEIGHT) * 100, ((PAD_TOP + PLOT) / HEIGHT) * 100)}
         startLabel={`${HOURS} h ago`}
         endLabel="now"
         resolve={resolve}

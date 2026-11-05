@@ -196,7 +196,7 @@ describe("the Download Clients tab, low rows (#1329)", () => {
 
     const cellOf = (name: string) => within(screen.getAllByRole("row").find((row) => row.textContent?.includes(name))!).getAllByRole("cell")[3].textContent ?? "";
     expect(cellOf("Busy")).toContain("2 active");
-    expect(cellOf("Busy")).toContain("12.3 MB/s · 1 ready to import");
+    expect(cellOf("Busy")).toContain("12 MB/s · 1 ready to import");
     expect(cellOf("Tested")).toMatch(/Tested .*ago/);
     expect(cellOf("Never")).toContain("Not tested");
   });

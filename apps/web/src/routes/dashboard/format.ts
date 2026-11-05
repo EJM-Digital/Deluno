@@ -4,6 +4,7 @@
  */
 import { formatBytes } from "../../lib/utils";
 import { plural } from "../../lib/plural";
+import { formatSpeed } from "../../lib/format-speed";
 
 /** "3 min ago", "2 h ago", "4 days ago"; a missing or unreadable time says "never". */
 export function ago(value: string | null | undefined, now = Date.now()): string {
@@ -48,8 +49,7 @@ export function bytesText(value: number | null | undefined): string {
 }
 
 export function speedText(mbps: number): string {
-  const value = Number.isFinite(mbps) ? Math.max(0, mbps) : 0;
-  return `${value < 10 ? value.toFixed(1) : Math.round(value)} MB/s`;
+  return formatSpeed(mbps);
 }
 
 /** Sum of a record of counts. */

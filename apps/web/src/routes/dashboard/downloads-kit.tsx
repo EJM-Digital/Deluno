@@ -164,11 +164,7 @@ export function ActionButton({
 
 /* ------------------------------------------------------------ wording */
 
-/** "3.9 MB/s": always a reading, and 0 reads "0 MB/s". */
-export function formatSpeed(mbps: number | null | undefined): string {
-  const value = Number.isFinite(mbps) && mbps ? Math.max(0, mbps as number) : 0;
-  return `${value >= 10 || value === 0 ? Math.round(value) : value.toFixed(1)} MB/s`;
-}
+export { formatSpeed } from "../../lib/format-speed";
 
 /** "2 min ago", "3 h ago", "yesterday". Empty for a missing or unreadable time. */
 export function ago(iso: string | null | undefined, now = Date.now()): string {

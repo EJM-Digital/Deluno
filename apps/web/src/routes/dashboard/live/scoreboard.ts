@@ -9,6 +9,7 @@ import type { ClientLight } from "./clients";
 import { connectionKey, connectionWords, sortConnections, tileName } from "./connections";
 import { SLOW_ANSWER_MS, type IndexerToday } from "./indexers";
 import { plural } from "../../../lib/plural";
+import { formatSpeed } from "../../../lib/format-speed";
 
 /** An enabled indexer that is not known to be healthy gets Test again (the bell's rule on the server is the same). */
 export function indexerNeedsButton(indexer: Pick<IndexerItem, "isEnabled" | "healthStatus">): boolean {
@@ -133,7 +134,7 @@ export interface ClientBar {
 
 function clientWords(light: ClientLight): string {
   const seeding = light.seeding > 0 ? `${number(light.seeding)} seeding` : null;
-  const state = light.moving ? `${light.speedMbps.toFixed(1)} MB/s` : light.tone === "idle" ? "switched off" : light.tone === "bad" ? "not answering" : light.tone === "warn" ? "paused" : "idle";
+  const state = light.moving ? formatSpeed(light.speedMbps) : light.tone === "idle" ? "switched off" : light.tone === "bad" ? "not answering" : light.tone === "warn" ? "paused" : "idle";
   return [state, seeding].filter(Boolean).join(" · ");
 }
 
@@ -146,7 +147,7 @@ export function clientBar(lights: readonly ClientLight[]): ClientBar {
     return { id: light.id, name: light.name, colour: CLIENT_COLOURS[index % CLIENT_COLOURS.length], speedMbps, share, named: share > SEGMENT_NAMED_SHARE, words: clientWords(light) };
   });
   const moving = ordered.filter((light) => light.moving).length;
-  return { segments, totalMbps, moving, summary: ordered.length === 0 ? "none set up" : `${totalMbps.toFixed(1)} MB/s across ${number(moving)} of ${number(ordered.length)}` };
+  return { segments, totalMbps, moving, summary: ordered.length === 0 ? "none set up" : `${formatSpeed(totalMbps)} across ${number(moving)} of ${number(ordered.length)}` };
 }
 
 export interface ConnectionPill {

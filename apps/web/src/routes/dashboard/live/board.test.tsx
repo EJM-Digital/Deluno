@@ -290,7 +290,7 @@ describe("speed", () => {
   it("draws a trace with a reading even when nothing has ever been stored, and says the unit beside the figure", () => {
     const { container } = withRouter(<SpeedCell samples={[]} summary={undefined} />);
     expect(container.querySelector("svg path")).not.toBeNull();
-    expect(container.textContent).toContain("0 MB/s");
+    expect(container.textContent).toContain("0 KB/s");
     expect(container.textContent).not.toMatch(/NaN|undefined/);
   });
 
@@ -914,7 +914,7 @@ describe("the Sources card", () => {
     expect(bar.segments.map((segment) => segment.named)).toEqual([true, true, false]);
     expect(new Set(bar.segments.map((segment) => segment.colour)).size).toBe(3);
     expect(bar.segments.map((segment) => segment.colour).join(" ")).not.toMatch(/145|28 |0 84/);
-    expect(bar.summary).toBe("12.0 MB/s across 2 of 3");
+    expect(bar.summary).toBe("12 MB/s across 2 of 3");
     expect(clientBar([]).summary).toBe("none set up");
   });
 

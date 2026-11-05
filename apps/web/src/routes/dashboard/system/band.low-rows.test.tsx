@@ -63,7 +63,7 @@ describe("System: network checks", () => {
     const col = container.querySelector(".sy-net2 .sy-col")!;
     expect(col.querySelector(".sy-mh")!.textContent).toBe("Ethernet");
     expect(col.querySelector(".sy-v")!.textContent).toBe("2.5 MB/s in");
-    expect(col.querySelector(".sy-sub")!.textContent).toBe("↑ 0.5 out · 1 Gb/s · 192.168.1.10");
+    expect(col.querySelector(".sy-sub")!.textContent).toBe("↑ 500 KB/s out · 1 Gb/s · 192.168.1.10");
     const warn = container.querySelector(".sy-reach .sy-warn")!;
     expect(warn.textContent).toBe("!Internetnot reachable");
     expect(container.querySelectorAll(".sy-reach span:not(.sy-warn) em")[0].textContent).toBe("✓");

@@ -142,7 +142,7 @@ describe("Live", () => {
 
   it("renders before the summary has arrived without inventing numbers", () => {
     const { container } = renderTab(undefined);
-    expect(container.textContent).toContain("0 MB/s");
+    expect(container.textContent).toContain("0 KB/s");
     expect(container.textContent).not.toMatch(/undefined|NaN/);
   });
 });

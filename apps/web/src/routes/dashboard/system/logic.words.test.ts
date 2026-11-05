@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  AREAS, areaName, areaOf, areaOfAttention, clockText, countdown, fullIn, mbps, plainCount, sinceText, sizeText, span, splitAddress, timeOfDayText, traceMax, tracePaths, upText, wholeRows, whenText,
+  AREAS, areaName, areaOf, areaOfAttention, clockText, countdown, fullIn, plainCount, sinceText, sizeText, span, splitAddress, timeOfDayText, traceMax, tracePaths, upText, wholeRows, whenText,
   type HealthArea
 } from "./logic";
 
@@ -73,10 +73,6 @@ describe("the words for readings", () => {
     expect(sizeText(null)).toBe("");
     expect(sizeText(undefined)).toBe("");
     expect(sizeText(-1)).toBe("");
-  });
-
-  it.each([[null, "0.0"], [undefined, "0.0"], [-5e6, "0.0"], [0, "0.0"], [3.44e6, "3.4"], [9.99e6, "10.0"], [10e6, "10"], [41.6e6, "42"]])("a rate of %s bytes a second reads %s", (value, text) => {
-    expect(mbps(value as number | null | undefined)).toBe(text);
   });
 
   it.each([[null, ""], [undefined, ""], [Number.NaN, ""], [Number.POSITIVE_INFINITY, ""], [0, "up 1 min"], [59, "up 1 min"], [120, "up 2 min"], [59 * 60, "up 59 min"], [3600, "up 1 h"], [47 * 3600, "up 47 h"], [48 * 3600, "up 2 days"], [6.5 * 86400, "up 6 days"]])("an uptime of %s seconds reads %s", (value, text) => {

@@ -76,12 +76,6 @@ export function sizeText(bytes: number | null | undefined): string {
   return text === NO_SIZE ? "" : text;
 }
 
-/** A rate in MB/s with one decimal under 10 ("0.0", "3.4", "42"). */
-export function mbps(bytesPerSecond: number | null | undefined): string {
-  const value = Math.max(0, (bytesPerSecond ?? 0) / 1e6);
-  return value < 10 ? value.toFixed(1) : String(Math.round(value));
-}
-
 /** "up 6 days", "up 3 h". */
 export function upText(seconds: number | null | undefined): string {
   if (!Number.isFinite(seconds)) return "";

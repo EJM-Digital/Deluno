@@ -58,7 +58,7 @@ describe("System: This computer", () => {
     const memory = container.querySelectorAll<HTMLElement>(".sy-col")[1];
     expect(memory.querySelector(".sy-sub")!.textContent).toBe("of 14.9 GB · Deluno 238 MB");
     const disk = container.querySelectorAll<HTMLElement>(".sy-col")[2];
-    expect(disk.querySelector(".sy-sub")!.textContent).toBe("read 2.0 · write 3.0 · 120 IOPS");
+    expect(disk.querySelector(".sy-sub")!.textContent).toBe("read 2.0 MB/s · write 3.0 MB/s · 120 IOPS");
     expect(within(card).getByText("This computer")).toBeInTheDocument();
   });
 

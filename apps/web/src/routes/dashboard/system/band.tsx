@@ -11,7 +11,8 @@ import { formatBytes } from "../../../lib/utils";
 import { useNow } from "../live/hooks";
 import { ChartLayer, quarterMax, rateText, traceHitAt } from "../chart-scale";
 import { instanceFacts } from "./facts";
-import { countdown, mbps, plainCount, sizeText, tracePaths, upText, wholeRows } from "./logic";
+import { formatBytesPerSecond, speedParts } from "../../../lib/format-speed";
+import { countdown, plainCount, sizeText, tracePaths, upText, wholeRows } from "./logic";
 
 const RING = 201.1;
 const FACT_ROW_PX = 42;
@@ -180,7 +181,7 @@ export function ComputerCard({ overview }: { overview: SystemOverview | null }):
         <div className="sy-cols3">
           <Column colour={GREEN} label="CPU" value={String(Math.round(machine.cpuPercent))} unit="%" sub={[`${machine.cores} cores`, instance ? `Deluno ${Math.round(instance.cpuPercent)}%` : null].filter(Boolean).join(" · ")} values={history?.cpu ?? []} scale={{ kind: "percent" }} />
           <Column colour={BLUE} label="Memory" value={formatBytes(machine.memoryUsedBytes).split(" ")[0]} unit={` ${formatBytes(machine.memoryUsedBytes).split(" ")[1] ?? ""}`} sub={[`of ${formatBytes(machine.memoryTotalBytes)}`, instance ? `Deluno ${sizeText(instance.memoryBytes)}` : null].filter(Boolean).join(" · ")} values={history?.memory ?? []} scale={{ kind: "percent" }} />
-          <Column colour={VIOLET} label="Disk" value={mbps(machine.diskReadBytesPerSec + machine.diskWriteBytesPerSec)} unit=" MB/s" sub={`read ${mbps(machine.diskReadBytesPerSec)} · write ${mbps(machine.diskWriteBytesPerSec)} · ${plainCount(machine.diskIops)} IOPS`} values={history?.disk ?? []} scale={{ kind: "percent", noun: "busy" }} />
+          <Column colour={VIOLET} label="Disk" value={speedParts(machine.diskReadBytesPerSec / 1e6 + machine.diskWriteBytesPerSec / 1e6).value} unit={` ${speedParts(machine.diskReadBytesPerSec / 1e6 + machine.diskWriteBytesPerSec / 1e6).unit}`} sub={`read ${formatBytesPerSecond(machine.diskReadBytesPerSec)} · write ${formatBytesPerSecond(machine.diskWriteBytesPerSec)} · ${plainCount(machine.diskIops)} IOPS`} values={history?.disk ?? []} scale={{ kind: "percent", noun: "busy" }} />
         </div>
       ) : (
         <div className="sy-empty sy-muted">Deluno has not read this computer yet. The first reading arrives within a few seconds.</div>
@@ -215,7 +216,7 @@ export function networkChecks(network: SystemOverview["network"]): Check[] {
 export function NetworkCard({ overview }: { overview: SystemOverview | null }): JSX.Element {
   const network = overview?.network;
   // The whole line is the tooltip of the cut one: the adapter name alone told nothing of the rest (#1168).
-  const networkLine = network ? [`↑ ${mbps(network.outBytesPerSec)} out`, linkText(network.linkMbps), network.ip].filter(Boolean).join(" · ") : "";
+  const networkLine = network ? [`↑ ${formatBytesPerSecond(network.outBytesPerSec)} out`, linkText(network.linkMbps), network.ip].filter(Boolean).join(" · ") : "";
   return (
     <section className="sy-card sy-tile sy-net" aria-label="Network">
       <div className="sy-top">
@@ -226,7 +227,7 @@ export function NetworkCard({ overview }: { overview: SystemOverview | null }): 
         <div className="sy-net2">
           <div className="sy-col" style={{ "--m": CYAN } as CSSProperties}>
             <span className="sy-mh" title={network.adapter ?? "Network"}><i />{network.adapter ?? "Network"}</span>
-            <span className="sy-v">{mbps(network.inBytesPerSec)}<small> MB/s in</small></span>
+            <span className="sy-v">{speedParts(network.inBytesPerSec / 1e6).value}<small> {speedParts(network.inBytesPerSec / 1e6).unit} in</small></span>
             <span className="sy-sub" title={networkLine}>{networkLine}</span>
             <TraceChart values={overview?.history.netIn ?? []} scale={{ kind: "rate" }} colour={CYAN} />
           </div>

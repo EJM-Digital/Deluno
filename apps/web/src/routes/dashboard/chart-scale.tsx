@@ -5,6 +5,7 @@
  * chart and the labels never take room of their own.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { formatSpeed, speedAxisLabel, speedUnitFor } from "../../lib/format-speed";
 import "./chart-scale.css";
 
 /**
@@ -26,28 +27,25 @@ export function quarterMax(value: number): number {
  * The four gridlines of a scale in quarters, from the plot's top (`topPct`) to its bottom (`bottomPct`), as percentages
  * down the chart's box. The 75% and 25% labels are minor: a chart too short to hold four labels shows only their lines.
  */
-export function quarterTicks(top: number, unit: "%" | "MB/s", topPct: number, bottomPct: number): ChartTick[] {
-  // A rate scale under 1 MB/s is said in KB/s, one unit for the whole scale: 25 / 50 / 75 / 100 KB/s, never 0.03 MB/s.
-  const small = unit === "MB/s" && top < 1;
+export function quarterTicks(top: number, unit: "%" | "speed", topPct: number, bottomPct: number): ChartTick[] {
+  // A speed scale is said in one unit, picked from its largest value: 25 / 50 / 75 / 100 KB/s, never 0.03 MB/s.
   return [1, 0.75, 0.5, 0.25].map((share) => ({
     top: bottomPct - (bottomPct - topPct) * share,
-    label: small ? `${Number((top * share * 1000).toPrecision(3))} KB/s` : scaleLabel(top * share, unit),
+    label: scaleLabel(top * share, unit, top),
     side: "below" as const,
     minor: share === 0.75 || share === 0.25
   }));
 }
 
-/** A scale value as a label: "10 MB/s", "2.5 MB/s", "0.25 MB/s", "50%". */
-export function scaleLabel(value: number, unit: "%" | "MB/s"): string {
+/** A scale value as a label: "10 MB/s", "250 KB/s", "50%". A speed is said in the unit of the scale's top. */
+export function scaleLabel(value: number, unit: "%" | "speed", top = value): string {
   if (unit === "%") return `${Math.round(value)}%`;
-  const text = value >= 10 ? String(Math.round(value)) : String(Number(value.toFixed(2)));
-  return `${text} MB/s`;
+  return speedAxisLabel(value, speedUnitFor(top));
 }
 
-/** A rate as the readout says it: one decimal under 10, none above ("6.2 MB/s", "42 MB/s", "0 MB/s"). */
+/** A rate as the readout says it ("120 KB/s", "6.2 MB/s", "42 MB/s"). */
 export function rateText(value: number): string {
-  const v = Number.isFinite(value) ? Math.max(0, value) : 0;
-  return `${v >= 10 || v === 0 ? Math.round(v) : v.toFixed(1)} MB/s`;
+  return formatSpeed(value);
 }
 
 /** The index of the point nearest a fraction (0 to 1) across the chart, given each point's own fraction in order. */

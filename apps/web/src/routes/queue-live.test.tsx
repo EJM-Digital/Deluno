@@ -170,7 +170,7 @@ describe("In progress after a reconnect that replays what it missed", () => {
     // Nothing older is left on screen from the replay, and the number is not drawn twice for one download.
     expect(screen.queryByText(/^70%/)).toBeNull();
     expect(screen.queryByText(/^85%/)).toBeNull();
-    expect(document.body.textContent).toContain("0.4 MB/s");
+    expect(document.body.textContent).toContain("400 KB/s");
 
     // A replayed removal ends it, whatever came before.
     send("QueueItemRemoved", { id: "q1" });

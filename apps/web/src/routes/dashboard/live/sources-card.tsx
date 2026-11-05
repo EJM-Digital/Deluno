@@ -22,6 +22,7 @@ import { pulseOf, type IndexerScoreboardToday } from "./indexers";
 import { LiveCard as Panel } from "./live-card";
 import { clientBar, connectionPills, scoreRows, scoreSummary, STANDING_WORD } from "./scoreboard";
 import { plural } from "../../../lib/plural";
+import { formatSpeed } from "../../../lib/format-speed";
 import "./sources-card.css";
 
 const NO_ROWS: never[] = [];
@@ -168,7 +169,7 @@ export function SourcesCard({ indexers, scoreboard, summary, now, clientRows, cl
           </div>
           <div className="ls-stack" role="img" aria-label={bar.segments.length === 0 ? "No download clients" : `Download speed by client: ${bar.summary}`}>
             {bar.segments.map((segment) => (
-              <i key={segment.id} style={{ width: `${segment.share * 100}%`, background: segment.colour }} title={`${segment.name} · ${segment.speedMbps.toFixed(1)} MB/s`}>
+              <i key={segment.id} style={{ width: `${segment.share * 100}%`, background: segment.colour }} title={`${segment.name} · ${formatSpeed(segment.speedMbps)}`}>
                 <span>{segment.named ? segment.name : ""}</span>
               </i>
             ))}

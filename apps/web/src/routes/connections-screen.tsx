@@ -72,6 +72,7 @@ import { ConnectionSelectAll, ConnectionSelectButton, ConnectionSelectionBar, Co
 import { useRowSelection } from "../lib/connection-tags";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { plural } from "../lib/plural";
+import { formatSpeed } from "../lib/format-speed";
 
 const TABS = configurationNavAreas.find((area) => area.to === "/indexers/indexers")!.items;
 
@@ -1221,7 +1222,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
                       ) : null}
                       <ListCell primary={preset?.label ?? item.protocol} secondary={libraries.length > 0 && sentBy.length === 0 ? <RoutingFixLink>No library sends downloads here. Route it in Library Routing</RoutingFixLink> : sentBy.length ? `Used by ${sentBy.join(", ")}` : preset ? `${preset.kind} · ${preset.authMode}` : undefined} />
                       <ListCell mono primary={[movies, tv].filter(Boolean).join(" · ") || "—"} secondary={movies && tv && movies === tv ? "Same for both — files will mix" : mappings.length ? `${plural(mappings.length, "file-location link")}` : "Movies · TV"} />
-                      <ListCell numeric primary={nowLive ? `${nowLive.summary.activeCount} active` : <span className="text-muted-foreground">—</span>} secondary={nowLive ? `${nowLive.summary.totalSpeedMbps.toFixed(1)} MB/s · ${nowLive.summary.importReadyCount} ready to import` : item.lastHealthTestUtc ? `Tested ${relative(item.lastHealthTestUtc)}` : "Not tested"} />
+                      <ListCell numeric primary={nowLive ? `${nowLive.summary.activeCount} active` : <span className="text-muted-foreground">—</span>} secondary={nowLive ? `${formatSpeed(nowLive.summary.totalSpeedMbps)} · ${nowLive.summary.importReadyCount} ready to import` : item.lastHealthTestUtc ? `Tested ${relative(item.lastHealthTestUtc)}` : "Not tested"} />
                       <ListCell mobile className="max-md:max-w-[7.5rem]">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <Chip tone={chip.tone}>{chip.label}</Chip>

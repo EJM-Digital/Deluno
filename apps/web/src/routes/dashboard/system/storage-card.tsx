@@ -7,7 +7,8 @@ import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import type { DashboardSummary } from "../../../lib/api";
 import type { SystemOverviewDrive } from "../../../lib/api/types/system-overview";
-import { fullIn, mbps, plainCount, sizeText } from "./logic";
+import { formatBytesPerSecond } from "../../../lib/format-speed";
+import { fullIn, plainCount, sizeText } from "./logic";
 
 export interface DriveView {
   key: string;
@@ -60,7 +61,7 @@ export function StorageCard({ drives }: { drives: DriveView[] }): JSX.Element {
               </span>
               {drive.io || drive.health !== "unknown" ? (
                 <span className="sy-io">
-                  <span>{drive.io ? <>read <b>{mbps(drive.io.read)}</b> · write <b>{mbps(drive.io.write)}</b> MB/s · <b>{plainCount(drive.io.iops)}</b> IOPS · {Math.round(drive.io.busy)}% busy</> : null}</span>
+                  <span>{drive.io ? <>read <b>{formatBytesPerSecond(drive.io.read)}</b> · write <b>{formatBytesPerSecond(drive.io.write)}</b> · <b>{plainCount(drive.io.iops)}</b> IOPS · {Math.round(drive.io.busy)}% busy</> : null}</span>
                   {drive.health === "good" ? <span className="sy-ok">✓ healthy</span> : drive.health === "unknown" ? null : <span className="sy-warn">⚠ {drive.healthNote || (drive.health === "failing" ? "failing" : "a warning")}</span>}
                 </span>
               ) : null}
