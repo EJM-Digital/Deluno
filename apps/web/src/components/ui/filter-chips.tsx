@@ -35,16 +35,22 @@ export function FilterChips<T extends string>({
   options: readonly FilterChipOption<T>[];
   /**
    * "md" on the header's title line (38px box, 30px options, 13px); "sm" in a card's header (28px box, 22px options,
-   * 12px), so a card filter never makes its header taller than the card's title (#1115).
+   * 12px), so a card filter never makes its header taller than the card's title (#1115). "header" is the Dashboard panel
+   * header's: separate pill chips with no box round them, as Weir's (#1461): 24px tall, 12px text, 6px apart, 600 when chosen and 500 otherwise.
    */
-  size?: "md" | "sm";
+  size?: "md" | "sm" | "header";
   className?: string;
 }) {
+  const header = size === "header";
   return (
     <div
       role="radiogroup"
       aria-label={label}
-      className={cn("no-scrollbar flex w-max min-w-0 max-w-full shrink items-center gap-[2px] overflow-x-auto border border-hairline bg-card", size === "sm" ? "rounded-[9px] p-[2px]" : "rounded-xl p-[3px]", className)}
+      className={cn(
+        "no-scrollbar flex w-max min-w-0 max-w-full shrink items-center overflow-x-auto",
+        header ? "gap-[6px] px-[8px] py-[4px]" : cn("gap-[2px] border border-hairline bg-card", size === "sm" ? "rounded-[9px] p-[2px]" : "rounded-xl p-[3px]"),
+        className
+      )}
     >
       {options.map((option) => {
         const active = option.value === value;
@@ -62,10 +68,13 @@ export function FilterChips<T extends string>({
               event.currentTarget.scrollIntoView?.({ inline: "nearest", block: "nearest" });
             }}
             className={cn(
-              "inline-flex shrink-0 items-center whitespace-nowrap border font-medium transition-colors duration-150 motion-reduce:transition-none",
-              size === "sm" ? "h-[22px] rounded-[7px] px-[10px] text-(length:--type-caption)" : "h-[30px] rounded-[10px] px-[14px] text-(length:--type-control)",
+              "inline-flex shrink-0 items-center whitespace-nowrap border transition-colors duration-150 motion-reduce:transition-none",
+              header ? (active ? "font-semibold" : "font-medium") : "font-medium",
+              header ? "h-[24px] rounded-full px-[10px] text-(length:--type-caption)" : size === "sm" ? "h-[22px] rounded-[7px] px-[10px] text-(length:--type-caption)" : "h-[30px] rounded-[10px] px-[14px] text-(length:--type-control)",
               "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
-              active ? "border-primary/40 bg-primary/10 text-primary" : "border-transparent text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+              header
+                ? active ? "border-primary/45 bg-primary/16 text-primary" : "border-hairline text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+                : active ? "border-primary/40 bg-primary/10 text-primary" : "border-transparent text-muted-foreground hover:bg-surface-2 hover:text-foreground"
             )}
           >
             {option.dot ? <span aria-hidden="true" className="mr-[5px] h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: option.dot }} /> : null}
