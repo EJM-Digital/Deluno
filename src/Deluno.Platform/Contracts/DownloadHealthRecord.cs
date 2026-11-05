@@ -83,17 +83,14 @@ public sealed record DownloadProgressRecord(
     string QueueItemId,
     long DownloadedBytes,
     DateTimeOffset LastIncreaseUtc,
-    DateTimeOffset LastObservedUtc,
-    long? CheckBytes = null,
-    DateTimeOffset? CheckUtc = null);
+    DateTimeOffset LastObservedUtc);
 
 /// <summary>What one check saw of an item's downloaded bytes (#1207).</summary>
 /// <param name="LastIncreaseUtc">When the bytes were last seen to grow, as the progress clock counts it.</param>
 /// <param name="BytesGrew">Whether the bytes grew since the previous check; null when there was no earlier reading.</param>
 /// <param name="AverageBytesPerSecond">Bytes gained per second between the previous check and this one (#1490); null on a first reading.</param>
 /// <param name="Period">How long that was; null on a first reading.</param>
-/// <param name="IsCheck">#1501: whether this reading is a check (a whole check interval since the previous check, or a first reading) as opposed to a poll between two checks. Strikes are added and cleared only at a check; the grew/average figures are against the previous check.</param>
-public sealed record DownloadProgressObservation(DateTimeOffset LastIncreaseUtc, bool? BytesGrew, double? AverageBytesPerSecond = null, TimeSpan? Period = null, bool IsCheck = true);
+public sealed record DownloadProgressObservation(DateTimeOffset LastIncreaseUtc, bool? BytesGrew, double? AverageBytesPerSecond = null, TimeSpan? Period = null);
 
 /// <summary>
 /// What a strike is (#560).
