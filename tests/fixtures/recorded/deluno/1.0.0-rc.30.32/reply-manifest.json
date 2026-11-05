@@ -1,0 +1,95 @@
+{
+  "app": "deluno",
+  "version": "1.0.0-rc.30.32",
+  "state": "reply-manifest",
+  "recordedAt": "2026-11-05T20:17:28Z",
+  "note": "Weir reads Deluno's manifest on a Deluno with a movie library that hands to Weir (with its connection) and a TV library with no processor: the product, the whole list of capabilities, the recommended categories and every library with all of its members. Recorded from the real server code through the in-process test host (ApplicationTestHost), by DelunoRepliesToWeirTests; generated ids, times and the data folder are replaced by <id>, <utc> and <data-root>.",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/integrations/external/manifest",
+        "headers": {
+          "x-api-key": "<api key with the read and imports scopes>"
+        }
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "product": "Deluno",
+          "version": "v1",
+          "instanceName": "<instance-name>",
+          "capabilities": [
+            "movies",
+            "tv",
+            "indexers",
+            "download-clients",
+            "library-routing",
+            "destination-rules",
+            "metadata",
+            "media-probing",
+            "external-file-changed",
+            "external-redownload",
+            "pre-import-processing",
+            "processor-reject-regrab",
+            "activity-feed",
+            "signalr"
+          ],
+          "recommendedCategories": {
+            "movies": "deluno-movies",
+            "tv": "deluno-tv",
+            "anime": "deluno-anime",
+            "movies4k": "deluno-movies-4k",
+            "tv4k": "deluno-tv-4k"
+          },
+          "libraries": [
+            {
+              "id": "<library:films>",
+              "name": "films",
+              "mediaType": "movies",
+              "rootPath": "<data-root>/films",
+              "downloadsPath": "<data-root>/films-downloads",
+              "qualityProfileName": null,
+              "importWorkflow": "refine-before-import",
+              "processorName": "Weir",
+              "processorOutputPath": "<data-root>/films-ready",
+              "processorTimeoutMinutes": 2880,
+              "processorFailureMode": "block",
+              "missingSearchEnabled": false,
+              "upgradeSearchEnabled": false,
+              "maxItemsPerRun": 25,
+              "automationStatus": "idle",
+              "cleanupMode": "keep-source",
+              "removeEmptySourceFolders": false
+            },
+            {
+              "id": "<library:shows>",
+              "name": "shows",
+              "mediaType": "tv",
+              "rootPath": "<data-root>/shows",
+              "downloadsPath": "<data-root>/shows-downloads",
+              "qualityProfileName": null,
+              "importWorkflow": "standard",
+              "processorName": null,
+              "processorOutputPath": null,
+              "processorTimeoutMinutes": 2880,
+              "processorFailureMode": "block",
+              "missingSearchEnabled": false,
+              "upgradeSearchEnabled": false,
+              "maxItemsPerRun": 25,
+              "automationStatus": "idle",
+              "cleanupMode": "keep-source",
+              "removeEmptySourceFolders": false
+            }
+          ],
+          "indexers": [],
+          "downloadClients": [],
+          "connections": []
+        }
+      }
+    }
+  ]
+}

@@ -174,6 +174,16 @@ public sealed partial class DelunoRepliesToWeirTests
                     await rig.GetAsync("/api/integrations/processors/download-destinations?libraryId=no-such-library");
                 }),
 
+            new("reply-manifest",
+                "Weir reads Deluno's manifest on a Deluno with a movie library that hands to Weir (with its connection) and a TV library with no processor: the product, the whole list of capabilities, the recommended categories and every library with all of its members.",
+                async rig =>
+                {
+                    rig.Alias(Deluno.Contracts.DelunoHostName.Current, "<instance-name>");
+                    await rig.LibraryAsync("films", withConnection: true);
+                    await rig.LibraryAsync("shows", mediaType: "tv", processor: false);
+                    await rig.GetAsync("/api/integrations/external/manifest");
+                }),
+
             new("reply-import-original-accepted",
                 "Weir (or a person) asks Deluno to import the original of a hand-off the processor did not finish: failed, timed out, stalled, lost and cancelled are each accepted with the hand-off as it now stands.",
                 async rig =>
@@ -379,6 +389,8 @@ public sealed partial class DelunoRepliesToWeirTests
             _anonymous.Dispose();
             return App.DisposeAsync();
         }
+
+        public void Alias(string value, string token) => _normalizer.Alias(value, token);
 
         public Task<Captured> GetAsync(string path, Credential credential = Credential.Imports) => SendAsync(HttpMethod.Get, path, credential);
 
