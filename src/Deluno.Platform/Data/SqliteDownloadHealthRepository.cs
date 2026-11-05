@@ -207,13 +207,6 @@ public sealed class SqliteDownloadHealthRepository(
         return touched.Concat(standing).ToList();
     }
 
-    /// <summary>The first interval boundary after a download was first seen that is at least min(60 s, the interval) later.</summary>
-    internal static DateTimeOffset FirstJudgementUtc(DateTimeOffset firstSeen, TimeSpan interval)
-    {
-        var boundary = new DateTimeOffset((firstSeen.UtcTicks / interval.Ticks + 1) * interval.Ticks, TimeSpan.Zero);
-        return boundary - firstSeen < TimeSpan.FromSeconds(60) && boundary - firstSeen < interval ? boundary + interval : boundary;
-    }
-
     public async Task<IReadOnlyList<DownloadHealthRecord>> ListDownloadHealthRecordsAsync(int take, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
@@ -504,16 +497,11 @@ public sealed class SqliteDownloadHealthRepository(
             var baselineUtc = existing?.CheckUtc ?? existing?.LastObservedUtc;
             // Checks fall on the rule's own interval (a boundary every interval), so a download first seen part-way through one is
             // judged at the next boundary against that first sighting, not a whole interval after it (CI run 41984111137).
-            // A download is not judged until at least a minute (or the whole interval, if shorter) after it was first seen, so one just
-            // sent, still connecting, is not struck at once: a boundary that comes sooner is skipped for the next.
-            var isCheck = existing is null || baselineUtc is null || checkInterval is not { } interval || interval <= TimeSpan.Zero
-                || (existing.Judged is false
-                    ? now >= FirstJudgementUtc(baselineUtc.Value, interval)
-                    : now.UtcTicks / interval.Ticks > baselineUtc.Value.UtcTicks / interval.Ticks);
+            var isCheck = existing is null || baselineUtc is null || checkInterval is not { } interval || interval <= TimeSpan.Zero ||
+                now.UtcTicks / interval.Ticks > baselineUtc.Value.UtcTicks / interval.Ticks;
             var updated = new DownloadProgressRecord(
                 clientId.Trim(), trimmedId, downloadedBytes, lastIncreaseUtc, now,
-                isCheck ? downloadedBytes : baselineBytes, isCheck ? now : baselineUtc,
-                existing is null ? false : isCheck ? true : existing.Judged);
+                isCheck ? downloadedBytes : baselineBytes, isCheck ? now : baselineUtc);
             if (index >= 0) records[index] = updated; else records.Add(updated);
             // #1207: "grew" is bytes against the previous check, whatever the reported speed was.
             result[trimmedId] = new DownloadProgressObservation(
