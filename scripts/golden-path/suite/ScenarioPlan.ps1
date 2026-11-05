@@ -23,7 +23,7 @@ function Get-ScenarioPlan {
         @{ Name = 'resend';   Function = 'Invoke-GroupResend';   Ids = @(foreach ($t in 'before', 'during', 'after') { foreach ($k in $all) { "resend.$t.$k" } }) + @('resend.single-file.takeover') }
         @{ Name = 'stuck';    Function = 'Invoke-GroupStuck';    Ids = @($all | ForEach-Object { "stuck.zero.$_" }) + @($all | ForEach-Object { "stuck.short.$_" }) + @($script:TorrentKinds | ForEach-Object { "stuck.peers.$_" }) + @($script:UsenetKinds | ForEach-Object { "stuck.slow.$_" }) }
         @{ Name = 'keepseeding'; Function = 'Invoke-GroupKeepSeeding'; Ids = @($script:TorrentKinds | ForEach-Object { "keepseeding.moved.$_" }) + @($script:TorrentKinds | ForEach-Object { "keepseeding.public-removed.$_" }) }
-        @{ Name = 'outage';   Function = 'Invoke-GroupOutage';   Ids = @('outage.idle', 'outage.inflight') }
+        @{ Name = 'outage';   Function = 'Invoke-GroupOutage';   Ids = @('outage.idle', 'outage.inflight', 'outage.failed-handoff-health') }
         @{ Name = 'tryagain'; Function = 'Invoke-GroupTryAgain'; Ids = @($all | ForEach-Object { "tryagain.$_" }) }
         @{ Name = 'vanish';   Function = 'Invoke-GroupVanish';   Ids = @(foreach ($t in 'before', 'waiting') { foreach ($k in $all) { "vanish.$t.$k" } }) }
         @{ Name = 'problems'; Function = 'Invoke-GroupProblems'; Ids = @('problems.dismiss-everywhere', 'activity.one-story') }

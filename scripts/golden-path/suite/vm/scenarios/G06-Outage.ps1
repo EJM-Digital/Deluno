@@ -1,4 +1,7 @@
 <#
+    outage.failed-handoff-health: a failed hand-off writes "unreachable" on the processor only when nothing answered (Weir answering,
+    refusing with a wrong key, and off), and the tray follows.
+
     Weir outage, with nothing in flight and with a hand-off in flight: the tray, System and the Dashboard go amber within a
     minute and come back within a minute (#1213, #1227). The suite quits Weir from its tray, then reads the three places every
     fraction of a second: the Deluno tray icon (hover text and dot), System and the Dashboard (the text a person reads, in an
@@ -156,6 +159,75 @@ function Invoke-GroupOutage {
                 Add-Check 'Send again works on it' ($r.Status -ge 200 -and $r.Status -lt 300) "HTTP $($r.Status)"
                 $s = Wait-HandoffSettled -Film $film -TimeoutSec 240
                 Add-Check 'It then settles and imports' $s.Ok ''
+            }
+        }
+        Invoke-Scenario -Id 'outage.failed-handoff-health' -Title 'A failed hand-off writes "unreachable" on the processor only when nothing answered: Weir answering stays healthy, Weir refusing the hand-off (it answered) leaves its stored health alone and the tray quiet, and Weir off is unreachable and amber' -Body {
+            $lib = Get-Library -MediaType 'movies'
+            $real = Get-WeirAnswering
+            Add-Check 'Deluno holds a healthy connection to the real Weir' ($null -ne $real -and $real.healthStatus -eq 'healthy') $(if ($real) { "$($real.name): $($real.healthStatus)" } else { 'no connection' })
+            if (-not $real -or $real.healthStatus -ne 'healthy') { return }
+            $temp = $null; $films = @(); $moved = $false
+            function Set-LibraryProcessor {
+                param([Parameter(Mandatory)] $Library, [Parameter(Mandatory)] [string] $ConnectionId, [Parameter(Mandatory)] [string] $Name)
+                Try-Deluno -Method PUT -Path "/api/libraries/$($Library.id)/workflow" -Body @{ importWorkflow = $Library.importWorkflow; processorName = $Name; processorOutputPath = $Library.processorOutputPath; processorTimeoutMinutes = $Library.processorTimeoutMinutes; processorFailureMode = $Library.processorFailureMode; processorConnectionId = $ConnectionId } | Out-Null
+            }
+            try {
+                # ---- Weir answers: the hand-off is accepted and the connection reads healthy.
+                $f1 = New-FilmFor -Kind 'qbittorrent' -Layout 'file' -Label 'hh1'
+                $films += $f1
+                Send-Film -Film $f1 -Kind 'qbittorrent' | Out-Null
+                $acc = Wait-HandoffSettled -Film $f1 -TimeoutSec 300
+                Add-Check 'Weir answering: the hand-off is accepted and settles' $acc.Ok ''
+                Add-Check 'Weir answering: the stored health of the connection is healthy' ((Get-WeirAnswering).healthStatus -eq 'healthy') "$((Get-WeirAnswering).healthStatus)"
+
+                # ---- Weir refuses: a second connection to the same Weir with a wrong key. Weir answers 401, so nothing is stored as "unreachable".
+                $made = Try-Deluno -Method POST -Path '/api/integrations/processors/connections' -Body @{ name = 'Golden refused Weir'; provider = 'generic'; submissionUrl = $real.submissionUrl; authHeaderName = $real.authHeaderName; secret = 'golden-not-the-key'; isEnabled = $true }
+                if ($made.Status -ne 200 -or -not $made.Data.id) { throw "The temporary connection was not made: HTTP $($made.Status) $($made.Raw)" }
+                $temp = $made.Data
+                Set-LibraryProcessor -Library $lib -ConnectionId $temp.id -Name $temp.name
+                $moved = $true
+                $f2 = New-FilmFor -Kind 'qbittorrent' -Layout 'file' -Label 'hh2'
+                $films += $f2
+                Send-Film -Film $f2 -Kind 'qbittorrent' | Out-Null
+                $ref = Wait-Until -TimeoutSec 300 -IntervalSec 2 -Condition {
+                    $h = Get-FilmHandoff -Film $f2
+                    if ($h -and $h.status -in 'failed', 'rejected') { $h } else { $null }
+                }
+                Save-Evidence -Name 'outage-failed-handoff-refused.json' -Text ($ref | ConvertTo-Json -Depth 5)
+                Add-Check 'Weir refusing: the hand-off ends failed or rejected, in words' ($ref.Ok -and -not [string]::IsNullOrWhiteSpace([string]$ref.Value.failureMessage)) $(if ($ref.Ok) { "$($ref.Value.status): $($ref.Value.failureMessage)" } else { 'it did not fail' })
+                $tempNow = @(Invoke-Deluno -Path '/api/integrations/processors/connections') | Where-Object { $_.id -eq $temp.id } | Select-Object -First 1
+                Add-Check 'Weir refusing: the connection is not stored as unreachable (Weir answered)' ($tempNow -and "$($tempNow.healthStatus)" -ne 'unreachable') "stored health: $($tempNow.healthStatus)"
+                $realNow = Get-WeirAnswering
+                Add-Check 'Weir refusing: the real Weir connection is still healthy' ($realNow.healthStatus -eq 'healthy') "$($realNow.healthStatus)"
+                $tray = Get-TrayDot -Icon 'Deluno'
+                Add-Check 'Weir refusing: the tray does not say a processor is not answering' ($tray.Found -and $tray.Hover -notmatch 'Golden refused Weir' ) "colour $($tray.Colour), hover '$($tray.Hover)'"
+                Set-LibraryProcessor -Library $lib -ConnectionId $real.id -Name $real.name
+                $moved = $false
+
+                # ---- Weir off: nothing answers, so the connection is stored as unreachable and the tray goes amber.
+                $q = Stop-WeirApp
+                $f3 = New-FilmFor -Kind 'qbittorrent' -Layout 'file' -Label 'hh3'
+                $films += $f3
+                Send-Film -Film $f3 -Kind 'qbittorrent' | Out-Null
+                $unr = Wait-Until -TimeoutSec 240 -IntervalSec 2 -Condition { $c = Get-WeirAnswering; if ($c -and "$($c.healthStatus)" -match 'unreachable') { $c } else { $null } }
+                Add-Check 'Weir off: the failed hand-off stores the connection as unreachable' $unr.Ok $(if ($unr.Ok) { "after $($unr.Seconds) s" } else { "stored health: $((Get-WeirAnswering).healthStatus)" })
+                $amber = Wait-Until -TimeoutSec 120 -IntervalSec 2 -Condition { $d = Get-TrayDot -Icon 'Deluno'; if ($d.Found -and ($d.Colour -eq 'amber' -or $d.Hover -match "isn't answering|not answering")) { $d } else { $null } }
+                Add-Check 'Weir off: the tray goes amber' $amber.Ok $(if ($amber.Ok) { "hover '$($amber.Value.Hover)'" } else { 'it stayed quiet' })
+                Start-WeirApp
+                $up = Wait-Until -TimeoutSec 90 -IntervalSec 1 -Condition { Test-WeirAnswering }
+                Add-Check 'Weir answers again' $up.Ok ''
+                $back = Wait-Until -TimeoutSec 180 -IntervalSec 3 -Condition { (Get-WeirAnswering).healthStatus -eq 'healthy' }
+                Add-Check 'Once Weir answers, the stored health is healthy again' $back.Ok "$((Get-WeirAnswering).healthStatus)"
+            }
+            finally {
+                Restore-WeirAfterOutage
+                if ($moved) { Set-LibraryProcessor -Library $lib -ConnectionId $real.id -Name $real.name }
+                if ($temp) { Try-Deluno -Method DELETE -Path "/api/integrations/processors/connections/$($temp.id)" | Out-Null }
+                foreach ($f in $films) {
+                    $h = Get-FilmHandoff -Film $f
+                    if ($h -and $h.status -in 'failed', 'rejected', 'waiting') { Try-Deluno -Method POST -Path "/api/integrations/processors/handoffs/$($h.id)/dismiss" | Out-Null }
+                    if ($f.MovieId) { Try-Deluno -Method DELETE -Path "/api/movies/$($f.MovieId)" | Out-Null }
+                }
             }
         }
     }
