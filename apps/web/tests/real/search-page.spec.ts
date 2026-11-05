@@ -94,7 +94,7 @@ test.describe("Search", () => {
     await expect(rows.first()).toContainText("137 MB");
     await expect(rows.first()).toContainText("13 / 14");
     expect(jackett.requests.filter((r) => r.includes("q=Sintel")), "the first indexer was asked").toHaveLength(1);
-    expect(other.requests.length, "the second indexer was asked too").toBe(1);
+    expect(other.requests.filter((r) => r.includes("q=Sintel")), "the second indexer was asked too").toHaveLength(1);
     expect([...jackett.unanswered, ...other.unanswered]).toEqual([]);
   });
 

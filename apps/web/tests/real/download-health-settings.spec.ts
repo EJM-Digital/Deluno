@@ -94,8 +94,8 @@ test.describe("Download health settings", () => {
     await strikes.fill("0");
     await sampling.fill("99");
     await save.click();
-    await expect(box.getByText("Must be between 1 and 1440 minutes.")).toBeVisible();
-    await expect(box.getByText("Must be between 1 and 100.")).toBeVisible();
+    await expect(box.getByText("The time between checks must be between 1 and 999 minutes.")).toBeVisible();
+    await expect(box.getByText("Strikes must be between 1 and 999.")).toBeVisible();
     await expect(box.getByText("Must be between 1 and 60 minutes.")).toBeVisible();
     await every.fill("45");
     await strikes.fill("7");
