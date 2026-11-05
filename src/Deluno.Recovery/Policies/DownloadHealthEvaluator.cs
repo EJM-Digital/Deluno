@@ -146,12 +146,15 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
         if (tooSlow is not null)
         {
             var elapsed = capturedUtc - item.AddedUtc;
-            // A download moving nothing at all belongs to the "No progress" rule, never counted by both (#1194).
+            // A download that shows no speed and gained no bytes at all is stuck, not slow: it belongs to No progress, Dead torrent and Not enough
+            // peers, so Too slow does not judge it (#1194, #1504). This keeps one stuck download from being double-punished
+            // without erasing any rule's strikes: every rule that matches keeps its own record, and the download is acted on once.
+            var movedNothing = item.SpeedMbps <= 0 && item.BytesGrewSinceLastCheck == false;
             // #1490: the average since the last check (bytes gained over the time between the two readings), so one slow instant in a fast
             // download is not a slow download. Only a first reading, with nothing before it, goes by the speed the client shows.
             var judgedMbps = item.AverageSpeedMbps ?? item.SpeedMbps;
-            var underFloorTooLong = (item.AverageSpeedMbps is not null || judgedMbps > 0) && judgedMbps * 1000 < tooSlow.Threshold && !noProgressFires;
-            var overMaxTotalTime = !noProgressFires && tooSlow.TooSlowMaxTotalMinutes is { } maxTotalMinutes &&
+            var underFloorTooLong = (item.AverageSpeedMbps is not null || judgedMbps > 0) && judgedMbps * 1000 < tooSlow.Threshold && !movedNothing;
+            var overMaxTotalTime = !movedNothing && tooSlow.TooSlowMaxTotalMinutes is { } maxTotalMinutes &&
                 maxTotalMinutes > 0 &&
                 elapsed >= TimeSpan.FromMinutes(maxTotalMinutes);
 
@@ -354,7 +357,7 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
             }
         }
 
-        return OneStrikePerDownload(findings);
+        return YieldTheClientStalledFallback(findings);
     }
 
     /// <summary>
@@ -375,41 +378,19 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
         => item.BytesGrewSinceLastCheck is { } grew ? !grew : item.SpeedMbps <= 0;
 
     /// <summary>
-    /// The rules that strike a download for not getting its bytes, most specific first. One download is struck by
-    /// one of them per check (#1205): when several match, the first here keeps the strike and the rest stand down,
-    /// so the removal can name the one rule that reached its count. If it recovers, its strikes reset and the next
-    /// rule that matches starts its own.
+    /// The rules that strike a download for not getting its bytes, most specific first. Every rule that matches keeps its
+    /// own record and adds its own strikes (#1504); this order only breaks a tie when several reach their limit at the same
+    /// moment (<see cref="DownloadHealthStrikes.TransferRulePriority"/>), so the removal names one rule.
     /// </summary>
-    private static readonly string[] TransferRulePriority =
-    [
-        DownloadHealthStrikes.DeadTorrent,
-        DownloadHealthStrikes.MagnetMetadata,
-        DownloadHealthStrikes.LowPeers,
-        DownloadHealthStrikes.LowSpeed,
-        DownloadHealthStrikes.ClientFailure,
-        DownloadHealthStrikes.NoThroughput
-    ];
-
-    private static bool IsTransferRuleFinding(RecoveryHealthFinding finding)
-        => finding.RuleId is not null && TransferRulePriority.Contains(finding.Kind, StringComparer.OrdinalIgnoreCase);
-
-    private static List<RecoveryHealthFinding> OneStrikePerDownload(List<RecoveryHealthFinding> findings)
+    private static List<RecoveryHealthFinding> YieldTheClientStalledFallback(List<RecoveryHealthFinding> findings)
     {
-        var owner = TransferRulePriority
-            .Select(kind => findings.FirstOrDefault(finding => IsTransferRuleFinding(finding) && string.Equals(finding.Kind, kind, StringComparison.OrdinalIgnoreCase)))
-            .FirstOrDefault(finding => finding is not null);
-        if (owner is null)
-        {
-            return findings;
-        }
-
-        // The platform-wide "client stalled" fallback yields to the rule that owns this download: it neither
-        // duplicates the strike nor takes the download from a rule that is already counting it.
-        return findings
-            .Where(finding => ReferenceEquals(finding, owner)
-                || (!IsTransferRuleFinding(finding)
-                    && !string.Equals(finding.Kind, DownloadHealthStrikes.ClientStalled, StringComparison.OrdinalIgnoreCase)))
-            .ToList();
+        // The platform-wide "client stalled" fallback yields to any rule that is striking this download: it neither
+        // duplicates the strike nor takes the download from a rule that is already counting it (#1205).
+        var aRuleStrikes = findings.Any(finding => finding.RuleId is not null &&
+            DownloadHealthStrikes.TransferRulePriority.Contains(finding.Kind, StringComparer.OrdinalIgnoreCase));
+        return aRuleStrikes
+            ? findings.Where(finding => !string.Equals(finding.Kind, DownloadHealthStrikes.ClientStalled, StringComparison.OrdinalIgnoreCase)).ToList()
+            : findings;
     }
 
     /// <summary>

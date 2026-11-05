@@ -65,14 +65,17 @@ public sealed class AStarvedOrStuckDownloadKeepsItsOwnRulesStrikesTests
     [Theory]
     [InlineData(DownloadQueueStatuses.Downloading)]
     [InlineData(DownloadQueueStatuses.Stalled)]
-    public void With_peers_and_no_progress_both_on_one_download_is_struck_once_and_by_the_peers_rule(string status)
+    public void With_peers_and_no_progress_both_on_one_download_each_rule_strikes_on_its_own_record(string status)
     {
+        // #1504: both rules keep their own strikes; the download is acted on once, by whichever reaches its limit first.
         var rules = new[] { Rule(DownloadHealthRuleKinds.LowPeers, threshold: 2, strikes: 3), Rule(DownloadHealthRuleKinds.NoProgress, threshold: 0, strikes: 3) };
 
         var findings = new DownloadHealthEvaluator().Evaluate(Snapshot(status, peers: 0, speed: 0, grew: false), Now, rules);
 
-        var counted = Assert.Single(findings, finding => DownloadHealthStrikes.Counts(finding.Kind));
-        Assert.Equal(DownloadHealthStrikes.LowPeers, counted.Kind);
+        Assert.Equal(
+            [DownloadHealthStrikes.LowPeers, DownloadHealthStrikes.NoThroughput],
+            findings.Where(finding => DownloadHealthStrikes.Counts(finding.Kind)).Select(finding => finding.Kind).Order().ToArray());
+        Assert.DoesNotContain(findings, finding => finding.Kind == DownloadHealthStrikes.ClientStalled);
     }
 
     [Fact]

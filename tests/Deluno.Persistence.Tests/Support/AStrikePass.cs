@@ -180,7 +180,8 @@ internal sealed class AStrikePass : IDisposable
         string protocol = "qbittorrent",
         string entityType = "movie",
         string? username = null,
-        string? secret = null)
+        string? secret = null,
+        IReadOnlyList<DownloadHealthRule>? alsoRules = null)
     {
         var storage = TestStorage.Create();
         var time = new FixedTimeProvider(Start);
@@ -212,6 +213,10 @@ internal sealed class AStrikePass : IDisposable
         var settings = await platform.GetAsync(CancellationToken.None);
         var saved = await health.SaveDownloadHealthRuleAsync(rule, settings, CancellationToken.None);
         Assert.Null(saved.Error);
+        foreach (var also in alsoRules ?? [])
+        {
+            Assert.Null((await health.SaveDownloadHealthRuleAsync(also, settings, CancellationToken.None)).Error);
+        }
         var window = TimeSpan.FromMinutes(DownloadHealthBounds.ClampMinutes(settings.DownloadHealthDefaultStrikeWindowMinutes));
 
         var watcher = new ASchedulerThatWatchesTheSearchBeingQueued(jobs);

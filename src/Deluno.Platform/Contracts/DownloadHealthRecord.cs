@@ -257,6 +257,22 @@ public static class DownloadHealthStrikes
     public static bool PausesTransferFindings(string? status, double progressPercent)
         => !IsFinishedOrHandedOff(status, progressPercent) && status is "notTransferring" or "queued" or "paused";
 
+    /// <summary>
+    /// The rules that strike a download for not getting its bytes, most specific first (#1504). Each keeps its own record;
+    /// when several reach their limit at the same moment, the first here is the one that acts and is named.
+    /// </summary>
+    public static readonly string[] TransferRulePriority =
+    [
+        DeadTorrent, MagnetMetadata, LowPeers, LowSpeed, ClientFailure, NoThroughput
+    ];
+
+    /// <summary>Where a kind sits in <see cref="TransferRulePriority"/>; kinds outside it come last.</summary>
+    public static int PriorityOf(string kind)
+    {
+        var index = Array.FindIndex(TransferRulePriority, candidate => string.Equals(candidate, kind, StringComparison.OrdinalIgnoreCase));
+        return index < 0 ? TransferRulePriority.Length : index;
+    }
+
     public static bool Counts(string kind)
         => string.Equals(kind, ClientStalled, StringComparison.OrdinalIgnoreCase) ||
            string.Equals(kind, NoThroughput, StringComparison.OrdinalIgnoreCase) ||

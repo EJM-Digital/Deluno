@@ -1800,12 +1800,42 @@ public sealed class DownloadClientTelemetryService(
     /// #1491: each step in a download's life (waiting in the client's queue, started, finished, a strike added, strikes
     /// cleared) is one line of Activity, written the moment a poll sees it change, once, and pushed like every other line.
     /// </summary>
+    /// <summary>
+    /// What a "strikes cleared" line says (#1504): the evidence that rule's own problem is over, never an instant speed that
+    /// may still be under the limit. Bytes arriving clear No progress, peers back clear Dead torrent and Not enough peers, and
+    /// the average since the last check back over the limit clears Too slow; anything else says only that the rule no longer applies.
+    /// </summary>
+    private static string ClearedWords(DownloadQueueItem item, string kind, IReadOnlyDictionary<string, TooSlowRecoveryReading> tooSlowReadings)
+    {
+        var rule = DownloadHealthRuleValidator.DescribeKind(kind);
+        if (string.Equals(kind, DownloadHealthStrikes.NoThroughput, StringComparison.OrdinalIgnoreCase) && item.BytesGrewSinceLastCheck == true)
+        {
+            return $"{item.ReleaseName} is moving again: new data arrived since the last check, strikes cleared.";
+        }
+
+        if ((string.Equals(kind, DownloadHealthStrikes.DeadTorrent, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(kind, DownloadHealthStrikes.LowPeers, StringComparison.OrdinalIgnoreCase)) && item.Peers > 0)
+        {
+            return $"{item.ReleaseName}: peers are back ({PluralWords.Count(item.Peers, "peer")}), strikes cleared.";
+        }
+
+        if (string.Equals(kind, DownloadHealthStrikes.LowSpeed, StringComparison.OrdinalIgnoreCase) &&
+            item.AverageSpeedMbps is { } average &&
+            tooSlowReadings.TryGetValue(item.Id, out var reading) && average * 1_000_000d >= reading.FloorBytesPerSecond)
+        {
+            return $"{item.ReleaseName} is moving again: averaged {SpeedText.FromMbps(average)} since the last check, strikes cleared.";
+        }
+
+        return $"{item.ReleaseName}: {rule} no longer applies, strikes cleared.";
+    }
+
     private async Task RecordLifeStepsAsync(
         DownloadClientTelemetrySnapshot snapshot,
         IReadOnlyList<DownloadDispatchItem> clientDispatches,
         IReadOnlyList<DownloadHealthRecord> touched,
         bool connectivityCheckOk,
         int strikeThreshold,
+        IReadOnlyDictionary<string, TooSlowRecoveryReading> tooSlowReadings,
         CancellationToken cancellationToken)
     {
         string KeyOf(string itemId) => $"{snapshot.ClientId}\u001f{itemId}";
@@ -1898,9 +1928,7 @@ public sealed class DownloadClientTelemetryService(
 
             StrikesSaid.TryRemove(said.Key, out _);
             var dispatch = clientDispatches.FirstOrDefault(candidate => DispatchProvesItem(candidate, item.Id, item.ReleaseName));
-            var words = item.SpeedMbps > 0
-                ? $"{item.ReleaseName} is moving again at {SpeedText.FromMbps(item.SpeedMbps)}, strikes cleared."
-                : $"{item.ReleaseName}: {DownloadHealthRuleValidator.DescribeKind(parts[1])} no longer applies, strikes cleared.";
+            var words = ClearedWords(item, parts[1], tooSlowReadings);
             await activityFeedRepository.RecordActivityAsync(
                 "download.health.strikes-cleared", words, null, null,
                 dispatch?.EntityType ?? "download_item", dispatch?.EntityId ?? item.Id, cancellationToken);
@@ -2061,7 +2089,7 @@ public sealed class DownloadClientTelemetryService(
             record => $"{record.ClientId}\u001f{record.QueueItemId}\u001f{record.Kind}",
             StringComparer.OrdinalIgnoreCase);
 
-        await RecordLifeStepsAsync(snapshot, clientDispatches, records, connectivityCheckOk, strikeThreshold, cancellationToken);
+        await RecordLifeStepsAsync(snapshot, clientDispatches, records, connectivityCheckOk, strikeThreshold, tooSlowReadings, cancellationToken);
 
         // #881: a setup problem never strikes, so nothing is removed, deleted,
         // blocked or searched for. Say so once, when the spell starts, so it
@@ -2304,10 +2332,16 @@ public sealed class DownloadClientTelemetryService(
                 // A tracker-unregistered finding (#878) carries a StrikeLimit
                 // of one directly (no RuleId needed), so it strikes here on
                 // its first sighting the same way.
-                var struck = (item.HealthFindings ?? []).FirstOrDefault(finding =>
-                    DownloadHealthStrikes.Counts(finding.Kind) &&
-                    finding.StrikeCount >= DownloadHealthBounds.ClampStrikes(finding.RuleStrikeLimit ?? settings.DownloadHealthStrikeThreshold) &&
-                    (finding.IgnoredUntilUtc is null || finding.IgnoredUntilUtc <= overview.CapturedUtc));
+                // #1504: several rules can be at their limit on one download; it is acted on once, by the rule that
+                // reached its limit first (the earliest last strike), and a tie goes to the more specific rule.
+                var struck = (item.HealthFindings ?? [])
+                    .Where(finding =>
+                        DownloadHealthStrikes.Counts(finding.Kind) &&
+                        finding.StrikeCount >= DownloadHealthBounds.ClampStrikes(finding.RuleStrikeLimit ?? settings.DownloadHealthStrikeThreshold) &&
+                        (finding.IgnoredUntilUtc is null || finding.IgnoredUntilUtc <= overview.CapturedUtc))
+                    .OrderBy(finding => finding.NextStrikeUtc ?? DateTimeOffset.MaxValue)
+                    .ThenBy(finding => DownloadHealthStrikes.PriorityOf(finding.Kind))
+                    .FirstOrDefault();
                 if (struck is null)
                 {
                     continue;

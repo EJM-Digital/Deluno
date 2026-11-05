@@ -101,7 +101,9 @@ public sealed class EachStepInADownloadsLifeReachesActivityTests
         await world.PollAsync();
 
         var line = Assert.Single(await world.LinesAsync("download.health.strikes-cleared"));
-        Assert.Contains("moving again at 3.2 MB/s, strikes cleared", line.Message);
+        // #1504: the instant speed is not recovery evidence; a client-reported failure says only that it no longer applies.
+        Assert.Contains("no longer applies, strikes cleared", line.Message);
+        Assert.DoesNotContain("MB/s", line.Message);
     }
 
     [Fact]
