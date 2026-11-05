@@ -466,7 +466,13 @@ public sealed record DownloadQueueItem(
     double? AverageSpeedMbps = null,
     /// <summary>#1490: the time that average covers.</summary>
     [property: System.Text.Json.Serialization.JsonIgnore]
-    TimeSpan? AveragePeriod = null);
+    TimeSpan? AveragePeriod = null,
+    /// <summary>
+    /// #1496: whether this download's library hands finished downloads to a processor (<see cref="Deluno.Contracts.ImportWorkflows.HandsToProcessor"/>),
+    /// so the Dashboard puts a download that has just finished in Processing, not Importing, before any hand-off is recorded.
+    /// Null when no library is known for it.
+    /// </summary>
+    bool? HandsToProcessor = null);
 
 /// <summary>
 /// An observational queue-health signal. These findings never cause Deluno to remove

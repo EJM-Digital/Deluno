@@ -304,7 +304,13 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
     // A finished download that has nobody to share with is reported "stalled" by some clients: it is downloaded, not stuck.
     const downloaded = (item.progress ?? 0) >= 99.95 && DOWNLOADING.includes(item.status);
     const beforeTheProcessor = !downloaded && (item.status === "queued" || DOWNLOADING.includes(item.status));
-    if (downloaded && !(handoff && isWithProcessor(handoff.status))) {
+    // Finished in a library that goes through a processor, with no hand-off recorded yet: it is being handed over, never
+    // importing (#1496). The server says so with the row; a hand-off that already ended (completed, dismissed) is not "yet".
+    const headedForProcessor = item.handsToProcessor === true && !handoff && (downloaded || item.status === "completed" || item.status === "importReady");
+    if (headedForProcessor) {
+      stage = "processor";
+      state = { tone: "info", label: BEING_HANDED_OVER };
+    } else if (downloaded && !(handoff && isWithProcessor(handoff.status))) {
       stage = "importing";
       state = { tone: "idle", label: "Downloaded" };
     } else if (isHeldInClientQueue(item)) {
@@ -327,7 +333,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
       stage = "downloading";
       state = { tone: "info", label: waitingWords(item, now) as string };
       waiting = true;
-    } else if (DOWNLOADING.includes(item.status)) {
+    } else if (DOWNLOADING.includes(item.status) && !downloaded) {
       stage = "downloading";
       state = item.status === "paused" ? { tone: "idle", label: "Paused" } : item.status === "notTransferring" ? { tone: "info", label: "Checking files" } : { tone: "info", label: "Downloading" };
     } else if (IN_PROCESSOR.includes(item.status) || (handoff && isWithProcessor(handoff.status))) {

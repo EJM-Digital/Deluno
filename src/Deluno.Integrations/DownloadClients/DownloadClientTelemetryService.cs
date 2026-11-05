@@ -4342,6 +4342,13 @@ public sealed class DownloadClientTelemetryService(
             return resolvedItem;
         }).ToArray();
 
+        // Whether the library this download belongs to hands finished downloads to a processor (#1496): the one rule
+        // the planner uses, sent with the row so the Dashboard never has to guess it from the status.
+        queue = queue.Select(item =>
+            ResolveLibraryForQueueItem(item, libraries, dispatches, routeCategoriesByLibrary) is { } owner
+                ? item with { HandsToProcessor = ImportWorkflows.HandsToProcessor(owner.ImportWorkflow) }
+                : item).ToArray();
+
         // One rule for "imported", on every path above: a download whose latest send had its import refused is
         // never in the library, whichever record (a finished hand-off, a title that holds a file) said so. The
         // archived sends are read too, since a refusal that was dismissed is still a refusal.

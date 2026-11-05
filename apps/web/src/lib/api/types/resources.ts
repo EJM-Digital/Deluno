@@ -1269,6 +1269,8 @@ export interface DownloadQueueItem {
   sourcePath: string | null;
   libraryId: string | null;
   healthFindings: DownloadHealthFinding[] | null;
+  /** #1496: whether this download's library hands finished downloads to a processor, by the server's own rule (`ImportWorkflows.HandsToProcessor`). Null when no library is known. */
+  handsToProcessor?: boolean | null;
   failure?: IntegrationFailure | null;
   /** #815: the torrent's own reported tracker privacy. Null when the client did not say (an older client, or Usenet, which has no tracker). */
   isPrivate?: boolean | null;
