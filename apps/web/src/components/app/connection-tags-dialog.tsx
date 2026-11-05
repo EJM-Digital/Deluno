@@ -8,6 +8,7 @@ import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { BulkTagField, bulkTagActionLabel } from "./bulk-tag-field";
 import { parseTagList } from "./tag-picker";
+import { plainFailureMessage } from "../../lib/network-failure";
 
 /** "Select" switch for the header of a connection list. */
 export function ConnectionSelectButton({ active, onClick }: { active: boolean; onClick: () => void }) {
@@ -97,7 +98,7 @@ export function ConnectionTagsDialog({
       onOpenChange(false);
       onApplied();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not change the tags.");
+      setError(plainFailureMessage(failure, "Could not change the tags."));
     } finally {
       setBusy(false);
     }

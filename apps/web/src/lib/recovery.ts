@@ -1,3 +1,4 @@
+import { COULD_NOT_REACH_DELUNO } from "./network-failure";
 import { authedFetch } from "./use-auth";
 
 /** How many recovery codes are left, and whether any were ever made (#1392). */
@@ -17,7 +18,7 @@ export class RecoveryRefusedError extends Error {
   }
 }
 
-const COULD_NOT_REACH = "Deluno could not be reached. Check that it is running, then try again.";
+const COULD_NOT_REACH = COULD_NOT_REACH_DELUNO;
 
 async function sentenceFrom(response: Response, fallback: string): Promise<string> {
   try {

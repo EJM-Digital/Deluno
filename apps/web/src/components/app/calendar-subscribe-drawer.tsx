@@ -21,6 +21,7 @@ import { SwitchRow } from "../ui/switch";
 import { authedFetch } from "../../lib/use-auth";
 import { usePasswordPrompt, withCurrentPassword } from "./password-prompt";
 import { fetchJson, type ApiKeyItem, type CreatedApiKeyResponse } from "../../lib/api";
+import { plainFailureMessage } from "../../lib/network-failure";
 
 /** The name Deluno gives its own calendar key, so the drawer can find it again. */
 const KEY_NAME = "Calendar subscription";
@@ -82,7 +83,7 @@ export function CalendarSubscribeDrawer({ open, onOpenChange }: { open: boolean;
       setExisting([created.item]);
       toast.success("Calendar link ready");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Calendar link could not be created.");
+      toast.error(plainFailureMessage(error, "Calendar link could not be created."));
     } finally {
       setBusy(false);
     }

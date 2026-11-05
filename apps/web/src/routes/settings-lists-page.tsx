@@ -53,6 +53,7 @@ import { formatDateTime, formatShortDate, type DisplayPreferences, useDisplayPre
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { INTAKE_SYNC_PRESETS } from "../lib/intake-sync-interval";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 const PROVIDERS = [
   { label: "Custom list URL", value: "url-list" },
@@ -162,7 +163,7 @@ export function SettingsListsPage() {
       toast.success("Trakt app credentials saved");
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save the Trakt app credentials.");
+      toast.error(plainFailureMessage(error, "Could not save the Trakt app credentials."));
     } finally {
       setTraktBusy(false);
     }
@@ -176,7 +177,7 @@ export function SettingsListsPage() {
       const data = await response.json();
       setTraktDevice({ deviceCode: data.deviceCode, userCode: data.userCode, verificationUrl: data.verificationUrl });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not start connecting Trakt.");
+      toast.error(plainFailureMessage(error, "Could not start connecting Trakt."));
     } finally {
       setTraktBusy(false);
     }
@@ -203,7 +204,7 @@ export function SettingsListsPage() {
         toast.error(`Not approved yet — open ${device.verificationUrl} and enter ${device.userCode}.`);
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not check Trakt.");
+      toast.error(plainFailureMessage(error, "Could not check Trakt."));
     } finally {
       setTraktBusy(false);
     }
@@ -217,7 +218,7 @@ export function SettingsListsPage() {
       toast.success("Trakt disconnected");
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not disconnect Trakt.");
+      toast.error(plainFailureMessage(error, "Could not disconnect Trakt."));
     } finally {
       setTraktBusy(false);
     }
@@ -324,7 +325,7 @@ export function SettingsListsPage() {
       revalidator.revalidate();
     } catch (error) {
       setSaveState("error");
-      setSaveMessage(error instanceof Error ? error.message : "Could not save");
+      setSaveMessage(plainFailureMessage(error, "Could not save"));
     } finally {
       setBusy(null);
     }
@@ -337,7 +338,7 @@ export function SettingsListsPage() {
       if (success) toast.success(success);
       return true;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Action failed.");
+      toast.error(plainFailureMessage(error, "Action failed."));
       return false;
     } finally {
       setBusy(null);
@@ -369,7 +370,7 @@ export function SettingsListsPage() {
       }
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Import list could not be updated.");
+      toast.error(plainFailureMessage(error, "Import list could not be updated."));
     } finally {
       setTogglingId(null);
     }
@@ -455,7 +456,7 @@ export function SettingsListsPage() {
       toast.success(`${exclusion.title} can be added again.`);
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "This exclusion could not be restored.");
+      toast.error(plainFailureMessage(error, "This exclusion could not be restored."));
     } finally {
       setRestoringExclusionId(null);
     }
@@ -1136,7 +1137,7 @@ export function OffListTagCard({ enabled, tag, onSaved }: { enabled: boolean; ta
       toast.success("Saved");
       onSaved();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "This setting could not be saved.");
+      toast.error(plainFailureMessage(error, "This setting could not be saved."));
     } finally {
       setBusy(false);
     }

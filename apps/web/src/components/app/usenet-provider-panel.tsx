@@ -7,6 +7,7 @@ import { DrawerSection } from "../ui/drawer";
 import { Field, FieldRow } from "../ui/field";
 import { Input } from "../ui/input";
 import { SwitchRow } from "../ui/switch";
+import { plainFailureMessage } from "../../lib/network-failure";
 
 type ClientStatus = { clientId: string; clientName: string; hasProvider: boolean; known: boolean };
 type ClientResult = { clientId: string; clientName: string; saved: boolean; message: string };
@@ -63,7 +64,7 @@ export function UsenetProviderPanel({ clientId, onSaved }: { clientId?: string; 
       await refresh();
       onSaved?.();
     } catch (error) {
-      setProblem(error instanceof Error ? error.message : "Deluno could not save the provider.");
+      setProblem(plainFailureMessage(error, "Deluno could not save the provider."));
     } finally {
       setBusy(false);
     }

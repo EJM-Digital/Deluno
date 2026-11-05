@@ -9,6 +9,7 @@ import { Select } from "../../components/ui/select";
 
 import { SignedApiLink } from "../../components/app/signed-api-link";
 import { plural } from "../../lib/plural";
+import { plainFailureMessage } from "../../lib/network-failure";
 export type TrackerKind = "all" | "public" | "semi-private" | "private";
 
 export function privacyWords(privacy: string) {
@@ -75,7 +76,7 @@ export function SiteListPanel({ onDone }: { onDone: () => void }) {
         onDone();
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Deluno could not check for newer site files.");
+      setMessage(plainFailureMessage(error, "Deluno could not check for newer site files."));
     } finally {
       setBusy(false);
     }

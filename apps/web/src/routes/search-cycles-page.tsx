@@ -60,6 +60,7 @@ import { formatSearchInterval } from "../lib/search-interval-format";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { clampDownloadHealthStrikes } from "../lib/download-health-bounds";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 // #984: minutes are the unit on the wire so the interval can go below an
 // hour (Huntarr-style hunting cadence). The presets stay in plain words;
@@ -300,7 +301,7 @@ export function SearchCyclesPage() {
       revalidator.revalidate();
       return true;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Action failed.");
+      toast.error(plainFailureMessage(error, "Action failed."));
       return false;
     } finally {
       setBusy(null);
@@ -391,7 +392,7 @@ export function SearchCyclesPage() {
       revalidator.revalidate();
     } catch (error) {
       setDrawerState("error");
-      setDrawerMessage(error instanceof Error ? error.message : "Could not save");
+      setDrawerMessage(plainFailureMessage(error, "Could not save"));
     } finally {
       setBusy(null);
     }
@@ -499,7 +500,7 @@ export function SearchCyclesPage() {
       setCleanupMessage("Saved just now");
     } catch (error) {
       setCleanupState("error");
-      setCleanupMessage(error instanceof Error ? error.message : "Could not save");
+      setCleanupMessage(plainFailureMessage(error, "Could not save"));
     }
   }
 

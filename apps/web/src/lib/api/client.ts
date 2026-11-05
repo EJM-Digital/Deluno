@@ -1,3 +1,4 @@
+import { isNetworkFailure } from "../network-failure";
 import { authedFetch } from "../use-auth";
 import type { ApiPage, ValidationProblem } from "./types";
 
@@ -22,7 +23,7 @@ function canRetryRequest(init: RequestInit) {
 }
 
 function isTransientNetworkError(error: unknown) {
-  return error instanceof TypeError || (error instanceof DOMException && error.name !== "AbortError");
+  return isNetworkFailure(error) || (error instanceof DOMException && error.name !== "AbortError");
 }
 
 /** Waits before the next try, or less if the caller gives up first: a page that has gone stops its retries at once (#1396). */

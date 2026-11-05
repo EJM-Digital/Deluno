@@ -19,6 +19,7 @@ import { LIST_TRACK, ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListT
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { Switch } from "../components/ui/switch";
 import { SecretUnreadableNotice } from "../components/app/secret-unreadable-notice";
+import { plainFailureMessage } from "../lib/network-failure";
 
 const TABS = configurationNavAreas.find((area) => area.to === "/indexers/indexers")?.items ?? [];
 
@@ -132,7 +133,7 @@ export function SubtitleProvidersPage() {
       setEditing(null);
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "That could not be saved.");
+      toast.error(plainFailureMessage(error, "That could not be saved."));
     } finally {
       setBusy(null);
     }

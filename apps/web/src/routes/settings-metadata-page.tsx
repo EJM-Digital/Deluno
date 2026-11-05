@@ -34,6 +34,7 @@ import type { MetadataProviderStatus } from "../lib/api/types/metadata";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
+import { plainFailureMessage } from "../lib/network-failure";
 
 const COUNTRY_OPTIONS = [
   { label: "Australia (AU)", value: "AU" },
@@ -110,7 +111,7 @@ export function SettingsMetadataPage() {
       setKeys({ tmdb: "", omdb: "", mdblist: "" });
       revalidator.revalidate();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not save the key");
+      setMessage(plainFailureMessage(error, "Could not save the key"));
     } finally {
       setKeysSaving(false);
     }
@@ -141,7 +142,7 @@ export function SettingsMetadataPage() {
       revalidator.revalidate();
     } catch (error) {
       setSaveState("error");
-      setMessage(error instanceof Error ? error.message : "Could not save");
+      setMessage(plainFailureMessage(error, "Could not save"));
     }
   }
 

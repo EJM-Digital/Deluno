@@ -6,6 +6,7 @@ import * as Dialog from "../ui/dialog-primitives";
 import { usePasswordPrompt } from "./password-prompt";
 import { RecoveryCodesPanel } from "./recovery-codes-panel";
 import { useRecoveryCodes } from "./recovery-codes-manager";
+import { plainFailureMessage } from "../../lib/network-failure";
 
 const DISMISSED_KEY = "deluno-recovery-prompt-dismissed";
 
@@ -32,7 +33,7 @@ export function RecoveryCodesPrompt() {
       const password = await ask("Making recovery codes needs your password, because they let anyone who holds them take over your account.");
       if (password) await make(password);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Recovery codes could not be made.");
+      toast.error(plainFailureMessage(err, "Recovery codes could not be made."));
     }
   }
 

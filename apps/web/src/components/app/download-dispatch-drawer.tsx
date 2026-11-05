@@ -10,6 +10,7 @@ import { CHOSEN_ON_SEARCH_LABEL, isChosenOnSearch } from "../../lib/dispatch-tar
 import { Drawer, DrawerFacts, DrawerFooter, DrawerSection } from "../ui/drawer";
 import { BlockReleaseAction } from "./block-release-action";
 import { RemoveDownloadAction } from "./remove-download-action";
+import { plainFailureMessage } from "../../lib/network-failure";
 
 export function DownloadDispatchDrawer({
   dispatch,
@@ -36,7 +37,7 @@ export function DownloadDispatchDrawer({
       onClose();
       onBlocked?.();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "That download could not be dismissed.");
+      toast.error(plainFailureMessage(error, "That download could not be dismissed."));
     } finally {
       setDismissing(false);
     }

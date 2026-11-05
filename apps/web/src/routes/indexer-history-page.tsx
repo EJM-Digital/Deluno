@@ -33,6 +33,7 @@ import { authedFetch } from "../lib/use-auth";
 import { toast } from "../components/shell/toaster";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
+import { plainFailureMessage } from "../lib/network-failure";
 
 const TABS = configurationNavAreas.find((area) => area.to === "/indexers/indexers")?.items ?? [];
 
@@ -189,7 +190,7 @@ export function IndexerHistoryPage() {
       setNextPageToken(null);
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Indexer history could not be cleared.");
+      toast.error(plainFailureMessage(error, "Indexer history could not be cleared."));
     } finally {
       setClearing(false);
     }

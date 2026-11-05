@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { isRouteErrorResponse, useNavigate, useRouteError } from "react-router-dom";
 import { isStaleBuildError, reloadOntoNewBuild } from "../../lib/stale-build";
 import { ErrorState } from "./error-state";
+import { plainFailureMessage } from "../../lib/network-failure";
 
 export function RouteErrorBoundary() {
   const error = useRouteError();
@@ -44,7 +45,7 @@ export function RouteErrorBoundary() {
   }
 
   const message =
-    error instanceof Error ? error.message : "The route failed before Deluno could render the page.";
+    plainFailureMessage(error, "The route failed before Deluno could render the page.");
 
   return (
     <ErrorState

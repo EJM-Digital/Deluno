@@ -92,6 +92,7 @@ import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save
 import { KNOWN_INDEXER_FLAGS } from "./connections/presets";
 import { localizeResetTimes } from "../lib/reset-times";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")!.items;
 
@@ -343,7 +344,7 @@ export function SettingsCustomFormatsPage() {
       setUpdateCheck(next);
       toast.success(isEnabled ? "Weekly guide-change checks enabled" : "Guide-change checks disabled");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not update guide-check preference.");
+      toast.error(plainFailureMessage(error, "Could not update guide-check preference."));
     } finally {
       setUpdateCheckBusy(null);
     }
@@ -358,7 +359,7 @@ export function SettingsCustomFormatsPage() {
       setGuideUpdateDetailsOpen((next.report?.changes.length ?? 0) > 0 || (next.report?.addedSources.length ?? 0) > 0);
       toast.success(next.status === "up-to-date" ? "Guide sources are up to date" : "Guide change report ready");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not check TRaSH Guides.");
+      toast.error(plainFailureMessage(error, "Could not check TRaSH Guides."));
     } finally {
       setUpdateCheckBusy(null);
     }
@@ -380,7 +381,7 @@ export function SettingsCustomFormatsPage() {
         toast.error(preview.errors[0] ?? "Could not stage a guide sync preview.");
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not stage a TRaSH Guides sync.");
+      toast.error(plainFailureMessage(error, "Could not stage a TRaSH Guides sync."));
     } finally {
       setUpdateCheckBusy(null);
     }
@@ -402,7 +403,7 @@ export function SettingsCustomFormatsPage() {
       revalidator.revalidate();
       toast.success(`Guide package version ${stored.package.version} is in use again`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not go back to that guide version.");
+      toast.error(plainFailureMessage(error, "Could not go back to that guide version."));
     } finally {
       setUpdateCheckBusy(null);
     }
@@ -428,7 +429,7 @@ export function SettingsCustomFormatsPage() {
       }
       toast.success(`TRaSH guide snapshot synced as version ${applied.package.version}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not sync the reviewed guide snapshot.");
+      toast.error(plainFailureMessage(error, "Could not sync the reviewed guide snapshot."));
     } finally {
       setUpdateCheckBusy(null);
     }
@@ -514,7 +515,7 @@ export function SettingsCustomFormatsPage() {
       revalidator.revalidate();
     } catch (error) {
       setRuleState("error");
-      setRuleMessage(error instanceof Error ? error.message : "Could not save");
+      setRuleMessage(plainFailureMessage(error, "Could not save"));
     }
   }
 
@@ -527,7 +528,7 @@ export function SettingsCustomFormatsPage() {
       toast.success(`${format.name} removed`);
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Rule could not be removed.");
+      toast.error(plainFailureMessage(error, "Rule could not be removed."));
     } finally {
       setBusy(null);
     }
@@ -542,7 +543,7 @@ export function SettingsCustomFormatsPage() {
       const body = await fetchJson<unknown>(`/api/custom-formats/${format.id}/export`);
       downloadJson(body, `${slugForFileName(format.name)}.json`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not export this rule.");
+      toast.error(plainFailureMessage(error, "Could not export this rule."));
     } finally {
       setBusy(null);
     }
@@ -554,7 +555,7 @@ export function SettingsCustomFormatsPage() {
       const body = await fetchJson<unknown>("/api/custom-formats/export");
       downloadJson(body, "deluno-custom-formats.json");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not export the custom formats.");
+      toast.error(plainFailureMessage(error, "Could not export the custom formats."));
     } finally {
       setBusy(null);
     }
@@ -611,7 +612,7 @@ export function SettingsCustomFormatsPage() {
       revalidator.revalidate();
     } catch (error) {
       setImportState("error");
-      setImportMessage(error instanceof Error ? error.message : "Could not import.");
+      setImportMessage(plainFailureMessage(error, "Could not import."));
     }
   }
 
@@ -657,7 +658,7 @@ export function SettingsCustomFormatsPage() {
       revalidator.revalidate();
     } catch (error) {
       setMoveState("error");
-      setMoveMessage(error instanceof Error ? error.message : "The rules could not be moved.");
+      setMoveMessage(plainFailureMessage(error, "The rules could not be moved."));
     } finally {
       setBusy(null);
     }
@@ -685,7 +686,7 @@ export function SettingsCustomFormatsPage() {
         try {
           await createRuleFromGuide(target.format, target.mediaType, target.score);
         } catch (error) {
-          throw new Error(`${friendlyRuleName(target.format.name)} (${mediaTypeLabel(target.mediaType)}) could not be added: ${error instanceof Error ? error.message : "unknown error"}`);
+          throw new Error(`${friendlyRuleName(target.format.name)} (${mediaTypeLabel(target.mediaType)}) could not be added: ${plainFailureMessage(error, "unknown error")}`);
         }
       }
       setPresetState("saved");
@@ -693,7 +694,7 @@ export function SettingsCustomFormatsPage() {
       revalidator.revalidate();
     } catch (error) {
       setPresetState("error");
-      setPresetMessage(error instanceof Error ? error.message : "Preset could not be applied.");
+      setPresetMessage(plainFailureMessage(error, "Preset could not be applied."));
     } finally {
       setBusy(null);
     }
@@ -748,7 +749,7 @@ export function SettingsCustomFormatsPage() {
       setTypedPreview(typed);
     } catch (error) {
       setResults([]);
-      setTypedPreviewError(error instanceof Error ? error.message : "The typed release preview could not be run.");
+      setTypedPreviewError(plainFailureMessage(error, "The typed release preview could not be run."));
     } finally {
       setBusy(null);
     }
@@ -792,7 +793,7 @@ export function SettingsCustomFormatsPage() {
       setSafeguardMessage("Saved just now");
     } catch (error) {
       setSafeguardState("error");
-      setSafeguardMessage(error instanceof Error ? error.message : "Could not save");
+      setSafeguardMessage(plainFailureMessage(error, "Could not save"));
     }
   }
 

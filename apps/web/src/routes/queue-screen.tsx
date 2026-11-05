@@ -101,6 +101,7 @@ import { useColumnVisibility, type ColumnDefinition } from "../lib/use-column-vi
 import { formatProgressPercent } from "../lib/progress-format";
 import { plural } from "../lib/plural";
 import { formatSpeed } from "../lib/format-speed";
+import { plainFailureMessage } from "../lib/network-failure";
 
 /** Downloads still in their client: moving, waiting, stopped or stalled, as the Downloading tile counts them (#1448). */
 const DOWNLOADING_IN_CLIENT: string[] = [downloadQueueStatuses.downloading, downloadQueueStatuses.queued, downloadQueueStatuses.stalled, downloadQueueStatuses.paused, downloadQueueStatuses.notTransferring];
@@ -502,7 +503,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       revalidator.revalidate();
       return true;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "That action could not be completed.");
+      toast.error(plainFailureMessage(error, "That action could not be completed."));
       return false;
     } finally {
       setBusyKey(null);
@@ -517,7 +518,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       const detail = await fetchJson<DownloadDispatchDetail>(`/api/v1/download-dispatches/${encodeURIComponent(dispatch.id)}`);
       setDispatchDetails((current) => ({ ...current, [dispatch.id]: detail }));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "The transfer details could not be loaded.");
+      toast.error(plainFailureMessage(error, "The transfer details could not be loaded."));
     } finally {
       setBusyKey(null);
     }
@@ -553,7 +554,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       setDrawer(null);
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "That removal could not be completed.");
+      toast.error(plainFailureMessage(error, "That removal could not be completed."));
     } finally {
       setRemovalReasonBusy(null);
     }
@@ -837,7 +838,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
     await run(
       `held:approve:${row.historyId}`,
       () => approveHeldRelease(row).catch((error: unknown) => {
-        setHeldRefusal(row.historyId, error instanceof Error ? error.message : `${row.releaseName} could not be sent to a download client.`);
+        setHeldRefusal(row.historyId, plainFailureMessage(error, `${row.releaseName} could not be sent to a download client.`));
         throw error;
       }),
       `Sent ${row.releaseName} to your download client.`);
@@ -991,7 +992,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
           await row.dismiss();
           dismissed += 1;
         } catch (error) {
-          firstFailure ??= error instanceof Error ? error.message : `${row.title} could not be dismissed.`;
+          firstFailure ??= plainFailureMessage(error, `${row.title} could not be dismissed.`);
         }
       }
       setSelectedDismissKeys(new Set());
@@ -1127,7 +1128,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       }
     } catch (error) {
       setManualState("error");
-      setManualMessage(error instanceof Error ? error.message : "That could not be completed.");
+      setManualMessage(plainFailureMessage(error, "That could not be completed."));
     } finally {
       setBusyKey(null);
     }
@@ -1169,7 +1170,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       );
     } catch (error) {
       setFolderScanRows([]);
-      setFolderScanMessage(error instanceof Error ? error.message : "That folder could not be scanned.");
+      setFolderScanMessage(plainFailureMessage(error, "That folder could not be scanned."));
     } finally {
       setFolderScanBusy(false);
     }
@@ -1205,7 +1206,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       );
     } catch (error) {
       setFolderScanRows((current) => current.map((item, i) => (i === index ? { ...item, checking: false } : item)));
-      toast.error(error instanceof Error ? error.message : "That row could not be re-checked.");
+      toast.error(plainFailureMessage(error, "That row could not be re-checked."));
     }
   }
 
@@ -1256,7 +1257,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       );
       revalidator.revalidate();
     } catch (error) {
-      setFolderScanMessage(error instanceof Error ? error.message : "The batch could not be imported.");
+      setFolderScanMessage(plainFailureMessage(error, "The batch could not be imported."));
     } finally {
       setFolderScanBusy(false);
     }

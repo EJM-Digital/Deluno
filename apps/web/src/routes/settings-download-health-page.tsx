@@ -61,6 +61,7 @@ import { activityLinkForStatus } from "../lib/activity-history";
 import { useDisplayPreferences } from "../lib/display-preferences";
 import { DOWNLOAD_HEALTH_MAX_MINUTES, DOWNLOAD_HEALTH_MAX_STRIKES, DOWNLOAD_HEALTH_MIN_MINUTES, DOWNLOAD_HEALTH_MIN_STRIKES, DOWNLOAD_HEALTH_MINUTES_RANGE, DOWNLOAD_HEALTH_STRIKES_RANGE, downloadHealthMinutesProblem, downloadHealthStrikesProblem } from "../lib/download-health-bounds";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 const RULE_KIND_COPY: Record<string, { label: string; description: ReactNode; thresholdLabel?: string; thresholdUnit?: string; thresholdHelp?: string }> = {
   "no-progress": {
@@ -672,7 +673,7 @@ export function SettingsDownloadHealthPage() {
       closeDrawer();
     } catch (error) {
       setSaveState("error");
-      setSaveMessage(error instanceof Error ? error.message : "Could not save");
+      setSaveMessage(plainFailureMessage(error, "Could not save"));
     }
   }
 
@@ -687,7 +688,7 @@ export function SettingsDownloadHealthPage() {
       closeDrawer();
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Rule could not be removed.");
+      toast.error(plainFailureMessage(error, "Rule could not be removed."));
     } finally {
       setBusy(false);
     }
@@ -717,7 +718,7 @@ export function SettingsDownloadHealthPage() {
       toast.success("Added to the ignore list");
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not add that to the ignore list.");
+      toast.error(plainFailureMessage(error, "Could not add that to the ignore list."));
     } finally {
       setIgnoreBusy(null);
     }
@@ -731,7 +732,7 @@ export function SettingsDownloadHealthPage() {
       toast.success("Removed from the ignore list");
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not remove that entry.");
+      toast.error(plainFailureMessage(error, "Could not remove that entry."));
     } finally {
       setIgnoreBusy(null);
     }
@@ -746,7 +747,7 @@ export function SettingsDownloadHealthPage() {
       toast.success(result.purgedCount > 0 ? `Cleared ${plural(result.purgedCount, "recorded strike")}` : "There was nothing to clear");
       setConfirmPurge(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not clear strikes.");
+      toast.error(plainFailureMessage(error, "Could not clear strikes."));
     } finally {
       setBusy(false);
     }

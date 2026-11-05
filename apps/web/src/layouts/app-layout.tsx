@@ -43,6 +43,7 @@ import { NotificationsBell } from "../components/shell/notifications-bell";
 import { OutageBanner } from "../components/app/outage-banner";
 import { ConnectionLostBanner } from "../components/app/connection-lost-banner";
 import { TOPBAR_CONTROL, TOPBAR_ICON, TOPBAR_ICON_BUTTON } from "./topbar-tokens";
+import { plainFailureMessage } from "../lib/network-failure";
 
 /** The shape both sidebar area lists share. */
 interface NavArea {
@@ -424,7 +425,7 @@ export function DesktopSidebar({
         setPasswordMessage(null);
       }, 700);
     } catch (error) {
-      setPasswordMessage(error instanceof Error ? error.message : "Password could not be changed.");
+      setPasswordMessage(plainFailureMessage(error, "Password could not be changed."));
     } finally {
       setPasswordBusy(false);
     }

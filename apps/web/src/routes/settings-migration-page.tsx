@@ -40,6 +40,7 @@ import {
 } from "../lib/api";
 import { formatDateTime, formatShortDate, formatTime, useDisplayPreferences } from "../lib/display-preferences";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 const MIGRATION_FORM_ID = "migration-preview-form";
 
@@ -132,7 +133,7 @@ export function SettingsMigrationPage() {
       setSelectedIds(new Set(next.operations.filter(isSelectable).map((operation) => operation.id)));
       setMessage(next.valid ? "Preview ready. Review every create, skip and warning before applying." : "Preview found issues — see the change report.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Migration preview failed.");
+      setMessage(plainFailureMessage(error, "Migration preview failed."));
     } finally {
       setBusy(null);
     }
@@ -158,7 +159,7 @@ export function SettingsMigrationPage() {
           : `${plural(created, "selected item")} imported. Anything already present was skipped.`
       );
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Migration apply failed.");
+      setMessage(plainFailureMessage(error, "Migration apply failed."));
     } finally {
       setBusy(null);
     }
@@ -182,7 +183,7 @@ export function SettingsMigrationPage() {
           try {
             results[item.operationId] = await fetchJson<ConnectionValidationResult>(`/api/${collection}/${item.createdId}/test`, { method: "POST" });
           } catch (error) {
-            results[item.operationId] = { healthStatus: "needs review", message: error instanceof Error ? error.message : "The test could not run." };
+            results[item.operationId] = { healthStatus: "needs review", message: plainFailureMessage(error, "The test could not run.") };
           }
         })
       );

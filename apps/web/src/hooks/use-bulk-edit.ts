@@ -6,6 +6,7 @@ import { toast } from "../components/shell/toaster";
 import { moveRefusalLines, toastMoveRefusals, type MoveResult } from "../lib/move-refusals";
 import { describeRequestFailure, RequestFailedError } from "../lib/search-reasons";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 export type BulkWorkflowOperation = "monitoring" | "quality" | "minimumAvailability" | "reassignLibrary" | "tags" | "search" | "renamePreview";
 
@@ -84,7 +85,7 @@ export function useBulkEdit({
         setBulkQualityProfiles(matchingProfiles);
         setBulkTargetLibraryId((current) => current || matchingLibraries[0]?.id || "");
       })
-      .catch((error) => { if (!cancelled) setBulkError(error instanceof Error ? error.message : "Could not load bulk operation options."); })
+      .catch((error) => { if (!cancelled) setBulkError(plainFailureMessage(error, "Could not load bulk operation options.")); })
       .finally(() => { if (!cancelled) setBulkOptionsLoading(false); });
     return () => { cancelled = true; };
   }, [isBulkToolsOpen, variant]);
@@ -695,7 +696,7 @@ export function useBulkEdit({
       setSelectAllActive(false);
       setSelectedIds([]);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Bulk operation failed.";
+      const message = plainFailureMessage(error, "Bulk operation failed.");
       setBulkError(message);
       toast.error("Bulk operation failed", { description: message });
     } finally {

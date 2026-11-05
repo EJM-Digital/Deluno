@@ -37,6 +37,7 @@ import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 interface LoaderData {
   libraries: LibraryItem[];
@@ -230,7 +231,7 @@ export function SettingsDestinationRulesPage() {
       revalidator.revalidate();
     } catch (error) {
       setSaveState("error");
-      setSaveMessage(error instanceof Error ? error.message : "Could not save");
+      setSaveMessage(plainFailureMessage(error, "Could not save"));
     } finally {
       setBusy(false);
     }
@@ -260,7 +261,7 @@ export function SettingsDestinationRulesPage() {
       setSaveMessage(result.matchedRuleName ? `Matched “${result.matchedRuleName}”` : "No rule matched — library default");
     } catch (error) {
       setSaveState("error");
-      setSaveMessage(error instanceof Error ? error.message : "Preview failed");
+      setSaveMessage(plainFailureMessage(error, "Preview failed"));
     } finally {
       setBusy(false);
     }
@@ -278,7 +279,7 @@ export function SettingsDestinationRulesPage() {
       closeDrawer();
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Destination rule could not be removed.");
+      toast.error(plainFailureMessage(error, "Destination rule could not be removed."));
     } finally {
       setBusy(false);
     }
@@ -296,7 +297,7 @@ export function SettingsDestinationRulesPage() {
       }
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Destination rule could not be updated.");
+      toast.error(plainFailureMessage(error, "Destination rule could not be updated."));
     } finally {
       setTogglingId(null);
     }

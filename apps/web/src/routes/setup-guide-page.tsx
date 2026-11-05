@@ -77,6 +77,7 @@ import { isUsenetProtocol } from "../lib/protocol";
 import { CLIENT_PRESETS } from "./connections/presets";
 import { ConnectInstalledApps } from "../components/app/connect-installed-apps";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 /**
  * #1034: two stages. Stage 1 ("This computer and you") covers the computer
@@ -974,7 +975,7 @@ export function SetupGuidePage() {
         ? await rollbackCreatedEntities(createdEntities)
         : "Setup failed before Deluno created anything that needed cleanup.";
       setRollbackMessage(`${rollback} None of your answers were applied. Your choices are still here, so fix the problem above and press Create baseline again.`);
-      setError(err instanceof Error ? err.message : "Setup could not be completed.");
+      setError(plainFailureMessage(err, "Setup could not be completed."));
     } finally {
       setBusy(false);
     }
@@ -1007,7 +1008,7 @@ export function SetupGuidePage() {
       setMetadataNextPage(nextMetadataPage(1, results.length));
       if (results.length === 0) setError("No metadata matches were found. You can still add the title manually.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Metadata lookup failed.");
+      setError(plainFailureMessage(err, "Metadata lookup failed."));
     } finally {
       setMetadataBusy(false);
     }
@@ -1026,7 +1027,7 @@ export function SetupGuidePage() {
       setMetadataNextPage(nextMetadataPage(page, more.length));
       if (more.length === 0) setError("There are no more matches.");
     } catch (err) {
-      setError(`Could not load more matches. ${err instanceof Error ? err.message : "Please try again."}`);
+      setError(`Could not load more matches. ${plainFailureMessage(err, "Please try again.")}`);
     } finally {
       setMetadataLoadingMore(false);
     }
@@ -1306,7 +1307,7 @@ export function SetupGuidePage() {
       setServiceTest((current) => ({
         ...current,
         indexer: "failed",
-        indexerMessage: err instanceof Error ? err.message : "Indexer test failed."
+        indexerMessage: plainFailureMessage(err, "Indexer test failed.")
       }));
     }
   }
@@ -1332,7 +1333,7 @@ export function SetupGuidePage() {
       setServiceTest((current) => ({
         ...current,
         client: "failed",
-        clientMessage: err instanceof Error ? err.message : "Download client test failed."
+        clientMessage: plainFailureMessage(err, "Download client test failed.")
       }));
     }
   }
@@ -2945,7 +2946,7 @@ export async function createBaseline(input: CreateBaselineInput, createdEntities
   ] as const) {
     if (!library || answer !== true) continue;
     await refineLibraryWithWeir(library, outputPath, form).catch((problem) =>
-      notApplied.push(`cleaning ${label} files with Weir (${problem instanceof Error ? problem.message : "it could not be set up"})`));
+      notApplied.push(`cleaning ${label} files with Weir (${plainFailureMessage(problem, "it could not be set up")})`));
   }
 
   // The first title is a bonus. If it cannot be added the baseline stands, and the screen says so.
@@ -2955,7 +2956,7 @@ export async function createBaseline(input: CreateBaselineInput, createdEntities
     try {
       firstTitle = await createFirstTitle(form, createdEntities);
     } catch (titleError) {
-      firstTitleProblem = titleError instanceof Error ? titleError.message : `Could not add ${form.firstTitle.trim()}.`;
+      firstTitleProblem = plainFailureMessage(titleError, `Could not add ${form.firstTitle.trim()}.`);
     }
   }
 

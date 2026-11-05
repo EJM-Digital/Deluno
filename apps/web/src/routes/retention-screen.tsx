@@ -32,6 +32,7 @@ import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
 import type { MediaServerConnection } from "./media-servers-screen";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 type Level = "movie" | "show" | "season" | "episode";
 type RemovalMode = "automatic" | "ask";
@@ -371,7 +372,7 @@ export function RetentionPage() {
       revalidator.revalidate();
     } catch (error) {
       setSaveState("error");
-      setSaveMessage(error instanceof Error ? error.message : "Could not save");
+      setSaveMessage(plainFailureMessage(error, "Could not save"));
     }
   }
 
@@ -388,7 +389,7 @@ export function RetentionPage() {
       revalidator.revalidate();
     } catch (error) {
       setSaveState("error");
-      setSaveMessage(error instanceof Error ? error.message : "The rule could not be checked.");
+      setSaveMessage(plainFailureMessage(error, "The rule could not be checked."));
     } finally {
       setBusy(null);
     }
@@ -408,7 +409,7 @@ export function RetentionPage() {
       }
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : `${rule.name} could not be switched ${isEnabled ? "on" : "off"}.`);
+      toast.error(plainFailureMessage(error, `${rule.name} could not be switched ${isEnabled ? "on" : "off"}.`));
     } finally {
       setBusy(null);
     }

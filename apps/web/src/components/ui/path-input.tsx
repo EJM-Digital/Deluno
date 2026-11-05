@@ -24,6 +24,7 @@ import { cn } from "../../lib/utils";
 import { Button } from "./button";
 import { Input } from "./input";
 import { Sheet, SheetContent } from "./sheet";
+import { plainFailureMessage } from "../../lib/network-failure";
 
 /**
  * Whether this browser is on the computer Deluno runs on (#1170). The Windows
@@ -129,7 +130,7 @@ export function PathInput({
 
         if (!cancelled) {
           setBrowserData(null);
-          setError(loadError instanceof Error ? loadError.message : "Folder browser unavailable.");
+          setError(plainFailureMessage(loadError, "Folder browser unavailable."));
           setNotice(null);
         }
       } finally {
@@ -232,7 +233,7 @@ export function PathInput({
       setDiagnostic(result);
     } catch (checkError) {
       setDiagnostic(null);
-      setDiagnosticError(checkError instanceof Error ? checkError.message : "Path check failed.");
+      setDiagnosticError(plainFailureMessage(checkError, "Path check failed."));
     } finally {
       setDiagnosticLoading(false);
     }

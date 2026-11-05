@@ -1,3 +1,4 @@
+import { isNetworkFailure } from "./network-failure";
 import { describeRequestFailure, RequestFailedError } from "./search-reasons";
 
 /**
@@ -24,7 +25,7 @@ export async function describeAuthRefusal(error: unknown, action: string): Promi
   }
 
   // A sentence the page or provider wrote itself (not a reply, and not the browser's "Failed to fetch").
-  if (error instanceof Error && !(error instanceof TypeError) && !(error instanceof RequestFailedError) && error.message) {
+  if (error instanceof Error && !isNetworkFailure(error) && !(error instanceof RequestFailedError) && error.message) {
     return error.message;
   }
 

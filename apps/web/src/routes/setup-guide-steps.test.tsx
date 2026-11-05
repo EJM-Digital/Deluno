@@ -320,7 +320,7 @@ describe("Find & Download", () => {
 
     authedFetch.mockImplementation(async (url: string) => { if (url === "/api/download-clients/test") throw new TypeError("Network down"); return okJson(); });
     fireEvent.click(await button("Test download client"));
-    expect(await screen.findByText("Network down")).toBeTruthy();
+    expect(await screen.findByText("Deluno could not be reached. Check that it is running, then try again.")).toBeTruthy();
 
     authedFetch.mockImplementation(async (url: string) => (url === "/api/download-clients/test" ? new Response("not json", { status: 200 }) : okJson()));
     fireEvent.click(await button("Test download client"));
@@ -334,7 +334,7 @@ describe("Find & Download", () => {
 
     authedFetch.mockImplementation(async (url: string) => { if (url === "/api/indexers/test") throw new TypeError("Network down"); return okJson(); });
     fireEvent.click(await button("Test search source"));
-    expect(await screen.findByText("Network down")).toBeTruthy();
+    expect(await screen.findByText("Deluno could not be reached. Check that it is running, then try again.")).toBeTruthy();
 
     authedFetch.mockImplementation(async (url: string) => (url === "/api/indexers/test" ? new Response("not json", { status: 200 }) : okJson()));
     fireEvent.click(await button("Test search source"));

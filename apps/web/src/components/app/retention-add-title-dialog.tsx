@@ -8,6 +8,7 @@ import { Button } from "../ui/button";
 import { Field } from "../ui/field";
 import { Input } from "../ui/input";
 import { Select } from "../ui/select";
+import { plainFailureMessage } from "../../lib/network-failure";
 
 interface AddableRule {
   id: string;
@@ -95,7 +96,7 @@ export function RetentionAddTitleDialog({ open, onOpenChange, rules, onAdded }: 
       onAdded(`${item.title} is on “${usable.find((rule) => rule.id === ruleId)?.name ?? "the rule"}” by hand.`);
       onOpenChange(false);
     } catch (error) {
-      setProblem(error instanceof Error ? error.message : `${item.title} could not be added.`);
+      setProblem(plainFailureMessage(error, `${item.title} could not be added.`));
     } finally {
       setBusy(null);
     }

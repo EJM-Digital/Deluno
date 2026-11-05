@@ -9,6 +9,7 @@ import { fetchJson, type ExistingLibraryCandidate, type ExistingLibraryImportRes
 import { authedFetch } from "../../lib/use-auth";
 import { toast } from "../shell/toaster";
 import { plural } from "../../lib/plural";
+import { plainFailureMessage } from "../../lib/network-failure";
 
 export function ExistingMediaImportDialog({
   open,
@@ -54,7 +55,7 @@ export function ExistingMediaImportDialog({
       setCursor(nextCursor);
       setSelected(new Set());
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "The folder could not be reviewed.");
+      setError(plainFailureMessage(loadError, "The folder could not be reviewed."));
     } finally {
       setLoading(false);
     }
@@ -105,7 +106,7 @@ export function ExistingMediaImportDialog({
       toast.success(`${plural(result.importedCount, library.mediaType === "tv" ? "TV show" : "movie")} reviewed and added.`);
       await loadPage(library.id, cursor);
     } catch (importError) {
-      toast.error(importError instanceof Error ? importError.message : "The selected media could not be imported.");
+      toast.error(plainFailureMessage(importError, "The selected media could not be imported."));
     } finally {
       setBusy(false);
     }

@@ -8,6 +8,7 @@ import { fetchJson } from "../../lib/api";
 import { queryClient } from "../../lib/route-cache";
 import { dismissPath, updateNoticeTitle, useConnectionUpdates, type ConnectionUpdate, type ConnectionUpdateResult } from "../../lib/connection-updates";
 import { localizeResetTimes } from "../../lib/reset-times";
+import { plainFailureMessage } from "../../lib/network-failure";
 
 /**
  * What a connection says about its newer version, in its own drawer (#1118): the release notes, and then what
@@ -49,7 +50,7 @@ function UpdateBody({ item, result, setResult }: { item: ConnectionUpdate; resul
       else toast.success(localizeResetTimes(outcome.message));
       await queryClient.invalidateQueries();
     } catch (error) {
-      const message = `Failed: ${error instanceof Error ? error.message : "Deluno could not update it."}`;
+      const message = `Failed: ${plainFailureMessage(error, "Deluno could not update it.")}`;
       setResult({ outcome: "failed", message, version: null });
       toast.error(message);
     } finally {
@@ -65,7 +66,7 @@ function UpdateBody({ item, result, setResult }: { item: ConnectionUpdate; resul
       toast.success(`Dismissed ${item.appName} ${item.latestVersion}`);
       await queryClient.invalidateQueries();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "That could not be dismissed.");
+      toast.error(plainFailureMessage(error, "That could not be dismissed."));
     } finally {
       setBusy(null);
     }

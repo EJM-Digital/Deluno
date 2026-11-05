@@ -17,6 +17,7 @@ import { refusalSentence, usePasswordPrompt, withCurrentPassword } from "../comp
 import { fetchJson, type ApiKeyItem, type CreatedApiKeyResponse } from "../lib/api";
 import { formatDateTime, type DisplayPreferences, useDisplayPreferences } from "../lib/display-preferences";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 interface ApiKeyScopeTemplate {
   id: string;
@@ -94,7 +95,7 @@ export function SystemApiPage() {
       toast.success("API key generated");
       revalidator.revalidate();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "API key could not be generated.";
+      const message = plainFailureMessage(error, "API key could not be generated.");
       save.markError(message);
       toast.error(message);
     } finally {
@@ -135,7 +136,7 @@ export function SystemApiPage() {
       toast.success("API key revoked");
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "API key could not be revoked.");
+      toast.error(plainFailureMessage(error, "API key could not be revoked."));
     } finally {
       setDeletingId(null);
     }

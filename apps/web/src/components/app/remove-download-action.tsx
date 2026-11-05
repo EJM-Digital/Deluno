@@ -18,6 +18,7 @@ import { RemovalReasonDialog, type RemovalReason } from "../ui/removal-reason-di
 import { toast } from "../shell/toaster";
 import { checkQueueMatch, type QueueMatch, type ReleaseIdentity } from "../../lib/block-release";
 import { submitQueueRemoval } from "../../lib/remove-download";
+import { plainFailureMessage } from "../../lib/network-failure";
 
 interface RemoveDownloadActionProps extends ReleaseIdentity {
   /** Called after a successful removal (any reason), so the caller can revalidate and close its own drawer. */
@@ -68,7 +69,7 @@ export function RemoveDownloadAction({
       setOpen(false);
       onRemoved?.();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "That removal could not be completed.");
+      toast.error(plainFailureMessage(error, "That removal could not be completed."));
     } finally {
       setBusyReason(null);
     }

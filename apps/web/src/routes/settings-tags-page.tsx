@@ -26,6 +26,7 @@ import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { cn } from "../lib/utils";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 const COLORS = ["slate", "emerald", "teal", "blue", "violet", "amber", "rose"] as const;
 
@@ -128,7 +129,7 @@ export function SettingsTagsPage() {
       revalidator.revalidate();
     } catch (error) {
       setSaveState("error");
-      setSaveMessage(error instanceof Error ? error.message : "Could not save");
+      setSaveMessage(plainFailureMessage(error, "Could not save"));
     } finally {
       setBusy(false);
     }
@@ -146,7 +147,7 @@ export function SettingsTagsPage() {
       closeDrawer();
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Tag could not be removed.");
+      toast.error(plainFailureMessage(error, "Tag could not be removed."));
     } finally {
       setBusy(false);
     }
@@ -161,7 +162,7 @@ export function SettingsTagsPage() {
       setConfirmRemoveUnused(false);
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unused tags could not be deleted.");
+      toast.error(plainFailureMessage(error, "Unused tags could not be deleted."));
     } finally {
       setBusy(false);
     }

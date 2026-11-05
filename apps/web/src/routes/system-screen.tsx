@@ -91,6 +91,7 @@ import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save
 import { healthChecksNeedingAttention, isHealthCheckSnoozed } from "../lib/health-snooze";
 import { formatProgressPercent } from "../lib/progress-format";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 /** GET /api/system/info (#869): uptime, runtime, and app-data details for the "This installation" card. */
 interface SystemInstallationInfo {
@@ -218,7 +219,7 @@ function SystemPageBody({ data: loaderData, revalidator, backupsFailed = false }
       activityStatus.markSaved("Page size saved");
       revalidator.revalidate();
     } catch (error) {
-      activityStatus.markError(error instanceof Error ? error.message : "Could not save page size");
+      activityStatus.markError(plainFailureMessage(error, "Could not save page size"));
     } finally {
       setActivityBusy(null);
     }
@@ -233,7 +234,7 @@ function SystemPageBody({ data: loaderData, revalidator, backupsFailed = false }
       setConfirmClearActivity(false);
       revalidator.revalidate();
     } catch (error) {
-      activityStatus.markError(error instanceof Error ? error.message : "Activity could not be cleared.");
+      activityStatus.markError(plainFailureMessage(error, "Activity could not be cleared."));
     } finally {
       setActivityBusy(null);
     }
@@ -507,7 +508,7 @@ export function BackgroundJobsCard({ jobs, failedJobs, onChanged }: { jobs: JobQ
       toast.success(`${plural(result.retried ?? 0, "failed job")} requeued`);
       onChanged();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Retry failed.");
+      toast.error(plainFailureMessage(error, "Retry failed."));
     } finally {
       setBusy(false);
     }
@@ -521,7 +522,7 @@ export function BackgroundJobsCard({ jobs, failedJobs, onChanged }: { jobs: JobQ
       setOpenJobId(null);
       onChanged();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "That job could not be dismissed.");
+      toast.error(plainFailureMessage(error, "That job could not be dismissed."));
     } finally {
       setBusy(false);
     }
@@ -797,7 +798,7 @@ function RecycleBinCard({
       await reload();
     } catch (error) {
       setSaveState("error");
-      setMessage(error instanceof Error ? error.message : "Recycle-bin settings could not be saved.");
+      setMessage(plainFailureMessage(error, "Recycle-bin settings could not be saved."));
     }
   }
 
@@ -809,7 +810,7 @@ function RecycleBinCard({
       setMessage(result.message);
       await reload();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "The item could not be restored.");
+      setMessage(plainFailureMessage(error, "The item could not be restored."));
     } finally {
       setBusy(null);
     }
@@ -824,7 +825,7 @@ function RecycleBinCard({
       setMessage(result.message);
       await reload();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "The item could not be deleted.");
+      setMessage(plainFailureMessage(error, "The item could not be deleted."));
     } finally {
       setBusy(null);
     }
@@ -849,7 +850,7 @@ function RecycleBinCard({
     try {
       setCleanupPreview(await fetchJson<RecycleBinCleanupPreview>("/api/recycle-bin/cleanup/preview"));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Deluno could not work out what an empty would take.");
+      setMessage(plainFailureMessage(error, "Deluno could not work out what an empty would take."));
     } finally {
       setBusy(null);
     }
@@ -864,7 +865,7 @@ function RecycleBinCard({
       setCleanupPreview(null);
       await reload();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Recycle-bin cleanup failed.");
+      setMessage(plainFailureMessage(error, "Recycle-bin cleanup failed."));
     } finally {
       setBusy(null);
     }
@@ -1204,7 +1205,7 @@ function BackupCard({
       await reload();
       actionStatus.markSaved("Backup created");
     } catch (error) {
-      actionStatus.markError(error instanceof Error ? error.message : "Backup failed");
+      actionStatus.markError(plainFailureMessage(error, "Backup failed"));
     } finally {
       setBusy(null);
     }
@@ -1226,7 +1227,7 @@ function BackupCard({
       setScheduleSaveState("saved");
     } catch (error) {
       setScheduleSaveState("error");
-      setScheduleMessage(error instanceof Error ? error.message : "Schedule could not be saved");
+      setScheduleMessage(plainFailureMessage(error, "Schedule could not be saved"));
     } finally {
       setBusy(null);
     }
@@ -1249,7 +1250,7 @@ function BackupCard({
       actionStatus.reset();
     } catch (error) {
       setRestorePreview(null);
-      actionStatus.markError(error instanceof Error ? error.message : "Restore preview failed");
+      actionStatus.markError(plainFailureMessage(error, "Restore preview failed"));
     } finally {
       setBusy(null);
     }
@@ -1281,7 +1282,7 @@ function BackupCard({
         actionStatus.markSaved(result.message ?? "Restore completed. Restart Deluno before continuing.");
       }
     } catch (error) {
-      actionStatus.markError(error instanceof Error ? error.message : "Restore failed");
+      actionStatus.markError(plainFailureMessage(error, "Restore failed"));
     } finally {
       setBusy(null);
     }
@@ -1591,7 +1592,7 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
       if (result.status.state === "error") actionStatus.markError(result.message);
       else actionStatus.markSaved(result.message);
     } catch (error) {
-      actionStatus.markError(error instanceof Error ? error.message : "Update action failed");
+      actionStatus.markError(plainFailureMessage(error, "Update action failed"));
       await refreshStatus().catch(() => undefined);
     } finally {
       setBusyAction(null);
@@ -1615,7 +1616,7 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
       await refreshStatus();
     } catch (error) {
       setPreferencesSaveState("error");
-      setPreferencesMessage(error instanceof Error ? error.message : "Could not save preferences");
+      setPreferencesMessage(plainFailureMessage(error, "Could not save preferences"));
     } finally {
       setBusyAction(null);
     }

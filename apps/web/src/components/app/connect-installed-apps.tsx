@@ -15,6 +15,7 @@ import {
   type BundledComponentConnectResult,
   type BundledComponentStatus
 } from "../../lib/api";
+import { plainFailureMessage } from "../../lib/network-failure";
 
 const WEIR_KIND = "weir";
 
@@ -142,7 +143,7 @@ export function ConnectInstalledApps({
       await refresh();
       if (!result.healthy && result.needsSignIn) onNeedsSignIn?.(app, result);
     } catch (error) {
-      record({ name: app.displayName, healthy: false, message: error instanceof Error ? error.message : `${app.displayName} could not be connected.` }, app.kind);
+      record({ name: app.displayName, healthy: false, message: plainFailureMessage(error, `${app.displayName} could not be connected.`) }, app.kind);
     } finally {
       setBusy(null);
     }
@@ -158,7 +159,7 @@ export function ConnectInstalledApps({
       }
       await refresh();
     } catch (error) {
-      setWeirError(error instanceof Error ? error.message : "The apps could not be connected.");
+      setWeirError(plainFailureMessage(error, "The apps could not be connected."));
     } finally {
       setBusy(null);
     }
@@ -184,7 +185,7 @@ export function ConnectInstalledApps({
       }
       await refresh();
     } catch (error) {
-      setWeirError(error instanceof Error ? error.message : "Weir could not be connected.");
+      setWeirError(plainFailureMessage(error, "Weir could not be connected."));
     } finally {
       // Used once, never kept: whatever happened, the passwords leave the screen.
       setPassword("");

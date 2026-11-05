@@ -8,6 +8,7 @@ import { toast } from "../shell/toaster";
 import { fetchJson } from "../../lib/api";
 import { authedFetch } from "../../lib/use-auth";
 import { plural } from "../../lib/plural";
+import { plainFailureMessage } from "../../lib/network-failure";
 
 interface LogFileItem {
   name: string;
@@ -59,7 +60,7 @@ export function LogFilesCard() {
       link.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "The file could not be downloaded.");
+      toast.error(plainFailureMessage(error, "The file could not be downloaded."));
     } finally {
       setBusy(null);
     }
@@ -76,7 +77,7 @@ export function LogFilesCard() {
       toast.success(`${file.name} deleted`);
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "The file could not be deleted.");
+      toast.error(plainFailureMessage(error, "The file could not be deleted."));
     } finally {
       setBusy(null);
       setConfirmDelete(null);

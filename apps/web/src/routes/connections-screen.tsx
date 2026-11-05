@@ -73,6 +73,7 @@ import { useRowSelection } from "../lib/connection-tags";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { plural } from "../lib/plural";
 import { formatSpeed } from "../lib/format-speed";
+import { plainFailureMessage } from "../lib/network-failure";
 
 const TABS = configurationNavAreas.find((area) => area.to === "/indexers/indexers")!.items;
 
@@ -477,7 +478,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
       setSelectedIndexerIds(new Set());
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Bulk update failed.");
+      toast.error(plainFailureMessage(error, "Bulk update failed."));
     } finally {
       setBulkBusy(false);
     }
@@ -491,7 +492,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
       setSelectedIndexerIds(new Set());
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Bulk update failed.");
+      toast.error(plainFailureMessage(error, "Bulk update failed."));
     } finally {
       setBulkBusy(false);
     }
@@ -505,7 +506,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
       setSelectedIndexerIds(new Set());
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Bulk remove failed.");
+      toast.error(plainFailureMessage(error, "Bulk remove failed."));
     } finally {
       setBulkBusy(false);
       setConfirmBulkRemove(false);
@@ -763,7 +764,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
     } catch (error) {
       setTestResult(abort.signal.aborted
         ? { healthStatus: "unknown", message: "Test cancelled." }
-        : { healthStatus: "unreachable", message: error instanceof Error ? error.message : "Test failed." });
+        : { healthStatus: "unreachable", message: plainFailureMessage(error, "Test failed.") });
     } finally {
       if (testAbort.current === abort) testAbort.current = null;
       setBusy(null);
@@ -879,7 +880,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
       revalidator.revalidate();
     } catch (error) {
       setSaveState("error");
-      setSaveMessage(error instanceof Error ? error.message : "Could not save");
+      setSaveMessage(plainFailureMessage(error, "Could not save"));
     } finally {
       setBusy(null);
     }
@@ -903,7 +904,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
       try {
         await send(url, "DELETE", undefined, failure);
       } catch (error) {
-        reason = error instanceof Error ? error.message : failure;
+        reason = plainFailureMessage(error, failure);
         throw error;
       }
     }, `${name} removed`);
@@ -928,7 +929,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
       revalidator.revalidate();
       return true;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Action failed.");
+      toast.error(plainFailureMessage(error, "Action failed."));
       return false;
     } finally {
       setBusy(null);

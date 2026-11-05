@@ -35,6 +35,7 @@ import type {
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { authedFetch } from "../lib/use-auth";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 export async function settingsKeepSeedingLoader(): Promise<KeepSeedingView> {
   return fetchJson<KeepSeedingView>("/api/download-health/keep-seeding");
@@ -190,7 +191,7 @@ export function SettingsKeepSeedingPage() {
       closeDrawer();
     } catch (error) {
       setSaveState("error");
-      setSaveMessage(error instanceof Error ? error.message : "That could not be saved.");
+      setSaveMessage(plainFailureMessage(error, "That could not be saved."));
     }
   }
 
@@ -215,7 +216,7 @@ export function SettingsKeepSeedingPage() {
     } catch (error) {
       setCheck(null);
       setSaveState("error");
-      setSaveMessage(error instanceof Error ? error.message : "Deluno could not check that.");
+      setSaveMessage(plainFailureMessage(error, "Deluno could not check that."));
     } finally {
       setChecking(false);
     }
@@ -235,7 +236,7 @@ export function SettingsKeepSeedingPage() {
       setTagDraft({ tag: "", category: "" });
       toast.success(`Torrents tagged ${tag} will move to ${categoryName}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "That could not be saved.");
+      toast.error(plainFailureMessage(error, "That could not be saved."));
     } finally {
       setBusy(null);
     }
@@ -247,7 +248,7 @@ export function SettingsKeepSeedingPage() {
       await save({ ...view, tagCategories: view.tagCategories.filter((item) => item.tag !== tag) });
       toast.success(`${tag} no longer picks a category`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "That could not be saved.");
+      toast.error(plainFailureMessage(error, "That could not be saved."));
     } finally {
       setBusy(null);
     }
@@ -261,7 +262,7 @@ export function SettingsKeepSeedingPage() {
       toast.success(`${problem.releaseName} cleared`);
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "That could not be cleared.");
+      toast.error(plainFailureMessage(error, "That could not be cleared."));
     } finally {
       setBusy(null);
     }

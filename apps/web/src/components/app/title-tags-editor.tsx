@@ -5,6 +5,7 @@ import { authedFetch } from "../../lib/use-auth";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { TagPicker } from "./tag-picker";
+import { plainFailureMessage } from "../../lib/network-failure";
 
 type TitleTagsMediaType = "movies" | "series";
 
@@ -77,7 +78,7 @@ export function TitleTagsEditor({
       setEditing(false);
       onSaved?.();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Tags could not be saved.");
+      setError(plainFailureMessage(saveError, "Tags could not be saved."));
     } finally {
       setSaving(false);
     }

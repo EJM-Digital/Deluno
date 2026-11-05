@@ -46,6 +46,7 @@ import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
+import { plainFailureMessage } from "../lib/network-failure";
 
 /** Mirrors `ProcessorStallLimits`: a day to a week with no progress, two days unless chosen (#511). */
 const TIMEOUT_OPTIONS = [
@@ -202,7 +203,7 @@ function FileHandlingPage() {
       setMessage("Saved just now");
     } catch (error) {
       setSaveState("error");
-      setMessage(error instanceof Error ? error.message : "Could not save");
+      setMessage(plainFailureMessage(error, "Could not save"));
     }
   }
 
@@ -454,7 +455,7 @@ function ImportPolicyPage() {
       setMessage("Saved just now");
     } catch (error) {
       setSaveState("error");
-      setMessage(error instanceof Error ? error.message : "Could not save");
+      setMessage(plainFailureMessage(error, "Could not save"));
     }
   }
 
@@ -893,7 +894,7 @@ function ProcessingWorkflowPage() {
       revalidator.revalidate();
     } catch (error) {
       setSaveState("error");
-      setMessage(error instanceof Error ? error.message : "Could not save");
+      setMessage(plainFailureMessage(error, "Could not save"));
     } finally {
       setBusy(null);
     }
@@ -906,7 +907,7 @@ function ProcessingWorkflowPage() {
       if (success) toast.success(success);
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Action failed.");
+      toast.error(plainFailureMessage(error, "Action failed."));
     } finally {
       setBusy(null);
     }

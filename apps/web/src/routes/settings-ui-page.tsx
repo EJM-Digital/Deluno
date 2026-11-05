@@ -31,6 +31,7 @@ import { useApiMutation } from "../lib/use-api-mutation";
 import { isColorMode, useColorMode, type ColorMode } from "../lib/use-color-mode";
 import { useDisplayPreferences } from "../lib/display-preferences";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
+import { plainFailureMessage } from "../lib/network-failure";
 
 interface LoaderData {
   libraries: LibraryItem[];
@@ -126,7 +127,7 @@ export function SettingsUiPage() {
       setMessage("Saved just now");
     } catch (error) {
       setSaveState("error");
-      setMessage(error instanceof Error ? error.message : "Could not save");
+      setMessage(plainFailureMessage(error, "Could not save"));
     }
   }
 

@@ -25,6 +25,7 @@ import { toneSortValue } from "../../lib/status-tones";
 import { ConnectionUpdatePanel } from "./connection-update-panel";
 import { useConnectionVersions, versionKey } from "../../lib/connection-versions";
 import { plural } from "../../lib/plural";
+import { plainFailureMessage } from "../../lib/network-failure";
 
 /** Mirrors `Deluno.Connections.Contracts.SeerrConnection`. */
 export interface SeerrServer {
@@ -243,7 +244,7 @@ export function SeerrServersCard({
       onChanged();
     } catch (error) {
       setSaveState("error");
-      setSaveMessage(error instanceof Error ? error.message : "Could not save");
+      setSaveMessage(plainFailureMessage(error, "Could not save"));
     }
   }
 
@@ -318,7 +319,7 @@ export function SeerrServersCard({
       }
       onChanged();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : `${server.name} could not be switched ${isEnabled ? "on" : "off"}.`);
+      toast.error(plainFailureMessage(error, `${server.name} could not be switched ${isEnabled ? "on" : "off"}.`));
     } finally {
       setBusy(null);
     }

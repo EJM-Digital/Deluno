@@ -21,6 +21,7 @@ import { fetchJson, readErrorText, type AddMissingCollectionFilmsResult, type Li
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 interface CollectionsLoaderData {
   collections: MovieCollectionItem[];
@@ -93,7 +94,7 @@ export function CollectionsPage() {
       toast.success("Collection added");
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Collection could not be added.");
+      toast.error(plainFailureMessage(error, "Collection could not be added."));
     } finally {
       setBusy(null);
     }
@@ -114,7 +115,7 @@ export function CollectionsPage() {
       toast.success(result.message);
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : `The missing films of ${collection.name} could not be added.`);
+      toast.error(plainFailureMessage(error, `The missing films of ${collection.name} could not be added.`));
     } finally {
       setBusy(null);
     }
@@ -131,7 +132,7 @@ export function CollectionsPage() {
       if (!response.ok) throw new Error("Collection settings could not be saved.");
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Collection settings could not be saved.");
+      toast.error(plainFailureMessage(error, "Collection settings could not be saved."));
     } finally {
       setBusy(null);
     }
@@ -145,7 +146,7 @@ export function CollectionsPage() {
       toast.success(`${collection.name} refreshed`);
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Collection could not be refreshed.");
+      toast.error(plainFailureMessage(error, "Collection could not be refreshed."));
     } finally {
       setBusy(null);
     }
@@ -164,7 +165,7 @@ export function CollectionsPage() {
       toast.success(excluded ? `${member.title} is excluded. Deluno will not add or search for it.` : `${member.title} is included again.`);
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "That film could not be changed.");
+      toast.error(plainFailureMessage(error, "That film could not be changed."));
     } finally {
       setBusy(null);
     }
@@ -186,7 +187,7 @@ export function CollectionsPage() {
       toast.success(`${plural(selected.length, "collection")} updated`);
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Collections could not be updated.");
+      toast.error(plainFailureMessage(error, "Collections could not be updated."));
     } finally {
       setBusy(null);
     }
@@ -208,7 +209,7 @@ export function CollectionsPage() {
       setRemoving(null);
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Collections could not be removed.");
+      toast.error(plainFailureMessage(error, "Collections could not be removed."));
     } finally {
       setBusy(null);
     }
@@ -228,7 +229,7 @@ export function CollectionsPage() {
       setSelected([]);
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Collections could not be updated.");
+      toast.error(plainFailureMessage(error, "Collections could not be updated."));
     } finally {
       setBusy(null);
     }

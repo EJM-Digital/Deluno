@@ -31,6 +31,7 @@ import { ConnectionUpdatePanel } from "../components/app/connection-update-panel
 import { useConnectionVersions, versionKey } from "../lib/connection-versions";
 import { SeerrServersCard, type SeerrCleanup, type SeerrServer } from "../components/app/seerr-servers-card";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 const TABS = configurationNavAreas.find((area) => area.to === "/indexers/indexers")?.items ?? [];
 
@@ -262,7 +263,7 @@ export function MediaServersPage() {
       revalidator.revalidate();
     } catch (error) {
       setSaveState("error");
-      setSaveMessage(error instanceof Error ? error.message : "Could not save");
+      setSaveMessage(plainFailureMessage(error, "Could not save"));
     }
   }
 
@@ -306,7 +307,7 @@ export function MediaServersPage() {
       }
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : `${server.name} could not be switched ${isEnabled ? "on" : "off"}.`);
+      toast.error(plainFailureMessage(error, `${server.name} could not be switched ${isEnabled ? "on" : "off"}.`));
     } finally {
       setBusy(null);
     }

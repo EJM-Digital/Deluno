@@ -5,6 +5,7 @@ import { RealtimeGroups, useSignalREvent, useSignalRResync } from "../../lib/use
 import { authedFetch } from "../../lib/use-auth";
 import { Button } from "../ui/button";
 import { toast } from "../shell/toaster";
+import { plainFailureMessage } from "../../lib/network-failure";
 
 /**
  * Says, in plain words and with a way out, that Automation is paused (#936).
@@ -52,7 +53,7 @@ export function AutomationPausedNotice({ context, noun = "title" }: {
       if (active.current) setPaused(false);
       toast.success("Automation resumed");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Deluno could not resume automation.");
+      toast.error(plainFailureMessage(error, "Deluno could not resume automation."));
     } finally {
       if (active.current) setBusy(false);
     }

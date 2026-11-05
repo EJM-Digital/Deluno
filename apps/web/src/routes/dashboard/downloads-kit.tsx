@@ -13,6 +13,7 @@ import { readErrorText } from "../../lib/api/client";
 import { queryClient } from "../../lib/route-cache";
 import { authedFetch } from "../../lib/use-auth";
 import { cn } from "../../lib/utils";
+import { plainFailureMessage } from "../../lib/network-failure";
 
 export interface ActionState {
   busy: string | null;
@@ -30,7 +31,7 @@ export function useAction(): ActionState {
       // Only the screens that are open are asked again; the summary is one of them.
       void queryClient.invalidateQueries();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "That did not work. Nothing was changed.");
+      toast.error(plainFailureMessage(error, "That did not work. Nothing was changed."));
     } finally {
       setBusy(null);
     }

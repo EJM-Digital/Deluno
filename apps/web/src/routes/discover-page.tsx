@@ -56,6 +56,7 @@ import { Select } from "../components/ui/select";
 import { SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { cn } from "../lib/utils";
+import { plainFailureMessage } from "../lib/network-failure";
 
 const DISCOVER_TYPE_KEY = "deluno-discover-type";
 
@@ -166,7 +167,7 @@ export function DiscoverPage() {
         if (!cancelled) setData(response);
       })
       .catch((caught) => {
-        if (!cancelled) setError(caught instanceof Error ? caught.message : "Discover could not be loaded.");
+        if (!cancelled) setError(plainFailureMessage(caught, "Discover could not be loaded."));
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
@@ -186,7 +187,7 @@ export function DiscoverPage() {
       setPage(next);
       if (fresh.length === 0) setNoMore(true);
     } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : "More titles could not be loaded.");
+      toast.error(plainFailureMessage(caught, "More titles could not be loaded."));
     } finally {
       setLoadingMore(false);
     }
@@ -506,7 +507,7 @@ function DiscoverAddDrawer({
       toast.success(`${candidate.title} added${searchesNow ? " — searching now" : ""}.`);
       onAdded(candidate.title, candidate.year);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "That title could not be added.");
+      toast.error(plainFailureMessage(error, "That title could not be added."));
     } finally {
       setBusy(false);
     }

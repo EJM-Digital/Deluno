@@ -25,6 +25,7 @@ import type {
   SubtitleTimingPolicy
 } from "../lib/api/types/resources";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 const TABS = configurationNavAreas.find((area) => area.to === "/settings/libraries")?.items ?? [];
 
@@ -133,7 +134,7 @@ export function SubtitleLanguagesPage() {
       if (!response.ok) throw new Error("That could not be saved.");
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "That could not be saved.");
+      toast.error(plainFailureMessage(error, "That could not be saved."));
     } finally {
       setAutomaticBusy(false);
     }
@@ -182,7 +183,7 @@ export function SubtitleLanguagesPage() {
       if (!response.ok) throw new Error("Those permissions could not be saved.");
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Those permissions could not be saved.");
+      toast.error(plainFailureMessage(error, "Those permissions could not be saved."));
     } finally {
       setPermissionsBusy(false);
     }
@@ -248,7 +249,7 @@ export function SubtitleLanguagesPage() {
       setEditing(null);
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Those subtitle settings could not be saved.");
+      toast.error(plainFailureMessage(error, "Those subtitle settings could not be saved."));
     } finally {
       setBusy(false);
     }

@@ -3,6 +3,7 @@ import { Loader2, ShieldAlert } from "lucide-react";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { fetchJson } from "../../lib/api";
+import { plainFailureMessage } from "../../lib/network-failure";
 
 export type LanAccessStatus = {
   state: "open" | "blocked" | "notChecked" | string;
@@ -39,7 +40,7 @@ export function LanAccessNotice({ showResult = false, address }: {
     } catch (error) {
       setStatus((current) => current && {
         ...current,
-        message: error instanceof Error ? error.message : "Deluno could not ask Windows to change the firewall."
+        message: plainFailureMessage(error, "Deluno could not ask Windows to change the firewall.")
       });
     } finally {
       setBusy(false);

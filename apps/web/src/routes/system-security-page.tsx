@@ -17,6 +17,7 @@ import { SwitchRow } from "../components/ui/switch";
 import { PageFooter } from "../components/ui/page-footer";
 import type { DrawerSaveState } from "../components/ui/drawer";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
+import { plainFailureMessage } from "../lib/network-failure";
 
 interface SystemSecurityLoaderData {
   allowedHosts: AllowedHostsOverview;
@@ -122,7 +123,7 @@ function AllowedHostsCard({ overview, onSaved }: { overview: AllowedHostsOvervie
       onSaved();
     } catch (error) {
       setSaveState("error");
-      setMessage(error instanceof Error ? error.message : "Allowed Hosts could not be saved.");
+      setMessage(plainFailureMessage(error, "Allowed Hosts could not be saved."));
     }
   }
 
@@ -266,7 +267,7 @@ function LocalNetworkAuthCard({ overview, onSaved }: { overview: LocalNetworkAut
       onSaved();
     } catch (error) {
       setSaveState("error");
-      setMessage(error instanceof Error ? error.message : "This could not be saved.");
+      setMessage(plainFailureMessage(error, "This could not be saved."));
     }
   }
 

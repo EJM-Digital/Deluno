@@ -39,6 +39,7 @@ import { FolderChainSection } from "./connections/folder-chain-section";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { plural } from "../lib/plural";
 import { libraryPairPlan } from "../lib/library-pair";
+import { plainFailureMessage } from "../lib/network-failure";
 
 interface LoaderData {
   libraries: LibraryItem[];
@@ -272,7 +273,7 @@ export function SettingsLibrariesPage() {
       revalidator.revalidate();
     } catch (error) {
       setSaveState("error");
-      setSaveMessage(error instanceof Error ? error.message : "Could not save");
+      setSaveMessage(plainFailureMessage(error, "Could not save"));
     } finally {
       setBusy(false);
     }
@@ -290,7 +291,7 @@ export function SettingsLibrariesPage() {
       closeDrawer();
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Library could not be removed.");
+      toast.error(plainFailureMessage(error, "Library could not be removed."));
     } finally {
       setBusy(false);
     }
@@ -302,7 +303,7 @@ export function SettingsLibrariesPage() {
       await putJson(`/api/libraries/${library.id}/automation`, automationPayload(library, { ...library, autoSearchEnabled: enabled }), `Could not ${enabled ? "resume" : "pause"} searching for ${library.name}.`);
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Library could not be updated.");
+      toast.error(plainFailureMessage(error, "Library could not be updated."));
     } finally {
       setTogglingId(null);
     }

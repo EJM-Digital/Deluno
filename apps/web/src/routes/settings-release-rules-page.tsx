@@ -34,6 +34,7 @@ import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")?.items ?? [];
 
@@ -212,7 +213,7 @@ export function SettingsReleaseRulesPage() {
       if (!response.ok) throw new Error(await readErrorText(response, "The order could not be saved."));
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "The order could not be saved.");
+      toast.error(plainFailureMessage(error, "The order could not be saved."));
     }
   }
 
@@ -287,7 +288,7 @@ export function SettingsReleaseRulesPage() {
       revalidator.revalidate();
     } catch (error) {
       setSaveState("error");
-      setSaveMessage(error instanceof Error ? error.message : "Could not save");
+      setSaveMessage(plainFailureMessage(error, "Could not save"));
     }
   }
 
@@ -302,7 +303,7 @@ export function SettingsReleaseRulesPage() {
       closeDrawer();
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Acquisition rule could not be removed.");
+      toast.error(plainFailureMessage(error, "Acquisition rule could not be removed."));
     } finally {
       setBusy(false);
     }
@@ -557,7 +558,7 @@ function validate(form: ProfileForm): Record<string, string> {
   try {
     parsePreferredTerms(form.preferredTerms);
   } catch (error) {
-    errors.preferredTerms = error instanceof Error ? error.message : "Check the preferred term format.";
+    errors.preferredTerms = plainFailureMessage(error, "Check the preferred term format.");
   }
   return errors;
 }

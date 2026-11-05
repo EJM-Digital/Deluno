@@ -31,6 +31,7 @@ import { fetchJson, type QualityModelSnapshot, type QualityTierDefinition } from
 import { cn } from "../lib/utils";
 import type { DrawerSaveState } from "../components/ui/drawer";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
+import { plainFailureMessage } from "../lib/network-failure";
 
 const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")?.items ?? [];
 
@@ -89,7 +90,7 @@ export function SettingsQualityPage() {
       setMessage("Saved just now");
     } catch (error) {
       setSaveState("error");
-      setMessage(error instanceof Error ? error.message : "Could not save size rules");
+      setMessage(plainFailureMessage(error, "Could not save size rules"));
     }
   }
 
@@ -103,7 +104,7 @@ export function SettingsQualityPage() {
       setMessage("Reset to Deluno's shipped defaults");
     } catch (error) {
       setSaveState("error");
-      setMessage(error instanceof Error ? error.message : "Could not reset size rules");
+      setMessage(plainFailureMessage(error, "Could not reset size rules"));
     } finally {
       setResetting(false);
       setConfirmingReset(false);

@@ -103,6 +103,7 @@ import {
   SEASON_PACK_LEFTOVERS_DELETED_CATEGORY
 } from "../lib/season-pack-leftovers";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 /**
  * Nothing here is read on a timer (#1179): the lists are read when the screen opens, and each one again, once,
@@ -471,7 +472,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
       toast.success(`${plural(result.retried ?? 0, "failed job")} requeued`);
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Retry failed.");
+      toast.error(plainFailureMessage(error, "Retry failed."));
     } finally {
       setBusy(false);
     }
@@ -502,7 +503,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
       }
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Those leftover files could not be deleted.");
+      toast.error(plainFailureMessage(error, "Those leftover files could not be deleted."));
     } finally {
       setDeletingLeftovers(false);
     }
@@ -527,7 +528,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
       setOpenImportCaseId(null);
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : request.failure);
+      toast.error(plainFailureMessage(error, request.failure));
       // Whatever the server says now is what the row should say.
       revalidator.revalidate();
     } finally {
@@ -543,7 +544,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
       setOpenJobId(null);
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "That job could not be tried again.");
+      toast.error(plainFailureMessage(error, "That job could not be tried again."));
     } finally {
       setBusy(false);
     }
@@ -562,7 +563,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
       await queryClient.invalidateQueries({ queryKey: ["activity-live"] });
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "That could not be dismissed.");
+      toast.error(plainFailureMessage(error, "That could not be dismissed."));
     } finally {
       setBusy(false);
     }
@@ -576,7 +577,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
       setOpenJobId(null);
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "That job could not be dismissed.");
+      toast.error(plainFailureMessage(error, "That job could not be dismissed."));
     } finally {
       setBusy(false);
     }

@@ -38,6 +38,7 @@ import { useRowSelection } from "../lib/connection-tags";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 /** One tick per trigger, like Radarr and Sonarr's per-connection On... boxes (#1016). Stored as a comma-separated list in eventFilters; "all" means every event. */
 const TRIGGER_OPTIONS = [
@@ -211,7 +212,7 @@ export function SettingsNotificationsPage() {
       if (!response.ok) throw new Error(await readErrorText(response, "Could not save this preference."));
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save this preference.");
+      toast.error(plainFailureMessage(error, "Could not save this preference."));
     } finally {
       setBusyPreference(null);
     }
@@ -312,7 +313,7 @@ export function SettingsNotificationsPage() {
       revalidator.revalidate();
     } catch (error) {
       setSaveState("error");
-      setSaveMessage(error instanceof Error ? error.message : "Could not save");
+      setSaveMessage(plainFailureMessage(error, "Could not save"));
     } finally {
       setBusy(null);
     }
@@ -326,7 +327,7 @@ export function SettingsNotificationsPage() {
       revalidator.revalidate();
       return true;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Action failed.");
+      toast.error(plainFailureMessage(error, "Action failed."));
       return false;
     } finally {
       setBusy(null);

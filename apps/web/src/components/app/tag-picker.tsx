@@ -6,6 +6,7 @@ import { authedFetch } from "../../lib/use-auth";
 import { cn } from "../../lib/utils";
 import { Input } from "../ui/input";
 import { plural } from "../../lib/plural";
+import { plainFailureMessage } from "../../lib/network-failure";
 
 /** Tag names from a stored comma-separated string: split, trimmed, no repeats (case-insensitive). */
 export function parseTagList(raw: string | null | undefined): string[] {
@@ -121,7 +122,7 @@ export function TagPicker({
       setTags((current) => [...current, created]);
       pick(created.name || trimmed);
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "The tag could not be created.");
+      setError(plainFailureMessage(createError, "The tag could not be created."));
     } finally {
       setCreating(false);
     }

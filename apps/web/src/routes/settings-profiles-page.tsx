@@ -78,6 +78,7 @@ import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { cn } from "../lib/utils";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")!.items;
 
@@ -226,7 +227,7 @@ export function SettingsProfilesPage() {
       .catch((error) => {
         if (!cancelled) {
           setPlanCompilation(null);
-          setPlanError(error instanceof Error ? error.message : "The typed preference plan could not be loaded.");
+          setPlanError(plainFailureMessage(error, "The typed preference plan could not be loaded."));
         }
       })
       .finally(() => {
@@ -468,7 +469,7 @@ export function SettingsProfilesPage() {
       revalidator.revalidate();
     } catch (error) {
       setSaveState("error");
-      setSaveMessage(error instanceof Error ? error.message : "Could not save");
+      setSaveMessage(plainFailureMessage(error, "Could not save"));
     } finally {
       setBusy(false);
     }
@@ -485,7 +486,7 @@ export function SettingsProfilesPage() {
       closeDrawer();
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Profile could not be removed.");
+      toast.error(plainFailureMessage(error, "Profile could not be removed."));
     } finally {
       setBusy(false);
     }
@@ -1321,7 +1322,7 @@ async function ensureRecommendedFormats(starterId: string, mediaType: "movies" |
     try {
       created = await createRuleFromGuide(bundled, mediaType, score);
     } catch (error) {
-      throw new Error(`Could not create the “${friendlyRuleName(bundled.name)}” format: ${error instanceof Error ? error.message : "unknown error"}`);
+      throw new Error(`Could not create the “${friendlyRuleName(bundled.name)}” format: ${plainFailureMessage(error, "unknown error")}`);
     }
     ids.push({ id: created.id, score });
     byTrashId.set(trashId, created);

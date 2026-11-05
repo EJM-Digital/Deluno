@@ -3,6 +3,7 @@ import { Loader2, TriangleAlert } from "lucide-react";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { fetchJson, type ComponentRecoveryNotice, type ComponentRecoveryResult } from "../../lib/api";
+import { plainFailureMessage } from "../../lib/network-failure";
 
 /**
  * Says when an app Deluno installed had its own folder rebuilt after a reinstall (#1177), and puts it right from here:
@@ -35,7 +36,7 @@ export function ComponentRecoveryNotices() {
       setSaid((current) => ({ ...current, [notice.kind]: result.message }));
       await load();
     } catch (error) {
-      setSaid((current) => ({ ...current, [notice.kind]: error instanceof Error ? error.message : `Deluno could not add the torrents back to ${notice.displayName}.` }));
+      setSaid((current) => ({ ...current, [notice.kind]: plainFailureMessage(error, `Deluno could not add the torrents back to ${notice.displayName}.`) }));
     } finally {
       setBusy(null);
     }
@@ -47,7 +48,7 @@ export function ComponentRecoveryNotices() {
       await fetchJson(`/api/system/component-recovery/${encodeURIComponent(notice.kind)}/dismiss`, { method: "POST" });
       await load();
     } catch (error) {
-      setSaid((current) => ({ ...current, [notice.kind]: error instanceof Error ? error.message : "That could not be dismissed." }));
+      setSaid((current) => ({ ...current, [notice.kind]: plainFailureMessage(error, "That could not be dismissed.") }));
     } finally {
       setBusy(null);
     }

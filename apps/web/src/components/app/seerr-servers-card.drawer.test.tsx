@@ -139,6 +139,17 @@ describe("the On switch", () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Seerr on den could not be switched off (HTTP 500)."));
   });
 
+  it("says in plain words that Deluno could not be reached, never the browser's own 'Failed to fetch' (#1474)", async () => {
+    answering((url, init) => { if (url === "/api/seerr-servers/z1" && init?.method === "PUT") throw new TypeError("Failed to fetch"); return undefined; });
+    renderCard([server()]);
+
+    fireEvent.click(screen.getByRole("switch", { name: "Pause Seerr on den" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Deluno could not be reached. Check that it is running, then try again."));
+    expect(toast.error).not.toHaveBeenCalledWith("Failed to fetch");
+    expect(onChanged).not.toHaveBeenCalled();
+  });
+
   it("says why when the request does not get an answer, and when the failure gives no reason", async () => {
     answering((url, init) => { if (url === "/api/seerr-servers/z1" && init?.method === "PUT") throw new Error("offline"); return undefined; });
     renderCard([server({ isEnabled: false })]);

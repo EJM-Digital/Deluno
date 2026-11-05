@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { useRevalidator } from "react-router-dom";
 import { ApiRequestError, readValidationProblem } from "./api";
+import { isNetworkFailure } from "./network-failure";
 import { authedFetch } from "./use-auth";
 
 export type ApiMutationState = "idle" | "saving" | "saved" | "error";
@@ -25,7 +26,7 @@ export function useApiMutation<TReq, TRes>(path: string, method: string) {
           });
         } catch (failure) {
           // The browser says "Failed to fetch" (or "Load failed") when nothing answered; say it in plain words.
-          if (failure instanceof TypeError) throw new Error("Deluno could not reach its server, so nothing was saved. Check that it is running and try again.");
+          if (isNetworkFailure(failure)) throw new Error("Deluno could not reach its server, so nothing was saved. Check that it is running and try again.");
           throw failure;
         }
 

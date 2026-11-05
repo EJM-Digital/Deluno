@@ -43,6 +43,7 @@ import { authedFetch } from "../lib/use-auth";
 import { toast } from "../components/shell/toaster";
 import { hasNoSeeders } from "../lib/protocol";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 interface ManualSearchCandidate {
   releaseName: string;
@@ -190,7 +191,7 @@ export function SearchPage() {
         toast.error("No enabled indexer covers this search. Check Find & Download -> Indexers.");
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "That search could not run.");
+      toast.error(plainFailureMessage(error, "That search could not run."));
       setResults([]);
       setFailures([]);
     } finally {
@@ -245,7 +246,7 @@ export function SearchPage() {
         toast.error(body?.message || "That release could not be sent.");
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "That release could not be sent.");
+      toast.error(plainFailureMessage(error, "That release could not be sent."));
     } finally {
       setGrabbing(false);
     }

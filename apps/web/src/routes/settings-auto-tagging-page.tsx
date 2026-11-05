@@ -55,6 +55,7 @@ import {
 } from "../lib/auto-tagging";
 import { settingsOverviewLoader } from "./settings-overview-page";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 interface LoaderData {
   libraries: LibraryItem[];
@@ -190,7 +191,7 @@ export function SettingsAutoTaggingPage() {
       revalidator.revalidate();
     } catch (error) {
       setSaveState("error");
-      setSaveMessage(error instanceof Error ? error.message : "Could not save");
+      setSaveMessage(plainFailureMessage(error, "Could not save"));
     } finally {
       setBusy(false);
     }
@@ -208,7 +209,7 @@ export function SettingsAutoTaggingPage() {
       closeDrawer();
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "The rule could not be deleted.");
+      toast.error(plainFailureMessage(error, "The rule could not be deleted."));
     } finally {
       setBusy(false);
     }
@@ -225,7 +226,7 @@ export function SettingsAutoTaggingPage() {
       if (!response.ok) throw new Error(await readErrorText(response, `Could not ${isEnabled ? "turn on" : "pause"} ${rule.name}.`));
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "The rule could not be updated.");
+      toast.error(plainFailureMessage(error, "The rule could not be updated."));
     } finally {
       setTogglingId(null);
     }
@@ -238,7 +239,7 @@ export function SettingsAutoTaggingPage() {
       toast.success(result.changedTitles === 0 ? "Nothing needed tagging." : `Changed the tags on ${plural(result.changedTitles, "title")}. Activity has the details.`);
       setConfirmRun(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "The rules could not be run.");
+      toast.error(plainFailureMessage(error, "The rules could not be run."));
     } finally {
       setBusy(false);
     }

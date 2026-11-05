@@ -11,6 +11,7 @@ import {
 } from "../../lib/api";
 import { describeMetadataCheck } from "../../lib/metadata-check";
 import { plural } from "../../lib/plural";
+import { plainFailureMessage } from "../../lib/network-failure";
 
 const REFRESH_JOBS = [
   {
@@ -83,7 +84,7 @@ export function MetadataMaintenanceCard({ onRefresh }: { onRefresh?: () => void 
       setTestResult({
         isConfigured: false,
         resultCount: 0,
-        message: error instanceof Error ? error.message : "The check could not be run."
+        message: plainFailureMessage(error, "The check could not be run.")
       } as MetadataTestResponse);
     } finally {
       setBusy(null);
@@ -122,7 +123,7 @@ export function MetadataMaintenanceCard({ onRefresh }: { onRefresh?: () => void 
       setJobResult((current) => ({ ...current, [job.key]: summary }));
       onRefresh?.();
     } catch (error) {
-      setJobResult((current) => ({ ...current, [job.key]: error instanceof Error ? error.message : "Could not queue" }));
+      setJobResult((current) => ({ ...current, [job.key]: plainFailureMessage(error, "Could not queue") }));
     } finally {
       setBusy(null);
     }

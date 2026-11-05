@@ -52,6 +52,7 @@ import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { cn } from "../lib/utils";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { plural, pluralWord } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 
 const PLAN_TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")?.items ?? [];
 
@@ -433,7 +434,7 @@ export function SettingsPolicySetsPage() {
       revalidator.revalidate();
     } catch (error) {
       setSaveState("error");
-      setSaveMessage(error instanceof Error ? error.message : "Could not save");
+      setSaveMessage(plainFailureMessage(error, "Could not save"));
     } finally {
       setBusy(false);
     }
@@ -452,7 +453,7 @@ export function SettingsPolicySetsPage() {
       closeDrawer();
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Library profile could not be removed.");
+      toast.error(plainFailureMessage(error, "Library profile could not be removed."));
     } finally {
       setBusy(false);
     }
@@ -474,7 +475,7 @@ export function SettingsPolicySetsPage() {
       }
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Library profile could not be updated.");
+      toast.error(plainFailureMessage(error, "Library profile could not be updated."));
     } finally {
       setTogglingId(null);
     }
@@ -492,7 +493,7 @@ export function SettingsPolicySetsPage() {
       if (!response.ok) throw new Error(await readErrorText(response, "Could not preview these changes."));
       setPreview((await response.json()) as MediaPlanPreview);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not preview these changes.");
+      toast.error(plainFailureMessage(error, "Could not preview these changes."));
     } finally {
       setPreviewBusy(false);
     }
@@ -525,7 +526,7 @@ export function SettingsPolicySetsPage() {
       toast.success(`Restored media-plan version ${rollbackTarget.version}`);
       revalidator.revalidate();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not restore that media-plan version.");
+      toast.error(plainFailureMessage(error, "Could not restore that media-plan version."));
     } finally {
       setRollbackBusy(false);
     }

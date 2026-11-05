@@ -36,6 +36,7 @@ import { formatDateTime, useDisplayPreferences } from "../lib/display-preference
 
 import { SignedApiLink } from "../components/app/signed-api-link";
 import { plural } from "../lib/plural";
+import { plainFailureMessage } from "../lib/network-failure";
 interface LoaderData {
   libraries: LibraryItem[];
   qualityProfiles: QualityProfileItem[];
@@ -95,7 +96,7 @@ export function SettingsGeneralPage() {
         body: JSON.stringify({ url: form.cloudflareHelperUrl.trim() })
       }));
     } catch (error) {
-      setHelperResult({ healthy: false, message: error instanceof Error ? error.message : "The helper could not be checked." });
+      setHelperResult({ healthy: false, message: plainFailureMessage(error, "The helper could not be checked.") });
     } finally {
       setHelperBusy(false);
     }
@@ -116,7 +117,7 @@ export function SettingsGeneralPage() {
       setMessage("Saved just now");
     } catch (error) {
       setSaveState("error");
-      setMessage(error instanceof Error ? error.message : "Could not save");
+      setMessage(plainFailureMessage(error, "Could not save"));
     }
   }
 
@@ -270,7 +271,7 @@ function TrackerDefinitionsCard() {
       setState(next);
       setIntervalInput(String(next.intervalHours));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "The tracker-definition update setting could not be saved.");
+      toast.error(plainFailureMessage(error, "The tracker-definition update setting could not be saved."));
     } finally {
       setBusy(false);
     }
@@ -289,7 +290,7 @@ function TrackerDefinitionsCard() {
         toast.success("Tracker definitions are already up to date.");
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "The tracker definitions could not be updated.");
+      toast.error(plainFailureMessage(error, "The tracker definitions could not be updated."));
     } finally {
       setRunning(false);
     }
@@ -373,7 +374,7 @@ function KeepAwakeCard({ settings }: { settings: PlatformSettingsSnapshot }) {
       toast.success(said);
     } catch (error) {
       undo();
-      toast.error(error instanceof Error ? error.message : "That could not be saved.");
+      toast.error(plainFailureMessage(error, "That could not be saved."));
     } finally {
       setBusy(false);
     }
@@ -435,7 +436,7 @@ function LogLevelCard() {
       toast.success(`Log level set to ${next} — takes effect immediately.`);
     } catch (error) {
       setLevel(previous);
-      toast.error(error instanceof Error ? error.message : "The log level could not be changed.");
+      toast.error(plainFailureMessage(error, "The log level could not be changed."));
     } finally {
       setBusy(false);
     }
