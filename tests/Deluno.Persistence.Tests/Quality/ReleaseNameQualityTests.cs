@@ -29,4 +29,33 @@ public sealed class ReleaseNameQualityTests
     [Fact]
     public void Unknown_is_the_lowest_quality_there_is()
         => Assert.True(LibraryQualityDecider.GetRank(ReleaseNameQuality.Unknown) < LibraryQualityDecider.GetRank("SDTV"));
+
+    // #1505: "UHD" names the disc the encode came from; the resolution token states the picture.
+    [Theory]
+    [InlineData("The Fall Guy 2024 Extended Cut PROPER UHD BluRay 1080p DD Atmos 5 1 DoVi HDR10 x265-SM737", "Bluray 1080p", 1920, 804, true)]
+    [InlineData("The.Fall.Guy.2024.UHD.BluRay.1080p.DD.Atmos.5.1.x265-SM737", "Bluray 1080p", 1920, 800, true)]
+    [InlineData("Film.2024.UHD.BluRay.2160p.x265-GRP", "Bluray 2160p", 3840, 1600, true)]
+    [InlineData("Film.2024.4K.Remux.2160p.HDR.x265-GRP", "Remux 2160p", 3840, 1600, true)]
+    [InlineData("Film.2024.2160p.WEB-DL.DDP5.1.x265-GRP", "WEB 2160p", 1920, 1080, false)]
+    [InlineData("Film.2024.4K.WEB-DL.x265-GRP", "WEB 2160p", 1920, 1080, false)]
+    [InlineData("Film.2024.4K.WEB-DL.x265-GRP", "WEB 2160p", 3840, 2160, true)]
+    public void An_explicit_resolution_beats_a_UHD_or_4K_source_tag(string name, string quality, int width, int height, bool passes)
+    {
+        Assert.Equal(quality, ReleaseNameQuality.Read(name));
+        var claim = ReleaseNameQuality.ClaimedResolution(name);
+        Assert.NotNull(claim);
+        Assert.Equal(passes, ReleaseNameQuality.MeetsClaim(claim.Value, width, height));
+        Assert.Equal(quality.EndsWith("1080p") ? "1080p" : "2160p", ReleaseNameQuality.ResolutionOf(name));
+    }
+
+    // A bare "UHD" names the source disc, not the picture: it ranks as 2160p, but the file check
+    // has no resolution to hold the file to, so it never throws away a file over it.
+    [Fact]
+    public void A_bare_UHD_ranks_as_2160p_but_gives_the_file_check_no_claim()
+    {
+        const string name = "Film.2024.UHD.BluRay.x265-GRP";
+        Assert.Equal("Bluray 2160p", ReleaseNameQuality.Read(name));
+        Assert.Equal("2160p", ReleaseNameQuality.ResolutionOf(name));
+        Assert.Null(ReleaseNameQuality.ClaimedResolution(name));
+    }
 }

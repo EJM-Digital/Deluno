@@ -272,16 +272,7 @@ public static class ReleasePreferenceFactFactory
         return null;
     }
 
-    private static string? DetectResolution(string value)
-        => value.Contains("2160p", StringComparison.Ordinal) || value.Contains("4k", StringComparison.Ordinal)
-            ? "2160p"
-            : value.Contains("1080p", StringComparison.Ordinal)
-                ? "1080p"
-                : value.Contains("720p", StringComparison.Ordinal)
-                    ? "720p"
-                    : value.Contains("576p", StringComparison.Ordinal)
-                        ? "576p"
-                        : value.Contains("480p", StringComparison.Ordinal) ? "480p" : null;
+    private static string? DetectResolution(string value) => ReleaseNameQuality.ResolutionOf(value);
 
     private static string? DetectBitDepth(string value)
         => value.Contains("12bit", StringComparison.Ordinal) || value.Contains("12-bit", StringComparison.Ordinal)

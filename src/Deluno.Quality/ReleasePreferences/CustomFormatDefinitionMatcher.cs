@@ -776,7 +776,7 @@ public static partial class CustomFormatDefinitionMatcher
     private static bool MatchResolution(string lower, string value)
         => value.ToLowerInvariant() switch
         {
-            "2160p" => lower.Contains("2160", StringComparison.Ordinal) || lower.Contains("4k", StringComparison.Ordinal),
+            "2160p" => ReleaseNameQuality.ResolutionOf(lower) == "2160p",
             "1080p" => lower.Contains("1080", StringComparison.Ordinal),
             "720p" => lower.Contains("720", StringComparison.Ordinal),
             "480p" => lower.Contains("480", StringComparison.Ordinal),

@@ -69,7 +69,9 @@ public static partial class ReleaseNameQuality
             return null;
         }
 
-        return ResolutionOf(releaseName) switch
+        // A bare "UHD" names the source disc, not the picture (#1505), so it is
+        // not a claim a file can be failed against; "4K" and the numbers are.
+        return ResolutionClaimOf(releaseName) switch
         {
             "2160p" => ("2160p", 3200, 2000),
             "1080p" => ("1080p", 1600, 1000),
@@ -88,9 +90,20 @@ public static partial class ReleaseNameQuality
     public static bool MeetsClaim((string Label, int MinimumWidth, int MinimumHeight) claim, int width, int height)
         => width >= claim.MinimumWidth || height >= claim.MinimumHeight;
 
-    private static string? ResolutionOf(string name)
+    /// <summary>
+    /// The one reader of a release's resolution (#1505). An explicit resolution
+    /// token (2160p, 1080p, 720p...) always wins over "4K" or "UHD", which name
+    /// the source: "UHD BluRay 1080p" is a 1080p encode of a 4K disc.
+    /// </summary>
+    public static string? ResolutionOf(string? name)
+        => string.IsNullOrWhiteSpace(name) ? null : ExplicitResolutionOf(name) ?? (Uhd().IsMatch(name) ? "2160p" : null);
+
+    private static string? ResolutionClaimOf(string name)
+        => ExplicitResolutionOf(name) ?? (FourK().IsMatch(name) ? "2160p" : null);
+
+    private static string? ExplicitResolutionOf(string name)
     {
-        if (Uhd().IsMatch(name)) return "2160p";
+        if (Uhd2160().IsMatch(name)) return "2160p";
         if (FullHd().IsMatch(name)) return "1080p";
         if (Hd().IsMatch(name)) return "720p";
         if (Pal().IsMatch(name)) return "576p";
@@ -115,8 +128,14 @@ public static partial class ReleaseNameQuality
     [GeneratedRegex(@"(?<![a-z])(hd-?ts|telesync|ts)(?![a-z])", RegexOptions.IgnoreCase)]
     private static partial Regex Telesync();
 
-    [GeneratedRegex(@"(?<![a-z0-9])(2160p?|4k|uhd)(?![a-z0-9])", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?<![a-z0-9])(4k|uhd)(?![a-z0-9])", RegexOptions.IgnoreCase)]
     private static partial Regex Uhd();
+
+    [GeneratedRegex(@"(?<![a-z0-9])4k(?![a-z0-9])", RegexOptions.IgnoreCase)]
+    private static partial Regex FourK();
+
+    [GeneratedRegex(@"(?<![a-z0-9])2160p?(?![a-z0-9])", RegexOptions.IgnoreCase)]
+    private static partial Regex Uhd2160();
 
     [GeneratedRegex(@"(1080[pi]?|fhd)(?![0-9])", RegexOptions.IgnoreCase)]
     private static partial Regex FullHd();
