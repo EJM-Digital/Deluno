@@ -488,7 +488,10 @@ public sealed class SqliteDownloadHealthRepository(
             // #1207: "grew" is bytes against the previous check, whatever the reported speed was.
             result[trimmedId] = new DownloadProgressObservation(
                 lastIncreaseUtc,
-                existing is null ? null : downloadedBytes - existing.DownloadedBytes >= Math.Max(1, minimumGainBytes));
+                existing is null ? null : downloadedBytes - existing.DownloadedBytes >= Math.Max(1, minimumGainBytes),
+                // #1490: the average since the previous check, so one slow instant in a fast download is not a slow download.
+                existing is null || now <= existing.LastObservedUtc ? null : Math.Max(0, downloadedBytes - existing.DownloadedBytes) / (now - existing.LastObservedUtc).TotalSeconds,
+                existing is null || now <= existing.LastObservedUtc ? null : now - existing.LastObservedUtc);
         }
 
         await UpsertSettingAsync(connection, transaction, DownloadProgressRecordsSettingKey, JsonSerializer.Serialize(records), now, cancellationToken);

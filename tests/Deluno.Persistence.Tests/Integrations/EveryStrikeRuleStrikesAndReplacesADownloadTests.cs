@@ -59,6 +59,9 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
     /// <summary>Bytes that grow by 5 MB at every check, so a crawl really is arriving.</summary>
     private static long Growing(int check) => 1_000_000L + check * 5_000_000L;
 
+    /// <summary>The bytes a download has after <paramref name="check"/> checks of moving at this average speed.</summary>
+    private static long Moving(AStrikePass world, double kilobytesPerSecond, int check) => 1_000_000_000L + check * (long)(kilobytesPerSecond * 1000 * (world.Window + TimeSpan.FromSeconds(1)).TotalSeconds);
+
     private static async Task AssertNothingTouchedAsync(AStrikePass world, ScriptedDownloadClient client)
     {
         Assert.Empty(client.Actions);
@@ -88,14 +91,14 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
 
         for (var check = 1; check <= 2; check++)
         {
-            Show(world, client, kilobytesPerSecond: 50, bytes: Growing(check));
+            Show(world, client, kilobytesPerSecond: 50, bytes: Moving(world, 50, check));
             var struck = await world.CheckAsync();
             Assert.Equal(check, struck.Strikes(DownloadHealthStrikes.LowSpeed));
             Assert.Equal(0, struck.Report.ClientEntriesRemoved);
             await AssertNothingTouchedAsync(world, client);
         }
 
-        Show(world, client, kilobytesPerSecond: 50, bytes: Growing(3));
+        Show(world, client, kilobytesPerSecond: 50, bytes: Moving(world, 50, 3));
         var last = await world.CheckAsync();
 
         Assert.Equal(3, last.Strikes(DownloadHealthStrikes.LowSpeed));
@@ -113,7 +116,7 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
         var (world, client) = await StartAsync(Rule(DownloadHealthRuleKinds.TooSlow, threshold: 75, strikes: 1));
         using var _ = world;
 
-        Show(world, client, kilobytesPerSecond: 50, bytes: Growing(1));
+        Show(world, client, kilobytesPerSecond: 50, bytes: Moving(world, 50, 1));
         var only = await world.CheckAsync();
 
         Assert.Equal(1, only.Strikes(DownloadHealthStrikes.LowSpeed));
@@ -128,12 +131,12 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
 
         for (var check = 1; check <= 5; check++)
         {
-            Show(world, client, kilobytesPerSecond: 50, bytes: Growing(check));
+            Show(world, client, kilobytesPerSecond: 50, bytes: Moving(world, 50, check));
             Assert.Equal(check, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
             await AssertNothingTouchedAsync(world, client);
         }
 
-        Show(world, client, kilobytesPerSecond: 50, bytes: Growing(6));
+        Show(world, client, kilobytesPerSecond: 50, bytes: Moving(world, 50, 6));
         var sixth = await world.CheckAsync();
 
         Assert.Equal(6, sixth.Strikes(DownloadHealthStrikes.LowSpeed));
@@ -146,11 +149,11 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
         var (world, client) = await StartAsync(Rule(DownloadHealthRuleKinds.TooSlow, threshold: 75));
         using var _ = world;
 
-        Show(world, client, 50, Growing(1));
+        Show(world, client, 50, Moving(world, 50, 1));
         Assert.Equal(1, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
-        Show(world, client, 50, Growing(2));
+        Show(world, client, 50, Moving(world, 50, 1) + 3_000_000); // 50 KB/s for the minute since the last check
         Assert.Equal(1, (await world.CheckAsync(after: TimeSpan.FromMinutes(1))).Strikes(DownloadHealthStrikes.LowSpeed));
-        Show(world, client, 50, Growing(3));
+        Show(world, client, 50, Moving(world, 50, 1) + 3_000_000 + 15_000_000); // and 50 KB/s for the five minutes after it
         Assert.Equal(2, (await world.CheckAsync(after: world.Window)).Strikes(DownloadHealthStrikes.LowSpeed));
     }
 
@@ -160,22 +163,22 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
         var (world, client) = await StartAsync(Rule(DownloadHealthRuleKinds.TooSlow, threshold: 75));
         using var _ = world;
 
-        Show(world, client, 50, Growing(1));
+        Show(world, client, 50, Moving(world, 50, 1));
         await world.CheckAsync();
-        Show(world, client, 50, Growing(2));
+        Show(world, client, 50, Moving(world, 50, 2));
         Assert.Equal(2, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
 
         // Back over the limit: the problem is over and the strikes with it.
-        Show(world, client, 500, Growing(3));
+        Show(world, client, 500, Moving(world, 500, 3));
         var recovered = await world.CheckAsync();
         Assert.Equal(0, recovered.Strikes(DownloadHealthStrikes.LowSpeed));
         Assert.Null(await world.RecordOfAsync(DownloadHealthStrikes.LowSpeed));
         await AssertNothingTouchedAsync(world, client);
 
         // Slow again later: a new spell, so it takes the full count again.
-        Show(world, client, 50, Growing(4));
+        Show(world, client, 50, Moving(world, 50, 4));
         Assert.Equal(1, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
-        Show(world, client, 50, Growing(5));
+        Show(world, client, 50, Moving(world, 50, 5));
         Assert.Equal(2, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
         await AssertNothingTouchedAsync(world, client);
     }
@@ -188,10 +191,98 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
 
         for (var check = 1; check <= 6; check++)
         {
-            Show(world, client, 5_000, Growing(check));
+            Show(world, client, 5_000, Moving(world, 5_000, check));
             Assert.Equal(0, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
         }
 
+        await AssertNothingTouchedAsync(world, client);
+    }
+
+    // ---- Too slow judges the average since the last check (#1490) ---------------------------------------------------------------------
+
+    /// <summary>Bytes a download gains in one check interval at this average speed (the clock moves one interval and a second between checks).</summary>
+    private static long Gained(AStrikePass world, double kilobytesPerSecond)
+        => (long)(kilobytesPerSecond * 1000 * (world.Window + TimeSpan.FromSeconds(1)).TotalSeconds);
+
+    [Fact]
+    public async Task A_download_averaging_3_4_MB_a_second_is_not_struck_for_one_slow_instant_reading()
+    {
+        var (world, client) = await StartAsync(Rule(DownloadHealthRuleKinds.TooSlow, threshold: 1000, strikes: 1));
+        using var _ = world;
+        var bytes = 1_000_000_000L;
+
+        Show(world, client, kilobytesPerSecond: 3_400, bytes: bytes, size: 12_700_000_000);
+        Assert.Equal(0, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
+
+        // 3.4 MB/s all the way since the last check, and the client happens to read 200 KB/s at this very moment (Barbie, rig, 5 Nov).
+        bytes += Gained(world, 3_400);
+        Show(world, client, kilobytesPerSecond: 200, bytes: bytes, size: 12_700_000_000);
+        var dip = await world.CheckAsync();
+
+        Assert.Equal(0, dip.Strikes(DownloadHealthStrikes.LowSpeed));
+        await AssertNothingTouchedAsync(world, client);
+    }
+
+    [Fact]
+    public async Task A_download_averaging_300_KB_a_second_over_three_checks_is_struck_at_the_third_with_three_strikes_and_the_finding_says_the_average_and_the_period()
+    {
+        var (world, client) = await StartAsync(Rule(DownloadHealthRuleKinds.TooSlow, threshold: 1000));
+        using var _ = world;
+        var bytes = 1_000_000_000L;
+
+        Show(world, client, 300, bytes);
+        Assert.Equal(1, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
+        bytes += Gained(world, 300);
+        Show(world, client, 300, bytes);
+        var second = await world.CheckAsync();
+        Assert.Equal(2, second.Strikes(DownloadHealthStrikes.LowSpeed));
+        Assert.Equal(
+            "It averaged 300 KB/s over the last 5 minutes, under your 1000 KB/s limit.",
+            second.Item!.HealthFindings!.Single(finding => finding.Kind == DownloadHealthStrikes.LowSpeed).Evidence);
+
+        bytes += Gained(world, 300);
+        Show(world, client, 300, bytes);
+        var third = await world.CheckAsync();
+
+        Assert.Equal(3, third.Strikes(DownloadHealthStrikes.LowSpeed));
+        await AssertReplacedAsync(world, client, "It stayed under 1000 KB/s for 3 checks in a row, so Deluno stopped waiting for it and will not pick it again.");
+    }
+
+    [Fact]
+    public async Task A_slow_average_is_struck_even_when_the_instant_reading_happens_to_be_fast()
+    {
+        var (world, client) = await StartAsync(Rule(DownloadHealthRuleKinds.TooSlow, threshold: 1000));
+        using var _ = world;
+        var bytes = 1_000_000_000L;
+
+        // The first reading has no average, so it goes by the speed the client shows, which is fast: no strike.
+        Show(world, client, 5_000, bytes);
+        Assert.Equal(0, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
+        for (var check = 1; check <= 2; check++)
+        {
+            bytes += Gained(world, 300);
+            Show(world, client, 5_000, bytes);
+            Assert.Equal(check, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
+        }
+    }
+
+    [Fact]
+    public async Task A_download_whose_average_recovers_over_the_limit_clears_its_strikes()
+    {
+        var (world, client) = await StartAsync(Rule(DownloadHealthRuleKinds.TooSlow, threshold: 1000));
+        using var _ = world;
+        var bytes = 1_000_000_000L;
+
+        Show(world, client, 300, bytes);
+        await world.CheckAsync();
+        bytes += Gained(world, 300);
+        Show(world, client, 300, bytes);
+        Assert.Equal(2, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
+
+        bytes += Gained(world, 2_500);
+        Show(world, client, 300, bytes);
+        Assert.Equal(0, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
+        Assert.Null(await world.RecordOfAsync(DownloadHealthStrikes.LowSpeed));
         await AssertNothingTouchedAsync(world, client);
     }
 
@@ -205,14 +296,14 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
 
         for (var check = 1; check <= 2; check++)
         {
-            Show(world, client, kilobytesPerSecond: 5_000, bytes: Growing(check), age: TimeSpan.FromMinutes(61));
+            Show(world, client, kilobytesPerSecond: 5_000, bytes: Moving(world, 5_000, check), age: TimeSpan.FromMinutes(61));
             var struck = await world.CheckAsync();
             Assert.Equal(check, struck.Strikes(DownloadHealthStrikes.LowSpeed));
             Assert.Contains("maximum total time", struck.Item!.HealthFindings!.Single(f => f.Kind == DownloadHealthStrikes.LowSpeed).Evidence);
             await AssertNothingTouchedAsync(world, client);
         }
 
-        Show(world, client, kilobytesPerSecond: 5_000, bytes: Growing(3), age: TimeSpan.FromMinutes(61));
+        Show(world, client, kilobytesPerSecond: 5_000, bytes: Moving(world, 5_000, 3), age: TimeSpan.FromMinutes(61));
         var last = await world.CheckAsync();
 
         Assert.Equal(3, last.Strikes(DownloadHealthStrikes.LowSpeed));
@@ -226,9 +317,9 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
         using var _ = world;
 
         // 55 minutes old at the first check; the second check is 5 minutes and a second later, past the 60.
-        Show(world, client, 5_000, Growing(1), age: TimeSpan.FromMinutes(55));
+        Show(world, client, 5_000, Moving(world, 5_000, 1), age: TimeSpan.FromMinutes(55));
         Assert.Equal(0, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
-        Show(world, client, 5_000, Growing(2), age: TimeSpan.FromMinutes(55));
+        Show(world, client, 5_000, Moving(world, 5_000, 2), age: TimeSpan.FromMinutes(55));
         Assert.Equal(1, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
     }
 
@@ -303,7 +394,7 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
 
         for (var check = 1; check <= 5; check++)
         {
-            Show(world, client, 1, Growing(check));
+            Show(world, client, 1, Moving(world, 1, check));
             Assert.Equal(0, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.NoThroughput));
         }
 
@@ -393,12 +484,12 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
         var (world, client) = await StartAsync(Rule(DownloadHealthRuleKinds.LowPeers, threshold: 3));
         using var _ = world;
 
-        Show(world, client, 100, Growing(1), peers: 1);
+        Show(world, client, 100, Moving(world, 100, 1), peers: 1);
         await world.CheckAsync();
-        Show(world, client, 100, Growing(2), peers: 1);
+        Show(world, client, 100, Moving(world, 100, 2), peers: 1);
         Assert.Equal(2, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowPeers));
 
-        Show(world, client, 100, Growing(3), peers: 12);
+        Show(world, client, 100, Moving(world, 100, 3), peers: 12);
         Assert.Equal(0, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowPeers));
         Assert.Null(await world.RecordOfAsync(DownloadHealthStrikes.LowPeers));
         await AssertNothingTouchedAsync(world, client);
@@ -435,7 +526,7 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
         Show(world, client, 0, 0, peers: 0, progress: 0, size: 0, fetchingMetadata: true);
         Assert.Equal(2, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.MagnetMetadata));
 
-        Show(world, client, 900, Growing(1), peers: 6, progress: 1);
+        Show(world, client, 900, Moving(world, 900, 1), peers: 6, progress: 1);
         Assert.Equal(0, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.MagnetMetadata));
         Assert.Null(await world.RecordOfAsync(DownloadHealthStrikes.MagnetMetadata));
         await AssertNothingTouchedAsync(world, client);
@@ -454,7 +545,7 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
         var (world, client) = await StartAsync(Rule(DownloadHealthRuleKinds.TooSlow, threshold: 75, fromPercent: from, toPercent: to));
         using var _ = world;
 
-        Show(world, client, 50, Growing(1), progress: progress);
+        Show(world, client, 50, Moving(world, 50, 1), progress: progress);
 
         Assert.Equal(struck ? 1 : 0, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
         Assert.Equal(struck, await world.RecordOfAsync(DownloadHealthStrikes.LowSpeed) is not null);
@@ -466,14 +557,14 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
         var (world, client) = await StartAsync(Rule(DownloadHealthRuleKinds.TooSlow, threshold: 75, toPercent: 60));
         using var _ = world;
 
-        Show(world, client, 50, Growing(1), progress: 55);
+        Show(world, client, 50, Moving(world, 50, 1), progress: 55);
         await world.CheckAsync();
-        Show(world, client, 50, Growing(2), progress: 58);
+        Show(world, client, 50, Moving(world, 50, 2), progress: 58);
         Assert.Equal(2, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
 
         for (var check = 3; check <= 5; check++)
         {
-            Show(world, client, 50, Growing(check), progress: 61);
+            Show(world, client, 50, Moving(world, 50, check), progress: 61);
             Assert.Equal(0, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
         }
 
@@ -490,7 +581,7 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
         var (world, client) = await StartAsync(Rule(DownloadHealthRuleKinds.TooSlow, threshold: 75, ignoreAboveBytes: ignoreAbove));
         using var _ = world;
 
-        Show(world, client, 50, Growing(1), size: size);
+        Show(world, client, 50, Moving(world, 50, 1), size: size);
 
         Assert.Equal(struck ? 1 : 0, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
     }
@@ -506,7 +597,7 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
         using var _ = world;
         client.AlternateSpeedLimit = throttled;
 
-        Show(world, client, 50, Growing(1));
+        Show(world, client, 50, Moving(world, 50, 1));
 
         Assert.Equal(strikes, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
     }
@@ -522,7 +613,7 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
         // A "just tell me" rule is not an acting rule, so the pass never even looks for something to remove.
         for (var check = 1; check <= 4; check++)
         {
-            Show(world, client, 50, Growing(check));
+            Show(world, client, 50, Moving(world, 50, check));
             var struck = await world.CheckAsync();
             Assert.Equal(Math.Min(check, 3), struck.Strikes(DownloadHealthStrikes.LowSpeed));
             Assert.Equal(0, struck.Report.Evaluated);
@@ -537,9 +628,9 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
         var (world, client) = await StartAsync(Rule(DownloadHealthRuleKinds.TooSlow, threshold: 75, strikes: 2, preset: DownloadHealthActionPresets.RetryElsewhere));
         using var _ = world;
 
-        Show(world, client, 50, Growing(1));
+        Show(world, client, 50, Moving(world, 50, 1));
         await world.CheckAsync();
-        Show(world, client, 50, Growing(2));
+        Show(world, client, 50, Moving(world, 50, 2));
         var last = await world.CheckAsync();
 
         Assert.Equal(2, last.Strikes(DownloadHealthStrikes.LowSpeed));
@@ -563,7 +654,7 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
 
         for (var check = 1; check <= 3; check++)
         {
-            Show(world, client, kilobytesPerSecond: 200, bytes: Growing(check), peers: 0);
+            Show(world, client, kilobytesPerSecond: 200, bytes: Moving(world, 200, check), peers: 0);
             Assert.Equal(check, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
         }
 

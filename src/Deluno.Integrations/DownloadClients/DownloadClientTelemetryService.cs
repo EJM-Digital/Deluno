@@ -1726,7 +1726,7 @@ public sealed class DownloadClientTelemetryService(
                 effectiveSince,
                 statusWindow);
             // #1207: the No progress rule reads the bytes against the previous check, never the reported speed.
-            reconciled.Add(item with { Status = reconciledItem.Status, BytesGrewSinceLastCheck = observed?.BytesGrew });
+            reconciled.Add(item with { Status = reconciledItem.Status, BytesGrewSinceLastCheck = observed?.BytesGrew, AverageSpeedMbps = observed?.AverageBytesPerSecond is { } average ? average / 1_000_000d : null, AveragePeriod = observed?.Period });
         }
 
         return snapshot with { Queue = reconciled };
@@ -1874,7 +1874,9 @@ public sealed class DownloadClientTelemetryService(
                         snapshot.AlternateSpeedLimitEnabled == true,
                         item.IsFetchingMetadata,
                         item.Availability,
-                        item.BytesGrewSinceLastCheck),
+                        item.BytesGrewSinceLastCheck,
+                        item.AverageSpeedMbps,
+                        item.AveragePeriod),
                     snapshot.CapturedUtc,
                     rules,
                     contentBlocklist);

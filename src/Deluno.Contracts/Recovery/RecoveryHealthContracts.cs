@@ -96,7 +96,11 @@ public sealed record RecoveryQueueSnapshot(
     /// 0.000057 MB/s on a stuck torrent). Null when there is no earlier reading yet (first sighting), where the rule
     /// falls back to the reported speed.
     /// </summary>
-    bool? BytesGrewSinceLastCheck = null);
+    bool? BytesGrewSinceLastCheck = null,
+    /// <summary>#1490: the average speed in MB/s since the previous check; null on a first reading, where Too slow falls back to the reported speed.</summary>
+    double? AverageSpeedMbps = null,
+    /// <summary>#1490: the time that average covers.</summary>
+    TimeSpan? AveragePeriod = null);
 
 public sealed record RecoveryHealthFinding(
     string Severity,

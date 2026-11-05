@@ -460,7 +460,13 @@ public sealed record DownloadQueueItem(
     /// checks. Null when there is no earlier reading. Feeds the No progress rule; never sent to a screen.
     /// </summary>
     [property: System.Text.Json.Serialization.JsonIgnore]
-    bool? BytesGrewSinceLastCheck = null);
+    bool? BytesGrewSinceLastCheck = null,
+    /// <summary>#1490: the average speed in MB/s since the previous check (bytes gained over the time between the two readings); null on a first reading.</summary>
+    [property: System.Text.Json.Serialization.JsonIgnore]
+    double? AverageSpeedMbps = null,
+    /// <summary>#1490: the time that average covers.</summary>
+    [property: System.Text.Json.Serialization.JsonIgnore]
+    TimeSpan? AveragePeriod = null);
 
 /// <summary>
 /// An observational queue-health signal. These findings never cause Deluno to remove

@@ -70,11 +70,12 @@ internal sealed class ScriptedDownloadClient(string protocol) : IDownloadClient
 
 /// <summary>
 /// A real client adapter reading its recorded replies, with every action asked of it kept instead of sent: the recording has one
-/// state of the client, so a removal cannot change what it answers next.
+/// state of the client, so a removal cannot change what it answers next; a test that needs the client to move on between checks
+/// hands over a new reading each time.
 /// </summary>
-internal sealed class RecordedClientThatKeepsItsActions(IDownloadClient inner) : IDownloadClient
+internal sealed class RecordedClientThatKeepsItsActions(Func<IDownloadClient> current) : IDownloadClient
 {
-    public IDownloadClient Inner => inner;
+    public IDownloadClient Inner => current();
 
     public string Protocol => Inner.Protocol;
 

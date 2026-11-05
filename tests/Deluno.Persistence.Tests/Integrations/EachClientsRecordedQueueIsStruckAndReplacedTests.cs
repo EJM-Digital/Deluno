@@ -74,7 +74,7 @@ public sealed class EachClientsRecordedQueueIsStruckAndReplacedTests
 
             case "sabnzbd":
             {
-                var queue = RecordedReplies.Sabnzbd(state).Body("mode=queue&output");
+                var queue = RecordedReplies.Sabnzbd(state).Body("mode=queue&output", edits.Select(e => ("queue." + e.Field, e.Value)).ToArray());
                 return new Source(new SabnzbdDownloadClient(new RecordedClientCalls.Factory(new RoutedHandler((request, _) =>
                     request.RequestUri!.Query.Contains("mode=queue", StringComparison.Ordinal) ? queue
                     : request.RequestUri.Query.Contains("mode=history", StringComparison.Ordinal) ? EmptySabHistory
@@ -134,15 +134,103 @@ public sealed class EachClientsRecordedQueueIsStruckAndReplacedTests
             ?? snapshot.Queue.First();
     }
 
-    private static async Task<(AStrikePass World, RecordedClientThatKeepsItsActions Client, DownloadQueueItem Item)> StartAsync(
+    private static Task<(AStrikePass World, RecordedClientThatKeepsItsActions Client, DownloadQueueItem Item)> StartAsync(
         string app, Source source, DownloadHealthRule rule)
+        => StartAsync(app, () => source, rule);
+
+    private static async Task<(AStrikePass World, RecordedClientThatKeepsItsActions Client, DownloadQueueItem Item)> StartAsync(
+        string app, Func<Source> current, DownloadHealthRule rule)
     {
-        var item = await TheDownloadAsync(app, source);
-        var client = new RecordedClientThatKeepsItsActions(source.Client);
+        var first = current();
+        var item = await TheDownloadAsync(app, first);
+        var client = new RecordedClientThatKeepsItsActions(() => current().Client);
         var world = await AStrikePass.CreateAsync(
             rule, client, item.ReleaseName, item.Id, item.Category, client.Protocol,
-            username: string.IsNullOrEmpty(source.Username) ? null : source.Username, secret: "secret");
+            username: string.IsNullOrEmpty(first.Username) ? null : first.Username, secret: "secret");
         return (world, client, item);
+    }
+
+    // ---- Too slow judges the average since the last check, on every client (#1490) --------------------------------------------------------
+
+    private const long JobBytes = 4_000_000_000;
+
+    /// <summary>
+    /// What the recorded download shows when <paramref name="downloaded"/> of its <see cref="JobBytes"/> have arrived and the client reads
+    /// <paramref name="instantKilobytesPerSecond"/> at this moment: the bytes and the speed, each in the client's own field.
+    /// </summary>
+    private static (string Field, object? Value)[] Reading(string app, long downloaded, double instantKilobytesPerSecond)
+    {
+        var rate = (long)(instantKilobytesPerSecond * 1000);
+        return app switch
+        {
+            "qbittorrent" => [("size", JobBytes), ("downloaded", downloaded), ("dlspeed", rate)],
+            "transmission" => [("totalSize", JobBytes), ("downloadedEver", downloaded), ("rateDownload", rate)],
+            "deluge" => [("total_size", JobBytes), ("total_done", downloaded), ("download_payload_rate", rate)],
+            "utorrent" => [("3", JobBytes), ("4", (int)(downloaded * 1000 / JobBytes)), ("9", rate)],
+            "sabnzbd" => [("speed", $"{instantKilobytesPerSecond / 1000:0.###} M"), ("slots.0.mb", (JobBytes / 1_048_576).ToString()), ("slots.0.mbleft", ((JobBytes - downloaded) / 1_048_576).ToString())],
+            "nzbget" => [("FileSizeHi", 0), ("FileSizeLo", JobBytes), ("RemainingSizeHi", 0), ("RemainingSizeLo", JobBytes - downloaded), ("DownloadRate", rate)],
+            _ => throw new ArgumentOutOfRangeException(nameof(app))
+        };
+    }
+
+    private static (string Field, object? Value)[] ReadingOf(string app, long downloaded, double instantKilobytesPerSecond)
+        => Labelled(app).Concat(Reading(app, downloaded, instantKilobytesPerSecond)).ToArray();
+
+    private static string RecordingFor(string app) => app == "utorrent" ? "stalled" : "downloading";
+
+    [Theory]
+    [InlineData("qbittorrent")]
+    [InlineData("transmission")]
+    [InlineData("deluge")]
+    [InlineData("utorrent")]
+    [InlineData("sabnzbd")]
+    [InlineData("nzbget")]
+    public async Task A_recorded_download_averaging_3_4_MB_a_second_is_not_struck_for_one_slow_instant_reading(string app)
+    {
+        long bytes = 100_000_000;
+        double instant = 3_400;
+        var (world, client, _) = await StartAsync(app, () => Recorded(app, RecordingFor(app), ReadingOf(app, bytes, instant)), Rule(DownloadHealthRuleKinds.TooSlow, 1000));
+        using var _w = world;
+        var gain = (long)(3_400_000 * (world.Window + TimeSpan.FromSeconds(1)).TotalSeconds);
+
+        // A first reading of 3.4 MB/s; then 3.4 MB/s of bytes arrive between checks while the client reads 200 KB/s at the check itself.
+        Assert.Equal(0, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
+        for (var check = 2; check <= 4; check++)
+        {
+            bytes += gain;
+            instant = 200;
+            var dip = await world.CheckAsync();
+            Assert.Equal(0, dip.Strikes(DownloadHealthStrikes.LowSpeed));
+        }
+
+        Assert.Empty(client.Actions);
+        Assert.Empty(await world.Blocklist.ListAsync(CancellationToken.None));
+        Assert.Empty(await world.JobsQueuedAsync());
+    }
+
+    [Theory]
+    [InlineData("qbittorrent")]
+    [InlineData("transmission")]
+    [InlineData("deluge")]
+    [InlineData("utorrent")]
+    [InlineData("sabnzbd")]
+    [InlineData("nzbget")]
+    public async Task A_recorded_download_averaging_300_KB_a_second_is_struck_at_the_third_check_with_three_strikes_and_replaced(string app)
+    {
+        long bytes = 100_000_000;
+        var (world, client, _) = await StartAsync(app, () => Recorded(app, RecordingFor(app), ReadingOf(app, bytes, 300)), Rule(DownloadHealthRuleKinds.TooSlow, 1000));
+        using var _w = world;
+        var gain = (long)(300_000 * (world.Window + TimeSpan.FromSeconds(1)).TotalSeconds);
+
+        Assert.Equal(1, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
+        bytes += gain;
+        var second = await world.CheckAsync();
+        Assert.Equal(2, second.Strikes(DownloadHealthStrikes.LowSpeed));
+        Assert.Matches(@"^It averaged \d+(\.\d)? KB/s over the last 5 minutes, under your 1000 KB/s limit\.$", second.Item!.HealthFindings!.Single(f => f.Kind == DownloadHealthStrikes.LowSpeed).Evidence);
+        bytes += gain;
+        Assert.Equal(3, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
+
+        await AStrikeAssertions.ReplacedAsync(world, client.Actions, "It stayed under 1000 KB/s for 3 checks in a row, so Deluno stopped waiting for it and will not pick it again.");
     }
 
     // ---- Too slow, on every client that moves a download in a recording --------------------------------------------------------------------
@@ -188,24 +276,6 @@ public sealed class EachClientsRecordedQueueIsStruckAndReplacedTests
         }
 
         await AStrikeAssertions.ReplacedAsync(world, client.Actions, $"It stayed under {floor:0.#} KB/s for 3 checks in a row, so Deluno stopped waiting for it and will not pick it again.");
-    }
-
-    [Fact]
-    public async Task A_recorded_download_over_the_speed_limit_is_never_struck()
-    {
-        var source = Recorded("qbittorrent", "downloading", Labelled("qbittorrent"));
-        var item = await TheDownloadAsync("qbittorrent", source);
-        var (world, client, _) = await StartAsync("qbittorrent", source, Rule(DownloadHealthRuleKinds.TooSlow, Math.Floor(item.SpeedMbps * 1000) - 500));
-        using var _w = world;
-
-        for (var check = 1; check <= 4; check++)
-        {
-            Assert.Equal(0, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
-        }
-
-        Assert.Empty(client.Actions);
-        Assert.Empty(await world.Blocklist.ListAsync(CancellationToken.None));
-        Assert.Empty(await world.JobsQueuedAsync());
     }
 
     // ---- No progress, on every torrent client's recording of a stuck torrent ------------------------------------------------------------------
