@@ -224,6 +224,36 @@ describe("the numbers beside the sidebar items (#1499)", () => {
     expect(needs.getAttribute("title")).toBe("16 things need your action. The same number as Needs action on this page.");
   });
 
+  it("lays the label and the plain count on one row and the amber pill on its own line below, never beside the label (#1509)", async () => {
+    live.attentionOver = { inProgress: 13, downloadsNeedingAction: 18, heldReleases: 1 };
+    await mount("/");
+
+    const link = inProgressLink();
+    const label = link.querySelector("[data-nav-label]") as HTMLElement;
+    const count = within(link).getByLabelText("13 in progress");
+    const needs = within(link).getByLabelText("19 need your action");
+    const text = link.querySelector("[data-nav-text]") as HTMLElement;
+
+    expect(label.textContent).toBe("In progress");
+    expect(label.className).toContain("whitespace-nowrap");
+    expect(label.className).not.toMatch(/truncate|overflow-hidden/);
+    // The count shares the label's row; the pill is a sibling of that row, so it is on the line below.
+    expect(count.parentElement).toBe(label.parentElement);
+    expect(needs.parentElement).toBe(text);
+    expect(needs.parentElement).not.toBe(label.parentElement);
+    expect(text.className).toContain("flex-col");
+  });
+
+  it("collapsed, the row carries one mark: the amber number when something needs the person, else the plain count", async () => {
+    live.attentionOver = { inProgress: 13, downloadsNeedingAction: 18, heldReleases: 1 };
+    await mount("/");
+    fireEvent.click(screen.getByRole("button", { name: "Collapse navigation" }));
+    const link = inProgressLink();
+    expect(link.querySelectorAll("[data-badge]")).toHaveLength(1);
+    expect(link.querySelector("[data-badge]")!.getAttribute("data-badge")).toBe("needs");
+    expect(link.getAttribute("aria-label")).toBe("In progress, 13 in progress, 19 need your action");
+  });
+
   it("shows no number beside In progress when nothing runs and nothing needs the person", async () => {
     await mount("/");
 
