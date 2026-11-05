@@ -26,7 +26,13 @@ vi.mock("./api", async (importOriginal) => ({
     mocks.calls.push(path);
     if (path.endsWith("/wanted")) return Promise.resolve({ totalWanted: 3 });
     if (path.includes("import-recovery")) return Promise.resolve({ openCount: 0, recentCases: [] });
-    if (path.endsWith("/telemetry")) return Promise.resolve({ summary: { activeCount: 0, queuedCount: 0, stalledCount: 0, importReadyCount: 0, waitingForProcessorCount: 0 }, clients: [] });
+    if (path.endsWith("/telemetry")) {
+      // The rig's moment (#1499): one download moving.
+      return Promise.resolve({
+        summary: { activeCount: 1, queuedCount: 0, stalledCount: 0, importReadyCount: 0, waitingForProcessorCount: 0 },
+        clients: [{ clientId: "qbit", queue: [{ id: "d", clientId: "qbit", clientName: "qBittorrent", protocol: "qbittorrent", mediaType: "movie", title: "Deadpool and Wolverine", releaseName: "Deadpool.and.Wolverine.2024.1080p", category: "", status: "downloading", progress: 9, speedMbps: 5, etaSeconds: 600, sizeBytes: 2e9, downloadedBytes: 1e8, peers: 3, indexerName: "NZBgeek", errorMessage: null, addedUtc: new Date().toISOString(), sourcePath: null, libraryId: null, healthFindings: null }] }]
+      });
+    }
     if (path.endsWith("/summary")) return Promise.resolve({ unsnoozedProblemCount: 2 });
     return Promise.resolve([]);
   },
@@ -71,5 +77,10 @@ describe("useAttention reads through the shared cache (#1081)", () => {
   it("does not start its requests in the same breath as the screen that is opening", () => {
     renderHook(() => useAttention());
     expect(mocks.calls).toEqual([]);
+  });
+
+  it("counts the titles in progress as the Dashboard pipeline does: one moving download is 1, whatever else needs the person (#1499)", async () => {
+    const { result } = renderHook(() => useAttention());
+    await waitFor(() => expect(result.current.inProgress).toBe(1), { timeout: 3_000 });
   });
 });

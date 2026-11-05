@@ -14,6 +14,7 @@ const live = vi.hoisted(() => ({
   resync: null as null | (() => void),
   theme: { resolvedTheme: "light" as string, setTheme: null as any },
   attentionRefresh: null as any,
+  attentionOver: {} as Record<string, unknown>,
   authedFetch: null as any,
   token: "t" as string | null,
   host: null as string | null,
@@ -52,7 +53,7 @@ vi.mock("../lib/use-auth", async (importOriginal) => ({
 vi.mock("../lib/use-attention", () => ({
   useAttention: () => ({
     failedJobs: 0, failedTitleJobs: 0, failedBackgroundJobs: 0, deadLetteredJobs: 0, indexerAlerts: 0, downloadsNeedingAction: 0,
-    failedImportJobs: 0, movieWanted: 0, tvWanted: 0, healthProblems: 0, total: 0, summary: {}, loading: false,
+    failedImportJobs: 0, movieWanted: 0, tvWanted: 0, healthProblems: 0, total: 0, summary: {}, loading: false, ...live.attentionOver,
     refresh: (...args: unknown[]) => live.attentionRefresh(...args)
   })
 }));
@@ -117,6 +118,7 @@ beforeEach(() => {
   live.resync = null;
   live.theme = { resolvedTheme: "light", setTheme: vi.fn() };
   live.attentionRefresh = vi.fn();
+  live.attentionOver = {};
   live.authedFetch = vi.fn(() => Promise.resolve(new Response("{}", { status: 200 })));
   live.toast = { success: vi.fn(), error: vi.fn() };
   loads = 0;
@@ -199,6 +201,33 @@ describe("the command palette's recents and Preferences entry (#1329)", () => {
 
     expect(live.theme.setTheme).toHaveBeenCalledWith("dark");
     await waitFor(() => expect(live.authedFetch).toHaveBeenCalledWith("/api/settings", expect.objectContaining({ body: JSON.stringify({ uiTheme: "dark" }) })));
+  });
+});
+
+describe("the numbers beside the sidebar items (#1499)", () => {
+  const inProgressLink = () => within(screen.getByRole("navigation", { name: "Live operational status" })).getByRole("link", { name: /^In progress/ });
+
+  it("on the rig's state shows 1 in progress and 16 that need you, apart", async () => {
+    live.attentionOver = { inProgress: 1, downloadsNeedingAction: 15, heldReleases: 1 };
+    await mount("/");
+
+    const inProgress = inProgressLink();
+    const count = within(inProgress).getByLabelText("1 in progress");
+    const needs = within(inProgress).getByLabelText("16 need your action");
+
+    expect(count.textContent).toBe("1");
+    expect(count.getAttribute("data-badge")).toBe("count");
+    expect(needs.textContent).toBe("16 need you");
+    expect(needs.getAttribute("data-badge")).toBe("needs");
+    expect(needs.className).toContain("text-warning");
+    expect(count.className).not.toContain("text-warning");
+    expect(needs.getAttribute("title")).toBe("16 things need your action. The same number as Needs action on this page.");
+  });
+
+  it("shows no number beside In progress when nothing runs and nothing needs the person", async () => {
+    await mount("/");
+
+    expect(within(inProgressLink()).queryByLabelText(/in progress|need/)).toBeNull();
   });
 });
 

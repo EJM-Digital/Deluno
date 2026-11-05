@@ -463,8 +463,7 @@ export function DesktopSidebar({
             <SidebarItem
               key={item.to}
               item={item}
-              count={attentionCount(attention, item.attention)}
-              countTitle={countMeaning(item.attention, attentionCount(attention, item.attention))}
+              badge={sidebarBadge(attention, item.attention)}
             />
           ))}
         </nav>
@@ -477,8 +476,7 @@ export function DesktopSidebar({
             <SidebarItem
               key={item.to}
               item={item}
-              count={attentionCount(attention, item.attention)}
-              countTitle={countMeaning(item.attention, attentionCount(attention, item.attention))}
+              badge={sidebarBadge(attention, item.attention)}
             />
           ))}
         </nav>
@@ -686,21 +684,20 @@ function MaintenanceSidebarTree({ pathname }: { pathname: string }) {
 
 function SidebarItem({
   item,
-  count,
-  countTitle
+  badge
 }: {
   item: { to: string; label: string; icon: DelunoNavGlyphKind; end: boolean };
-  count: number;
-  countTitle?: string;
+  badge: SidebarBadge[];
 }) {
   const rail = useContext(SidebarRailContext);
+  const railName = badge.map((entry) => entry.label).join(", ");
   return (
     <NavLink
       to={item.to}
       end={item.end}
       style={NAV_ACCENT_STYLE}
       title={rail ? item.label : undefined}
-      aria-label={rail ? (count > 0 ? `${item.label}, ${count}` : item.label) : undefined}
+      aria-label={rail ? (railName ? `${item.label}, ${railName}` : item.label) : undefined}
       {...prefetchHandlers(item.to)}
       className={({ isActive, isPending }) =>
         cn(
@@ -728,11 +725,25 @@ function SidebarItem({
             <DelunoNavGlyph kind={item.icon} className="h-(--shell-icon-size) w-(--shell-icon-size)" />
           </span>
           {rail ? null : <span className="min-w-0 flex-1 whitespace-nowrap">{item.label}</span>}
-          {count > 0 ? (
-            <span title={countTitle} aria-hidden={rail || undefined} className={cn("flex h-[calc(var(--shell-pill-height)*0.42)] min-w-[calc(var(--shell-pill-height)*0.42)] shrink-0 items-center justify-center rounded-full px-1.5 text-(length:--shell-nav-badge-size) font-bold tabular-nums", rail && "absolute right-[8px] top-[2px] h-[15px] min-w-[15px] px-1 text-(length:--type-micro)", isActive ? "bg-(--nav-accent) text-background" : "bg-surface-2 text-muted-foreground")}>
-              {count}
+          {badge.map((entry) => (
+            <span
+              key={entry.kind}
+              title={entry.title}
+              aria-label={rail ? undefined : entry.label}
+              aria-hidden={rail || undefined}
+              data-badge={entry.kind}
+              className={cn(
+                "flex h-[calc(var(--shell-pill-height)*0.42)] min-w-[calc(var(--shell-pill-height)*0.42)] shrink-0 items-center justify-center gap-1 rounded-full px-1.5 text-(length:--shell-nav-badge-size) font-bold tabular-nums",
+                rail && "absolute h-[15px] min-w-[15px] px-1 text-(length:--type-micro)",
+                rail && (entry.kind === "needs" ? "right-[8px] top-[-9px]" : "right-[8px] top-[2px]"),
+                entry.kind === "needs"
+                  ? "border border-warning/40 bg-warning/10 text-warning"
+                  : isActive ? "bg-(--nav-accent) text-background" : "bg-surface-2 text-muted-foreground"
+              )}
+            >
+              {entry.kind === "needs" && !rail ? <span aria-hidden>{entry.count} need you</span> : entry.count}
             </span>
-          ) : null}
+          ))}
         </>
         );
       }}
@@ -885,19 +896,40 @@ function ContentTopbar({
   );
 }
 
-/** What a sidebar number means, said on hover; In progress's number is the page's Needs action tile (#1448). */
-function countMeaning(key: "none" | "movies" | "tv" | "indexers" | "transfers", count: number): string | undefined {
-  if (count <= 0) return undefined;
-  if (key === "transfers") return `${count} ${count === 1 ? "thing needs" : "things need"} your action. The same number as Needs action on this page.`;
-  return undefined;
+type SidebarKey = "none" | "movies" | "tv" | "indexers" | "transfers";
+
+/**
+ * One sidebar number: either a plain count of what the page lists, or a warning that says it needs the person (#1499).
+ * A number that needs action is never drawn in the plain style, so "In progress 1" and "16 need you" cannot be mistaken for each other.
+ */
+export interface SidebarBadge {
+  kind: "count" | "needs";
+  count: number;
+  /** The accessible name and what a screen reader says. */
+  label: string;
+  /** Said on hover. */
+  title: string;
 }
 
-function attentionCount(attention: ReturnType<typeof useAttention>, key: "none" | "movies" | "tv" | "indexers" | "transfers") {
-  if (key === "movies") return attention.movieWanted;
-  // Exactly the page's Needs action tile (#1448): what In progress lists under Needs attention (#556), and the releases held for a yes (#1159). It is the number the page shows, never another one.
-  if (key === "transfers") return attention.downloadsNeedingAction + (attention.heldReleases ?? 0);
-  if (key === "tv") return attention.tvWanted;
-  if (key === "indexers") return attention.indexerAlerts;
-  return 0;
+const plural = (count: number, one: string, many: string) => `${count.toLocaleString("en-AU")} ${count === 1 ? one : many}`;
+
+/** What the sidebar shows beside an item: nothing, a plain count, a warning, or both. */
+export function sidebarBadge(attention: ReturnType<typeof useAttention>, key: SidebarKey): SidebarBadge[] {
+  const out: SidebarBadge[] = [];
+  if (key === "transfers") {
+    // Exactly the Dashboard pipeline's "in progress" (#1499): one function, the same lists, the same pushes.
+    const inProgress = attention.inProgress ?? 0;
+    if (inProgress > 0) out.push({ kind: "count", count: inProgress, label: `${inProgress} in progress`, title: `${plural(inProgress, "title is", "titles are")} in progress. The same number as the Dashboard's pipeline.` });
+    // The page's Needs action tile (#1448): what In progress lists under Needs attention (#556), and the releases held for a yes (#1159).
+    const needs = attention.downloadsNeedingAction + (attention.heldReleases ?? 0);
+    if (needs > 0) out.push({ kind: "needs", count: needs, label: `${needs} ${needs === 1 ? "needs" : "need"} your action`, title: `${plural(needs, "thing needs", "things need")} your action. The same number as Needs action on this page.` });
+  } else if (key === "movies") {
+    if (attention.movieWanted > 0) out.push({ kind: "count", count: attention.movieWanted, label: `${attention.movieWanted} wanted`, title: `${attention.movieWanted.toLocaleString("en-AU")} wanted: missing, or waiting for a better copy.` });
+  } else if (key === "tv") {
+    if (attention.tvWanted > 0) out.push({ kind: "count", count: attention.tvWanted, label: `${attention.tvWanted} wanted`, title: `${plural(attention.tvWanted, "episode is", "episodes are")} wanted: missing, or waiting for a better copy.` });
+  } else if (key === "indexers") {
+    if (attention.indexerAlerts > 0) out.push({ kind: "needs", count: attention.indexerAlerts, label: `${attention.indexerAlerts} ${attention.indexerAlerts === 1 ? "needs" : "need"} your action`, title: `${plural(attention.indexerAlerts, "indexer is", "indexers are")} not answering and ${attention.indexerAlerts === 1 ? "needs" : "need"} your action.` });
+  }
+  return out;
 }
 

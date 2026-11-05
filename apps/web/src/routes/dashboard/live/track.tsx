@@ -29,6 +29,7 @@ import { stationNoun, type JourneyCard, type Stage } from "./journey";
 import { LANES } from "./lanes";
 import { useStillWhileResizing } from "./motion";
 import { faceOf } from "./titles";
+import { inProgressTotal } from "./in-progress";
 import { journeyHeading } from "./times";
 import "./journey.css";
 
@@ -95,7 +96,7 @@ export function Journey({
   const [lanesRef, lanesBox] = useElementSize<HTMLDivElement>();
   const rem = useRemPx();
   const stacked = journeyMode(body.width, n, rem) === "stacked";
-  const onTheirWay = stations.reduce((sum, stage) => sum + counts[stage], 0);
+  const onTheirWay = inProgressTotal(counts);
   const boxRef = useRef<HTMLDivElement>(null);
   // What sits above the lanes (header, stations): measured, so a page that scrolls can count the rows its budget holds in real pixels.
   const [chrome, setChrome] = useState(0);

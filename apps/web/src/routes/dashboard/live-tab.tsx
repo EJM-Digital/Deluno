@@ -33,9 +33,10 @@ import { authedFetch } from "../../lib/use-auth";
 import { useLiveActivity, useLiveProgress, useWorkingNow } from "./live-events";
 import { Band, buildOperations } from "./live/band";
 import { type CardContext } from "./live/card";
-import { arrivalItems, recentArrivalItems, searchingCards, withSeerr } from "./live/extras";
+import { arrivalItems, recentArrivalItems } from "./live/extras";
 import { useArrivals, useElementSize, useFreshKeys, useNow, useRemPx, useTitles } from "./live/hooks";
 import { SourcesCard } from "./live/sources-card";
+import { pipelineCards } from "./live/in-progress";
 import { byStage, buildJourney, laneCounts } from "./live/journey";
 import { useFlyToShelf, useLandingHold } from "./live/motion";
 import { arrivedDetail, arrivedHeading, LATEST_ARRIVALS_HEADING, Shelf } from "./live/shelf";
@@ -98,7 +99,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   );
   // The titles Deluno is searching for right now are the first station of the journey: one that already has a card further along is that card.
   // A title whose import has just finished stays a moment, full and green, before it leaves for the shelf.
-  const cards = useLandingHold(useMemo(() => withSeerr([...built, ...searchingCards(extras?.searching, extras?.requests, built)], extras?.requests), [built, extras?.requests, extras?.searching]));
+  const cards = useLandingHold(useMemo(() => pipelineCards(built, extras), [built, extras?.requests, extras?.searching]));
   const grouped = useMemo(() => byStage(cards), [cards]);
   const items = useMemo(() => arrivalItems(extras, cards), [extras, cards]);
   // With nothing in today, the shelf shows the latest of the last seven days instead of an empty box.

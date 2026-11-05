@@ -40,8 +40,8 @@ describe("the sidebar collapse button", () => {
     const movies = screen.getByRole("link", { name: "Movies" });
     expect(movies.textContent).toBe("");
     expect(movies).toHaveAttribute("title", "Movies");
-    // A count rides on the icon and is still said aloud.
-    expect(screen.getByRole("link", { name: "In progress, 7" })).toHaveAttribute("title", "In progress");
+    // A count rides on the icon, in the warning style, and is still said aloud.
+    expect(screen.getByRole("link", { name: "In progress, 7 need your action" })).toHaveAttribute("title", "In progress");
     expect(screen.queryByText("Deluno on WORKSTATION", { exact: false })).toBeNull();
     expect(screen.getByRole("button", { name: "Expand navigation" })).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByRole("button", { name: /Ann Lee, account menu/ })).toBeInTheDocument();
@@ -131,9 +131,10 @@ describe("one In progress entry holds what In progress and Activity were (#1426)
     expect(screen.queryByRole("link", { name: /^Activity/ })).toBeNull();
     const link = screen.getByRole("link", { name: /^In progress/ });
     expect(link).toHaveAttribute("href", "/queue");
-    expect(link.textContent).toMatch(/10$/);
+    // 10 need the person; nothing is in progress, so there is no plain count (#1499).
+    expect(link.textContent).toMatch(/10 need you$/);
     // The number says what it is on hover.
-    expect(screen.getByTitle(/The same number as Needs action on this page/)).toHaveTextContent("10");
+    expect(screen.getByTitle(/The same number as Needs action on this page/)).toHaveTextContent("10 need you");
   });
 
   it("does not add the failed jobs of a title again: the page lists them under Needs action already (#1448)", () => {
@@ -143,12 +144,12 @@ describe("one In progress entry holds what In progress and Activity were (#1426)
         <DesktopSidebar attention={counted} user={user} onLogout={() => undefined} collapsed={false} onToggleCollapsed={() => undefined} />
       </MemoryRouter>
     );
-    expect(screen.getByRole("link", { name: /^In progress/ }).textContent).toMatch(/7$/);
+    expect(screen.getByRole("link", { name: /^In progress/ }).textContent).toMatch(/7 need you$/);
   });
 });
 
 describe("each sidebar entry counts its own things", () => {
-  it("Movies counts wanted films, TV Shows wanted episodes, In progress its own, and the others nothing", () => {
+  it("Movies counts wanted films, TV Shows wanted episodes, In progress its own, and the others nothing (indexers warn)", () => {
     const counted = { movieWanted: 3, tvWanted: 4, indexerAlerts: 5, failedJobs: 0, failedTitleJobs: 0, downloadsNeedingAction: 6 } as unknown as typeof attention;
     render(
       <MemoryRouter>
@@ -157,7 +158,7 @@ describe("each sidebar entry counts its own things", () => {
     );
     expect(screen.getByRole("link", { name: /^Movies/ }).textContent).toMatch(/3$/);
     expect(screen.getByRole("link", { name: /^TV Shows/ }).textContent).toMatch(/4$/);
-    expect(screen.getByRole("link", { name: /^In progress/ }).textContent).toMatch(/6$/);
+    expect(screen.getByRole("link", { name: /^In progress/ }).textContent).toMatch(/6 need you$/);
     expect(screen.getByRole("link", { name: /^Dashboard/ }).textContent).toBe("Dashboard");
   });
 });

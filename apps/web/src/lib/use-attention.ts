@@ -9,6 +9,8 @@ import { attentionSummarySource, emptyAttentionSummary, type AttentionSummary } 
 import { RealtimeGroups, useSignalREvent } from "./use-signalr";
 import { heldReleasesSource, type HeldReleaseRow } from "./held-releases";
 import { ApiRequestError } from "./api/client";
+import { inProgressFromLists } from "../routes/dashboard/live/in-progress";
+import { liveSources } from "../routes/dashboard/sources";
 
 /** Releases a search held for a person's yes. They are Needs action on In progress, so the sidebar counts them too (#1448). An older API without the endpoint holds none. */
 const heldSource: RouteSource<HeldReleaseRow[]> = {
@@ -37,6 +39,11 @@ export interface AttentionSnapshot {
   downloadsNeedingAction: number;
   /** Releases held for a person's yes: Needs action on In progress, so counted by its sidebar badge (#1448). */
   heldReleases?: number;
+  /**
+   * Titles in progress: the number the Dashboard pipeline says, worked out by the same function (#1499). Not the same as
+   * the downloads needing action above, which are counted apart and shown as needing the person.
+   */
+  inProgress?: number;
   /** Failed import jobs, which In progress lists beside the downloads. */
   failedImportJobs: number;
   movieWanted: number;
@@ -98,6 +105,12 @@ async function readFresh<T>(source: RouteSource<T>, force: boolean, supersede = 
   return queryClient.fetchQuery({ queryKey: source.key, queryFn: source.fetch, staleTime: force ? 0 : ATTENTION_FRESH_MS, retry: false });
 }
 
+/** The newest sent downloads and the longer list with the archived ones, as one list: the Dashboard's own merge. */
+function mergeDispatches<T extends { id: string }>(newest: readonly T[], board: readonly T[]): T[] {
+  const seen = new Set<string>();
+  return [...newest, ...board].filter((dispatch) => !seen.has(dispatch.id) && !!seen.add(dispatch.id));
+}
+
 /** The count, worked out from whatever the cache holds right now. Nothing is fetched. */
 function snapshotFromCache(): AttentionSnapshot | null {
   const failed = readCached(sharedSources.failedJobs);
@@ -127,6 +140,14 @@ function snapshotFromCache(): AttentionSnapshot | null {
     // The same sources, the same function as the page's Needs action tile (#1448), failed imports included.
     downloadsNeedingAction: needsAction({ movieRecovery, seriesRecovery, telemetry, failedJobs: failed ?? [], handoffs, dispatches, orphans }).total,
     heldReleases: (readCached(heldSource) ?? []).length,
+    inProgress: inProgressFromLists({
+      queue: (telemetry?.clients ?? []).flatMap((client) => client.queue),
+      handoffs,
+      dispatches: mergeDispatches(dispatches, readCached(liveSources.boardDispatches) ?? []),
+      extras: readCached(liveSources.liveExtras),
+      now: Date.now(),
+      queueCapturedUtc: telemetry?.capturedUtc
+    }),
     failedImportJobs: stopped.filter((job) => job.jobType === "filesystem.import.execute").length,
     movieWanted: readCached(sharedSources.movieWanted)?.totalWanted ?? 0,
     tvWanted: readCached(sharedSources.seriesWanted)?.totalWanted ?? 0,
@@ -226,7 +247,9 @@ export function useAttention() {
         readFresh(sharedSources.healthSummary, force).catch(() => undefined),
         // What needs a person, worked out once on the server (#1185): the bell's rows and its count.
         readFresh(attentionSummarySource, force).catch(() => undefined),
-        readFresh(heldSource, force).catch(() => undefined)
+        readFresh(heldSource, force).catch(() => undefined),
+        // What the Dashboard pipeline also reads, so the In progress number is the pipeline's (#1499).
+        readFresh(liveSources.liveExtras, false).catch(() => undefined)
       ]);
 
       // A job Deluno will try again on its own is not one the pill should
@@ -269,11 +292,17 @@ export function useAttention() {
     });
   }, []);
 
+  // #1499: the In progress number is the Dashboard pipeline's. While Live or In progress is open they write every download's
+  // step into the same lists and the number follows at once. Elsewhere the sidebar does not join Live (that makes the server read the
+  // clients every second), so each step Activity records, and each AttentionChanged below, reads those few lists again, folded into one read.
+  const reloadInProgress = useCoalescedRevalidate(() => void loadSome(sharedSources.telemetry, sharedSources.handoffs, sharedSources.dispatches, liveSources.liveExtras as RouteSource<unknown>), 2_500);
+
   // A job failing, being retried or being dismissed changes the count now, not
   // at the next poll: dismissing the last failure beside a pill still saying
   // "1 failed job" reads as the dismissal not having worked.
   useSignalREvent("ActivityEventAdded", RealtimeGroups.Activity, (event) => {
     if (FAILED_JOB_CATEGORIES.has(event.category)) void load(true);
+    else reloadInProgress();
   });
   // #909: a health check starting or clearing lights (or clears) the bell's
   // dot immediately, rather than waiting for the next poll.
@@ -290,6 +319,7 @@ export function useAttention() {
     const sources = attentionSourcesForReasons(reasons);
     if (sources === null) void load(true);
     else if (sources.length > 0) void loadSome(...sources);
+    reloadInProgress();
   }, 400);
   useSignalREvent("AttentionChanged", RealtimeGroups.Dashboard, (event) => {
     const reasons = (event?.reason ?? "").split(",").map((word) => word.trim()).filter(Boolean);
