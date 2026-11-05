@@ -77,3 +77,26 @@ test("the changed-file plan picks the .NET projects and the JavaScript source fi
   ]);
   assert.deepEqual(plan(["docs/a.md"]), { dotnet: [], js: [] });
 });
+
+import { isRisky, validateRisky } from "./check-mutation-ratchet.mjs";
+import { readFileSync } from "node:fs";
+
+test("a whole risky project, and a risky folder at a folder boundary, are risky; the rest is not", () => {
+  const risky = {
+    projects: { "Deluno.Filesystem": "files on disk" },
+    files: [{ project: "Deluno.Infrastructure", path: "Storage/", why: "restores" }]
+  };
+  assert.equal(isRisky(risky, "Deluno.Filesystem", "src/Deluno.Filesystem/Any.cs"), true);
+  assert.equal(isRisky(risky, "Deluno.Infrastructure", "Storage/StagedRestore.cs"), true);
+  assert.equal(isRisky(risky, "Deluno.Infrastructure", "src/Deluno.Infrastructure/Storage\StagedRestore.cs"), true);
+  assert.equal(isRisky(risky, "Deluno.Infrastructure", "src/Deluno.Infrastructure/MyStorage/X.cs"), false);
+  assert.equal(isRisky(risky, "Deluno.Infrastructure", "src/Deluno.Infrastructure/Other.cs"), false);
+  assert.equal(isRisky(risky, "Deluno.Api", "Storage/X.cs"), false);
+  assert.equal(isRisky(risky, "web", "apps/web/src/a.ts"), false);
+});
+
+test("the risky list validates, and the checked-in one is valid", () => {
+  assert.equal(validateRisky({}).length, 1);
+  assert.equal(validateRisky({ projects: { A: "" }, files: [{ project: "A" }] }).length, 3);
+  assert.deepEqual(validateRisky(JSON.parse(readFileSync(new URL("../docs/testing/mutation-risky-areas.json", import.meta.url), "utf8"))), []);
+});

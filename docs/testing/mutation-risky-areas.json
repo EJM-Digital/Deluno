@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "$comment": "Where a surviving mutant fails the run (issue 1269, owner's scope change of 6 Nov 2026): imports, deletes, download clients, the processor hand-off and anything that touches files on disk. Elsewhere the mutation score is published and may only go up, but survivors do not fail the push. `projects` makes every file of a .NET project risky; `files` makes one folder or file risky (a path as the Stryker report spells it, matched at a folder boundary). A survivor in a risky file passes only when docs/testing/mutation-equivalents.json lists it with the reason no test can kill it.",
+  "projects": {
+    "Deluno.Filesystem": "imports, file moves, deletes, hardlinks, the processor hand-off output and every other touch of files on disk",
+    "Deluno.Connections": "download client and indexer connections, their sign-in and credentials",
+    "Deluno.Retention": "what the retention rules decide to delete",
+    "Deluno.Companions": "installing and wiring the download clients and the processor on disk"
+  },
+  "files": [
+    { "project": "Deluno.Integrations", "path": "DownloadClients/", "why": "talks to every download client: grabs, removals, save folders, strikes" },
+    { "project": "Deluno.Integrations", "path": "Processors/", "why": "the processor hand-off" },
+    { "project": "Deluno.Api", "path": "Backup/", "why": "backup and restore write and delete files" },
+    { "project": "Deluno.Api", "path": "Downloads/", "why": "download dispatch and removal" },
+    { "project": "Deluno.Api", "path": "BlockedReleases/", "why": "blocklist deletes and import-failure rules" },
+    { "project": "Deluno.Infrastructure", "path": "Storage/", "why": "data folder checks and staged restores delete and replace files" },
+    { "project": "Deluno.Contracts", "path": "StateFiles/", "why": "state files on disk" }
+  ]
+}
