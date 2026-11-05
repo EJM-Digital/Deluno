@@ -176,6 +176,23 @@ public sealed class QbittorrentEveryBranchTests
     }
 
     [Fact]
+    public async Task A_dropped_connection_in_the_location_share_limit_or_automatic_management_follow_up_is_handed_back_not_thrown()
+    {
+        var info = FinishedInfo();
+        var (withLocation, _) = Arriving(info, (request, _) => Is(request, "setLocation") || Is(request, "setShareLimits") ? throw new HttpRequestException("The connection dropped.") : null);
+        var located = await withLocation.GrabAsync(Item() with { Location = "/downloads", ShareRatioLimit = 2.0 }, Request(), CancellationToken.None);
+
+        var (automatic, _) = Arriving(info, (request, _) => Is(request, "setAutoManagement") ? throw new HttpRequestException("The connection dropped.") : null);
+        var auto = await automatic.GrabAsync(Item(), Request(), CancellationToken.None);
+
+        Assert.True(located.Succeeded, located.Message);
+        Assert.Equal(2, located.FollowUpRefusals!.Count);
+        Assert.All(located.FollowUpRefusals, refusal => Assert.Contains("The connection dropped.", refusal.Reason, StringComparison.Ordinal));
+        Assert.True(auto.Succeeded, auto.Message);
+        Assert.Single(auto.FollowUpRefusals!);
+    }
+
+    [Fact]
     public async Task A_torrent_file_is_uploaded_with_the_paused_choice_and_a_list_that_comes_back_null_counts_as_unreadable()
     {
         var (client, calls) = Rig((request, _) => Is(request, "torrents/info") ? RecordedReplies.Json("null") : null);

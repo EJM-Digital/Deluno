@@ -494,6 +494,31 @@ public sealed class RtorrentOnRecordingsTests
     }
 
     [Fact]
+    public async Task A_label_rTorrent_refuses_with_a_fault_is_said_in_the_answer_and_the_torrent_is_still_added()
+    {
+        var handler = new Scripted().Add(R("add-file"), 0, 1, 2).Add(R("unknown-hash-fault"), 7);
+
+        var result = await Over(handler).GrabAsync(Item(), FileRequest(TorrentFileIn("add-file", 1)), CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(HashIn("add-file", 3), result.ExternalId, ignoreCase: true);
+        Assert.Contains("rTorrent would not take the label", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_grab_with_a_blank_label_sends_no_label_call()
+    {
+        var handler = new Scripted().Add(R("add-file"), 0, 1, 2);
+        var request = FileRequest(TorrentFileIn("add-file", 1)) with { Category = " " };
+
+        var result = await Over(handler).GrabAsync(Item() with { MoviesCategory = " " }, request, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.DoesNotContain("d.custom1.set", handler.Methods);
+        Assert.DoesNotContain("label", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_torrent_file_added_paused_is_sent_with_load_raw_and_is_listed_not_active()
     {
         var recording = R("add-file-paused");
