@@ -50,8 +50,9 @@ function renderRow(group: ActivityGroup, titles: TitleLookup, dense: boolean, ne
   const many = group.rows.length;
   const named = namedTitle(entityFromRelated(item.relatedEntityType, item.relatedEntityId), titles);
   const name = named && group.sentence.includes(named.title) ? named.title : named?.name ?? null;
+  // A line's key is its oldest event, which does not change when a newer event of the same kind joins it from above: keyed by the newest, the row was torn down and drawn again, with its entry glow, on every such event (#1508).
   return (
-    <li key={item.id} data-fit="" className={cn("lact-ev", dense && "lact-dense", group.fresh && motionAllowed() && "live-stream-new")} data-glow={newest ? "" : undefined}>
+    <li key={group.rows[group.rows.length - 1].id} data-fit="" className={cn("lact-ev", dense && "lact-dense", group.fresh && motionAllowed() && "live-stream-new")} data-glow={newest ? "" : undefined}>
       <Link to={entityLink(item, titles)} title={many > 1 ? group.detail.join("\n") : undefined}>
         <span aria-hidden className={cn("lact-ic", kind.tile, kind.text)}>
           <kind.icon />

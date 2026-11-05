@@ -133,6 +133,29 @@ function entityOf(dispatch: DownloadDispatchItem | undefined): JourneyCard["enti
 }
 
 /** The title's own page when we know which title it is, otherwise In progress. An episode's show is found by the titles lookup. */
+/**
+ * What a card is as an element on screen (#1508). A download is one card from the moment it is sent to the moment it lands,
+ * but its key changes as the lists take it over (the client's id, then the processor's hand-off, then the import), and
+ * an element whose key changes is torn down and drawn again with its entry animation. The sent download's id does not
+ * change, so cards that have one are told apart by it.
+ */
+export function cardIdent(card: Pick<JourneyCard, "key" | "dispatchId">): string {
+  return card.dispatchId ? `dispatch:${card.dispatchId}` : card.key;
+}
+
+/** The element key of each card, one per card: if two cards would share one (two downloads of one sent record), the later keeps its own key. */
+export function cardIdents(cards: readonly Pick<JourneyCard, "key" | "dispatchId">[]): Map<string, string> {
+  const used = new Set<string>();
+  const out = new Map<string, string>();
+  for (const card of cards) {
+    let ident = cardIdent(card);
+    if (used.has(ident)) ident = card.key;
+    used.add(ident);
+    out.set(card.key, ident);
+  }
+  return out;
+}
+
 export function cardLink(entity: JourneyCard["entity"]): string {
   if (!entity) return "/queue";
   if (entity.kind === "movie") return `/movies/${entity.id}`;
