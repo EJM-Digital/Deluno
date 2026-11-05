@@ -337,8 +337,24 @@ export function SettingsMigrationPage() {
             </div>
           }
         >
+          {/* #1478: the report's own errors and warnings (a payload refused outright, a tag to be created) were never drawn,
+              so a refused payload read as an export cut short. */}
+          {report.errors.length || report.warnings.length ? (
+            <div className="grid gap-1.5 border-b border-hairline px-(--card-pad-x) py-3">
+              {report.errors.map((error) => (
+                <p key={error} className="text-(length:--type-body-sm) text-destructive">{error}</p>
+              ))}
+              {report.warnings.map((warning) => (
+                <p key={warning} className="text-(length:--type-body-sm) text-warning">{warning}</p>
+              ))}
+            </div>
+          ) : null}
           {report.operations.length === 0 ? (
-            <ListEmpty title="Nothing to import" description="No configuration Deluno recognises was found in this payload. Check that you exported the whole snapshot." />
+            report.errors.length ? (
+              <ListEmpty title="Nothing to import" description="Deluno could not read this payload, for the reason above. Fix it and preview again." />
+            ) : (
+              <ListEmpty title="Nothing to import" description="No configuration Deluno recognises was found in this payload. Check that you exported the whole snapshot." />
+            )
           ) : (
             <ListTable
               listId="migration-changes"

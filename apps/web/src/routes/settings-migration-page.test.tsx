@@ -215,3 +215,25 @@ describe("the change report table's columns (#1329)", () => {
     expect(itemOrder()[0]).toBe("Migrated Torrent");
   });
 });
+
+describe("a report's own errors and warnings (#1478)", () => {
+  it("shows why a preview found nothing when the payload itself was refused, not a hint that the export was cut short", async () => {
+    // The server's own words for broken JSON (MigrationAssistantService), as the rig returned them on 5 Nov.
+    const refused = "The migration payload is not valid JSON: Expected depth to be zero at the end of the JSON payload. There is an open JSON object or array that should be closed. LineNumber: 0 | BytePositionInLine: 33.";
+    route({ "/api/migration/preview": () => json(report({ valid: false, operations: [], summary: { ...summary, createCount: 0 }, errors: [refused] })) });
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText(/qualityProfiles/), { target: { value: "{\"qualityProfiles\": [ { \"name\": " } });
+    fireEvent.click(screen.getByRole("button", { name: /Preview import/ }));
+
+    expect(await screen.findByText(refused)).toBeInTheDocument();
+    expect(screen.getByText("Deluno could not read this payload, for the reason above. Fix it and preview again.")).toBeInTheDocument();
+    expect(screen.queryByText(/Check that you exported the whole snapshot/)).not.toBeInTheDocument();
+  });
+
+  it("lists a report-level warning beside the changes it came with", async () => {
+    await preview({ warnings: ["2 tags were not found in Deluno and will be created."] });
+
+    expect(screen.getByText("2 tags were not found in Deluno and will be created.")).toBeInTheDocument();
+    expect(screen.getByText("Migrated UHD")).toBeInTheDocument();
+  });
+});
