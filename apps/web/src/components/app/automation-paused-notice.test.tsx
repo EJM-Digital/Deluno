@@ -106,7 +106,9 @@ describe("automation paused notice (#936)", () => {
     const { container, unmount } = render(<AutomationPausedNotice context="dashboard" />);
     unmount();
     answer({ autoStartJobs: false });
-    await Promise.resolve();
+    // Let the read's own continuation run to its end (a macrotask), instead of counting on one microtask tick: the branch
+    // for a notice closed before its answer is then reached in every run, not only when the tick order happens to allow it.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(container.textContent).toBe("");
   });
 
@@ -118,7 +120,7 @@ describe("automation paused notice (#936)", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Resume automation" }));
     unmount();
     finish({ ok: true });
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(authedFetch).toHaveBeenCalledTimes(1);
   });
 });
