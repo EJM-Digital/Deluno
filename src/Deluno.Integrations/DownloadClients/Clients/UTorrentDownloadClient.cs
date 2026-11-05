@@ -255,6 +255,8 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
                 errored && !string.IsNullOrWhiteSpace(statusMessage) ? statusMessage : null,
                 item.Count > 23 ? DownloadClientHelpers.FromUnix(Convert.ToInt64(AsDouble(item[23]))) : capturedUtc,
                 SourcePath: Deluno.Contracts.SafePath.ReportedPath(savePath),
+                // #1516: index 14 is the seeds connected now (already part of Peers above).
+                Seeders: item.Count > 14 ? Convert.ToInt32(AsDouble(item[14])) : null,
                 UploadSpeedMbps: (uploadSpeed),
                 Ratio: ratioPerMille is null ? null : Math.Round(ratioPerMille.Value / 1000d, 3),
                 SeedingMinutes: seedingMinutesByHash.TryGetValue(hash, out var minutes) ? minutes : null,

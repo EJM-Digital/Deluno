@@ -401,6 +401,10 @@ public sealed record DownloadQueueItem(
     /// here. Usenet clients never set this to anything but Unknown.
     /// </summary>
     string TrackerStatus = Deluno.Contracts.DownloadTrackerStatuses.Unknown,
+    /// <summary>#1516: how many of the connected peers are seeders, as the client reports it. Null where the client does not say (Usenet, rTorrent). <see cref="Peers"/> stays every connected peer.</summary>
+    int? Seeders = null,
+    /// <summary>#1516: seeders in the whole swarm, where the client reports it (qBittorrent num_complete, Transmission trackers). Null when unknown.</summary>
+    int? SwarmSeeders = null,
     /// <summary>
     /// #811: how much of this torrent's data is available across its peers
     /// right now (qBittorrent's own <c>availability</c>, 0-1, can exceed 1.0

@@ -180,6 +180,8 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
                 // to), which is this machine's problem.
                 IsSetupProblem: (IsComplete(item) || TrackerError(item.TrackerStatus) is null) && DelugeMessage(item.Message) is not null,
                 IsPrivate: item.Private,
+                // #1516: num_seeds is the seeders connected now; num_peers counts the rest.
+                Seeders: item.NumSeeds,
                 // #878: tracker_status is Deluge's own free-text field, not a
                 // fixed enum, so a keyword match on the raw text (not only the
                 // "Error"-prefixed slice ErrorMessage above uses) is what

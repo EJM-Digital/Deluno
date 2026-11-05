@@ -589,6 +589,8 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             // release-side finding.
             IsSetupProblem: IsSetupProblemState(item.State),
             IsPrivate: item.Private,
+            // #1516: num_seeds is the seeders connected now; num_complete is the whole swarm as the tracker last said (-1 when it has not).
+            Seeders: item.NumSeeds, SwarmSeeders: item.NumComplete is > 0 ? item.NumComplete : null,
             TrackerStatus: item.Hash is { Length: > 0 } hash && trackerStatusByHash.TryGetValue(hash, out var trackerStatus)
                 ? trackerStatus
                 : DownloadTrackerStatuses.Unknown,
@@ -1379,6 +1381,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         [property: JsonPropertyName("downloaded")] long? Downloaded,
         [property: JsonPropertyName("num_seeds")] int? NumSeeds,
         [property: JsonPropertyName("num_leechs")] int? NumLeechs,
+        [property: JsonPropertyName("num_complete")] int? NumComplete,
         [property: JsonPropertyName("added_on")] long? AddedOn,
         [property: JsonPropertyName("save_path")] string? SavePath,
         [property: JsonPropertyName("content_path")] string? ContentPath,

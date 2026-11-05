@@ -160,6 +160,9 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             // finding.
             IsSetupProblem: item.Error == TrLocalError,
             IsPrivate: item.IsPrivate,
+            // #1516: peersSendingToUs is the seeders feeding this download; the swarm is the most any tracker scraped (-1 means it has not).
+            Seeders: item.PeersSendingToUs,
+            SwarmSeeders: item.TrackerStats?.Max(stat => stat.SeederCount) is > 0 and var swarm ? swarm : null,
             TrackerStatus: TrackerStatus(item),
             // #973: whichever of activityDate/doneDate is more recent is the
             // real "last saw any activity" answer - doneDate stays fixed once
@@ -756,7 +759,8 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         [property: JsonPropertyName("lastAnnounceResult")] string? LastAnnounceResult,
         [property: JsonPropertyName("lastAnnounceSucceeded")] bool? LastAnnounceSucceeded,
         [property: JsonPropertyName("hasAnnounced")] bool? HasAnnounced,
-        [property: JsonPropertyName("announce")] string? Announce = null);
+        [property: JsonPropertyName("announce")] string? Announce = null,
+        [property: JsonPropertyName("seederCount")] int? SeederCount = null);
 
     /// <summary>One file inside a torrent (#816); <c>name</c> is its path relative to the torrent's own folder.</summary>
     private sealed record TransmissionFile([property: JsonPropertyName("name")] string? Name);
