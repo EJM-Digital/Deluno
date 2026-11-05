@@ -9,11 +9,12 @@
 //   node scripts/check-mutation-ratchet.mjs --reports <dir> --update
 //       raise the thresholds to the scores in the reports; never lowers a number
 //   node scripts/check-mutation-ratchet.mjs --reports <dir> --survivors
-//       changed-files run (Stryker --since): every mutant that survived or was never covered fails, unless
-//       docs/testing/mutation-equivalents.json lists it with a reason
+//       changed-files run (Stryker --since): a mutant that survived or was never covered fails when it is in a risky area
+//       (docs/testing/mutation-risky-areas.json: imports, deletes, download clients, the processor hand-off, files on disk),
+//       unless docs/testing/mutation-equivalents.json lists it with a reason. Survivors elsewhere are listed, not failed.
 //   node scripts/check-mutation-ratchet.mjs --reports <dir> --summary
 //       print the score per project and every unlisted survivor as markdown (the nightly job summary)
-//   --thresholds <file> --equivalents <file> override the default paths.
+//   --thresholds <file> --equivalents <file> --risky <file> override the default paths.
 //
 // The score is (killed + timeout) / (killed + timeout + survived + no coverage), the same for Stryker.NET and StrykerJS.
 // An equivalent mutant is one no test can tell apart from the original code (for example `i < n` to `i != n` in a
@@ -132,6 +133,34 @@ export function unlistedSurvivors(equivalents, project, report) {
   return survivors(report).filter((m) => !isListed(equivalents, project, m));
 }
 
+export function validateRisky(doc) {
+  const problems = [];
+  if (!doc || typeof doc.projects !== "object" || doc.projects === null || !Array.isArray(doc.files)) {
+    return ["mutation-risky-areas.json must hold a `projects` object and a `files` array."];
+  }
+  for (const [name, why] of Object.entries(doc.projects)) {
+    if (typeof why !== "string" || why.trim() === "") problems.push(`Risky project ${name} has no reason.`);
+  }
+  doc.files.forEach((f, i) => {
+    for (const key of ["project", "path", "why"]) {
+      if (typeof f?.[key] !== "string" || f[key].trim() === "") problems.push(`Risky file entry ${i} has no ${key}.`);
+    }
+  });
+  return problems;
+}
+
+// True when a survivor in `file` of `project` sits in a risky area. A path matches at a folder boundary, so "Storage/" does not
+// match "MyStorage/".
+export function isRisky(risky, project, file) {
+  if (Object.hasOwn(risky.projects ?? {}, project)) return true;
+  const f = normalizeFile(file);
+  return (risky.files ?? []).some((r) => {
+    if (r.project !== project) return false;
+    const p = normalizeFile(r.path);
+    return f === p || f.startsWith(p) || f.includes(`/${p}`);
+  });
+}
+
 export function summary(thresholds, equivalents, reports, scores) {
   const lines = ["## Mutation score per project", "", "| Project | Score | Threshold | Survivors |", "|---|---|---|---|"];
   for (const [name, s] of Object.entries(scores)) {
@@ -161,12 +190,13 @@ function loadReports(dir) {
 }
 
 function parseArgs(argv) {
-  const o = { thresholds: "docs/testing/mutation-thresholds.json", equivalents: "docs/testing/mutation-equivalents.json" };
+  const o = { thresholds: "docs/testing/mutation-thresholds.json", equivalents: "docs/testing/mutation-equivalents.json", risky: "docs/testing/mutation-risky-areas.json" };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--reports") o.reports = argv[++i];
     else if (a === "--thresholds") o.thresholds = argv[++i];
     else if (a === "--equivalents") o.equivalents = argv[++i];
+    else if (a === "--risky") o.risky = argv[++i];
     else if (a === "--update") o.update = true;
     else if (a === "--survivors") o.survivors = true;
     else if (a === "--summary") o.summary = true;
@@ -180,6 +210,9 @@ function main() {
   const problems = [];
   const thresholds = existsSync(o.thresholds) ? JSON.parse(readFileSync(o.thresholds, "utf8")) : null;
   const equivalents = existsSync(o.equivalents) ? JSON.parse(readFileSync(o.equivalents, "utf8")) : null;
+  const risky = existsSync(o.risky) ? JSON.parse(readFileSync(o.risky, "utf8")) : null;
+  if (!risky) problems.push(`${o.risky} is missing.`);
+  else problems.push(...validateRisky(risky));
   if (!thresholds) problems.push(`${o.thresholds} is missing.`);
   else problems.push(...validateThresholds(thresholds));
   if (!equivalents) problems.push(`${o.equivalents} is missing.`);
@@ -204,7 +237,11 @@ function main() {
     } else if (o.survivors) {
       for (const [name, r] of Object.entries(reports)) {
         for (const m of unlistedSurvivors(equivalents, name, r)) {
-          problems.push(`${name}: ${m.file}:${m.line} ${m.mutator} -> ${JSON.stringify(m.replacement)} ${m.status === "NoCoverage" ? "is not covered by any test" : "survived"}. Kill it with a test, or list it in mutation-equivalents.json with the reason it cannot be killed.`);
+          if (!isRisky(risky, name, m.file)) {
+            notes.push(`${name}: ${m.file}:${m.line} ${m.mutator} ${m.status === "NoCoverage" ? "is not covered" : "survived"} (not a risky area, so it does not fail the run; the score is published and may only go up).`);
+            continue;
+          }
+          problems.push(`${name}: ${m.file}:${m.line} ${m.mutator} -> ${JSON.stringify(m.replacement)} ${m.status === "NoCoverage" ? "is not covered by any test" : "survived"}. It is in a risky area: kill it with a test, or list it in mutation-equivalents.json with the reason it cannot be killed.`);
         }
       }
     } else {

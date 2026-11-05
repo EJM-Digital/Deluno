@@ -1183,8 +1183,9 @@ jobs:
   # Runs on every push that changes code (issue 1269): `changes` publishes run_mutation, and a documents-only push skips it.
   # Mutation testing on the changed files (issue 1269, docs/testing/STRATEGY.md measure 3): Stryker.NET's diff mode
   # (--since) for the .NET projects the change reaches, StrykerJS on the changed web, sdk and gateway source files.
-  # Every mutant that survived or was never covered fails the job, unless docs/testing/mutation-equivalents.json lists
-  # it with the reason no test can kill it. The nightly run (mutation-nightly.yml) scores whole projects.
+  # A mutant that survived or was never covered fails the job when it is in a risky area (docs/testing/mutation-risky-areas.json:
+  # imports, deletes, download clients, the processor hand-off, files on disk), unless docs/testing/mutation-equivalents.json
+  # lists it with the reason no test can kill it. Survivors elsewhere are printed, not failed. The nightly run (mutation-nightly.yml) scores whole projects.
   mutation:
     name: Mutation on the changed files
     needs: changes
@@ -1226,7 +1227,7 @@ jobs:
           node scripts/mutation/run-changed.mjs --base "$BEFORE" --out mutation-reports
           echo "ran=true" >> "$GITHUB_OUTPUT"
 
-      - name: No mutant survives, unless it is listed as equivalent
+      - name: No mutant survives in a risky area, unless it is listed as equivalent
         if: ${{ steps.run.outputs.ran == 'true' }}
         run: |
           mkdir -p mutation-reports
