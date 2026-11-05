@@ -359,6 +359,34 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
     }
 
     [Fact]
+    public async Task A_burst_just_before_the_next_check_does_not_clear_a_strike_while_the_average_since_it_is_still_under_the_limit()
+    {
+        var (world, client) = await StartAsync(Rule(DownloadHealthRuleKinds.TooSlow, threshold: 1000));
+        using var _ = world;
+        var half = TimeSpan.FromTicks(world.Window.Ticks / 2);
+        var bytes = 1_000_000_000L;
+
+        Show(world, client, 300, bytes);
+        Assert.Equal(1, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
+
+        // Half an interval at 100 KB/s, then a burst at 1.8 MB/s for the rest: the reading at the check is fast, but the
+        // average since the strike is about 0.9 MB/s, under the 1.0 MB/s limit.
+        bytes += (long)(100_000 * half.TotalSeconds);
+        Show(world, client, 100, bytes);
+        await world.PollAsync(half);
+        var rest = half + TimeSpan.FromSeconds(1);
+        bytes += (long)(1_800_000 * rest.TotalSeconds);
+        Show(world, client, 1_800, bytes);
+        await world.CheckAsync(after: rest);
+
+        var record = await world.RecordOfAsync(DownloadHealthStrikes.LowSpeed);
+        Assert.NotNull(record);
+        Assert.Equal(1, record!.StrikeCount);
+        Assert.Empty(await ClearedLinesAsync(world));
+        await AssertNothingTouchedAsync(world, client);
+    }
+
+    [Fact]
     public async Task A_download_with_no_bytes_at_all_is_struck_once_per_check_whatever_the_client_reads_between_checks()
     {
         var (world, client) = await StartAsync(Rule(DownloadHealthRuleKinds.NoProgress));

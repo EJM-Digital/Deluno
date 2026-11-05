@@ -86,13 +86,16 @@ public sealed class ImportRestartRecoveryKeepsMediaTests
     {
         public List<ImportExecuteRequest> Imports { get; } = [];
 
+        /// <summary>What the import says instead of success, when a test needs it to fail or to lose a race.</summary>
+        public Func<ImportExecuteRequest, ImportPipelineResult>? Reply { get; set; }
+
         public Task<ImportPreviewResponse> PreviewAsync(ImportPreviewRequest request, CancellationToken cancellationToken)
             => throw new NotSupportedException();
 
         public Task<ImportPipelineResult> ExecuteAsync(ImportExecuteRequest request, CancellationToken cancellationToken)
         {
             Imports.Add(request);
-            return Task.FromResult(new ImportPipelineResult(true, 200, null, "imported"));
+            return Task.FromResult(Reply?.Invoke(request) ?? new ImportPipelineResult(true, 200, null, "imported"));
         }
     }
 

@@ -30,6 +30,16 @@ public sealed class NamingTemplateLowGapTests
     }
 
     [Fact]
+    public void A_path_has_the_unknown_year_text_in_any_letter_case_and_no_path_has_none()
+    {
+        Assert.False(NamingTemplateRenderer.HasUnknownYear(null));
+        Assert.False(NamingTemplateRenderer.HasUnknownYear(string.Empty));
+        Assert.True(NamingTemplateRenderer.HasUnknownYear("Movies/Arrival (unknown year)/Arrival.mkv"));
+        Assert.True(NamingTemplateRenderer.HasUnknownYear(Path.Combine("Movies", NamingTemplateRenderer.RenderFolder("{Movie Title} ({Release Year})", "Arrival", null))));
+        Assert.False(NamingTemplateRenderer.HasUnknownYear("Movies/Arrival (2016)/Arrival.mkv"));
+    }
+
+    [Fact]
     public void A_token_Deluno_does_not_know_stays_visible_in_the_name_beside_the_tokens_it_does()
     {
         var segment = NamingTemplateRenderer.RenderSegment("{Movie Title} {My Own Token} ({Release Year})", "Arrival", 2016);
