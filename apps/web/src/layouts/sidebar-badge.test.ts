@@ -17,6 +17,10 @@ describe("the number beside In progress", () => {
     ]);
   });
 
+  it("on the rig's later state (one failed import, nothing moving) shows no plain count and one that needs you", () => {
+    expect(sidebarBadge(attention({ inProgress: 0, downloadsNeedingAction: 1 }), "transfers")).toEqual([expect.objectContaining({ kind: "needs", count: 1, label: "1 needs your action" })]);
+  });
+
   it("shows only the warning when nothing is in progress", () => {
     expect(sidebarBadge(attention({ downloadsNeedingAction: 1 }), "transfers")).toEqual([expect.objectContaining({ kind: "needs", label: "1 needs your action" })]);
   });

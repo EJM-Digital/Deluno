@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { inProgressFromLists, inProgressTotal, pipelineCards } from "./in-progress";
-import { buildJourney, byStage, laneCounts } from "./journey";
+import { buildJourney, byStage, type JourneyCard, type Stage } from "./journey";
+import { needsAction } from "../../../lib/needs-action";
 import { journeyHeading } from "./times";
 
 /** #1499: the number beside In progress is the Dashboard pipeline's total, from one function. */
@@ -34,8 +35,7 @@ describe("the In progress number", () => {
 
     // The Dashboard's own steps, in its own order.
     const built = buildJourney({ queue, handoffs: [], dispatches: [], live: new Map(), summary: undefined, now: NOW });
-    const counts = laneCounts(byStage(pipelineCards(built, extras)), undefined);
-    const pipelineSays = journeyHeading(inProgressTotal(counts), undefined);
+    const pipelineSays = journeyHeading(inProgressTotal(byStage(pipelineCards(built, extras))), undefined);
 
     expect(pipelineSays).toBe(`${sidebar} in progress`);
     // Two downloads and one search; the imported one is in the library, not in progress.
@@ -48,6 +48,29 @@ describe("the In progress number", () => {
   });
 
   it("leaves the library out of the total", () => {
-    expect(inProgressTotal({ searching: 1, grabbed: 2, downloading: 3, processor: 4, importing: 5, imported: 99 })).toBe(15);
+    const card = (key: string, stage: Stage, tone: "info" | "bad" | "ok" = "info", stuck = false) => ({ key, stage, title: key, state: { tone, label: key }, stuck }) as JourneyCard;
+    const grouped = { searching: [card("s", "searching")], grabbed: [card("g", "grabbed")], downloading: [card("d", "downloading")], processor: [card("p", "processor")], importing: [card("i", "importing")], imported: [card("x", "imported", "ok"), card("y", "imported", "ok")] };
+
+    expect(inProgressTotal(grouped)).toBe(5);
+  });
+
+  it("leaves out cards that need the person, whichever station they sit at", () => {
+    const card = (key: string, stage: Stage, tone: "info" | "bad", stuck = false) => ({ key, stage, title: key, state: { tone, label: key }, stuck }) as JourneyCard;
+    const grouped = { searching: [], grabbed: [], downloading: [card("moving", "downloading", "info"), card("stuck", "downloading", "info", true)], processor: [card("pf", "processor", "bad")], importing: [card("if", "importing", "bad")], imported: [] };
+
+    expect(inProgressTotal(grouped)).toBe(1);
+  });
+
+  it("reads 0 on the rig's state: one failed import and nothing moving, the failure counted in need you (#1499)", () => {
+    const failed = queueItem({ id: "g", releaseName: "Gladiator.II.2024", status: "importFailed", progress: 100, speedMbps: 0, etaSeconds: null, errorMessage: "Import failed: no video file" });
+    const queue = [failed];
+
+    expect(inProgressFromLists({ queue, handoffs: [], dispatches: [], extras: null, now: NOW })).toBe(0);
+    // The card is still on the board, in the Importing lane, in the bad tone.
+    const cards = buildJourney({ queue, handoffs: [], dispatches: [], live: new Map(), summary: undefined, now: NOW });
+    expect(cards.map((c) => [c.stage, c.state.label])).toEqual([["importing", "Import failed"]]);
+    // And it is the amber figure's to count.
+    const telemetry = { clients: [{ queue }] } as never;
+    expect(needsAction({ telemetry }).total).toBe(1);
   });
 });

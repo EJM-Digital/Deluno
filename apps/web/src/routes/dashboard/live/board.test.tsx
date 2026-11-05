@@ -424,7 +424,8 @@ describe("the journey", () => {
   it("says how many are on their way and when they should all be in", () => {
     render5(cards);
     const journey = screen.getByRole("region", { name: "Pipeline" });
-    expect(within(journey).getByText("4 in progress · all done by about 2:28 pm")).toBeInTheDocument();
+    // Four cards are drawn; the stuck one needs the person and is not counted as in progress (#1499).
+    expect(within(journey).getByText("3 in progress · all done by about 2:28 pm")).toBeInTheDocument();
     expect(within(journey).getByRole("link", { name: "In progress: Pipeline" })).toHaveAttribute("href", "/queue");
   });
 

@@ -96,7 +96,7 @@ export function Journey({
   const [lanesRef, lanesBox] = useElementSize<HTMLDivElement>();
   const rem = useRemPx();
   const stacked = journeyMode(body.width, n, rem) === "stacked";
-  const onTheirWay = inProgressTotal(counts);
+  const onTheirWay = inProgressTotal(grouped);
   const boxRef = useRef<HTMLDivElement>(null);
   // What sits above the lanes (header, stations): measured, so a page that scrolls can count the rows its budget holds in real pixels.
   const [chrome, setChrome] = useState(0);
