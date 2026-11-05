@@ -2,6 +2,7 @@ using Deluno.Companions;
 using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -38,7 +39,21 @@ public sealed class CompanionToolsServiceTests : IDisposable
         }
     }
 
-    private CompanionToolsService Build()
+    private sealed class CapturingLogger : ILogger<CompanionToolsService>
+    {
+        public List<(LogLevel Level, string Message, Exception? Exception)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            lock (Entries) Entries.Add((logLevel, formatter(state, exception), exception));
+        }
+    }
+
+    private CompanionToolsService Build(ILogger<CompanionToolsService>? logger = null)
     {
         var services = new ServiceCollection();
         foreach (var id in CompanionToolIds.All) services.AddScoped<ICompanionTool>(_ => new FakeTool(id, this));
@@ -51,7 +66,7 @@ public sealed class CompanionToolsServiceTests : IDisposable
             provider.GetRequiredService<IServiceScopeFactory>(),
             Options.Create(new StoragePathOptions { DataRoot = _folder }),
             TimeProvider.System,
-            NullLogger<CompanionToolsService>.Instance,
+            logger ?? NullLogger<CompanionToolsService>.Instance,
             realtime.Object);
     }
 
@@ -156,6 +171,28 @@ public sealed class CompanionToolsServiceTests : IDisposable
         Assert.Equal("failed", job.Status);
         Assert.Equal("Setting up Weir stopped unexpectedly. Deluno's log has the details.", job.Message);
         Assert.DoesNotContain("abc123", job.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_unexpected_failure_keeps_its_detail_for_the_log_and_the_next_tool_still_runs()
+    {
+        var secret = @"C:\Users\someone\secret-path\token=abc123";
+        _behaviour["sabnzbd"] = _ => throw new InvalidOperationException(secret);
+        var logger = new CapturingLogger();
+        var service = Build(logger);
+
+        service.TryStart(["weir", "sabnzbd", "qbittorrent"], "http://127.0.0.1:5099");
+        var tools = await FinishedAsync(service);
+
+        // The person reads one generic sentence; the log has the exception that explains it.
+        Assert.Equal("Setting up SABnzbd stopped unexpectedly. Deluno's log has the details.", tools.First(tool => tool.Id == "sabnzbd").Job!.Message);
+        var entry = Assert.Single(logger.Entries, item => item.Level == LogLevel.Warning);
+        Assert.Contains("SABnzbd", entry.Message, StringComparison.Ordinal);
+        Assert.Equal(secret, Assert.IsType<InvalidOperationException>(entry.Exception).Message);
+        // One tool failing never stops the others, which run in the fixed order.
+        Assert.Equal(["sabnzbd", "qbittorrent", "weir"], _ran);
+        Assert.Equal("done", tools.First(tool => tool.Id == "qbittorrent").Job!.Status);
+        Assert.Equal("done", tools.First(tool => tool.Id == "weir").Job!.Status);
     }
 
     [Fact]
