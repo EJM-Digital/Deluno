@@ -139,7 +139,8 @@ async function tvdbGet(env, path, params, request) {
     }
   }
 
-  for (let attempt = 0; attempt < 2; attempt++) {
+  // The second pass always returns or throws, so the loop needs no bound.
+  for (let attempt = 0; ; attempt++) {
     const token = await getTvdbToken(env, request, { force: attempt > 0 });
     const response = await request(url, {
       headers: { Accept: "application/json", Authorization: `Bearer ${token}` }
@@ -152,7 +153,6 @@ async function tvdbGet(env, path, params, request) {
     }
     return response.json();
   }
-  throw new TvdbRequestError(401);
 }
 
 const text = (value) => (typeof value === "string" && value.trim() ? value.trim() : null);

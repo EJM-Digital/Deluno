@@ -23,9 +23,10 @@ vi.mock("../lib/use-api-mutation", () => ({
 vi.mock("../hooks/use-unsaved-changes", () => ({ useUnsavedChanges: () => undefined }));
 
 const settings = { ...emptyPlatformSettingsSnapshot, uiTheme: "system" };
+let loaded: typeof settings = settings;
 vi.mock("react-router-dom", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router-dom")>()),
-  useLoaderData: () => ({ settings, libraries: [], qualityProfiles: [] })
+  useLoaderData: () => ({ settings: loaded, libraries: [], qualityProfiles: [] })
 }));
 
 const { SettingsUiPage } = await import("./settings-ui-page");
@@ -99,5 +100,55 @@ describe("an edit made the moment a save finishes (#1503)", () => {
     observer.disconnect();
     await vi.waitFor(() => expect(screen.getByText("Unsaved changes")).toBeVisible());
     expect(toggle.getAttribute("aria-checked")).toBe("true");
+  });
+});
+
+describe("colour mode and failures on the Interface page", () => {
+  afterEach(() => {
+    mutate.mockReset();
+    loaded = settings;
+  });
+
+  it("opens with the saved colour-impaired mode, and says Standard for a mode it does not know", () => {
+    loaded = { ...settings, uiColorMode: "impaired" };
+    const first = render(<MemoryRouter><SettingsUiPage /></MemoryRouter>);
+    expect(screen.getByRole("combobox", { name: "Colour-impaired mode" })).toHaveValue("impaired");
+    first.unmount();
+    loaded = { ...settings, uiColorMode: "sepia" };
+    render(<MemoryRouter><SettingsUiPage /></MemoryRouter>);
+    expect(screen.getByRole("combobox", { name: "Colour-impaired mode" })).toHaveValue("standard");
+  });
+
+  it("follows a colour mode saved elsewhere while nothing here is edited, and falls back to Standard for an unknown one", () => {
+    const view = render(<MemoryRouter><SettingsUiPage /></MemoryRouter>);
+    expect(screen.getByRole("combobox", { name: "Colour-impaired mode" })).toHaveValue("standard");
+    loaded = { ...settings, uiColorMode: "impaired" };
+    view.rerender(<MemoryRouter><SettingsUiPage /></MemoryRouter>);
+    expect(screen.getByRole("combobox", { name: "Colour-impaired mode" })).toHaveValue("impaired");
+    loaded = { ...settings, uiColorMode: "sepia" };
+    view.rerender(<MemoryRouter><SettingsUiPage /></MemoryRouter>);
+    expect(screen.getByRole("combobox", { name: "Colour-impaired mode" })).toHaveValue("standard");
+  });
+
+  it("uses plain words when the save fails with something that has no message", async () => {
+    mutate.mockRejectedValueOnce("gone");
+    render(<MemoryRouter><SettingsUiPage /></MemoryRouter>);
+    fireEvent.change(screen.getByRole("combobox", { name: "Theme" }), { target: { value: "dark" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save interface settings" }));
+    expect(await screen.findByText("Could not save")).toBeInTheDocument();
+  });
+
+  it("sends one save when the form is submitted again while the first is still going", async () => {
+    let finish: (value: unknown) => void = () => undefined;
+    mutate.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const view = render(<MemoryRouter><SettingsUiPage /></MemoryRouter>);
+    fireEvent.change(screen.getByRole("combobox", { name: "Theme" }), { target: { value: "dark" } });
+    const form = view.container.querySelector("form") as HTMLFormElement;
+    fireEvent.submit(form);
+    await screen.findByText("Saving…");
+    fireEvent.submit(form);
+    expect(mutate).toHaveBeenCalledTimes(1);
+    finish({ ...settings, uiTheme: "dark" });
+    await vi.waitFor(() => expect(screen.getByText("Saved just now")).toBeInTheDocument());
   });
 });

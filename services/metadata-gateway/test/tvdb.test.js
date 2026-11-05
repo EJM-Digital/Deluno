@@ -9,6 +9,7 @@ import {
   getTvdbToken,
   lookupTvdbCatalogue,
   lookupTvdbEpisodeGroups,
+  lookupTvdbRemote,
   lookupTvdbSeries,
   lookupTvdbTranslation,
   mapTvdbSeries,
@@ -333,4 +334,141 @@ test("routes and serves one series' translation, and says not found when there i
   assert.equal(found.attribution, TVDB_ATTRIBUTION);
 
   await assert.rejects(() => lookupTvdbTranslation("81100", "deu", env, tvdb.fetch), (error) => error.status === 404);
+});
+
+/** A TheTVDB stand-in whose login and data calls can each be scripted, for the sign-in and retry paths. */
+function scriptedTvdb({ login, data }) {
+  const seen = { logins: 0, gets: 0 };
+  return {
+    seen,
+    fetch: async (url) => {
+      const parsed = new URL(url);
+      if (parsed.pathname === "/v4/login") {
+        seen.logins++;
+        return login(seen.logins);
+      }
+      seen.gets++;
+      return data(seen.gets, parsed);
+    }
+  };
+}
+const okJson = (body) => ({ ok: true, status: 200, json: async () => body });
+const failed = (status) => ({ ok: false, status, json: async () => ({}) });
+
+test("a refused key is a 401 and any other login failure a 502, and a login with no token is a 502", async () => {
+  await assert.rejects(() => getTvdbToken(env(), scriptedTvdb({ login: () => failed(401) }).fetch), (error) => error.status === 401);
+  await assert.rejects(() => getTvdbToken(env(), scriptedTvdb({ login: () => failed(500) }).fetch), (error) => error.status === 502);
+  await assert.rejects(() => getTvdbToken(env(), scriptedTvdb({ login: () => okJson({ data: {} }) }).fetch), (error) => error.status === 502);
+  await assert.rejects(() => getTvdbToken(env(), scriptedTvdb({ login: () => okJson({ data: { token: "" } }) }).fetch), (error) => error.status === 502);
+});
+
+test("an expired token is replaced by one new login and the call is tried again", async () => {
+  const stub = scriptedTvdb({
+    login: (n) => okJson({ data: { token: `tok-${n}` } }),
+    data: (n) => (n === 1 ? failed(401) : okJson({ data: { id: 5, name: "Show" } }))
+  });
+  const result = await lookupTvdbRemote("tt1", env(), stub.fetch);
+  assert.equal(stub.seen.logins, 2, "the second attempt logs in afresh");
+  assert.equal(result.tvdbId, null, "an answer with no series gives no id");
+});
+
+test("a token TheTVDB keeps refusing ends as a 401 after a single retry", async () => {
+  const stub = scriptedTvdb({ login: () => okJson({ data: { token: "t" } }), data: () => failed(401) });
+  await assert.rejects(() => lookupTvdbRemote("tt1", env(), stub.fetch), (error) => error.status === 401);
+  assert.equal(stub.seen.gets, 2);
+});
+
+test("a remote id TheTVDB knows gives the series id", async () => {
+  const tvdb = stubTvdb({ "/v4/search/remoteid/tt0903747": { data: [{ movie: { id: 1 } }, { series: { id: 81189 } }] } });
+  const result = await lookupTvdbRemote("tt0903747", env(), tvdb.fetch);
+  assert.deepEqual({ imdbId: result.imdbId, tvdbId: result.tvdbId }, { imdbId: "tt0903747", tvdbId: "81189" });
+});
+
+test("a translation with neither a name nor an overview is not found, like a language TheTVDB lacks", async () => {
+  const tvdb = stubTvdb({ "/v4/series/9/translations/fra": { data: { name: "  ", overview: null } } });
+  await assert.rejects(() => lookupTvdbTranslation("9", "fra", env(), tvdb.fetch), (error) => error.status === 404);
+});
+
+test("a series answer with no id is not found", async () => {
+  const tvdb = stubTvdb({ "/v4/series/9/extended": { data: {} } });
+  await assert.rejects(() => lookupTvdbSeries("9", env(), tvdb.fetch), (error) => error.status === 404);
+});
+
+test("a series whose English translation fails for a reason other than missing is not hidden", async () => {
+  const tvdb = stubTvdb({
+    "/v4/series/9/extended": { data: { id: 9, name: "Show" } },
+    "/v4/series/9/translations/eng": 500
+  });
+  await assert.rejects(() => lookupTvdbSeries("9", env(), tvdb.fetch), (error) => error.status === 500);
+});
+
+test("the gateway serves a translation, a catalogue, the alternate orders and a remote id, each cached on its own", async () => {
+  const stub = stubTvdb({
+    "/v4/series/81100/translations/fra": { data: { name: "Une série", overview: "Résumé." } },
+    "/v4/series/7/episodes/official/eng": { data: { episodes: [{ id: 1, seasonNumber: 1, number: 1, name: "Pilot" }] }, links: { next: null } },
+    "/v4/series/7/episodes/official": { data: { episodes: [{ id: 1, seasonNumber: 1, number: 1 }] }, links: { next: null } },
+    "/v4/search/remoteid/tt0903747": { data: [{ series: { id: 81189 } }] }
+  });
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = stub.fetch;
+  try {
+    const bindings = env();
+    const get = (path) => gateway.fetch(new Request(`https://gw.example/metadata/tvdb/${path}`, { headers: { "CF-Connecting-IP": "203.0.113.9" } }), bindings);
+
+    const translation = await get("tv/81100/translations/fra");
+    assert.equal(translation.status, 200);
+    assert.equal((await translation.json()).title, "Une série");
+
+    const catalogue = await get("tv/7/catalogue");
+    assert.equal(catalogue.status, 200);
+    assert.equal((await catalogue.json()).episodeCount, 1);
+
+    const orders = await get("tv/7/episode-groups");
+    assert.equal(orders.status, 200);
+    assert.deepEqual((await orders.json()).groups, []);
+
+    const remote = await get("remote/tt0903747");
+    assert.equal(remote.status, 200);
+    assert.equal((await remote.json()).tvdbId, "81189");
+
+    const before = stub.calls.length;
+    await get("tv/81100/translations/fra");
+    await get("remote/tt0903747");
+    assert.equal(stub.calls.length, before, "repeat asks are served from the cache");
+    for (const ttl of [60 * 60 * 24 * 7, TVDB_CATALOGUE_TTL_SECONDS, TVDB_ORDERS_TTL_SECONDS]) {
+      assert.equal(bindings.METADATA_CACHE.puts.some((put) => put.options?.expirationTtl === ttl), true, `a ${ttl} second lifetime is used`);
+    }
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("a failing TheTVDB is a temporary 503 without a retry hint, and a failure just seen is answered again without asking", async () => {
+  const stub = stubTvdb({ "/v4/series/8/extended": 500 });
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = stub.fetch;
+  try {
+    const bindings = env();
+    const ask = () => gateway.fetch(new Request("https://gw.example/metadata/tvdb/tv/8", { headers: { "CF-Connecting-IP": "203.0.113.9" } }), bindings);
+    const first = await ask();
+    assert.equal(first.status, 503);
+    assert.equal((await first.json()).error, "provider_unavailable");
+    const calls = stub.calls.length;
+    const second = await ask();
+    assert.equal(second.status, 503);
+    assert.equal(stub.calls.length, calls);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("a lookup that fails with something that is not a TheTVDB answer is also a temporary 503", async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error("connection reset"); };
+  try {
+    const response = await gateway.fetch(new Request("https://gw.example/metadata/tvdb/tv/8", { headers: { "CF-Connecting-IP": "203.0.113.9" } }), env());
+    assert.equal(response.status, 503);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });

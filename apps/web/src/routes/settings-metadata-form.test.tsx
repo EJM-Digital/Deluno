@@ -23,7 +23,7 @@ vi.mock("react-router-dom", async (importOriginal) => ({
   useRevalidator: () => ({ revalidate: revalidateMock, state: "idle" })
 }));
 
-const { SettingsMetadataPage } = await import("./settings-metadata-page");
+const { SettingsMetadataPage, settingsMetadataLoader } = await import("./settings-metadata-page");
 const renderPage = () => render(<MemoryRouter><SettingsMetadataPage /></MemoryRouter>);
 const respond = (body: unknown = {}, status = 200) => ({ ok: status < 400, status, json: async () => body, text: async () => JSON.stringify(body), headers: new Headers(), clone() { return this; } });
 const optionLabels = (select: HTMLElement) => [...(select as HTMLSelectElement).options].map((option) => option.textContent);
@@ -192,5 +192,92 @@ describe("Saved keys notice (C.11.9)", () => {
     const notice = screen.getByRole("alert");
     expect(notice).toHaveTextContent("Enter the saved key again");
     expect(notice).toHaveTextContent("The TMDb key was saved on another computer.");
+  });
+});
+
+describe("the page loader", () => {
+  it("reads the settings and the metadata status together", async () => {
+    authedFetchMock.mockImplementation(async (path: string) => respond(path === "/api/settings" ? { metadataLanguage: "de" } : { mode: "broker" }));
+    const data = await settingsMetadataLoader();
+    expect(data.settings).toMatchObject({ metadataLanguage: "de" });
+    expect(data.metadataStatus).toEqual({ mode: "broker" });
+  });
+
+  it("still opens, claiming nothing about the managed service, when the status cannot be read", async () => {
+    authedFetchMock.mockImplementation(async (path: string) => respond(path === "/api/settings" ? { metadataLanguage: "de" } : {}, path === "/api/settings" ? 200 : 500));
+    const data = await settingsMetadataLoader();
+    expect(data.settings).toMatchObject({ metadataLanguage: "de" });
+    expect(data.metadataStatus).toBeNull();
+  });
+});
+
+describe("Saved keys, every key and every failure", () => {
+  const allUnreadable = () => {
+    loaderData.settings = { ...emptyPlatformSettingsSnapshot, metadataLanguage: "en", metadataCertificationCountry: "AU", metadataTmdbApiKeyUnreadable: true, metadataOmdbApiKeyUnreadable: true, mdbListApiKeyUnreadable: true, metadataKeyProblem: "Saved on another computer." };
+  };
+
+  it("asks for each unreadable key and sends all three, trimmed, then clears the boxes", async () => {
+    allUnreadable();
+    renderPage();
+    fireEvent.change(screen.getByLabelText("TMDb API key"), { target: { value: " tmdb-1 " } });
+    fireEvent.change(screen.getByLabelText("OMDb API key"), { target: { value: "omdb-1" } });
+    fireEvent.change(screen.getByLabelText("MDbList API key"), { target: { value: "mdb-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save keys" }));
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalled());
+    expect(JSON.parse((authedFetchMock.mock.calls[0][1] as RequestInit).body as string)).toEqual({ metadataTmdbApiKey: "tmdb-1", metadataOmdbApiKey: "omdb-1", mdbListApiKey: "mdb-1" });
+    await waitFor(() => expect(screen.getByLabelText("TMDb API key")).toHaveValue(""));
+    expect(revalidateMock).toHaveBeenCalled();
+  });
+
+  it("sends just the MDbList key when only that one is typed", async () => {
+    allUnreadable();
+    renderPage();
+    fireEvent.change(screen.getByLabelText("MDbList API key"), { target: { value: "mdb-2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save keys" }));
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalled());
+    expect(JSON.parse((authedFetchMock.mock.calls[0][1] as RequestInit).body as string)).toEqual({ mdbListApiKey: "mdb-2" });
+  });
+
+  it("says why when the server refuses the key, and keeps what was typed", async () => {
+    allUnreadable();
+    authedFetchMock.mockResolvedValue(respond({ title: "That key was refused." }, 400));
+    renderPage();
+    fireEvent.change(screen.getByLabelText("TMDb API key"), { target: { value: "bad" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save keys" }));
+    expect(await screen.findByText("That key was refused.")).toBeInTheDocument();
+    expect(screen.getByLabelText("TMDb API key")).toHaveValue("bad");
+  });
+
+  it("uses plain words when the key save fails with something that has no message", async () => {
+    allUnreadable();
+    authedFetchMock.mockRejectedValue("gone");
+    renderPage();
+    fireEvent.change(screen.getByLabelText("TMDb API key"), { target: { value: "k" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save keys" }));
+    expect(await screen.findByText("Could not save the key")).toBeInTheDocument();
+  });
+});
+
+describe("Save metadata settings, odd cases", () => {
+  it("uses plain words when the save fails with something that has no message", async () => {
+    authedFetchMock.mockRejectedValue("gone");
+    renderPage();
+    fireEvent.change(screen.getByLabelText("Details language"), { target: { value: "de" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save metadata settings" }));
+    expect(await screen.findByText("Could not save")).toBeInTheDocument();
+  });
+
+  it("sends one save when the form is submitted again while the first is still going", async () => {
+    let finish: (value: unknown) => void = () => undefined;
+    authedFetchMock.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const view = renderPage();
+    fireEvent.change(screen.getByLabelText("Details language"), { target: { value: "de" } });
+    const form = view.container.querySelector("form") as HTMLFormElement;
+    fireEvent.submit(form);
+    await screen.findByText("Saving…");
+    fireEvent.submit(form);
+    expect(authedFetchMock).toHaveBeenCalledTimes(1);
+    finish(respond({ metadataLanguage: "de" }));
+    await waitFor(() => expect(screen.getByText("Saved just now")).toBeInTheDocument());
   });
 });
