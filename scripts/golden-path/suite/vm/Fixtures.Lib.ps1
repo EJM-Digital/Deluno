@@ -72,6 +72,15 @@ function Initialize-BaseVideos {
         if ($LASTEXITCODE -ne 0) { throw 'ffmpeg could not make the extra.' }
     }
     $script:Fx.Base['extra'] = $extra
+    # A 4:3 film (960x720), the shape of an old film, about 90 MB so Weir does not skip it: a processor must not stretch it or pad it.
+    $fourThree = Join-Path (Get-SuiteRoot) 'base\fourthree.mkv'
+    if (-not (Test-Path $fourThree)) {
+        $ff43 = @('C:\golden\suite\ffmpeg.path') | Where-Object { Test-Path $_ } | ForEach-Object { Get-Content -Raw $_ } | Select-Object -First 1
+        if (-not $ff43) { $ff43 = (Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Deluno\current\tools\ffmpeg') -Filter ffmpeg.exe -Recurse | Select-Object -First 1).FullName }
+        & $ff43 -y -v error -f lavfi -i 'testsrc2=size=960x720:rate=24:duration=125' -f lavfi -i 'sine=frequency=440:sample_rate=48000:duration=125' -vf 'noise=alls=25:allf=t+u,setsar=1' -c:v mpeg4 -b:v 6M -g 48 -c:a aac -b:a 128k -shortest $fourThree
+        if ($LASTEXITCODE -ne 0) { throw 'ffmpeg could not make the 4:3 film.' }
+    }
+    $script:Fx.Base['fourthree'] = $fourThree
     $script:Fx.Base.GetEnumerator() | ForEach-Object { Write-SuiteLog ("   base video {0}: {1:N1} MB" -f $_.Key, ((Get-Item $_.Value).Length / 1MB)) }
 }
 
@@ -160,18 +169,27 @@ function New-TorrentFilm {
         [Parameter(Mandatory)] [string] $Client,
         [ValidateSet('file', 'folder')] [string] $Layout = 'file',
         [ValidateSet('complete', 'short', 'dummy')] [string] $Variant = 'complete',
-        [ValidateSet('small', 'big')] [string] $Size = 'small',
+        [ValidateSet('small', 'big', 'fourthree')] [string] $Size = 'small',
         [switch] $Extra,
-        [string] $Label = 'film'
+        [string] $Label = 'film',
+        # A real title and year (so the metadata has a poster for it), and for a TV episode its S01E01 mark.
+        [string] $RealTitle, [int] $RealYear = 2020, [string] $Episode
     )
     $token = New-FilmToken
     $title = ('Gp{0}{1}' -f $Label, $token).Replace('-', '')
     $year = 2020
     $release = "$title.$year.1080p.WEB-DL.x264-GOLDEN"
+    if ($RealTitle) {
+        $title = $RealTitle; $year = $RealYear
+        $mark = $(if ($Episode) { $Episode } else { "$year" })
+        $release = "{0}.{1}.1080p.WEB-DL.x264-GP{2}" -f ($RealTitle -replace '[^A-Za-z0-9]+', '.'), $mark, $token.Replace('-', '')
+    }
     $source = Join-Path (Get-SuiteRoot) "films\$release"
     New-Item -ItemType Directory -Force -Path $source | Out-Null
     $base = $script:Fx.Base[$Size]
     $rel = $null
+    # A TV episode is offered in the feed's TV category, so the episode's own search finds it.
+    $cat = $(if ($Episode) { 5040 } else { 2000 })
     # The data goes where the client itself says it keeps the data of an unfinished torrent, before Deluno sends the torrent. A
     # dummy film has no data, so the client is not asked.
     $placeIn = $null
@@ -183,7 +201,7 @@ function New-TorrentFilm {
         if ($Layout -eq 'file') {
             $good = Join-Path $source "$release.mkv"
             New-Item -ItemType HardLink -Path $good -Target $base | Out-Null
-            $rel = Add-SuiteTorrentRelease -Title $release -File $good
+            $rel = Add-SuiteTorrentRelease -Title $release -Cat $cat -File $good
             $placeAt = $placeIn
             New-Item -ItemType Directory -Force -Path $placeAt | Out-Null
             if ($Variant -eq 'short') { Copy-FileMissingLastPiece -From $good -To (Join-Path $placeAt "$release.mkv") -Truncate:($Client -eq 'transmission') }
@@ -199,7 +217,7 @@ function New-TorrentFilm {
                 New-Item -ItemType Directory -Force -Path (Join-Path $folder 'Featurettes') | Out-Null
                 Copy-Item -LiteralPath $script:Fx.Base['extra'] -Destination (Join-Path $folder 'Featurettes\featurette.mkv')
             }
-            $rel = Add-SuiteTorrentRelease -Title $release -Folder $folder
+            $rel = Add-SuiteTorrentRelease -Title $release -Cat $cat -Folder $folder
             $dest = Join-Path $placeIn $release
             New-Item -ItemType Directory -Force -Path $dest | Out-Null
             Get-ChildItem -LiteralPath $folder -Recurse -File | ForEach-Object {

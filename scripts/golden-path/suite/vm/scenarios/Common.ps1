@@ -10,8 +10,8 @@ function Test-IsTorrent { param([string] $Kind) $Kind -in 'qbittorrent', 'transm
 
 # Makes a film that fits the client kind (a torrent over a hard link, or a Usenet release) and remembers it for the Activity check.
 function New-FilmFor {
-    param([Parameter(Mandatory)] [string] $Kind, [string] $Layout = 'folder', [string] $Variant = 'complete', [string] $Size = 'small', [switch] $Extra, [string] $Label = 'film', [switch] $Slow, [switch] $HangLast, [switch] $HangAll)
-    if (Test-IsTorrent $Kind) { $f = New-TorrentFilm -Client $Kind -Layout $Layout -Variant $Variant -Size $Size -Extra:$Extra -Label $Label }
+    param([Parameter(Mandatory)] [string] $Kind, [string] $Layout = 'folder', [string] $Variant = 'complete', [string] $Size = 'small', [switch] $Extra, [string] $Label = 'film', [switch] $Slow, [switch] $HangLast, [switch] $HangAll, [string] $RealTitle, [int] $RealYear = 2020, [string] $Episode)
+    if (Test-IsTorrent $Kind) { $f = New-TorrentFilm -Client $Kind -Layout $Layout -Variant $Variant -Size $Size -Extra:$Extra -Label $Label -RealTitle $RealTitle -RealYear $RealYear -Episode $Episode }
     else { $f = New-UsenetFilm -Size $Size -Label $Label -Slow:$Slow -HangLast:$HangLast -HangAll:$HangAll }
     [void]$script:AllFilms.Add($f)
     $f
