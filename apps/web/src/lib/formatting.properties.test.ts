@@ -137,11 +137,17 @@ describe("formatBytesFromGb properties", () => {
   });
 });
 
+/** The MB/s a "120 KB/s", "3.4 MB/s" or "1.1 GB/s" reading stands for (#1489: KB/s under 1 MB/s, GB/s from 1000 MB/s). */
+function mbpsOf(text: string): number {
+  const [amount, unit] = text.split(" ");
+  return Number(amount) * ({ "KB/s": 0.001, "MB/s": 1, "GB/s": 1000 } as Record<string, number>)[unit];
+}
+
 describe("formatSpeed properties", () => {
-  it("always reads a number followed by MB/s, never NaN or negative", () => {
+  it("always reads a number followed by KB/s, MB/s or GB/s, never NaN or negative", () => {
     fc.assert(
       fc.property(fc.oneof(fc.double({ min: -1e15, max: 1e15 }), fc.constant(NaN), fc.constant(Infinity), fc.constantFrom(null, undefined)), (n) => {
-        expect(formatSpeed(n)).toMatch(/^\d+(\.\d)? MB\/s$/);
+        expect(formatSpeed(n)).toMatch(/^\d+(\.\d)? (KB|MB|GB)\/s$/);
       }),
     );
   });
@@ -150,15 +156,18 @@ describe("formatSpeed properties", () => {
     fc.assert(
       fc.property(fc.double({ min: 0, max: 5000, noNaN: true }), fc.double({ min: 0, max: 5000, noNaN: true }), (a, b) => {
         const [lo, hi] = a <= b ? [a, b] : [b, a];
-        expect(parseFloat(formatSpeed(hi))).toBeGreaterThanOrEqual(parseFloat(formatSpeed(lo)));
+        expect(mbpsOf(formatSpeed(hi))).toBeGreaterThanOrEqual(mbpsOf(formatSpeed(lo)));
       }),
     );
   });
 
-  it("is within half a unit of the real speed", () => {
+  it("is within half of its last shown digit of the real speed, in the unit it shows", () => {
     fc.assert(
       fc.property(fc.double({ min: 0, max: 5000, noNaN: true }), (n) => {
-        expect(Math.abs(parseFloat(formatSpeed(n)) - n)).toBeLessThanOrEqual(0.5 + 1e-9);
+        const text = formatSpeed(n);
+        const [amount, unit] = text.split(" ");
+        const step = (amount.includes(".") ? 0.1 : 1) * ({ "KB/s": 0.001, "MB/s": 1, "GB/s": 1000 } as Record<string, number>)[unit];
+        expect(Math.abs(mbpsOf(text) - n)).toBeLessThanOrEqual(step / 2 + 1e-9);
       }),
     );
   });
