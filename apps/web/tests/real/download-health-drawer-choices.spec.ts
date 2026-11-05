@@ -63,7 +63,7 @@ test.describe("Download health rule drawer choices", () => {
     await expect(page.getByText("Discard unsaved changes?")).toHaveCount(0);
   });
 
-  test("the strikes field says in the person's own numbers when strike one lands and when the download is removed, and refuses a number outside 1 to 100", async ({ page }) => {
+  test("the strikes field says in the person's own numbers when strike one lands and when the download is removed, and refuses a number outside 1 to 999", async ({ page }) => {
     const drawer = await openNewRule(page);
     const strikes = drawer.getByLabel("Strikes before it acts");
 
@@ -71,8 +71,8 @@ test.describe("Download health rule drawer choices", () => {
     await expect(drawer.getByText(/With 1 strike the download is removed at that same check\./)).toBeVisible();
     await strikes.fill("4");
     await expect(drawer.getByText(/with 4 strikes it is removed about \d+ min later/)).toBeVisible();
-    await strikes.fill("101");
+    await strikes.fill("1000");
     await drawer.getByRole("button", { name: "Create rule", exact: true }).click();
-    await expect(drawer.getByText(/1 and 100|between 1/i).first()).toBeVisible();
+    await expect(drawer.getByText(/1 and 999|between 1/i).first()).toBeVisible();
   });
 });

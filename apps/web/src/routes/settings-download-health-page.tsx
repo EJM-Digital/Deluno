@@ -311,19 +311,19 @@ function TimingCard({ settings }: { settings: PlatformSettingsSnapshot }) {
           <Field label="Strikes before a stalled download is acted on" error={errors.strikes} help={`For a download the client itself reports stalled or errored, when no rule above covers it. Each check where it is still stuck adds a strike, the first check where it moves again clears them, and at this many it is removed and cleaned up as chosen under When strikes run out. ${DOWNLOAD_HEALTH_STRIKES_RANGE}.`}>
             <Input type="number" min={DOWNLOAD_HEALTH_MIN_STRIKES} max={DOWNLOAD_HEALTH_MAX_STRIKES} step="1" value={strikeLimit} onChange={(event) => setStrikeLimit(event.target.value)} />
           </Field>
-          <Field label="No-progress time" error={errors.noProgress} help={`How long a download can sit with nothing arriving before the no-progress setting counts it as stuck. ${DOWNLOAD_HEALTH_MINUTES_RANGE}; 30 by default.`}>
+          <Field label="No-progress time" error={errors.noProgress} help={`How long a download can sit with nothing arriving before the no-progress setting counts it as stuck, from ${DOWNLOAD_HEALTH_MIN_MINUTES} to ${DOWNLOAD_HEALTH_MAX_MINUTES} minutes (30 unless you change it).`}>
             <div className="flex items-center gap-2">
               <Input type="number" min={DOWNLOAD_HEALTH_MIN_MINUTES} max={DOWNLOAD_HEALTH_MAX_MINUTES} step="1" value={noProgressMinutes} onChange={(event) => setNoProgressMinutes(event.target.value)} />
               <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">min</span>
             </div>
           </Field>
-          <Field label="Too-slow time" error={errors.tooSlow} help={`How long a download can stay under the speed limit before the too-slow setting counts it as slow. ${DOWNLOAD_HEALTH_MINUTES_RANGE}; 30 by default.`}>
+          <Field label="Too-slow time" error={errors.tooSlow} help={`How long a download can stay under the speed limit before the too-slow setting counts it as slow: any whole number of minutes from ${DOWNLOAD_HEALTH_MIN_MINUTES} to ${DOWNLOAD_HEALTH_MAX_MINUTES}, 30 to start with.`}>
             <div className="flex items-center gap-2">
               <Input type="number" min={DOWNLOAD_HEALTH_MIN_MINUTES} max={DOWNLOAD_HEALTH_MAX_MINUTES} step="1" value={tooSlowMinutes} onChange={(event) => setTooSlowMinutes(event.target.value)} />
               <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">min</span>
             </div>
           </Field>
-          <Field label="Low-peers time" error={errors.lowPeers} help={`How long a download can stay under the peer floor before the low-peers setting counts it as short of peers. ${DOWNLOAD_HEALTH_MINUTES_RANGE}; 30 by default.`}>
+          <Field label="Low-peers time" error={errors.lowPeers} help={`How long a download can stay under the peer floor before the low-peers setting counts it as short of peers. Type ${DOWNLOAD_HEALTH_MIN_MINUTES} to ${DOWNLOAD_HEALTH_MAX_MINUTES} minutes; it begins at 30.`}>
             <div className="flex items-center gap-2">
               <Input type="number" min={DOWNLOAD_HEALTH_MIN_MINUTES} max={DOWNLOAD_HEALTH_MAX_MINUTES} step="1" value={lowPeersMinutes} onChange={(event) => setLowPeersMinutes(event.target.value)} />
               <span className="shrink-0 text-(length:--type-body-sm) text-muted-foreground">min</span>
