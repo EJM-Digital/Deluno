@@ -7,6 +7,15 @@ Written by scripts/recorded-replies/Invoke-RecordReplies.ps1 on 2026-10-11. Each
   - weir: the outcome and status replies that the recordings hold for one hand-off only
   - plex, jellyfin, emby and seerr: the identity and status replies that carry their version (ConnectionVersionParserTests still holds those shapes)
 
+## Download clients' own queues (#1493)
+
+The golden VM can record each of these (limit the client, add more downloads than it runs, read the list again); none is recorded yet:
+
+- deluge `core.get_config_values` for `max_active_downloading`: the recorded core settings ask only for the move-completed keys. `AClientHoldingADownloadInItsOwnQueueSaysSoTests` adds the one key to the recorded reply.
+- sabnzbd: a job `Queued` behind another that is downloading in a running queue (the recording `queued` was made with the whole queue paused, so every slot reads Paused). The test sets `queue.paused` to false on the recorded slot.
+- nzbget: a job with status `QUEUED` behind a downloading one (the recording `queued` holds a PAUSED job). The test sets that one status. NZBGet gives no queue number; the job's place in the list is used.
+- rtorrent: has no queue of its own (no queued state), so nothing to record. SABnzbd and NZBGet run one job at a time and expose no active-download limit.
+
 ## Deluno-Weir contract gaps (#1239, docs/deluno-weir-contract.md)
 
 Recorded on 13 October 2026 (Deluno 1.0.0-rc.30.30, Weir 1.0.0-rc.13): Deluno's own requests with their headers, Weir's reports to Deluno, and Weir's refusals of a wrong secret, an unknown id, a refused body and an Origin without X-Requested-With. What is still missing:

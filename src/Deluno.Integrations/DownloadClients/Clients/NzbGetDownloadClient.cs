@@ -104,7 +104,7 @@ public sealed class NzbGetDownloadClient(
         var http = CreateHttp(client);
         var response = await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<IReadOnlyList<NzbGetQueueItem>>>(http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest("listgroups", []), cancellationToken);
         var status = await GetStatusAsync(http, baseUri, cancellationToken);
-        var queue = (response?.Result ?? []).Select(item =>
+        var queue = (response?.Result ?? []).Select((item, order) =>
         {
             // #1225: NZBGet splits a size into 32-bit halves (Hi, Lo) and also gives whole MiB; read the halves so
             // nothing is rounded, and never let a job with data left read 100%.
@@ -116,10 +116,13 @@ public sealed class NzbGetDownloadClient(
             {
                 progress = 99.99d;
             }
+            var rowStatus = QueueStatus(item.Status, progress, downloaded, status);
             return new DownloadQueueItem(item.NzbId.ToString(CultureInfo.InvariantCulture), client.Id, client.Name, client.Protocol,
                 DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.NzbName ?? "Unknown NZBGet item"), item.NzbName ?? "Unknown NZBGet item",
-                item.Category ?? string.Empty, QueueStatus(item.Status, progress, downloaded, status), progress, ((status?.DownloadRate ?? 0) / 1_000_000d),
-                CalculateEta(remaining, status?.DownloadRate), size, downloaded, 0, "NZBGet", QueueError(item.Status), capturedUtc, JobFolder(item.DestDir));
+                item.Category ?? string.Empty, rowStatus, progress, ((status?.DownloadRate ?? 0) / 1_000_000d),
+                CalculateEta(remaining, status?.DownloadRate), size, downloaded, 0, "NZBGet", QueueError(item.Status), capturedUtc, JobFolder(item.DestDir),
+                // #1493: NZBGet lists its jobs in queue order and gives no number of its own, so a job it holds back is placed by that order.
+                QueuePosition: rowStatus == DownloadQueueStatuses.Queued ? order + 1 : null);
         }).ToArray();
         var history = await GetHistoryCoreAsync(http, client, baseUri, capturedUtc, cancellationToken);
         var freeSpaceBytes = status?.FreeDiskSpaceMB is > 0 ? status.FreeDiskSpaceMB.Value * 1_000_000L : (long?)null;

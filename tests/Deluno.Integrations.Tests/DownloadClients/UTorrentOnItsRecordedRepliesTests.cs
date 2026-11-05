@@ -183,7 +183,9 @@ public sealed class UTorrentOnItsRecordedRepliesTests
 
         Assert.Null(snapshot!.ClientVersion);
         Assert.Null(snapshot.FreeSpaceBytes);
-        Assert.Empty(uTorrent.Actions("getsettings"));
+        // The settings are read for one thing only now (#1493): Maximum active downloads, never a folder or free space.
+        Assert.Single(uTorrent.Actions("getsettings"));
+        Assert.Equal(5, snapshot.ActiveDownloadLimit);
     }
 
     [Fact]

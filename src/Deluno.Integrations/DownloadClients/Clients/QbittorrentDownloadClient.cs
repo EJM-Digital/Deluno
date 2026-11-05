@@ -558,6 +558,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         // The two reads are independent, so they go together.
         var serverStateTask = GetServerStateAsync(http, cancellationToken);
         var versionTask = GetVersionAsync(http, cancellationToken);
+        var activeLimitTask = ReadActiveDownloadLimitAsync(http, cancellationToken);
         var torrents = await http.GetFromJsonAsync<IReadOnlyList<QbitTorrentItem>>("api/v2/torrents/info", cancellationToken) ?? [];
 
         var trackerStatusByHash = await GetTrackerStatusesAsync(http, client.Id, torrents, capturedUtc, cancellationToken);
@@ -602,7 +603,9 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             IsFetchingMetadata: string.Equals(item.State, "metaDL", StringComparison.OrdinalIgnoreCase),
             // #1194: for the ignore list. torrents/info names the tracker in use; the full list is added when it was read.
             Tags: DownloadClientHelpers.SplitTags(item.Tags),
-            TrackerHosts: TrackerHostsOf(client.Id, item)))
+            TrackerHosts: TrackerHostsOf(client.Id, item),
+            // #1493: its own place in the line, read only when the torrent is one qBittorrent is holding back.
+            QueuePosition: IsHeldInItsQueue(item.State) && item.Priority is > 0 ? item.Priority : null))
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
         var (freeSpaceBytes, alternateSpeedLimitEnabled) = await serverStateTask;
@@ -610,7 +613,43 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             $"Connected to qBittorrent at {baseUri.Host}:{baseUri.Port}.",
             freeSpaceBytes,
             null);
-        return CreateSnapshot(client, queue, capturedUtc, health, message, freeSpaceBytes: freeSpaceBytes, clientVersion: await versionTask, alternateSpeedLimitEnabled: alternateSpeedLimitEnabled);
+        return CreateSnapshot(client, queue, capturedUtc, health, message, freeSpaceBytes: freeSpaceBytes, clientVersion: await versionTask, alternateSpeedLimitEnabled: alternateSpeedLimitEnabled, activeDownloadLimit: await activeLimitTask);
+    }
+
+    /// <summary>qBittorrent holds this torrent back itself (queuedDL), as against a person pausing it.</summary>
+    internal static bool IsHeldInItsQueue(string? state)
+        => string.Equals(state, "queuedDL", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// qBittorrent's "Maximum active downloads" (#1493), from <c>app/preferences</c>: only when queueing is on and the limit is
+    /// a number (-1 is unlimited). Null when it will not say, so nothing is guessed.
+    /// </summary>
+    internal static async Task<int?> ReadActiveDownloadLimitAsync(HttpClient http, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await http.GetAsync("api/v2/app/preferences", cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("queueing_enabled", out var enabled) || enabled.ValueKind != JsonValueKind.True
+                || !root.TryGetProperty("max_active_downloads", out var limit) || limit.ValueKind != JsonValueKind.Number
+                || !limit.TryGetInt32(out var value))
+            {
+                return null;
+            }
+
+            return value > 0 ? value : null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>qBittorrent's own version (#1117), from <c>api/v2/app/version</c>. Null when it will not say.</summary>
@@ -1356,7 +1395,9 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         [property: JsonPropertyName("completion_on")] long? CompletionOn = null,
         // #1194: qBittorrent's comma-separated tags, and the tracker it is announcing to now (empty when none works).
         [property: JsonPropertyName("tags")] string? Tags = null,
-        [property: JsonPropertyName("tracker")] string? Tracker = null);
+        [property: JsonPropertyName("tracker")] string? Tracker = null,
+        // #1493: qBittorrent's queue position (1 is next), -1 or 0 when queueing is off or the torrent is seeding.
+        [property: JsonPropertyName("priority")] int? Priority = null);
 
     private sealed record QbitMainData([property: JsonPropertyName("server_state")] QbitServerState? ServerState);
 

@@ -114,7 +114,8 @@ public abstract class DownloadClientBase : IDownloadClient
         bool? clientPaused = null,
         string? clientVersion = null,
         IReadOnlyList<string>? clientWarnings = null,
-        bool? alternateSpeedLimitEnabled = null)
+        bool? alternateSpeedLimitEnabled = null,
+        int? activeDownloadLimit = null)
     {
         var normalizedQueue = (queue ?? [])
             .Select(DownloadClientHelpers.NormalizeQueueFailure)
@@ -141,7 +142,8 @@ public abstract class DownloadClientBase : IDownloadClient
             ClientPaused = clientPaused,
             ClientVersion = clientVersion,
             ClientWarnings = clientWarnings,
-            AlternateSpeedLimitEnabled = alternateSpeedLimitEnabled
+            AlternateSpeedLimitEnabled = alternateSpeedLimitEnabled,
+            ActiveDownloadLimit = activeDownloadLimit is > 0 ? activeDownloadLimit : null
         };
     }
 

@@ -167,11 +167,14 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
             {
                 progress = 99.99d;
             }
+            var rowStatus = QueueRowStatus(item.Status, progress, payload?.Queue?.Paused == true);
             return new DownloadQueueItem(item.NzoId ?? item.Filename ?? Guid.CreateVersion7().ToString("N"), client.Id, client.Name, client.Protocol,
                 DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.Filename ?? "Unknown SABnzbd item"),
-                item.Filename ?? "Unknown SABnzbd item", item.Category ?? string.Empty, QueueRowStatus(item.Status, progress, payload?.Queue?.Paused == true), progress,
+                item.Filename ?? "Unknown SABnzbd item", item.Category ?? string.Empty, rowStatus, progress,
                 ParseMegabytes(payload?.Queue?.Speed), ParseEta(item.TimeLeft), sizeBytes, downloadedBytes, 0, "SABnzbd",
-                QueueError(item.Status), capturedUtc);
+                QueueError(item.Status), capturedUtc,
+                // #1493: SABnzbd's slot index is the job's place in its queue (0 is first), read while it holds the job back.
+                QueuePosition: rowStatus == DownloadQueueStatuses.Queued && item.Index is >= 0 ? item.Index + 1 : null);
         }).ToArray();
         var history = await GetHistoryCoreAsync(http, client, baseUri, apiKey, capturedUtc, cancellationToken);
         var freeSpaceBytes = ParseGbString(payload?.Queue?.DiskSpace1);
@@ -1189,7 +1192,7 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory, 
         [property: JsonPropertyName("paused")] bool? Paused,
         // #813: set once SABnzbd has a queue-level warning waiting.
         [property: JsonPropertyName("have_warnings")] string? HaveWarnings);
-    private sealed record SabSlot([property: JsonPropertyName("nzo_id")] string? NzoId, [property: JsonPropertyName("filename")] string? Filename, [property: JsonPropertyName("cat")] string? Category, [property: JsonPropertyName("status")] string? Status, [property: JsonPropertyName("mb")] string? Mb, [property: JsonPropertyName("mbleft")] string? Mbleft, [property: JsonPropertyName("timeleft")] string? TimeLeft);
+    private sealed record SabSlot([property: JsonPropertyName("nzo_id")] string? NzoId, [property: JsonPropertyName("filename")] string? Filename, [property: JsonPropertyName("cat")] string? Category, [property: JsonPropertyName("status")] string? Status, [property: JsonPropertyName("mb")] string? Mb, [property: JsonPropertyName("mbleft")] string? Mbleft, [property: JsonPropertyName("timeleft")] string? TimeLeft, [property: JsonPropertyName("index")] int? Index = null);
     private sealed record SabHistoryResponse([property: JsonPropertyName("history")] SabHistory? History);
     private sealed record SabHistory([property: JsonPropertyName("slots")] IReadOnlyList<SabHistorySlot>? Slots);
     private sealed record SabHistorySlot([property: JsonPropertyName("nzo_id")] string? NzoId, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("category")] string? Category, [property: JsonPropertyName("status")] string? Status, [property: JsonPropertyName("bytes")] JsonElement? Bytes, [property: JsonPropertyName("completed")] long? Completed, [property: JsonPropertyName("fail_message")] string? FailMessage, [property: JsonPropertyName("storage")] string? Storage, [property: JsonPropertyName("script")] string? Script);

@@ -200,11 +200,34 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
             .ToArray();
         var freeSpaceBytes = await GetFreeSpaceBytesAsync(http, baseUri, cancellationToken);
         var clientVersion = await GetVersionAsync(http, baseUri, cancellationToken);
+        var activeDownloadLimit = await GetActiveDownloadLimitAsync(http, baseUri, cancellationToken);
         var (health, message) = DownloadClientHelpers.EvaluateDiskSpaceHealth(
             $"Connected to Deluge at {baseUri.Host}:{baseUri.Port}.",
             freeSpaceBytes,
             null);
-        return CreateSnapshot(client, queue, capturedUtc, health, message, freeSpaceBytes: freeSpaceBytes, clientVersion: clientVersion);
+        return CreateSnapshot(client, queue, capturedUtc, health, message, freeSpaceBytes: freeSpaceBytes, clientVersion: clientVersion, activeDownloadLimit: activeDownloadLimit);
+    }
+
+    /// <summary>
+    /// Deluge's <c>max_active_downloading</c> (#1493), asked with <c>core.get_config_values</c>: how many downloads it runs at once
+    /// before it queues the rest. -1 is unlimited. Null when it will not say.
+    /// </summary>
+    internal static async Task<int?> GetActiveDownloadLimitAsync(HttpClient http, Uri baseUri, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<JsonElement>>(
+                http, new Uri(baseUri, "json"), new DelugeRequest("core.get_config_values", [new[] { "max_active_downloading" }], 14), cancellationToken);
+            var config = response?.Result ?? default;
+            return config.ValueKind == JsonValueKind.Object
+                && config.TryGetProperty("max_active_downloading", out var limit)
+                && limit.ValueKind == JsonValueKind.Number
+                && limit.TryGetInt32(out var value) && value > 0 ? value : null;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

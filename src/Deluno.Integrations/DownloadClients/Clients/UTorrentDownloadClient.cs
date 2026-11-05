@@ -234,6 +234,8 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
             var ratioPerMille = item.Count > 7 ? (double?)AsDouble(item[7]) : null;
             var statusMessage = item.Count > 21 ? AsString(item[21]) : string.Empty;
             var savePath = item.Count > 26 ? AsString(item[26]) : null;
+            // #1493: index 17 is uTorrent's queue order (1 is first), read only while it holds the torrent back.
+            var queueOrder = item.Count > 17 ? (int)AsDouble(item[17]) : 0;
 
             var status = NormalizeStatus(statusBits.ToString(CultureInfo.InvariantCulture), progress);
             var errored = (statusBits & UTorrentStatus.Error) != 0;
@@ -264,7 +266,8 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
                 // message says the release itself is gone (#943), which is never
                 // a setup problem.
                 IsSetupProblem: errored && !looksUnregistered,
-                TrackerStatus: looksUnregistered ? DownloadTrackerStatuses.Unregistered : DownloadTrackerStatuses.Unknown);
+                TrackerStatus: looksUnregistered ? DownloadTrackerStatuses.Unregistered : DownloadTrackerStatuses.Unknown,
+                QueuePosition: status == DownloadQueueStatuses.Queued && queueOrder > 0 ? queueOrder : null);
 
             // The one rule every torrent adapter applies (#650). uTorrent's own
             // status is decoded above rather than guessed from progress/speed,
@@ -272,7 +275,45 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
             // reimplemented here (#659 owns this function's own logic).
             return DownloadClientHelpers.ReconcileTorrentStatus(queueItem, capturedUtc);
         }).ToArray();
-        return CreateSnapshot(client, queue, capturedUtc, "healthy", $"Connected to uTorrent at {baseUri.Host}:{baseUri.Port}.");
+        return CreateSnapshot(client, queue, capturedUtc, "healthy", $"Connected to uTorrent at {baseUri.Host}:{baseUri.Port}.",
+            activeDownloadLimit: await ReadActiveDownloadLimitAsync(http, token, cancellationToken));
+    }
+
+    /// <summary>
+    /// uTorrent's "max_active_downloads" setting (#1493), from the Web UI's <c>getsettings</c> (rows of name, type, value). Null when it will not say.
+    /// </summary>
+    internal static async Task<int?> ReadActiveDownloadLimitAsync(HttpClient http, string token, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await http.GetAsync($"gui/?token={Uri.EscapeDataString(token)}&action=getsettings", cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            if (document.RootElement.ValueKind != JsonValueKind.Object || !document.RootElement.TryGetProperty("settings", out var rows) || rows.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            foreach (var row in rows.EnumerateArray())
+            {
+                if (row.ValueKind == JsonValueKind.Array && row.GetArrayLength() > 2
+                    && row[0].ValueKind == JsonValueKind.String && row[0].GetString() == "max_active_downloads"
+                    && int.TryParse(row[2].GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var limit))
+                {
+                    return limit > 0 ? limit : null;
+                }
+            }
+
+            return null;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            return null;
+        }
     }
 
     public override async Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)

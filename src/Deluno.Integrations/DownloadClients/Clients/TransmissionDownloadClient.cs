@@ -176,12 +176,12 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             TrackerHosts: DownloadClientHelpers.HostsOf((item.TrackerStats ?? []).Select(stat => stat.Announce))))
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
-        var (freeSpaceBytes, clientVersion, alternateSpeedLimitEnabled) = await ReadSessionAsync(client, baseUri, cancellationToken);
+        var (freeSpaceBytes, clientVersion, alternateSpeedLimitEnabled, activeDownloadLimit) = await ReadSessionAsync(client, baseUri, cancellationToken);
         var (health, message) = DownloadClientHelpers.EvaluateDiskSpaceHealth(
             $"Connected to Transmission at {baseUri.Host}:{baseUri.Port}.",
             freeSpaceBytes,
             null);
-        return CreateSnapshot(client, queue, capturedUtc, health, message, freeSpaceBytes: freeSpaceBytes, clientVersion: clientVersion, alternateSpeedLimitEnabled: alternateSpeedLimitEnabled);
+        return CreateSnapshot(client, queue, capturedUtc, health, message, freeSpaceBytes: freeSpaceBytes, clientVersion: clientVersion, alternateSpeedLimitEnabled: alternateSpeedLimitEnabled, activeDownloadLimit: activeDownloadLimit);
     }
 
     /// <summary>
@@ -222,31 +222,34 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
     /// with nothing configured to ask about, reports nothing rather than a
     /// guessed number.
     /// </summary>
-    private async Task<(long? FreeSpaceBytes, string? Version, bool? AlternateSpeedLimitEnabled)> ReadSessionAsync(DownloadClientItem client, Uri baseUri, CancellationToken cancellationToken)
+    private async Task<(long? FreeSpaceBytes, string? Version, bool? AlternateSpeedLimitEnabled, int? ActiveDownloadLimit)> ReadSessionAsync(DownloadClientItem client, Uri baseUri, CancellationToken cancellationToken)
     {
         string? version = null;
         bool? alternateSpeedLimit = null;
+        int? activeLimit = null;
         try
         {
             // The same session-get also carries Transmission's own version (#1117), "4.0.5 (a6fe2de319)".
-            var session = await SendAsync(client, baseUri, new TransmissionRequest("session-get", new() { ["fields"] = new[] { "download-dir", "version", "alt-speed-enabled" } }), cancellationToken);
+            var session = await SendAsync(client, baseUri, new TransmissionRequest("session-get", new() { ["fields"] = new[] { "download-dir", "version", "alt-speed-enabled", "download-queue-enabled", "download-queue-size" } }), cancellationToken);
             version = Deluno.Connections.Versions.ConnectionVersionParsers.Clean(session.Arguments?.Version);
             // #1194: Transmission's alternate speed limit ("turtle mode"), so a Too slow rule can skip while it is on.
             alternateSpeedLimit = session.Arguments?.AltSpeedEnabled;
+            // #1493: how many downloads Transmission runs at once; the rest wait in its queue.
+            activeLimit = session.Arguments?.DownloadQueueEnabled == true ? session.Arguments?.DownloadQueueSize : null;
             var downloadDir = session.Arguments?.DownloadDir;
             if (string.IsNullOrWhiteSpace(downloadDir))
             {
-                return (null, version, alternateSpeedLimit);
+                return (null, version, alternateSpeedLimit, activeLimit);
             }
 
             var freeSpace = await SendAsync(client, baseUri, new TransmissionRequest("free-space", new() { ["path"] = downloadDir }), cancellationToken);
             // #1060: a download folder that does not exist yet answers nothing; measure the drive it will be created on.
             return (freeSpace.Arguments?.SizeBytes
-                ?? (ClientSaveFolders.IsSameMachine(client) ? DownloadClientHelpers.FreeSpaceOfNearestExistingFolder(downloadDir) : null), version, alternateSpeedLimit);
+                ?? (ClientSaveFolders.IsSameMachine(client) ? DownloadClientHelpers.FreeSpaceOfNearestExistingFolder(downloadDir) : null), version, alternateSpeedLimit, activeLimit);
         }
         catch (Exception exception) when (exception is HttpRequestException or System.Text.Json.JsonException or TaskCanceledException)
         {
-            return (null, version, alternateSpeedLimit);
+            return (null, version, alternateSpeedLimit, activeLimit);
         }
     }
 

@@ -587,6 +587,14 @@ public sealed record DownloadClientTelemetrySnapshot(
     /// client that never claimed to be throttled.
     /// </summary>
     public bool? AlternateSpeedLimitEnabled { get; init; }
+
+    /// <summary>
+    /// #1493: how many downloads this client runs at once before it holds the rest in its own queue
+    /// (qBittorrent's and uTorrent's Maximum active downloads, Transmission's download queue size, Deluge's
+    /// max active downloading). Null where the client has no such limit, has queueing turned off, says
+    /// unlimited, or does not expose it (Usenet clients run one job at a time and report no number).
+    /// </summary>
+    public int? ActiveDownloadLimit { get; init; }
 }
 
 public sealed record DownloadTelemetryOverview(
