@@ -145,7 +145,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   // The one shared grid (beside the right column): its rows come from the height the tab itself has.
   const [gridRef, grid] = useElementSize<HTMLDivElement>();
   // The mockup's row heights are shares of the window's height (the page is fit to the window beside the right column), re-read whenever the grid is resized.
-  const windowHeight = typeof window === "undefined" ? 0 : window.innerHeight;
+  const windowHeight = window.innerHeight;
   const rows = gridRows(grid.height, grid.height);
   // Activity's rows go to one line when its row is short.
   const compactActivity = side && rows.low < 12.5 * rem;

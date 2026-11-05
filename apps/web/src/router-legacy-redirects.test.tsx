@@ -23,6 +23,14 @@ vi.mock("./routes/library-page", () => ({ showsLoader: () => null, moviesLoader:
 vi.mock("./routes/show-detail-page", () => ({ showDetailLoader: () => null, ShowDetailPage: () => <p>Show page</p> }));
 
 async function openLegacy(path: string) {
+
+// The Dashboard is only the page a redirect lands on here. Loading the real one would give the coverage report a copy of
+// its file with almost nothing run, and v8's merge of that copy with the Dashboard's own tests' loses their branches.
+vi.mock("./routes/dashboard-page", () => ({
+  dashboardLoader: () => null,
+  dashboardShouldRevalidate: () => false,
+  DashboardPage: () => <p>The Dashboard</p>
+}));
   const { router } = await import("./router");
   await act(async () => { await router.navigate(path); });
   const view = render(<RouterProvider router={router} />);

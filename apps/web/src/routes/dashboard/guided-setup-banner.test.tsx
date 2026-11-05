@@ -57,6 +57,20 @@ describe("the Dashboard's guided-setup banner", () => {
     expect(JSON.parse(init.body)).toEqual({ lastCompletedStep: 3, isSkipped: true, isCompleted: false });
   });
 
+  it("still hides the banner when the save of the skip cannot be made (a dropped connection is not an error on the page)", async () => {
+    authedFetchMock.mockRejectedValue(new Error("offline"));
+    renderTab();
+    await screen.findByRole("region", { name: "Guided setup" });
+    await waitFor(() => expect(progressReads).toBeGreaterThan(0));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); }); // reason: lets the answered read reach the screen before the X is pressed
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss onboarding" }));
+
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); }); // reason: lets the refused save's catch run before the test ends
+    expect(screen.queryByRole("region", { name: "Guided setup" })).toBeNull();
+  });
+
   it("is not shown when the guide was skipped", async () => {
     progress = { ...progress, isSkipped: true };
     renderTab();

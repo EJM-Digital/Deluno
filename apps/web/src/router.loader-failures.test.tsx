@@ -15,6 +15,14 @@ vi.mock("./lib/use-auth", async (importActual) => ({
   })
 }));
 
+
+// The Dashboard is only the page a redirect lands on here. Loading the real one would give the coverage report a copy of
+// its file with almost nothing run, and v8's merge of that copy with the Dashboard's own tests' loses their branches.
+vi.mock("./routes/dashboard-page", () => ({
+  dashboardLoader: () => null,
+  dashboardShouldRevalidate: () => false,
+  DashboardPage: () => <p>The Dashboard</p>
+}));
 const { router } = await import("./router");
 
 function find(routes: readonly RouteObject[], address: string, parent = ""): RouteObject | undefined {

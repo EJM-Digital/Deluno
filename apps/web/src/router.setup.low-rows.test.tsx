@@ -7,6 +7,14 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("./lib/bootstrap-status", () => ({ readRequiresSetup: async () => false }));
 
+// The Dashboard is only the page a redirect lands on here. Loading the real one would give the coverage report a copy of
+// its file with almost nothing run, and v8's merge of that copy with the Dashboard's own tests' loses their branches.
+vi.mock("./routes/dashboard-page", () => ({
+  dashboardLoader: () => null,
+  dashboardShouldRevalidate: () => false,
+  DashboardPage: () => <p>The Dashboard</p>
+}));
+
 const guideLoader = vi.hoisted(() => ({ release: null as null | (() => void) }));
 vi.mock("./routes/setup-guide-page", () => ({
   setupGuideLoader: () => new Promise((resolve) => { guideLoader.release = () => resolve({ ready: true }); }),

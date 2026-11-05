@@ -10,6 +10,14 @@ vi.mock("./lib/bootstrap-status", () => ({ readRequiresSetup: async () => status
 vi.mock("./routes/recovery-page", () => ({ RecoveryPage: () => <p>The recovery page</p> }));
 vi.mock("./routes/settings-account-page", () => ({ SettingsAccountPage: () => <p>The account page</p> }));
 
+
+// The Dashboard is only the page a redirect lands on here. Loading the real one would give the coverage report a copy of
+// its file with almost nothing run, and v8's merge of that copy with the Dashboard's own tests' loses their branches.
+vi.mock("./routes/dashboard-page", () => ({
+  dashboardLoader: () => null,
+  dashboardShouldRevalidate: () => false,
+  DashboardPage: () => <p>The Dashboard</p>
+}));
 const { router } = await import("./router");
 
 function Where() {
