@@ -4372,7 +4372,11 @@ public sealed class DownloadClientTelemetryService(
                     {
                         "queued" or "running" => DownloadQueueStatuses.ImportQueued,
                         "completed" => DownloadQueueStatuses.Imported,
-                        "failed" or "dead-letter" => DownloadQueueStatuses.ImportFailed,
+                        // #1511: the title got its file another way and Deluno closed this download's failure
+                        // (its dispatch reads imported), so the failed job it left behind is history.
+                        "failed" or "dead-letter" => ImportJobFailureWasSettled(item, dispatches)
+                            ? DownloadQueueStatuses.Imported
+                            : DownloadQueueStatuses.ImportFailed,
                         _ => item.Status
                     }
                     : item.Status;
@@ -5012,6 +5016,24 @@ public sealed class DownloadClientTelemetryService(
             .OrderByDescending(dispatch => dispatch.CreatedUtc)
             .FirstOrDefault();
 
+        return latestDispatch is not null
+            && string.Equals(latestDispatch.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// True when the latest dispatch of this download reads imported although its import job failed: the title got its
+    /// file by another route and the failure was settled (#1511), so the row must not keep reading import failed.
+    /// </summary>
+    internal static bool ImportJobFailureWasSettled(
+        DownloadQueueItem item,
+        IReadOnlyList<DownloadDispatchItem> dispatches)
+    {
+        var latestDispatch = dispatches
+            .Where(dispatch =>
+                string.Equals(dispatch.DownloadClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(dispatch.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(dispatch => dispatch.CreatedUtc)
+            .FirstOrDefault();
         return latestDispatch is not null
             && string.Equals(latestDispatch.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase);
     }

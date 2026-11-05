@@ -5120,7 +5120,18 @@ public sealed partial class ImportPipelineService(
 
         if (library is null || !cleanupEnabled)
         {
-            return new WorkflowCleanupResult("keep-source", false, 0, "Source kept because this workflow is configured to retain completed downloads.");
+            // #1510: say what the import did to the source, read from the outcome. A move
+            // leaves nothing behind, whatever the cleanup setting says.
+            var movedAway = string.Equals(transferModeUsed, "move", StringComparison.OrdinalIgnoreCase) && !File.Exists(sourcePath);
+            return new WorkflowCleanupResult(
+                "keep-source",
+                false,
+                0,
+                movedAway
+                    ? "The file was moved into the library, so nothing is left at the source."
+                    : string.Equals(transferModeUsed, "hardlink", StringComparison.OrdinalIgnoreCase)
+                        ? "Hardlinked; the source is kept because this workflow is configured to retain completed downloads."
+                        : "Source kept because this workflow is configured to retain completed downloads.");
         }
 
         // The sharing rule owns this file now. It knows how long the site the
@@ -5196,7 +5207,9 @@ public sealed partial class ImportPipelineService(
                     : isProcessorOutput
                         ? $"The processor's copy was removed, along with {emptyFoldersRemoved} leftover item(s) from that hand-off."
                         : $"The completed source file was removed and {emptyFoldersRemoved} empty source folder(s) cleaned up."
-                : "The source file was already gone, so there was nothing left to remove."
+                : string.Equals(transferModeUsed, "move", StringComparison.OrdinalIgnoreCase)
+                    ? "The file was moved into the library, so nothing is left at the source."
+                    : "The source file was already gone, so there was nothing left to remove."
             : $"Import succeeded, but source cleanup was not completed: {warning}";
 
         return new WorkflowCleanupResult("remove-source-after-import", sourceRemoved, emptyFoldersRemoved, summary, warning);
