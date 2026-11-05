@@ -53,9 +53,9 @@ test.describe("New download health rule", () => {
     await untilQuiet(page);
     await page.getByRole("button", { name: "New rule", exact: true }).first().click();
     const drawer = page.getByRole("dialog", { name: "New download health rule" });
-    await drawer.getByLabel("Strikes before it acts").fill("500");
+    await drawer.getByLabel("Strikes before it acts").fill("1000");
     await drawer.getByRole("button", { name: "Create rule", exact: true }).click();
-    await expect(drawer.getByText(/1 and 100|between 1/i).first()).toBeVisible();
+    await expect(drawer.getByText(/1 and 999|between 1/i).first()).toBeVisible();
     expect((await rules(page)).length).toBe(count);
   });
 });
