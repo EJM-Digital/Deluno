@@ -46,6 +46,10 @@ describe("the shared page grid", () => {
     // avail 1108; band round(226.4) = 226; journey 398; low 484 keeps max(260, round(365.6) = 366), so the journey grows by 108 (its cap) to 506; low 376.
     expect(gridRows(1132, 1132)).toEqual({ band: 226, journey: 506, low: 376, template: "226px 506px 376px" });
   });
+  it("takes the height it is given when no separate available height is, and assumes 1000 when it has neither", () => {
+    expect(gridRows(800)).toEqual(gridRows(800, 800));
+    expect(gridRows(0)).toEqual(gridRows(1000, 1000));
+  });
   it("draws the same rows whatever the bottom row's content would like", () => {
     const rule = gridRows as (...args: unknown[]) => ReturnType<typeof gridRows>;
     for (const need of [0, 180, 323, 500, 900]) expect(rule(1132, 1132, { lowNeed: need })).toEqual(gridRows(1132, 1132));

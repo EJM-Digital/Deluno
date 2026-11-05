@@ -104,3 +104,29 @@ describe("Live: per-client speed (low rows)", () => {
     expect(within(clients).getByLabelText(/Deluge: .*3\.8 MB\/s/)).toBeInTheDocument();
   });
 });
+
+describe("Live: a reading that is not a number, and a narrow page", () => {
+  it("counts a download whose speed is not a number as no speed rather than spoiling the client's total", async () => {
+    seed("2026-09-30T10:00:00Z");
+    const telemetry = lists["/api/download-clients/telemetry"] as { clients: { queue: { id: string; speedMbps: number | null }[] }[] };
+    telemetry.clients[0]!.queue.find((item) => item.id === "q2")!.speedMbps = null;
+    renderTab();
+    const clients = screen.getByRole("region", { name: "Download clients" });
+    // Only the first download's 1.8 counts.
+    expect(await within(clients).findByLabelText(/Deluge: .*1\.8 MB\/s/)).toBeInTheDocument();
+  });
+
+  it("stacks the cards when the page is narrower than the side-by-side width", async () => {
+    seed("2026-09-30T10:00:00Z");
+    const box = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600, x: 0, y: 0, toJSON: () => ({}) });
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} unobserve() {} });
+    try {
+      const { container } = renderTab();
+      await waitFor(() => expect(container.querySelector("[data-page-layout='below']")).not.toBeNull());
+      expect(container.querySelector("[data-live-grid='stacked']")).not.toBeNull();
+    } finally {
+      box.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+});

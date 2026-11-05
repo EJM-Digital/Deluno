@@ -28,6 +28,13 @@ public sealed class FileNameSanitizerTests
     }
 
     [Fact]
+    public void A_colon_that_ends_the_name_has_no_space_after_it_to_take_so_it_becomes_a_dash()
+    {
+        Assert.Equal("Mission-", FileNameSanitizer.Sanitize("Mission:"));
+        Assert.Equal("Mission-", FileNameSanitizer.Sanitize("Mission:", colonReplacementMode: ColonReplacementModes.SmartReplace));
+    }
+
+    [Fact]
     public void With_replacing_off_illegal_characters_and_colons_are_dropped_not_replaced()
     {
         Assert.Equal("Mission Impossible", FileNameSanitizer.Sanitize("Mission: Impossible", replaceIllegalCharacters: false));
