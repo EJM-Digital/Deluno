@@ -6,7 +6,6 @@ Thumbs.db
 .env
 .env.local
 coverage/
-.vitest-reports/
 !/scripts/coverage/
 *.log
 *.tsbuildinfo

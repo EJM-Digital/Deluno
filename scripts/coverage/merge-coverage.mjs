@@ -97,11 +97,16 @@ export function parseLcov(text, { repoRoot = "", prefix = "" } = {}) {
       const [n, hits] = line.slice(3).split(",");
       addLine(file, Number(n), Number(hits) || 0);
     } else if (line.startsWith("BRDA:") && file) {
-      const [n, , , taken] = line.slice(5).split(",");
+      const [n, block, branch, taken] = line.slice(5).split(",");
       const entry = perLine.get(n) ?? { covered: 0, total: 0 };
       entry.total += 1;
-      if (taken !== "-" && Number(taken) > 0) entry.covered += 1;
+      const hit = taken !== "-" && Number(taken) > 0;
+      if (hit) entry.covered += 1;
       perLine.set(n, entry);
+      // Each branch by its own id too, so reports of one file from several test shards add up branch by branch (#1485).
+      file.lcovBranches ??= new Map();
+      const key = `${n}:${block}:${branch}`;
+      file.lcovBranches.set(key, (file.lcovBranches.get(key) ?? false) || hit);
     } else if (line === "end_of_record" && file) {
       for (const [n, e] of perLine) addBranches(file, Number(n), e.covered, e.total);
       perLine.clear();
@@ -118,7 +123,25 @@ export function mergeFiles(...maps) {
       const target = fileOf(out, name);
       for (const [n, hits] of f.lines) addLine(target, n, hits);
       for (const [n, b] of f.branches) addBranches(target, n, b.covered, b.total);
+      if (f.lcovBranches) {
+        target.lcovBranches ??= new Map();
+        for (const [key, hit] of f.lcovBranches) target.lcovBranches.set(key, (target.lcovBranches.get(key) ?? false) || hit);
+      }
     }
+  }
+  // A file the lcov reports name branch by branch is counted from their union: a branch one shard took and another did not is
+  // covered. Keeping the line with the most covered branches instead undercounted a line two shards each half covered.
+  for (const f of out.values()) {
+    if (!f.lcovBranches) continue;
+    const perLine = new Map();
+    for (const [key, hit] of f.lcovBranches) {
+      const n = Number(key.split(":")[0]);
+      const entry = perLine.get(n) ?? { covered: 0, total: 0 };
+      entry.total += 1;
+      if (hit) entry.covered += 1;
+      perLine.set(n, entry);
+    }
+    for (const [n, e] of perLine) f.branches.set(n, e);
   }
   return out;
 }

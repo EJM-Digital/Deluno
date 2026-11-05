@@ -110,10 +110,11 @@ test("cobertura: a relative filename is resolved against the first <source>; cla
 });
 
 
-test("merging keeps the wider branch set and the higher covered count at equal width", () => {
+test("merging lcov counts the union of the branches each report took, over the widest set of branches", () => {
   const narrow = parseLcov("SF:a.ts\nBRDA:1,0,0,1\nend_of_record\n");
   const wide = parseLcov("SF:a.ts\nBRDA:1,0,0,0\nBRDA:1,0,1,1\nend_of_record\n");
-  assert.deepEqual(mergeFiles(narrow, wide).get("a.ts").branches.get(1), { covered: 1, total: 2 });
+  // Branch 0 was taken in one report and branch 1 in the other: both are covered (#1485; this used to read 1 of 2).
+  assert.deepEqual(mergeFiles(narrow, wide).get("a.ts").branches.get(1), { covered: 2, total: 2 });
   const more = parseLcov("SF:a.ts\nBRDA:1,0,0,1\nBRDA:1,0,1,1\nend_of_record\n");
   assert.deepEqual(mergeFiles(wide, more).get("a.ts").branches.get(1), { covered: 2, total: 2 });
 });
@@ -197,4 +198,17 @@ test("command line: with no exclusions or outputs it still reports; no report or
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("lcov from several test shards: a line each shard half covers counts both branches (#1485)", () => {
+  const shard = (first, second) => `SF:src/a.ts\nDA:4,1\nBRDA:4,0,0,${first}\nBRDA:4,0,1,${second}\nend_of_record\n`;
+  const merged = mergeFiles(parseLcov(shard(1, 0)), parseLcov(shard(0, 3)));
+  assert.deepEqual(merged.get("src/a.ts").branches.get(4), { covered: 2, total: 2 });
+  assert.deepEqual(buildReport(merged).files["src/a.ts"].branches, { covered: 2, total: 2 });
+});
+
+test("lcov from several shards: a branch no shard took stays uncovered, and '-' is not taken", () => {
+  const shard = (first) => `SF:src/b.ts\nDA:1,1\nBRDA:1,0,0,${first}\nBRDA:1,0,1,-\nend_of_record\n`;
+  const merged = mergeFiles(parseLcov(shard(2)), parseLcov(shard(0)));
+  assert.deepEqual(merged.get("src/b.ts").branches.get(1), { covered: 1, total: 2 });
 });
