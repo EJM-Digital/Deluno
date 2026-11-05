@@ -127,7 +127,8 @@ public sealed record DashboardClientRow(
     long? FreeSpaceBytes,
     string HealthStatus,
     int Active,
-    int Queued);
+    int Queued,
+    int? ActiveDownloadLimit = null);
 
 /// <param name="Scanned">False until a leftover scan has run, when the count is unknown rather than zero.</param>
 public sealed record DashboardLeftovers(bool Scanned, int Count, long Bytes, DateTimeOffset? ScannedUtc);

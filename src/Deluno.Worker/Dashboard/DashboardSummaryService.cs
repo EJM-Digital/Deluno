@@ -332,7 +332,8 @@ public sealed class DashboardSummaryService : IDashboardSummaryService, IDashboa
                     snapshot?.FreeSpaceBytes,
                     client.HealthStatus,
                     snapshot?.Summary.ActiveCount ?? 0,
-                    snapshot?.Summary.QueuedCount ?? 0);
+                    snapshot?.Summary.QueuedCount ?? 0,
+                    snapshot?.ActiveDownloadLimit);
             })
             .ToArray();
 

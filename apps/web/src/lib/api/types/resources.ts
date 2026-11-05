@@ -1280,6 +1280,8 @@ export interface DownloadQueueItem {
   completionUtc?: string | null;
   /** #1026: this download's place in the client's own queue, 1 being next to start (Transmission and Deluge). Null where the client reports none. */
   queuePosition?: number | null;
+  /** #1493: set by the screen, never sent: what the download says while its client holds it in the client's own queue (see clientQueueNote). */
+  clientQueueNote?: { label: string; why: string | null } | null;
   /** #1026: this download's own seed limits in plain words (Transmission and Deluge). Null where the client says nothing. */
   seedLimit?: string | null;
 }
@@ -1674,6 +1676,8 @@ export interface DownloadClientTelemetrySnapshot {
   clientVersion?: string | null;
   /** The client's own queue-level warnings (#813) — SABnzbd's have_warnings/mode=warnings. Null/empty when it has none, or the protocol has no such concept. */
   clientWarnings?: string[] | null;
+  /** #1493: how many downloads the client runs at once before it queues the rest (qBittorrent, Transmission, Deluge, uTorrent). Null where it has no such limit or does not say. */
+  activeDownloadLimit?: number | null;
 }
 
 /** One stored reading of combined throughput, both directions. */

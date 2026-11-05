@@ -115,3 +115,42 @@ export function stuckNextStep(item: DownloadQueueItem, now = Date.now()): string
   if (finding) return "needs a look";
   return "not moving";
 }
+
+/** 1st, 2nd, 3rd, 11th: a place in a line, in words. */
+export function ordinal(position: number) {
+  const tens = position % 100;
+  if (tens >= 11 && tens <= 13) return `${position}th`;
+  return `${position}${({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[position % 10] ?? "th"}`;
+}
+
+/** The client itself is holding this download back in its own queue (qBittorrent's queuedDL, Transmission's queued, Deluge's Queued, and so on): not Grabbed, not stuck (#1493). */
+export function isHeldInClientQueue(item: Pick<DownloadQueueItem, "status">) {
+  return item.status === downloadQueueStatuses.queued;
+}
+
+export interface ClientQueueNote {
+  /** "Waiting in qBittorrent's queue, 2nd of 3". */
+  label: string;
+  /** Why it waits, when the client says how many it runs at once: "qBittorrent runs 3 downloads at once". */
+  why: string | null;
+}
+
+/**
+ * What a download the client holds in its own queue says (#1493). Its place counts only the downloads waiting in that same client,
+ * ordered by the place the client reports (a client counts every torrent, running ones too, so its own number would read "11th"
+ * for the first one waiting). A client that reports no place says only that it is waiting. Null for a download that is not held.
+ */
+export function clientQueueNote(item: DownloadQueueItem, queue: readonly DownloadQueueItem[], activeDownloadLimit?: number | null): ClientQueueNote | null {
+  if (!isHeldInClientQueue(item)) return null;
+  const name = item.clientName || "the client";
+  let label = `Waiting in ${name}'s queue`;
+  if (item.queuePosition != null && item.queuePosition > 0) {
+    const waiting = queue.filter((other) => other.clientId === item.clientId && isHeldInClientQueue(other));
+    const ahead = waiting.filter((other) => other.queuePosition != null && other.queuePosition > 0 && other.queuePosition <= (item.queuePosition as number)).length;
+    label += `, ${ordinal(Math.max(1, ahead))} of ${Math.max(waiting.length, ahead, 1)}`;
+  }
+  const why = activeDownloadLimit != null && activeDownloadLimit > 0
+    ? `${name} runs ${activeDownloadLimit} ${activeDownloadLimit === 1 ? "download" : "downloads"} at once`
+    : null;
+  return { label, why };
+}

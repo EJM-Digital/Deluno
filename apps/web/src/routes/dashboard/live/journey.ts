@@ -16,7 +16,7 @@
 import type { DownloadDispatchItem, DownloadQueueItem, ProcessorHandoffItem } from "../../../lib/api";
 import type { DashboardSummary } from "../../../lib/api/types/operations";
 import { dispatchImportEnded, dispatchStanding } from "../../../lib/dispatch-final-state";
-import { stuckNextStep, waitingWords } from "../../../lib/download-wait";
+import { clientQueueNote, isHeldInClientQueue, stuckNextStep, waitingWords } from "../../../lib/download-wait";
 import { handoffStatusLabel, isProcessorFailure, isWithProcessor, queueItemNeedsAttention } from "../../../lib/needs-action";
 import type { Tone } from "../../../lib/status-tones";
 import type { LiveProgress, WorkItem } from "../live-events";
@@ -246,7 +246,7 @@ function dispatchClosed(dispatch: DownloadDispatchItem | null | undefined): bool
 }
 
 /** Every card on the Live board, grouped by the caller with `byStage`. */
-export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapturedUtc, work = [] }: JourneyInput): JourneyCard[] {
+export function buildJourney({ queue, handoffs, dispatches, live, summary, now, queueCapturedUtc, work = [] }: JourneyInput): JourneyCard[] {
   const cards: JourneyCard[] = [];
   const dispatchByRelease = new Map<string, DownloadDispatchItem>();
   const dispatchByClientItem = new Map<string, DownloadDispatchItem>();
@@ -307,21 +307,26 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
     if (downloaded && !(handoff && isWithProcessor(handoff.status))) {
       stage = "importing";
       state = { tone: "idle", label: "Downloaded" };
+    } else if (isHeldInClientQueue(item)) {
+      // The client is holding it in its own queue (#1493): Deluno has done its part, so it is neither Grabbed nor stuck.
+      // It says its place in that queue and, where the client says it, why it waits.
+      const note = clientQueueNote(item, queue, summary?.downloads?.clients.find((client) => client.id === item.clientId)?.activeDownloadLimit);
+      stage = "downloading";
+      state = { tone: "info", label: note?.label ?? "Waiting in the client's queue" };
+      reason = note?.why ?? null;
+      waiting = true;
     } else if (beforeTheProcessor && queueItemNeedsAttention(item)) {
       // Stopped moving: it stays where it is, amber, while Deluno finds another copy.
-      stage = item.status === "queued" ? "grabbed" : "downloading";
+      stage = "downloading";
       state = { tone: "warn", label: "Stuck" };
       reason = stuckReason(item);
       stuck = true;
       stuckNext = stuckNextStep(item, now);
-    } else if (beforeTheProcessor && item.status !== "queued" && waitingWords(item, now)) {
+    } else if (beforeTheProcessor && waitingWords(item, now)) {
       // Not stuck until the stall rule says so (#1449): a new download says what it is waiting for.
       stage = "downloading";
       state = { tone: "info", label: waitingWords(item, now) as string };
       waiting = true;
-    } else if (item.status === "queued") {
-      stage = "grabbed";
-      state = { tone: "info", label: "Waiting in the client" };
     } else if (DOWNLOADING.includes(item.status)) {
       stage = "downloading";
       state = item.status === "paused" ? { tone: "idle", label: "Paused" } : item.status === "notTransferring" ? { tone: "info", label: "Checking files" } : { tone: "info", label: "Downloading" };

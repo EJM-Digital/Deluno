@@ -212,7 +212,7 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
     /// Deluge's <c>max_active_downloading</c> (#1493), asked with <c>core.get_config_values</c>: how many downloads it runs at once
     /// before it queues the rest. -1 is unlimited. Null when it will not say.
     /// </summary>
-    internal static async Task<int?> GetActiveDownloadLimitAsync(HttpClient http, Uri baseUri, CancellationToken cancellationToken)
+    private static async Task<int?> GetActiveDownloadLimitAsync(HttpClient http, Uri baseUri, CancellationToken cancellationToken)
     {
         try
         {

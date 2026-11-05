@@ -65,14 +65,14 @@ function item(release: string, overrides: Partial<DownloadQueueItem> = {}): Down
   };
 }
 
-function showQueue(items: DownloadQueueItem[]) {
+function showQueue(items: DownloadQueueItem[], activeDownloadLimit: number | null = null) {
   queueLoaderData.telemetry = {
     ...queueLoaderData.telemetry,
     clients: [{
       clientId: "qbit-client", clientName: "qBittorrent", protocol: "qbittorrent", endpointUrl: null, healthStatus: "healthy", lastHealthMessage: null,
       capabilities: { supportsQueue: true, supportsHistory: true, supportsPauseResume: true, supportsRemove: true, supportsRecheck: true, supportsImportPath: true, authMode: "form" },
       summary: { activeCount: 0, queuedCount: 0, completedCount: 0, stalledCount: 0, processingCount: 0, importReadyCount: 0, totalSpeedMbps: 0, totalUploadSpeedMbps: 0, waitingForProcessorCount: 0 },
-      queue: items, history: [], capturedUtc: new Date().toISOString(), historyTruncated: false
+      queue: items, history: [], capturedUtc: new Date().toISOString(), historyTruncated: false, activeDownloadLimit
     }]
   };
   render(
@@ -94,6 +94,29 @@ afterEach(() => {
   queueLoaderData.jobs = [];
   queueLoaderData.processorConnections = [];
   queueLoaderData.processorHandoffs = [];
+});
+
+describe("In progress: a download the client holds in its own queue (#1493)", () => {
+  const held = (release: string, queuePosition: number | null) => item(release, { status: "queued", progress: 0, downloadedBytes: 0, peers: 0, queuePosition });
+
+  it("says where it waits in the client's queue, its place among those waiting, and why", () => {
+    // The client counts every torrent, running ones too (6, 7 and 8 here): the place is among those waiting.
+    showQueue([held("Batman.2022.1080p-GRP", 6), held("Barbie.2023.1080p-GRP", 7), held("Deadpool.2024.1080p-GRP", 8)], 3);
+
+    const text = rowOf("Barbie.2023.1080p-GRP").text;
+    expect(text).toContain("Waiting in qBittorrent's queue, 2nd of 3");
+    expect(text).toContain("qBittorrent runs 3 downloads at once");
+    expect(text).not.toContain("Stuck");
+  });
+
+  it("says only that it waits when the client gives no place and no limit", () => {
+    showQueue([held("Heat.1995.1080p-GRP", null)]);
+
+    const text = rowOf("Heat.1995.1080p-GRP").text;
+    expect(text).toContain("Waiting in qBittorrent's queue");
+    expect(text).not.toContain("of 1");
+    expect(text).not.toContain("runs");
+  });
 });
 
 describe("In progress: the Stage column says where each download is", () => {

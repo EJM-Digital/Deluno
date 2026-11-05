@@ -902,6 +902,8 @@ export interface DashboardClientRow {
   healthStatus: string;
   active: number;
   queued: number;
+  /** #1493: how many downloads the client runs at once before it queues the rest; null where it has no such limit or does not say. */
+  activeDownloadLimit?: number | null;
 }
 
 export interface DashboardLeftovers {

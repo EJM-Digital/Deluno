@@ -617,14 +617,14 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
     }
 
     /// <summary>qBittorrent holds this torrent back itself (queuedDL), as against a person pausing it.</summary>
-    internal static bool IsHeldInItsQueue(string? state)
+    private static bool IsHeldInItsQueue(string? state)
         => string.Equals(state, "queuedDL", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// qBittorrent's "Maximum active downloads" (#1493), from <c>app/preferences</c>: only when queueing is on and the limit is
     /// a number (-1 is unlimited). Null when it will not say, so nothing is guessed.
     /// </summary>
-    internal static async Task<int?> ReadActiveDownloadLimitAsync(HttpClient http, CancellationToken cancellationToken)
+    private static async Task<int?> ReadActiveDownloadLimitAsync(HttpClient http, CancellationToken cancellationToken)
     {
         try
         {

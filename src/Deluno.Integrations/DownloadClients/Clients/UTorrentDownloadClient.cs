@@ -282,7 +282,7 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
     /// <summary>
     /// uTorrent's "max_active_downloads" setting (#1493), from the Web UI's <c>getsettings</c> (rows of name, type, value). Null when it will not say.
     /// </summary>
-    internal static async Task<int?> ReadActiveDownloadLimitAsync(HttpClient http, string token, CancellationToken cancellationToken)
+    private static async Task<int?> ReadActiveDownloadLimitAsync(HttpClient http, string token, CancellationToken cancellationToken)
     {
         try
         {

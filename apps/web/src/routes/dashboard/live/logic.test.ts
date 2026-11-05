@@ -110,8 +110,10 @@ describe("the journey of a title", () => {
       queue: [queue({ id: "a", status: "queued" }), queue({ id: "b", releaseName: "B.2011" }), queue({ id: "c", releaseName: "C.2012", status: "importReady" }), queue({ id: "d", releaseName: "D.2013", status: "waitingForProcessor" }), queue({ id: "e", releaseName: "E.2014", status: "imported" })]
     });
     const grouped = byStage(cards);
-    expect(grouped.grabbed.map((card) => card.key)).toEqual(["c1:a"]);
-    expect(grouped.downloading[0]).toMatchObject({ client: "Deluge", indexer: "NZBgeek", progress: 40, state: { label: "Downloading", tone: "info" } });
+    // A download the client holds in its own queue is neither Grabbed nor stuck (#1493): it is waiting in the client.
+    expect(grouped.grabbed).toEqual([]);
+    expect(grouped.downloading.find((card) => card.key === "c1:a")).toMatchObject({ waiting: true, stuck: false, state: { tone: "info", label: "Waiting in Deluge's queue" } });
+    expect(grouped.downloading.find((card) => card.key === "c1:b")).toMatchObject({ client: "Deluge", indexer: "NZBgeek", progress: 40, state: { label: "Downloading", tone: "info" } });
     expect(grouped.importing.map((card) => card.key)).toEqual(["c1:c"]);
     expect(grouped.processor[0].state.label).toBe("Being handed over");
     expect(cards.some((card) => card.key === "c1:e")).toBe(false);
@@ -166,8 +168,8 @@ describe("the journey of a title", () => {
   it("says each lane's count from the cards it draws, never from the summary (#1446)", () => {
     const grouped = byStage(buildJourney({ ...base, queue: [queue({ id: "a", status: "queued" })] }));
     const counts = laneCounts(grouped, fullSummary);
-    expect(counts.grabbed).toBe(1);
-    expect(counts.downloading).toBe(0);
+    expect(counts.grabbed).toBe(0);
+    expect(counts.downloading).toBe(1);
     expect(counts.processor).toBe(0);
     expect(counts.importing).toBe(0);
     expect(counts.imported).toBe(4);
@@ -192,7 +194,7 @@ describe("the journey of a title", () => {
   });
 
   it("finds the cards that changed stage since the last look", () => {
-    const before = new Map<string, Stage>([["c1:b", "downloading"], ["c1:x", "grabbed"]]);
+    const before = new Map<string, Stage>([["c1:b", "downloading"], ["c1:x", "downloading"]]);
     const cards = buildJourney({ ...base, queue: [queue({ id: "b", status: "importReady" }), queue({ id: "x", status: "queued" })] });
     expect([...movedCards(before, cards)]).toEqual(["c1:b"]);
     expect(movedCards(new Map(), cards).size).toBe(0);
@@ -230,8 +232,7 @@ describe("stuck downloads", () => {
       queue: [
         queue({ id: "a", status: "stalled", releaseName: "A.2001", progress: 43 }),
         queue({ id: "b", errorMessage: "missing or invalid torrent data", releaseName: "B.2002", progress: 20 }),
-        queue({ id: "c", status: "downloading", progress: 40, speedMbps: 3, releaseName: "C.2003" }),
-        queue({ id: "d", status: "queued", errorMessage: "Not found", releaseName: "D.2004" })
+        queue({ id: "c", status: "downloading", progress: 40, speedMbps: 3, releaseName: "C.2003" })
       ]
     });
     const grouped = byStage(cards);
@@ -240,9 +241,7 @@ describe("stuck downloads", () => {
     expect(grouped.downloading[0].stuck).toBe(false);
     expect(grouped.downloading[1]).toMatchObject({ stuck: true, state: { tone: "warn", label: "Stuck" }, reason: "It stopped moving in the download client." });
     expect(grouped.downloading[2]).toMatchObject({ stuck: true, reason: "Torrent data missing or broken.", reasonFull: "missing or invalid torrent data" });
-    // A stuck download that was never started stays in Grabbed; another copy grabbed later is simply a new card there.
-    expect(grouped.grabbed.map((card) => card.key)).toEqual(["c1:d"]);
-    expect(grouped.grabbed[0].stuck).toBe(true);
+    expect(grouped.grabbed).toEqual([]);
     expect(laneCounts(grouped, undefined).downloading).toBe(3);
   });
 

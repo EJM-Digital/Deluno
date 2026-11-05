@@ -69,7 +69,7 @@ import { fileProvenanceFromTimeline } from "../lib/dispatch-provenance";
 import { dismissFailedJob } from "../lib/failed-jobs";
 import { JOB_STATUS, isJobActive, isJobDeadLettered, isJobFailed, isJobRetrying, type JobStatus } from "../lib/job-status-constants";
 import { finishedPlan, splitQueue } from "../lib/in-progress";
-import { isStuck, waitingWords } from "../lib/download-wait";
+import { clientQueueNote, isStuck, ordinal, waitingWords } from "../lib/download-wait";
 import { clientHistoryOutcomeLabel, downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
 import { parseImportJobPayload } from "../lib/import-job-payload";
 import { placeDownloadsOnce } from "../lib/transfer-stages";
@@ -326,6 +326,8 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
     () => telemetry.clients.flatMap((client) => client.queue.map((item) => ({
       ...item,
       clientProtocol: client.protocol,
+      // #1493: a download the client holds in its own queue says where it stands in that queue, and why.
+      clientQueueNote: clientQueueNote(item, client.queue, client.activeDownloadLimit),
       // Until the hand-off exists the processor is not yet being waited for: the download has finished and is
       // being moved or handed over, and the row says that.
       status: item.status === downloadQueueStatuses.waitingForProcessor
@@ -2800,6 +2802,7 @@ function queueChip(item: DownloadQueueItem): { tone: NonNullable<ChipProps["tone
   if (item.failure) return { tone: integrationFailureTone(item.failure), label: integrationFailureShortLabel(item.failure) };
   if (item.errorMessage || item.status === downloadQueueStatuses.stalled) return { tone: statusTone("transfer.stalled"), label: queueStatusLabel(item.status) };
   // Same words as the Live board (#1449): a new download says what it is waiting for, and Stuck is only the stall rule's decision.
+  if (item.clientQueueNote) return { tone: "info", label: item.clientQueueNote.label };
   const waiting = waitingWords(item);
   if (waiting) return { tone: "info", label: waiting };
   if (visibleFindings(item).length) return statusPresentation("transfer.needsALook");
@@ -2866,6 +2869,7 @@ function pipelineDetail(item: DownloadQueueItem) {
   if (item.status === downloadQueueStatuses.importedFileLeft) return "Imported earlier, but the file has since left the library. The title shows as missing and Deluno searches for it.";
   if (item.status === downloadQueueStatuses.filesGone) return "The files of this download are gone, so there is nothing to import. Search for another copy, or remove it from the client.";
   if (isImportReadyStatus(item.status)) return "Preview the destination and final name before importing.";
+  if (item.clientQueueNote?.why) return item.clientQueueNote.why;
   return item.sourcePath ? `Source: ${item.sourcePath}` : "External client owns the download.";
 }
 
@@ -2934,12 +2938,6 @@ function queueItemHasFiles(item: { sizeBytes: number; downloadedBytes: number })
 
 function canImportOriginal(status: string) {
   return ["failed", "timed-out", "stalled", "lost", "cancelled"].includes(status.toLowerCase());
-}
-
-function ordinal(position: number) {
-  const tens = position % 100;
-  if (tens >= 11 && tens <= 13) return `${position}th`;
-  return `${position}${({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[position % 10] ?? "th"}`;
 }
 
 /**
