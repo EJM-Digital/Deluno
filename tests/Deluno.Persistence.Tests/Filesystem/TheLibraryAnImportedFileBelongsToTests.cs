@@ -92,9 +92,9 @@ public sealed class TheLibraryAnImportedFileBelongsToTests
     }
 
     [Theory]
-    [InlineData(@"\nas\share\Movies", @"\nas\share\Movies\Film (2020)\Film.mkv", true)]
-    [InlineData(@"\nas\share\Movies", @"\nas\share\Movies2\Film (2020)\Film.mkv", false)]
-    [InlineData(@"\nas\share\Movies", @"\nas\other\Movies\Film.mkv", false)]
+    [InlineData(@"\\nas\share\Movies", @"\\nas\share\Movies\Film (2020)\Film.mkv", true)]
+    [InlineData(@"\\nas\share\Movies", @"\\nas\share\Movies2\Film (2020)\Film.mkv", false)]
+    [InlineData(@"\\nas\share\Movies", @"\\nas\other\Movies\Film.mkv", false)]
     [InlineData(@"D:\", @"D:\Film.mkv", true)]
     [InlineData(@"D:\", @"E:\Film.mkv", false)]
     [InlineData(@"D:\Media", @"D:/Media/Film.mkv", true)]
