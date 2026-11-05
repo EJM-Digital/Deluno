@@ -288,6 +288,30 @@ public sealed class RealtimeResumeTests
         Assert.Equal(fixture.ResumeSource.InstanceId, none.InstanceId);
     }
 
+    // #1497: the page reads the answer as the words "CaughtUp", "Replayed" and "ResyncRequired". The hub sent the enum as 0, 1 or 2,
+    // so after a restart the page never saw "ResyncRequired", kept the old run's sequence, and dropped every push of the new run
+    // until it climbed past it. The tests above read the answer back into the same enum, which hid it; this reads what is on the wire.
+    [Fact]
+    public async Task The_hub_answers_a_resume_in_words_the_page_reads_not_as_a_number()
+    {
+        await using var fixture = await StartAsync();
+        await using var connection = fixture.Connect();
+        await connection.StartAsync();
+        await connection.InvokeAsync("Subscribe", new[] { RealtimeGroups.Dashboard });
+        await fixture.Publisher.PublishHealthChangedAsync("indexer", "healthy", "one", CancellationToken.None);
+        await fixture.Publisher.PublishHealthChangedAsync("indexer", "healthy", "two", CancellationToken.None);
+        await WaitUntilAsync(() => fixture.ResumeSource.CurrentSequence >= 2);
+        var latest = fixture.ResumeSource.CurrentSequence;
+
+        var resync = await connection.InvokeAsync<System.Text.Json.JsonElement>("Resume", latest, new[] { RealtimeGroups.Dashboard }, "an-older-run");
+        var caughtUp = await connection.InvokeAsync<System.Text.Json.JsonElement>("Resume", latest, new[] { RealtimeGroups.Dashboard }, fixture.ResumeSource.InstanceId);
+        var replayed = await connection.InvokeAsync<System.Text.Json.JsonElement>("Resume", latest - 1, new[] { RealtimeGroups.Dashboard }, fixture.ResumeSource.InstanceId);
+
+        Assert.Equal("ResyncRequired", resync.GetProperty("status").GetString());
+        Assert.Equal("CaughtUp", caughtUp.GetProperty("status").GetString());
+        Assert.Equal("Replayed", replayed.GetProperty("status").GetString());
+    }
+
     [Fact]
     public async Task Every_api_answer_names_the_server_run_beside_the_sequence()
     {

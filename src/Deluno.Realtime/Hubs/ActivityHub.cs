@@ -1,9 +1,10 @@
 using Microsoft.AspNetCore.SignalR;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 
 namespace Deluno.Realtime.Hubs;
 
-public sealed class ActivityHub(IRealtimeResumeSource resumeSource, RealtimeWatcherTracker? watchers = null) : Hub
+public sealed class ActivityHub(IRealtimeResumeSource resumeSource, RealtimeWatcherTracker? watchers = null, ILogger<ActivityHub>? logger = null) : Hub
 {
     private const string SubjectsKey = "Deluno.Realtime.Subjects";
     private static readonly Regex LibrarySubjectPattern = new(
@@ -61,7 +62,12 @@ public sealed class ActivityHub(IRealtimeResumeSource resumeSource, RealtimeWatc
     {
         _ = NormalizeAndValidate(subjects);
         // A client that names no instance (an older page) cannot prove its sequence is from this run: it resyncs.
-        return resumeSource.Resume(lastSeq, GetSubjects(), instanceId ?? string.Empty);
+        var result = resumeSource.Resume(lastSeq, GetSubjects(), instanceId ?? string.Empty);
+        // One line per reconnect, so a page that stayed behind after a restart can be read from the log (#1497).
+        logger?.LogInformation(
+            "A page asked to resume from {LastSeq} of run {PageRun}; this run is {ThisRun} and the answer is {Answer} with {Replayed} events.",
+            lastSeq, string.IsNullOrEmpty(instanceId) ? "none" : instanceId, result.InstanceId, result.Status, result.Envelopes.Count);
+        return result;
     }
 
     /// <summary>

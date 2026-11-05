@@ -91,10 +91,13 @@ test.describe("the Dashboard Live tab is live (#1178)", () => {
     await page.evaluate(() => (window as unknown as { __streams: EventSource[] }).__streams.forEach((stream) => stream.dispatchEvent(new Event("error"))));
     await expect(page.getByRole("status", { name: /Not live/ })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("status", { name: /numbers on screen may be out of date/ })).toBeVisible();
+    // The page itself says so too (#1497), on any screen width, not only in the top bar.
+    await expect(page.getByText(/Reconnecting to Deluno/)).toBeVisible();
 
     // Back online: the page reconnects by itself, joins again, and the notice goes.
     await page.unroute(/\/hubs\/deluno/, refuse);
     await expect(page.getByRole("status", { name: /Not live/ })).toHaveCount(0, { timeout: 90_000 });
+    await expect(page.getByText(/Reconnecting to Deluno/)).toHaveCount(0);
     const message = `Smoke: back online Realtime Probe ${Date.now()}`;
     expect((await server(page, "/api/testing/realtime/activity", { message, category: "search" })).status).toBe(204);
     await expect(page.getByText(message)).toBeVisible({ timeout: 10_000 });

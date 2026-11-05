@@ -14,9 +14,10 @@ const hub = vi.hoisted(() => ({
   resumes: 0,
   deliver: null as null | ((payload: unknown) => void),
   resumeArgs: [] as unknown[][],
-  answer: "ResyncRequired" as string,
+  answer: "ResyncRequired" as string | number,
   envelopes: [] as unknown[],
-  instanceId: "run-a"
+  instanceId: "run-a",
+  hold: null as null | Promise<void>
 }));
 
 vi.mock("@microsoft/signalr", () => {
@@ -34,6 +35,7 @@ vi.mock("@microsoft/signalr", () => {
       if (method === "Resume") {
         hub.resumes += 1;
         hub.resumeArgs.push(args);
+        if (hub.hold) await hub.hold;
         return { status: hub.answer, envelopes: hub.envelopes, instanceId: hub.instanceId };
       }
       return undefined;
@@ -49,7 +51,7 @@ vi.mock("@microsoft/signalr", () => {
 });
 
 const { forgetRealtimePosition, noteRealtimePosition } = await import("./realtime-position");
-const { SignalRProvider, useSignalRResync, useSignalREvent } = await import("./use-signalr");
+const { SignalRProvider, useSignalRResync, useSignalREvent, useSignalRStatus } = await import("./use-signalr");
 
 function wrapper({ children }: { children: ReactNode }) {
   return <SignalRProvider accessToken={null}>{children}</SignalRProvider>;
@@ -64,6 +66,7 @@ beforeEach(() => {
   hub.answer = "ResyncRequired";
   hub.envelopes = [];
   hub.instanceId = "run-a";
+  hub.hold = null;
   forgetRealtimePosition();
 });
 
@@ -185,5 +188,48 @@ describe("resync (#1179)", () => {
     await push(2, "second-of-the-new-run");
     expect(seen).toHaveBeenCalledTimes(3);
     expect(seen.mock.calls.map((call) => (call[0] as { id: string }).id)).toEqual(["before-restart", "first-of-the-new-run", "second-of-the-new-run"]);
+  });
+
+  // #1497: the hub sent the enum's number, so after a restart the page never saw "ResyncRequired" and stayed deaf (recorded from a real restart: "the hub answered 2").
+  it("reads the hub's answer as a number too, so a restart still refetches and the new run's pushes are heard", async () => {
+    noteRealtimePosition({ headers: new Headers({ "X-Deluno-Event-Seq": "40", "X-Deluno-Event-Instance": "run-a" }) });
+    hub.answer = 1;
+    const seen = vi.fn();
+    const resync = vi.fn();
+    renderHook(() => { useSignalRResync(resync); useSignalREvent("MovieChanged", "dashboard", seen); }, { wrapper });
+    await waitFor(() => expect(hub.resumes).toBe(1));
+    expect(resync).not.toHaveBeenCalled();
+
+    hub.answer = 2;
+    hub.instanceId = "run-b";
+    await act(async () => { hub.state = "Reconnecting"; hub.onreconnecting?.(); hub.state = "Connected"; hub.onreconnected?.(); });
+    await waitFor(() => expect(resync).toHaveBeenCalledTimes(1));
+    await act(async () => { hub.deliver?.({ seq: 1, name: "MovieChanged", subject: "dashboard", at: "", data: { id: "new-run" } }); });
+    expect(seen).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats an answer it cannot read as a reason to refetch", async () => {
+    noteRealtimePosition({ headers: new Headers({ "X-Deluno-Event-Seq": "40", "X-Deluno-Event-Instance": "run-a" }) });
+    hub.answer = "CaughtUp";
+    const resync = vi.fn();
+    renderHook(() => { useSignalRResync(resync); useSignalREvent("MovieChanged", "dashboard", () => {}); }, { wrapper });
+    await waitFor(() => expect(hub.resumes).toBe(1));
+    hub.answer = "SomethingNew";
+    await act(async () => { hub.state = "Reconnecting"; hub.onreconnecting?.(); hub.state = "Connected"; hub.onreconnected?.(); });
+    await waitFor(() => expect(resync).toHaveBeenCalledTimes(1));
+  });
+
+  // #1497: the notice stays up until the screens have been told to read again.
+  it("stays reconnecting until the hub has answered the resume, then says connected", async () => {
+    hub.answer = "ResyncRequired";
+    const { result } = renderHook(() => useSignalRStatus(), { wrapper });
+    await waitFor(() => expect(result.current).toBe("connected"));
+
+    let release: () => void = () => {};
+    hub.hold = new Promise<void>((resolve) => { release = resolve; });
+    await act(async () => { hub.state = "Reconnecting"; hub.onreconnecting?.(); hub.state = "Connected"; hub.onreconnected?.(); });
+    expect(result.current).toBe("reconnecting");
+    await act(async () => { release(); hub.hold = null; await Promise.resolve(); });
+    await waitFor(() => expect(result.current).toBe("connected"));
   });
 });

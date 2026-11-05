@@ -339,10 +339,21 @@ interface RealtimeEnvelope {
 type ResumeStatus = "CaughtUp" | "Replayed" | "ResyncRequired";
 
 interface ResumeResult {
-  status: ResumeStatus;
+  /** The words above; an older Deluno sent the enum's number (0, 1, 2) instead. */
+  status: ResumeStatus | number;
   envelopes: RealtimeEnvelope[];
   /** The server run that answered; the sequence restarts at 0 on every restart, so a number is only valid with it (#1315). */
   instanceId?: string;
+}
+
+/**
+ * What the hub's answer means. A number or a word the page does not know is treated as "refetch": trusting an answer it cannot
+ * read is what froze every open screen after a restart (#1497), when the hub sent 2 and the page waited for "ResyncRequired".
+ */
+function resumeStatusOf(status: ResumeStatus | number): ResumeStatus {
+  if (status === "CaughtUp" || status === 0) return "CaughtUp";
+  if (status === "Replayed" || status === 1) return "Replayed";
+  return "ResyncRequired";
 }
 
 /* ── Connection state ────────────────────────────────────────────── */
@@ -370,6 +381,12 @@ const DEBUG = import.meta.env.VITE_WS_DEBUG === "1";
 const START_RETRY_DELAYS_MS = [0, 2_000, 5_000, 10_000, 30_000] as const;
 
 type AnyHandler = (payload: unknown) => void;
+
+/** One line per connection event (not per push), so a frozen screen can be read from the browser console after the fact (#1497). */
+function trace(message: string, detail?: unknown) {
+  if (detail === undefined) console.info(`[Deluno live] ${message}`);
+  else console.info(`[Deluno live] ${message}`, detail);
+}
 
 function normalizeSubjects(subjects: RealtimeSubject): string[] {
   return typeof subjects === "string"
@@ -548,16 +565,19 @@ export function SignalRProvider({
       }
       if (firstConnect) forgetRealtimePosition();
       try {
+        trace(`asking the hub to resume from ${lastSeqRef.current} (run ${instanceIdRef.current || "none"}, ${subjectCountsRef.current.size} subjects)`);
         const result = await connection.invoke<ResumeResult>("Resume", lastSeqRef.current, [...subjectCountsRef.current.keys()], instanceIdRef.current);
+        const answer = resumeStatusOf(result.status);
+        trace(`the hub answered ${answer} (run ${result.instanceId ?? "unknown"}, ${result.envelopes.length} replayed)`);
         if (result.instanceId) instanceIdRef.current = result.instanceId;
-        if (result.status === "Replayed") {
+        if (answer === "Replayed") {
           for (const envelope of result.envelopes) applyEnvelope(envelope);
-        } else if (result.status === "ResyncRequired") {
+        } else if (answer === "ResyncRequired") {
           lastSeqRef.current = 0;
           if (!firstConnect || since > 0) for (const h of resyncHandlersRef.current) h();
         }
       } catch (error) {
-        if (DEBUG) console.debug("[WS] resume failed", error);
+        trace("resume failed", error);
       }
     };
 
@@ -574,18 +594,21 @@ export function SignalRProvider({
 
     builder.on("RealtimeEvent", (envelope: RealtimeEnvelope) => applyEnvelope(envelope));
 
-    builder.onreconnecting(() => {
+    builder.onreconnecting((error) => {
+      trace("connection lost, reconnecting", error);
       joined.clear();
       if (!disposed) setStatus("reconnecting");
     });
     builder.onreconnected(() => {
+      trace("reconnected");
       if (disposed) return;
-      setStatus("connected");
-      void attach(builder);
+      // Still "reconnecting" until the screens have been told to read again, so the notice stays up until the numbers are current.
+      void attach(builder).then(() => { if (!disposed && builder.state === signalR.HubConnectionState.Connected) setStatus("connected"); });
     });
     // Declared before the handlers that use it; set once the start loop exists.
     let restart: () => void = () => {};
-    builder.onclose(() => {
+    builder.onclose((error) => {
+      trace("connection closed, starting again", error);
       joined.clear();
       if (disposed) return;
       setStatus("disconnected");
@@ -636,8 +659,14 @@ export function SignalRProvider({
               await builder.stop();
               return;
             }
-            setStatus("connected");
-            void attach(builder);
+            if (attachedBefore) {
+              // A start after the connection closed is a reconnect: the notice stays until the screens have read again.
+              setStatus("reconnecting");
+              void attach(builder).then(() => { if (!disposed && builder.state === signalR.HubConnectionState.Connected) setStatus("connected"); });
+            } else {
+              setStatus("connected");
+              void attach(builder);
+            }
             return;
           } catch {
             if (!disposed) setStatus("disconnected");

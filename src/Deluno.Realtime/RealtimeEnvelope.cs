@@ -9,6 +9,7 @@ public sealed record RealtimeEnvelope(long Seq, string Name, string Subject, str
 /// <summary>
 /// Outcome of a client asking to resume from its last known sequence number.
 /// </summary>
+[System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter))]
 public enum RealtimeResumeStatus
 {
     /// <summary>The client's last sequence is already current; nothing to replay.</summary>

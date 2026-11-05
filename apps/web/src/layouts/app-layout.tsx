@@ -41,6 +41,7 @@ import { DelunoNavGlyph, type DelunoNavGlyphKind } from "../components/shell/del
 import { AppMark } from "../components/shell/app-mark";
 import { NotificationsBell } from "../components/shell/notifications-bell";
 import { OutageBanner } from "../components/app/outage-banner";
+import { ConnectionLostBanner } from "../components/app/connection-lost-banner";
 import { TOPBAR_CONTROL, TOPBAR_ICON, TOPBAR_ICON_BUTTON } from "./topbar-tokens";
 
 /** The shape both sidebar area lists share. */
@@ -315,6 +316,8 @@ function AppLayoutContent() {
             everywhere, so the one banner that says so shows above every
             screen rather than living on System (#901). */}
         <OutageBanner />
+        {/* The page lost its live connection (Deluno restarting, say): says so above every screen until the numbers are current (#1497). */}
+        <ConnectionLostBanner />
         <NavigationProgress />
 
         {/* The narrow rail is one variable: the sidebar, the content beside it and the page footer all read it. */}
