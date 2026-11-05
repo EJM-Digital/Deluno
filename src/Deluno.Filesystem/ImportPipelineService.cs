@@ -4660,16 +4660,22 @@ public sealed partial class ImportPipelineService(
         }
     }
 
-    private static LibraryItem? ResolveLibraryForImport(
+    // A rooted path is compared as written (so a Windows or share path means the same on every build agent);
+    // only a relative one is made absolute first.
+    private static string FullPathForLibraryMatch(string path)
+        => SafePath.IsPlainFullPath(path) ? path : Path.GetFullPath(path);
+
+    /// <summary>The library whose root holds the destination (on a folder boundary); the deepest root wins when roots nest (#1513).</summary>
+    internal static LibraryItem? ResolveLibraryForImport(
         string destinationPath,
         string mediaType,
         IReadOnlyList<LibraryItem> libraries)
     {
-        var normalizedDestination = Path.GetFullPath(destinationPath);
+        var normalizedDestination = FullPathForLibraryMatch(destinationPath);
         return libraries
             .Where(library => NormalizeMediaType(library.MediaType) == mediaType && !string.IsNullOrWhiteSpace(library.RootPath))
-            .Select(library => new { Library = library, Root = Path.GetFullPath(library.RootPath) })
-            .Where(item => normalizedDestination.StartsWith(item.Root, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            .Select(library => new { Library = library, Root = FullPathForLibraryMatch(library.RootPath) })
+            .Where(item => SafePath.IsInside(item.Root, normalizedDestination, allowEqual: true))
             .OrderByDescending(item => item.Root.Length)
             .Select(item => item.Library)
             .FirstOrDefault();
@@ -5088,8 +5094,7 @@ public sealed partial class ImportPipelineService(
 
         // Compared as text so a Windows path means the same thing on the Linux
         // build agents as it does where it is used.
-        static string Normalize(string value) => value.Trim().Replace('\\', '/').TrimEnd('/');
-        return Normalize(path).StartsWith(Normalize(folder) + "/", StringComparison.OrdinalIgnoreCase);
+        return SafePath.IsInside(folder, path, comparison: StringComparison.OrdinalIgnoreCase);
     }
 
     private WorkflowCleanupResult ApplyWorkflowCleanup(

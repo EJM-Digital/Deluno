@@ -2028,10 +2028,13 @@ public sealed class WorkPlanner(
             .Select(item => item.RelatedEntityId)
             .Where(id => !string.IsNullOrWhiteSpace(id))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // A library whose output folder is missing or unreadable is skipped, but not silently (#1514): one line, and Health.
+        var unusableFolders = await ProcessorOutputFolderWatch.RecordChangesAsync(libraries, activityFeedRepository, cancellationToken);
         var refineLibraries = libraries
             .Where(library =>
                 ImportWorkflows.HandsToProcessor(library.ImportWorkflow) &&
                 !string.IsNullOrWhiteSpace(library.ProcessorOutputPath) &&
+                !unusableFolders.Contains(library.Id) &&
                 Directory.Exists(library.ProcessorOutputPath))
             .ToArray();
 
@@ -2465,7 +2468,7 @@ public sealed class WorkPlanner(
                     var categorySource = NormalizeSourceKey(item.SourcePath);
                     var categoryPathMatch = categoryLibraries.FirstOrDefault(library =>
                         !string.IsNullOrWhiteSpace(library.DownloadsPath) &&
-                        categorySource.StartsWith(NormalizeSourceKey(library.DownloadsPath), StringComparison.OrdinalIgnoreCase));
+                        SafePath.IsInside(NormalizeSourceKey(library.DownloadsPath), categorySource, allowEqual: true, comparison: StringComparison.OrdinalIgnoreCase));
                     if (categoryPathMatch is not null)
                     {
                         return categoryPathMatch;
@@ -2489,7 +2492,7 @@ public sealed class WorkPlanner(
             var source = NormalizeSourceKey(item.SourcePath);
             var pathMatch = mediaLibraries.FirstOrDefault(library =>
                 !string.IsNullOrWhiteSpace(library.DownloadsPath) &&
-                source.StartsWith(NormalizeSourceKey(library.DownloadsPath), StringComparison.OrdinalIgnoreCase));
+                SafePath.IsInside(NormalizeSourceKey(library.DownloadsPath), source, allowEqual: true, comparison: StringComparison.OrdinalIgnoreCase));
             if (pathMatch is not null)
             {
                 return pathMatch;
