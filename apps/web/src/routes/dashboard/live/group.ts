@@ -9,6 +9,16 @@ import { activityKind } from "./kinds";
 import type { LiveActivityRow } from "../live-events";
 import { entityFromRelated, namedTitle, type TitleLookup } from "./titles";
 
+/** A strike line is "<release>: <rule>, strike N of M: <why>"; the same release and rule are one download's strikes (#1491). */
+const STRIKE = /^(.+?): ([^:]+), strike \d+ of \d+:/;
+
+/** The download and rule a strike line is about, or null for any other row. */
+function strikeOf(row: Pick<LiveActivityRow, "category" | "message">): string | null {
+  if (row.category !== "download.health.strike") return null;
+  const match = STRIKE.exec(row.message);
+  return match ? `${match[1]}|${match[2]}` : null;
+}
+
 /** What an episode search found, in a few words. */
 export function outcomeWords(outcome: string): string {
   const said = outcome.trim().toLowerCase();
@@ -80,7 +90,8 @@ export function groupActivity(rows: LiveActivityRow[], titles: TitleLookup, when
     if (last) {
       const sameSearch = part && lastPart && part.show === lastPart.show && part.outcome === lastPart.outcome;
       const sameSentence = !part && !lastPart && last.first.category === row.category && activityKind(row.category, row.severity) === activityKind(last.first.category, last.first.severity) && sentenceOf(last.first, titles) === sentenceOf(row, titles);
-      if (sameSearch || sameSentence) {
+      const sameStrikes = !part && !lastPart && strikeOf(row) !== null && strikeOf(row) === strikeOf(last.first);
+      if (sameSearch || sameSentence || sameStrikes) {
         last.rows.push(row);
         if (part) {
           parts.push(part);

@@ -84,3 +84,26 @@ describe("the Activity panel shows what happened to a title (#1491)", () => {
     expect(result.current[0].relatedEntityType).toBe("movie");
   });
 });
+
+describe("each step in a download's life reaches the panel (#1491)", () => {
+  it("shows the rig's 04:36 to 04:48 sequence: a film leaving the queue, a strike, strikes cleared, and a finish, with repeated strikes as one line", () => {
+    const at = (minute: string) => `2026-11-05T04:${minute}:00Z`;
+    const ROBO = "RoboCop 1987 RM4K 1080p BluRay x264";
+    const rows = [
+      { id: "l5", category: "download.client.finished", message: `${ROBO} finished downloading in qBittorrent.`, createdUtc: at("47") },
+      { id: "l4", category: "download.health.strikes-cleared", message: `${ROBO} is moving again at 3.2 MB/s, strikes cleared.`, createdUtc: at("45") },
+      { id: "l3", category: "download.health.strike", message: `${ROBO}: Too slow, strike 2 of 3: stayed under 1000 KB/s`, createdUtc: at("43") },
+      { id: "l2", category: "download.health.strike", message: `${ROBO}: Too slow, strike 1 of 3: stayed under 1000 KB/s`, createdUtc: at("41") },
+      { id: "l1", category: "download.client.started", message: `Dune (2021) 1080p started downloading in qBittorrent.`, createdUtc: at("36") },
+      { id: "l0", category: "download.client.queued", message: `Alien 1979 1080p is waiting in the queue of qBittorrent.`, createdUtc: at("36") }
+    ].map((row) => ({ ...row, relatedEntityType: "movie", relatedEntityId: "m1" }));
+    const { result } = renderHook(() => useLiveActivity(rows));
+    const text = panel(result.current);
+    expect(text).toContain("finished downloading");
+    expect(text).toContain("strikes cleared");
+    expect(text).toContain("strike 2 of 3");
+    expect(text).not.toContain("strike 1 of 3");
+    expect(text).toContain("started downloading");
+    expect(text).toContain("waiting in the queue");
+  });
+});

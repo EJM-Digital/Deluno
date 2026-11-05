@@ -37,6 +37,9 @@ export const ACTIVITY_KINDS: Readonly<Record<string, ActivityKind>> = {
   "series.search.season": "search",
   // grab
   "download.client.duplicate": "grab",
+  "download.client.finished": "grab",
+  "download.client.queued": "grab",
+  "download.client.started": "grab",
   "download.dispatch.paused": "grab",
   "download.dispatch.planned": "grab",
   "download.dispatch.recorded": "grab",
@@ -135,6 +138,7 @@ export const ACTIVITY_KINDS: Readonly<Record<string, ActivityKind>> = {
   "download.grab.unreachable": "failed",
   "download.health.keep-seeding-problem": "failed",
   "download.health.remediated": "failed",
+  "download.health.strike": "failed",
   "download.import.failed": "failed",
   "download.import.timeout": "failed",
   "download.integrity.failed": "failed",
@@ -171,6 +175,7 @@ export const ACTIVITY_KINDS: Readonly<Record<string, ActivityKind>> = {
   // cleanup
   "download.cleanup.cleared": "cleanup",
   "download.cleanup.left-alone": "cleanup",
+  "download.health.strikes-cleared": "cleanup",
   "download.health.strikes-purged": "cleanup",
   "download.orphan.kept": "cleanup",
   "download.orphan.removed": "cleanup",
