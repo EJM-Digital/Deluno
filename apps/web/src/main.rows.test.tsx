@@ -6,6 +6,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const navigation = vi.hoisted(() => ({ location: null as { pathname: string; search: string; hash: string } | null }));
 const recovery = vi.hoisted(() => ({ pendingPage: null as (() => string | null) | null }));
+// Every root main.tsx makes, so each test unmounts its own: a root left mounted keeps React's scheduler running after the
+// test environment is gone, which threw "window is not defined" from another file's shard in CI (run 41938479619).
+const roots = vi.hoisted(() => [] as Array<{ unmount: () => void }>);
+vi.mock("react-dom/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-dom/client")>();
+  const createRoot = ((...args: Parameters<typeof actual.createRoot>) => {
+    const root = actual.createRoot(...args);
+    roots.push(root);
+    return root;
+  }) as typeof actual.createRoot;
+  return { ...actual, default: { ...actual, createRoot }, createRoot };
+});
 
 vi.mock("./router", () => ({ router: { state: { navigation } } }));
 vi.mock("./lib/stale-build", async (importOriginal) => ({
@@ -51,7 +63,9 @@ beforeEach(() => {
   });
   vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
 });
-afterEach(() => {
+afterEach(async () => {
+  const { act } = await import("react");
+  for (const root of roots.splice(0)) act(() => root.unmount());
   for (const [type, listener] of added.splice(0)) window.removeEventListener(type, listener);
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
