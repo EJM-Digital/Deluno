@@ -191,7 +191,7 @@ public static class MediaGrabHandler
         var titleTags = mediaTagStore is null
             ? null
             : (await mediaTagStore.ListAsync(kind, id, cancellationToken)).Select(assignment => assignment.Name).ToArray();
-        var downloadClient = await acquisitionPipeline.ChooseDownloadClientAsync(request.IndexerId, routing.DownloadClients, cancellationToken, titleTags);
+        var (downloadClient, fullnessNote) = await acquisitionPipeline.ChooseDownloadClientWithNoteAsync(request.IndexerId, routing.DownloadClients, cancellationToken, titleTags);
         if (downloadClient is null)
         {
             return MediaGrabResult.ValidationResult(new Dictionary<string, string[]>
@@ -290,6 +290,12 @@ public static class MediaGrabHandler
             downloadClient.DownloadClientId,
             titleTags,
             cancellationToken);
+        // #1494: said when the first client by priority was full and the grab went to another.
+        if (fullnessNote is not null)
+        {
+            routingReason = string.IsNullOrEmpty(routingReason) ? fullnessNote : $"{routingReason} {fullnessNote}";
+        }
+
         var grabResult = await downloadClientGrabService.GrabAsync(
             downloadClient.DownloadClientId,
             new DownloadClientGrabRequest(
