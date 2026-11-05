@@ -42,7 +42,8 @@
 .lj-text { display: flex; flex: 0 1 auto; gap: 6px; align-items: baseline; justify-content: center; white-space: nowrap; min-width: 0; overflow: hidden; line-height: 1.25; }
 .lj-nm { flex: 0 0 auto; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-weight: 600; font-size: var(--type-control); color: hsl(var(--foreground)); }
 .lj-ct { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--type-caption); font-weight: 700; color: hsl(var(--foreground)); font-variant-numeric: tabular-nums; }
-.lj-empty { opacity: 0.55; }
+.lj-empty .lj-dot { opacity: 0.55; }
+.lj-empty .lj-nm, .lj-empty .lj-ct { color: hsl(var(--muted-foreground)); }
 .lj-active { background: color-mix(in srgb, var(--lj-st) 24%, transparent); }
 .lj-active::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(100deg, transparent 30%, hsl(0 0% 100% / 0.1) 50%, transparent 70%); animation: lj-sheen 2.6s linear infinite; }
 
