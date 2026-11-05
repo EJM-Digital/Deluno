@@ -25,7 +25,7 @@ import { canvasMeasure, lineWords, statusFont, STATUS_MARK_PX, type MeasureText 
 import type { ArrivalItem } from "./extras";
 import { useElementSize } from "./hooks";
 import { posterDetail, posterStatus } from "./poster-caption";
-import { libraryPosters, posterSize, postersAcross, shelfRowNeed, type CaptionTier } from "./layout";
+import { libraryPosters, posterSize, postersAcross, type CaptionTier } from "./layout";
 import { groupArrivals, type ArrivalGroup } from "./arrival-groups";
 import { useOpenSlots } from "./shelf-slots";
 import { TILE_KEY_ATTRIBUTE, useSlideNeighbours, useTileArrivals } from "./shelf-motion";
@@ -143,7 +143,7 @@ function Poster({ group, isNew, caption, tag, small, width, measure }: { group: 
   );
 }
 
-export function Shelf({ items, titles, newest, heading, detail, latest = false, library, onHeightNeed }: {
+export function Shelf({ items, titles, newest, heading, detail, latest = false, library }: {
   items: ArrivalItem[];
   titles: TitleLookup;
   /** Keys that have just arrived: the newest has the ring. */
@@ -156,11 +156,6 @@ export function Shelf({ items, titles, newest, heading, detail, latest = false, 
   latest?: boolean;
   /** The library's own counts: for each kind of title, and for each library. */
   library?: DashboardLibrarySection | null;
-  /**
-   * Told the height the card can use (its own chrome and the posters at the width the five-poster rule caps them to), so the page
-   * can give spare height to something else; see `gridRows`. It does not change with the card's height, so telling it cannot loop.
-   */
-  onHeightNeed?: (px: number) => void;
 }) {
   const groups = useMemo(() => groupArrivals(items, titles), [items, titles]);
   const libraries = useMemo(() => library?.libraryCounts ?? [], [library?.libraryCounts]);
@@ -180,14 +175,6 @@ export function Shelf({ items, titles, newest, heading, detail, latest = false, 
   const across = posters ? postersAcross(box.width, posters.width) : 0;
   const rowStyle = posters ? ({ ["--aw" as string]: `${posters.width}px` } satisfies CSSProperties) : undefined;
   const small = posterSize(posters?.width) === "small";
-  // The card's chrome (header, chips, padding) is what its height has beyond the row's, and does not change with the height:
-  // the need is that and the height the row's posters can use at this width.
-  useLayoutEffect(() => {
-    const row = boxRef.current;
-    if (!row || !onHeightNeed || !(row.clientHeight > 0)) return;
-    const card = row.closest<HTMLElement>(".lsh")!;
-    onHeightNeed(card.offsetHeight - row.clientHeight + shelfRowNeed(row.clientWidth));
-  }, [box.width, box.height, onHeightNeed, boxRef]);
   // A title whose poster is on its way has a slot that is closed or opening: the poster it pushes out is kept until it is gone.
   const slots = useOpenSlots(boxRef);
   const inRow = posters ? shown.slice(0, across + slots) : shown;

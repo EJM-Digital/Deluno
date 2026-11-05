@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { arrivedDetail, arrivedHeading, arrivedWhen, libraryHue, LIBRARY_HUES, SHELF_LIBRARY_KEY, Shelf } from "./shelf";
 import { TILE_KEY_ATTRIBUTE, useSlideNeighbours, useTileArrivals } from "./shelf-motion";
 import { useOpenSlots } from "./shelf-slots";
-import { shelfRowNeed } from "./layout";
 import { NO_TITLES } from "./titles";
 
 // The shelf's box, which a test sets: jsdom measures nothing.
@@ -126,17 +125,6 @@ describe("a poster's library tag", () => {
     render(<MemoryRouter><div onClick={behind}><Shelf items={[item("1", { libraryId: "kids", libraryName: "Kids" })]} titles={NO_TITLES} newest={new Set()} heading="arrived today" library={section} /></div></MemoryRouter>);
     fireEvent.click(screen.getByRole("link", { name: "Kids" }));
     expect(behind).not.toHaveBeenCalled();
-  });
-});
-
-describe("the height the shelf needs", () => {
-  it("is told to the page once the row is measured, from the card's chrome and the posters' size", () => {
-    const sizes: Array<[string, number]> = [["clientHeight", 200], ["clientWidth", 900], ["offsetHeight", 260]];
-    for (const [name, value] of sizes) vi.spyOn(HTMLElement.prototype, name as "clientHeight", "get").mockReturnValue(value);
-    const need = vi.fn();
-    show([item("1")], { onHeightNeed: need });
-    expect(need).toHaveBeenCalledTimes(1);
-    expect(need.mock.calls[0][0]).toBeGreaterThan(60);
   });
 });
 
@@ -294,39 +282,6 @@ describe("when what it is given changes", () => {
     cleanup();
     show([item("1")]);
     expect(screen.queryByRole("radio")).toBeNull();
-  });
-});
-
-describe("the height the shelf needs, again", () => {
-  const sizes = { clientHeight: 200, clientWidth: 900, offsetHeight: 260 };
-  const measure = () => { for (const [name, value] of Object.entries(sizes)) vi.spyOn(HTMLElement.prototype, name as "clientHeight", "get").mockReturnValue(value); };
-
-  it("is the card's chrome plus the height the posters can use at this width", () => {
-    measure();
-    const need = vi.fn();
-    show([item("1")], { onHeightNeed: need });
-    expect(need).toHaveBeenCalledWith(260 - 200 + shelfRowNeed(900));
-  });
-
-  it("is not told when nobody asked, or when the row has no height yet", () => {
-    measure();
-    show([item("1")]);
-    cleanup();
-    vi.restoreAllMocks();
-    for (const [name, value] of Object.entries({ ...sizes, clientHeight: 0 })) vi.spyOn(HTMLElement.prototype, name as "clientHeight", "get").mockReturnValue(value);
-    const need = vi.fn();
-    show([item("1")], { onHeightNeed: need });
-    expect(need).not.toHaveBeenCalled();
-  });
-
-  it("is told again when the row is measured again", () => {
-    measure();
-    const need = vi.fn();
-    const view = show([item("1")], { onHeightNeed: need });
-    expect(need).toHaveBeenCalledTimes(1);
-    box = { width: 800, height: 300 };
-    view.rerender(<MemoryRouter><Shelf items={[item("1")] as never[]} titles={NO_TITLES} newest={new Set()} heading="arrived today" onHeightNeed={need} /></MemoryRouter>);
-    expect(need).toHaveBeenCalledTimes(2);
   });
 });
 
