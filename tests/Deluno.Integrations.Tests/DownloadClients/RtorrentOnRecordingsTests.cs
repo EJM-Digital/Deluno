@@ -4,6 +4,8 @@ using Deluno.Connections.Contracts;
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Platform.Contracts;
+using Deluno.Recovery.Policies;
 using Deluno.Tests.Recorded;
 using static Deluno.Integrations.Tests.DownloadClients.RecordedClientCalls;
 
@@ -82,6 +84,18 @@ public sealed class RtorrentOnRecordingsTests
             }
 
             list.Add(reply with { Body = reply.Body!.Replace(replace, System.Security.SecurityElement.Escape(with)) });
+            return this;
+        }
+
+        /// <summary>Answers a call with a recorded reply whose XML has one value changed (the value is XML, so it is not escaped).</summary>
+        public Scripted AddChangedReply(string method, RecordedReply reply, string replace, string with)
+        {
+            if (!_replies.TryGetValue(method, out var list))
+            {
+                _replies[method] = list = [];
+            }
+
+            list.Add(reply with { Body = reply.Body!.Replace(replace, with) });
             return this;
         }
 
@@ -699,6 +713,32 @@ public sealed class RtorrentOnRecordingsTests
         var item = Assert.Single(snapshot!.Queue);
         Assert.Equal(DownloadTrackerStatuses.Ok, item.TrackerStatus);
         Assert.Equal(DownloadQueueStatuses.Downloading, item.Status);
+    }
+
+
+    // ---- rTorrent: seeding limits ----
+
+    [Fact]
+    public async Task The_ratio_rTorrent_reports_scaled_by_a_thousand_decides_the_ratio_rule_and_it_reports_no_seeding_time_at_all()
+    {
+        var finished = R("finished-single-file");
+        // The recorded row ends ... down.rate 0, up.rate 0, ratio 0, message "". Only the ratio is changed: 1500 is rTorrent's 1.5.
+        var reply = finished.Exchanges[0].Reply;
+        const string tail = "<value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><string></string></value>";
+        Assert.Contains(tail, reply.Body);
+        var seeding = await Poll(new Scripted().AddChangedReply("d.multicall2", reply, tail, tail.Replace("<value><i8>0</i8></value><value><string></string></value>", "<value><i8>1500</i8></value><value><string></string></value>")));
+
+        var item = Assert.Single(seeding!.Queue);
+        Assert.Equal(1.5, item.Ratio);
+        Assert.Null(item.SeedingMinutes);
+
+        SharingPolicy Rule(double? ratio, int? hours) => new(SharingPolicy.ModeShareThenTidy, hours, ratio, SharingPolicy.StuckKeepWaiting, 14);
+
+        // A ratio target of 1.0 is met by 1.5, and one of 2.0 is not.
+        Assert.Equal(SharingAction.Reclaim, SharingPolicyEvaluator.Evaluate(Rule(1.0, null), true, item.Ratio, item.SeedingMinutes).Action);
+        Assert.Equal(SharingAction.Wait, SharingPolicyEvaluator.Evaluate(Rule(2.0, null), true, item.Ratio, item.SeedingMinutes).Action);
+        // rTorrent gives no seeding time, so a time rule alone is never met on its word: it waits, it does not guess.
+        Assert.Equal(SharingAction.Wait, SharingPolicyEvaluator.Evaluate(Rule(null, 24), true, item.Ratio, item.SeedingMinutes).Action);
     }
 
     // ---- #1301: a path that climbs out, a reply that is not rTorrent's, the mount and the version, what rTorrent is never asked ----
