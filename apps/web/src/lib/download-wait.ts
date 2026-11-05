@@ -1,5 +1,6 @@
 import type { DownloadHealthFinding, DownloadQueueItem } from "./api";
 import { downloadQueueStatuses } from "./download-telemetry";
+import { plural } from "./plural";
 
 /**
  * One rule for "waiting" and "stuck" (#1449), read by the Live board, the bell and In progress alike.
@@ -150,7 +151,7 @@ export function clientQueueNote(item: DownloadQueueItem, queue: readonly Downloa
     label += `, ${ordinal(Math.max(1, ahead))} of ${Math.max(waiting.length, ahead, 1)}`;
   }
   const why = activeDownloadLimit != null && activeDownloadLimit > 0
-    ? `${name} runs ${activeDownloadLimit} ${activeDownloadLimit === 1 ? "download" : "downloads"} at once`
+    ? `${name} runs ${plural(activeDownloadLimit, "download")} at once`
     : null;
   return { label, why };
 }
