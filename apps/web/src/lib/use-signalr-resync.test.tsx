@@ -11,13 +11,15 @@ const hub = vi.hoisted(() => ({
   state: "Disconnected" as string,
   onreconnecting: null as null | (() => void),
   onreconnected: null as null | (() => void),
+  onclose: null as null | (() => void),
   resumes: 0,
   deliver: null as null | ((payload: unknown) => void),
   resumeArgs: [] as unknown[][],
   answer: "ResyncRequired" as string | number,
   envelopes: [] as unknown[],
   instanceId: "run-a",
-  hold: null as null | Promise<void>
+  hold: null as null | Promise<void>,
+  failResume: false
 }));
 
 vi.mock("@microsoft/signalr", () => {
@@ -26,7 +28,7 @@ vi.mock("@microsoft/signalr", () => {
     on(name: string, handler: (payload: unknown) => void) { if (name === "RealtimeEvent") hub.deliver = handler; }
     onreconnecting(handler: () => void) { hub.onreconnecting = handler; }
     onreconnected(handler: () => void) { hub.onreconnected = handler; }
-    onclose() {}
+    onclose(handler: () => void) { hub.onclose = handler; }
     async start() { hub.state = "Connected"; }
     async stop() { hub.state = "Disconnected"; }
     private handlers: Record<string, (payload: unknown) => void> = {};
@@ -36,6 +38,7 @@ vi.mock("@microsoft/signalr", () => {
         hub.resumes += 1;
         hub.resumeArgs.push(args);
         if (hub.hold) await hub.hold;
+        if (hub.failResume) throw new Error("The hub did not answer");
         return { status: hub.answer, envelopes: hub.envelopes, instanceId: hub.instanceId };
       }
       return undefined;
@@ -61,12 +64,14 @@ beforeEach(() => {
   hub.state = "Disconnected";
   hub.onreconnecting = null;
   hub.onreconnected = null;
+  hub.onclose = null;
   hub.resumes = 0;
   hub.resumeArgs = [];
   hub.answer = "ResyncRequired";
   hub.envelopes = [];
   hub.instanceId = "run-a";
   hub.hold = null;
+  hub.failResume = false;
   forgetRealtimePosition();
 });
 
@@ -231,5 +236,49 @@ describe("resync (#1179)", () => {
     expect(result.current).toBe("reconnecting");
     await act(async () => { release(); hub.hold = null; await Promise.resolve(); });
     await waitFor(() => expect(result.current).toBe("connected"));
+  });
+
+  // #1497: a resume the hub cannot answer is written to the console as one line with the error, and the page still says connected.
+  it("writes one console line when the hub cannot answer the resume, and stays connected", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    hub.failResume = true;
+    const { result } = renderHook(() => useSignalRStatus(), { wrapper });
+
+    await waitFor(() => expect(info.mock.calls.some((call) => call[0] === "[Deluno live] resume failed" && call[1] instanceof Error)).toBe(true));
+    await waitFor(() => expect(result.current).toBe("connected"));
+    info.mockRestore();
+  });
+
+  // The screens have been told to read again only if the connection is still up; if it dropped meanwhile, the notice stays.
+  it("stays reconnecting when the connection drops again before the resume has answered", async () => {
+    hub.answer = "ResyncRequired";
+    const { result } = renderHook(() => useSignalRStatus(), { wrapper });
+    await waitFor(() => expect(result.current).toBe("connected"));
+
+    let release: () => void = () => {};
+    hub.hold = new Promise<void>((resolve) => { release = resolve; });
+    await act(async () => { hub.state = "Reconnecting"; hub.onreconnecting?.(); hub.state = "Connected"; hub.onreconnected?.(); });
+    hub.state = "Reconnecting";
+    await act(async () => { release(); hub.hold = null; await Promise.resolve(); await Promise.resolve(); });
+
+    expect(result.current).toBe("reconnecting");
+  });
+
+  // A connection that closed is started again by the page; the notice stays until the screens have read, and stays if it dropped once more by then.
+  it("after a close and a start again stays reconnecting when the connection is lost before the resume has answered", async () => {
+    hub.answer = "ResyncRequired";
+    const { result } = renderHook(() => useSignalRStatus(), { wrapper });
+    await waitFor(() => expect(result.current).toBe("connected"));
+    await waitFor(() => expect(hub.resumes).toBe(1));
+
+    let release: () => void = () => {};
+    hub.hold = new Promise<void>((resolve) => { release = resolve; });
+    await act(async () => { hub.state = "Disconnected"; hub.onclose?.(); await Promise.resolve(); });
+    await waitFor(() => expect(hub.resumes).toBe(2));
+    expect(result.current).toBe("reconnecting");
+
+    hub.state = "Reconnecting";
+    await act(async () => { release(); hub.hold = null; await Promise.resolve(); await Promise.resolve(); });
+    expect(result.current).toBe("reconnecting");
   });
 });

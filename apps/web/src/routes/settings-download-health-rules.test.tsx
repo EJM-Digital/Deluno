@@ -313,6 +313,30 @@ describe("what a rule is checked against before it is sent", () => {
     expect(await drawer.findByText("The maximum total time must be between 1 minute and 30 days.")).toBeVisible();
   });
 
+  it("refuses a negative size ceiling with its own message and sends nothing", async () => {
+    renderPage();
+    const drawer = await openNewRule();
+    fireEvent.change(drawer.getByLabelText("Kind"), { target: { value: "too-slow" } });
+    fireEvent.change(drawer.getByLabelText("Slower than"), { target: { value: "500" } });
+    fireEvent.change(drawer.getAllByPlaceholderText("No ceiling")[1], { target: { value: "-5" } });
+
+    fireEvent.click(drawer.getByRole("button", { name: "Create rule" }));
+
+    expect(await drawer.findByText("The ignore-above size cannot be negative.")).toBeVisible();
+    expect(calls("PUT", "/api/download-health/rules/new")).toHaveLength(0);
+  });
+
+  it("refuses a negative minimum progress to reset with its own message and sends nothing", async () => {
+    renderPage();
+    const drawer = await openNewRule();
+    fireEvent.change(drawer.getByLabelText("Minimum progress to reset"), { target: { value: "-1" } });
+
+    fireEvent.click(drawer.getByRole("button", { name: "Create rule" }));
+
+    expect(await drawer.findByText("The minimum progress amount cannot be negative.")).toBeVisible();
+    expect(calls("PUT", "/api/download-health/rules/new")).toHaveLength(0);
+  });
+
   it("Reset strikes on progress and the minimum progress to reset belong to No progress alone", async () => {
     renderPage();
     const drawer = await openNewRule();

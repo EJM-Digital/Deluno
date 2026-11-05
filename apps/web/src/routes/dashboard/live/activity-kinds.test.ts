@@ -70,4 +70,35 @@ describe("the Dashboard's decision for every activity category (#1491)", () => {
     expect(activityKind("download.health.something-new", "error")).toBe("failed");
     expect(activityKind("job.started", "error")).toBe("failed");
   });
+
+  it("reads a category the table does not know yet by its pattern, one pattern at a time", () => {
+    const byPattern: Record<string, string> = {
+      "download.brand-new.problem": "failed",
+      "processing.stalled.brand-new": "failed",
+      "job.brand-new": "other",
+      "download.health.brand-new": "other",
+      "retention.brand-new": "retention",
+      "x.search.brand-new": "search",
+      "rss.brand-new": "search",
+      "x.release.force-grabbed": "grab",
+      "x.dispatch": "grab",
+      "x.import.completed": "import",
+      "import.brand-new": "import",
+      "x.orphan.brand-new": "cleanup",
+      "x.recycle.brand-new": "cleanup",
+      "processor.brand-new": "process",
+      "subtitle.brand-new": "subtitle",
+      "request.brand-new": "lists",
+      "zzz.brand-new": "other"
+    };
+    for (const [category, kind] of Object.entries(byPattern)) {
+      expect(Object.keys(ACTIVITY_KINDS).includes(category), category).toBe(false);
+      expect(activityKind(category), category).toBe(kind);
+    }
+  });
+
+  it("reads a row with no category as routine work, never as a title's event", () => {
+    expect(activityKind(null as unknown as string)).toBe("other");
+    expect(activityKind(undefined as unknown as string)).toBe("other");
+  });
 });

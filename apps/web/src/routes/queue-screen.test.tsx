@@ -1302,6 +1302,21 @@ describe("a refused import on the In progress drawer", () => {
   });
 });
 
+describe("the stage a download's send reads as on the In progress drawer", () => {
+  it("names the furthest the send got: needs attention, imported, import state, detected, grab state, then its own status", () => {
+    const stage = (fields: Record<string, unknown>) => dispatchStageLabel({ id: "d", status: "", ...fields } as never);
+
+    expect(stage({ status: "sent", grabStatus: "failed" })).toBe("Needs attention");
+    expect(stage({ status: "sent", importStatus: "imported" })).toBe("Imported");
+    expect(stage({ status: "sent", importStatus: "queued" })).toBe("Import queued");
+    expect(stage({ status: "sent", detectedUtc: "2026-10-08T05:00:00Z" })).toBe("Detected by client");
+    expect(stage({ status: "sent", grabStatus: "detected" })).toBe("Detected by client");
+    expect(stage({ status: "sent", grabStatus: "sent" })).toBe("Grab sent");
+    expect(stage({ status: "queued" })).toBe("queued");
+    expect(stage({ status: "" })).toBe("Sent to client");
+  });
+});
+
 describe("Try again hides the old failure (#1198)", () => {
   it("is sending again only for a hand-off just sent again that waits on the processor", () => {
     const sent = new Set(["h1"]);

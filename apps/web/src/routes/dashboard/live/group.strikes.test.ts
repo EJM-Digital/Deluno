@@ -28,4 +28,12 @@ describe("strikes on one download", () => {
     ], NO_TITLES, ago);
     expect(groups).toHaveLength(3);
   });
+
+  it("stay apart when the line is not in the strike form, since nothing says they are one download", () => {
+    const groups = groupActivity([
+      strike("a", "A strike was written one way"),
+      strike("b", "A strike was written another way")
+    ], NO_TITLES, ago);
+    expect(groups).toHaveLength(2);
+  });
 });

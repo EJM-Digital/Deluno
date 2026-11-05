@@ -1,75 +1,18 @@
 /**
  * Small shared pieces for the Dashboard's Downloads and System tabs (#1082).
  *
- * A panel is a ListCard that fills its grid cell and clips its own body (a list
- * puts its rows in a `FitList`, which shows whole rows only), so the tab never
- * scrolls the page. `useAction` runs one button's request, says
- * what happened in plain words and refreshes the stored answers behind the
- * screen. Nothing here reaches a client, indexer or disk while a screen waits:
+ * `useAction` runs one button's request, says what happened in plain words and
+ * refreshes the stored answers behind the screen. Nothing here reaches a client, indexer or disk while a screen waits:
  * every call is a person pressing a button.
  */
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { Link } from "react-router-dom";
 import { toast } from "../../components/shell/toaster";
 import { Button } from "../../components/ui/button";
-import { ListCard } from "../../components/ui/list-card";
 import { readErrorText } from "../../lib/api/client";
 import { queryClient } from "../../lib/route-cache";
 import { authedFetch } from "../../lib/use-auth";
 import { cn } from "../../lib/utils";
-
-/** The header link every panel carries: where you act on what the panel shows. */
-export function PanelLink({ to, children }: { to: string; children: ReactNode }) {
-  return (
-    <Link
-      to={to}
-      className="whitespace-nowrap text-(length:--type-caption) font-medium text-primary hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      {children} <span aria-hidden>{"→"}</span>
-    </Link>
-  );
-}
-
-export function Panel({
-  title,
-  count,
-  to,
-  linkLabel,
-  className,
-  footer,
-  children
-}: {
-  title: string;
-  count?: ReactNode;
-  to: string;
-  linkLabel: string;
-  className?: string;
-  footer?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <ListCard title={title} count={count} actions={<PanelLink to={to}>{linkLabel}</PanelLink>} className={cn("flex min-h-0 flex-col", className)}>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
-      {footer ? <div className="border-t border-hairline px-(--card-pad-x) py-2 text-(length:--type-caption) text-muted-foreground">{footer}</div> : null}
-    </ListCard>
-  );
-}
-
-/** One plain sentence inside a panel that has nothing to list. */
-export function PanelNote({ children }: { children: ReactNode }) {
-  return <p className="px-(--card-pad-x) py-4 text-(length:--type-body-sm) text-muted-foreground">{children}</p>;
-}
-
-/** A label and a value on one line, for the small facts panels. */
-export function FactRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3 px-(--card-pad-x) py-1.5 text-(length:--type-body-sm)">
-      <span className="shrink-0 whitespace-nowrap text-muted-foreground">{label}</span>
-      <span className="min-w-0 truncate max-md:whitespace-normal max-md:break-words text-right font-medium text-foreground">{children}</span>
-    </div>
-  );
-}
 
 export interface ActionState {
   busy: string | null;
