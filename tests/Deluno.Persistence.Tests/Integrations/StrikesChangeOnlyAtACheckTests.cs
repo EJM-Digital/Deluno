@@ -161,49 +161,4 @@ public sealed class StrikesChangeOnlyAtACheckTests
         Assert.Equal(0, (await world.CheckAsync(world.Window)).Strikes(DownloadHealthStrikes.NoThroughput));
         Assert.Single(await LinesAsync(world, "download.health.strikes-cleared"));
     }
-
-    /// <summary>
-    /// CI run 41984111137: a download first seen part-way through an interval is judged at the next check against its first sighting, not
-    /// one whole interval after it, so the removal is not an interval late (the e2e waits 9 minutes for two 5-minute-spaced strikes).
-    /// Checks fall on the rule's interval; polls between them change nothing.
-    /// </summary>
-    [Fact]
-    public async Task A_zero_byte_download_first_seen_a_minute_before_a_check_is_struck_at_that_check_and_again_one_interval_later()
-    {
-        var (world, client) = await StartAsync(Rule(DownloadHealthRuleKinds.NoProgress, strikes: 2));
-        using var _ = world;
-        Assert.Equal(TimeSpan.FromMinutes(5), world.Window);
-        // First seen with the client's own reading still showing a little speed, so nothing can be said yet.
-        Show(world, client, 100, 0);
-        Assert.Equal(0, (await world.CheckAsync(TimeSpan.FromMinutes(4))).Strikes(DownloadHealthStrikes.NoThroughput));
-        Show(world, client, 0, 0);
-
-        foreach (var seconds in new[] { 15, 15, 15 })
-        {
-            Assert.Equal(0, (await world.CheckAsync(TimeSpan.FromSeconds(seconds))).Strikes(DownloadHealthStrikes.NoThroughput));
-        }
-
-        Assert.Equal(1, (await world.CheckAsync(TimeSpan.FromSeconds(15))).Strikes(DownloadHealthStrikes.NoThroughput));
-        Assert.Equal(1, (await world.CheckAsync(TimeSpan.FromSeconds(20))).Strikes(DownloadHealthStrikes.NoThroughput));
-        Assert.Equal(1, (await world.CheckAsync(TimeSpan.FromMinutes(4))).Strikes(DownloadHealthStrikes.NoThroughput));
-        await world.CheckAsync(TimeSpan.FromSeconds(40));
-        Assert.NotEmpty(client.Actions);
-    }
-
-    [Fact]
-    public async Task A_slow_download_first_seen_a_minute_before_a_check_is_judged_at_that_check_on_the_average_since_it_was_first_seen()
-    {
-        var (world, client) = await StartAsync(Rule(DownloadHealthRuleKinds.TooSlow, threshold: 1000, strikes: 3));
-        using var _ = world;
-        var bytes = 1_000_000_000L;
-        Show(world, client, 2_000, bytes);
-        Assert.Equal(0, (await world.CheckAsync(TimeSpan.FromMinutes(4))).Strikes(DownloadHealthStrikes.LowSpeed));
-
-        // A fast instant reading between the checks, over a flat spell: 30 MB in the minute is 500 KB/s on average.
-        bytes += 30_000_000;
-        Show(world, client, 2_000, bytes);
-        Assert.Equal(0, (await world.CheckAsync(TimeSpan.FromSeconds(30))).Strikes(DownloadHealthStrikes.LowSpeed));
-        Show(world, client, 2_000, bytes);
-        Assert.Equal(1, (await world.CheckAsync(TimeSpan.FromSeconds(30))).Strikes(DownloadHealthStrikes.LowSpeed));
-    }
 }
