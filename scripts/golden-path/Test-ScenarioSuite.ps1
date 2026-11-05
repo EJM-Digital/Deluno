@@ -351,6 +351,7 @@ function Restore-WeirAfterOutage { }
 
 function Get-ExpectedSetupKinds([string] $Id) {
     if ($Id -eq 'film.extra-left-out') { return @('qbittorrent') }
+    if ($Id -match '^film\.extra-left-out\.(?<k>[a-z]+)$') { return @($Matches['k']) }
     if ($Id -match '^keepseeding\.(moved|public-removed)\.(?<k>[a-z]+)$') { return @($Matches['k']) }
     if ($Id -match '^(film|resend\.before|stuck\.(zero|short|peers|slow)|tryagain|vanish\.(before|waiting))\.(?<k>[a-z]+)$') { return @($Matches['k']) }
     @()

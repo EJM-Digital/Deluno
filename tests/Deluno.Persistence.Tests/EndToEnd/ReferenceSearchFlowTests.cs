@@ -230,6 +230,30 @@ public sealed class ReferenceSearchFlowTests
         Assert.Null(await pipeline.ChooseDownloadClientAsync(torznab.Id, usenetOnly));
     }
 
+    /// <summary>
+    /// Transmission, Deluge and NZBGet each belong to a group (torrent, torrent, usenet) and a release goes only to a client of its own
+    /// group, whatever the priorities say; a group with no client of its own sends nothing.
+    /// </summary>
+    [Theory]
+    [InlineData("transmission", "torznab", "nzbget")]
+    [InlineData("deluge", "torznab", "nzbget")]
+    [InlineData("nzbget", "newznab", "transmission")]
+    [InlineData("nzbget", "newznab", "deluge")]
+    public async Task A_release_goes_to_the_client_of_its_own_group_for_Transmission_Deluge_and_NZBGet(string own, string indexerKind, string other)
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-19T00:00:00Z"));
+        var (pipeline, connections, _) = await CreatePipelineAsync(storage, time);
+        var indexer = await HealthyIndexerAsync(connections, "Indexer fixture", indexerKind);
+        var wrongGroup = await HealthyClientAsync(connections, "Wrong group", other);
+        var rightGroup = await HealthyClientAsync(connections, "Right group", own);
+        var both = Request(time, [indexer], [(wrongGroup, 1), (rightGroup, 2)]).DownloadClients;
+        var onlyWrong = Request(time, [indexer], [(wrongGroup, 1)]).DownloadClients;
+
+        Assert.Equal(rightGroup.Id, (await pipeline.ChooseDownloadClientAsync(indexer.Id, both))?.DownloadClientId);
+        Assert.Null(await pipeline.ChooseDownloadClientAsync(indexer.Id, onlyWrong));
+    }
+
     // Golden path rc.30.9: with Deluge switched off, "Send anyway" chose Deluge anyway and the send was never made.
     [Fact]
     public async Task A_forced_send_only_considers_clients_that_are_switched_on_and_says_so_when_none_is()

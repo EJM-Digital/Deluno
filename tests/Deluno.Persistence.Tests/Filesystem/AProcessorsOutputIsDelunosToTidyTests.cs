@@ -84,6 +84,22 @@ public sealed class AProcessorsOutputIsDelunosToTidyTests
         Assert.Null(ImportPipelineService.ImportOriginNote(@"C:\Movies\Big.Buck.Bunny.2008\a.mkv", Library(), fromDownload: false));
     }
 
+    /// <summary>
+    /// The comparison ignores letter case on every platform, so on Linux, where
+    /// two folders differing only by case are different folders, a processor
+    /// path written in another case is still taken as inside the output folder.
+    /// </summary>
+    [Fact]
+    public void The_output_comparison_ignores_letter_case_on_every_platform()
+    {
+        Assert.True(ImportPipelineService.IsProcessorOutput(
+            "/data/WEIR3/REFINED/movies/film/film.mkv",
+            Library() with { DownloadsPath = "/data/downloads", ProcessorOutputPath = "/data/weir3/refined/Movies" }));
+        Assert.False(ImportPipelineService.IsProcessorOutput(
+            "/data/weir3/refined/Movies2/film.mkv",
+            Library() with { DownloadsPath = "/data/downloads", ProcessorOutputPath = "/data/weir3/refined/Movies" }));
+    }
+
     private static LibraryItem Library()
     {
         var library = (LibraryItem)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(LibraryItem));
