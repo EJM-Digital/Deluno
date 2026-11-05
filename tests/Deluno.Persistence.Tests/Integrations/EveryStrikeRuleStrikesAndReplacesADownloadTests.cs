@@ -237,7 +237,7 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
         var second = await world.CheckAsync();
         Assert.Equal(2, second.Strikes(DownloadHealthStrikes.LowSpeed));
         Assert.Equal(
-            "It averaged 300 KB/s over the last 5 minutes, under your 1000 KB/s limit.",
+            "It averaged 300 KB/s over the last 5 minutes, under your 1.0 MB/s limit.",
             second.Item!.HealthFindings!.Single(finding => finding.Kind == DownloadHealthStrikes.LowSpeed).Evidence);
 
         bytes += Gained(world, 300);
@@ -245,7 +245,7 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
         var third = await world.CheckAsync();
 
         Assert.Equal(3, third.Strikes(DownloadHealthStrikes.LowSpeed));
-        await AssertReplacedAsync(world, client, "It stayed under 1000 KB/s for 3 checks in a row, so Deluno stopped waiting for it and will not pick it again.");
+        await AssertReplacedAsync(world, client, "It stayed under 1.0 MB/s for 3 checks in a row, so Deluno stopped waiting for it and will not pick it again.");
     }
 
     [Fact]

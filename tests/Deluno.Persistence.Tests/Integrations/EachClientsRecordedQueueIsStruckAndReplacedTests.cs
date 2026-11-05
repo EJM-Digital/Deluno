@@ -226,11 +226,11 @@ public sealed class EachClientsRecordedQueueIsStruckAndReplacedTests
         bytes += gain;
         var second = await world.CheckAsync();
         Assert.Equal(2, second.Strikes(DownloadHealthStrikes.LowSpeed));
-        Assert.Matches(@"^It averaged \d+(\.\d)? KB/s over the last 5 minutes, under your 1000 KB/s limit\.$", second.Item!.HealthFindings!.Single(f => f.Kind == DownloadHealthStrikes.LowSpeed).Evidence);
+        Assert.Matches(@"^It averaged \d+(\.\d)? KB/s over the last 5 minutes, under your 1.0 MB/s limit\.$", second.Item!.HealthFindings!.Single(f => f.Kind == DownloadHealthStrikes.LowSpeed).Evidence);
         bytes += gain;
         Assert.Equal(3, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
 
-        await AStrikeAssertions.ReplacedAsync(world, client.Actions, "It stayed under 1000 KB/s for 3 checks in a row, so Deluno stopped waiting for it and will not pick it again.");
+        await AStrikeAssertions.ReplacedAsync(world, client.Actions, "It stayed under 1.0 MB/s for 3 checks in a row, so Deluno stopped waiting for it and will not pick it again.");
     }
 
     // ---- Too slow, on every client that moves a download in a recording --------------------------------------------------------------------
@@ -275,7 +275,7 @@ public sealed class EachClientsRecordedQueueIsStruckAndReplacedTests
             Assert.Equal(check == 3 ? 1 : 0, client.Actions.Count);
         }
 
-        await AStrikeAssertions.ReplacedAsync(world, client.Actions, $"It stayed under {floor:0.#} KB/s for 3 checks in a row, so Deluno stopped waiting for it and will not pick it again.");
+        await AStrikeAssertions.ReplacedAsync(world, client.Actions, $"It stayed under {SpeedText.FromKbps(floor)} for 3 checks in a row, so Deluno stopped waiting for it and will not pick it again.");
     }
 
     // ---- No progress, on every torrent client's recording of a stuck torrent ------------------------------------------------------------------
