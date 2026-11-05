@@ -292,3 +292,12 @@ export const ACTIVITY_KINDS: Readonly<Record<string, ActivityKind>> = {
   "trackers.definitions.switch": "other",
   "trackers.definitions.update": "other",
 };
+
+/**
+ * The categories the stream leaves out, read from the table above and nowhere else: the Dashboard asks the server
+ * for the history without them (`excludeCategories`), so a flood of routine rows never fills the first page and
+ * hides what happened to a title. A name that reads as an error is never left out, as `activityKind` shows it.
+ */
+export const ROUTINE_CATEGORIES: readonly string[] = Object.entries(ACTIVITY_KINDS)
+  .filter(([category, kind]) => kind === "other" && !/failed|dead-letter|error/i.test(category))
+  .map(([category]) => category);

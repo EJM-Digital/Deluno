@@ -246,7 +246,8 @@ public sealed record ActivityQuery(
     string? ReasonGroup = null,
     string? RelatedEntityType = null,
     string? RelatedEntityId = null,
-    ActivitySort? Sort = null)
+    ActivitySort? Sort = null,
+    IReadOnlyList<string>? ExcludeCategories = null)
 {
     /// <summary>
     /// Turned-down releases are written by the hundred, so the plain newest-first list leaves them out;

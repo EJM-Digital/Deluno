@@ -92,7 +92,7 @@ describe("what each list is read from", () => {
     expect(await liveSources.boardDispatches.fetch()).toEqual(["x"]);
     expect(api.fetchPageItems.mock.calls[0][0]).toMatch(/^\/api\/download-dispatches\?pageSize=300/);
     expect(await liveSources.latestActivity.fetch()).toEqual(["x"]);
-    expect(api.fetchPageItems).toHaveBeenCalledWith("/api/activity?pageSize=80");
+    expect(api.fetchPageItems.mock.calls.at(-1)?.[0]).toMatch(/^\/api\/activity\?pageSize=80&excludeCategories=.*job\.started/);
     expect(liveSources.latestActivity.fallback).toEqual([]);
   });
 
