@@ -30,7 +30,7 @@ function Get-ScenarioPlan {
         @{ Name = 'seasonpack'; Function = 'Invoke-GroupSeasonPack'; Ids = @('seasonpack.no-library') }
         @{ Name = 'layout';   Function = 'Invoke-GroupLayout';   Ids = @('layout.390-folder-chain') }
         @{ Name = 'subtitleswanted'; Function = 'Invoke-GroupSubtitlesWanted'; Ids = @('subtitleswanted.paging') }
-        @{ Name = 'volumes'; Function = 'Invoke-GroupVolumes'; Ids = @('volumes.second-drive', 'volumes.exfat-volume', 'volumes.smb-share', 'volumes.dead-share') }
+        @{ Name = 'volumes'; Function = 'Invoke-GroupVolumes'; Ids = @('volumes.second-drive', 'volumes.exfat-volume', 'volumes.smb-share', 'volumes.dead-share', 'volumes.pack-hardlink', 'volumes.share-dropped-mid-move', 'volumes.unreadable-free-space') }
         @{ Name = 'importfaults'; Function = 'Invoke-GroupImportFaults'; Ids = @('importfaults.bad-files', 'importfaults.kill-mid-copy') }
         @{ Name = 'machine'; Function = 'Invoke-GroupMachine'; Ids = @('machine.system-readings', 'machine.guide-contract', 'machine.browse-errors', 'machine.browse-unc-large', 'machine.picker-timeout', 'machine.long-path', 'machine.automation-off', 'machine.processor-hold', 'machine.external-redownload', 'machine.hub-pushes') }
         @{ Name = 'firewall'; Function = 'Invoke-GroupFirewall'; Ids = @('firewall.first-run-rule', 'firewall.screen-allow', 'firewall.screen-declined', 'firewall.tray-allow-and-revoke') }
