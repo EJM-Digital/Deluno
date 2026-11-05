@@ -85,7 +85,8 @@ public sealed record DownloadProgressRecord(
     DateTimeOffset LastIncreaseUtc,
     DateTimeOffset LastObservedUtc,
     long? CheckBytes = null,
-    DateTimeOffset? CheckUtc = null);
+    DateTimeOffset? CheckUtc = null,
+    bool? Judged = null);
 
 /// <summary>What one check saw of an item's downloaded bytes (#1207).</summary>
 /// <param name="LastIncreaseUtc">When the bytes were last seen to grow, as the progress clock counts it.</param>

@@ -206,4 +206,53 @@ public sealed class StrikesChangeOnlyAtACheckTests
         Show(world, client, 2_000, bytes);
         Assert.Equal(1, (await world.CheckAsync(TimeSpan.FromSeconds(30))).Strikes(DownloadHealthStrikes.LowSpeed));
     }
+
+    /// <summary>
+    /// A download is not judged until at least min(60 s, the interval) after it was first seen: one just sent, still connecting, with no
+    /// bytes after a few seconds, must not be struck at the boundary that happens to come next (the rig strikes at 1 and would remove it).
+    /// </summary>
+    [Theory]
+    [InlineData(10, false)]
+    [InlineData(59, false)]
+    [InlineData(70, true)]
+    public async Task A_download_first_seen_less_than_a_minute_before_a_boundary_is_judged_at_the_next_boundary_instead(int secondsBeforeBoundary, bool judgedAtThatBoundary)
+    {
+        var (world, client) = await StartAsync(Rule(DownloadHealthRuleKinds.NoProgress, strikes: 3));
+        using var _ = world;
+        Show(world, client, 100, 0);
+        Assert.Equal(0, (await world.CheckAsync(TimeSpan.FromMinutes(5) - TimeSpan.FromSeconds(secondsBeforeBoundary))).Strikes(DownloadHealthStrikes.NoThroughput));
+        Show(world, client, 0, 0);
+
+        // The boundary, and polls after it.
+        Assert.Equal(judgedAtThatBoundary ? 1 : 0, (await world.CheckAsync(TimeSpan.FromSeconds(secondsBeforeBoundary))).Strikes(DownloadHealthStrikes.NoThroughput));
+        Assert.Equal(judgedAtThatBoundary ? 1 : 0, (await world.CheckAsync(TimeSpan.FromSeconds(30))).Strikes(DownloadHealthStrikes.NoThroughput));
+        if (!judgedAtThatBoundary)
+        {
+            // Not mid-interval once a minute has passed, only at the next boundary.
+            Assert.Equal(0, (await world.CheckAsync(TimeSpan.FromMinutes(4))).Strikes(DownloadHealthStrikes.NoThroughput));
+            Assert.Equal(1, (await world.CheckAsync(TimeSpan.FromSeconds(40))).Strikes(DownloadHealthStrikes.NoThroughput));
+        }
+    }
+
+    [Fact]
+    public async Task With_a_one_minute_interval_a_download_first_seen_50_seconds_before_a_boundary_is_judged_at_the_next_boundary()
+    {
+        var (world, client) = await StartAsync(Rule(DownloadHealthRuleKinds.NoProgress, strikes: 3));
+        using var _ = world;
+        var interval = TimeSpan.FromMinutes(1);
+        async Task<bool> PollAsync(TimeSpan after, long bytes)
+        {
+            world.Time.Advance(after);
+            var observed = await world.Health.ObserveDownloadProgressAsync(world.Client.Id, [(AStrikePass.ItemId, bytes)], CancellationToken.None, checkInterval: interval);
+            return observed[AStrikePass.ItemId].IsCheck;
+        }
+
+        await PollAsync(TimeSpan.FromSeconds(10), 0);   // first sight at :10 (the first reading)
+        Assert.False(await PollAsync(TimeSpan.FromSeconds(30), 0)); // :40, between
+        Assert.False(await PollAsync(TimeSpan.FromSeconds(20), 0)); // 1:00, the boundary, 50 s after first sight: skipped
+        Assert.False(await PollAsync(TimeSpan.FromSeconds(30), 0)); // 1:30
+        Assert.True(await PollAsync(TimeSpan.FromSeconds(30), 0));  // 2:00, the next boundary: judged
+        Assert.False(await PollAsync(TimeSpan.FromSeconds(30), 0)); // 2:30, between
+        Assert.True(await PollAsync(TimeSpan.FromSeconds(30), 0));  // 3:00, a boundary again
+    }
 }
