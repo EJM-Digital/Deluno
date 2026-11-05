@@ -25,7 +25,7 @@ import { Count, JourneyToken, type CardContext } from "./card";
 import { fitDetails } from "./detail-fit";
 import { cardsBudget, journeyMode, journeySize, JOURNEY_ROWS, MORE_PX } from "./layout";
 import { useElementSize, useRemPx } from "./hooks";
-import { stationNoun, type JourneyCard, type Stage } from "./journey";
+import { cardIdents, stationNoun, type JourneyCard, type Stage } from "./journey";
 import { LANES } from "./lanes";
 import { useStillWhileResizing } from "./motion";
 import { faceOf } from "./titles";
@@ -121,7 +121,11 @@ export function Journey({
     if (here.length > rows) more.push({ stage, column, left: here.length - rows, titles: here.map((card) => faceOf(card, context.titles).title).join(", ") });
   });
   // One stable order for every card, so a card that changes station keeps its element and glides instead of being re-made.
-  const everyCard = stations.flatMap((stage) => grouped[stage]).sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  // The order and the element keys are the card's identity (its sent download when it has one), not its list key, which changes as the lists take it over (#1508).
+  const onBoard = stations.flatMap((stage) => grouped[stage]);
+  const idents = cardIdents(onBoard);
+  const identOf = (card: JourneyCard) => idents.get(card.key) ?? card.key;
+  const everyCard = [...onBoard].sort((a, b) => (identOf(a) < identOf(b) ? -1 : identOf(a) > identOf(b) ? 1 : 0));
 
   // The detail block of each card shows as many whole lines as the card's height holds: measured after every change, and again once the fonts are in.
   useLayoutEffect(() => {
@@ -153,7 +157,7 @@ export function Journey({
                 return (
                   <div key={`stacked-${stage}`} data-station={stage}>
                     <Station stage={stage} count={counts[stage]} usual={usual[stage]} noun={stationNoun(stage, grouped[stage])} />
-                    {grouped[stage].map((card) => <JourneyToken key={card.key} card={card} {...context} />)}
+                    {grouped[stage].map((card) => <JourneyToken key={identOf(card)} card={card} {...context} />)}
                   </div>
                 );
               })}
@@ -168,7 +172,7 @@ export function Journey({
                 {onTheirWay === 0 ? <p className="lj-calm">{calmLine(lastArrival)}</p> : null}
                 {everyCard.map((card) => {
                   const place = places.get(card.key);
-                  return <JourneyToken key={card.key} card={card} {...context} place={place ? { column: place.column, stations: n, top: place.top, hidden: place.hidden } : undefined} />;
+                  return <JourneyToken key={identOf(card)} card={card} {...context} place={place ? { column: place.column, stations: n, top: place.top, hidden: place.hidden } : undefined} />;
                 })}
                 {more.map((line) => (
                   <Link key={`more-${line.stage}`} to="/queue" title={`${LANES[line.stage].label}: ${line.titles}`} className="lj-more" style={{ left: `calc(${line.column} * 100% / ${n} + 8px)`, top: rows * size.step }}>

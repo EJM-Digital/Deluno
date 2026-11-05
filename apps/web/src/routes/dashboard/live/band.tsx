@@ -25,7 +25,7 @@ import type { WorkItem, WorkKind } from "../live-events";
 import { BandCard, FigureUnit } from "./band-card";
 import { countdown, formatCountdown } from "./countdown";
 import { useNow } from "./hooks";
-import { IMPORTING_NOW, processorHasStarted, type JourneyCard } from "./journey";
+import { cardIdent, IMPORTING_NOW, processorHasStarted, type JourneyCard } from "./journey";
 import { SpeedCell } from "./speed-chart";
 import { useFittingRows } from "./fit-rows";
 import { buildNext, whenText, type NextItem } from "./times";
@@ -65,8 +65,8 @@ export function buildOperations(work: readonly WorkItem[], cards: readonly Journ
   }
   for (const card of cards) {
     const name = faceOf(card, titles).title;
-    if (card.stage === "processor" && card.state.tone !== "bad" && processorHasStarted(card)) ops.push({ key: `process:${card.key}`, kind: "processor", lead: `${card.processor ?? "The processor"} is working on`, name, to: card.to });
-    if (card.stage === "importing" && card.state.label === IMPORTING_NOW) ops.push({ key: `import:${card.key}`, kind: "import", lead: "Importing", name, to: card.to });
+    if (card.stage === "processor" && card.state.tone !== "bad" && processorHasStarted(card)) ops.push({ key: `process:${cardIdent(card)}`, kind: "processor", lead: `${card.processor ?? "The processor"} is working on`, name, to: card.to });
+    if (card.stage === "importing" && card.state.label === IMPORTING_NOW) ops.push({ key: `import:${cardIdent(card)}`, kind: "import", lead: "Importing", name, to: card.to });
   }
   for (const item of work) {
     if (item.kind === "jobs") ops.push({ key: item.key, kind: "jobs", lead: item.text, to: item.to });
@@ -94,8 +94,8 @@ function WorkingNow({ summary, operations, across }: { summary: DashboardSummary
         </>
       }
     >
-      {shown.length > 0 ? (
-        <ul className="lb-ops">
+      {/* The list stays when nothing runs, empty, so the card's parts are not made again each time a job ends and the next begins (#1508). */}
+      <ul className="lb-ops" hidden={shown.length === 0}>
           {shown.map((op) => {
             const { icon: Icon, colour } = OP_ICON[op.kind];
             return (
@@ -109,14 +109,14 @@ function WorkingNow({ summary, operations, across }: { summary: DashboardSummary
               </li>
             );
           })}
-        </ul>
-      ) : (
+      </ul>
+      {shown.length === 0 ? (
         <p className="lb-idle role-sentence">
           {cycle
             ? `Nothing is running right now. The last search was ${cycle.libraryName}, ${ago(cycle.completedUtc ?? cycle.startedUtc)}: ${cycle.planned.toLocaleString("en-AU")} checked, ${cycle.queued.toLocaleString("en-AU")} sent to a client.`
             : "Nothing is running right now. No search has run yet."}
         </p>
-      )}
+      ) : null}
     </BandCard>
   );
 }
