@@ -163,6 +163,8 @@ public static class ActivityEventLabels
             ["processing.completed.import-queued"] = "Processor finished, import queued",
             ["processing.failed"] = "Processing failed",
             ["processing.rejected"] = "Processor turned it down",
+            ["processing.output.folder-missing"] = "Processor's output folder is missing",
+            ["processing.output.folder-back"] = "Processor's output folder is back",
             ["processing.rejected.not-acted"] = "Processor turned it down, nothing changed",
             ["processing.timed-out"] = "Processor went quiet for too long",
             ["processing.stalled"] = "Processor stopped making progress",
