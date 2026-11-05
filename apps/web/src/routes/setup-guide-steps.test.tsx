@@ -60,6 +60,21 @@ const radio = (question: string, answer: "Yes" | "No") => screen.getByRole("radi
 
 afterEach(() => { cleanup(); fetchJson.mockReset(); authedFetch.mockReset(); });
 
+describe("the lists the guide reads in the background", () => {
+  it.each([
+    ["fail", () => Promise.reject(new Error("down"))],
+    ["are not lists", () => Promise.resolve({ message: "not a list" })]
+  ])("when the installed apps and the download clients %s the step still shows", async (_what, answer) => {
+    fetchJson.mockImplementation((url: string) => (url === "/api/system/bundled-components" || url === "/api/download-clients" ? answer() : Promise.resolve([])));
+    authedFetch.mockImplementation(async () => okJson());
+    const router = createMemoryRouter([{ path: "/", element: <SetupGuidePage />, loader: () => loaderData({ stepId: "folders" }) }], { initialEntries: ["/"] });
+    render(<RouterProvider router={router} />);
+
+    expect(await screen.findByRole("heading", { name: "Folders" })).toBeTruthy();
+    await waitFor(() => expect(fetchJson.mock.calls.map(([url]) => url)).toEqual(expect.arrayContaining(["/api/system/bundled-components", "/api/download-clients"])));
+  });
+});
+
 describe("the guide shell and the step rail", () => {
   it("on the first step the left button reads Skip to advanced, saves that the guide was skipped and leaves to the return address", async () => {
     const { router } = renderStep({ stepId: "account" });
@@ -286,6 +301,44 @@ describe("Find & Download", () => {
     fireEvent.click(await button("Test search source"));
     expect(await screen.findByText("Enter an indexer URL before testing.")).toBeTruthy();
     expect(authedFetch.mock.calls.some(([url]) => url === "/api/indexers/test")).toBe(false);
+  });
+
+  it("testing a download client with no host asks for one and sends nothing", async () => {
+    renderStep({ stepId: "services" });
+    await screen.findByPlaceholderText("https://indexer.example/api");
+
+    fireEvent.click(await button("Test download client"));
+
+    expect(await screen.findByText("Enter a download client host before testing.")).toBeTruthy();
+    expect(authedFetch.mock.calls.some(([url]) => url === "/api/download-clients/test")).toBe(false);
+  });
+
+  it("a download client test that cannot reach the client, or is answered by something that is not a client, says so", async () => {
+    renderStep({ stepId: "services" });
+    await screen.findByPlaceholderText("https://indexer.example/api");
+    typeInto("Download client host", "nas");
+
+    authedFetch.mockImplementation(async (url: string) => { if (url === "/api/download-clients/test") throw new TypeError("Network down"); return okJson(); });
+    fireEvent.click(await button("Test download client"));
+    expect(await screen.findByText("Network down")).toBeTruthy();
+
+    authedFetch.mockImplementation(async (url: string) => (url === "/api/download-clients/test" ? new Response("not json", { status: 200 }) : okJson()));
+    fireEvent.click(await button("Test download client"));
+    expect(await screen.findByText("Download client test needs attention.")).toBeTruthy();
+  });
+
+  it("a search source test that is refused, or answered by something that is not a search source, says so", async () => {
+    renderStep({ stepId: "services" });
+    await screen.findByPlaceholderText("https://indexer.example/api");
+    typeInto("Indexer URL", "https://indexer.example/api");
+
+    authedFetch.mockImplementation(async (url: string) => { if (url === "/api/indexers/test") throw new TypeError("Network down"); return okJson(); });
+    fireEvent.click(await button("Test search source"));
+    expect(await screen.findByText("Network down")).toBeTruthy();
+
+    authedFetch.mockImplementation(async (url: string) => (url === "/api/indexers/test" ? new Response("not json", { status: 200 }) : okJson()));
+    fireEvent.click(await button("Test search source"));
+    expect(await screen.findByText("Indexer test needs attention.")).toBeTruthy();
   });
 
   it("changing any search source field resets its result to Not tested", async () => {
