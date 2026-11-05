@@ -289,7 +289,8 @@ public sealed partial class TrackerEngine : ITrackerEngine
                 var target = TrackerResponseParser.Resolve(page.FinalUri, href);
                 if (target.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
                 {
-                    return new TrackerGrab(target, null, link);
+                    var magnet = TrackerMagnet.Normalize(target);
+                    return new TrackerGrab(magnet, null, link);
                 }
 
                 var file = await FetchTorrentAsync(session, definition, new Uri(target), headers, variables, cancellationToken);

@@ -1,3 +1,4 @@
+using System.Net;
 using System.Globalization;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -487,7 +488,7 @@ public static partial class TrackerResponseParser
 
                 if (value.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
                 {
-                    release.MagnetUrl = value;
+                    release.MagnetUrl = TrackerMagnet.Normalize(value);
                     return value;
                 }
 
@@ -495,7 +496,7 @@ public static partial class TrackerResponseParser
                 return release.DownloadUrl;
 
             case "magnet":
-                release.MagnetUrl = value.Length == 0 ? null : value;
+                release.MagnetUrl = value.Length == 0 ? null : TrackerMagnet.Normalize(value);
                 return release.MagnetUrl;
 
             case "infohash":
@@ -723,6 +724,26 @@ public static class TrackerMagnet
         }
 
         return magnet + string.Concat(Announce.Select(tracker => "&tr=" + Uri.EscapeDataString(tracker)));
+    }
+
+    /// <summary>
+    /// A magnet read out of a page, with its display name (<c>dn</c>) decoded once. Some trackers (1337x, #1492) HTML-escape the
+    /// release name and then percent-encode it, so after the page and the percent codes are decoded the name still reads
+    /// "&amp;" or "&mdash;". The name is percent-decoded, HTML-decoded exactly once, and encoded again; nothing else in the
+    /// link changes. A link that is not a magnet, or has no name, is returned as it came.
+    /// </summary>
+    public static string Normalize(string link)
+    {
+        if (!link.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
+        {
+            return link;
+        }
+
+        return Regex.Replace(link, @"(?<=[?&])dn=([^&]*)", match =>
+        {
+            var name = WebUtility.HtmlDecode(Uri.UnescapeDataString(match.Groups[1].Value.Replace('+', ' ')));
+            return "dn=" + Uri.EscapeDataString(name);
+        }, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     }
 
     /// <summary>The info hash a magnet names, upper-case hex or base32 as written.</summary>
