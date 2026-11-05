@@ -170,6 +170,21 @@ public sealed class AnActiveDownloadLimitTheClientWillNotSayIsNeverGuessedTests
         return root.ToJsonString();
     }
 
+    // uTorrent's recorded getsettings reply with the limit row removed, or with no settings list at all (a null row).
+    private static string RecordedSettingsWithout(string? row)
+    {
+        var root = JsonNode.Parse(RecordedReplies.Utorrent("settings").Single.Reply.Body!)!.AsObject();
+        if (row is null)
+        {
+            root.Remove("settings");
+            return root.ToJsonString();
+        }
+
+        var rows = root["settings"]!.AsArray();
+        rows.Remove(rows.Single(r => r![0]!.GetValue<string>() == row));
+        return root.ToJsonString();
+    }
+
     [Fact]
     public async Task A_recorded_uTorrent_limit_is_named_and_a_limit_of_zero_means_none()
     {
@@ -187,8 +202,8 @@ public sealed class AnActiveDownloadLimitTheClientWillNotSayIsNeverGuessedTests
         var load = await UtorrentSnapshotLimit(() => failure switch
         {
             "refused" => RecordedReplies.Json("{}", HttpStatusCode.InternalServerError),
-            "noSettingsList" => RecordedReplies.Json("{\"build\":1}"),
-            "noRowForTheLimit" => RecordedReplies.Json("{\"settings\":[[\"dir_active_download\",2,\"x\"]]}"),
+            "noSettingsList" => RecordedReplies.Json(RecordedSettingsWithout(null)),
+            "noRowForTheLimit" => RecordedReplies.Json(RecordedSettingsWithout("max_active_downloads")),
             _ => RecordedReplies.Json("<html>"),
         });
 
