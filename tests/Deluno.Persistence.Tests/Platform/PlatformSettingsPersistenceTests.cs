@@ -1037,13 +1037,10 @@ public sealed class PlatformSettingsPersistenceTests
 
         // #1194: nothing is on for a fresh install.
         Assert.False(loaded.DownloadHealthNoProgressEnabled);
-        Assert.Equal(30, loaded.DownloadHealthNoProgressMinutes);
         Assert.False(loaded.DownloadHealthMinSpeedEnabled);
         Assert.Equal(50, loaded.DownloadHealthMinSpeedKbps);
-        Assert.Equal(30, loaded.DownloadHealthMinSpeedMinutes);
         Assert.False(loaded.DownloadHealthMinPeersEnabled);
         Assert.Equal(1, loaded.DownloadHealthMinPeers);
-        Assert.Equal(30, loaded.DownloadHealthMinPeersMinutes);
         // #818: off by default (#936), with Cleanuparr's own hour as the starting grace period.
         Assert.False(loaded.DownloadHealthDeadTorrentEnabled);
         Assert.Equal(60, loaded.DownloadHealthDeadTorrentGraceMinutes);
@@ -1059,13 +1056,10 @@ public sealed class PlatformSettingsPersistenceTests
             await repository.GetAsync(CancellationToken.None),
             new PatchPlatformSettingsRequest(
                 DownloadHealthNoProgressEnabled: true,
-                DownloadHealthNoProgressMinutes: 15,
                 DownloadHealthMinSpeedEnabled: true,
                 DownloadHealthMinSpeedKbps: 200,
-                DownloadHealthMinSpeedMinutes: 45,
                 DownloadHealthMinPeersEnabled: true,
                 DownloadHealthMinPeers: 3,
-                DownloadHealthMinPeersMinutes: 20,
                 DownloadHealthDeadTorrentEnabled: true,
                 DownloadHealthDeadTorrentGraceMinutes: 90));
         await repository.SaveAsync(merged, CancellationToken.None);
@@ -1074,13 +1068,10 @@ public sealed class PlatformSettingsPersistenceTests
         var loaded = await reloaded.GetAsync(CancellationToken.None);
 
         Assert.True(loaded.DownloadHealthNoProgressEnabled);
-        Assert.Equal(15, loaded.DownloadHealthNoProgressMinutes);
         Assert.True(loaded.DownloadHealthMinSpeedEnabled);
         Assert.Equal(200, loaded.DownloadHealthMinSpeedKbps);
-        Assert.Equal(45, loaded.DownloadHealthMinSpeedMinutes);
         Assert.True(loaded.DownloadHealthMinPeersEnabled);
         Assert.Equal(3, loaded.DownloadHealthMinPeers);
-        Assert.Equal(20, loaded.DownloadHealthMinPeersMinutes);
         Assert.True(loaded.DownloadHealthDeadTorrentEnabled);
         Assert.Equal(90, loaded.DownloadHealthDeadTorrentGraceMinutes);
     }

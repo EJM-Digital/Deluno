@@ -68,13 +68,10 @@ export interface PlatformSettingsPatch {
   sharingPrivacyScope?: string;
   sharingCompletionAction?: string;
   downloadHealthNoProgressEnabled?: boolean;
-  downloadHealthNoProgressMinutes?: number;
   downloadHealthMinSpeedEnabled?: boolean;
   downloadHealthMinSpeedKbps?: number;
-  downloadHealthMinSpeedMinutes?: number;
   downloadHealthMinPeersEnabled?: boolean;
   downloadHealthMinPeers?: number;
-  downloadHealthMinPeersMinutes?: number;
   /** #814: one sandbox switch, shared by the strike/blocklist executor and the seeding-cleanup executor. */
   downloadHealthDryRunEnabled?: boolean;
   /** #825: hours a download can go without a fresh strike before its strike count clears. 1-720. */

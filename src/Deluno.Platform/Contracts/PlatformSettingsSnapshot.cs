@@ -95,13 +95,10 @@ public sealed record PlatformSettingsSnapshot(
     // before. Only "no progress" starts on; the other two are sharper rules a
     // person opts into once they know their own swarms.
     bool DownloadHealthNoProgressEnabled = false,
-    int DownloadHealthNoProgressMinutes = 30,
     bool DownloadHealthMinSpeedEnabled = false,
     int DownloadHealthMinSpeedKbps = 50,
-    int DownloadHealthMinSpeedMinutes = 30,
     bool DownloadHealthMinPeersEnabled = false,
     int DownloadHealthMinPeers = 1,
-    int DownloadHealthMinPeersMinutes = 30,
     // #818: zero seeders, or the tracker itself saying unregistered, past a
     // grace period since the download was added - off by default (#936),
     // same as every other opt-in rule kind above.

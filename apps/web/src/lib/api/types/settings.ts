@@ -113,13 +113,10 @@ export interface PlatformSettingsSnapshot {
    * Deluno always used, the other two are sharper rules a person opts into.
    */
   downloadHealthNoProgressEnabled: boolean;
-  downloadHealthNoProgressMinutes: number;
   downloadHealthMinSpeedEnabled: boolean;
   downloadHealthMinSpeedKbps: number;
-  downloadHealthMinSpeedMinutes: number;
   downloadHealthMinPeersEnabled: boolean;
   downloadHealthMinPeers: number;
-  downloadHealthMinPeersMinutes: number;
   /**
    * #814: one sandbox switch, shared by the strike/blocklist executor and
    * the seeding-cleanup executor. On, both log the action they would have
@@ -437,13 +434,10 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   sharingCompletionAction: "reclaim",
   libraryFileCheckHours: 6,
   downloadHealthNoProgressEnabled: false,
-  downloadHealthNoProgressMinutes: 30,
   downloadHealthMinSpeedEnabled: false,
   downloadHealthMinSpeedKbps: 50,
-  downloadHealthMinSpeedMinutes: 30,
   downloadHealthMinPeersEnabled: false,
   downloadHealthMinPeers: 1,
-  downloadHealthMinPeersMinutes: 30,
   downloadHealthDryRunEnabled: false,
   downloadHealthStrikeInactivityHours: 72,
   downloadHealthConnectivityCheckEnabled: false,

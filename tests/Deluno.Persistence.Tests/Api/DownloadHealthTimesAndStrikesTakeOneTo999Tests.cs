@@ -23,10 +23,7 @@ public sealed class DownloadHealthTimesAndStrikesTakeOneTo999Tests
     public static TheoryData<string> Fields => new()
     {
         "downloadHealthStrikeThreshold",
-        "downloadHealthDefaultStrikeWindowMinutes",
-        "downloadHealthNoProgressMinutes",
-        "downloadHealthMinSpeedMinutes",
-        "downloadHealthMinPeersMinutes"
+        "downloadHealthDefaultStrikeWindowMinutes"
     };
 
     [Theory]
@@ -131,9 +128,6 @@ public sealed class DownloadHealthTimesAndStrikesTakeOneTo999Tests
         {
             ["cleanup.strikeThreshold"] = "1000",
             ["download-health.defaultStrikeWindowMinutes"] = "1440",
-            ["download-health.noProgress.minutes"] = "1440",
-            ["download-health.minSpeed.minutes"] = "0",
-            ["download-health.minPeers.minutes"] = "5000",
             ["download-health.rules.v1"] = System.Text.Json.JsonSerializer.Serialize(new[] { rule })
         };
         await using (var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform, CancellationToken.None))
@@ -151,11 +145,8 @@ public sealed class DownloadHealthTimesAndStrikesTakeOneTo999Tests
 
         Assert.Equal(999, settings.DownloadHealthStrikeThreshold);
         Assert.Equal(999, settings.DownloadHealthDefaultStrikeWindowMinutes);
-        Assert.Equal(999, settings.DownloadHealthNoProgressMinutes);
-        Assert.Equal(1, settings.DownloadHealthMinSpeedMinutes);
-        Assert.Equal(999, settings.DownloadHealthMinPeersMinutes);
         var read = Assert.Single(rules);
         Assert.Equal(1, read.StrikeLimit);
-        Assert.Equal(999, read.TimerMinutes);
+        Assert.Equal(999, read.TimerMinutes); // the stored 1440 reads back at the nearest bound
     }
 }

@@ -1043,9 +1043,6 @@ public static class PlatformEndpointRouteBuilderExtensions
 
         Refuse("downloadHealthStrikeThreshold", DownloadHealthBounds.StrikesProblem(request.DownloadHealthStrikeThreshold, "The number of strikes"));
         Refuse("downloadHealthDefaultStrikeWindowMinutes", DownloadHealthBounds.MinutesProblem(request.DownloadHealthDefaultStrikeWindowMinutes, "The time between strikes"));
-        Refuse("downloadHealthNoProgressMinutes", DownloadHealthBounds.MinutesProblem(request.DownloadHealthNoProgressMinutes, "The no-progress time"));
-        Refuse("downloadHealthMinSpeedMinutes", DownloadHealthBounds.MinutesProblem(request.DownloadHealthMinSpeedMinutes, "The too-slow time"));
-        Refuse("downloadHealthMinPeersMinutes", DownloadHealthBounds.MinutesProblem(request.DownloadHealthMinPeersMinutes, "The low-peers time"));
 
         if (!errors.ContainsKey("libraryFreeSpaceWarnPercent") &&
             !errors.ContainsKey("libraryFreeSpacePausePercent") &&

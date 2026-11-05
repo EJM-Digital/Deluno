@@ -735,6 +735,9 @@ public sealed class SqliteDownloadHealthRepository(
     /// <see cref="DownloadHealthRule.ActionPreset"/>, identical across every
     /// migrated rule since the old system had only one of each for all kinds.
     /// </summary>
+    /// <summary>The timer every rule seeded from the old flat switches starts with (#1490): the three old Timing fields all defaulted to this and changed nothing once a rule existed.</summary>
+    private const int LegacyRuleTimerMinutes = 30;
+
     private static IReadOnlyList<DownloadHealthRule> LegacyRulesFrom(PlatformSettingsSnapshot legacy, DateTimeOffset now)
     {
         var strikeLimit = DownloadHealthBounds.ClampStrikes(legacy.DownloadHealthStrikeThreshold);
@@ -757,9 +760,9 @@ public sealed class SqliteDownloadHealthRepository(
 
         return
         [
-            Rule("legacy-no-progress", DownloadHealthRuleKinds.NoProgress, legacy.DownloadHealthNoProgressEnabled, legacy.DownloadHealthNoProgressMinutes, 0),
-            Rule("legacy-too-slow", DownloadHealthRuleKinds.TooSlow, legacy.DownloadHealthMinSpeedEnabled, legacy.DownloadHealthMinSpeedMinutes, legacy.DownloadHealthMinSpeedKbps),
-            Rule("legacy-low-peers", DownloadHealthRuleKinds.LowPeers, legacy.DownloadHealthMinPeersEnabled, legacy.DownloadHealthMinPeersMinutes, legacy.DownloadHealthMinPeers),
+            Rule("legacy-no-progress", DownloadHealthRuleKinds.NoProgress, legacy.DownloadHealthNoProgressEnabled, LegacyRuleTimerMinutes, 0),
+            Rule("legacy-too-slow", DownloadHealthRuleKinds.TooSlow, legacy.DownloadHealthMinSpeedEnabled, LegacyRuleTimerMinutes, legacy.DownloadHealthMinSpeedKbps),
+            Rule("legacy-low-peers", DownloadHealthRuleKinds.LowPeers, legacy.DownloadHealthMinPeersEnabled, LegacyRuleTimerMinutes, legacy.DownloadHealthMinPeers),
             // #818: the timer here is the strike-repeat window, not the grace
             // period - the grace period is the rule's own Threshold, which
             // DownloadHealthEvaluator reads for DeadTorrent.
