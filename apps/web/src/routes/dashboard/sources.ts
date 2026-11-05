@@ -161,7 +161,10 @@ export function setupNeedsFromCache(): SetupNeed[] {
 }
 
 export function useSetupState(): SetupState {
-  const { data, ready } = useRouteSources(setupSources);
+  const { data, pending, failed } = useRouteSources(setupSources);
+  // Ready once every list has answered (or failed). Before that the lists are empty stand-ins, and a checklist worked out
+  // from them says "0 of 4 steps" on a finished install and takes it back a moment later: a flash after the first paint (#1508).
+  const ready = [...pending].every((name) => failed.some((entry) => entry.name === name));
   return useMemo(() => {
     const { status, needs } = buildSetupState({
       libraries: data.libraries,

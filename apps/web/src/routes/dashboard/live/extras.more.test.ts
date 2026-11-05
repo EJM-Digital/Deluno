@@ -98,15 +98,15 @@ describe("today's arrivals", () => {
   it("is the day's real imports when the server has them, each with its title, quality and where it landed", () => {
     const [one] = arrivalItems(extras({ arrivals: [arrival({ qualityMet: true, libraryId: "lib1", libraryName: "Films" })] }), []);
     expect(one).toEqual({
-      key: "arrival:2026-11-04T11:00:00Z:m1", entity: { kind: "movie", id: "m1" }, fallbackTitle: "Dune (2021)", release: "Dune.2021.1080p", quality: "WEB 1080p", previousQuality: null,
+      key: "arrival:m1", entity: { kind: "movie", id: "m1" }, fallbackTitle: "Dune (2021)", release: "Dune.2021.1080p", quality: "WEB 1080p", previousQuality: null,
       upgraded: false, sizeBytes: 100, at: "2026-11-04T11:00:00Z", qualityMet: true, libraryId: "lib1", libraryName: "Films", requestedBy: null, to: "/movies/m1"
     });
   });
 
   it("says a title when the release is unknown, and keys an arrival with no title by its place in the list", () => {
     const items = arrivalItems(extras({ arrivals: [arrival({ release: null, entityId: null }), arrival({ entityId: null })] }), []);
-    expect(items[0]).toMatchObject({ fallbackTitle: "A title", entity: undefined, to: "/queue", key: "arrival:2026-11-04T11:00:00Z:0" });
-    expect(items[1].key).toBe("arrival:2026-11-04T11:00:00Z:1");
+    expect(items[0]).toMatchObject({ fallbackTitle: "A title", entity: undefined, to: "/queue", key: "arrival:row0" });
+    expect(items[1].key).toBe("arrival:row1");
   });
 
   it("is not known to have met its quality, or where it landed, when the server did not say", () => {
@@ -144,5 +144,21 @@ describe("the newest arrivals of the last seven days", () => {
     const items = recentArrivalItems({ recentArrivals: [arrival(), arrival({ entityId: "m2" })], requests: [request()] } as unknown as DashboardLiveExtras);
     expect(items.map((i) => i.requestedBy)).toEqual(["Sam", null]);
     expect(recentArrivalItems({ recentArrivals: [arrival()] } as unknown as DashboardLiveExtras)[0].requestedBy).toBeNull();
+  });
+});
+
+describe("an arrival's key does not depend on the time of the import (#1508)", () => {
+  const row = (importedUtc: string, entityId = "m1") => ({ entityType: "movie", entityId, release: "Dune.2021.1080p", quality: null, previousQuality: null, upgraded: false, sizeBytes: null, importedUtc }) as never;
+  const keysOf = (arrivals: unknown[]) => arrivalItems({ arrivals, requests: [] } as unknown as DashboardLiveExtras, []).map((item) => item.key);
+
+  it("is the same for the pushed row and the stored row of one import", () => {
+    expect(keysOf([row("2026-11-04T11:00:00.000Z")])).toEqual(keysOf([row("2026-11-04T11:00:02.431Z")]));
+  });
+
+  it("keeps the older import's key when a newer import of the same title lands", () => {
+    const [older] = keysOf([row("2026-11-04T09:00:00Z")]);
+    const both = keysOf([row("2026-11-04T11:00:00Z"), row("2026-11-04T09:00:00Z")]);
+    expect(both[1]).toBe(older);
+    expect(new Set(both).size).toBe(2);
   });
 });

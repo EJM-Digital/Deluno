@@ -90,10 +90,28 @@ export interface ArrivalItem {
   to: string;
 }
 
-function toArrivalItem(arrival: LiveArrivalItem, index: number, asked: ReadonlyMap<string, string | null>): ArrivalItem {
+/**
+ * A tile's key is the title and which import of it this is, oldest first, never the import's time. The time a live push
+ * names and the time the stored row carries differ by a moment, so keyed by time the tile that arrived by a push was
+ * replaced (removed and drawn again, its poster with it) when the stored row took its place (#1508).
+ */
+function arrivalKeys(arrivals: readonly LiveArrivalItem[]): string[] {
+  const seen = new Map<string, number>();
+  const keys: string[] = [];
+  for (let index = arrivals.length - 1; index >= 0; index -= 1) {
+    const arrival = arrivals[index];
+    const who = arrival.entityId ?? `row${index}`;
+    const nth = seen.get(who) ?? 0;
+    seen.set(who, nth + 1);
+    keys[index] = nth === 0 ? `arrival:${who}` : `arrival:${who}:${nth}`;
+  }
+  return keys;
+}
+
+function toArrivalItem(arrival: LiveArrivalItem, key: string, asked: ReadonlyMap<string, string | null>): ArrivalItem {
   const entity = entityFromRelated(arrival.entityType, arrival.entityId);
   return {
-    key: `arrival:${arrival.importedUtc}:${arrival.entityId ?? index}`,
+    key,
     entity,
     fallbackTitle: arrival.release ? titleFromRelease(arrival.release) : "A title",
     release: arrival.release,
@@ -114,14 +132,16 @@ function toArrivalItem(arrival: LiveArrivalItem, index: number, asked: ReadonlyM
 export function recentArrivalItems(extras: DashboardLiveExtras | null | undefined): ArrivalItem[] {
   if (!extras?.recentArrivals) return [];
   const asked = new Map(extras.requests?.map((request) => [request.entityId, request.requestedBy]));
-  return extras.recentArrivals.map((arrival, index) => toArrivalItem(arrival, index, asked));
+  const keys = arrivalKeys(extras.recentArrivals);
+  return extras.recentArrivals.map((arrival, index) => toArrivalItem(arrival, keys[index], asked));
 }
 
 /** Today's arrivals, newest first: the day's real imports when the server has them, otherwise the imported cards. */
 export function arrivalItems(extras: DashboardLiveExtras | null | undefined, cards: JourneyCard[]): ArrivalItem[] {
   if (extras) {
     const asked = new Map(extras.requests?.map((request) => [request.entityId, request.requestedBy]));
-    return extras.arrivals.map((arrival, index) => toArrivalItem(arrival, index, asked));
+    const keys = arrivalKeys(extras.arrivals);
+    return extras.arrivals.map((arrival, index) => toArrivalItem(arrival, keys[index], asked));
   }
   return cards
     .filter((card) => card.stage === "imported")

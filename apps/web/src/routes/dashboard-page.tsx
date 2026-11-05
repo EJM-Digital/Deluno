@@ -143,7 +143,9 @@ export function DashboardPage() {
   // page writes them into the cache: nothing is fetched after a change.
   // Setup reads a few lists that change on their own events, so those events
   // refresh the setup lists.
-  const refreshSetup = useCoalescedRevalidate(() => { void queryClient.invalidateQueries({ queryKey: ["src"] }); }, 1_000);
+  const refreshSetup = useCoalescedRevalidate(() => {
+    for (const source of Object.values(setupSources)) void queryClient.invalidateQueries({ queryKey: source.key, exact: true });
+  }, 1_000);
   useSignalREvent("SettingsChanged", RealtimeGroups.Dashboard, refreshSetup);
   useSignalREvent("QualityProfileChanged", RealtimeGroups.Dashboard, refreshSetup);
   useSignalREvent("PolicySetChanged", RealtimeGroups.Dashboard, refreshSetup);
