@@ -176,6 +176,8 @@ public static class RecordedReplies
     /// <summary>IMDb's public list pages and exports (a real anonymous GET: its bot check answers an automated client with an empty 202).</summary>
     /// <summary>GitHub's own replies (its release feeds, release downloads and REST API). A request path in a recording is host plus path.</summary>
     public static Recording Github(string state) => RecordedReplies.LoadLatest("github", state);
+    /// <summary>1337x's own pages, real GETs through FlareSolverr (#1492).</summary>
+    public static Recording Tracker1337x(string state) => RecordedReplies.LoadLatest("tracker1337x", state);
     /// <summary>A JSON reply as an HTTP 200 response, for the parts of a test that are not an external app's reply.</summary>
     public static HttpResponseMessage Json(string body, HttpStatusCode status = HttpStatusCode.OK)
         => new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
