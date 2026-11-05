@@ -230,6 +230,7 @@ public static class MediaSearchHandler
                 replacementAuthorized: wantedItem.HasFile,
                 replacementExpectedPath: wantedItem.FilePath,
                 clientExternalId: grabResult.ExternalId,
+                followUpRefusalsJson: grabResult.FollowUpRefusalsJson,
                 startedBy: DownloadStartedBy.Manual);
 
             // "Search now" takes a release like any other grab, so its title is

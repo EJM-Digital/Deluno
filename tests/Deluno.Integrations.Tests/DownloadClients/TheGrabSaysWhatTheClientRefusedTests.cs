@@ -24,12 +24,13 @@ public sealed class TheGrabSaysWhatTheClientRefusedTests
     private static DownloadClientGrabRequest Request()
         => new(Release, "magnet:?xt=urn:btih:" + Hash + "&dn=Example", "movies", "movies", "Example Indexer") { KnownInfoHash = Hash };
 
-    private static DownloadClientItem Client(bool shareLimits = false)
+    private static DownloadClientItem Client(bool shareLimits = false, string? location = null)
         => RecordedClientCalls.Client("qbittorrent", "deluno", "secret") with
         {
             Id = "client-1",
             Name = "qBittorrent",
-            ShareRatioLimit = shareLimits ? 1.5 : null
+            ShareRatioLimit = shareLimits ? 1.5 : null,
+            Location = location
         };
 
     private static QbittorrentDownloadClient Rig(bool refuseCategory, bool refuseShareLimits)
@@ -282,6 +283,58 @@ public sealed class TheGrabSaysWhatTheClientRefusedTests
         Assert.Empty(world.Health);
     }
 
+    // ---- #1470 follow-up: a first grab has no dispatch yet, so the refusals travel back in the result to be kept with it ----
+
+    [Fact]
+    public async Task A_first_grab_with_no_dispatch_hands_back_the_refused_category_to_be_kept_with_the_dispatch_it_makes()
+    {
+        var world = new World(Rig(refuseCategory: true, refuseShareLimits: true), shareLimits: true);
+
+        var result = await world.GrabAsync();
+
+        Assert.Empty(world.Kept);
+        var kept = System.Text.Json.Nodes.JsonNode.Parse(result.FollowUpRefusalsJson!)!.AsArray().Single()!;
+        Assert.Equal("setCategory", kept["call"]!.GetValue<string>());
+        Assert.Equal("Incorrect category name", kept["reason"]!.GetValue<string>());
+        Assert.Equal("Create the category in qBittorrent or change the library's category, then send it again.", kept["fix"]!.GetValue<string>());
+        Assert.DoesNotContain("share limits", result.FollowUpRefusalsJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_first_grab_whose_save_folder_qBittorrent_cannot_make_hands_it_back_and_Activity_reads_as_two_sentences()
+    {
+        var recorded = RecordedReplies.Qbittorrent("location-refused");
+        var world = new World(RigAnswering("setLocation", () => recorded.Exchanges[0].Reply.ToResponse()), shareLimits: false, location: @"Z:\no-such-drive\golden-movies");
+
+        var result = await world.GrabAsync();
+
+        var kept = System.Text.Json.Nodes.JsonNode.Parse(result.FollowUpRefusalsJson!)!.AsArray().Single()!;
+        Assert.Equal("setLocation", kept["call"]!.GetValue<string>());
+        Assert.Equal("Cannot make save path", kept["reason"]!.GetValue<string>());
+        Assert.Contains("change the library's downloads folder", kept["fix"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.Equal(
+            $@"qBittorrent did not take the save folder Z:\no-such-drive\golden-movies for {Release}: Cannot make save path. Deluno may not be able to import it until that is fixed.",
+            Assert.Single(world.Activity));
+    }
+
+    [Fact]
+    public void A_client_words_that_already_end_in_a_full_stop_get_no_second_one()
+    {
+        var refused = new DownloadClientFollowUpRefusal("setCategory", "the movies category", true, "Incorrect category name.");
+
+        Assert.Equal("qBittorrent did not take the movies category for Example: Incorrect category name.", DownloadClientGrabService.RefusalSentence("qBittorrent", "Example", refused));
+    }
+
+    [Fact]
+    public async Task A_first_grab_whose_calls_were_all_taken_hands_back_nothing()
+    {
+        var world = new World(Rig(refuseCategory: false, refuseShareLimits: false), shareLimits: false);
+
+        var result = await world.GrabAsync();
+
+        Assert.Null(result.FollowUpRefusalsJson);
+    }
+
     private sealed class World
     {
         private readonly DownloadClientGrabService service;
@@ -294,9 +347,9 @@ public sealed class TheGrabSaysWhatTheClientRefusedTests
 
         public List<(string Id, string? Json)> Kept { get; } = [];
 
-        public World(QbittorrentDownloadClient adapter, bool shareLimits, bool dispatchFails = false, bool activityFails = false, bool healthFails = false)
+        public World(QbittorrentDownloadClient adapter, bool shareLimits, bool dispatchFails = false, bool activityFails = false, bool healthFails = false, string? location = null)
         {
-            var client = Client(shareLimits);
+            var client = Client(shareLimits, location);
             var connections = new Mock<IConnectionsRepository>();
             connections.Setup(instance => instance.ListDownloadClientsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([client]);
             connections.Setup(instance => instance.ListIndexersAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);

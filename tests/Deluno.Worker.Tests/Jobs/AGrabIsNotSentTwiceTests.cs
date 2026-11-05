@@ -158,6 +158,50 @@ public sealed class AGrabIsNotSentTwiceTests
         world.Grabs.Verify(grab => grab.GrabAsync("client-1", It.IsAny<DownloadClientGrabRequest>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    // ---- #1470: the refusals a first grab hands back are written with the dispatch the automatic pass records ----
+
+    private const string Refused = "[{\"call\":\"setLocation\",\"reason\":\"Cannot make save path\"}]";
+
+    [Fact]
+    public async Task A_film_the_automatic_pass_sends_keeps_what_the_client_refused_on_its_dispatch()
+    {
+        var world = new World(refusalsJson: Refused);
+
+        await world.MoviesHandler().HandleAsync(LibraryJob("movies"), CancellationToken.None);
+
+        Assert.Equal(Refused, world.RefusalsRecorded());
+    }
+
+    [Fact]
+    public async Task A_series_the_automatic_pass_sends_keeps_what_the_client_refused_on_its_dispatch()
+    {
+        var world = new World(refusalsJson: Refused);
+
+        await world.TvHandler().HandleAsync(LibraryJob("tv"), CancellationToken.None);
+
+        Assert.Equal(Refused, world.RefusalsRecorded());
+    }
+
+    [Fact]
+    public async Task An_episode_the_automatic_pass_sends_keeps_what_the_client_refused_on_its_dispatch()
+    {
+        var world = new World(refusalsJson: Refused);
+
+        await world.EpisodeHandler().HandleAsync(EpisodeJob(), CancellationToken.None);
+
+        Assert.Equal(Refused, world.RefusalsRecorded());
+    }
+
+    [Fact]
+    public async Task A_film_the_client_took_whole_records_no_refusals()
+    {
+        var world = new World();
+
+        await world.MoviesHandler().HandleAsync(LibraryJob("movies"), CancellationToken.None);
+
+        Assert.Null(world.RefusalsRecorded());
+    }
+
     private static JobQueueItem LibraryJob(string mediaType)
         => TestJobs.Create("library.search", payloadJson: JsonSerializer.Serialize(new
         {
@@ -194,7 +238,7 @@ public sealed class AGrabIsNotSentTwiceTests
         public Mock<IDownloadClientGrabService> Grabs { get; } = new();
         public Mock<IMediaStateRepository> MediaState { get; } = new();
 
-        public World(string grabStatus = "sent", IReadOnlyList<DownloadInFlight>? inFlight = null)
+        public World(string grabStatus = "sent", IReadOnlyList<DownloadInFlight>? inFlight = null, string? refusalsJson = null)
         {
             Libraries.Setup(repository => repository.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
             Jobs.Setup(repository => repository.ListDownloadsInFlightAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
@@ -229,7 +273,15 @@ public sealed class AGrabIsNotSentTwiceTests
                     new DownloadClientGrabRequest(Release, "http://fixture.invalid/release.nzb", "movies", "movies", "Fixture"),
                     []));
             Grabs.Setup(grab => grab.GrabAsync(It.IsAny<string>(), It.IsAny<DownloadClientGrabRequest>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new DownloadClientGrabResult("client-1", Release, grabStatus == "sent", grabStatus, grabStatus) { ExternalId = "nzo-1" });
+                .ReturnsAsync(new DownloadClientGrabResult("client-1", Release, grabStatus == "sent", grabStatus, grabStatus) { ExternalId = "nzo-1", FollowUpRefusalsJson = refusalsJson });
+        }
+
+        /// <summary>The refusals the one dispatch this world recorded was given.</summary>
+        public string? RefusalsRecorded()
+        {
+            var recorded = Jobs.Invocations.Single(call => call.Method.Name == nameof(IJobQueueRepository.RecordDownloadDispatchAsync));
+            var at = Array.FindIndex(recorded.Method.GetParameters(), parameter => parameter.Name == "followUpRefusalsJson");
+            return (string?)recorded.Arguments[at];
         }
 
         public MoviesLibrarySearchJobHandler MoviesHandler()

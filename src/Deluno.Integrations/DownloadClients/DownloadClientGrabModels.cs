@@ -115,6 +115,14 @@ public sealed record DownloadClientGrabResult(
     [System.Text.Json.Serialization.JsonIgnore]
     public IReadOnlyList<DownloadClientFollowUpRefusal>? FollowUpRefusals { get; init; }
 
+    /// <summary>
+    /// The refusals that can stop the import, as the notes <see cref="FollowUpRefusalNotes"/> keeps them, for a first grab to write
+    /// with the dispatch it records afterwards: a first grab has no dispatch yet, so the grab service cannot keep them itself (#1470).
+    /// Null when the client refused nothing that matters.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? FollowUpRefusalsJson { get; init; }
+
     /// <summary>The follow-up calls the client took (or refused), so a refusal said earlier is cleared once the same call is taken (#1470).</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public IReadOnlyList<string>? FollowUpCallsSent { get; init; }

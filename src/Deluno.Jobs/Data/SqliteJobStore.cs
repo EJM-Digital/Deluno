@@ -3062,7 +3062,8 @@ public sealed class SqliteJobStore(
         IReadOnlyList<DispatchReplacementTarget>? replacementTargets = null,
         string? clientExternalId = null,
         string? startedBy = null,
-        string? titleEntityId = null)
+        string? titleEntityId = null,
+        string? followUpRefusalsJson = null)
     {
         var now = timeProvider.GetUtcNow();
         var dispatchId = Guid.CreateVersion7().ToString("N");
@@ -3070,6 +3071,8 @@ public sealed class SqliteJobStore(
         // The decision is in its own columns now; keep the notes to a size a screen
         // can carry, and keep one copy of them (#1081).
         notesJson = DispatchNotesTrimmer.Trim(notesJson);
+        // #1470: what the client refused after this grab is kept in the notes from the first look, after the trim so it is never cut.
+        notesJson = WithFollowUpRefusals(notesJson, followUpRefusalsJson);
         var normalizedReplacementTargets = NormalizeReplacementTargets(replacementTargets);
         var ownedReplacementAuthorized = replacementAuthorized &&
             (!string.IsNullOrWhiteSpace(replacementExpectedPath) || normalizedReplacementTargets.Count > 0);
@@ -5134,6 +5137,31 @@ public sealed class SqliteJobStore(
     }
 
     private static string MapStatusToGrabStatus(string status) => GrabStatuses.ToStored(status);
+
+    /// <summary>
+    /// The notes with the client's refusals of the calls sent after the grab under <c>followUpRefusals</c> (#1470); the notes
+    /// as they were when there are none, or when the refusals are not JSON. Notes that are not a JSON object start again as one.
+    /// </summary>
+    private static string? WithFollowUpRefusals(string? notesJson, string? followUpRefusalsJson)
+    {
+        if (string.IsNullOrWhiteSpace(followUpRefusalsJson))
+        {
+            return notesJson;
+        }
+
+        try
+        {
+            var refusals = System.Text.Json.Nodes.JsonNode.Parse(followUpRefusalsJson);
+            var notes = string.IsNullOrWhiteSpace(notesJson) ? null : System.Text.Json.Nodes.JsonNode.Parse(notesJson) as System.Text.Json.Nodes.JsonObject;
+            notes ??= new System.Text.Json.Nodes.JsonObject();
+            notes["followUpRefusals"] = refusals;
+            return notes.ToJsonString();
+        }
+        catch (JsonException)
+        {
+            return notesJson;
+        }
+    }
 
     private static DispatchDecisionTelemetry? TryParseDispatchDecisionTelemetry(string? notesJson)
     {

@@ -93,6 +93,7 @@ public sealed class DownloadClientRetryGrabJobHandler(
             cancellationToken: cancellationToken,
             failure: grabResult.Failure,
             clientExternalId: grabResult.ExternalId,
+            followUpRefusalsJson: grabResult.FollowUpRefusalsJson,
             startedBy: DownloadStartedBy.Inherit);
 
         if (grabResult.Succeeded)

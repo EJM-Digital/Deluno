@@ -129,6 +129,19 @@ public sealed class DownloadClientRetryGrabJobHandlerTests
             Times.Once);
     }
 
+    [Fact]
+    public async Task A_retry_the_client_takes_with_a_refused_folder_keeps_the_refusal_on_the_dispatch_it_records()
+    {
+        const string refused = "[{\"call\":\"setLocation\",\"reason\":\"Cannot make save path\"}]";
+        var world = new World(succeeds: true, refusalsJson: refused);
+
+        await world.Handler().HandleAsync(world.Job(attemptNumber: 1), CancellationToken.None);
+
+        var recorded = world.Jobs.Invocations.Single(call => call.Method.Name == nameof(IJobQueueRepository.RecordDownloadDispatchAsync));
+        var at = Array.FindIndex(recorded.Method.GetParameters(), parameter => parameter.Name == "followUpRefusalsJson");
+        Assert.Equal(refused, recorded.Arguments[at]);
+    }
+
     private sealed class World
     {
         public Mock<IDownloadClientGrabService> Grabs { get; } = new();
@@ -136,7 +149,7 @@ public sealed class DownloadClientRetryGrabJobHandlerTests
         public Mock<IActivityFeedRepository> ActivityFeed { get; } = new();
         public Mock<IJobScheduler> Scheduler { get; } = new();
 
-        public World(bool succeeds, IntegrationFailureKind? failureKind = null, string? status = null, byte[]? fetchedTorrent = null)
+        public World(bool succeeds, IntegrationFailureKind? failureKind = null, string? status = null, byte[]? fetchedTorrent = null, string? refusalsJson = null)
         {
             var effectiveStatus = status ?? (succeeds ? "sent" : "failed");
             var result = new DownloadClientGrabResult("client-1", Release, succeeds, effectiveStatus,
@@ -144,6 +157,7 @@ public sealed class DownloadClientRetryGrabJobHandlerTests
             {
                 ExternalId = succeeds ? "nzo-1" : null,
                 FetchedTorrentFile = fetchedTorrent,
+                FollowUpRefusalsJson = refusalsJson,
                 Failure = !succeeds
                     ? IntegrationFailureFactory.FromLegacy("download-client", "client-1", "SABnzbd", "grab", null, "SABnzbd could not be reached.")
                         with { Kind = failureKind ?? IntegrationFailureKind.RejectedAction }

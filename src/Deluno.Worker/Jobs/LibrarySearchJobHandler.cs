@@ -427,6 +427,7 @@ public abstract class LibrarySearchJobHandler(
                     replacementAuthorized: candidate.HasFile,
                     replacementExpectedPath: candidate.FilePath,
                     clientExternalId: grabResult.ExternalId,
+                    followUpRefusalsJson: grabResult.FollowUpRefusalsJson,
                     startedBy: DownloadStartedBy.ForSearch(payload.TriggeredBy, IsTargeted(payload), candidate.HasFile));
                 if (bestCandidate?.SizeBytes is > 0)
                 {
@@ -1172,6 +1173,7 @@ public abstract class LibrarySearchJobHandler(
                     replacementAuthorized: candidate.HasFile,
                     replacementExpectedPath: candidate.FilePath,
                     clientExternalId: grabResult.ExternalId,
+                    followUpRefusalsJson: grabResult.FollowUpRefusalsJson,
                     startedBy: DownloadStartedBy.ForSearch(payload.TriggeredBy, IsTargeted(payload), candidate.HasFile));
                 if (bestCandidate?.SizeBytes is > 0)
                 {

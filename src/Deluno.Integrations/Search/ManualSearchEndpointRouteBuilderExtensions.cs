@@ -367,6 +367,7 @@ public static class ManualSearchEndpointRouteBuilderExtensions
                 cancellationToken: cancellationToken,
                 failure: grabResult.Failure,
                 clientExternalId: grabResult.ExternalId,
+                followUpRefusalsJson: grabResult.FollowUpRefusalsJson,
                 startedBy: DownloadStartedBy.Manual);
             }
 

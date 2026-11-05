@@ -315,6 +315,7 @@ public sealed class EpisodeSearchJobHandler(
                 replacementAuthorized: !string.IsNullOrWhiteSpace(currentFilePath),
                 replacementExpectedPath: currentFilePath,
                 clientExternalId: grabResult.ExternalId,
+                followUpRefusalsJson: grabResult.FollowUpRefusalsJson,
                 startedBy: DownloadStartedBy.ForSearch("automatic", false, !string.IsNullOrWhiteSpace(currentFilePath)),
                 titleEntityId: payload.SeriesId);
         }

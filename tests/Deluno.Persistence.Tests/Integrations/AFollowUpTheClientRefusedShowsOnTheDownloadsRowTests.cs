@@ -77,6 +77,28 @@ public sealed class AFollowUpTheClientRefusedShowsOnTheDownloadsRowTests
         Assert.Empty(FollowUpRefusalNotes.FindingsFrom("{\"other\":1}", "qBittorrent"));
     }
 
+    [Fact]
+    public async Task A_dispatch_recorded_with_the_grabs_refusals_says_them_on_the_row_from_the_first_look()
+    {
+        using var world = await World.CreateAsync(refusalsJson: FollowUpRefusalNotes.ToJson([Category], "SABnzbd"), notesJson: "{\"candidates\":[]}");
+
+        var overview = await world.PollAsync();
+
+        var finding = Assert.Single(Assert.Single(Assert.Single(overview.Clients).Queue).HealthFindings!, finding => finding.Kind == "follow-up-refused");
+        Assert.Equal($"{world.ClientName} did not take the movies category: Incorrect category name.", finding.Summary);
+        var notes = (await world.Dispatches.GetDispatchAsync(world.DispatchId, CancellationToken.None))!.NotesJson!;
+        Assert.Contains("\"candidates\"", notes, StringComparison.Ordinal);
+        Assert.Contains("followUpRefusals", notes, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_dispatch_recorded_with_nothing_refused_has_no_refusal_in_its_notes()
+    {
+        using var world = await World.CreateAsync(notesJson: "{\"candidates\":[]}");
+
+        Assert.DoesNotContain("followUpRefusals", (await world.Dispatches.GetDispatchAsync(world.DispatchId, CancellationToken.None))!.NotesJson ?? string.Empty, StringComparison.Ordinal);
+    }
+
     private sealed class QueueClient(string clientId, string clientName, Func<DownloadQueueItem> queueItemFactory, IReadOnlyList<string>? clientWarnings = null) : IDownloadClient
     {
         public string Protocol => "sabnzbd";
@@ -134,7 +156,7 @@ public sealed class AFollowUpTheClientRefusedShowsOnTheDownloadsRowTests
 
         public string DispatchId { get; }
 
-        public static async Task<World> CreateAsync(IReadOnlyList<string>? clientWarnings = null)
+        public static async Task<World> CreateAsync(IReadOnlyList<string>? clientWarnings = null, string? refusalsJson = null, string? notesJson = null)
         {
             var storage = TestStorage.Create();
             var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-27T09:00:00Z"));
@@ -160,7 +182,7 @@ public sealed class AFollowUpTheClientRefusedShowsOnTheDownloadsRowTests
             // #933: the Queue only shows downloads Deluno recorded dispatching.
             var dispatchId = await jobs.RecordDownloadDispatchAsync(
                 library.Id, "movies", "movie", "movie-arrival", Release, "Fixture Indexer",
-                client.Id, client.Name, "sent", null, cancellationToken: CancellationToken.None);
+                client.Id, client.Name, "sent", notesJson, cancellationToken: CancellationToken.None, followUpRefusalsJson: refusalsJson);
             await dispatches.RecordDetectionAsync(dispatchId, "queue-arrival", 2_000_000_000, completed: false, CancellationToken.None);
 
             var fakeClient = new QueueClient(client.Id, client.Name, () => new DownloadQueueItem(

@@ -297,7 +297,8 @@ public interface IJobQueueRepository
         IReadOnlyList<DispatchReplacementTarget>? replacementTargets = null,
         string? clientExternalId = null,
         string? startedBy = null,
-        string? titleEntityId = null);
+        string? titleEntityId = null,
+        string? followUpRefusalsJson = null);
 
     Task RecordSearchCycleRunAsync(
         RecordSearchCycleRunRequest request,

@@ -61,6 +61,20 @@ public sealed class SeasonSearchExecutorTests
         world.Grabs.Verify(grab => grab.GrabAsync("client-1", It.IsAny<DownloadClientGrabRequest>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    /// <summary>#1470: what the client refused after a season pack's first grab is written with the dispatch the pass records.</summary>
+    [Fact]
+    public async Task A_season_pack_whose_save_folder_the_client_refused_keeps_the_refusal_on_its_dispatch()
+    {
+        const string refused = "[{\"call\":\"setLocation\",\"reason\":\"Cannot make save path\"}]";
+        var world = new World("Pioneer.One.S01.1080p.WEB-DL", refusalsJson: refused);
+
+        await world.Executor.ExecuteAsync("series-1", 1, "automatic-season", "was searched.", CancellationToken.None);
+
+        var recorded = world.Jobs.Invocations.Single(call => call.Method.Name == nameof(IJobQueueRepository.RecordDownloadDispatchAsync));
+        var at = Array.FindIndex(recorded.Method.GetParameters(), parameter => parameter.Name == "followUpRefusalsJson");
+        Assert.Equal(refused, recorded.Arguments[at]);
+    }
+
     /// <summary>
     /// #1062: an automatic season pack that turns out dead is blocklisted and
     /// searched past by the grab service, so the executor hands it the series,
@@ -206,7 +220,7 @@ public sealed class SeasonSearchExecutorTests
         public Mock<IMediaTagStore> TagStore { get; } = new();
         public SeasonSearchExecutor Executor { get; }
 
-        public World(string bestCandidateReleaseName)
+        public World(string bestCandidateReleaseName, string? refusalsJson = null)
         {
             var series = new SeriesListItem(
                 "series-1", "Pioneer One", 2010, null, true, false,
@@ -271,7 +285,7 @@ public sealed class SeasonSearchExecutorTests
                     new DownloadClientGrabRequest(bestCandidateReleaseName, "http://fixture.invalid/release.nzb", "tv", "tv", "Fixture"),
                     []));
             Grabs.Setup(grab => grab.GrabAsync(It.IsAny<string>(), It.IsAny<DownloadClientGrabRequest>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new DownloadClientGrabResult("client-1", bestCandidateReleaseName, true, "sent", "sent") { ExternalId = "nzo-1" });
+                .ReturnsAsync(new DownloadClientGrabResult("client-1", bestCandidateReleaseName, true, "sent", "sent") { ExternalId = "nzo-1", FollowUpRefusalsJson = refusalsJson });
             Pipeline.Setup(pipeline => pipeline.ExplainDownloadClientRoutingAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((string?)null);
 

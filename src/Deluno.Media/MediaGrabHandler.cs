@@ -335,6 +335,7 @@ public static class MediaGrabHandler
             forceReplacementAuthorized: wantedItem.HasFile && forceOverride,
             replacementExpectedPath: wantedItem.FilePath,
             clientExternalId: grabResult.ExternalId,
+            followUpRefusalsJson: grabResult.FollowUpRefusalsJson,
             startedBy: DownloadStartedBy.Manual);
 
         var now = timeProvider.GetUtcNow();

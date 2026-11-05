@@ -410,6 +410,7 @@ public sealed class SeasonSearchExecutor(
                 replacementAuthorized: replacementDecision is { Authorized: true, Targets.Count: > 0 },
                 replacementTargets: replacementDecision?.Targets,
                 clientExternalId: grabResult.ExternalId,
+                followUpRefusalsJson: grabResult.FollowUpRefusalsJson,
                 startedBy: DownloadStartedBy.ForSearch(triggeredBy, true, replacementDecision is { Authorized: true }));
 
             // A season's release puts the show on its way, as any grab does (#555).

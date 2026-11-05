@@ -2002,6 +2002,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                         replacementAuthorized: !string.IsNullOrWhiteSpace(baseline.FilePath),
                         replacementExpectedPath: baseline.FilePath,
                         clientExternalId: grabResult.ExternalId,
+                        followUpRefusalsJson: grabResult.FollowUpRefusalsJson,
                         startedBy: DownloadStartedBy.Manual,
                         titleEntityId: seriesItem.Id);
                 }

@@ -253,7 +253,7 @@ public sealed class DownloadClientGrabService(
             if (grabResult.Succeeded)
             {
                 await ConfirmSavePathAsync(client, request, cancellationToken);
-                await SayWhatTheClientRefusedAsync(client, request, grabResult, cancellationToken);
+                grabResult = await SayWhatTheClientRefusedAsync(client, request, grabResult, cancellationToken);
             }
 
             return grabResult;
@@ -486,13 +486,21 @@ public sealed class DownloadClientGrabService(
     /// can stop the import (category or save folder), raised as a health problem with its fix until the same call is taken. The
     /// grab itself stands. Best-effort.
     /// </summary>
-    private async Task SayWhatTheClientRefusedAsync(
+    /// <summary>The client's own words as a sentence that ends in a full stop, so a second sentence can follow it.</summary>
+    internal static string RefusalSentence(string clientName, string releaseName, DownloadClientFollowUpRefusal refusal)
+        => $"{clientName} did not take {refusal.What} for {releaseName}: {refusal.Reason.TrimEnd().TrimEnd('.')}.";
+
+    private async Task<DownloadClientGrabResult> SayWhatTheClientRefusedAsync(
         DownloadClientItem client,
         DownloadClientGrabRequest request,
         DownloadClientGrabResult grabResult,
         CancellationToken cancellationToken)
     {
         var refusals = grabResult.FollowUpRefusals ?? [];
+
+        // #1470: a first grab has no dispatch yet (its caller records one afterwards), so the notes travel back in the result and
+        // that caller writes them with the dispatch. Only the retry names a dispatch here.
+        grabResult = grabResult with { FollowUpRefusalsJson = FollowUpRefusalNotes.ToJson(refusals, client.Name) };
 
         // #1470: the refusals that can stop the import are kept on the dispatch so the download's row can say them; a grab
         // whose same calls were taken clears them. A grab that sent no follow-up call leaves what is there alone.
@@ -510,7 +518,7 @@ public sealed class DownloadClientGrabService(
 
         foreach (var refusal in refusals)
         {
-            var text = $"{client.Name} did not take {refusal.What} for {request.ReleaseName}: {refusal.Reason}";
+            var text = RefusalSentence(client.Name, request.ReleaseName, refusal);
             logger?.LogWarning(
                 "{Client} refused {Call} for {Release}: {Reason}",
                 client.Name.ForLog(), refusal.Call, request.ReleaseName.ForLog(), refusal.Reason.ForLog());
@@ -536,7 +544,7 @@ public sealed class DownloadClientGrabService(
 
         if (healthCheckRepository is null)
         {
-            return;
+            return grabResult;
         }
 
         try
@@ -573,6 +581,8 @@ public sealed class DownloadClientGrabService(
         {
             logger?.LogWarning(exception, "Could not record the refused follow-up for {Release}.", request.ReleaseName.ForLog());
         }
+
+        return grabResult;
     }
 
     /// <summary>
