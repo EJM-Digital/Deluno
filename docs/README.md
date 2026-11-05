@@ -33,6 +33,7 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 - `ci-standard.md`: the CI and release standard shared with Weir: the `ci-passed` check, job names, path filters, pinning, permissions, timeouts, the release (two publish jobs, one per thing published, behind the same checks) and Dependabot.
 - `ga-release-checklist.md`: RC1/RC2/GA checklist, gates, and sign-off workflow for `1.x` promotion.
 - `golden-path.md`: the golden-path run on a clean VM that gates every release tag (#1158), shared byte for byte with Weir. Since #1238 it is a scripted scenario suite (`scripts/golden-path/Invoke-ScenarioSuite.ps1`) that runs before every tag and records the status itself.
+- `testing/TRAY-INVENTORY.md`: every tray menu item, icon state, hover text and balloon with the golden-VM scenario that drives it, and what UI Automation cannot drive (#1278).
 - `windows-rc-validation-matrix.md`: clean-machine install/upgrade/rollback execution matrix for RC validation.
 - `release-evidence-template.md`: standard issue comment template for RC/GA evidence and go/no-go decisions.
 - `release-notes-1.0.0-draft.md`: draft 1.0.0 release notes structure for final GA publication.

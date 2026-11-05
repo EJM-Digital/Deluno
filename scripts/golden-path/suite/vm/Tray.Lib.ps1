@@ -343,5 +343,19 @@ function Get-FirstRunDotSummary {
     }
 }
 
-
-
+# How many pixels of the Deluno icon's button are blue (the update arrow is the only blue mark; the dots are grey, green, amber and red).
+function Get-TrayIconBluePixels {
+    param([string] $Icon = 'Deluno')
+    $btn = Find-TrayIcon -Icon $Icon
+    if (-not $btn) { return -1 }
+    $r = $btn.Element.Current.BoundingRectangle
+    $w = [int]$r.Width; $h = [int]$r.Height
+    if ($w -lt 4 -or $h -lt 4 -or [double]::IsInfinity($r.X)) { return -1 }
+    $bmp = New-Object System.Drawing.Bitmap($w, $h)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    try { $g.CopyFromScreen([int]$r.X, [int]$r.Y, 0, 0, (New-Object System.Drawing.Size($w, $h))) } finally { $g.Dispose() }
+    $n = 0
+    for ($x = 0; $x -lt $w; $x++) { for ($y = 0; $y -lt $h; $y++) { $c = $bmp.GetPixel($x, $y); $hue = $c.GetHue(); if ($c.GetSaturation() -gt 0.45 -and $c.GetBrightness() -gt 0.25 -and $hue -ge 190 -and $hue -le 255) { $n++ } } }
+    $bmp.Dispose()
+    $n
+}

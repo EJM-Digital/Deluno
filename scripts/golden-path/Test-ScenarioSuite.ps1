@@ -141,6 +141,12 @@ $plan = @(Get-ScenarioPlan)
 $allIds = @($plan | ForEach-Object { $_.Ids })
 Check 'scenario ids are unique' (($allIds | Select-Object -Unique).Count -eq $allIds.Count)
 Check 'there are scenarios for every client in the issue' (@($allIds | Where-Object { $_ -like 'film.*' }).Count -ge 5)
+# The tray inventory (#1278) names only scenarios that exist, and names the ones this issue added.
+$trayInventory = Get-Content -Raw -LiteralPath (Join-Path $root '../../docs/testing/TRAY-INVENTORY.md')
+$trayInventoryIds = @([regex]::Matches($trayInventory, '`([a-z0-9-]+\.[a-z0-9.-]+)`') | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)
+$trayInventoryMissing = @($trayInventoryIds | Where-Object { $_ -notin $allIds })
+Check 'every scenario the tray inventory names exists in the plan' ($trayInventoryIds.Count -ge 25 -and $trayInventoryMissing.Count -eq 0) ($trayInventoryMissing -join ', ')
+Check 'the tray inventory names each tray scenario of the plan' (@($allIds | Where-Object { $_ -like 'tray.*' -and $_ -notin $trayInventoryIds }).Count -eq 0) ((@($allIds | Where-Object { $_ -like 'tray.*' -and $_ -notin $trayInventoryIds })) -join ', ')
 $groupText = (Get-ChildItem (Join-Path $suite 'vm\scenarios') -Filter 'G*.ps1' | ForEach-Object { Get-Content -Raw $_.FullName }) -join "`n"
 foreach ($g in @($plan | Where-Object { -not $_.Host })) {
     Check "group function $($g.Function) is defined" ($groupText -match ('function\s+' + [regex]::Escape($g.Function) + '\b'))
@@ -391,7 +397,7 @@ if ($script:Trace.Count -ne 0) { $ksBad += "with no keep-seeding scenario chosen
 Set-ScenarioSelection -Ids @()
 Check 'each keep-seeding scenario chosen alone sets up only its own client, film, indexer and choices; none chosen does nothing' ($ksBad.Count -eq 0) ($ksBad -join '; ')
 # Choosing nothing runs the whole group as before, with the same sends.
-$sendsFull = @{ films = 5; removal = 0; resend = 5; stuck = 15; keepseeding = 6; tryagain = 5; vanish = 10; outage = 0; problems = 0; install = 0; nzbgetsetup = 0; seasonpack = 0; layout = 0; subtitleswanted = 0; github = 0; firewall = 0; tray = 0; service = 0; desktop = 0; traystates = 0; trayplatform = 0; platformextras = 0; volumes = 0; importfaults = 0; weirconnection = 0; servicemodes = 0; pickerwindow = 0; trayport = 0; trayballoons = 0; trayrelaunch = 0; traysignin = 0; traytryagain = 0; machine = 0 }
+$sendsFull = @{ films = 5; removal = 0; resend = 5; stuck = 15; keepseeding = 6; tryagain = 5; vanish = 10; outage = 0; problems = 0; install = 0; nzbgetsetup = 0; seasonpack = 0; layout = 0; subtitleswanted = 0; github = 0; firewall = 0; tray = 0; service = 0; desktop = 0; traystates = 0; trayplatform = 0; platformextras = 0; volumes = 0; importfaults = 0; weirconnection = 0; servicemodes = 0; pickerwindow = 0; trayport = 0; trayballoons = 0; trayrelaunch = 0; traysignin = 0; traytryagain = 0; trayinventory = 0; machine = 0 }
 $fullBad = @()
 foreach ($g in $groupFunctions) {
     $script:Trace.Clear(); $script:Made.Clear()
