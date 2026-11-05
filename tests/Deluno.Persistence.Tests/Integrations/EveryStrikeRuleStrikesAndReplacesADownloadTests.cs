@@ -71,56 +71,12 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
     /// <summary>Everything that must have happened once a download reached its limit under a "replace it" rule.</summary>
     private static async Task AssertReplacedAsync(AStrikePass world, ScriptedDownloadClient client, string says)
     {
-        // Removed from the client together with its data, once.
-        Assert.Equal([(DownloadClientActions.DeleteWithData, AStrikePass.ItemId)], client.Actions);
         Assert.Empty(client.Queue);
         Assert.False(File.Exists(world.PayloadPath), "its files are deleted");
-
-        // The release is refused, with the rule's own reason, so search never offers it again.
-        var refused = Assert.Single(await world.Blocklist.ListAsync(CancellationToken.None));
-        Assert.Equal(BlockedReleaseStates.Refused, refused.State);
-        Assert.Equal(AStrikePass.Release, refused.ReleaseName);
-        Assert.Equal(AStrikePass.EntityId, refused.EntityId);
-        Assert.StartsWith(says, refused.Reason, StringComparison.Ordinal);
-
-        // The dispatch is closed, so the title no longer reads "downloading".
-        var dispatch = await world.Dispatches.GetDispatchIncludingArchivedAsync(world.DispatchId, CancellationToken.None);
-        Assert.Equal("archived", dispatch!.Status);
-        Assert.Empty(await world.Jobs.ListDownloadsInFlightAsync(100, CancellationToken.None));
-
-        // Activity says why, in plain words, and what Deluno did about it.
-        var activity = Assert.Single(
-            await world.Jobs.ListActivityAsync(20, null, null, CancellationToken.None),
-            item => item.Category == "download.health.remediated");
-        Assert.StartsWith(AStrikePass.Release, activity.Message, StringComparison.Ordinal);
-        Assert.Contains(says, activity.Message, StringComparison.Ordinal);
-        Assert.Contains($"Deluno blocked this release, is looking for another copy, removed it from {world.Client.Name} and deleted the leftover files.", activity.Message);
-
-        await AssertReplacementQueuedAsync(world);
+        await AStrikeAssertions.ReplacedAsync(world, client.Actions, says);
     }
 
-    /// <summary>The replacement search is for this title, is linked to the dispatch it replaces, and ignores that dispatch (#1482).</summary>
-    private static async Task AssertReplacementQueuedAsync(AStrikePass world)
-    {
-        var job = Assert.Single(await world.JobsQueuedAsync());
-        Assert.Equal(LibrarySearchJobTypes.For("movies"), job.JobType);
-        Assert.Equal("download_dispatch", job.RelatedEntityType);
-        Assert.Equal(world.DispatchId, job.RelatedEntityId);
-        Assert.Equal(world.DispatchId, SearchExecutionSupport.ReplacedDispatchId(job));
-        using var payload = JsonDocument.Parse(job.PayloadJson!);
-        Assert.Equal("health-replacement", payload.RootElement.GetProperty("triggeredBy").GetString());
-        Assert.True(SearchExecutionSupport.IsReplacementSearch("health-replacement"));
-        Assert.Equal(AStrikePass.EntityId, payload.RootElement.GetProperty("targetEntityId").GetString());
-        Assert.Equal(1, payload.RootElement.GetProperty("maxItems").GetInt32());
-
-        // When the search was queued the replaced download was still in the client and its dispatch still open: the search can
-        // start before the removal and the archive (#1482). It must not count that download as on its way, or it would send
-        // nothing; with the old behaviour (not ignoring it) it would have been held back by it.
-        var inFlight = Assert.Single(world.Watcher.InFlightWhenQueued!);
-        Assert.Equal(world.DispatchId, inFlight.DispatchId);
-        Assert.Null(world.Watcher.HeldBackIgnoringTheReplacedDownload);
-        Assert.NotNull(world.Watcher.HeldBackNotIgnoringIt);
-    }
+    private static Task AssertReplacementQueuedAsync(AStrikePass world) => AStrikeAssertions.ReplacementQueuedAsync(world);
 
     // ---- Too slow --------------------------------------------------------------------------------------------------------------------
 

@@ -70,12 +70,11 @@ internal sealed class ScriptedDownloadClient(string protocol) : IDownloadClient
 
 /// <summary>
 /// A real client adapter reading its recorded replies, with every action asked of it kept instead of sent: the recording has one
-/// state of the client, so a removal cannot change what it answers next. The test says what it answers at each check by
-/// changing <see cref="Inner"/>.
+/// state of the client, so a removal cannot change what it answers next.
 /// </summary>
-internal sealed class RecordedClientThatKeepsItsActions(Func<IDownloadClient> current) : IDownloadClient
+internal sealed class RecordedClientThatKeepsItsActions(IDownloadClient inner) : IDownloadClient
 {
-    public IDownloadClient Inner => current();
+    public IDownloadClient Inner => inner;
 
     public string Protocol => Inner.Protocol;
 
@@ -153,6 +152,8 @@ internal sealed class AStrikePass : IDisposable
     public SqliteDownloadDispatchesRepository Dispatches { get; }
     public SqliteDownloadHealthRepository Health { get; }
     public string DispatchId { get; }
+    public string ReleaseName { get; private init; } = Release;
+    public string QueueItemId { get; private init; } = ItemId;
     public string PayloadPath { get; }
 
     /// <summary>One "check every" interval: the time between two strikes.</summary>
@@ -176,7 +177,9 @@ internal sealed class AStrikePass : IDisposable
         string itemId = ItemId,
         string? category = null,
         string protocol = "qbittorrent",
-        string entityType = "movie")
+        string entityType = "movie",
+        string? username = null,
+        string? secret = null)
     {
         var storage = TestStorage.Create();
         var time = new FixedTimeProvider(Start);
@@ -195,7 +198,7 @@ internal sealed class AStrikePass : IDisposable
         await File.WriteAllTextAsync(payloadPath, "fixture payload");
 
         var client = await connections.CreateDownloadClientAsync(new CreateDownloadClientRequest(
-            "Example client", protocol, "localhost", 8080, null, null, null, category ?? "deluno-movies", "deluno-tv", null, 1, true), CancellationToken.None);
+            "Example client", protocol, "localhost", 8080, username, secret, null, category ?? "deluno-movies", "deluno-tv", null, 1, true), CancellationToken.None);
         var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, time);
         var jobs = new SqliteJobStore(storage.Factory, time, new NullRealtimeEventPublisher(), dispatches);
         var dispatchId = await jobs.RecordDownloadDispatchAsync(
@@ -216,7 +219,7 @@ internal sealed class AStrikePass : IDisposable
             new DownloadClientRegistry([fake]), time, new PassThroughPolicy(),
             watcher, dispatches, jobs, new Deluno.Recovery.Policies.DownloadHealthEvaluator(), new SqliteProcessorRepository(storage.Factory, time, TestSecretProtection.Create(storage)),
             Deluno.Contracts.Connectivity.NullConnectivityMonitor.Instance, blocklist);
-        return new AStrikePass(storage, time, service, client, jobs, blocklist, dispatches, health, dispatchId, payloadPath, window, rule) { Watcher = watcher };
+        return new AStrikePass(storage, time, service, client, jobs, blocklist, dispatches, health, dispatchId, payloadPath, window, rule) { Watcher = watcher, ReleaseName = release, QueueItemId = itemId };
     }
 
     /// <summary>
