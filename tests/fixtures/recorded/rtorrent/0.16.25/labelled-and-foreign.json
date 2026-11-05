@@ -1,0 +1,121 @@
+{
+  "app": "rtorrent",
+  "version": "0.16.25",
+  "state": "labelled-and-foreign",
+  "recordedAt": "2026-11-05T18:35:12Z",
+  "note": "Two torrents added by link with load.start (no label in the call), the first then given the label recorded-movies with d.custom1.set, the second left alone; the list with d.custom1= as the last field (Deluno's 14-field call), and d.custom1 read for each (#1495).",
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>load.start</methodName><params><param><value><string></string></value></param><param><value><string>http://tracker:8080/dl/Recorded.Rtorrent.Labelled.2024.1080p.WEB-DL.mkv.torrent</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><i8>0</i8></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>download_list</methodName><params></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><string>BA4AEDCC0F4BEABDF27133EFEAFE7748B256D94F</string></value></data></array></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.custom1.set</methodName><params><param><value><string>BA4AEDCC0F4BEABDF27133EFEAFE7748B256D94F</string></value></param><param><value><string>recorded-movies</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><string>recorded-movies</string></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>load.start</methodName><params><param><value><string></string></value></param><param><value><string>http://tracker:8080/dl/Recorded.Rtorrent.Foreign.2024.1080p.WEB-DL.mkv.torrent</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><i8>0</i8></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>download_list</methodName><params></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><string>BA4AEDCC0F4BEABDF27133EFEAFE7748B256D94F</string></value><value><string>BEA8911090950EBE9148750B2707ACA34B2846F4</string></value></data></array></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.multicall2</methodName><params><param><value><string></string></value></param><param><value><string>main</string></value></param><param><value><string>d.hash=</string></value></param><param><value><string>d.name=</string></value></param><param><value><string>d.is_active=</string></value></param><param><value><string>d.is_hash_checking=</string></value></param><param><value><string>d.complete=</string></value></param><param><value><string>d.bytes_done=</string></value></param><param><value><string>d.size_bytes=</string></value></param><param><value><string>d.down.rate=</string></value></param><param><value><string>d.up.rate=</string></value></param><param><value><string>d.ratio=</string></value></param><param><value><string>d.message=</string></value></param><param><value><string>d.directory=</string></value></param><param><value><string>d.peers_connected=</string></value></param><param><value><string>d.custom1=</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data><value><array><data><value><string>BA4AEDCC0F4BEABDF27133EFEAFE7748B256D94F</string></value><value><string>Recorded.Rtorrent.Labelled.2024.1080p.WEB-DL.mkv</string></value><value><i8>1</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>1048576</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><string>Tracker: [No DHT nodes available for peer search.]</string></value><value><string>/downloads/temp</string></value><value><i8>0</i8></value><value><string>recorded-movies</string></value></data></array></value><value><array><data><value><string>BEA8911090950EBE9148750B2707ACA34B2846F4</string></value><value><string>Recorded.Rtorrent.Foreign.2024.1080p.WEB-DL.mkv</string></value><value><i8>1</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>1048576</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><i8>0</i8></value><value><string>Tracker: [No DHT nodes available for peer search.]</string></value><value><string>/downloads/temp</string></value><value><i8>0</i8></value><value><string></string></value></data></array></value></data></array></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.custom1</methodName><params><param><value><string>BA4AEDCC0F4BEABDF27133EFEAFE7748B256D94F</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><string>recorded-movies</string></value></param></params></methodResponse>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/RPC2",
+        "bodyText": "<?xml version=\"1.0\"?><methodCall><methodName>d.custom1</methodName><params><param><value><string>BEA8911090950EBE9148750B2707ACA34B2846F4</string></value></param></params></methodCall>"
+      },
+      "reply": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/xml"
+        },
+        "bodyText": "<?xml version=\"1.0\"?><methodResponse><params><param><value><string></string></value></param></params></methodResponse>"
+      }
+    }
+  ]
+}

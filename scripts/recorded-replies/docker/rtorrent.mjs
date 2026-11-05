@@ -20,7 +20,7 @@ const docker = (...args) => execFileSync(dockerParts[0], [...dockerParts.slice(1
 const URLS = { rtorrent: `http://127.0.0.1:${process.env.REC2_RTORRENT_PORT ?? 38000}`, seed: `http://127.0.0.1:${process.env.REC2_RTSEED_PORT ?? 38001}`, tracker: `http://127.0.0.1:${process.env.REC2_TRACKER_PORT ?? 38080}` };
 const ANNOUNCE = 'http://tracker:8080/announce';
 const LINK_BASE = 'http://tracker:8080/dl/';
-const FIELDS = ['d.hash=', 'd.name=', 'd.is_active=', 'd.is_hash_checking=', 'd.complete=', 'd.bytes_done=', 'd.size_bytes=', 'd.down.rate=', 'd.up.rate=', 'd.ratio=', 'd.message=', 'd.directory=', 'd.peers_connected='];
+const FIELDS = ['d.hash=', 'd.name=', 'd.is_active=', 'd.is_hash_checking=', 'd.complete=', 'd.bytes_done=', 'd.size_bytes=', 'd.down.rate=', 'd.up.rate=', 'd.ratio=', 'd.message=', 'd.directory=', 'd.peers_connected=', 'd.custom1='];
 
 // ------------------------------------------------------------------ XML-RPC as RtorrentDownloadClient writes it
 

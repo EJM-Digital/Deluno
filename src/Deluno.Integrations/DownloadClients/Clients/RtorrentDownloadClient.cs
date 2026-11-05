@@ -123,7 +123,23 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory,
         }
 
         var added = knownHash ?? DownloadClientHelpers.TheOnlyNewItem(before, after);
-        return DownloadClientHelpers.GrabSuccess(client, request, request.TorrentFile is null ? "Release URL sent to rTorrent." : "Torrent file sent to rTorrent.") with
+
+        // #1495: the label (d.custom1) is how Deluno proves later that a download is its own. A label rTorrent refuses is said in the
+        // answer; the torrent is added either way.
+        var labelNote = string.Empty;
+        if (added is not null && DownloadClientHelpers.ResolveCategory(client, request).Trim() is { Length: > 0 } label)
+        {
+            try
+            {
+                await SendAsync(http, baseUri, "d.custom1.set", [added, label], cancellationToken);
+            }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested && exception is HttpRequestException or TaskCanceledException or System.Xml.XmlException or RtorrentFaultException)
+            {
+                labelNote = " rTorrent would not take the label, so Deluno cannot tell this download is its own.";
+            }
+        }
+
+        return DownloadClientHelpers.GrabSuccess(client, request, (request.TorrentFile is null ? "Release URL sent to rTorrent." : "Torrent file sent to rTorrent.") + labelNote) with
         {
             ExternalId = added
         };
@@ -147,7 +163,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory,
                 string.Empty, "main",
                 "d.hash=", "d.name=", "d.is_active=", "d.is_hash_checking=", "d.complete=",
                 "d.bytes_done=", "d.size_bytes=", "d.down.rate=", "d.up.rate=", "d.ratio=",
-                "d.message=", "d.directory=", "d.peers_connected="
+                "d.message=", "d.directory=", "d.peers_connected=", "d.custom1="
             ],
             cancellationToken);
 
@@ -201,6 +217,9 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory,
         var directory = AsString(Field(row, 11));
         // d.peers_connected counts every connected peer, seeds included (#1198).
         var peers = (int)Math.Clamp(AsLong(Field(row, 12)) ?? 0, 0, int.MaxValue);
+        // #1495: d.custom1 is the label (rTorrent has no categories). Deluno sets it when it adds a torrent and reads it back here, so
+        // the ownership check can tell a download of its own from one the person added by hand.
+        var category = AsString(Field(row, 13)) ?? string.Empty;
         var progress = sizeBytes <= 0 ? 0 : (bytesDone / (double)sizeBytes * 100);
 
         var nativeStatus = isHashChecking ? "hash_checking"
@@ -211,8 +230,8 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory,
 
         return new DownloadQueueItem(
             hash, client.Id, client.Name, client.Protocol,
-            DownloadClientHelpers.InferMediaType(client, null),
-            DownloadClientHelpers.CleanReleaseTitle(name), name, string.Empty,
+            DownloadClientHelpers.InferMediaType(client, category),
+            DownloadClientHelpers.CleanReleaseTitle(name), name, category,
             NormalizeStatus(nativeStatus, progress), progress,
             (downRate / 1_000_000d), 0, sizeBytes, bytesDone, peers, "rTorrent",
             string.IsNullOrWhiteSpace(message) ? null : message,

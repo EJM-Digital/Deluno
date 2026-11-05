@@ -65,7 +65,7 @@ function Get-RtRows($Exchange) {
     @(foreach ($row in $rows) { , @(foreach ($v in $row.SelectNodes('value')) { if ($v.FirstChild -and $v.FirstChild.NodeType -eq 'Element') { $v.FirstChild.InnerText } else { $v.InnerText } }) })
 }
 
-$script:RtFields = @('d.hash=', 'd.name=', 'd.is_active=', 'd.is_hash_checking=', 'd.complete=', 'd.bytes_done=', 'd.size_bytes=', 'd.down.rate=', 'd.up.rate=', 'd.ratio=', 'd.message=', 'd.directory=', 'd.peers_connected=')
+$script:RtFields = @('d.hash=', 'd.name=', 'd.is_active=', 'd.is_hash_checking=', 'd.complete=', 'd.bytes_done=', 'd.size_bytes=', 'd.down.rate=', 'd.up.rate=', 'd.ratio=', 'd.message=', 'd.directory=', 'd.peers_connected=', 'd.custom1=')
 
 function New-RtorrentAdapter($p, [string] $Version, $Login) {
     $cred = New-Object pscredential($Login.User, (ConvertTo-SecureString $Login.Password -AsPlainText -Force))

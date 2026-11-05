@@ -43,6 +43,34 @@ public sealed class EachClientsRecordedQueueIsStruckAndReplacedTests
     private static readonly string EmptySabHistory = RecordedReplies.Sabnzbd("removed-with-data")
         .Body("mode=history&output", ("history.slots", new System.Text.Json.Nodes.JsonArray()));
 
+    /// <summary>
+    /// rTorrent's recorded list (the 14-field call, `d.custom1=` last) with the download this test is about: the first recorded row, the
+    /// one Deluno labelled `recorded-movies`, with the given columns changed (the field is the column number). The recording's tracker
+    /// note is DHT noise from a container with no swarm, which a downloading torrent does not carry, so the message is cleared unless
+    /// an edit sets it. The second recorded row, the one nobody labelled, is kept only when asked for.
+    /// </summary>
+    private static string RtorrentList(string state, (string Field, object? Value)[] edits, bool keepForeign)
+    {
+        var recording = RecordedReplies.Rtorrent(state);
+        var reply = recording.Exchanges.First(e => e.Request.Body!.Contains("d.multicall2", StringComparison.Ordinal)).Reply.Body!;
+        var document = System.Xml.Linq.XDocument.Parse(reply);
+        var rows = document.Descendants("data").First().Elements("value").ToList();
+        if (!keepForeign)
+        {
+            foreach (var extra in rows.Skip(1)) extra.Remove();
+        }
+
+        var changes = new Dictionary<string, object?> { ["10"] = string.Empty };
+        foreach (var (field, value) in edits) changes[field] = value;
+        foreach (var (column, value) in changes)
+        {
+            rows[0].Descendants("data").First().Elements("value").ElementAt(int.Parse(column, System.Globalization.CultureInfo.InvariantCulture))
+                .Elements().First().Value = Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+        }
+
+        return document.Declaration + document.ToString(System.Xml.Linq.SaveOptions.DisableFormatting);
+    }
+
     /// <summary>The real adapter of <paramref name="app"/>, answering from its recording of <paramref name="state"/>.</summary>
     private static Source Recorded(string app, string state, params (string Field, object? Value)[] edits)
     {
@@ -60,7 +88,12 @@ public sealed class EachClientsRecordedQueueIsStruckAndReplacedTests
 
             case "rtorrent":
                 return new Source(new RtorrentDownloadClient(new RecordedClientCalls.Factory(
-                    RecordedReplies.Handler("rtorrent", [RecordedReplies.Rtorrent(state), RecordedReplies.Rtorrent("version")]))), string.Empty);
+                    RecordedReplies.Handler(
+                        "rtorrent",
+                        [RecordedReplies.Rtorrent(state), RecordedReplies.Rtorrent("removed-without-data"), RecordedReplies.Rtorrent("version")],
+                        (request, body) => body.Contains("d.multicall2", StringComparison.Ordinal)
+                            ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(RtorrentList(state, edits, keepForeign: false), Encoding.UTF8, "text/xml") }
+                            : null))), string.Empty);
 
             case "utorrent":
             {
@@ -110,6 +143,7 @@ public sealed class EachClientsRecordedQueueIsStruckAndReplacedTests
         "deluge" => [("label", "deluno-movies")],
         "utorrent" => [("11", "deluno-movies")],
         "nzbget" => [("Category", "deluno-movies")],
+        "rtorrent" => [("13", "deluno-movies")],
         _ => []
     };
 
@@ -168,6 +202,7 @@ public sealed class EachClientsRecordedQueueIsStruckAndReplacedTests
             "deluge" => [("total_size", JobBytes), ("total_done", downloaded), ("download_payload_rate", rate)],
             "utorrent" => [("3", JobBytes), ("4", (int)(downloaded * 1000 / JobBytes)), ("9", rate)],
             "sabnzbd" => [("speed", $"{instantKilobytesPerSecond / 1000:0.###} M"), ("slots.0.mb", (JobBytes / 1_048_576).ToString()), ("slots.0.mbleft", ((JobBytes - downloaded) / 1_048_576).ToString())],
+            "rtorrent" => [("6", JobBytes), ("5", downloaded), ("7", rate)],
             "nzbget" => [("FileSizeHi", 0), ("FileSizeLo", JobBytes), ("RemainingSizeHi", 0), ("RemainingSizeLo", JobBytes - downloaded), ("DownloadRate", rate)],
             _ => throw new ArgumentOutOfRangeException(nameof(app))
         };
@@ -176,7 +211,7 @@ public sealed class EachClientsRecordedQueueIsStruckAndReplacedTests
     private static (string Field, object? Value)[] ReadingOf(string app, long downloaded, double instantKilobytesPerSecond)
         => Labelled(app).Concat(Reading(app, downloaded, instantKilobytesPerSecond)).ToArray();
 
-    private static string RecordingFor(string app) => app == "utorrent" ? "stalled" : "downloading";
+    private static string RecordingFor(string app) => app switch { "utorrent" => "stalled", "rtorrent" => "labelled-and-foreign", _ => "downloading" };
 
     [Theory]
     [InlineData("qbittorrent")]
@@ -185,6 +220,7 @@ public sealed class EachClientsRecordedQueueIsStruckAndReplacedTests
     [InlineData("utorrent")]
     [InlineData("sabnzbd")]
     [InlineData("nzbget")]
+    [InlineData("rtorrent")]
     public async Task A_recorded_download_averaging_3_4_MB_a_second_is_not_struck_for_one_slow_instant_reading(string app)
     {
         long bytes = 100_000_000;
@@ -215,6 +251,7 @@ public sealed class EachClientsRecordedQueueIsStruckAndReplacedTests
     [InlineData("utorrent")]
     [InlineData("sabnzbd")]
     [InlineData("nzbget")]
+    [InlineData("rtorrent")]
     public async Task A_recorded_download_averaging_300_KB_a_second_is_struck_at_the_third_check_with_three_strikes_and_replaced(string app)
     {
         long bytes = 100_000_000;
@@ -342,16 +379,16 @@ public sealed class EachClientsRecordedQueueIsStruckAndReplacedTests
     // ---- rTorrent -------------------------------------------------------------------------------------------------------------------------------
 
     /// <summary>
-    /// DEFECT, found by this test: rTorrent's adapter always reports an empty category (its list call does not ask for the label), so a
-    /// struck rTorrent download can never be proven to carry Deluno's category. The strikes count and the release is blocklisted and
-    /// searched again, but the entry is never removed from rTorrent: Activity says "client entry was retained because its Deluno category
-    /// could not be proven". Skipped until the adapter reads d.custom1 (the label Deluno sets on add).
+    /// #1495: rTorrent's list now asks for d.custom1, the label Deluno sets when it adds a torrent, so the strike on the recorded download
+    /// (labelled `recorded-movies` by the real client) is proven to be Deluno's own and the entry is removed from rTorrent.
     /// </summary>
-    [Fact(Skip = "Defect: rTorrent's adapter reports no category, so a struck rTorrent download is never removed from rTorrent. See the report on #1476.")]
+    [Fact]
     public async Task An_rTorrent_download_struck_out_is_removed_from_rTorrent()
     {
-        var source = Recorded("rtorrent", "downloading");
+        // The recorded torrent has no swarm, so it moves at nothing; 20 KB/s is put on it, as is done for NZBGet and uTorrent.
+        var source = Recorded("rtorrent", "labelled-and-foreign", [("7", 20_000)]);
         var item = await TheDownloadAsync("rtorrent", source);
+        Assert.Equal("recorded-movies", item.Category);
         var (world, client, _) = await StartAsync("rtorrent", source, Rule(DownloadHealthRuleKinds.TooSlow, Math.Ceiling(item.SpeedMbps * 1000) + 500));
         using var _w = world;
 
@@ -363,5 +400,32 @@ public sealed class EachClientsRecordedQueueIsStruckAndReplacedTests
         Assert.Single(await world.Blocklist.ListAsync(CancellationToken.None));
         Assert.Single(await world.JobsQueuedAsync());
         await AStrikeAssertions.ReplacedAsync(world, client.Actions, "It stayed under");
+        Assert.Contains(client.Actions, a => a.ItemId == item.Id);
+    }
+
+    /// <summary>The recorded torrent nobody labelled is not Deluno's: a strike dispatched against it with Deluno's category never removes it.</summary>
+    [Fact]
+    public async Task An_rTorrent_download_outside_Deluno_s_label_is_never_removed()
+    {
+        var foreign = new RtorrentDownloadClient(new RecordedClientCalls.Factory(RecordedReplies.Handler(
+            "rtorrent",
+            [RecordedReplies.Rtorrent("labelled-and-foreign"), RecordedReplies.Rtorrent("removed-without-data"), RecordedReplies.Rtorrent("version")],
+            (request, body) => body.Contains("d.multicall2", StringComparison.Ordinal)
+                ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(RtorrentList("labelled-and-foreign", [("7", 20_000)], keepForeign: true), Encoding.UTF8, "text/xml") }
+                : null)));
+        var snapshot = await foreign.GetSnapshotAsync(RecordedClientCalls.Client("rtorrent", string.Empty), AStrikePass.Start, CancellationToken.None);
+        var other = Assert.Single(snapshot!.Queue, i => i.Category.Length == 0);
+        Assert.Equal("Recorded.Rtorrent.Foreign.2024.1080p.WEB-DL.mkv", other.ReleaseName);
+
+        var client = new RecordedClientThatKeepsItsActions(() => foreign);
+        var world = await AStrikePass.CreateAsync(Rule(DownloadHealthRuleKinds.TooSlow, 500), client, other.ReleaseName, other.Id, "recorded-movies", client.Protocol, username: null, secret: "secret");
+        using var _w = world;
+
+        for (var check = 1; check <= 3; check++)
+        {
+            await world.CheckAsync();
+        }
+
+        Assert.DoesNotContain(client.Actions, a => a.Action.Contains("remove", StringComparison.OrdinalIgnoreCase));
     }
 }

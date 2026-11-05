@@ -481,13 +481,15 @@ public sealed class RtorrentOnRecordingsTests
     [Fact]
     public async Task A_torrent_file_is_sent_with_load_raw_start_and_the_new_hash_is_found_by_comparing_download_list_before_and_after()
     {
-        var handler = new Scripted().Add(R("add-file"), 0, 1, 2);
+        var handler = new Scripted().Add(R("add-file"), 0, 1, 2).Add(R("labelled-and-foreign"), 2);
 
         var result = await Over(handler).GrabAsync(Item(), FileRequest(TorrentFileIn("add-file", 1)), CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
         Assert.Equal(HashIn("add-file", 3), result.ExternalId, ignoreCase: true);
-        Assert.Equal(["download_list", "load.raw_start", "download_list"], handler.Methods);
+        Assert.Equal(["download_list", "load.raw_start", "download_list", "d.custom1.set"], handler.Methods);
+        Assert.Contains("<methodName>d.custom1.set</methodName>", handler.Bodies[^1], StringComparison.Ordinal);
+        Assert.Contains("<string>movies</string>", handler.Bodies[^1], StringComparison.Ordinal);
         Assert.Contains(Convert.ToBase64String(TorrentFileIn("add-file", 1)), handler.Bodies[1]);
     }
 
@@ -495,7 +497,7 @@ public sealed class RtorrentOnRecordingsTests
     public async Task A_torrent_file_added_paused_is_sent_with_load_raw_and_is_listed_not_active()
     {
         var recording = R("add-file-paused");
-        var handler = new Scripted().Add(recording, 0, 1, 2);
+        var handler = new Scripted().Add(recording, 0, 1, 2).Add(R("labelled-and-foreign"), 2);
 
         var result = await Over(handler).GrabAsync(Item() with { AddPaused = true }, FileRequest(TorrentFileIn("add-file-paused", 1)), CancellationToken.None);
 
@@ -525,12 +527,12 @@ public sealed class RtorrentOnRecordingsTests
     public async Task A_link_is_sent_with_load_start_and_the_hash_that_appears_is_the_grab()
     {
         var recording = R("add-url");
-        var handler = new Scripted().Add(R("idle"), 1).Add(recording, 0, 1);
+        var handler = new Scripted().Add(R("idle"), 1).Add(recording, 0, 1).Add(R("labelled-and-foreign"), 2);
 
         var result = await Over(handler).GrabAsync(Item(), LinkRequest(), CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
-        Assert.Equal(["download_list", "load.start", "download_list"], handler.Methods);
+        Assert.Equal(["download_list", "load.start", "download_list", "d.custom1.set"], handler.Methods);
         Assert.Contains("<string>http://indexer.test/download/1</string>", handler.Bodies[1]);
         Assert.Equal(HashIn("add-url", 2), result.ExternalId, ignoreCase: true);
     }
@@ -539,12 +541,12 @@ public sealed class RtorrentOnRecordingsTests
     public async Task A_link_added_paused_is_sent_with_load_normal_and_the_torrent_is_not_started()
     {
         var recording = R("add-url-paused");
-        var handler = new Scripted().Add(R("idle"), 1).Add(recording, 0, 1);
+        var handler = new Scripted().Add(R("idle"), 1).Add(recording, 0, 1).Add(R("labelled-and-foreign"), 2);
 
         var result = await Over(handler).GrabAsync(Item() with { AddPaused = true }, LinkRequest(), CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
-        Assert.Equal(["download_list", "load.normal", "download_list"], handler.Methods);
+        Assert.Equal(["download_list", "load.normal", "download_list", "d.custom1.set"], handler.Methods);
         var listed = await Poll(new Scripted().Add(recording, 2));
         Assert.Equal(DownloadQueueStatuses.Paused, Assert.Single(listed!.Queue).Status);
     }
@@ -554,7 +556,7 @@ public sealed class RtorrentOnRecordingsTests
     {
         var recording = R("add-url-dead");
         Assert.Empty(Regex.Matches(recording.Exchanges[3].Reply.Body!, "<string>"));
-        var handler = new Scripted().Add(recording, 0, 1, 2);
+        var handler = new Scripted().Add(recording, 0, 1, 2).Add(R("labelled-and-foreign"), 2);
 
         var result = await Over(handler).GrabAsync(Item(), LinkRequest("http://indexer.test/dl/Recorded.Nothing.Here.torrent"), CancellationToken.None);
 
@@ -580,7 +582,7 @@ public sealed class RtorrentOnRecordingsTests
     {
         var recording = R("magnet-no-metadata");
         var magnetHash = Regex.Match(recording.Exchanges[0].Request.Body!, "btih:([0-9a-f]{40})").Groups[1].Value;
-        var handler = new Scripted().Add(R("idle"), 1).Add(recording, 0, 1);
+        var handler = new Scripted().Add(R("idle"), 1).Add(recording, 0, 1).Add(R("labelled-and-foreign"), 2);
 
         var result = await Over(handler).GrabAsync(Item(), LinkRequest($"magnet:?xt=urn:btih:{magnetHash}&dn=Recorded.Magnet"), CancellationToken.None);
 
