@@ -677,7 +677,7 @@ public sealed class DelunoBackupService(
 
         return Directory
             .EnumerateFiles(DataRoot, "*", SearchOption.AllDirectories)
-            .Where(file => excludedRoots.All(excluded => !Path.GetFullPath(file).StartsWith(Path.GetFullPath(excluded), StringComparison.OrdinalIgnoreCase)))
+            .Where(file => excludedRoots.All(excluded => !SafePath.IsInside(Path.GetFullPath(excluded), Path.GetFullPath(file), allowEqual: true, comparison: StringComparison.OrdinalIgnoreCase)))
             .Where(file => !file.EndsWith(".pre-restore", StringComparison.OrdinalIgnoreCase))
             // The write-ahead log and its index belong to the live connection.
             // The database is snapshotted whole, so neither goes in.

@@ -4664,7 +4664,7 @@ public sealed class DownloadClientTelemetryService(
                     var categorySource = NormalizeSourceKey(item.SourcePath);
                     var categoryPathMatch = categoryLibraries.FirstOrDefault(library =>
                         !string.IsNullOrWhiteSpace(library.DownloadsPath) &&
-                        categorySource.StartsWith(NormalizeSourceKey(library.DownloadsPath), StringComparison.OrdinalIgnoreCase));
+                        SafePath.IsInside(NormalizeSourceKey(library.DownloadsPath), categorySource, allowEqual: true, comparison: StringComparison.OrdinalIgnoreCase));
                     if (categoryPathMatch is not null)
                     {
                         return categoryPathMatch;
@@ -4688,7 +4688,7 @@ public sealed class DownloadClientTelemetryService(
             var source = NormalizeSourceKey(item.SourcePath);
             var pathMatch = mediaLibraries.FirstOrDefault(library =>
                 !string.IsNullOrWhiteSpace(library.DownloadsPath) &&
-                source.StartsWith(NormalizeSourceKey(library.DownloadsPath), StringComparison.OrdinalIgnoreCase));
+                SafePath.IsInside(NormalizeSourceKey(library.DownloadsPath), source, allowEqual: true, comparison: StringComparison.OrdinalIgnoreCase));
             if (pathMatch is not null)
             {
                 return pathMatch;

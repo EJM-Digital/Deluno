@@ -95,7 +95,7 @@ public static class StagedRestore
         {
             var relative = Path.GetRelativePath(staged, source);
             var target = Path.GetFullPath(Path.Combine(root, relative));
-            if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            if (!SafePath.IsInside(root, target, allowEqual: true, comparison: StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
