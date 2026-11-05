@@ -65,6 +65,15 @@ public sealed record NamingDecision(
 
 public static partial class NamingTemplateRenderer
 {
+    /// <summary>
+    /// What a year token reads when the year is not known. A preview may show it; an import never writes it (#1498):
+    /// a destination that has it is a title Deluno could not place, and goes to manual import instead.
+    /// </summary>
+    public const string UnknownYearText = "Unknown Year";
+
+    public static bool HasUnknownYear(string? path)
+        => path is not null && path.Contains(UnknownYearText, StringComparison.OrdinalIgnoreCase);
+
     public static string RenderFolder(
         string? template,
         string? title,
@@ -192,7 +201,7 @@ public static partial class NamingTemplateRenderer
             "{movie title}" or "{series title}" or "{title}" => titleMaxBytes is { } max
                 ? FileNameSanitizer.LimitBytes(SanitizeSegment(title, replaceIllegalCharacters, colonReplacementMode), max)
                 : SanitizeSegment(title, replaceIllegalCharacters, colonReplacementMode),
-            "{release year}" or "{series year}" or "{year}" => year?.ToString() ?? "Unknown Year",
+            "{release year}" or "{series year}" or "{year}" => year?.ToString() ?? UnknownYearText,
             "{imdb id}" => SanitizeSegment(imdbId, replaceIllegalCharacters, colonReplacementMode),
             "{tvdb id}" => SanitizeSegment(tvDbId, replaceIllegalCharacters, colonReplacementMode),
             "{quality profile}" => SanitizeSegment(qualityProfile, replaceIllegalCharacters, colonReplacementMode),

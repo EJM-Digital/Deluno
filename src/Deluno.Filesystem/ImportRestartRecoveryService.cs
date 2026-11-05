@@ -18,7 +18,12 @@ public sealed record ImportRestartMarker(
     string DestinationPath,
     string StagingPath,
     string MediaType,
-    string Title);
+    string Title,
+    /// <summary>
+    /// The whole import request as it was running (title, year, ids, library, grab), so recovery finishes the same import
+    /// instead of starting a new one from the file's name (#1498). Null in a marker an older version wrote.
+    /// </summary>
+    string? RequestJson = null);
 
 public interface IImportRestartRecoveryService
 {
@@ -148,6 +153,13 @@ public sealed class ImportRestartRecoveryService(
         }
 
         var marker = read.Marker! with { StagingPath = stagingPath };
+        if (ImportSourceClaims.IsClaimed(marker.SourcePath))
+        {
+            // The normal path is importing this very file right now (the job a restart put back on the queue): it is the
+            // one import, and this marker is looked at again once it is done (#1498).
+            return Outcome.Skipped;
+        }
+
         try
         {
             // A kill in the middle of a copy leaves the copy's own temporary file beside the staging name. While the
@@ -162,8 +174,7 @@ public sealed class ImportRestartRecoveryService(
                 if (!File.Exists(stagingPath))
                 {
                     TryDelete(markerPath);
-                    await RecordAsync(marker, finished: true, "the file was already in its library folder", cancellationToken);
-                    return Outcome.Recovered;
+                    return await FinishPlacedImportAsync(marker, markerPath, cancellationToken);
                 }
 
                 if (StagingIsAccountedFor(marker, stagingPath))
@@ -172,8 +183,7 @@ public sealed class ImportRestartRecoveryService(
                     // copy of it never got cleaned up.
                     TryDelete(stagingPath);
                     TryDelete(markerPath);
-                    await RecordAsync(marker, finished: true, "the file was already in its library folder", cancellationToken);
-                    return Outcome.Recovered;
+                    return await FinishPlacedImportAsync(marker, markerPath, cancellationToken);
                 }
 
                 // A different file is already in the library and this staging file is not a copy of it: it may be
@@ -221,22 +231,16 @@ public sealed class ImportRestartRecoveryService(
 
             TryDelete(markerPath);
 
-            var request = new ImportExecuteRequest(
-                new ImportPreviewRequest(
-                    marker.SourcePath,
-                    FileName: null,
-                    MediaType: marker.MediaType,
-                    Title: null,
-                    Year: null,
-                    Genres: null,
-                    Tags: null,
-                    Studio: null,
-                    OriginalLanguage: null),
-                TransferMode: "auto",
-                Overwrite: false,
-                AllowCopyFallback: true);
+            var request = RequestOf(marker);
 
             var result = await importPipelineService.ExecuteAsync(request, cancellationToken);
+            if (result.StatusCode == ImportFileReadiness.RetryableStatusCode && ImportSourceClaims.IsClaimed(marker.SourcePath))
+            {
+                // Lost the race to the normal path by a hair: put the note back so the next pass looks again.
+                ImportRestartMarkerFile.WriteAtomic(markerPath, marker, _io);
+                return Outcome.Skipped;
+            }
+
             if (result.Succeeded)
             {
                 await RecordAsync(marker, finished: true, "the source was still there, so Deluno imported it again", cancellationToken);
@@ -255,6 +259,77 @@ public sealed class ImportRestartRecoveryService(
             await RaiseNoticeAsync(library, stagingPath, marker.Title, recycled: false, "Deluno could not finish it", cancellationToken);
             return Outcome.Abandoned;
         }
+    }
+
+    /// <summary>
+    /// The file was placed before the restart but the title may never have been told (#1498): the catalogue write comes after
+    /// the move. While the download is still there the same import is run again; the identical file already at the
+    /// destination is linked to the title, not copied a second time. With the download gone (a "move" import) there is
+    /// nothing to run, and the file in the library is left for the library scan to list.
+    /// </summary>
+    private async Task<Outcome> FinishPlacedImportAsync(ImportRestartMarker marker, string markerPath, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(marker.RequestJson) || !File.Exists(marker.SourcePath))
+        {
+            await RecordAsync(marker, finished: true, "the file was already in its library folder", cancellationToken);
+            return Outcome.Recovered;
+        }
+
+        var result = await importPipelineService.ExecuteAsync(RequestOf(marker), cancellationToken);
+        if (result.StatusCode == ImportFileReadiness.RetryableStatusCode && ImportSourceClaims.IsClaimed(marker.SourcePath))
+        {
+            ImportRestartMarkerFile.WriteAtomic(markerPath, marker, _io);
+            return Outcome.Skipped;
+        }
+
+        if (result.Succeeded)
+        {
+            await RecordAsync(marker, finished: true, "the file was already in its library folder, and Deluno tied it to its title", cancellationToken);
+            return Outcome.Recovered;
+        }
+
+        await RecordAsync(marker, finished: false, result.Message, cancellationToken);
+        return Outcome.Abandoned;
+    }
+
+    /// <summary>
+    /// The import the marker guards, exactly as it was running: its title, year, ids, library and grab, so the result is
+    /// tied to the title it was for (#1498). A note an older version wrote has only the file, and the import then has no
+    /// title to place it under; the pipeline sends such a file to manual import instead of inventing one.
+    /// </summary>
+    private static ImportExecuteRequest RequestOf(ImportRestartMarker marker)
+    {
+        if (!string.IsNullOrWhiteSpace(marker.RequestJson))
+        {
+            try
+            {
+                var kept = JsonSerializer.Deserialize<ImportExecuteRequest>(marker.RequestJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (kept is not null)
+                {
+                    // The file to import is where the note says it is now: a "move" import put it back at its source.
+                    return kept with { Preview = kept.Preview with { SourcePath = marker.SourcePath } };
+                }
+            }
+            catch (JsonException)
+            {
+                // Falls through to the file-only request below.
+            }
+        }
+
+        return new ImportExecuteRequest(
+            new ImportPreviewRequest(
+                marker.SourcePath,
+                FileName: null,
+                MediaType: marker.MediaType,
+                Title: null,
+                Year: null,
+                Genres: null,
+                Tags: null,
+                Studio: null,
+                OriginalLanguage: null),
+            TransferMode: "auto",
+            Overwrite: false,
+            AllowCopyFallback: true);
     }
 
     /// <summary>

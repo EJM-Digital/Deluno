@@ -85,7 +85,12 @@ public sealed class TheWorkersOnRealFilesTests
         if (markerText is null)
         {
             var source = Path.Combine(world.Downloads, $"{title}.2024.WEB.1080p.mkv");
-            Assert.Null(ImportRestartMarkerFile.WriteAtomic(marker, new ImportRestartMarker(source, destination, staging, "movies", $"{title} (2024)")));
+            Assert.Null(ImportRestartMarkerFile.WriteAtomic(marker, new ImportRestartMarker(
+                source, destination, staging, "movies", $"{title} (2024)",
+                // The import as it was running (#1498): recovery runs this one, with its title.
+                System.Text.Json.JsonSerializer.Serialize(new Deluno.Filesystem.ImportExecuteRequest(
+                    new Deluno.Filesystem.ImportPreviewRequest(source, null, "movies", title, 2024, null, null, null, null, ImdbId: "tt0000001"),
+                    TransferMode: "auto", Overwrite: false, AllowCopyFallback: true)))));
         }
         else
         {

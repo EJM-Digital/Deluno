@@ -94,6 +94,9 @@ public sealed class AWeirFinishedFileMeetsTheImportPipelineTests
         var jobId = JsonNode.Parse(await reported.Content.ReadAsStringAsync())!["importJobId"]!.GetValue<string>();
         var job = await app.Services.GetRequiredService<IJobQueueRepository>().GetAsync(jobId, CancellationToken.None);
         var queued = JsonSerializer.Deserialize<ImportExecuteRequest>(job!.PayloadJson!, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        // The grab names the film (#1498): with no title an import is not written, so the test's film is one the library knows by its provider id.
+        var named = Deluno.Contracts.ReleaseTitleMatch.ParseTitleAndYear(release);
+        queued = queued with { Preview = queued.Preview with { Title = named.Title, Year = named.Year, ImdbId = "tt0000001" } };
         return new Weir(app, libraryId, downloads, output, root, release, original, outputFiles, queued);
     }
 

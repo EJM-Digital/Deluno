@@ -204,6 +204,9 @@ describe("the journey of a title", () => {
     expect(titleFromRelease("Sintel.2010.1080p.BluRay.x264")).toBe("Sintel (2010)");
     expect(titleFromRelease("The.Kid.1921.REMASTERED")).toBe("The Kid (1921)");
     expect(titleFromRelease("Some Show S01E02")).toBe("Some Show S01E02");
+    // #1498: a path is never a title. An import with no grab once recorded the output's whole path as its release.
+    expect(titleFromRelease("E:\\Weir\\Ready\\Movies\\Gladiator.II.2024.1080p.BluRay.x264-HiP_EniaHD.mkv")).toBe("Gladiator II (2024)");
+    expect(titleFromRelease("/data/ready/Movies/Sintel.2010.1080p.mkv")).toBe("Sintel (2010)");
     // A site's banner in front of the name is not part of the title.
     expect(titleFromRelease("www Torrenting com The Wild Robot 2024 1080p")).toBe("The Wild Robot (2024)");
     expect(titleFromRelease("www.UIndex.org - Say.Yes.to.the.Dress.2007.S04E02")).toBe("Say Yes to the Dress (2007) S04E02");

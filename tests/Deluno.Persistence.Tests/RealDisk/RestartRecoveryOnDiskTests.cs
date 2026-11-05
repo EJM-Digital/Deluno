@@ -70,7 +70,12 @@ public sealed class RestartRecoveryOnDiskTests
         {
             if (markerText is null)
             {
-                Assert.Null(ImportRestartMarkerFile.WriteAtomic(marker, new ImportRestartMarker(source, destination, staging, "movies", "Sanctuary (2024)")));
+                Assert.Null(ImportRestartMarkerFile.WriteAtomic(marker, new ImportRestartMarker(
+                    source, destination, staging, "movies", "Sanctuary (2024)",
+                    // The import as it was running (#1498): recovery runs this one, with its title, not a new one made from the file's name.
+                    System.Text.Json.JsonSerializer.Serialize(new ImportExecuteRequest(
+                        new ImportPreviewRequest(source, null, "movies", "Sanctuary", 2024, null, null, null, null, ImdbId: "tt0000001"),
+                        TransferMode: "auto", Overwrite: false, AllowCopyFallback: true)))));
             }
             else
             {

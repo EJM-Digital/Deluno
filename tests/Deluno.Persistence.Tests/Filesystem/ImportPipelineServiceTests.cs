@@ -1496,20 +1496,20 @@ public sealed partial class ImportPipelineServiceTests
                 AllowCopyFallback: true),
             CancellationToken.None);
 
-        Assert.True(result.Succeeded);
-        Assert.NotNull(result.Response);
-
-        // No phantom film, under any name.
+        // #1498: a file Deluno cannot place is not written at all, and no film is made for it.
+        Assert.False(result.Succeeded);
+        Assert.Equal(409, result.StatusCode);
+        Assert.True(File.Exists(sourcePath), "the download is left exactly where it was");
+        Assert.Empty(Directory.EnumerateFiles(movieRootPath, "*", SearchOption.AllDirectories));
         Assert.Empty(await movies.ListAsync(CancellationToken.None));
-        Assert.False(result.Response.CatalogUpdated);
 
-        // And it is not silently dropped either — it is waiting to be resolved.
+        // And it is not silently dropped either: it is waiting in manual import, with the reason.
         var summary = await movies.GetImportRecoverySummaryAsync(CancellationToken.None);
         Assert.Equal(1, summary.OpenCount);
         var recovery = Assert.Single(summary.RecentCases);
         Assert.Equal("unmatched", recovery.FailureKind);
         Assert.Equal(1, summary.UnmatchedCount);
-        Assert.Contains("could not tell which film it is", recovery.Summary);
+        Assert.Contains("could not tell which film", recovery.Summary);
     }
 
     /// <summary>
@@ -2495,22 +2495,18 @@ public sealed partial class ImportPipelineServiceTests
         var recovery = CreateRestartRecoveryService(libraries, service, jobStore);
         var report = await recovery.RecoverAsync(CancellationToken.None);
 
-        Assert.Equal(1, report.Recovered);
-        Assert.Equal(0, report.Abandoned);
+        // #1498: a note from an older version names no title, so the import has nothing to place the file under. It is not
+        // written; the media is put back where the download was, and the file goes to manual import with the reason.
+        Assert.Equal(0, report.Recovered);
+        Assert.Equal(1, report.Abandoned);
         Assert.False(File.Exists(stagingPath));
         Assert.False(File.Exists(stagingPath + ".deluno-marker.json"));
-        Assert.False(File.Exists(sourcePath), "the recovered content was consumed by the fresh import, not left behind twice");
-
-        // The reissued import carries no confirmed metadata (the marker only
-        // knows a display title), so - correctly, per #643/#888 - it lands as
-        // an import recovery case rather than guessing a catalogue entry. The
-        // point under test is that the file was placed and the pipeline ran
-        // again at all, which the recovery case proves.
+        Assert.True(File.Exists(sourcePath), "the media is kept at the download's own path");
+        Assert.False(File.Exists(destinationPath));
         Assert.Single((await movies.GetImportRecoverySummaryAsync(CancellationToken.None)).RecentCases);
 
         var activity = await jobStore.ListActivityAsync(50, null, null, CancellationToken.None);
-        Assert.Contains(activity, entry => entry.Category == "filesystem.import.restart-recovered" &&
-            entry.Message.Contains("Finished an import interrupted by a restart", StringComparison.Ordinal));
+        Assert.Contains(activity, entry => entry.Category == "filesystem.import.restart-abandoned");
     }
 
     /// <summary>
@@ -2552,12 +2548,11 @@ public sealed partial class ImportPipelineServiceTests
         var recovery = CreateRestartRecoveryService(libraries, service, jobStore);
         var report = await recovery.RecoverAsync(CancellationToken.None);
 
-        Assert.Equal(1, report.Recovered);
+        // As above (#1498): an older note names no title, so nothing is written and the file goes to manual import.
+        Assert.Equal(1, report.Abandoned);
         Assert.False(File.Exists(stagingPath), "the incomplete partial copy is never left behind");
         Assert.False(File.Exists(stagingPath + ".deluno-marker.json"));
-
-        // As above: no confirmed metadata means this correctly becomes an
-        // import recovery case rather than a guessed catalogue entry.
+        Assert.True(File.Exists(sourcePath));
         Assert.Single((await movies.GetImportRecoverySummaryAsync(CancellationToken.None)).RecentCases);
     }
 

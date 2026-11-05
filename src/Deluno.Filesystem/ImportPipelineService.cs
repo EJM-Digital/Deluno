@@ -258,6 +258,21 @@ public sealed partial class ImportPipelineService(
 
     public async Task<ImportPipelineResult> ExecuteAsync(ImportExecuteRequest request, CancellationToken cancellationToken)
     {
+        // One import per file (#1498): the normal path and restart recovery can both reach the same source after a restart,
+        // and whichever takes the claim first is the import. The other is told to look again later.
+        using var claim = ImportSourceClaims.TryClaim(request.Preview.SourcePath);
+        if (claim is null)
+        {
+            return Failed(
+                ImportFileReadiness.RetryableStatusCode,
+                "This file is already being imported, so Deluno is leaving it to that import. It will look again when it is done.");
+        }
+
+        return await ExecuteClaimedAsync(request, cancellationToken);
+    }
+
+    private async Task<ImportPipelineResult> ExecuteClaimedAsync(ImportExecuteRequest request, CancellationToken cancellationToken)
+    {
         var mediaType = NormalizeMediaType(request.Preview.MediaType);
 
         // A source path that climbs out ("..") is never copied, moved or deleted from, whoever supplied it (#1306).
@@ -395,6 +410,19 @@ public sealed partial class ImportPipelineService(
                 "Choose a destination root that is separate from the completed download path, or adjust the file name/routing rule.",
                 cancellationToken);
             return Failed(StatusCodes.Status409Conflict, message);
+        }
+
+        // A file Deluno cannot place is not written, and no title is made for it (#1498). It goes to manual import with the reason.
+        if (await UnplacedReasonAsync(request, preview, mediaType, cancellationToken) is { } unplaced)
+        {
+            await RecordImportFailureAsync(
+                request,
+                request.Preview,
+                "unmatched",
+                unplaced,
+                "Open this case and choose the title it belongs to, or add the title first and import again. Nothing was written to your library.",
+                cancellationToken);
+            return Failed(StatusCodes.Status409Conflict, unplaced);
         }
 
         // The safety net behind search (#1166, #1173): a file for another show of the same name, or one whose name
@@ -645,7 +673,7 @@ public sealed partial class ImportPipelineService(
         // safely placed or the attempt is rolled back.
         if (!adoptExisting)
         {
-            WriteRestartMarker(stagingPath, preview.SourcePath, preview.DestinationPath, mediaType, TitleForActivity(request.Preview));
+            WriteRestartMarker(stagingPath, preview.SourcePath, preview.DestinationPath, mediaType, TitleForActivity(request.Preview), request);
         }
 
         try
@@ -3837,7 +3865,7 @@ public sealed partial class ImportPipelineService(
                 CatalogId = null,
                 Dispatch = dispatch,
                 EntityId = await EntityIdForImportAsync(dispatch, mediaType, title, request, imported: false, cancellationToken),
-                ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
+                ReleaseNameEvidence = dispatchReleaseName ?? Path.GetFileName(preview.SourcePath),
                 PreferenceEvaluations = preferenceEvaluations,
                 MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
             };
@@ -3887,7 +3915,7 @@ public sealed partial class ImportPipelineService(
                 CatalogId = null,
                 Dispatch = dispatch,
                 EntityId = await EntityIdForImportAsync(dispatch, mediaType, title, request, imported: false, cancellationToken),
-                ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
+                ReleaseNameEvidence = dispatchReleaseName ?? Path.GetFileName(preview.SourcePath),
                 PreferenceEvaluations = preferenceEvaluations,
                 MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
             };
@@ -3979,7 +4007,7 @@ public sealed partial class ImportPipelineService(
                 // The show, not the grab: an episode search's grab names the episode,
                 // and the show's History is where this import belongs (#595).
                 EntityId = knownSeriesId ?? request.SeriesId ?? await EntityIdForImportAsync(dispatch, mediaType, title, request, imported: true, cancellationToken),
-                ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
+                ReleaseNameEvidence = dispatchReleaseName ?? Path.GetFileName(preview.SourcePath),
                 PreferenceEvaluations = preferenceEvaluations,
                 MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan),
                 ReplacedFilePaths = catalogUpdated
@@ -4021,7 +4049,7 @@ public sealed partial class ImportPipelineService(
                 CatalogId = null,
                 Dispatch = dispatch,
                 EntityId = await EntityIdForImportAsync(dispatch, mediaType, title, request, imported: false, cancellationToken) ?? request.SeriesId,
-                ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
+                ReleaseNameEvidence = dispatchReleaseName ?? Path.GetFileName(preview.SourcePath),
                 PreferenceEvaluations = preferenceEvaluations,
                 MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
             };
@@ -4059,7 +4087,7 @@ public sealed partial class ImportPipelineService(
                 CatalogId = null,
                 Dispatch = dispatch,
                 EntityId = await EntityIdForImportAsync(dispatch, mediaType, title, request, imported: false, cancellationToken) ?? request.SeriesId,
-                ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
+                ReleaseNameEvidence = dispatchReleaseName ?? Path.GetFileName(preview.SourcePath),
                 PreferenceEvaluations = preferenceEvaluations,
                 MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
             };
@@ -4096,7 +4124,7 @@ public sealed partial class ImportPipelineService(
             CatalogId = movieResult ? catalogId : null,
             Dispatch = dispatch,
             EntityId = await EntityIdForImportAsync(dispatch, mediaType, title, request, imported: true, cancellationToken) ?? request.SeriesId,
-            ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
+            ReleaseNameEvidence = dispatchReleaseName ?? Path.GetFileName(preview.SourcePath),
             PreferenceEvaluations = preferenceEvaluations,
             MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan),
             // The wanted-state write above is an upsert that always runs -
@@ -4168,6 +4196,58 @@ public sealed partial class ImportPipelineService(
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Why this file cannot be placed under a title Deluno has, or null when it can (#1498). Checked before anything is
+    /// written: a file with no title, or a destination that
+    /// would carry the unknown-year text is not written and no title is made for it. A title that is named but not
+    /// yet in the library keeps its existing path (the file is placed under its own name and a recovery case is opened).
+    /// </summary>
+    private async Task<string?> UnplacedReasonAsync(
+        ImportExecuteRequest request,
+        ImportPreviewResponse preview,
+        string mediaType,
+        CancellationToken cancellationToken)
+    {
+        var name = TitleForActivity(request.Preview);
+        var untitled = await UntitledReasonAsync(request, mediaType, name, cancellationToken);
+        if (untitled is not null)
+        {
+            return untitled;
+        }
+
+        return NamingTemplateRenderer.HasUnknownYear(preview.DestinationPath)
+            ? $"Deluno could not tell which year {name} is from, so it would have been filed as \"{NamingTemplateRenderer.UnknownYearText}\". It was not written."
+            : null;
+    }
+
+    private async Task<string?> UntitledReasonAsync(ImportExecuteRequest request, string mediaType, string name, CancellationToken cancellationToken)
+    {
+        var dispatch = await ResolveDispatchAsync(request.DispatchId, cancellationToken);
+        var preview0 = request.Preview;
+        if (mediaType == "tv")
+        {
+            // A folder of episodes goes through the pack path, which names every file from the show.
+            if (!string.IsNullOrWhiteSpace(preview0.SeriesId) || preview0.TvDbId is not null
+                || await KnownSeriesIdAsync(preview0, dispatch, cancellationToken) is not null)
+            {
+                return null;
+            }
+
+            return string.IsNullOrWhiteSpace(preview0.Title)
+                ? $"Deluno could not tell which show {name} belongs to, so it was not imported. The only name available was the file's own."
+                : null;
+        }
+
+        if (await KnownMovieIdAsync(dispatch, cancellationToken) is not null)
+        {
+            return null;
+        }
+
+        return string.IsNullOrWhiteSpace(preview0.Title) && string.IsNullOrWhiteSpace(preview0.ImdbId)
+            ? $"Deluno could not tell which film {name} is, so it was not imported. The only name available was the file's own."
+            : null;
     }
 
     private async Task<string?> KnownSeriesIdAsync(ImportPreviewRequest request, DownloadDispatchItem? dispatch, CancellationToken cancellationToken)
@@ -4893,14 +4973,15 @@ public sealed partial class ImportPipelineService(
         string sourcePath,
         string destinationPath,
         string mediaType,
-        string title)
+        string title,
+        ImportExecuteRequest request)
     {
         try
         {
             // Told to recovery first, so a recovery pass never mistakes this running import for one a restart
             // interrupted (#1259). Written whole or not at all: a crash cannot leave half a marker.
             ImportRestartMarkerFile.MarkInFlight(stagingPath);
-            var marker = new ImportRestartMarker(sourcePath, destinationPath, stagingPath, mediaType, title);
+            var marker = new ImportRestartMarker(sourcePath, destinationPath, stagingPath, mediaType, title, JsonSerializer.Serialize(request));
             ImportRestartMarkerFile.WriteAtomic(RestartMarkerPath(stagingPath), marker);
         }
         catch

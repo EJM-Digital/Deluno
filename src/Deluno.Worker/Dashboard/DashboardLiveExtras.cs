@@ -143,7 +143,7 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
                 {
                     using var document = JsonDocument.Parse(details);
                     var root = document.RootElement;
-                    release = Text(root, "ReleaseNameEvidence");
+                    release = NameOnly(Text(root, "ReleaseNameEvidence"));
                     quality = Text(root, "NewQuality");
                     previous = Text(root, "PreviousQuality");
                     libraryId = Text(root, "LibraryId");
@@ -258,6 +258,24 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
         }
 
         return rows;
+    }
+
+    private static readonly char[] Separators = ['\\', '/'];
+
+    /// <summary>
+    /// A release name, never a path (#1498): an import with no grab recorded the file's whole path as its evidence, and the
+    /// shelf read it as a title. Events already written keep the path; what leaves here is the file's own name.
+    /// </summary>
+    internal static string? NameOnly(string? release)
+    {
+        if (string.IsNullOrWhiteSpace(release) || release.IndexOfAny(Separators) < 0)
+        {
+            return release;
+        }
+
+        var name = release.TrimEnd(Separators);
+        name = name[(name.LastIndexOfAny(Separators) + 1)..];
+        return string.IsNullOrWhiteSpace(name) ? null : name;
     }
 
     private static string? Text(JsonElement root, string name)

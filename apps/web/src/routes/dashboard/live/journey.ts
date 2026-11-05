@@ -101,7 +101,9 @@ export function releaseKey(name: string | null | undefined): string {
 }
 
 /** "Sintel.2010.1080p.BluRay" reads "Sintel (2010)"; a name with no year is left as it is. */
-export function titleFromRelease(name: string): string {
+export function titleFromRelease(rawName: string): string {
+  // A path is never a title (#1498): only the file's own name is read, without its folders or its extension.
+  const name = /[\\/]/.test(rawName) ? (rawName.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "").replace(/\.(mkv|mp4|m4v|avi|mov|wmv|ts|m2ts)$/i, "") : rawName;
   // A site's own banner in front of the name ("www Torrenting com ", "[ www.site.org ] - ") is not part of the title.
   const cleaned = name.replace(/^[\s[(]*(?:www[\s._-]+)?[a-z0-9-]+[\s._-]+(?:com|org|net|to|cc|me|info)[\s\])._-]+(?=[A-Za-z0-9])/i, "");
   // A show's episode ("Lioness.S03E08.1080p...") reads "Lioness S03E08": what follows the code is the release's, not the title's.
