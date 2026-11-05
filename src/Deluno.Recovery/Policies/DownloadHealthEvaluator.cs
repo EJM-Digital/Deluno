@@ -142,11 +142,8 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
         // skipping entirely while the client's own alternate/scheduled speed
         // limit is on (SkipWhileAlternateSpeedLimitOn - a deliberately
         // throttled download is not unhealthy).
-        var tooSlow = MatchRule(rules, DownloadHealthRuleKinds.TooSlow, item);
-        if (tooSlow is not null &&
-            ReadsAsDownloading(item) &&
-            !(tooSlow.SkipWhileAlternateSpeedLimitOn && item.AlternateSpeedLimitOn) &&
-            !(tooSlow.IgnoreAboveSizeBytes is { } ignoreAboveSize && ignoreAboveSize > 0 && item.SizeBytes > ignoreAboveSize))
+        var tooSlow = DownloadHealthStrikes.TooSlowRuleThatJudges(rules, item);
+        if (tooSlow is not null)
         {
             var elapsed = capturedUtc - item.AddedUtc;
             // A download moving nothing at all belongs to the "No progress" rule, never counted by both (#1194).

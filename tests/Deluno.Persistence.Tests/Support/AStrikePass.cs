@@ -236,6 +236,13 @@ internal sealed class AStrikePass : IDisposable
         return new Check(overview, report);
     }
 
+    /// <summary>A telemetry poll between two checks (the app polls every few seconds): the clock moves, the client is read, nothing is acted on.</summary>
+    public async Task<DownloadTelemetryOverview> PollAsync(TimeSpan after)
+    {
+        Time.Advance(after);
+        return await Service.GetOverviewAsync(CancellationToken.None);
+    }
+
     public async Task<DownloadHealthRecord?> RecordOfAsync(string kind)
         => (await Health.ListDownloadHealthRecordsAsync(10, CancellationToken.None)).FirstOrDefault(record => record.Kind == kind);
 

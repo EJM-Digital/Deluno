@@ -1864,6 +1864,7 @@ public sealed class DownloadClientTelemetryService(
 
         var struck = touched.Select(record => $"{KeyOf(record.QueueItemId)}\u001f{record.Kind}").ToHashSet(StringComparer.OrdinalIgnoreCase);
         var prefix = KeyOf(string.Empty);
+        IReadOnlyList<DownloadHealthRecord>? keptRecords = null;
         foreach (var said in StrikesSaid.Where(entry => entry.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToArray())
         {
             if (struck.Contains(said.Key))
@@ -1880,6 +1881,17 @@ public sealed class DownloadClientTelemetryService(
             }
 
             if (DownloadHealthStrikes.PausesTransferFindings(item.Status, item.Progress))
+            {
+                continue;
+            }
+
+            // #1501: a record the pass kept (a Too slow strike not yet judged on its average) is not cleared, so it is not said to be.
+            keptRecords ??= await healthRepository.ListDownloadHealthRecordsAsync(200, cancellationToken);
+            if (keptRecords.Any(record =>
+                    string.Equals(record.ClientId, snapshot.ClientId, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(record.QueueItemId, parts[0], StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(record.Kind, parts[1], StringComparison.OrdinalIgnoreCase) &&
+                    record.StrikeCount > 0))
             {
                 continue;
             }
@@ -1921,6 +1933,9 @@ public sealed class DownloadClientTelemetryService(
         var defaultStrikeWindow = TimeSpan.FromMinutes(DownloadHealthBounds.ClampMinutes(settings.DownloadHealthDefaultStrikeWindowMinutes));
         var strikeInactivityWindow = TimeSpan.FromHours(Math.Clamp(settings.DownloadHealthStrikeInactivityHours, 1, 720));
         var annotated = new List<(DownloadQueueItem Item, IReadOnlyList<RecoveryHealthFinding> Findings)>(snapshot.Queue.Count);
+        // #1501: for each download a Too slow rule still judges, the bytes it holds and the rule's floor, so a strike is cleared on the
+        // average since the last strike and never on a reading between checks.
+        var tooSlowReadings = new Dictionary<string, TooSlowRecoveryReading>(StringComparer.OrdinalIgnoreCase);
         // #1194: Deluno's own indexer tags are only read when an ignore entry names a tag.
         var ignoredIndexerTags = ignoreList.Any(entry => entry.NamesATag)
             ? (await connectionsRepository.ListIndexersAsync(cancellationToken)).ToDictionary(
@@ -1971,8 +1986,7 @@ public sealed class DownloadClientTelemetryService(
                 var files = downloadClient is not null && contentBlocklist.Enabled
                     ? await TryGetFilesAsync(downloadClient, client, item.Id, cancellationToken)
                     : null;
-                var findings = healthEvaluator.Evaluate(
-                    new RecoveryQueueSnapshot(
+                var recoverySnapshot = new RecoveryQueueSnapshot(
                         item.Status,
                         item.ErrorMessage,
                         item.SourcePath,
@@ -1993,7 +2007,14 @@ public sealed class DownloadClientTelemetryService(
                         item.Availability,
                         item.BytesGrewSinceLastCheck,
                         item.AverageSpeedMbps,
-                        item.AveragePeriod),
+                        item.AveragePeriod);
+                if (DownloadHealthStrikes.TooSlowRuleThatJudges(rules, recoverySnapshot) is { } judgedBy)
+                {
+                    tooSlowReadings[item.Id] = new TooSlowRecoveryReading(item.DownloadedBytes, judgedBy.Threshold * 1000d);
+                }
+
+                var findings = healthEvaluator.Evaluate(
+                    recoverySnapshot,
                     snapshot.CapturedUtc,
                     rules,
                     contentBlocklist);
@@ -2014,7 +2035,7 @@ public sealed class DownloadClientTelemetryService(
             var observations = annotated
                 .SelectMany(entry => entry.Findings.Select(finding => new DownloadHealthObservation(
                     entry.Item.ClientId, entry.Item.Id, entry.Item.ReleaseName, finding.Kind, finding.Severity, finding.Evidence,
-                    finding.RuleId, finding.RuleStrikeLimit, finding.RuleTimerMinutes, finding.RuleActionPreset)))
+                    finding.RuleId, finding.RuleStrikeLimit, finding.RuleTimerMinutes, finding.RuleActionPreset, entry.Item.DownloadedBytes)))
                 .ToArray();
             // The full id list here (not only Deluno's own) is what lets a stale
             // strike recorded before this guard existed finally clear: an id that
@@ -2033,7 +2054,8 @@ public sealed class DownloadClientTelemetryService(
                 annotated
                     .Where(entry => DownloadHealthStrikes.PausesTransferFindings(entry.Item.Status, entry.Item.Progress))
                     .Select(entry => entry.Item.Id)
-                    .ToArray())).ToArray();
+                    .ToArray(),
+                tooSlowReadings)).ToArray();
         }
         var recordsByFinding = records.ToDictionary(
             record => $"{record.ClientId}\u001f{record.QueueItemId}\u001f{record.Kind}",

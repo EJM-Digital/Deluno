@@ -286,6 +286,99 @@ public sealed class EveryStrikeRuleStrikesAndReplacesADownloadTests
         await AssertNothingTouchedAsync(world, client);
     }
 
+    // ---- A strike is cleared on the measure that added it (#1501) ---------------------------------------------------------------------
+
+    private static async Task<IReadOnlyList<string>> ClearedLinesAsync(AStrikePass world)
+        => (await world.Jobs.ListActivityAsync(200, null, null, CancellationToken.None))
+            .Where(line => line.Category == "download.health.strikes-cleared")
+            .Select(line => line.Message)
+            .ToArray();
+
+    [Fact]
+    public async Task The_rig_pattern_of_a_slow_average_with_fast_readings_between_checks_reaches_its_strike_limit_with_no_clear_lines()
+    {
+        // Rig, 5 Nov 06:33-06:35: strike 1 on "averaged 764 KB/s", then "moving again at 1.2 MB/s, strikes cleared" seconds later.
+        var (world, client) = await StartAsync(Rule(DownloadHealthRuleKinds.TooSlow, threshold: 1000));
+        using var _ = world;
+        var half = TimeSpan.FromTicks(world.Window.Ticks / 2);
+        var bytes = 1_000_000_000L;
+
+        Show(world, client, 760, bytes);
+        Assert.Equal(1, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
+
+        for (var strike = 2; strike <= 3; strike++)
+        {
+            // Half an interval at 1.1 MB/s: the client reads fast at every poll in between.
+            bytes += (long)(1_100_000 * half.TotalSeconds);
+            Show(world, client, 1_100, bytes);
+            await world.PollAsync(half);
+            Assert.Equal(strike - 1, (await world.RecordOfAsync(DownloadHealthStrikes.LowSpeed))!.StrikeCount);
+            Assert.Empty(await ClearedLinesAsync(world));
+
+            // The check itself averages 730 KB/s over the stretch since the poll before it.
+            var rest = half + TimeSpan.FromSeconds(1);
+            bytes += (long)(730_000 * rest.TotalSeconds);
+            Show(world, client, 1_200, bytes);
+            Assert.Equal(strike, (await world.CheckAsync(after: rest)).Strikes(DownloadHealthStrikes.LowSpeed));
+        }
+
+        Assert.Empty(await ClearedLinesAsync(world));
+        await AssertReplacedAsync(world, client, "It stayed under 1.0 MB/s for 3 checks in a row, so Deluno stopped waiting for it and will not pick it again.");
+    }
+
+    [Fact]
+    public async Task A_download_whose_average_since_the_last_strike_is_over_the_limit_is_cleared_once_at_the_next_check_and_not_before()
+    {
+        var (world, client) = await StartAsync(Rule(DownloadHealthRuleKinds.TooSlow, threshold: 1000));
+        using var _ = world;
+        var half = TimeSpan.FromTicks(world.Window.Ticks / 2);
+        var bytes = 1_000_000_000L;
+
+        Show(world, client, 300, bytes);
+        Assert.Equal(1, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.LowSpeed));
+
+        bytes += (long)(3_000_000 * half.TotalSeconds);
+        Show(world, client, 3_000, bytes);
+        await world.PollAsync(half);
+        Assert.Equal(1, (await world.RecordOfAsync(DownloadHealthStrikes.LowSpeed))!.StrikeCount);
+        Assert.Empty(await ClearedLinesAsync(world));
+
+        var rest = half + TimeSpan.FromSeconds(1);
+        bytes += (long)(3_000_000 * rest.TotalSeconds);
+        Show(world, client, 3_000, bytes);
+        var recovered = await world.CheckAsync(after: rest);
+        Assert.Equal(0, recovered.Strikes(DownloadHealthStrikes.LowSpeed));
+        Assert.Null(await world.RecordOfAsync(DownloadHealthStrikes.LowSpeed));
+
+        bytes += (long)(3_000_000 * rest.TotalSeconds);
+        Show(world, client, 3_000, bytes);
+        await world.PollAsync(rest);
+        var line = Assert.Single(await ClearedLinesAsync(world));
+        Assert.Contains("strikes cleared", line);
+        await AssertNothingTouchedAsync(world, client);
+    }
+
+    [Fact]
+    public async Task A_download_with_no_bytes_at_all_is_struck_once_per_check_whatever_the_client_reads_between_checks()
+    {
+        var (world, client) = await StartAsync(Rule(DownloadHealthRuleKinds.NoProgress));
+        using var _ = world;
+        var half = TimeSpan.FromTicks(world.Window.Ticks / 2);
+
+        Show(world, client, kilobytesPerSecond: 0, bytes: 0);
+        Assert.Equal(1, (await world.CheckAsync()).Strikes(DownloadHealthStrikes.NoThroughput));
+        for (var strike = 2; strike <= 3; strike++)
+        {
+            Show(world, client, kilobytesPerSecond: 0, bytes: 0);
+            await world.PollAsync(half);
+            Assert.NotNull(await world.RecordOfAsync(DownloadHealthStrikes.NoThroughput));
+            Assert.Equal(strike, (await world.CheckAsync(after: half + TimeSpan.FromSeconds(1))).Strikes(DownloadHealthStrikes.NoThroughput));
+        }
+
+        Assert.Empty(await ClearedLinesAsync(world));
+        await AssertReplacedAsync(world, client, "It made no progress for 3 checks in a row, so Deluno stopped waiting for it and will not pick it again.");
+    }
+
     // ---- Maximum total time ---------------------------------------------------------------------------------------------------------
 
     [Fact]

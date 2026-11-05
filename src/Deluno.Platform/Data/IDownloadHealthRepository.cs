@@ -43,7 +43,8 @@ public interface IDownloadHealthRepository
         TimeSpan strikeInactivityWindow,
         CancellationToken cancellationToken,
         IReadOnlyCollection<string>? everythingTheClientHolds = null,
-        IReadOnlyCollection<string>? pausedQueueItemIds = null);
+        IReadOnlyCollection<string>? pausedQueueItemIds = null,
+        IReadOnlyDictionary<string, TooSlowRecoveryReading>? tooSlowReadings = null);
 
     Task<IReadOnlyList<DownloadHealthRecord>> ListDownloadHealthRecordsAsync(
         int take,

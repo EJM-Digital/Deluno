@@ -22,7 +22,9 @@ public sealed record DownloadHealthObservation(
     string? RuleId = null,
     int? RuleStrikeLimit = null,
     int? RuleTimerMinutes = null,
-    string? RuleActionPreset = null);
+    string? RuleActionPreset = null,
+    /// <summary>The bytes the client held at this reading (#1501): the mark a Too slow strike's average is measured from.</summary>
+    long? DownloadedBytes = null);
 
 /// <summary>
 /// One problem with one download, for as long as it lasts.
@@ -50,7 +52,9 @@ public sealed record DownloadHealthRecord(
     int? RuleStrikeLimit = null,
     int? RuleTimerMinutes = null,
     string? RuleActionPreset = null,
-    DateTimeOffset? LastStrikeUtc = null)
+    DateTimeOffset? LastStrikeUtc = null,
+    long? StrikeMarkBytes = null,
+    DateTimeOffset? StrikeMarkUtc = null)
 {
     public bool IsIgnored(DateTimeOffset now) => IgnoredUntilUtc is { } ignoredUntil && ignoredUntil > now;
 
@@ -297,4 +301,32 @@ public static class DownloadHealthStrikes
     /// </summary>
     public static int CapAtLimit(int strikes, int? ruleStrikeLimit)
         => ruleStrikeLimit is { } limit && limit >= 1 ? Math.Min(strikes, limit) : strikes;
+
+    /// <summary>
+    /// The Too slow rule that judges this download right now, or null when none does: no enabled rule covers it, it is not
+    /// being fetched, the client's alternate speed limit is on and the rule skips it, or it is above the rule's size limit.
+    /// The evaluator strikes by it, and a Too slow strike is cleared only while it still applies (#1501).
+    /// </summary>
+    public static DownloadHealthRule? TooSlowRuleThatJudges(IReadOnlyList<DownloadHealthRule> rules, RecoveryQueueSnapshot item)
+    {
+        var tooSlow = rules.FirstOrDefault(rule =>
+            rule.Enabled &&
+            string.Equals(rule.Kind, DownloadHealthRuleKinds.TooSlow, StringComparison.OrdinalIgnoreCase) &&
+            rule.AppliesToProtocol(item.IsUsenetProtocol) &&
+            rule.CoversCompletion(item.ProgressPercent) &&
+            rule.AppliesToPrivacy(item.IsPrivate));
+        return tooSlow is not null &&
+            item.Status is "downloading" or "stalled" &&
+            !IsFinishedOrHandedOff(item.Status, item.ProgressPercent) &&
+            !(tooSlow.SkipWhileAlternateSpeedLimitOn && item.AlternateSpeedLimitOn) &&
+            !(tooSlow.IgnoreAboveSizeBytes is { } ignoreAboveSize && ignoreAboveSize > 0 && item.SizeBytes > ignoreAboveSize)
+            ? tooSlow
+            : null;
+    }
 }
+
+/// <summary>
+/// #1501: what a Too slow record needs to be judged for recovery on the same measure that struck it: the bytes the client
+/// holds now, and the speed floor in bytes a second.
+/// </summary>
+public sealed record TooSlowRecoveryReading(long DownloadedBytes, double FloorBytesPerSecond);

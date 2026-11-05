@@ -42,7 +42,8 @@ public sealed class SqliteDownloadHealthRepository(
         TimeSpan strikeInactivityWindow,
         CancellationToken cancellationToken,
         IReadOnlyCollection<string>? everythingTheClientHolds = null,
-        IReadOnlyCollection<string>? pausedQueueItemIds = null)
+        IReadOnlyCollection<string>? pausedQueueItemIds = null,
+        IReadOnlyDictionary<string, TooSlowRecoveryReading>? tooSlowReadings = null)
     {
         if (string.IsNullOrWhiteSpace(clientId) || (observations.Count == 0 && listedQueueItemIds.Count == 0 && everythingTheClientHolds is null))
         {
@@ -85,6 +86,30 @@ public sealed class SqliteDownloadHealthRepository(
                     "{Kind} for {Release} is paused at {Strikes} strike(s): the client shows it checking, queued or paused, so no strike is added and the record is kept.",
                     record.Kind, record.ReleaseName, record.StrikeCount);
                 continue;
+            }
+
+            // #1501: a Too slow strike was added on the average speed over the time since the last strike, so it is cleared
+            // on that same average, judged when the next strike would be judged. A reading between checks, or the
+            // client's instant speed, never clears it.
+            if (string.Equals(record.Kind, DownloadHealthStrikes.LowSpeed, StringComparison.OrdinalIgnoreCase) &&
+                tooSlowReadings is not null && tooSlowReadings.TryGetValue(record.QueueItemId, out var slow) &&
+                record.StrikeCount > 0 && record.LastStrikeUtc is { } lastStrikeUtc &&
+                record.StrikeMarkBytes is { } markBytes && record.StrikeMarkUtc is { } markUtc && now > markUtc)
+            {
+                var overlap = await _connectivityMonitor.OutageOverlapAsync(lastStrikeUtc, now, cancellationToken);
+                if (!DownloadHealthStrikes.IsDueForStrike(lastStrikeUtc, now, defaultStrikeWindow, overlap))
+                {
+                    continue;
+                }
+
+                var average = Math.Max(0, slow.DownloadedBytes - markBytes) / (now - markUtc).TotalSeconds;
+                if (average < slow.FloorBytesPerSecond)
+                {
+                    logger?.LogDebug(
+                        "{Kind} for {Release} stays at {Strikes} strike(s): its average since the last strike is still under the limit.",
+                        record.Kind, record.ReleaseName, record.StrikeCount);
+                    continue;
+                }
             }
 
             records.Remove(record);
@@ -183,7 +208,10 @@ public sealed class SqliteDownloadHealthRepository(
                 strikes,
                 record?.IgnoredUntilUtc,
                 observation.RuleId, observation.RuleStrikeLimit, observation.RuleTimerMinutes, observation.RuleActionPreset,
-                counts ? struckAt : null);
+                counts ? struckAt : null,
+                // #1501: the bytes held when the last strike landed, the mark a Too slow recovery is measured from.
+                strikes != previousStrikes || !continuing ? observation.DownloadedBytes : record?.StrikeMarkBytes,
+                strikes != previousStrikes || !continuing ? now : record?.StrikeMarkUtc);
 
             if (index >= 0) records[index] = updated; else records.Add(updated);
             touched.Add(updated);
