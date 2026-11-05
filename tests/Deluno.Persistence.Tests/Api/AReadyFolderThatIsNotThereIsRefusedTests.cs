@@ -79,6 +79,35 @@ public sealed class AReadyFolderThatIsNotThereIsRefusedTests
         Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
     }
 
+    [Theory]
+    [InlineData(24 * 60 - 1)]
+    [InlineData(7 * 24 * 60 + 1)]
+    public async Task A_processor_timeout_outside_24_hours_to_7_days_is_refused_with_the_bound_message(int minutes)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var libraryId = await CreateLibraryAsync(app);
+        var ready = Directory.CreateDirectory(Path.Combine(app.DataRoot, "Ready")).FullName;
+
+        var response = await PutWorkflowAsync(app, libraryId, "refine-before-import", ready, minutes);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("Choose between 24 hours and 7 days of no progress", await response.Content.ReadAsStringAsync());
+    }
+
+    [Theory]
+    [InlineData(24 * 60)]
+    [InlineData(7 * 24 * 60)]
+    public async Task A_processor_timeout_at_either_bound_is_accepted(int minutes)
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var libraryId = await CreateLibraryAsync(app);
+        var ready = Directory.CreateDirectory(Path.Combine(app.DataRoot, "Ready")).FullName;
+
+        var response = await PutWorkflowAsync(app, libraryId, "refine-before-import", ready, minutes);
+
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+    }
+
     private static async Task<string> CreateLibraryAsync(ApplicationTestHost app)
     {
         var root = Directory.CreateDirectory(Path.Combine(app.DataRoot, "Films")).FullName;
@@ -99,13 +128,14 @@ public sealed class AReadyFolderThatIsNotThereIsRefusedTests
         ApplicationTestHost app,
         string libraryId,
         string importWorkflow,
-        string? processorOutputPath)
+        string? processorOutputPath,
+        int? processorTimeoutMinutes = null)
         => app.Client.PutAsJsonAsync($"/api/libraries/{libraryId}/workflow", new
         {
             importWorkflow,
             processorName = importWorkflow == "refine-before-import" ? "Weir" : (string?)null,
             processorOutputPath,
-            processorTimeoutMinutes = (int?)null,
+            processorTimeoutMinutes,
             processorFailureMode = (string?)null
         });
 }
