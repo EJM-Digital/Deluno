@@ -5,7 +5,9 @@
  */
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { useLiveInterval } from "../../../hooks/use-live-interval";
+import { useCoalescedRevalidate, useLiveInterval } from "../../../hooks/use-live-interval";
+import { queryClient } from "../../../lib/route-cache";
+import { RealtimeGroups, useSignalREvent } from "../../../lib/use-signalr";
 import { movedCards, type JourneyCard, type Stage } from "./journey";
 import { fetchByName, fetchMovieTitles, fetchSeriesTitles, NO_TITLES, nameSearchOf, wantedTitles, type Entity, type NameSearch, type TitleInfo, type TitleLookup } from "./titles";
 
@@ -84,6 +86,12 @@ export function useTitles(cards: JourneyCard[], extra: ReadonlyArray<Entity | un
     retry: false
   });
   // Downloads that no sent download names (put in the client some other way) are matched to the library by the release's own name.
+  // A title is added, or its artwork arrives a moment after it, and the library says so (#1512): the names and posters are
+  // read again, in place. The answers stay on screen while they are, and a title whose poster was missing gets it.
+  const readAgain = useCoalescedRevalidate(() => { void queryClient.invalidateQueries({ queryKey: ["dashboard", "titles"] }); }, 800);
+  useSignalREvent("MovieChanged", RealtimeGroups.Dashboard, readAgain);
+  useSignalREvent("SeriesChanged", RealtimeGroups.Dashboard, readAgain);
+  useSignalREvent("EpisodeChanged", RealtimeGroups.Dashboard, readAgain);
   const searches = useMemo(() => {
     const found = new Map<string, NameSearch>();
     for (const card of cards) {
