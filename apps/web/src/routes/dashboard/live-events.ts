@@ -83,7 +83,7 @@ export function useLiveActivity(recent: Array<Pick<DashboardActivityItem, "id" |
   useSignalREvent("ActivityEventAdded", RealtimeGroups.Activity, (event) => {
     setArrived((current) => {
       if (current.some((row) => row.id === event.id)) return current;
-      return [{ id: event.id, message: event.message, label: event.label, severity: event.severity, category: event.category, createdUtc: event.createdUtc, fresh: true }, ...current].slice(0, LIVE_ACTIVITY_LIMIT);
+      return [{ id: event.id, message: event.message, label: event.label, severity: event.severity, category: event.category, createdUtc: event.createdUtc, relatedEntityType: event.relatedEntityType, relatedEntityId: event.relatedEntityId, fresh: true }, ...current].slice(0, LIVE_ACTIVITY_LIMIT);
     });
   });
 
