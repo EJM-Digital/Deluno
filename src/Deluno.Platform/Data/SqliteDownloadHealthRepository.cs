@@ -491,11 +491,14 @@ public sealed class SqliteDownloadHealthRepository(
             var gain = existing is null ? long.MaxValue : downloadedBytes - existing.DownloadedBytes;
             var isRealProgress = existing is null || (allowReset && gain >= Math.Max(1, minimumGainBytes));
             var lastIncreaseUtc = isRealProgress ? now : existing!.LastIncreaseUtc;
-            // #1501: a check is a whole check interval after the previous check; a poll in between judges nothing and
+            // #1501: a check is the first poll after an interval boundary; a poll in between judges nothing and
             // leaves the check's baseline where it was. A record from before this existed starts from its last poll.
             var baselineBytes = existing?.CheckBytes ?? existing?.DownloadedBytes;
             var baselineUtc = existing?.CheckUtc ?? existing?.LastObservedUtc;
-            var isCheck = existing is null || baselineUtc is null || checkInterval is not { } interval || now - baselineUtc.Value >= interval;
+            // Checks fall on the rule's own interval (a boundary every interval), so a download first seen part-way through one is
+            // judged at the next boundary against that first sighting, not a whole interval after it (CI run 41984111137).
+            var isCheck = existing is null || baselineUtc is null || checkInterval is not { } interval || interval <= TimeSpan.Zero ||
+                now.UtcTicks / interval.Ticks > baselineUtc.Value.UtcTicks / interval.Ticks;
             var updated = new DownloadProgressRecord(
                 clientId.Trim(), trimmedId, downloadedBytes, lastIncreaseUtc, now,
                 isCheck ? downloadedBytes : baselineBytes, isCheck ? now : baselineUtc);
