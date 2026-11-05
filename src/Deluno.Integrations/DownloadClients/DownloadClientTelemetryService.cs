@@ -1275,7 +1275,7 @@ public sealed class DownloadClientTelemetryService(
     }
 
     /// <summary>What a removal did to the download's files, for the Activity line (#1212).</summary>
-    private enum RemovalOutcome
+    internal enum RemovalOutcome
     {
         Deleted,
         FilesKept,
@@ -1296,7 +1296,7 @@ public sealed class DownloadClientTelemetryService(
         };
 
     /// <summary>The Activity line for a removal asked for by flags: it says what was actually done, part by part.</summary>
-    private static string BuildQueueRemovalMessage(string title, string clientName, bool removedFromClient, bool blocklisted, bool searchStarted, RemovalOutcome outcome)
+    internal static string BuildQueueRemovalMessage(string title, string clientName, bool removedFromClient, bool blocklisted, bool searchStarted, RemovalOutcome outcome)
     {
         var done = new List<string>
         {
