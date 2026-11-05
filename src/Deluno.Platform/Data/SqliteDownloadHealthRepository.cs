@@ -488,7 +488,10 @@ public sealed class SqliteDownloadHealthRepository(
             // #1207: "grew" is bytes against the previous check, whatever the reported speed was.
             result[trimmedId] = new DownloadProgressObservation(
                 lastIncreaseUtc,
-                existing is null ? null : downloadedBytes - existing.DownloadedBytes >= Math.Max(1, minimumGainBytes));
+                existing is null ? null : downloadedBytes - existing.DownloadedBytes >= Math.Max(1, minimumGainBytes),
+                // #1490: the average since the previous check, so one slow instant in a fast download is not a slow download.
+                existing is null || now <= existing.LastObservedUtc ? null : Math.Max(0, downloadedBytes - existing.DownloadedBytes) / (now - existing.LastObservedUtc).TotalSeconds,
+                existing is null || now <= existing.LastObservedUtc ? null : now - existing.LastObservedUtc);
         }
 
         await UpsertSettingAsync(connection, transaction, DownloadProgressRecordsSettingKey, JsonSerializer.Serialize(records), now, cancellationToken);
@@ -732,6 +735,9 @@ public sealed class SqliteDownloadHealthRepository(
     /// <see cref="DownloadHealthRule.ActionPreset"/>, identical across every
     /// migrated rule since the old system had only one of each for all kinds.
     /// </summary>
+    /// <summary>The timer every rule seeded from the old flat switches starts with (#1490): the three old Timing fields all defaulted to this and changed nothing once a rule existed.</summary>
+    private const int LegacyRuleTimerMinutes = 30;
+
     private static IReadOnlyList<DownloadHealthRule> LegacyRulesFrom(PlatformSettingsSnapshot legacy, DateTimeOffset now)
     {
         var strikeLimit = DownloadHealthBounds.ClampStrikes(legacy.DownloadHealthStrikeThreshold);
@@ -754,9 +760,9 @@ public sealed class SqliteDownloadHealthRepository(
 
         return
         [
-            Rule("legacy-no-progress", DownloadHealthRuleKinds.NoProgress, legacy.DownloadHealthNoProgressEnabled, legacy.DownloadHealthNoProgressMinutes, 0),
-            Rule("legacy-too-slow", DownloadHealthRuleKinds.TooSlow, legacy.DownloadHealthMinSpeedEnabled, legacy.DownloadHealthMinSpeedMinutes, legacy.DownloadHealthMinSpeedKbps),
-            Rule("legacy-low-peers", DownloadHealthRuleKinds.LowPeers, legacy.DownloadHealthMinPeersEnabled, legacy.DownloadHealthMinPeersMinutes, legacy.DownloadHealthMinPeers),
+            Rule("legacy-no-progress", DownloadHealthRuleKinds.NoProgress, legacy.DownloadHealthNoProgressEnabled, LegacyRuleTimerMinutes, 0),
+            Rule("legacy-too-slow", DownloadHealthRuleKinds.TooSlow, legacy.DownloadHealthMinSpeedEnabled, LegacyRuleTimerMinutes, legacy.DownloadHealthMinSpeedKbps),
+            Rule("legacy-low-peers", DownloadHealthRuleKinds.LowPeers, legacy.DownloadHealthMinPeersEnabled, LegacyRuleTimerMinutes, legacy.DownloadHealthMinPeers),
             // #818: the timer here is the strike-repeat window, not the grace
             // period - the grace period is the rule's own Threshold, which
             // DownloadHealthEvaluator reads for DeadTorrent.

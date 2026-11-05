@@ -242,13 +242,10 @@ public sealed class SqlitePlatformSettingsRepository(
         // DownloadHealthBounds holds, which the shared rule engine clamps to, so a value
         // that survives being saved is one the shared rule will actually use.
         await UpsertSettingAsync(connection, transaction, "download-health.noProgress.enabled", request.DownloadHealthNoProgressEnabled is true ? "true" : "false", updatedUtc, cancellationToken);
-        await UpsertSettingAsync(connection, transaction, "download-health.noProgress.minutes", DownloadHealthBounds.ClampMinutes(request.DownloadHealthNoProgressMinutes ?? 30).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "download-health.minSpeed.enabled", request.DownloadHealthMinSpeedEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "download-health.minSpeed.kbps", Math.Clamp(request.DownloadHealthMinSpeedKbps ?? 50, 1, 1_000_000).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
-        await UpsertSettingAsync(connection, transaction, "download-health.minSpeed.minutes", DownloadHealthBounds.ClampMinutes(request.DownloadHealthMinSpeedMinutes ?? 30).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "download-health.minPeers.enabled", request.DownloadHealthMinPeersEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "download-health.minPeers.count", Math.Clamp(request.DownloadHealthMinPeers ?? 1, 0, 1000).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
-        await UpsertSettingAsync(connection, transaction, "download-health.minPeers.minutes", DownloadHealthBounds.ClampMinutes(request.DownloadHealthMinPeersMinutes ?? 30).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         // #818: zero seeders, or the tracker itself saying unregistered, past
         // a grace period since the download was added. Off by default (#936).
         await UpsertSettingAsync(connection, transaction, "download-health.deadTorrent.enabled", request.DownloadHealthDeadTorrentEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
@@ -671,13 +668,10 @@ public sealed class SqlitePlatformSettingsRepository(
             TimeFormat: NormalizeTimeFormat(GetValue(settings, "ui.timeFormat")),
             ShowRelativeDates: !string.Equals(GetValue(settings, "ui.relativeDates"), "false", StringComparison.OrdinalIgnoreCase),
             DownloadHealthNoProgressEnabled: string.Equals(GetValue(settings, "download-health.noProgress.enabled"), "true", StringComparison.OrdinalIgnoreCase),
-            DownloadHealthNoProgressMinutes: ReadPositiveInt(GetValue(settings, "download-health.noProgress.minutes"), 30, DownloadHealthBounds.MinMinutes, DownloadHealthBounds.MaxMinutes),
             DownloadHealthMinSpeedEnabled: string.Equals(GetValue(settings, "download-health.minSpeed.enabled"), "true", StringComparison.OrdinalIgnoreCase),
             DownloadHealthMinSpeedKbps: ReadPositiveInt(GetValue(settings, "download-health.minSpeed.kbps"), 50, 1, 1_000_000),
-            DownloadHealthMinSpeedMinutes: ReadPositiveInt(GetValue(settings, "download-health.minSpeed.minutes"), 30, DownloadHealthBounds.MinMinutes, DownloadHealthBounds.MaxMinutes),
             DownloadHealthMinPeersEnabled: string.Equals(GetValue(settings, "download-health.minPeers.enabled"), "true", StringComparison.OrdinalIgnoreCase),
             DownloadHealthMinPeers: ReadPositiveInt(GetValue(settings, "download-health.minPeers.count"), 1, 0, 1000),
-            DownloadHealthMinPeersMinutes: ReadPositiveInt(GetValue(settings, "download-health.minPeers.minutes"), 30, DownloadHealthBounds.MinMinutes, DownloadHealthBounds.MaxMinutes),
             DownloadHealthDeadTorrentEnabled: string.Equals(GetValue(settings, "download-health.deadTorrent.enabled"), "true", StringComparison.OrdinalIgnoreCase),
             DownloadHealthDeadTorrentGraceMinutes: ReadPositiveInt(GetValue(settings, "download-health.deadTorrent.graceMinutes"), 60, 0, 1440),
             LibraryFreeSpaceWarnPercent: ReadPositiveInt(GetValue(settings, "library.freeSpace.warnPercent"), 10, 1, 50),

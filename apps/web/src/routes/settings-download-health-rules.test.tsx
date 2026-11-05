@@ -422,8 +422,7 @@ describe("the cards beside the rules", () => {
 
     await waitFor(() => expect(calls("PATCH", "/api/settings")).toHaveLength(1));
     expect(bodyOf(calls("PATCH", "/api/settings")[0])).toEqual({
-      downloadHealthDefaultStrikeWindowMinutes: 10, downloadHealthStrikeThreshold: 4, downloadThroughputSamplerIntervalMinutes: 15,
-      downloadHealthNoProgressMinutes: 30, downloadHealthMinSpeedMinutes: 30, downloadHealthMinPeersMinutes: 30
+      downloadHealthDefaultStrikeWindowMinutes: 10, downloadHealthStrikeThreshold: 4, downloadThroughputSamplerIntervalMinutes: 15
     });
   });
 
@@ -461,25 +460,9 @@ describe("the cards beside the rules", () => {
     }
   });
 
-  it.each([
-    ["No-progress time", "The no-progress time", "downloadHealthNoProgressMinutes"],
-    ["Too-slow time", "The too-slow time", "downloadHealthMinSpeedMinutes"],
-    ["Low-peers time", "The low-peers time", "downloadHealthMinPeersMinutes"]
-  ])("#1475: %s is on screen, takes 1 to 999 minutes, says so, and refuses 0 and 1000 saying why", async (label, what, key) => {
+  it("#1490: the three old per-rule time fields are gone: each rule has its own timer, so they changed nothing", () => {
     renderPage();
-    const input = screen.getByLabelText(label);
-    expect(input).toHaveAttribute("min", "1");
-    expect(input).toHaveAttribute("max", "999");
-    for (const bad of ["0", "1000"]) {
-      fireEvent.change(input, { target: { value: bad } });
-      fireEvent.click(screen.getByRole("button", { name: "Save timing" }));
-      expect(await screen.findByText(`${what} must be between 1 and 999 minutes.`)).toBeVisible();
-    }
-    expect(calls("PATCH", "/api/settings")).toHaveLength(0);
-    fireEvent.change(input, { target: { value: "999" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save timing" }));
-    await waitFor(() => expect(calls("PATCH", "/api/settings")).toHaveLength(1));
-    expect(bodyOf(calls("PATCH", "/api/settings")[0])).toMatchObject({ [key]: 999 });
+    for (const label of ["No-progress time", "Too-slow time", "Low-peers time"]) expect(screen.queryByLabelText(label)).toBeNull();
   });
 
   it("#1475: a rule's timer is in the rule editor, takes 1 to 999 minutes, and refuses 0 and 1000 saying why", async () => {

@@ -52,6 +52,11 @@
   <ItemGroup>
     <!-- The recorded real replies of external apps and their loader (#1237). -->
     <Compile Include="../fixtures/RecordedReplies.cs" Link="Recorded/RecordedReplies.cs" />
+    <!-- The rigs that answer a client adapter from its recorded replies, shared with the integration tests so the strike pass reads the same recordings. -->
+    <Compile Include="../Deluno.Integrations.Tests/DownloadClients/RecordedClientCalls.cs" Link="Recorded/RecordedClientCalls.cs" />
+    <Compile Include="../Deluno.Integrations.Tests/DownloadClients/RecordedQbittorrentRig.cs" Link="Recorded/RecordedQbittorrentRig.cs" />
+    <Compile Include="../Deluno.Integrations.Tests/DownloadClients/RecordedTransmissionRig.cs" Link="Recorded/RecordedTransmissionRig.cs" />
+    <Compile Include="../Deluno.Integrations.Tests/DownloadClients/RecordedDelugeRig.cs" Link="Recorded/RecordedDelugeRig.cs" />
   </ItemGroup>
 
 </Project>

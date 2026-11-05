@@ -150,7 +150,10 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
         {
             var elapsed = capturedUtc - item.AddedUtc;
             // A download moving nothing at all belongs to the "No progress" rule, never counted by both (#1194).
-            var underFloorTooLong = item.SpeedMbps > 0 && item.SpeedMbps * 1000 < tooSlow.Threshold && !noProgressFires;
+            // #1490: the average since the last check (bytes gained over the time between the two readings), so one slow instant in a fast
+            // download is not a slow download. Only a first reading, with nothing before it, goes by the speed the client shows.
+            var judgedMbps = item.AverageSpeedMbps ?? item.SpeedMbps;
+            var underFloorTooLong = (item.AverageSpeedMbps is not null || judgedMbps > 0) && judgedMbps * 1000 < tooSlow.Threshold && !noProgressFires;
             var overMaxTotalTime = !noProgressFires && tooSlow.TooSlowMaxTotalMinutes is { } maxTotalMinutes &&
                 maxTotalMinutes > 0 &&
                 elapsed >= TimeSpan.FromMinutes(maxTotalMinutes);
@@ -163,7 +166,9 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
                     DownloadHealthStrikes.LowSpeed,
                     "This download is slower than the configured floor.",
                     underFloorTooLong
-                        ? $"{SpeedText.FromMbps(item.SpeedMbps)} at this check, under the limit of {SpeedText.FromKbps(tooSlow.Threshold)}."
+                        ? (item.AverageSpeedMbps is not null && item.AveragePeriod is { } period
+                            ? $"It averaged {SpeedText.FromMbps(judgedMbps)} over the last {PluralWords.Minutes(Math.Max(1, period.TotalMinutes))}, under your {SpeedText.FromKbps(tooSlow.Threshold)} limit."
+                            : $"{SpeedText.FromMbps(judgedMbps)} at this check, under the limit of {SpeedText.FromKbps(tooSlow.Threshold)}.")
                         : $"Still downloading after {PluralWords.Minutes(elapsed.TotalMinutes)}, past its {tooSlow.TooSlowMaxTotalMinutes:0}-minute maximum total time, whatever its current speed.",
                     "Check the indexer's health and the client's connection, then Resume or Recheck if appropriate."));
             }
