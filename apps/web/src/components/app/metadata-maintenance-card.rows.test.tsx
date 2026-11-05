@@ -65,3 +65,33 @@ describe("A refresh job that fails to queue", () => {
     expect(await within(row("Refresh all TV shows")).findByText("Could not queue")).toBeInTheDocument();
   });
 });
+
+describe("A check or a refresh nothing answered (#1474)", () => {
+  const unreachable = "Deluno could not be reached. Check that it is running, then try again.";
+
+  it("says Deluno could not be reached under Check now, not the browser's Failed to fetch", async () => {
+    fetchJsonMock.mockImplementation(async (url: string) => {
+      if (url === "/api/metadata/status") return ready;
+      throw new TypeError("Failed to fetch");
+    });
+    render(<MetadataMaintenanceCard />);
+    await screen.findByText("Ready");
+
+    fireEvent.click(screen.getByRole("button", { name: "Check now" }));
+
+    expect(await screen.findByText(unreachable)).toBeInTheDocument();
+    expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
+  });
+
+  it("says Deluno could not be reached under the refresh row, not the browser's Failed to fetch", async () => {
+    fetchJsonMock.mockImplementation((url: string) => (url === "/api/metadata/status" ? Promise.resolve(ready) : Promise.reject(new TypeError("Failed to fetch"))));
+    render(<MetadataMaintenanceCard />);
+    await screen.findByText("Ready");
+
+    const row = screen.getByText("Refresh all Movies").closest("[role=row]") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "Run" }));
+
+    expect(await within(row).findByText(unreachable)).toBeInTheDocument();
+    expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
+  });
+});
