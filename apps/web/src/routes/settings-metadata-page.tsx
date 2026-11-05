@@ -13,6 +13,7 @@
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
+import { useFollowLoaded } from "../hooks/use-follow-loaded";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { Field, FieldRow } from "../components/ui/field";
 import { ListCard } from "../components/ui/list-card";
@@ -116,12 +117,8 @@ export function SettingsMetadataPage() {
   }
 
   const dirty = !same(form, savedForm);
-  const settingsForm = useMemo(() => formFrom(settings), [settings]);
-  useEffect(() => {
-    if (dirty || same(savedForm, settingsForm)) return;
-    setSavedForm(settingsForm);
-    setForm(settingsForm);
-  }, [dirty, savedForm, settingsForm]);
+  // Take the server's settings when they change, never by comparing with what was just saved (#1503).
+  useFollowLoaded(settings, dirty, (next) => { const nextForm = formFrom(next); setSavedForm(nextForm); setForm(nextForm); });
 
   const state: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);

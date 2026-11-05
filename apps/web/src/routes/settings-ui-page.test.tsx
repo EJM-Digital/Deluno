@@ -76,3 +76,28 @@ describe("absolute episode numbers for anime (#1024)", () => {
     expect(mutate.mock.calls[0]?.[0]).toMatchObject({ showAbsoluteEpisodeNumbers: true });
   });
 });
+
+describe("an edit made the moment a save finishes (#1503)", () => {
+  afterEach(() => {
+    mutate.mockReset();
+  });
+
+  it("is kept, instead of being put back to the old settings", async () => {
+    mutate.mockResolvedValueOnce({ ...settings, uiTheme: "dark" });
+    render(<MemoryRouter><SettingsUiPage /></MemoryRouter>);
+    const toggle = screen.getByRole("switch", { name: "Show absolute numbers for anime" });
+    fireEvent.change(screen.getByRole("combobox", { name: "Theme" }), { target: { value: "dark" } });
+    let edited = false;
+    const observer = new MutationObserver(() => {
+      if (edited || !screen.queryByText("Saved just now")) return;
+      edited = true;
+      fireEvent.click(toggle);
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    fireEvent.click(screen.getByRole("button", { name: "Save interface settings" }));
+    await vi.waitFor(() => expect(edited).toBe(true));
+    observer.disconnect();
+    await vi.waitFor(() => expect(screen.getByText("Unsaved changes")).toBeVisible());
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+  });
+});

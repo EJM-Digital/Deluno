@@ -116,3 +116,24 @@ describe("the Save automation settings footer", () => {
     expect(unsavedMock).toHaveBeenLastCalledWith(true);
   });
 });
+
+describe("an edit made the moment a save finishes (#1503)", () => {
+  it("is kept, instead of being put back to the old settings while Saved just now stays", async () => {
+    openFailedDownloads();
+    const switches = screen.getAllByRole("switch");
+    const before = switches[1].getAttribute("aria-checked");
+    makeAChange();
+    let edited = false;
+    const observer = new MutationObserver(() => {
+      if (edited || !screen.queryByText("Saved just now")) return;
+      edited = true;
+      fireEvent.click(switches[1]);
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    fireEvent.click(screen.getByRole("button", { name: "Save automation settings" }));
+    await waitFor(() => expect(edited).toBe(true));
+    observer.disconnect();
+    await waitFor(() => expect(screen.getByText("Unsaved changes")).toBeVisible());
+    expect(switches[1].getAttribute("aria-checked")).not.toBe(before);
+  });
+});

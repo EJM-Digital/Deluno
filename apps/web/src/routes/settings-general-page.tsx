@@ -9,6 +9,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useLoaderData } from "react-router-dom";
+import { useFollowLoaded } from "../hooks/use-follow-loaded";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { localizeResetTimes } from "../lib/reset-times";
 import { Field } from "../components/ui/field";
@@ -70,17 +71,10 @@ export function SettingsGeneralPage() {
   const [message, setMessage] = useState<string | null>(null);
 
   const dirty = !same(form, savedForm);
-  const settingsForm = useMemo(() => formFrom(settings), [settings]);
   // Take the server's settings when they change, not whenever they differ from what was just saved: right after a
   // save the page still holds the old settings until it reloads, and comparing against them put an edit made in that
   // moment back to the old values.
-  const takenSettings = useRef(settingsForm);
-  useEffect(() => {
-    if (dirty || same(takenSettings.current, settingsForm)) return;
-    takenSettings.current = settingsForm;
-    setSavedForm(settingsForm);
-    setForm(settingsForm);
-  }, [dirty, settingsForm]);
+  useFollowLoaded(settings, dirty, (next) => { const nextForm = formFrom(next); setSavedForm(nextForm); setForm(nextForm); });
 
   const state: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);

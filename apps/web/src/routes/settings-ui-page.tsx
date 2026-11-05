@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useTheme } from "next-themes";
 import { useLoaderData } from "react-router-dom";
+import { useFollowLoaded } from "../hooks/use-follow-loaded";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { Button } from "../components/ui/button";
 import { Field, FieldRow } from "../components/ui/field";
@@ -75,16 +76,16 @@ export function SettingsUiPage() {
   const [message, setMessage] = useState<string | null>(null);
 
   const dirty = !same(form, savedForm) || colorModeDraft !== savedColorMode;
-  const settingsForm = useMemo(() => formFrom(settings), [settings]);
-  const settingsColorMode: ColorMode = isColorMode(settings.uiColorMode) ? settings.uiColorMode : "standard";
-  useEffect(() => {
-    if (dirty || (same(savedForm, settingsForm) && savedColorMode === settingsColorMode)) return;
-    setSavedForm(settingsForm);
-    setForm(settingsForm);
-    setSavedColorMode(settingsColorMode);
-    setColorModeDraft(settingsColorMode);
-    setColorMode(settingsColorMode);
-  }, [dirty, savedColorMode, settingsColorMode, savedForm, settingsForm, setColorMode]);
+  // Take the server's settings when they change, never by comparing with what was just saved (#1503).
+  useFollowLoaded(settings, dirty, (next) => {
+    const nextForm = formFrom(next);
+    const nextColorMode: ColorMode = isColorMode(next.uiColorMode) ? next.uiColorMode : "standard";
+    setSavedForm(nextForm);
+    setForm(nextForm);
+    setSavedColorMode(nextColorMode);
+    setColorModeDraft(nextColorMode);
+    setColorMode(nextColorMode);
+  });
 
   const state: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);

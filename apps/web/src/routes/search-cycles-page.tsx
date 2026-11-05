@@ -38,6 +38,7 @@ import { automationNavItems } from "../components/app/settings-shell";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { useCoalescedRevalidate } from "../hooks/use-live-interval";
 import { ConfigAreas } from "../lib/config-areas";
+import { useFollowLoaded } from "../hooks/use-follow-loaded";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { RealtimeGroups, useLiveEvent, useSignalREvent } from "../lib/use-signalr";
 import {
@@ -414,19 +415,20 @@ export function SearchCyclesPage() {
   const cleanupDirty = !same(cleanup, savedCleanup) || !same(sharing, savedSharing) || !same(contentBlocklist, savedContentBlocklist);
   const qualityDirty = !same(qualityModel, savedQualityModel);
   const automationDirty = cleanupDirty || qualityDirty;
-  const settingsCleanup = useMemo(() => cleanupFrom(settings), [settings]);
-  const settingsSharing = useMemo(() => sharingFrom(settings), [settings]);
-  const settingsContentBlocklist = useMemo(() => contentBlocklistFrom(loadedContentBlocklist), [loadedContentBlocklist]);
-  useEffect(() => {
-    // Adopt server state only when the user has nothing unsaved in this form.
-    if (cleanupDirty || same(savedCleanup, settingsCleanup)) return;
-    setSavedCleanup(settingsCleanup);
-    setCleanup(settingsCleanup);
-    setSavedSharing(settingsSharing);
-    setSharing(settingsSharing);
-    setSavedContentBlocklist(settingsContentBlocklist);
-    setContentBlocklist(settingsContentBlocklist);
-  }, [cleanupDirty, savedCleanup, settingsCleanup, settingsSharing, settingsContentBlocklist]);
+  // Take the server's settings when they change, never by comparing with what was just saved (#1503); not while
+  // the person has unsaved edits in this form.
+  const loadedCleanup = useMemo(() => ({ settings, blocklist: loadedContentBlocklist }), [settings, loadedContentBlocklist]);
+  useFollowLoaded(loadedCleanup, cleanupDirty, (next) => {
+    const nextCleanup = cleanupFrom(next.settings);
+    const nextSharing = sharingFrom(next.settings);
+    const nextBlocklist = contentBlocklistFrom(next.blocklist);
+    setSavedCleanup(nextCleanup);
+    setCleanup(nextCleanup);
+    setSavedSharing(nextSharing);
+    setSharing(nextSharing);
+    setSavedContentBlocklist(nextBlocklist);
+    setContentBlocklist(nextBlocklist);
+  });
 
   const cleanupFooter: DrawerSaveState = resolveDrawerSaveState(cleanupState, automationDirty);
   useUnsavedChanges(automationDirty || drawerDirty);

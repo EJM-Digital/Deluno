@@ -16,6 +16,7 @@
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
+import { useFollowLoaded } from "../hooks/use-follow-loaded";
 import { useLiveRefresh, type LiveRefreshSpec } from "../lib/live-refresh";
 import { ConfigAreas } from "../lib/config-areas";
 import { FlaskConical, Loader2, Plus, RotateCcw, X } from "lucide-react";
@@ -761,12 +762,8 @@ export function SettingsCustomFormatsPage() {
   const [safeguardMessage, setSafeguardMessage] = useState<string | null>(null);
 
   const safeguardsDirty = !same(safeguards, savedSafeguards);
-  const settingsSafeguards = useMemo(() => safeguardsFrom(settings), [settings]);
-  useEffect(() => {
-    if (safeguardsDirty || same(savedSafeguards, settingsSafeguards)) return;
-    setSavedSafeguards(settingsSafeguards);
-    setSafeguards(settingsSafeguards);
-  }, [safeguardsDirty, savedSafeguards, settingsSafeguards]);
+  // Take the server's settings when they change, never by comparing with what was just saved (#1503).
+  useFollowLoaded(settings, safeguardsDirty, (next) => { const nextSafeguards = safeguardsFrom(next); setSavedSafeguards(nextSafeguards); setSafeguards(nextSafeguards); });
 
   const safeguardFooter: DrawerSaveState = resolveDrawerSaveState(safeguardState, safeguardsDirty);
   useUnsavedChanges(safeguardsDirty || Boolean(ruleDirty));

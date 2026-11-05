@@ -143,6 +143,26 @@ describe("staying current", () => {
   });
 });
 
+describe("an edit made the moment a save finishes (#1503)", () => {
+  it("is kept, instead of being put back to the old settings while Saved just now stays", async () => {
+    renderPage();
+    const language = screen.getByLabelText("Details language");
+    fireEvent.change(language, { target: { value: "fr" } });
+    let edited = false;
+    const observer = new MutationObserver(() => {
+      if (edited || !screen.queryByText("Saved just now")) return;
+      edited = true;
+      fireEvent.change(language, { target: { value: "ja" } });
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    fireEvent.click(screen.getByRole("button", { name: "Save metadata settings" }));
+    await waitFor(() => expect(edited).toBe(true));
+    observer.disconnect();
+    await waitFor(() => expect(screen.getByText("Unsaved changes")).toBeVisible());
+    expect(screen.getByLabelText("Details language")).toHaveValue("ja");
+  });
+});
+
 describe("Saved keys", () => {
   it("appears only for a stored key that cannot be read here, asks for just that key and sends only what was typed", async () => {
     renderPage();

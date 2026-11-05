@@ -376,3 +376,25 @@ describe("Export all, Import and Test a release", () => {
     expect(await drawer.findByText("Good groups")).toBeVisible();
   });
 });
+
+describe("an edit made the moment the safeguards save finishes (#1503)", () => {
+  it("is kept, instead of being put back to the old list", async () => {
+    authedFetchMock.mockImplementation((path: string, init?: RequestInit) => reply(init?.method === "PATCH" ? { ...emptyPlatformSettingsSnapshot } : []));
+    renderPage();
+    fireEvent.change(screen.getByLabelText("Add a never-grab word"), { target: { value: "HDTS" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    let edited = false;
+    const observer = new MutationObserver(() => {
+      if (edited || !screen.queryByText("Saved just now")) return;
+      edited = true;
+      fireEvent.click(screen.getByRole("button", { name: "Remove CAM" }));
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    fireEvent.click(screen.getByRole("button", { name: "Save safeguards" }));
+    await waitFor(() => expect(edited).toBe(true));
+    observer.disconnect();
+    await waitFor(() => expect(screen.getByText("Unsaved changes")).toBeVisible());
+    expect(screen.queryByText("CAM")).not.toBeInTheDocument();
+    expect(screen.getByText("HDTS")).toBeVisible();
+  });
+});
