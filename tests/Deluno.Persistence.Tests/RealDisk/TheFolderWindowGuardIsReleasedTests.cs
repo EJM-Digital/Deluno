@@ -102,4 +102,44 @@ public sealed class TheFolderWindowGuardIsReleasedTests : IDisposable
         FilesystemEndpointRouteBuilderExtensions.NativePickerStarter = (_, _) => Task.FromResult(WindowsFolderPickerResult.FromCancelled());
         Assert.Equal(200, await AskAsync());
     }
+
+    private static async Task<(int Status, System.Text.Json.JsonElement Body)> AnswerAsync()
+    {
+        var result = await FilesystemEndpointRouteBuilderExtensions.PickNativeFolderAsync(new DefaultHttpContext(), new NativeFolderPickerRequest("/media"), CancellationToken.None);
+        var status = ((IStatusCodeHttpResult)result).StatusCode ?? 200;
+        var json = System.Text.Json.JsonSerializer.SerializeToElement(((IValueHttpResult)result).Value, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        return (status, json);
+    }
+
+    [Fact]
+    public async Task A_host_with_no_folder_window_answers_409_unavailable_in_the_hosts_own_words()
+    {
+        FilesystemEndpointRouteBuilderExtensions.NativePickerStarter = (_, _) =>
+            Task.FromResult(WindowsFolderPickerResult.Unavailable("A folder window needs a signed-in desktop; this is a service."));
+
+        var (status, body) = await AnswerAsync();
+
+        Assert.Equal(409, status);
+        Assert.True(body.GetProperty("nativePickerUnavailable").GetBoolean());
+        Assert.Equal("A folder window needs a signed-in desktop; this is a service.", body.GetProperty("message").GetString());
+        // The guard is free again: the next ask is answered, not refused as "already open".
+        FilesystemEndpointRouteBuilderExtensions.NativePickerStarter = (_, _) => Task.FromResult(WindowsFolderPickerResult.FromCancelled());
+        Assert.Equal(200, await AskAsync());
+    }
+
+    [Fact]
+    public async Task A_chosen_folder_comes_back_as_the_path_and_a_cancelled_window_comes_back_as_cancelled()
+    {
+        FilesystemEndpointRouteBuilderExtensions.NativePickerStarter = (_, _) => Task.FromResult(WindowsFolderPickerResult.Selected("/media/Films"));
+        var chosen = await AnswerAsync();
+        FilesystemEndpointRouteBuilderExtensions.NativePickerStarter = (_, _) => Task.FromResult(WindowsFolderPickerResult.FromCancelled());
+        var cancelled = await AnswerAsync();
+
+        Assert.Equal(200, chosen.Status);
+        Assert.Equal("/media/Films", chosen.Body.GetProperty("path").GetString());
+        Assert.False(chosen.Body.GetProperty("cancelled").GetBoolean());
+        Assert.Equal(200, cancelled.Status);
+        Assert.True(cancelled.Body.GetProperty("cancelled").GetBoolean());
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, cancelled.Body.GetProperty("path").ValueKind);
+    }
 }
