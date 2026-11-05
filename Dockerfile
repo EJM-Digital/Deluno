@@ -39,7 +39,10 @@ RUN dotnet publish src/Deluno.Host/Deluno.Host.csproj \
 # the retired bookworm-slim tag here. Noble retains apt for FFmpeg installation.
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble AS runtime
 
+# Upgrade what the base image already holds as well, so a fix Ubuntu has published (apt's CVE-2026-109518, 5 Nov
+# 2026) is in the image before the base image is rebuilt with it; the scan in CI refuses a fixed HIGH it still holds.
 RUN apt-get update \
+    && apt-get upgrade --yes --no-install-recommends \
     && apt-get install --yes --no-install-recommends ca-certificates curl ffmpeg tzdata \
     && rm -rf /var/lib/apt/lists/*
 
