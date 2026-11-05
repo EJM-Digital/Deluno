@@ -773,6 +773,33 @@ public sealed class SqliteJobStore(
         return await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<JobQueueItem>> ListQueuedAsync(string jobType, CancellationToken cancellationToken)
+    {
+        var jobs = new List<JobQueueItem>();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                id, job_type, source, status, payload_json, attempts, created_utc, scheduled_utc,
+                started_utc, completed_utc, leased_until_utc, worker_id, last_error, related_entity_type, related_entity_id,
+                idempotency_key, dedupe_key, max_attempts, last_attempt_utc, next_attempt_utc
+            FROM job_queue
+            WHERE job_type = @jobType AND status = 'queued'
+            ORDER BY created_utc;
+            """;
+        AddParameter(command, "@jobType", jobType);
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            jobs.Add(ReadJob(reader));
+        }
+
+        return jobs;
+    }
+
     public async Task<int> CancelPendingForRelatedEntityAsync(
         string relatedEntityType,
         string relatedEntityId,

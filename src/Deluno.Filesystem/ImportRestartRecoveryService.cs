@@ -47,7 +47,8 @@ public sealed class ImportRestartRecoveryService(
     ILogger<ImportRestartRecoveryService> logger,
     IRecycleBinService? recycleBinService = null,
     IHealthCheckRepository? healthChecks = null,
-    IImportRestartMarkerIo? markerIo = null)
+    IImportRestartMarkerIo? markerIo = null,
+    IJobQueueRepository? jobQueue = null)
     : IImportRestartRecoveryService
 {
     private enum Outcome
@@ -243,6 +244,7 @@ public sealed class ImportRestartRecoveryService(
 
             if (result.Succeeded)
             {
+                await CompleteQueuedImportJobsAsync(marker, request, cancellationToken);
                 await RecordAsync(marker, finished: true, "the source was still there, so Deluno imported it again", cancellationToken);
                 return Outcome.Recovered;
             }
@@ -275,7 +277,8 @@ public sealed class ImportRestartRecoveryService(
             return Outcome.Recovered;
         }
 
-        var result = await importPipelineService.ExecuteAsync(RequestOf(marker), cancellationToken);
+        var request = RequestOf(marker);
+        var result = await importPipelineService.ExecuteAsync(request, cancellationToken);
         if (result.StatusCode == ImportFileReadiness.RetryableStatusCode && ImportSourceClaims.IsClaimed(marker.SourcePath))
         {
             ImportRestartMarkerFile.WriteAtomic(markerPath, marker, _io);
@@ -284,12 +287,58 @@ public sealed class ImportRestartRecoveryService(
 
         if (result.Succeeded)
         {
+            await CompleteQueuedImportJobsAsync(marker, request, cancellationToken);
             await RecordAsync(marker, finished: true, "the file was already in its library folder, and Deluno tied it to its title", cancellationToken);
             return Outcome.Recovered;
         }
 
         await RecordAsync(marker, finished: false, result.Message, cancellationToken);
         return Outcome.Abandoned;
+    }
+
+    /// <summary>
+    /// The restart put the interrupted import's job back on the queue. Recovery has now done that import, so the job is
+    /// completed here, in the same step; left queued it would run again, find the processor's output gone and record a
+    /// false failure and recovery case for a title that has its file (#1515). Jobs are matched by the download they are
+    /// for, or failing that by the file they import.
+    /// </summary>
+    private async Task CompleteQueuedImportJobsAsync(ImportRestartMarker marker, ImportExecuteRequest request, CancellationToken cancellationToken)
+    {
+        if (jobQueue is null)
+        {
+            return;
+        }
+
+        try
+        {
+            foreach (var job in await jobQueue.ListQueuedAsync("filesystem.import.execute", cancellationToken))
+            {
+                ImportExecuteRequest? queued;
+                try
+                {
+                    queued = JsonSerializer.Deserialize<ImportExecuteRequest>(job.PayloadJson ?? "{}", new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                }
+                catch (JsonException)
+                {
+                    continue;
+                }
+
+                var sameDownload = !string.IsNullOrWhiteSpace(request.DispatchId)
+                    && string.Equals(queued?.DispatchId, request.DispatchId, StringComparison.OrdinalIgnoreCase);
+                var sameFile = queued is not null
+                    && string.Equals(queued.Preview.SourcePath, marker.SourcePath, StringComparison.OrdinalIgnoreCase);
+                if (sameDownload || sameFile)
+                {
+                    await jobQueue.CompleteAsync(job.Id, "restart-recovery", "Finished by restart recovery.", cancellationToken);
+                }
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // The import itself is done; a queued job left behind is caught by the handler, which ends done when its
+            // download is already imported.
+            logger.LogWarning(exception, "Restart recovery could not complete the queued job of the import for {Title}.", marker.Title);
+        }
     }
 
     /// <summary>

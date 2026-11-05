@@ -106,6 +106,12 @@ public interface IJobQueueRepository
         IReadOnlyList<string> workerIds,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The jobs of one type still waiting to run (queued, with their payloads), oldest first. Restart recovery uses it to
+    /// find the queued job of an import it has just finished (#1515).
+    /// </summary>
+    Task<IReadOnlyList<JobQueueItem>> ListQueuedAsync(string jobType, CancellationToken cancellationToken);
+
     Task CompleteAsync(string jobId, string workerId, string? completionMessage, CancellationToken cancellationToken);
 
     /// <summary>errorMessage is the plain-words reason screens show (PlainFailure); rawDetail is the exception text, kept in the activity details.</summary>

@@ -27,6 +27,18 @@ public sealed class FilesystemImportExecuteJobHandler(
             throw new InvalidOperationException("Import job payload could not be read.");
         }
 
+        // #1515: a restart, a second queueing or a manual import can leave a job for a download that is already imported.
+        // Its output is gone because it was imported and tidied, not because anything is wrong: the job ends done.
+        if (payload.DispatchId is { Length: > 0 } dispatchId
+            && dispatches is not null
+            && !File.Exists(payload.Preview.SourcePath)
+            && !Directory.Exists(payload.Preview.SourcePath)
+            && await dispatches.GetDispatchAsync(dispatchId, cancellationToken) is { } already
+            && string.Equals(already.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Already imported from this download.";
+        }
+
         var result = await importPipelineService.ExecuteAsync(payload, cancellationToken);
         if (!result.Succeeded)
         {
