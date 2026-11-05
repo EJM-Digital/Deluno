@@ -122,6 +122,52 @@ public sealed class ProcessorOutputClearOnRealFilesTests
         Assert.Empty(await app.Services.GetRequiredService<IRecycleBinService>().ListAsync(CancellationToken.None));
     }
 
+    /// <summary>
+    /// An item that cannot be moved to the recycle bin (held open by another program on Windows; in a folder Deluno may not change on
+    /// Linux) is a plain 409 that says it was left where it is, and it is still there.
+    /// </summary>
+    [Fact]
+    public async Task Clear_of_an_item_that_cannot_be_moved_is_a_plain_409_that_says_it_was_left_where_it_is()
+    {
+        if (Environment.IsPrivilegedProcess && !OperatingSystem.IsWindows()) return; // root may change any folder, so nothing refuses it
+        await using var app = await ApplicationTestHost.StartAsync();
+        var world = await WorldAsync(app);
+        HttpResponseMessage response;
+        if (OperatingSystem.IsWindows())
+        {
+            await using var held = new FileStream(world.StrayFile, FileMode.Open, FileAccess.Read, FileShare.None);
+            response = await ClearAsync(app, world.LibraryId, world.StrayFile);
+        }
+        else
+        {
+            var mode = File.GetUnixFileMode(world.Output);
+            File.SetUnixFileMode(world.Output, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+            try { response = await ClearAsync(app, world.LibraryId, world.StrayFile); }
+            finally { File.SetUnixFileMode(world.Output, mode); }
+        }
+
+        using (response)
+        {
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            Assert.Equal("Deluno could not move stray.mkv to the recycle bin, so it was left where it is.", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("message").GetString());
+        }
+
+        Assert.True(File.Exists(world.StrayFile));
+    }
+
+    [Fact]
+    public async Task Clear_of_a_path_that_cannot_be_read_as_a_path_is_400_and_changes_nothing()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var world = await WorldAsync(app);
+
+        using var response = await ClearAsync(app, world.LibraryId, "bad\u0000path");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("That is not a usable path.", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("message").GetString());
+        Assert.True(File.Exists(world.StrayFile));
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private sealed record World(string LibraryId, string Root, string Output, string StrayFile, string StrayFolder, string Sibling, string LibraryFilm);
