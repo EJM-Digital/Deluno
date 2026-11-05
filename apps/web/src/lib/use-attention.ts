@@ -158,6 +158,11 @@ function snapshotFromCache(): AttentionSnapshot | null {
   };
 }
 
+/** The lists the In progress number is worked out from (#1499). */
+function inProgressSources(): RouteSource<unknown>[] {
+  return [sharedSources.telemetry as RouteSource<unknown>, sharedSources.handoffs as RouteSource<unknown>, sharedSources.dispatches as RouteSource<unknown>, liveSources.liveExtras as RouteSource<unknown>];
+}
+
 /**
  * The sources a push can have moved, by the words the server names (#1179), or null when everything should be read
  * again (a word this list does not know, or one that can move several lists: a client or a download's journey).
@@ -175,7 +180,8 @@ export function attentionSourcesForReasons(reasons: readonly string[]): RouteSou
         add(sharedSources.movieRecovery as RouteSource<unknown>, sharedSources.seriesRecovery as RouteSource<unknown>, sharedSources.failedJobs as RouteSource<unknown>, attentionSummarySource as RouteSource<unknown>);
         break;
       case "handoff":
-        add(sharedSources.handoffs as RouteSource<unknown>, sharedSources.failedJobs as RouteSource<unknown>, attentionSummarySource as RouteSource<unknown>);
+        // A hand-off moves a download along the pipeline, so the lists the In progress number is made of are read with it (#1499).
+        add(sharedSources.handoffs as RouteSource<unknown>, sharedSources.failedJobs as RouteSource<unknown>, attentionSummarySource as RouteSource<unknown>, ...inProgressSources());
         break;
       case "jobs":
         add(sharedSources.failedJobs as RouteSource<unknown>, attentionSummarySource as RouteSource<unknown>);
@@ -294,8 +300,8 @@ export function useAttention() {
 
   // #1499: the In progress number is the Dashboard pipeline's. While Live or In progress is open they write every download's
   // step into the same lists and the number follows at once. Elsewhere the sidebar does not join Live (that makes the server read the
-  // clients every second), so each step Activity records, and each AttentionChanged below, reads those few lists again, folded into one read.
-  const reloadInProgress = useCoalescedRevalidate(() => void loadSome(sharedSources.telemetry, sharedSources.handoffs, sharedSources.dispatches, liveSources.liveExtras as RouteSource<unknown>), 2_500);
+  // clients every second), so each step Activity records reads those few lists again, folded into one read. A push names what it moved: only a hand-off also reads them.
+  const reloadInProgress = useCoalescedRevalidate(() => void loadSome(...inProgressSources()), 2_500);
 
   // A job failing, being retried or being dismissed changes the count now, not
   // at the next poll: dismissing the last failure beside a pill still saying
@@ -319,7 +325,6 @@ export function useAttention() {
     const sources = attentionSourcesForReasons(reasons);
     if (sources === null) void load(true);
     else if (sources.length > 0) void loadSome(...sources);
-    reloadInProgress();
   }, 400);
   useSignalREvent("AttentionChanged", RealtimeGroups.Dashboard, (event) => {
     const reasons = (event?.reason ?? "").split(",").map((word) => word.trim()).filter(Boolean);

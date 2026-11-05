@@ -119,6 +119,9 @@ describe("useAttention", () => {
     expect(keys(["update"])).toEqual(["src/attention-summary"]);
     expect(keys(["recovery"])).toContain("src/attention-summary");
     expect(keys(["heldReleases"])).toEqual(["src/attention-held-releases"]);
+    // A hand-off also reads the lists the In progress number is made of (#1499); no other word does.
+    expect(keys(["handoff"])?.some((key) => key.includes("dispatches"))).toBe(true);
+    expect(keys(["update"])?.length).toBe(1);
     // A burst names several words: their lists are read once each.
     expect(keys(["jobs", "recovery"])?.filter((key) => key.includes("failed")).length).toBe(1);
     expect(attentionSourcesForReasons(["noRelease", "journey"])).toBeNull();

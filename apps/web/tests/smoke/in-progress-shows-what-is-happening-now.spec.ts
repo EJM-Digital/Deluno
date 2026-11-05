@@ -54,10 +54,10 @@ test.describe("In progress shows what is happening now (#1448)", () => {
     await expect(page.getByText(/The files are gone\. Search for another copy/)).toBeVisible();
     await expect(page.getByText(/^(Seeding until|Deluno leaves it|Deluno removes it)/).first()).toBeVisible();
 
-    // The two releases waiting for a yes are Needs action, and the sidebar says the same number with a tooltip.
+    // The two releases waiting for a yes are Needs action, and the sidebar says the same number in amber, apart from the count of what is in progress (#1499).
     if (!isMobile) {
       const badge = page.getByTitle(/The same number as Needs action on this page/);
-      await expect(badge).toHaveText("2");
+      await expect(badge).toHaveText("2 need you");
       await expect(page.getByText("Needs action").first()).toBeVisible();
     }
 

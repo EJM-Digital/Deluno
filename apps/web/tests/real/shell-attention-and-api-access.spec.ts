@@ -75,7 +75,7 @@ test.describe("what a push of attention-changed reads again", () => {
     expect(await readAfter(page, "orphans", ["orphans", "summary"]), "orphans").toEqual(["orphans", "summary"]);
     expect(await readAfter(page, "health", ["health", "summary"]), "health").toEqual(["health", "summary"]);
     expect(await readAfter(page, "jobs", ["failedJobs", "summary"]), "jobs").toEqual(["failedJobs", "summary"]);
-    expect(await readAfter(page, "handoff", ["failedJobs", "handoffs", "summary"]), "handoff").toEqual(["failedJobs", "handoffs", "summary"]);
+    expect(await readAfter(page, "handoff", ["failedJobs", "handoffs", "summary", "dispatches"]), "handoff").toEqual(["failedJobs", "handoffs", "summary", "dispatches"]);
     expect(await readAfter(page, "recovery", ["movieRecovery", "seriesRecovery", "failedJobs", "summary"]), "recovery").toEqual(["movieRecovery", "seriesRecovery", "failedJobs", "summary"]);
     expect(await readAfter(page, "heldReleases", []), "heldReleases").toEqual([]);
 
