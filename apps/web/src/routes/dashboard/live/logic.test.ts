@@ -92,7 +92,7 @@ describe("what activity is", () => {
     expect(activityKind("something.else")).toBe("other");
     expect(activityKind("processing.completed")).toBe("process");
     expect(activityKind("processing.timed-out")).toBe("failed");
-    for (const routine of ["job.queued", "job.started", "job.completed", "metadata.artwork.cleanup", "library.title.rescanned", "external.file-changed"]) expect(isRoutine(activityKind(routine))).toBe(true);
+    for (const routine of ["job.queued", "job.started", "job.completed", "metadata.artwork.cleanup", "metadata.movie.refreshed", "library.reachable"]) expect(isRoutine(activityKind(routine))).toBe(true);
     expect(isRoutine(activityKind("movies.release.grabbed"))).toBe(false);
   });
 });

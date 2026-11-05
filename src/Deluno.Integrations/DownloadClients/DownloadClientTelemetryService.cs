@@ -1778,6 +1778,123 @@ public sealed class DownloadClientTelemetryService(
         }
     }
 
+    /// <summary>What the last poll saw of each of Deluno's downloads: its phase, and the strikes already said. Read by the poll only.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> LastPhase = new(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> StrikesSaid = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>A download first seen this soon after it was added is news; one found already running after a restart is not.</summary>
+    private static readonly TimeSpan NewlyAddedWindow = TimeSpan.FromMinutes(10);
+
+    private static string? PhaseOf(DownloadQueueItem item)
+        => item.Status switch
+        {
+            DownloadQueueStatuses.Queued => "queued",
+            DownloadQueueStatuses.Downloading => "downloading",
+            DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed or DownloadQueueStatuses.Processing
+                or DownloadQueueStatuses.Processed or DownloadQueueStatuses.WaitingForProcessor or DownloadQueueStatuses.ImportQueued => "finished",
+            _ => item.Progress >= 100d ? "finished" : null
+        };
+
+    /// <summary>
+    /// #1491: each step in a download's life (waiting in the client's queue, started, finished, a strike added, strikes
+    /// cleared) is one line of Activity, written the moment a poll sees it change, once, and pushed like every other line.
+    /// </summary>
+    private async Task RecordLifeStepsAsync(
+        DownloadClientTelemetrySnapshot snapshot,
+        IReadOnlyList<DownloadDispatchItem> clientDispatches,
+        IReadOnlyList<DownloadHealthRecord> touched,
+        bool connectivityCheckOk,
+        int strikeThreshold,
+        CancellationToken cancellationToken)
+    {
+        string KeyOf(string itemId) => $"{snapshot.ClientId}\u001f{itemId}";
+        var listed = snapshot.Queue.Select(item => item.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in snapshot.Queue)
+        {
+            var dispatch = clientDispatches.FirstOrDefault(candidate => DispatchProvesItem(candidate, item.Id, item.ReleaseName));
+            if (dispatch is null || PhaseOf(item) is not { } phase)
+            {
+                continue;
+            }
+
+            var known = LastPhase.TryGetValue(KeyOf(item.Id), out var before);
+            LastPhase[KeyOf(item.Id)] = phase;
+            var isNews = known
+                ? !string.Equals(before, phase, StringComparison.Ordinal) && !(phase != "finished" && before == "finished")
+                : phase != "finished" && snapshot.CapturedUtc - item.AddedUtc <= NewlyAddedWindow;
+            if (!isNews)
+            {
+                continue;
+            }
+
+            var (category, words) = phase switch
+            {
+                "queued" => ("download.client.queued", $"is waiting in the queue of {snapshot.ClientName}"),
+                "downloading" => ("download.client.started", $"started downloading in {snapshot.ClientName}"),
+                _ => ("download.client.finished", $"finished downloading in {snapshot.ClientName}")
+            };
+            await activityFeedRepository.RecordActivityAsync(
+                category, $"{item.ReleaseName} {words}.", null, null,
+                dispatch.EntityType, dispatch.EntityId, cancellationToken);
+        }
+
+        if (!connectivityCheckOk)
+        {
+            return;
+        }
+
+        foreach (var record in touched.Where(record => DownloadHealthStrikes.Counts(record.Kind) && record.StrikeCount > 0))
+        {
+            var key = $"{KeyOf(record.QueueItemId)}\u001f{record.Kind}";
+            StrikesSaid.TryGetValue(key, out var said);
+            if (said == record.StrikeCount)
+            {
+                continue;
+            }
+
+            StrikesSaid[key] = record.StrikeCount;
+            var dispatch = clientDispatches.FirstOrDefault(candidate => DispatchProvesItem(candidate, record.QueueItemId, record.ReleaseName));
+            await activityFeedRepository.RecordActivityAsync(
+                "download.health.strike",
+                $"{record.ReleaseName}: {DownloadHealthRuleValidator.DescribeKind(record.Kind)}, strike {record.StrikeCount} of {record.RuleStrikeLimit ?? strikeThreshold}: {record.Evidence}",
+                null, null, dispatch?.EntityType ?? "download_item", dispatch?.EntityId ?? record.QueueItemId, cancellationToken);
+        }
+
+        var struck = touched.Select(record => $"{KeyOf(record.QueueItemId)}\u001f{record.Kind}").ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var prefix = KeyOf(string.Empty);
+        foreach (var said in StrikesSaid.Where(entry => entry.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToArray())
+        {
+            if (struck.Contains(said.Key))
+            {
+                continue;
+            }
+
+            var parts = said.Key[prefix.Length..].Split('\u001f');
+            var item = snapshot.Queue.FirstOrDefault(candidate => string.Equals(candidate.Id, parts[0], StringComparison.OrdinalIgnoreCase));
+            if (item is null || !listed.Contains(parts[0]))
+            {
+                StrikesSaid.TryRemove(said.Key, out _);
+                continue;
+            }
+
+            if (DownloadHealthStrikes.PausesTransferFindings(item.Status, item.Progress))
+            {
+                continue;
+            }
+
+            StrikesSaid.TryRemove(said.Key, out _);
+            var dispatch = clientDispatches.FirstOrDefault(candidate => DispatchProvesItem(candidate, item.Id, item.ReleaseName));
+            var words = item.SpeedMbps > 0
+                ? $"{item.ReleaseName} is moving again at {SpeedText.FromMbps(item.SpeedMbps)}, strikes cleared."
+                : $"{item.ReleaseName}: {DownloadHealthRuleValidator.DescribeKind(parts[1])} no longer applies, strikes cleared.";
+            await activityFeedRepository.RecordActivityAsync(
+                "download.health.strikes-cleared", words, null, null,
+                dispatch?.EntityType ?? "download_item", dispatch?.EntityId ?? item.Id, cancellationToken);
+        }
+    }
+
     private async Task<DownloadClientTelemetrySnapshot> AttachHealthFindingsAsync(
         DownloadClientItem client,
         DownloadClientTelemetrySnapshot snapshot,
@@ -1921,6 +2038,8 @@ public sealed class DownloadClientTelemetryService(
         var recordsByFinding = records.ToDictionary(
             record => $"{record.ClientId}\u001f{record.QueueItemId}\u001f{record.Kind}",
             StringComparer.OrdinalIgnoreCase);
+
+        await RecordLifeStepsAsync(snapshot, clientDispatches, records, connectivityCheckOk, strikeThreshold, cancellationToken);
 
         // #881: a setup problem never strikes, so nothing is removed, deleted,
         // blocked or searched for. Say so once, when the spell starts, so it

@@ -7,7 +7,8 @@ namespace Deluno.Jobs.Data;
 
 public sealed class SqliteBlockedReleaseRepository(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
-    TimeProvider timeProvider) : IBlockedReleaseRepository
+    TimeProvider timeProvider,
+    IRealtimeEventPublisher? realtimeEventPublisher = null) : IBlockedReleaseRepository
 {
     public async Task<BlockedRelease> BlockAsync(BlockedRelease release, CancellationToken cancellationToken)
     {
@@ -71,8 +72,10 @@ public sealed class SqliteBlockedReleaseRepository(
                     @title, NULL, @indexer, NULL
                 );
                 """;
-            Add(history, "@id", Guid.CreateVersion7().ToString("N"));
-            Add(history, "@message", $"Deluno blocked {release.ReleaseName}: {release.Reason}");
+            var activityId = Guid.CreateVersion7().ToString("N");
+            var activityMessage = $"Deluno blocked {release.ReleaseName}: {release.Reason}";
+            Add(history, "@id", activityId);
+            Add(history, "@message", activityMessage);
             Add(history, "@details", System.Text.Json.JsonSerializer.Serialize(new
             {
                 release = release.ReleaseName,
@@ -87,6 +90,24 @@ public sealed class SqliteBlockedReleaseRepository(
             Add(history, "@title", (object?)release.Title ?? DBNull.Value);
             Add(history, "@indexer", release.IndexerName);
             await history.ExecuteNonQueryAsync(cancellationToken);
+
+            // The Dashboard's Activity panel and the Activity history show a row the moment it is written (#1491): the block
+            // that follows a strike is part of the same story, so it is pushed like every other row.
+            if (realtimeEventPublisher is not null)
+            {
+                await realtimeEventPublisher.PublishActivityEventAddedAsync(
+                    new ActivityEventPush(
+                        activityId,
+                        activityMessage,
+                        "release.blocked",
+                        ActivityEventSeverity.For("release.blocked"),
+                        blockedUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
+                        release.EntityId is not null ? release.MediaType : "blocked_release",
+                        release.EntityId ?? release.Id,
+                        Title: release.Title,
+                        SourceName: release.IndexerName),
+                    cancellationToken);
+            }
         }
 
         return (await ListAsync(cancellationToken))

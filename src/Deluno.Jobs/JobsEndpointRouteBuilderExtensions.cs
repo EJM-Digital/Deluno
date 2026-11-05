@@ -112,6 +112,7 @@ public static class JobsEndpointRouteBuilderExtensions
             string? reason,
             string? sortBy,
             string? sortDir,
+            string? excludeCategories,
             IActivityFeedRepository repository,
             CancellationToken cancellationToken) =>
         {
@@ -127,7 +128,10 @@ public static class JobsEndpointRouteBuilderExtensions
                 ReasonGroup: Clean(reason),
                 RelatedEntityType: Clean(relatedEntityType),
                 RelatedEntityId: Clean(relatedEntityId),
-                Sort: ActivitySort.Parse(sortBy, sortDir));
+                Sort: ActivitySort.Parse(sortBy, sortDir),
+                ExcludeCategories: string.IsNullOrWhiteSpace(excludeCategories)
+                    ? null
+                    : excludeCategories.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
             var page = await repository.ListActivityPageAsync(
                 new PageRequest(pageSize ?? 50, pageToken),
                 query,

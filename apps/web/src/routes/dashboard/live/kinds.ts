@@ -4,6 +4,7 @@
  * out from the event's category, the same codes the server's own counts use
  * (searches, grabs, imports, clean-ups, retention).
  */
+import { ACTIVITY_KINDS } from "./activity-kinds";
 import { Activity, AlertTriangle, CheckCircle2, Captions, Download, ListPlus, Search, ShieldCheck, Timer, Trash2, type LucideIcon } from "lucide-react";
 
 export type ActivityKind = "search" | "grab" | "import" | "process" | "failed" | "cleanup" | "retention" | "subtitle" | "lists" | "other";
@@ -35,10 +36,16 @@ export const KIND_STYLE: Record<ActivityKind, KindStyle> = {
 };
 
 
-/** Worked out from the event's category (and severity, for a problem). */
+/** The table by lower-case category, as the server's own labels match without regard to case. */
+const DECIDED = new Map(Object.entries(ACTIVITY_KINDS).map(([category, kind]) => [category.toLowerCase(), kind]));
+
+/** Worked out from the event's category (and severity, for a problem): the decision table first, then the patterns for a category the table does not name yet. */
 export function activityKind(category: string, severity?: string | null): ActivityKind {
   const code = (category ?? "").toLowerCase();
-  if (severity === "error" || /(^|\.)(failed|failure|error)(\.|$)|\.problem$|^processing\.(rejected|timed-out|stalled|lost|submission-failed|processor-unreachable)/.test(code)) return "failed";
+  if (severity === "error") return "failed";
+  const decided = DECIDED.get(code);
+  if (decided) return decided;
+  if (/(^|\.)(failed|failure|error)(\.|$)|\.problem$|^processing\.(rejected|timed-out|stalled|lost|submission-failed|processor-unreachable)/.test(code)) return "failed";
   // Housekeeping first: an artwork "cleanup" is not Deluno removing something of yours.
   if (/^(job\.|metadata\.|external\.|activity\.|decision\.|tags\.|quality\.|collection\.|library\.(title|quality|reachable|unreachable|paused|resumed|file)|processor\.(connection|health)|download\.health\.|download\.client\.(connectivity|duplicate))/.test(code)) return "other";
   if (code.startsWith("retention")) return "retention";

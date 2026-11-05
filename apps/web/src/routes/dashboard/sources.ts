@@ -4,6 +4,7 @@
  * here reaches a download client, an indexer, a media server or a disk while
  * the screen waits.
  */
+import { ROUTINE_CATEGORIES } from "./live/activity-kinds";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import {
@@ -115,7 +116,7 @@ export const liveSources = defineSources({
   // What each indexer did today (queries, grabs, failures, when it last answered): a stored count, cached on the server for a minute.
   scoreboard: { ...source<IndexerScoreboardToday | null>("dashboard-indexers-today", "Indexers today", () => fetchJson("/api/indexers/scoreboard?days=1"), null) },
   // The newest Activity, for the Latest stream: read from the stored list, kept current by the pushed events. The summary carries only eight rows, most of them routine.
-  latestActivity: { ...source<ActivityEventItem[]>("dashboard-latest-activity", "Latest activity", () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=80"), []) },
+  latestActivity: { ...source<ActivityEventItem[]>("dashboard-latest-activity", "Latest activity", () => fetchPageItems<ActivityEventItem>(`/api/activity?pageSize=80&excludeCategories=${ROUTINE_CATEGORIES.join(",")}`), []) },
   // Download clients with their on/off switch (the summary lists only the enabled ones): a switched-off client is a grey light.
   clients: { ...sharedSources.downloadClients, fallback: [] },
   // Today's arrivals and upgrades, what was refused, requests in flight and what retention will give back: stored rows, cached on the server for five seconds.

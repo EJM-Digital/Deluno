@@ -3546,6 +3546,19 @@ public sealed class SqliteJobStore(
             conditions.Add($"category IN ({string.Join(", ", names)})");
         }
 
+        // Categories the caller calls routine (the Dashboard's panel names them from its one decision table, #1491).
+        if (query.ExcludeCategories is { Count: > 0 } excluded)
+        {
+            var names = new List<string>();
+            for (var i = 0; i < excluded.Count; i++)
+            {
+                names.Add($"@exclude{i}");
+                parameters.Add(($"@exclude{i}", excluded[i]));
+            }
+
+            conditions.Add($"category NOT IN ({string.Join(", ", names)})");
+        }
+
         if (!string.IsNullOrWhiteSpace(query.Type)) AddCategories(ActivityHistory.CategoriesOfType(query.Type.Trim().ToLowerInvariant()), "type");
         if (!string.IsNullOrWhiteSpace(query.Source)) AddCategories(ActivityHistory.CategoriesOfSource(query.Source.Trim().ToLowerInvariant()), "source");
         if (!string.IsNullOrWhiteSpace(query.Outcome)) AddCategories(ActivityHistory.CategoriesOfOutcome(query.Outcome.Trim().ToLowerInvariant()), "outcome");
