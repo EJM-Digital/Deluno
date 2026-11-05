@@ -109,9 +109,12 @@ public sealed class EachStepInADownloadsLifeReachesActivityTests
     {
         using var world = await World.CreateAsync(DownloadQueueStatuses.Queued, 0d);
         await world.PollAsync();
+        // A strike is added and cleared only at a check (#1501), so each change lands a whole check interval later.
+        world.Time.Advance(TimeSpan.FromMinutes(31));
         world.Item = world.Item with { Status = DownloadQueueStatuses.Stalled, Progress = 5d, ErrorMessage = "Tracker unreachable" };
         await world.PollAsync();
-        world.Item = world.Item with { Status = DownloadQueueStatuses.Downloading, SpeedMbps = 3.2, ErrorMessage = null };
+        world.Time.Advance(TimeSpan.FromMinutes(31));
+        world.Item = world.Item with { Status = DownloadQueueStatuses.Downloading, SpeedMbps = 3.2, DownloadedBytes = world.Item.DownloadedBytes + 2_000_000_000, ErrorMessage = null };
         await world.PollAsync();
         world.Item = world.Item with { Status = DownloadQueueStatuses.ImportReady, Progress = 100d, SpeedMbps = 0 };
         await world.PollAsync();

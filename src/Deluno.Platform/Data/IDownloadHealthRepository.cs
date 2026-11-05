@@ -34,6 +34,10 @@ public interface IDownloadHealthRepository
     /// finding's record (no progress, low availability, 0% and the like) for one of them is paused, not ended: no
     /// strike is added, and the record ends only when the download really recovers (bytes gained since the record
     /// began, finished, or left the client), so a dead torrent that flips through checking keeps its strikes (#1476).</para>
+    ///
+    /// <para><paramref name="betweenChecksQueueItemIds"/> is the listed downloads whose reading is a poll between two
+    /// checks (#1501): a strike is added or cleared only at a check, on the rule's own measure, so for these nothing
+    /// is added, ended or cleared and their records come back as they stand.</para>
     /// </summary>
     Task<IReadOnlyList<DownloadHealthRecord>> RecordDownloadHealthObservationsAsync(
         string clientId,
@@ -43,7 +47,8 @@ public interface IDownloadHealthRepository
         TimeSpan strikeInactivityWindow,
         CancellationToken cancellationToken,
         IReadOnlyCollection<string>? everythingTheClientHolds = null,
-        IReadOnlyCollection<string>? pausedQueueItemIds = null);
+        IReadOnlyCollection<string>? pausedQueueItemIds = null,
+        IReadOnlyCollection<string>? betweenChecksQueueItemIds = null);
 
     Task<IReadOnlyList<DownloadHealthRecord>> ListDownloadHealthRecordsAsync(
         int take,
@@ -122,7 +127,8 @@ public interface IDownloadHealthRepository
         IReadOnlyList<(string QueueItemId, long DownloadedBytes)> observations,
         CancellationToken cancellationToken,
         bool allowReset = true,
-        long minimumGainBytes = 0);
+        long minimumGainBytes = 0,
+        TimeSpan? checkInterval = null);
 
     /// <summary>
     /// The configured download-health rules (#905). The first call on an

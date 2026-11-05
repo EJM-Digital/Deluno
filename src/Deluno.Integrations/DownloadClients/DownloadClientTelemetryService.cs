@@ -1699,7 +1699,8 @@ public sealed class DownloadClientTelemetryService(
             snapshot.Queue.Select(item => (item.Id, item.DownloadedBytes)).ToArray(),
             cancellationToken,
             allowReset: noProgressRule?.ResetStrikesOnProgress ?? true,
-            minimumGainBytes: noProgressRule?.ResetStrikesMinimumProgressBytes ?? 0);
+            minimumGainBytes: noProgressRule?.ResetStrikesMinimumProgressBytes ?? 0,
+            checkInterval: checkInterval);
 
         // A download is Stalled once a whole check interval passes with no byte gain, rule or no rule (#1193, #1194).
         var statusWindow = checkInterval;
@@ -1726,7 +1727,7 @@ public sealed class DownloadClientTelemetryService(
                 effectiveSince,
                 statusWindow);
             // #1207: the No progress rule reads the bytes against the previous check, never the reported speed.
-            reconciled.Add(item with { Status = reconciledItem.Status, BytesGrewSinceLastCheck = observed?.BytesGrew, AverageSpeedMbps = observed?.AverageBytesPerSecond is { } average ? average / 1_000_000d : null, AveragePeriod = observed?.Period });
+            reconciled.Add(item with { Status = reconciledItem.Status, BytesGrewSinceLastCheck = observed?.BytesGrew, AverageSpeedMbps = observed?.AverageBytesPerSecond is { } average ? average / 1_000_000d : null, AveragePeriod = observed?.Period, IsCheck = observed?.IsCheck });
         }
 
         return snapshot with { Queue = reconciled };
@@ -1782,6 +1783,9 @@ public sealed class DownloadClientTelemetryService(
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> LastPhase = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> StrikesSaid = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>#1501: what each download's last check found, shown unchanged by the polls between two checks (they judge nothing).</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, IReadOnlyList<RecoveryHealthFinding>> LastCheckFindings = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>A download first seen this soon after it was added is news; one found already running after a restart is not.</summary>
     private static readonly TimeSpan NewlyAddedWindow = TimeSpan.FromMinutes(10);
@@ -1971,6 +1975,14 @@ public sealed class DownloadClientTelemetryService(
                 var files = downloadClient is not null && contentBlocklist.Enabled
                     ? await TryGetFilesAsync(downloadClient, client, item.Id, cancellationToken)
                     : null;
+                // #1501: a poll between two checks judges nothing: the download shows what its last check found.
+                var checkKey = $"{item.ClientId}\u001f{item.Id}";
+                if (item.IsCheck == false && LastCheckFindings.TryGetValue(checkKey, out var lastCheck))
+                {
+                    annotated.Add((item, lastCheck));
+                    continue;
+                }
+
                 var findings = healthEvaluator.Evaluate(
                     new RecoveryQueueSnapshot(
                         item.Status,
@@ -1997,6 +2009,7 @@ public sealed class DownloadClientTelemetryService(
                     snapshot.CapturedUtc,
                     rules,
                     contentBlocklist);
+                LastCheckFindings[checkKey] = findings;
                 annotated.Add((item, findings));
             }
         }
@@ -2032,6 +2045,11 @@ public sealed class DownloadClientTelemetryService(
                 // dead torrent's strikes where they are instead of ending its record as recovered.
                 annotated
                     .Where(entry => DownloadHealthStrikes.PausesTransferFindings(entry.Item.Status, entry.Item.Progress))
+                    .Select(entry => entry.Item.Id)
+                    .ToArray(),
+                // #1501: a poll between two checks adds and clears nothing.
+                annotated
+                    .Where(entry => entry.Item.IsCheck == false)
                     .Select(entry => entry.Item.Id)
                     .ToArray())).ToArray();
         }

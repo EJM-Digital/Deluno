@@ -42,7 +42,8 @@ public sealed class SqliteDownloadHealthRepository(
         TimeSpan strikeInactivityWindow,
         CancellationToken cancellationToken,
         IReadOnlyCollection<string>? everythingTheClientHolds = null,
-        IReadOnlyCollection<string>? pausedQueueItemIds = null)
+        IReadOnlyCollection<string>? pausedQueueItemIds = null,
+        IReadOnlyCollection<string>? betweenChecksQueueItemIds = null)
     {
         if (string.IsNullOrWhiteSpace(clientId) || (observations.Count == 0 && listedQueueItemIds.Count == 0 && everythingTheClientHolds is null))
         {
@@ -71,10 +72,13 @@ public sealed class SqliteDownloadHealthRepository(
                 .Where(progress => string.Equals(progress.ClientId, clientId, StringComparison.OrdinalIgnoreCase))
                 .GroupBy(progress => progress.QueueItemId, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        // #1501: a poll between two checks adds, ends and clears nothing; the check does, on the rule's own measure.
+        var betweenChecks = betweenChecksQueueItemIds?.ToHashSet(StringComparer.OrdinalIgnoreCase) ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var ended = 0;
         foreach (var record in records.Where(record =>
                          string.Equals(record.ClientId, clientId, StringComparison.OrdinalIgnoreCase) &&
                          listed.Contains(record.QueueItemId) &&
+                         !betweenChecks.Contains(record.QueueItemId) &&
                          !stillSeen.Contains($"{record.QueueItemId}{record.Kind}")).ToList())
         {
             var gainedBytes = progressByItem.TryGetValue(record.QueueItemId, out var progress) &&
@@ -119,7 +123,8 @@ public sealed class SqliteDownloadHealthRepository(
         {
             if (!string.Equals(observation.ClientId, clientId, StringComparison.OrdinalIgnoreCase) ||
                 string.IsNullOrWhiteSpace(observation.QueueItemId) ||
-                string.IsNullOrWhiteSpace(observation.ReleaseName) || string.IsNullOrWhiteSpace(observation.Kind))
+                string.IsNullOrWhiteSpace(observation.ReleaseName) || string.IsNullOrWhiteSpace(observation.Kind) ||
+                betweenChecks.Contains(observation.QueueItemId.Trim()))
             {
                 continue;
             }
@@ -189,15 +194,17 @@ public sealed class SqliteDownloadHealthRepository(
             touched.Add(updated);
         }
 
+        var standing = records.Where(record =>
+            string.Equals(record.ClientId, clientId, StringComparison.OrdinalIgnoreCase) && betweenChecks.Contains(record.QueueItemId)).ToList();
         if (touched.Count == 0 && ended == 0)
         {
-            return [];
+            return standing;
         }
 
         await UpsertSettingAsync(connection, transaction, DownloadHealthRecordsSettingKey, JsonSerializer.Serialize(records), now, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         await AnnounceChangedAsync(clientId, cancellationToken);
-        return touched;
+        return touched.Concat(standing).ToList();
     }
 
     public async Task<IReadOnlyList<DownloadHealthRecord>> ListDownloadHealthRecordsAsync(int take, CancellationToken cancellationToken)
@@ -438,7 +445,8 @@ public sealed class SqliteDownloadHealthRepository(
         IReadOnlyList<(string QueueItemId, long DownloadedBytes)> observations,
         CancellationToken cancellationToken,
         bool allowReset = true,
-        long minimumGainBytes = 0)
+        long minimumGainBytes = 0,
+        TimeSpan? checkInterval = null)
     {
         var result = new Dictionary<string, DownloadProgressObservation>(StringComparer.OrdinalIgnoreCase);
         if (string.IsNullOrWhiteSpace(clientId) || observations.Count == 0)
@@ -483,15 +491,23 @@ public sealed class SqliteDownloadHealthRepository(
             var gain = existing is null ? long.MaxValue : downloadedBytes - existing.DownloadedBytes;
             var isRealProgress = existing is null || (allowReset && gain >= Math.Max(1, minimumGainBytes));
             var lastIncreaseUtc = isRealProgress ? now : existing!.LastIncreaseUtc;
-            var updated = new DownloadProgressRecord(clientId.Trim(), trimmedId, downloadedBytes, lastIncreaseUtc, now);
+            // #1501: a check is a whole check interval after the previous check; a poll in between judges nothing and
+            // leaves the check's baseline where it was. A record from before this existed starts from its last poll.
+            var baselineBytes = existing?.CheckBytes ?? existing?.DownloadedBytes;
+            var baselineUtc = existing?.CheckUtc ?? existing?.LastObservedUtc;
+            var isCheck = existing is null || baselineUtc is null || checkInterval is not { } interval || now - baselineUtc.Value >= interval;
+            var updated = new DownloadProgressRecord(
+                clientId.Trim(), trimmedId, downloadedBytes, lastIncreaseUtc, now,
+                isCheck ? downloadedBytes : baselineBytes, isCheck ? now : baselineUtc);
             if (index >= 0) records[index] = updated; else records.Add(updated);
             // #1207: "grew" is bytes against the previous check, whatever the reported speed was.
             result[trimmedId] = new DownloadProgressObservation(
                 lastIncreaseUtc,
-                existing is null ? null : downloadedBytes - existing.DownloadedBytes >= Math.Max(1, minimumGainBytes),
+                existing is null ? null : downloadedBytes - baselineBytes >= Math.Max(1, minimumGainBytes),
                 // #1490: the average since the previous check, so one slow instant in a fast download is not a slow download.
-                existing is null || now <= existing.LastObservedUtc ? null : Math.Max(0, downloadedBytes - existing.DownloadedBytes) / (now - existing.LastObservedUtc).TotalSeconds,
-                existing is null || now <= existing.LastObservedUtc ? null : now - existing.LastObservedUtc);
+                existing is null || now <= baselineUtc ? null : Math.Max(0, downloadedBytes - baselineBytes!.Value) / (now - baselineUtc!.Value).TotalSeconds,
+                existing is null || now <= baselineUtc ? null : now - baselineUtc,
+                isCheck);
         }
 
         await UpsertSettingAsync(connection, transaction, DownloadProgressRecordsSettingKey, JsonSerializer.Serialize(records), now, cancellationToken);

@@ -472,7 +472,10 @@ public sealed record DownloadQueueItem(
     /// so the Dashboard puts a download that has just finished in Processing, not Importing, before any hand-off is recorded.
     /// Null when no library is known for it.
     /// </summary>
-    bool? HandsToProcessor = null);
+    bool? HandsToProcessor = null,
+    /// <summary>#1501: false when this reading is a poll between two checks, so no strike is added or cleared by it; null or true at a check.</summary>
+    [property: System.Text.Json.Serialization.JsonIgnore]
+    bool? IsCheck = null);
 
 /// <summary>
 /// An observational queue-health signal. These findings never cause Deluno to remove
