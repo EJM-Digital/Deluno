@@ -95,3 +95,20 @@ describe("A check or a refresh nothing answered (#1474)", () => {
     expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
   });
 });
+
+describe("A refresh across movies and TV", () => {
+  it.each([
+    [{ enqueuedCount: 0, remainingCount: 0 }, "Nothing needs refreshing."],
+    [{ enqueuedCount: 2, remainingCount: 0 }, "Queued 4 titles. That is everything that needs refreshing."],
+    [{ enqueuedCount: 1, remainingCount: 3 }, "Queued 2 titles. Another 6 still to go — Deluno keeps working through them in the background."]
+  ])("sums both answers into one sentence: %o", async (each, sentence) => {
+    fetchJsonMock.mockImplementation((url: string) => Promise.resolve(url === "/api/metadata/status" ? ready : { ...each, message: "one side" }));
+    render(<MetadataMaintenanceCard />);
+    await screen.findByText("Ready");
+
+    const row = screen.getByText("Fill in missing details").closest("[role=row]") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "Run" }));
+
+    expect(await within(row).findByText(sentence)).toBeInTheDocument();
+  });
+});

@@ -400,4 +400,41 @@ describe("a result already in the library (#1329, #1507)", () => {
     expect(await within(back).findByText("In your library")).toBeInTheDocument();
     expect(within(back).getByTitle("Select Sicario")).toHaveTextContent("Selected");
   });
+
+  it("a show already in the library opens on its TV page", async () => {
+    mocks.fetchJson.mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/series/page")) return page;
+      if (path.endsWith("/controls")) return { kind: "series", filterFields: [], sortFields: [], posterOptions: [] };
+      if (path === "/api/libraries") return [{ id: "lib-s", name: "Shows", mediaType: "tv", rootPath: "/shows", qualityProfileId: "p1" }];
+      if (path.startsWith("/api/metadata/search")) return [{ ...match("7", "Reacher"), mediaType: "tv", libraryEntryId: "show-7" }];
+      return [];
+    });
+    const router = createMemoryRouter([{ path: "/", element: <LibraryView variant="shows" /> }, { path: "*", element: <p>elsewhere</p> }], { initialEntries: ["/"] });
+    render(<RouterProvider router={router} />);
+    await screen.findByRole("button", { name: /^Search these \d+$/ });
+    fireEvent.click(screen.getAllByRole("button", { name: "Add TV show" })[0]);
+    const dialog = await screen.findByRole("dialog", { name: /Add TV show/ });
+    const box = within(dialog).getByPlaceholderText(/Search TV shows, for example/);
+    fireEvent.change(box, { target: { value: "Reacher" } });
+    fireEvent.submit(box.closest("form")!);
+
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Open Reacher, already in your library" }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/tv/show-7"));
+  });
+
+  it.each([
+    ["one set aside a minute ago is brought back", Date.now() - 60_000, true],
+    ["one set aside more than an hour ago is not", Date.now() - 2 * 60 * 60 * 1000, false],
+    ["one with no time on it is not", undefined, false],
+    ["one that is not readable is not", "unreadable", false]
+  ])("a search set aside: %s", async (_name, savedAt, restored) => {
+    window.sessionStorage.setItem("deluno:add-draft:movies", savedAt === "unreadable" ? "{not json" : JSON.stringify({ createForm: { title: "Old search" }, metadataResults: [], selectedMetadataResults: [], savedAt }));
+    const router = createMemoryRouter([{ path: "/", element: <LibraryView variant="movies" /> }, { path: "*", element: <p>elsewhere</p> }], { initialEntries: ["/?add=true"] });
+    render(<RouterProvider router={router} />);
+    const dialog = await screen.findByRole("dialog", { name: /Add movie/ });
+    if (restored) await waitFor(() => expect(titleBox(dialog)).toHaveValue("Old search"));
+    else expect(titleBox(dialog)).not.toHaveValue("Old search");
+    window.sessionStorage.clear();
+  });
 });
