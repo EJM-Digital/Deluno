@@ -4737,37 +4737,6 @@ public sealed class SqliteJobStore(
             UpdatedUtc: ParseTimestamp(reader.GetString(9)));
     }
 
-    private static DownloadDispatchItem ReadDownloadDispatch(System.Data.Common.DbDataReader reader)
-        => new(
-            Id: reader.GetString(0),
-            LibraryId: reader.GetString(1),
-            MediaType: reader.GetString(2),
-            EntityType: reader.GetString(3),
-            EntityId: reader.GetString(4),
-            ReleaseName: reader.GetString(5),
-            IndexerName: reader.GetString(6),
-            DownloadClientId: reader.GetString(7),
-            DownloadClientName: reader.GetString(8),
-            Status: reader.GetString(9),
-            NotesJson: reader.IsDBNull(10) ? null : reader.GetString(10),
-            CreatedUtc: ParseTimestamp(reader.GetString(11)),
-            GrabStatus: null,
-            GrabAttemptedUtc: null,
-            GrabResponseCode: null,
-            GrabMessage: null,
-            GrabFailureCode: null,
-            GrabResponseJson: null,
-            DetectedUtc: null,
-            TorrentHashOrItemId: null,
-            DownloadedBytes: null,
-            ImportStatus: null,
-            ImportDetectedUtc: null,
-            ImportCompletedUtc: null,
-            ImportedFilePath: null,
-            ImportFailureCode: null,
-            ImportFailureMessage: null,
-            CircuitOpenUntilUtc: null);
-
     private static ActivityEventItem ReadActivity(System.Data.Common.DbDataReader reader)
     {
         return new ActivityEventItem(
