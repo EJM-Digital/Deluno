@@ -2028,10 +2028,13 @@ public sealed class WorkPlanner(
             .Select(item => item.RelatedEntityId)
             .Where(id => !string.IsNullOrWhiteSpace(id))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // A library whose output folder is missing or unreadable is skipped, but not silently (#1514): one line, and Health.
+        var unusableFolders = await ProcessorOutputFolderWatch.RecordChangesAsync(libraries, activityFeedRepository, cancellationToken);
         var refineLibraries = libraries
             .Where(library =>
                 ImportWorkflows.HandsToProcessor(library.ImportWorkflow) &&
                 !string.IsNullOrWhiteSpace(library.ProcessorOutputPath) &&
+                !unusableFolders.Contains(library.Id) &&
                 Directory.Exists(library.ProcessorOutputPath))
             .ToArray();
 
