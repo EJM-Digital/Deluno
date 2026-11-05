@@ -31,7 +31,7 @@
 .sy-faint { color: var(--sy-faint); }
 .sy-label { font-size: var(--type-micro); letter-spacing: .12em; text-transform: uppercase; color: var(--sy-muted); font-weight: 600; }
 .sy-card { background: var(--sy-card); border: 1px solid var(--sy-line); border-radius: 14px; min-width: 0; min-height: 0; overflow: hidden; }
-.sy-card-h { display: flex; align-items: baseline; gap: 12px; min-height: 44px; box-sizing: border-box; padding: 14px 18px 10px; white-space: nowrap; min-width: 0; }
+.sy-card-h { display: flex; align-items: baseline; gap: 12px; min-height: 48px; box-sizing: border-box; padding: 14px 18px 10px; white-space: nowrap; min-width: 0; }
 .sy-card-h h2 { margin: 0; font-size: var(--type-body); font-weight: 600; line-height: 15px; }
 .sy-card-h > .sy-muted { overflow: hidden; text-overflow: ellipsis; min-width: 0; font-size: var(--type-caption); line-height: 1.52; }
 .sy-link { margin-left: auto; color: var(--sy-primary); font-size: var(--type-control); font-weight: 500; line-height: 17px; text-decoration: none; white-space: nowrap; }
@@ -240,7 +240,7 @@
 .sy-tk-row .sy-r { text-align: right; color: var(--sy-muted); font-size: var(--type-micro); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .sy-tk-row .sy-r b { color: var(--sy-fg); font-weight: 600; }
 .sy-logs { display: grid; grid-template-rows: auto minmax(0, 1fr); }
-/* The log's level chips are FilterChips; this puts them at the right of the header without making it taller than its 44px. */
+/* The log's level chips are FilterChips; this puts them at the right of the header without making it taller than its 48px. */
 .sy-lv { align-self: center; margin: -8px 0 -8px auto; }
 .sy-logs .sy-card-h .sy-link { margin-left: 10px; }
 .sy-log { list-style: none; margin: 0; padding: 0 18px 12px; font-size: var(--type-caption); }

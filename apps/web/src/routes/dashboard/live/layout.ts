@@ -90,16 +90,17 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 /** The journey's row at a comfortable size (three rows of 86px cards and the "and N more" line): the mockup's 398px. */
 export const JOURNEY_PX = 398;
 /**
- * What sits around the journey's lanes: its header (44px), the ribbon (50px) and the space under the lanes (10px) and the card's
+ * What sits around the journey's lanes: its header (48px, the shared standard, Weir#1371), the ribbon (50px) and the space under the lanes (10px) and the card's
  * border (2px), as measured. The mockup's own minimum counts 96, which leaves its lanes 10px short of three rows and their line.
  */
-export const JOURNEY_CHROME_PX = 106;
+export const JOURNEY_CHROME_PX = 110;
 /** The least the journey is given: its chrome, two rows of the smallest cards, one more, and the "and N more" line. */
-const JOURNEY_MIN_PX = JOURNEY_CHROME_PX + 2 * (MIN_TOKEN_PX + ROW_GAP_PX) + MIN_TOKEN_PX + MORE_PX;
+export const JOURNEY_MIN_PX = JOURNEY_CHROME_PX + 2 * (MIN_TOKEN_PX + ROW_GAP_PX) + MIN_TOKEN_PX + MORE_PX;
 /** Never shorter than 144px (the owner, 2 Oct 2026, as Weir): at 130px the band tiles lose their row. */
 export const BAND_MIN_PX = 144;
 /** The band is a fifth of the grid, never taller than this (the shared rule with Weir). */
 const BAND_MAX_PX = 240;
+/** The bottom row keeps this while the band and the journey give way first (see `gridRows`); it is not part of the grid's minimum. */
 const LOW_MIN_PX = 180;
 /** The least the bottom row ever gets: once the band and the journey are at their smallest, it gives way down to this rather than the page scrolling or cutting it off (the same rule as Weir's, 2 Oct 2026). */
 const LOW_FLOOR_PX = 110;
@@ -107,11 +108,11 @@ const LOW_FLOOR_PX = 110;
 const LOW_ROOMY_PX = 260;
 const GRID_GAPS_PX = 24;
 /**
- * The least height the shared grid can be drawn in: the band and the journey each at their smallest and the bottom row at its own minimum, and the
- * gaps between them. A tab shorter than this (a busy window with the setup banners above the board) scrolls inside itself
- * rather than letting the cards run over one another or past the window (golden path, 9 Oct).
+ * The least height the shared grid can be drawn in: the band at 144, the journey at its least and the bottom row at its floor (110), and the
+ * gaps between them: 144 + 328 + 110 + 24 = 606. "Fit the window" (the owner, 5 Nov 2026): the grid never scrolls, so it gives way in
+ * that order down to this and no further. A window shorter than this (the setup banners above the board) is the only case that scrolls.
  */
-export const GRID_MIN_PX = BAND_MIN_PX + JOURNEY_MIN_PX + LOW_MIN_PX + GRID_GAPS_PX;
+export const GRID_MIN_PX = BAND_MIN_PX + JOURNEY_MIN_PX + LOW_FLOOR_PX + GRID_GAPS_PX;
 
 /**
  * The rows of the shared grid. One rule, shared with Weir (Weir has agreed it as the same rule, 5 Nov 2026), so the two apps

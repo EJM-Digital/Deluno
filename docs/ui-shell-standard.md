@@ -13,13 +13,15 @@ owner's font-scale setting, so the ratios below hold at any scale.
 
 The header row's height and the gap to the first cards are the same in both apps. A panel's header is 48px high with
 its title centred in it, which puts the title's box 12px below the panel's top edge (measured on the golden VM on 5 Nov
-2026: Deluno 12px, Weir rc.24 11px, the only difference left). No size is a fraction of a step:
+2026: Deluno 12px, Weir rc.24 11px, the only difference left). Both apps' Dashboard panel headers are 48px (11px top padding),
+which makes the Pipeline's chrome 110px and its least height 328px (Weir's BOARD_MIN). No size is a fraction of a step:
 11px is 11px, never 10.3125px.
 
 ## In Deluno
 
 - The page header is `ContentTopbar` in `apps/web/src/layouts/app-layout.tsx` (eyebrow line and `TopbarTitle`).
 - The top-card label is `BandCard` (`apps/web/src/routes/dashboard/live/band-card.tsx`; its line height is in `band.css`).
+- Every Dashboard panel header (`LiveCard`, `.sy-card-h` on System) is `min-height: 48px`; the Live grid's rows are `gridRows` in `apps/web/src/routes/dashboard/live/layout.ts` ("Fit the window": the band gives way to 144, then the journey to 328, then the bottom row to 110; the grid is never shorter than 606px).
 - The panel title is the `h2` of `ListCard` (`apps/web/src/components/ui/list-card.tsx`), which `Panel` uses.
 - Sizes come from the `--type-*` tokens and the `.role-*` classes in `apps/web/src/index.css` (#1447).
 

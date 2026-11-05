@@ -96,7 +96,7 @@ export function ActivityStream({ rows, titles, dense = false }: { rows: LiveActi
     <Link to={ACTIVITY_HISTORY} className="lact-more" aria-label={`${more.toLocaleString("en-AU")} more in the activity log`}>{more.toLocaleString("en-AU")} more</Link>
   ) : null;
   return (
-    <Panel title="Activity" count={quiet} aside={moreLink} to={ACTIVITY_HISTORY} toLabel="All activity" className="lact min-h-40 flex-1">
+    <Panel title="Activity" count={quiet} aside={moreLink} to={ACTIVITY_HISTORY} toLabel="All activity" className="lact min-h-0 flex-1">
       {shown.length === 0 ? (
         <Plain>Nothing has happened yet. What Deluno does shows up here as it works.</Plain>
       ) : (

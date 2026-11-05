@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BAND_MIN_PX, GRID_MIN_PX, cardsBudget, gridRows, JOURNEY_PX, GRID_AREAS, GRID_COLUMNS, LOW_COLUMNS, pageLayout, stackedJourneyBudget } from "./layout";
+import { BAND_MIN_PX, GRID_MIN_PX, JOURNEY_CHROME_PX, JOURNEY_MIN_PX, cardsBudget, gridRows, JOURNEY_PX, GRID_AREAS, GRID_COLUMNS, LOW_COLUMNS, pageLayout, stackedJourneyBudget } from "./layout";
 
 describe("page layout from the measured main area", () => {
   it("puts the right column beside the page from about 1056px of main area", () => {
@@ -28,8 +28,8 @@ describe("the shared page grid", () => {
   });
   it("is the mockup's fitRows exactly, at the three sizes it was approved at (the heights are the grid's)", () => {
     // 1568x765 inside the app: the grid has 651px. The band (never under 144px) and the journey keep their least and the bottom row gives way to the 159px left (never under 110px), so nothing is cut off.
-    // (The mockup's journey least is 314px, 10px short of three rows and their line; the app counts the real chrome: 324px.)
-    expect(gridRows(651, 651)).toEqual({ band: 144, journey: 324, low: 159, template: "144px 324px 159px" });
+    // (The mockup's journey least is 314px, 10px short of three rows and their line; the app counts the real chrome with its 48px header: 328px.)
+    expect(gridRows(651, 651)).toEqual({ band: 144, journey: 328, low: 155, template: "144px 328px 155px" });
     // A window with room for the band's 20% (156px), the journey's 398px and the bottom row's 202px (the gaps between cards are 12px).
     expect(gridRows(780, 780)).toEqual({ band: 156, journey: 398, low: 202, template: "156px 398px 202px" });
     // A tall window: the band is a fifth (220px), and the journey's cards grow while the bottom row keeps a third of the 1076px left (355px).
@@ -39,7 +39,7 @@ describe("the shared page grid", () => {
     expect(JOURNEY_PX).toBe(398);
     expect(gridRows(700, 700).band).toBeGreaterThanOrEqual(144);
     expect(BAND_MIN_PX).toBe(144);
-    expect(gridRows(300, 300)).toMatchObject({ band: 144, journey: 106 + 2 * 68 + 60 + 22, low: 110 });
+    expect(gridRows(300, 300)).toMatchObject({ band: 144, journey: 110 + 2 * 68 + 60 + 22, low: 110 });
     expect(gridRows(2000, 2000).journey).toBe(JOURNEY_PX + 3 * (130 - 94));
   });
   it("is Weir's rule, which depends only on the grid's height: 226 / 506 / 376 at 1132", () => {
@@ -55,10 +55,14 @@ describe("the shared page grid", () => {
     for (const need of [0, 180, 323, 500, 900]) expect(rule(1132, 1132, { lowNeed: need })).toEqual(gridRows(1132, 1132));
   });
   it("follows the rule at heights from 300 to 2000, worked out by hand", () => {
-    // 300: avail 276, nothing fits, so the band is 144, the journey its least 324 and the bottom row its floor 110.
-    expect(gridRows(300, 300).template).toBe("144px 324px 110px");
-    // 630: avail 606; band 144 (a fifth is 126); the journey gives way to 324; the bottom row has 138.
-    expect(gridRows(630, 630).template).toBe("144px 324px 138px");
+    // 300: avail 276, nothing fits, so the band is 144, the journey its least 328 and the bottom row its floor 110.
+    expect(gridRows(300, 300).template).toBe("144px 328px 110px");
+    // 606, the least the grid is drawn in: avail 582 = 144 + 328 + 110.
+    expect(gridRows(606, 606).template).toBe("144px 328px 110px");
+    // 630: avail 606; band 144 (a fifth is 126); the journey gives way to 328; the bottom row has 134.
+    expect(gridRows(630, 630).template).toBe("144px 328px 134px");
+    // 663 (a 1366x768 window): avail 639; band 144 (a fifth is 133); the journey gives way to 328 (639 - 144 - 180 = 315 is under it); the bottom row has 167.
+    expect(gridRows(663, 663).template).toBe("144px 328px 167px");
     // 676: avail 652; band 144; journey 652 - 144 - 180 = 328; the bottom row keeps 180.
     expect(gridRows(676, 676).template).toBe("144px 328px 180px");
     // 800: avail 776; band 160; journey 398; low 218 is under the 260 it keeps, so the journey does not grow.
@@ -97,6 +101,34 @@ describe("the shared page grid", () => {
 });
 
 describe("the least height the shared grid is drawn in", () => {
+  it("is 144 + 328 + 110 + 24 = 606, the journey's chrome being its 110px (a 48px header)", () => {
+    expect(JOURNEY_CHROME_PX).toBe(110);
+    expect(JOURNEY_MIN_PX).toBe(110 + 2 * (60 + 8) + 60 + 22);
+    expect(JOURNEY_MIN_PX).toBe(328);
+    expect(GRID_MIN_PX).toBe(606);
+  });
+  it("never needs more than the window once the window is at least that: rows plus gaps equal the height from 606 up to a tall screen", () => {
+    for (let height = GRID_MIN_PX; height <= 3000; height += 1) {
+      const rows = gridRows(height, height);
+      expect(rows.band + rows.journey + rows.low + 24, `at ${height}`).toBe(height);
+      expect(rows.band, `band at ${height}`).toBeGreaterThanOrEqual(144);
+      expect(rows.journey, `journey at ${height}`).toBeGreaterThanOrEqual(328);
+      expect(rows.low, `low at ${height}`).toBeGreaterThanOrEqual(110);
+    }
+  });
+  it("gives way in order as the window shrinks: the band first, then the journey, then the bottom row", () => {
+    const at = (height: number) => gridRows(height, height).template;
+    // 746: avail 722 = 144 + 398 + 180: the band has shrunk to its 144 (a fifth is 149), the journey is whole, the bottom row keeps 180.
+    expect(at(746)).toBe("144px 398px 180px");
+    // 700: avail 676; the band stays 144; the journey gives way to 676 - 144 - 180 = 352; the bottom row keeps 180.
+    expect(at(700)).toBe("144px 352px 180px");
+    // 676: avail 652; the journey is down to its 328 and the bottom row still has 180.
+    expect(at(676)).toBe("144px 328px 180px");
+    // 675: only now does the bottom row give way: 651 - 144 - 328 = 179.
+    expect(at(675)).toBe("144px 328px 179px");
+    // 606: it has given way to its 110 floor.
+    expect(at(606)).toBe("144px 328px 110px");
+  });
   it("is exactly what the three rows and their gaps take at their smallest, so a shorter tab scrolls instead of overlapping", () => {
     const rows = gridRows(GRID_MIN_PX, GRID_MIN_PX);
     expect(rows.band + rows.journey + rows.low + 24).toBe(GRID_MIN_PX);

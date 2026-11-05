@@ -1,5 +1,5 @@
 /* Your library (#1098): the mockup's shelf (artifacts/live-mockup/approved-final.html), rule for rule, mapped to the app's tokens. Every class is prefixed lsh-. */
-.lsh { padding-bottom: 14px; }
+.lsh { padding-bottom: 12px; }
 
 /* One shelf (#1103): the library chips (FilterChips, in the card header), then the counts line(s), then the posters, which take the rest of the card's height. */
 
