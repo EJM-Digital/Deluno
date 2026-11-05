@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { inProgressFromLists, inProgressTotal, pipelineCards } from "./in-progress";
+import { cardBucket, inProgressFromLists, inProgressTotal, needYouOnBoard, pipelineCards } from "./in-progress";
+import { downloadQueueStatuses } from "../../../lib/download-telemetry";
 import { buildJourney, byStage, type JourneyCard, type Stage } from "./journey";
 import { needsAction } from "../../../lib/needs-action";
 import { journeyHeading } from "./times";
@@ -72,5 +73,36 @@ describe("the In progress number", () => {
     // And it is the amber figure's to count.
     const telemetry = { clients: [{ queue }] } as never;
     expect(needsAction({ telemetry }).total).toBe(1);
+  });
+
+  it("reads 0 for a failed import the client reports only by status and health finding, and counts it in need you", () => {
+    const queue = [queueItem({ id: "g", releaseName: "Gladiator.II.2024", status: "importFailed", progress: 100, speedMbps: 0, etaSeconds: null, errorMessage: null, healthFindings: [{ kind: "import-failed", summary: "The import failed." }] })];
+
+    expect(inProgressFromLists({ queue, handoffs: [], dispatches: [], extras: null, now: NOW })).toBe(0);
+    expect(needsAction({ telemetry: { clients: [{ queue }] } as never }).total).toBe(1);
+  });
+});
+
+describe("in progress and need you partition the board (#1499)", () => {
+  const findings = [null, [], [{ kind: "import-failed", summary: "The import failed." }], [{ kind: "stalled", summary: "Not moving." }]];
+  const statuses = Object.values(downloadQueueStatuses);
+
+  it("puts every card the board draws in exactly one bucket, and need you counts exactly the cards in it", () => {
+    let checked = 0;
+    for (const status of statuses) for (const healthFindings of findings) for (const errorMessage of [null, "It failed."]) for (const progress of [0, 50, 100]) {
+      const queue = [queueItem({ id: "q1", status, healthFindings, errorMessage, progress, speedMbps: progress === 50 ? 0 : 5 })];
+      const cards = pipelineCards(buildJourney({ queue, handoffs: [], dispatches: [], live: new Map(), summary: undefined, now: NOW }), null);
+      const grouped = byStage(cards);
+      const buckets = cards.map(cardBucket);
+      const label = JSON.stringify({ status, healthFindings, errorMessage, progress });
+      const needs = needsAction({ telemetry: { clients: [{ queue }] } as never }).total;
+
+      expect(inProgressTotal(grouped) + needYouOnBoard(grouped) + buckets.filter((b) => b === "neither").length, label).toBe(cards.length);
+      // Every card that is drawn as needing the person is in the amber figure, and none that is in progress is.
+      if (buckets.includes("needsYou")) expect(needs, label).toBeGreaterThanOrEqual(1);
+      if (buckets.includes("inProgress")) expect(needs, label).toBe(0);
+      checked += 1;
+    }
+    expect(checked).toBe(statuses.length * findings.length * 2 * 3);
   });
 });

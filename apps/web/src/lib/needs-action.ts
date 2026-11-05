@@ -106,7 +106,14 @@ export function queueItemNeedsAttention(item: DownloadQueueItem) {
   // A download that is in the library has nothing left to ask of anyone, whatever its client said on the way.
   if (item.status === downloadQueueStatuses.imported) return false;
   // A first strike, or a download still getting its details, is waiting, not a problem (#1449): only the stall rule's decision counts.
-  return Boolean(item.errorMessage) || isStuck(item);
+  return Boolean(item.errorMessage) || isStuck(item) || queueItemFailed(item);
+}
+
+/** The client or Deluno's health check says this download failed after it finished: an import or the processor failed (#1499). */
+export function queueItemFailed(item: Pick<DownloadQueueItem, "status" | "healthFindings">) {
+  return item.status === downloadQueueStatuses.importFailed
+    || item.status === downloadQueueStatuses.processingFailed
+    || (item.healthFindings ?? []).some((finding) => finding.kind?.toLowerCase() === "import-failed");
 }
 
 type RecoveryCase = MovieImportRecoverySummary["recentCases"][number];

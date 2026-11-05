@@ -352,7 +352,9 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
       reason = null;
     }
     if (!stage) continue;
-    if (stage === "importing" && !landed && state.tone !== "bad" && importingNow.has(releaseKey(item.releaseName))) state = { tone: "info", label: IMPORTING_NOW };
+    // Whatever the station, a download the need-you count holds (a client error, a failed import) is drawn amber at least, so the two numbers agree (#1499).
+    if (!landed && state.tone !== "bad" && queueItemNeedsAttention(item)) state = { ...state, tone: "warn" };
+    if (stage === "importing" && !landed && state.tone !== "bad" && state.tone !== "warn" && importingNow.has(releaseKey(item.releaseName))) state = { tone: "info", label: IMPORTING_NOW };
     // The client's name for the download may differ from the one Deluno sent it under (a file extension, a folder): the sent
     // record and the hand-off name the same download, so neither draws a second card for it.
     seenReleases.add(releaseKey(item.releaseName));

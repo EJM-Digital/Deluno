@@ -10,17 +10,32 @@ import { buildJourney, byStage, type JourneyCard, type Stage } from "./journey";
 /** The stations a title passes before it is in the library. */
 const STATIONS_BEFORE_LIBRARY: Stage[] = ["searching", "grabbed", "downloading", "processor", "importing"];
 
-/** A card that is waiting on the person, not on the pipeline: a failure (the bad tone) or a download that has stopped moving. */
-export function cardNeedsAction(card: JourneyCard): boolean {
-  return card.state.tone === "bad" || card.stuck === true;
-}
+/** Where a card counts: moving or waiting its turn, waiting on the person, or neither (finished, in the library). */
+export type CardBucket = "inProgress" | "needsYou" | "neither";
 
 /**
- * The in-progress total: the cards at the stations before the library that are moving or waiting their turn. A card that needs
- * the person (import failed, processor failed, stuck) stays on the board and in the "need you" count, never in this one (#1499).
+ * The one classification behind both numbers (#1499). Every card is in exactly one bucket, so "N in progress" and the amber
+ * "need you" are a partition of the board and cannot drift: a card that needs the person (the bad tone, or a download that
+ * has stopped moving) is never in progress, and a card in progress is never one that needs the person.
  */
+export function cardBucket(card: JourneyCard): CardBucket {
+  if (!STATIONS_BEFORE_LIBRARY.includes(card.stage)) return "neither";
+  return card.state.tone === "bad" || card.state.tone === "warn" || card.stuck === true ? "needsYou" : "inProgress";
+}
+
+/** The cards at each station that are in one bucket. */
+function countBucket(grouped: Record<Stage, JourneyCard[]>, bucket: CardBucket): number {
+  return STATIONS_BEFORE_LIBRARY.reduce((sum, stage) => sum + grouped[stage].filter((card) => cardBucket(card) === bucket).length, 0);
+}
+
+/** The in-progress total: the cards moving or waiting their turn at the stations before the library. */
 export function inProgressTotal(grouped: Record<Stage, JourneyCard[]>): number {
-  return STATIONS_BEFORE_LIBRARY.reduce((sum, stage) => sum + grouped[stage].filter((card) => !cardNeedsAction(card)).length, 0);
+  return countBucket(grouped, "inProgress");
+}
+
+/** The cards on the board that need the person. The sidebar's need-you figure counts each of them (and more that are not cards). */
+export function needYouOnBoard(grouped: Record<Stage, JourneyCard[]>): number {
+  return countBucket(grouped, "needsYou");
 }
 
 /** Every card on the pipeline: the journey of what the clients and the hand-offs hold, plus the titles being searched for. */
