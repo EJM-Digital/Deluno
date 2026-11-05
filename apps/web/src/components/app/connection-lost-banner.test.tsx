@@ -46,3 +46,12 @@ describe("the connection-lost notice (#1497)", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Reconnecting to Deluno");
   });
 });
+
+describe("where the banner sits (#1508)", () => {
+  it("is drawn over the page, not in its flow, so the screen under it is not pushed down", () => {
+    live.status = "reconnecting";
+    const { container } = render(<ConnectionLostBanner />);
+    const banner = container.querySelector("[data-connection-lost]")!;
+    expect(banner.className).toContain("fixed");
+  });
+});
