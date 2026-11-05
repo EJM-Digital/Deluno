@@ -22,6 +22,7 @@ $here = $PSScriptRoot
 . (Join-Path $here 'Update.Lib.ps1')
 . (Join-Path $here 'UpdatePaths.Lib.ps1')
 . (Join-Path $here 'Cdp.Lib.ps1')
+. (Join-Path $here 'scenarios\G20-Volumes.ps1')
 . (Join-Path $here 'scenarios\G24-PlatformExtras.ps1')
 . (Join-Path $here 'scenarios\G22-TrayPlatform.ps1')
 . (Join-Path $here 'scenarios\G26-OtherApps.ps1')
@@ -57,6 +58,9 @@ try {
         'uninstall.keeps-bundled-apps' { Invoke-UninstallKeepsBundledApps -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
         'picker.usenet-login-and-subset' { Invoke-PickerUsenetLoginAndSubset -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
         'update.updates-page-follows' { Invoke-UpdateUpdatesPageFollows -CandidateVersion $CandidateVersion }
+        'update.with-all-bundled-clients' { Invoke-UpdateWithAllBundledClients -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
+        'update.disk-full' { Invoke-UpdateDiskFull -CandidateSetup $CandidateSetup -CandidateVersion $CandidateVersion }
+        'companions.elevated-refusals' { Invoke-CompanionsRefusals }
         'update.tray-menu' { Invoke-UpdateTrayMenu -CandidateVersion $CandidateVersion }
         default { throw "Unknown update scenario '$Scenario'." }
     }

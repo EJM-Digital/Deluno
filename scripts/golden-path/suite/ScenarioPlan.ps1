@@ -11,7 +11,7 @@ $script:UsenetKinds = @('sabnzbd', 'nzbget')
 $script:AllClientKinds = $script:TorrentKinds + $script:UsenetKinds
 
 # The host's own scenarios of the platform extras group (scenarios/G24-PlatformExtras.ps1), run through Run-Update.ps1.
-$script:PlatformExtrasHostIds = @('update.preferences-and-background-check', 'update.killed-mid-apply', 'update.older-build-newer-database', 'uninstall.leaves-nothing-behind', 'uninstall.removes-the-sign-in-entry', 'uninstall.removes-the-windows-service', 'install.silent-first-install', 'companions.install-from-the-page', 'uninstall.custom-data-root', 'update.with-bundled-clients', 'update.locked-install-folder', 'update.background-check-repeats', 'uninstall.keeps-bundled-apps', 'picker.usenet-login-and-subset', 'update.updates-page-follows')
+$script:PlatformExtrasHostIds = @('update.preferences-and-background-check', 'update.killed-mid-apply', 'update.older-build-newer-database', 'uninstall.leaves-nothing-behind', 'uninstall.removes-the-sign-in-entry', 'uninstall.removes-the-windows-service', 'install.silent-first-install', 'companions.install-from-the-page', 'uninstall.custom-data-root', 'update.with-bundled-clients', 'update.locked-install-folder', 'update.background-check-repeats', 'uninstall.keeps-bundled-apps', 'picker.usenet-login-and-subset', 'update.updates-page-follows', 'update.with-all-bundled-clients', 'update.disk-full', 'companions.elevated-refusals')
 
 function Get-ScenarioPlan {
     $all = $script:AllClientKinds
