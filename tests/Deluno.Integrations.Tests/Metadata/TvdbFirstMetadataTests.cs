@@ -598,6 +598,249 @@ public sealed class TvdbFirstMetadataTests : IDisposable
             null,
             episodes.Select(entry => new MetadataEpisode(entry.Season, entry.Episode, null, null, null, null, entry.Source)).ToArray());
 
+    private const string BrokerOneTmdbShow = """
+        { "provider": "deluno-broker", "mode": "broker", "resultCount": 1, "results": [
+            { "provider": "tmdb", "providerId": "{ID}", "mediaType": "tv", "title": "{TITLE}", "year": 2021, "ratings": [], "genres": [] } ] }
+        """;
+
+    /// <summary>#1473: TheTVDB's search has no pages, so page two of a typed TV search is TMDb's alone and TheTVDB is not asked.</summary>
+    [Fact]
+    public async Task A_second_page_of_a_TV_search_is_TMDbs_alone_and_does_not_ask_TheTVDB()
+    {
+        var paths = new List<string>();
+        var provider = await CreateProviderAsync("broker", "https://gateway.test", new(), request =>
+        {
+            paths.Add(request.RequestUri!.AbsolutePath);
+            return Route(request, new() { ["/metadata/search"] = BrokerOneTmdbShow.Replace("{ID}", "76001").Replace("{TITLE}", "Pageful Show") });
+        });
+
+        var results = await provider.SearchAsync(new MetadataLookupRequest("Pageful Show", "tv", null, null, Page: 2), CancellationToken.None);
+
+        Assert.Equal("76001", Assert.Single(results).ProviderId);
+        Assert.DoesNotContain(paths, path => path.Contains("/tvdb/", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_TV_search_whose_TMDb_half_fails_fails_and_does_not_leave_the_TheTVDB_half_unobserved()
+    {
+        var provider = await CreateProviderAsync("broker", "https://gateway.test", new(), request =>
+            request.RequestUri!.AbsolutePath == "/metadata/search"
+                ? throw new HttpRequestException("gateway is down")
+                : Route(request, new() { ["/metadata/tvdb/search"] = """{ "provider": "tvdb", "results": [] }""" }));
+
+        await Assert.ThrowsAnyAsync<Exception>(() => provider.SearchAsync(new MetadataLookupRequest("Down Show", "tv", null, null), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_TV_search_with_TheTVDB_down_shows_TMDbs_results()
+    {
+        var provider = await CreateProviderAsync("broker", "https://gateway.test", new(), request =>
+            request.RequestUri!.AbsolutePath.StartsWith("/metadata/tvdb", StringComparison.Ordinal)
+                ? throw new HttpRequestException("TheTVDB is down")
+                : Route(request, new() { ["/metadata/search"] = BrokerOneTmdbShow.Replace("{ID}", "76002").Replace("{TITLE}", "Tvdb Down Show") }));
+
+        var results = await provider.SearchAsync(new MetadataLookupRequest("Tvdb Down Show", "tv", null, null), CancellationToken.None);
+
+        Assert.Equal("76002", Assert.Single(results).ProviderId);
+    }
+
+    [Fact]
+    public async Task A_TV_search_typed_with_a_year_asks_TheTVDB_for_that_year_first_and_uses_its_hit()
+    {
+        var asked = new List<string>();
+        var provider = await CreateProviderAsync("broker", "https://gateway.test", new(), request =>
+        {
+            asked.Add(request.RequestUri!.PathAndQuery);
+            return Route(request, new()
+            {
+                ["/metadata/tvdb/search"] = """
+                    { "provider": "tvdb", "results": [ { "tvdbId": "86003", "tmdbId": "76003", "title": "Yearly Show", "year": 2021, "overview": "From TheTVDB" } ] }
+                    """,
+                ["/metadata/search"] = BrokerOneTmdbShow.Replace("{ID}", "76003").Replace("{TITLE}", "Yearly Show")
+            });
+        });
+
+        var results = await provider.SearchAsync(new MetadataLookupRequest("Yearly Show 2021", "tv", null, null), CancellationToken.None);
+
+        var result = Assert.Single(results);
+        Assert.Equal("86003", result.TvDbId);
+        Assert.Single(asked, path => path.Contains("tvdb/search", StringComparison.Ordinal));
+        Assert.Contains(asked, path => path.Contains("tvdb/search", StringComparison.Ordinal) && path.Contains("year=2021", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_TV_search_typed_with_a_year_TheTVDB_has_no_hit_for_asks_again_with_the_whole_text()
+    {
+        var asked = new List<string>();
+        var provider = await CreateProviderAsync("broker", "https://gateway.test", new(), request =>
+        {
+            asked.Add(request.RequestUri!.PathAndQuery);
+            return Route(request, new() { ["/metadata/tvdb/search"] = """{ "provider": "tvdb", "results": [] }""", ["/metadata/search"] = BrokerOneTmdbShow.Replace("{ID}", "76004").Replace("{TITLE}", "Unyear Show") });
+        });
+
+        await provider.SearchAsync(new MetadataLookupRequest("Unyear Show 2021", "tv", null, null), CancellationToken.None);
+
+        Assert.Equal(2, asked.Count(path => path.Contains("tvdb/search", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task A_TV_search_of_only_punctuation_looks_up_the_TheTVDB_hits_TMDb_lacks()
+    {
+        var provider = await CreateProviderAsync("broker", "https://gateway.test", new(), request => Route(request, new()
+        {
+            ["/metadata/tvdb/search"] = """
+                { "provider": "tvdb", "results": [
+                    { "tvdbId": "86005", "tmdbId": "76005", "title": "Found Later", "year": 2021 },
+                    { "tvdbId": "86006", "tmdbId": "76006", "title": "Never Found", "year": 2021 } ] }
+                """,
+            ["/metadata/search"] = BrokerOneTmdbShow.Replace("{ID}", "76005").Replace("{TITLE}", "Found Later")
+        }));
+
+        var results = await provider.SearchAsync(new MetadataLookupRequest("!!!", "tv", null, null), CancellationToken.None);
+
+        Assert.Contains(results, result => result.ProviderId == "76005");
+    }
+
+    [Fact]
+    public async Task A_TMDb_lookup_for_a_TheTVDB_hit_that_fails_leaves_that_hit_out_and_keeps_the_rest()
+    {
+        var provider = await CreateProviderAsync("broker", "https://gateway.test", new(), request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path == "/metadata/search" && request.RequestUri.Query.Contains("76008", StringComparison.Ordinal))
+            {
+                throw new HttpRequestException("TMDb lookup failed");
+            }
+
+            return Route(request, new()
+            {
+                ["/metadata/tvdb/search"] = """
+                    { "provider": "tvdb", "results": [ { "tvdbId": "86008", "tmdbId": "76008", "title": "Broken Lookup", "year": 2021 } ] }
+                    """,
+                ["/metadata/search"] = BrokerOneTmdbShow.Replace("{ID}", "76007").Replace("{TITLE}", "Broken Lookup")
+            });
+        });
+
+        var results = await provider.SearchAsync(new MetadataLookupRequest("Broken Lookup", "tv", null, null), CancellationToken.None);
+
+        Assert.Equal("76007", Assert.Single(results).ProviderId);
+    }
+
+    [Fact]
+    public async Task The_episode_orders_find_TheTVDBs_id_through_the_IMDb_id_when_TMDb_has_no_TheTVDB_id()
+    {
+        var asked = new List<string>();
+        var provider = await CreateProviderAsync("broker", "https://gateway.test", new(), request =>
+        {
+            asked.Add(request.RequestUri!.AbsolutePath);
+            return Route(request, new()
+            {
+                ["/metadata/search"] = """
+                    { "provider": "deluno-broker", "mode": "broker", "resultCount": 1, "results": [
+                        { "provider": "tmdb", "providerId": "76010", "mediaType": "tv", "title": "Imdb Only", "year": 2022, "ratings": [], "genres": [], "imdbId": "tt7601000" } ] }
+                    """,
+                ["/metadata/tvdb/remote/tt7601000"] = """{ "provider": "tvdb", "tvdbId": "86010" }""",
+                ["/metadata/tvdb/tv/86010/episode-groups"] = """
+                    { "provider": "tvdb", "groups": [ { "type": 2, "providerGroupId": "tvdb:86010:absolute", "name": "Absolute order",
+                        "episodes": [ { "originalSeasonNumber": 1, "originalEpisodeNumber": 1, "groupSeasonNumber": 1, "groupEpisodeNumber": 25 } ] } ] }
+                    """
+            });
+        });
+
+        var groups = await provider.GetSeriesEpisodeGroupsAsync("76010", CancellationToken.None);
+
+        Assert.Single(groups);
+        Assert.Contains("/metadata/tvdb/remote/tt7601000", asked);
+    }
+
+    [Fact]
+    public async Task An_IMDb_id_that_is_not_an_IMDb_id_is_never_sent_to_TheTVDB()
+    {
+        var asked = new List<string>();
+        var provider = await CreateProviderAsync("broker", "https://gateway.test", new(), request =>
+        {
+            asked.Add(request.RequestUri!.AbsolutePath);
+            return Route(request, new()
+            {
+                ["/metadata/search"] = """
+                    { "provider": "deluno-broker", "mode": "broker", "resultCount": 1, "results": [
+                        { "provider": "tmdb", "providerId": "76011", "mediaType": "tv", "title": "Odd Imdb", "year": 2022, "ratings": [], "genres": [], "imdbId": "not-an-id" } ] }
+                    """
+            });
+        });
+
+        await provider.GetSeriesEpisodeGroupsAsync("76011", CancellationToken.None);
+
+        Assert.DoesNotContain(asked, path => path.Contains("/tvdb/remote", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_show_TheTVDB_calls_upcoming_is_In_Production_in_Delunos_words()
+    {
+        var provider = await CreateProviderAsync(
+            "direct",
+            string.Empty,
+            new() { ["TVDB_API_KEY"] = "placeholder-tvdb-key-" + Guid.NewGuid().ToString("N") },
+            request => Route(request, new()
+            {
+                ["/3/tv/71004"] = TmdbTvDetail.Replace("71001", "71004").Replace("81100", "81104").Replace("Returning Series", "Planned"),
+                ["/v4/login"] = """{ "data": { "token": "t1" } }""",
+                ["/v4/series/81104/extended"] = TvdbSeriesExtended.Replace("81100", "81104").Replace("Continuing", "Upcoming"),
+                ["/v4/series/81104/translations/eng"] = """{ "data": { "name": "Some Show", "overview": "English overview." } }"""
+            }));
+
+        var lookup = await provider.ResolveProviderRecordAsync(
+            new MetadataLookupRequest("Some Show", "tv", 2019, "71004"),
+            CancellationToken.None);
+
+        Assert.Equal("In Production", lookup.Result!.Status);
+    }
+
+    [Fact]
+    public async Task A_TV_search_with_nothing_typed_does_not_ask_TheTVDB()
+    {
+        var asked = new List<string>();
+        var provider = await CreateProviderAsync("broker", "https://gateway.test", new(), request =>
+        {
+            asked.Add(request.RequestUri!.AbsolutePath);
+            return Route(request, new() { ["/metadata/search"] = """{ "provider": "deluno-broker", "mode": "broker", "resultCount": 0, "results": [] }""" });
+        });
+
+        var results = await provider.SearchAsync(new MetadataLookupRequest("   ", "tv", null, null), CancellationToken.None);
+
+        Assert.Empty(results);
+        Assert.DoesNotContain(asked, path => path.Contains("/tvdb/", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task An_episode_list_with_gaps_that_TMDb_cannot_fill_is_still_TheTVDBs()
+    {
+        var provider = await CreateProviderAsync("broker", "https://gateway.test", new(), request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path != "/metadata/search" && !path.StartsWith("/metadata/tvdb/", StringComparison.Ordinal))
+            {
+                throw new HttpRequestException("TMDb is down");
+            }
+
+            return Route(request, new()
+            {
+                ["/metadata/search"] = """
+                    { "provider": "deluno-broker", "mode": "broker", "resultCount": 1, "results": [
+                        { "provider": "tmdb", "providerId": "76012", "mediaType": "tv", "title": "Gappy", "year": 2022, "ratings": [], "genres": [], "tvDbId": "86012" } ] }
+                    """,
+                ["/metadata/tvdb/tv/86012/catalogue"] = """
+                    { "provider": "tvdb", "seasons": [ { "seasonNumber": 1, "episodes": [ { "episodeNumber": 1, "title": "", "overview": "", "airDate": null } ] } ] }
+                    """
+            });
+        });
+
+        var seasons = await provider.GetSeriesCatalogueAsync("76012", MetadataCatalogueSource.Preferred, CancellationToken.None);
+
+        var episode = Assert.Single(Assert.Single(seasons).Episodes);
+        Assert.Equal(1, episode.EpisodeNumber);
+    }
+
     /// <summary>Answers by request path (TMDb, TheTVDB and gateway paths never collide in these tests).</summary>
     private static HttpResponseMessage Route(HttpRequestMessage request, Dictionary<string, string> routes)
     {
