@@ -12,7 +12,7 @@ function Test-IsTorrent { param([string] $Kind) $Kind -in 'qbittorrent', 'transm
 function New-FilmFor {
     param([Parameter(Mandatory)] [string] $Kind, [string] $Layout = 'folder', [string] $Variant = 'complete', [string] $Size = 'small', [switch] $Extra, [string] $Label = 'film', [switch] $Slow, [switch] $HangLast, [switch] $HangAll)
     if (Test-IsTorrent $Kind) { $f = New-TorrentFilm -Client $Kind -Layout $Layout -Variant $Variant -Size $Size -Extra:$Extra -Label $Label }
-    else { $f = New-UsenetFilm -Size $Size -Label $Label -Slow:$Slow -HangLast:$HangLast -HangAll:$HangAll }
+    else { $f = New-UsenetFilm -Size $Size -Label $Label -Slow:$Slow -HangLast:$HangLast -HangAll:$HangAll -Extra:$Extra }
     [void]$script:AllFilms.Add($f)
     $f
 }

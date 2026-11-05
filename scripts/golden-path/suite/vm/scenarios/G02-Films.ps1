@@ -19,11 +19,12 @@ function Get-WeirLogText {
 
 function Invoke-GroupFilms {
     # Send everything first. A torrent client gets a film in its own folder; qBittorrent's carries the small extra.
-    # Only the films the chosen scenarios read: a client's own, and qBittorrent's for the extra that is left out.
-    $needed = @(Get-AllKinds | Where-Object { (Test-ScenarioSelected "film.$_") -or ($_ -eq 'qbittorrent' -and (Test-ScenarioSelected 'film.extra-left-out')) })
+    # Only the films the chosen scenarios read: a client's own, and the film each client's extra-left-out scenario reads. Every client's film carries
+    # the small extra when its extra-left-out scenario is chosen (qBittorrent's always has it).
+    $needed = @(Get-AllKinds | Where-Object { (Test-ScenarioSelected "film.$_") -or ($_ -eq 'qbittorrent' -and (Test-ScenarioSelected 'film.extra-left-out')) -or (Test-ScenarioSelected "film.extra-left-out.$_") })
     foreach ($kind in $needed) {
         try {
-            $film = New-FilmFor -Kind $kind -Layout 'folder' -Extra:($kind -eq 'qbittorrent') -Label 'film'
+            $film = New-FilmFor -Kind $kind -Layout 'folder' -Extra:($kind -eq 'qbittorrent' -or (Test-ScenarioSelected "film.extra-left-out.$kind")) -Label 'film'
             $script:FilmByKind[$kind] = Send-Film -Film $film -Kind $kind
         }
         catch { Write-SuiteLog "   could not send the $kind film: $($_.Exception.Message)"; $script:FilmByKind[$kind] = $null }
@@ -88,5 +89,30 @@ function Invoke-GroupFilms {
         Add-Check 'Weir cleaned the film (the hand-off carries the output path Weir gave it, named for the film)' ($h -and "$($h.outputPath)" -match [regex]::Escape($film.Title)) $(if ($h) { "$($h.outputPath)" } else { '' })
         Add-Check 'Weir''s log shows it reported a completed hand-off to Deluno' ($weirLog -match 'Hand-off callback: reported completed') ''
         Add-Check 'Weir''s log never names the extra' ($weirLog -notmatch 'featurette') ''
+    }
+
+    # The same on the other four clients: the extra is left out of the hand-off and the library, and stays in the client's own folder.
+    # A torrent's release folder carries Featuretteseaturette.mkv; a Usenet job holds featurette.mkv posted beside the film in the same .nzb.
+    foreach ($kind in @(Get-AllKinds | Where-Object { $_ -ne 'qbittorrent' })) {
+        Invoke-Scenario -Id "film.extra-left-out.$kind" -Title "A small extra in the $kind release is left out of the hand-off and stays in the client's folder" -Body {
+            $film = $script:FilmByKind[$kind]
+            if (-not $film) { throw "The $kind film could not be sent." }
+            Wait-FilmImported -Film $film | Out-Null
+            $clientFolder = Get-ChildItem -Path 'C:\Downloads' -Recurse -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq $film.Release } | Select-Object -First 1
+            Add-Check "The release folder is still in $kind's folder" ($null -ne $clientFolder) ''
+            if ($clientFolder) {
+                $extra = Get-ChildItem -Path $clientFolder.FullName -Recurse -File -Filter 'featurette.mkv' -ErrorAction SilentlyContinue | Select-Object -First 1
+                Add-Check "The extra (featurette.mkv) is still in $kind's folder" ($null -ne $extra) $(if ($extra) { $extra.FullName } else { '' })
+            }
+            Add-Check 'The film was imported' ($null -ne (Find-Imported -Title $film.Title)) ''
+            $libExtras = @(Get-ChildItem -Path 'C:\Media\Movies' -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'featurette' })
+            Add-Check 'The extra is not in the library' ($libExtras.Count -eq 0) ''
+            $weirOut = @(Get-ChildItem -Path 'C:\Weir\Ready' -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'featurette' })
+            Add-Check 'The extra is not in Weir''s output' ($weirOut.Count -eq 0) ''
+            $h = Get-FilmHandoff -Film $film
+            Add-Check 'The hand-off settled' ($h -and $h.status -eq 'completed') $(if ($h) { $h.status } else { 'no hand-off' })
+            Add-Check 'Weir cleaned the film (the hand-off carries the output path Weir gave it, named for the film)' ($h -and "$($h.outputPath)" -match [regex]::Escape($film.Title)) $(if ($h) { "$($h.outputPath)" } else { '' })
+            Add-Check 'Weir''s log never names the extra' ((Get-WeirLogText) -notmatch 'featurette') ''
+        }
     }
 }

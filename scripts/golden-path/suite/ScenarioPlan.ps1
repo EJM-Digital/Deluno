@@ -18,7 +18,7 @@ function Get-ScenarioPlan {
     $groups = @(
         @{ Name = 'install';  Function = 'Invoke-GroupInstall';  Ids = @('install-first-run', 'install.clients-ready') }
         @{ Name = 'nzbgetsetup'; Function = 'Invoke-GroupNzbgetSetup'; Ids = @('nzbget.setup-twice') }
-        @{ Name = 'films';    Function = 'Invoke-GroupFilms';    Ids = @($all | ForEach-Object { "film.$_" }) + @('film.extra-left-out') }
+        @{ Name = 'films';    Function = 'Invoke-GroupFilms';    Ids = @($all | ForEach-Object { "film.$_" }) + @('film.extra-left-out') + @($all | Where-Object { $_ -ne 'qbittorrent' } | ForEach-Object { "film.extra-left-out.$_" }) }
         @{ Name = 'removal';  Function = 'Invoke-GroupRemoval';  Ids = @($all | ForEach-Object { "remove-copy.$_.folder" }) + @($script:TorrentKinds | ForEach-Object { "remove-copy.$_.file" }) }
         @{ Name = 'resend';   Function = 'Invoke-GroupResend';   Ids = @(foreach ($t in 'before', 'during', 'after') { foreach ($k in $all) { "resend.$t.$k" } }) + @('resend.single-file.takeover') }
         @{ Name = 'stuck';    Function = 'Invoke-GroupStuck';    Ids = @($all | ForEach-Object { "stuck.zero.$_" }) + @($all | ForEach-Object { "stuck.short.$_" }) + @($script:TorrentKinds | ForEach-Object { "stuck.peers.$_" }) + @($script:UsenetKinds | ForEach-Object { "stuck.slow.$_" }) }

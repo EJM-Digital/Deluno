@@ -230,14 +230,18 @@ function New-UsenetFilm {
     param(
         [ValidateSet('small', 'big')] [string] $Size = 'small',
         [string] $Label = 'film',
-        [switch] $HangLast, [switch] $HangAll, [switch] $Slow
+        [switch] $HangLast, [switch] $HangAll, [switch] $Slow,
+        # Posts a small featurette.mkv beside the film in the same job (it must stay out of the hand-off, and stay in the client's folder).
+        [switch] $Extra
     )
     $token = New-FilmToken
     $title = ('Gp{0}{1}' -f $Label, $token).Replace('-', '')
     $year = 2020
     $release = "$title.$year.1080p.WEB-DL.x264-GOLDEN"
     $dir = Join-Path (Get-SuiteRoot) "films\$release-nzb"
-    & (Get-RepoScript 'usenet-stub\New-UsenetRelease.ps1') -OutDirectory $dir -Name $release -SourceFile $script:Fx.Base[$Size] -MinimumMegabytes 1 -PartSizeKilobytes 1500 | Out-Null
+    $releaseArgs = @{ OutDirectory = $dir; Name = $release; SourceFile = $script:Fx.Base[$Size]; MinimumMegabytes = 1; PartSizeKilobytes = 1500 }
+    if ($Extra) { $releaseArgs.ExtraVideoFile = $script:Fx.Base['extra'] }
+    & (Get-RepoScript 'usenet-stub\New-UsenetRelease.ps1') @releaseArgs | Out-Null
     $articles = Join-Path $dir 'articles'
     Copy-Item -Path (Join-Path $articles '*.art') -Destination (Join-Path $script:Fx.Stub 'release\articles') -Force
     New-Item -ItemType Directory -Force -Path (Join-Path $script:Fx.Feed 'torrents') | Out-Null

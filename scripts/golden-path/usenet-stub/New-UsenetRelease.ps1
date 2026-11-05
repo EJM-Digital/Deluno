@@ -40,6 +40,9 @@
 .PARAMETER ExtraKilobytes
     When above 0 the release is a folder job: a small .nfo of about this many kilobytes is posted beside the film, in the same .nzb.
 
+.PARAMETER ExtraVideoFile
+    A small video file posted beside the film in the same .nzb as featurette.mkv (a folder job), for the extra that must be left out of the hand-off.
+
 .PARAMETER MinimumMegabytes
     The smallest the video may be. Defaults to 1550, above Deluno's 1.5 GB film minimum for WEB 1080p at the 2-hour default runtime (1536 MB) and Weir's 50 MB floor.
 
@@ -60,7 +63,8 @@ param(
     [int] $DurationSeconds = 600,
     [int] $PartSizeKilobytes = 700,
     [string] $Group = 'alt.binaries.golden',
-    [int] $ExtraKilobytes = 0
+    [int] $ExtraKilobytes = 0,
+    [string] $ExtraVideoFile
 )
 
 $ErrorActionPreference = 'Stop'
@@ -163,9 +167,10 @@ if ($ExtraKilobytes -gt 0) {
     while ($text.Length -lt $ExtraKilobytes * 1KB) { $line++; [void]$text.AppendLine(('Line {0} of the note that travels beside the film in this stub release, here so the release holds more than one file.' -f $line)) }
     [IO.File]::WriteAllText($extra, $text.ToString(), (New-Object Text.UTF8Encoding($false)))
 }
-$fileCount = if ($extra) { 2 } else { 1 }
+$fileCount = 1 + $(if ($extra) { 1 } else { 0 }) + $(if ($ExtraVideoFile) { 1 } else { 0 })
 $postedFiles = @(Add-PostedFile $video $fileName 1)
 if ($extra) { $postedFiles += Add-PostedFile $extra "$Name.nfo" 2 }
+if ($ExtraVideoFile) { $postedFiles += Add-PostedFile $ExtraVideoFile 'featurette.mkv' ($postedFiles.Count + 1) }
 $size = (Get-Item $video).Length
 $total = $postedFiles[0].Total
 $crc = $postedFiles[0].Crc
