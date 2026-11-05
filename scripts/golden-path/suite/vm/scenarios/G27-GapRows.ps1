@@ -13,6 +13,7 @@
       install.sign-ins-recorded        the picker's install record and sign-ins: every installed client recorded, SABnzbd's own key kept, Deluge given no login
       hub.connection-used-processor    a real hand-off to Weir pushes ConnectionUsed with today's count
       weir.connect-variations          Connect Weir with missing details, a wrong password and when already connected
+      indexer.proxy-requests           a request really leaves through the indexer's HTTP and SOCKS5 proxy, and a wrong proxy password is refused with 407
 #>
 
 # ---------------------------------------------------------------- helpers
@@ -60,6 +61,176 @@ function Get-SabnzbdIni {
             if ($base) { Get-ChildItem -Path (Join-Path $base 'sabnzbd') -Filter 'sabnzbd.ini' -ErrorAction SilentlyContinue }
         }) | Select-Object -First 1
     if ($found) { Get-Content -Raw -LiteralPath $found.FullName } else { '' }
+}
+
+# A forward proxy for the proxy scenario: HTTP (absolute-address requests and CONNECT) and SOCKS5, both asking for a login, writing down
+# every request it passes on and every one it turns away. Plain C# 5, because Windows PowerShell 5.1 compiles it.
+function Initialize-GoldenProxyType {
+    if (([System.Management.Automation.PSTypeName]'GoldenProxy').Type) { return }
+    Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class GoldenProxy
+{
+    private TcpListener _listener;
+    private string _user;
+    private string _pass;
+    private readonly List<string> _log = new List<string>();
+    public int Rejected;
+    public string MapFrom = "";
+    public string MapTo = "";
+
+    private string Real(string host) { return host == MapFrom ? MapTo : host; }
+
+    public string[] Lines { get { lock (_log) { return _log.ToArray(); } } }
+
+    private void Note(string line) { lock (_log) { _log.Add(line); } }
+
+    public void Start(int port, string user, string pass)
+    {
+        _user = user; _pass = pass;
+        _listener = new TcpListener(IPAddress.Loopback, port);
+        _listener.Start();
+        Thread t = new Thread(Accept);
+        t.IsBackground = true;
+        t.Start();
+    }
+
+    public void Stop() { try { _listener.Stop(); } catch (Exception) { } }
+
+    private void Accept()
+    {
+        while (true)
+        {
+            TcpClient c;
+            try { c = _listener.AcceptTcpClient(); } catch (Exception) { return; }
+            Task.Run(() => Serve(c));
+        }
+    }
+
+    private static void Write(NetworkStream s, string text) { byte[] b = Encoding.ASCII.GetBytes(text); s.Write(b, 0, b.Length); }
+
+    private void Serve(TcpClient client)
+    {
+        try
+        {
+            NetworkStream s = client.GetStream();
+            int first = s.ReadByte();
+            if (first == 5) { ServeSocks(client, s); return; }
+            StringBuilder head = new StringBuilder();
+            head.Append((char)first);
+            byte[] one = new byte[1];
+            while (head.Length < 16384)
+            {
+                if (s.Read(one, 0, 1) != 1) break;
+                head.Append((char)one[0]);
+                if (head.Length >= 4 && head.ToString(head.Length - 4, 4) == "\r\n\r\n") break;
+            }
+            string[] lines = head.ToString().Split(new string[] { "\r\n" }, StringSplitOptions.None);
+            string[] request = lines[0].Split(' ');
+            string method = request[0];
+            string target = request.Length > 1 ? request[1] : "";
+            string wanted = "Basic " + Convert.ToBase64String(Encoding.ASCII.GetBytes(_user + ":" + _pass));
+            string given = "";
+            foreach (string line in lines)
+            {
+                if (line.StartsWith("Proxy-Authorization:", StringComparison.OrdinalIgnoreCase)) given = line.Substring(20).Trim();
+            }
+            if (given != wanted)
+            {
+                Interlocked.Increment(ref Rejected);
+                Note("407 " + method + " " + target);
+                Write(s, "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"golden\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                client.Close();
+                return;
+            }
+            if (method == "CONNECT")
+            {
+                string[] hp = target.Split(':');
+                TcpClient upstream = new TcpClient(Real(hp[0]), int.Parse(hp[1]));
+                Note("CONNECT " + target);
+                Write(s, "HTTP/1.1 200 Connection established\r\n\r\n");
+                Pipe(client, upstream);
+                return;
+            }
+            Uri uri = new Uri(target);
+            Note(method + " " + target);
+            TcpClient origin = new TcpClient(Real(uri.Host), uri.Port);
+            NetworkStream o = origin.GetStream();
+            StringBuilder outgoing = new StringBuilder();
+            outgoing.Append(method + " " + uri.PathAndQuery + " HTTP/1.1\r\n");
+            bool hasHost = false;
+            for (int i = 1; i < lines.Length; i++)
+            {
+                string line = lines[i];
+                if (line.Length == 0) continue;
+                if (line.StartsWith("Proxy-", StringComparison.OrdinalIgnoreCase)) continue;
+                if (line.StartsWith("Connection:", StringComparison.OrdinalIgnoreCase)) continue;
+                if (line.StartsWith("Host:", StringComparison.OrdinalIgnoreCase)) { hasHost = true; outgoing.Append("Host: " + Real(uri.Host) + ":" + uri.Port + "\r\n"); continue; }
+                outgoing.Append(line + "\r\n");
+            }
+            if (!hasHost) outgoing.Append("Host: " + Real(uri.Host) + ":" + uri.Port + "\r\n");
+            outgoing.Append("Connection: close\r\n\r\n");
+            Write(o, outgoing.ToString());
+            o.CopyTo(s);
+            origin.Close();
+            client.Close();
+        }
+        catch (Exception) { try { client.Close(); } catch (Exception) { } }
+    }
+
+    private void ServeSocks(TcpClient client, NetworkStream s)
+    {
+        int count = s.ReadByte();
+        byte[] methods = new byte[count];
+        s.Read(methods, 0, count);
+        s.WriteByte(5); s.WriteByte(2);
+        s.ReadByte();
+        int ulen = s.ReadByte();
+        byte[] u = new byte[ulen]; s.Read(u, 0, ulen);
+        int plen = s.ReadByte();
+        byte[] p = new byte[plen]; s.Read(p, 0, plen);
+        if (Encoding.ASCII.GetString(u) != _user || Encoding.ASCII.GetString(p) != _pass)
+        {
+            Interlocked.Increment(ref Rejected);
+            Note("SOCKS5 refused the login");
+            s.WriteByte(1); s.WriteByte(1);
+            client.Close();
+            return;
+        }
+        s.WriteByte(1); s.WriteByte(0);
+        byte[] head = new byte[4];
+        s.Read(head, 0, 4);
+        string host;
+        if (head[3] == 1) { byte[] a = new byte[4]; s.Read(a, 0, 4); host = new IPAddress(a).ToString(); }
+        else if (head[3] == 3) { int n = s.ReadByte(); byte[] a = new byte[n]; s.Read(a, 0, n); host = Encoding.ASCII.GetString(a); }
+        else { byte[] a = new byte[16]; s.Read(a, 0, 16); host = new IPAddress(a).ToString(); }
+        int hi = s.ReadByte(); int lo = s.ReadByte();
+        int port = hi * 256 + lo;
+        Note("SOCKS5 CONNECT " + host + ":" + port);
+        TcpClient upstream = new TcpClient(Real(host), port);
+        byte[] ok = new byte[] { 5, 0, 0, 1, 0, 0, 0, 0, 0, 0 };
+        s.Write(ok, 0, ok.Length);
+        Pipe(client, upstream);
+    }
+
+    private static void Pipe(TcpClient a, TcpClient b)
+    {
+        Task t1 = Task.Run(() => { try { a.GetStream().CopyTo(b.GetStream()); b.Client.Shutdown(SocketShutdown.Send); } catch (Exception) { } });
+        Task t2 = Task.Run(() => { try { b.GetStream().CopyTo(a.GetStream()); a.Client.Shutdown(SocketShutdown.Send); } catch (Exception) { } });
+        Task.WaitAll(new Task[] { t1, t2 }, 120000);
+        try { a.Close(); } catch (Exception) { }
+        try { b.Close(); } catch (Exception) { }
+    }
+}
+'@
 }
 
 function Invoke-GroupGapRows {
@@ -429,6 +600,76 @@ function Invoke-GroupGapRows {
             Add-Check 'When Weir finished, the number it has right now fell while the count for today stayed' ([int]$last.busy -lt [int]$used[0].Args[0].busy -or [int]$last.busy -eq 0) "first busy $($used[0].Args[0].busy), last busy $($last.busy), today $($last.countToday)"
         }
         finally { Close-HubConnection -Connection $hub }
+    }
+
+    # ---------------------------------------------------------------- the indexer proxy
+    Invoke-Scenario -Id 'indexer.proxy-requests' -Title 'A request really leaves through the indexer''s proxy: the test (caps and search) and the torrent fetch go through an HTTP proxy, a wrong proxy password is refused with 407 and nothing is passed on, and a SOCKS5 proxy takes the same request through its handshake' -Body {
+        Initialize-GoldenProxyType
+        $indexerId = $script:Fx.IndexerIds.torrent
+        $pass = 'Px-' + [guid]::NewGuid().ToString('N').Substring(0, 10)
+        $script:S.Secrets['gaprows-proxy-pass'] = $pass
+        $http = New-Object GoldenProxy
+        $socks = New-Object GoldenProxy
+        # .NET never sends a request for a loopback address through a proxy, so the feed is reached by a name only the proxy can resolve.
+        $http.MapFrom = 'golden-feed.test'; $http.MapTo = '127.0.0.1'
+        $socks.MapFrom = 'golden-feed.test'; $socks.MapTo = '127.0.0.1'
+        $feedUrl = "http://127.0.0.1:$($script:Fx.FeedPort)"
+        $proxiedUrl = "http://golden-feed.test:$($script:Fx.FeedPort)"
+        $made =New-Object System.Collections.ArrayList
+        try {
+            $http.Start(18890, 'proxyuser', $pass)
+            $socks.Start(18891, 'proxyuser', $pass)
+            $good = Invoke-Deluno -Method POST -Path '/api/indexer-proxies' -Body @{ name = 'Golden HTTP proxy'; proxyType = 'http'; address = '127.0.0.1:18890'; username = 'proxyuser'; password = $pass; isEnabled = $true }
+            [void]$made.Add($good.id)
+            $wrong = Invoke-Deluno -Method POST -Path '/api/indexer-proxies' -Body @{ name = 'Golden HTTP proxy, wrong password'; proxyType = 'http'; address = '127.0.0.1:18890'; username = 'proxyuser'; password = ($pass + 'x'); isEnabled = $true }
+            [void]$made.Add($wrong.id)
+            $s5 = Invoke-Deluno -Method POST -Path '/api/indexer-proxies' -Body @{ name = 'Golden SOCKS5 proxy'; proxyType = 'socks5'; address = '127.0.0.1:18891'; username = 'proxyuser'; password = $pass; isEnabled = $true }
+            [void]$made.Add($s5.id)
+            Add-Check 'Three proxies were added (HTTP, HTTP with a wrong password, SOCKS5)' ($made.Count -eq 3 -and -not ($made -contains $null)) ''
+
+            # Through the HTTP proxy: the test asks the feed for its caps and a search; the proxy sees both.
+            Invoke-Deluno -Method PUT -Path "/api/indexers/$indexerId" -Body @{ proxyId = $good.id; baseUrl = $proxiedUrl } | Out-Null
+            $t = Try-Deluno -Method POST -Path "/api/indexers/$indexerId/test" -TimeoutSec 120
+            Save-Evidence -Name 'proxy-http-test.json' -Text $t.Raw
+            Add-Check 'The indexer test through the HTTP proxy is healthy' ($t.Status -eq 200 -and $t.Raw -match '(?i)healthy') "HTTP $($t.Status) $($t.Raw)"
+            $lines = @($http.Lines)
+            Save-Evidence -Name 'proxy-http-lines.txt' -Text ($lines -join "`n")
+            Add-Check 'The proxy turned the first, unsigned request away with 407, then passed on the signed one' ($http.Rejected -ge 1 -and @($lines | Where-Object { $_ -like 'GET http://127.0.0.1:*' }).Count -ge 1) "rejected $($http.Rejected); $($lines.Count) lines"
+            Add-Check 'The caps request left through the proxy' (@($lines | Where-Object { $_ -match 't=caps' }).Count -ge 1) ''
+            Add-Check 'A search request left through the proxy' (@($lines | Where-Object { $_ -like 'GET *' -and $_ -notmatch 't=caps' }).Count -ge 1) ''
+
+            # The torrent file of a grab is fetched through the proxy too.
+            $film = New-FilmFor -Kind 'qbittorrent' -Layout 'file' -Label 'proxied'
+            $film.Url = ([string]$film.Url).Replace('127.0.0.1', 'golden-feed.test')
+            $film = Send-Film -Film $film -Kind 'qbittorrent'
+            Add-Check 'The grab was accepted' ($null -ne $film.MovieId) ''
+            $fetched = Wait-Until -TimeoutSec 60 -IntervalSec 2 -Condition { @(@($http.Lines) | Where-Object { $_ -match '/dl/' }).Count -gt 0 }
+            Add-Check 'The torrent file was fetched through the proxy' $fetched.Ok ((@($http.Lines) | Select-Object -Last 3) -join ' | ')
+            Wait-FilmFinished -Film $film -TimeoutSec 240 | Out-Null
+
+            # A wrong password: refused with 407 every time, and nothing reaches the feed.
+            Invoke-Deluno -Method PUT -Path "/api/indexers/$indexerId" -Body @{ proxyId = $wrong.id } | Out-Null
+            $passedOn = @(@($http.Lines) | Where-Object { $_ -notlike '407 *' }).Count
+            $rejectedBefore = $http.Rejected
+            $bad = Try-Deluno -Method POST -Path "/api/indexers/$indexerId/test" -TimeoutSec 120
+            Save-Evidence -Name 'proxy-wrong-password-test.json' -Text $bad.Raw
+            Add-Check 'With the wrong proxy password the indexer test is not healthy and says so' ($bad.Status -eq 200 -and $bad.Raw -notmatch '"healthStatus"\s*:\s*"healthy"' -and $bad.Raw -match '(?i)proxy|407|authenticat') "HTTP $($bad.Status) $($bad.Raw)"
+            Add-Check 'The proxy answered 407 again and passed nothing on' ($http.Rejected -gt $rejectedBefore -and @(@($http.Lines) | Where-Object { $_ -notlike '407 *' }).Count -eq $passedOn) "rejected $($http.Rejected)"
+
+            # SOCKS5: the handshake with a login, then the same request.
+            Invoke-Deluno -Method PUT -Path "/api/indexers/$indexerId" -Body @{ proxyId = $s5.id } | Out-Null
+            $t5 = Try-Deluno -Method POST -Path "/api/indexers/$indexerId/test" -TimeoutSec 120
+            Save-Evidence -Name 'proxy-socks5-test.json' -Text $t5.Raw
+            Add-Check 'The indexer test through the SOCKS5 proxy is healthy' ($t5.Status -eq 200 -and $t5.Raw -match '(?i)healthy') "HTTP $($t5.Status) $($t5.Raw)"
+            Add-Check 'The SOCKS5 proxy opened a connection to the feed after the login' (@(@($socks.Lines) | Where-Object { $_ -like 'SOCKS5 CONNECT 127.0.0.1:*' }).Count -ge 1) ((@($socks.Lines)) -join ' | ')
+        }
+        finally {
+            try { Invoke-Deluno -Method PUT -Path "/api/indexers/$indexerId" -Body @{ clearProxy = $true; baseUrl = $feedUrl } | Out-Null } catch { Write-SuiteLog "   could not clear the indexer's proxy: $($_.Exception.Message)" }
+            foreach ($id in $made) { if ($id) { try { Try-Deluno -Method DELETE -Path "/api/indexer-proxies/$id" | Out-Null } catch { } } }
+            $http.Stop(); $socks.Stop()
+        }
+        $direct = Try-Deluno -Method POST -Path "/api/indexers/$indexerId/test" -TimeoutSec 120
+        Add-Check 'Back on a direct connection the indexer is healthy again' ($direct.Status -eq 200 -and $direct.Raw -match '(?i)healthy') ''
     }
 
     # ---------------------------------------------------------------- Connect Weir
