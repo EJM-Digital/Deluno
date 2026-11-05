@@ -177,6 +177,33 @@ public sealed class HandledProblemsSettlerTests
         Assert.Contains("in the library now", line.Message);
     }
 
+    // #1511
+    [Fact]
+    public async Task A_finished_download_waiting_for_import_is_closed_when_its_title_got_a_different_release_by_hand()
+    {
+        Listed(FailedImport("d-w", "movie", "movie-1") with { ImportStatus = "pending", ImportDetectedUtc = Created, ImportFailureCode = null, ImportFailureMessage = null });
+        _movies.Setup(repo => repo.GetTitleFileHoldsAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Holds("movie-1", Created.AddHours(3)));
+
+        Assert.Equal(1, await Settler().SettleAsync(CancellationToken.None));
+
+        _dispatches.Verify(repo => repo.RecordImportOutcomeAsync("d-w", "imported", It.IsAny<string?>(), null, null, It.IsAny<CancellationToken>(), null), Times.Once);
+        var line = Assert.Single(_said);
+        Assert.Equal("download.import-failure-settled", line.Category);
+        Assert.Contains("waiting to be imported", line.Message);
+    }
+
+    // #1511: a download still on its way (import never detected) is not a waiting import.
+    [Fact]
+    public async Task A_download_still_on_its_way_is_not_closed_because_its_title_got_a_file()
+    {
+        Listed(FailedImport("d-x", "movie", "movie-1") with { ImportStatus = "pending", ImportDetectedUtc = null, ImportFailureCode = null, ImportFailureMessage = null });
+        _movies.Setup(repo => repo.GetTitleFileHoldsAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Holds("movie-1", Created.AddHours(3)));
+
+        Assert.Equal(0, await Settler().SettleAsync(CancellationToken.None));
+    }
+
     [Fact]
     public async Task A_relinked_episode_whose_arrival_was_never_dated_closes_its_failure_too()
     {

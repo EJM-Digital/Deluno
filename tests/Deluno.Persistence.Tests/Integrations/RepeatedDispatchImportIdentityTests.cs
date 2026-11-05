@@ -21,6 +21,18 @@ public sealed class RepeatedDispatchImportIdentityTests
             [newDispatch]));
     }
 
+    // #1511: a failed import job left behind must not keep the row reading import failed once the failure was settled.
+    [Fact]
+    public void A_failed_import_job_is_history_once_the_downloads_latest_dispatch_reads_imported()
+    {
+        var settled = Dispatch("dispatch-new", DateTimeOffset.UnixEpoch.AddMinutes(2)) with { ImportStatus = "imported" };
+        var failed = Dispatch("dispatch-new", DateTimeOffset.UnixEpoch.AddMinutes(2)) with { ImportStatus = "failed" };
+
+        Assert.True(DownloadClientTelemetryService.ImportJobFailureWasSettled(QueueItem(), [settled]));
+        Assert.False(DownloadClientTelemetryService.ImportJobFailureWasSettled(QueueItem(), [failed]));
+        Assert.False(DownloadClientTelemetryService.ImportJobFailureWasSettled(QueueItem(), []));
+    }
+
     private static JobQueueItem ImportJob(string status, string? dispatchId)
         => new(
             Id: $"job-{status}-{dispatchId}",

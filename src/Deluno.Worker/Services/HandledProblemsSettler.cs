@@ -230,7 +230,9 @@ public sealed class HandledProblemsSettler(
         }
 
         var failed = ((await jobs.ListDownloadDispatchesAsync(DispatchWindow, null, cancellationToken)) ?? [])
-            .Where(dispatch => string.Equals(dispatch.ImportStatus, "failed", StringComparison.OrdinalIgnoreCase)
+            .Where(dispatch => (string.Equals(dispatch.ImportStatus, "failed", StringComparison.OrdinalIgnoreCase)
+                    // #1511: a finished download still waiting for its import is settled the same way.
+                    || (string.Equals(dispatch.ImportStatus, "pending", StringComparison.OrdinalIgnoreCase) && dispatch.ImportDetectedUtc is not null))
                 && !string.Equals(dispatch.ImportFailureCode, "health-remediation-applied", StringComparison.OrdinalIgnoreCase)
                 && !string.IsNullOrWhiteSpace(dispatch.EntityId))
             .ToList();
@@ -259,7 +261,9 @@ public sealed class HandledProblemsSettler(
             settled++;
             await activityFeed.RecordActivityAsync(
                 "download.import-failure-settled",
-                $"{dispatch.ReleaseName} could not be imported, but its title is in the library now, so Deluno closed the failure.",
+                string.Equals(dispatch.ImportStatus, "failed", StringComparison.OrdinalIgnoreCase)
+                    ? $"{dispatch.ReleaseName} could not be imported, but its title is in the library now, so Deluno closed the failure."
+                    : $"{dispatch.ReleaseName} was waiting to be imported, but its title is in the library now, so Deluno closed it.",
                 JsonSerializer.Serialize(new { DispatchId = dispatch.Id, dispatch.EntityType, dispatch.EntityId, dispatch.ImportFailureCode }),
                 null,
                 "download-dispatch",
