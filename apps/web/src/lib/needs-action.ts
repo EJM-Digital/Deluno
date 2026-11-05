@@ -10,7 +10,7 @@ import type {
 } from "./api";
 import { isChosenOnSearch } from "./dispatch-target";
 import { downloadQueueStatuses } from "./download-telemetry";
-import { isStuck } from "./download-wait";
+import { isHeldInClientQueue, isStuck } from "./download-wait";
 import { isJobRetrying } from "./job-status-constants";
 
 /**
@@ -105,6 +105,10 @@ export function isDispatchFailure(dispatch: DownloadDispatchItem) {
 export function queueItemNeedsAttention(item: DownloadQueueItem) {
   // A download that is in the library has nothing left to ask of anyone, whatever its client said on the way.
   if (item.status === downloadQueueStatuses.imported) return false;
+  // The board's own verdicts (#1493, #1448): a download the client holds in its own queue is waiting its turn, and one that reached 100% is
+  // downloaded, whatever word the client put against it. Neither is a card that needs the person, so neither is counted as one.
+  if (isHeldInClientQueue(item)) return false;
+  if ((item.progress ?? 0) >= 99.95 && ["downloading", "stalled", "notTransferring", "paused"].includes(item.status)) return false;
   // A first strike, or a download still getting its details, is waiting, not a problem (#1449): only the stall rule's decision counts.
   return Boolean(item.errorMessage) || isStuck(item) || queueItemFailed(item);
 }
