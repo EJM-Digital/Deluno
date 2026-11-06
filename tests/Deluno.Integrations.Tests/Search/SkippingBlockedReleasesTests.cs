@@ -246,6 +246,34 @@ public sealed class SkippingBlockedReleasesTests
         Assert.DoesNotContain("Show.S01E01.1080p", result.Summary, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// #1521, from the rig. 5 Nov: the client's file name for the torrent (hyphens, " - ") was blocklisted with its hash.
+    /// 6 Nov: the 1337x search offered it as "Spider Man Homecoming ... BluRay   LoZio   MIRCrew.mkv" with no hash (a
+    /// search row has none until the grab reads the magnet), so neither the hash key nor the exact-name key matched.
+    /// </summary>
+    [Fact]
+    public void A_release_blocked_under_a_differently_punctuated_name_is_refused_when_the_search_has_no_hash()
+    {
+        var blockedKeys = BlockedReleaseKeys.AllFor(
+            "Spider-Man Homecoming (2017) 1080p H264 ITA ENG AC3 5.1 BluRay - LoZio - MIRCrew.mkv",
+            "50f252217aec313e99625c44dc4f25bdfca0cb29",
+            "1337x");
+        var plan = Plan(
+            Candidate("Spider Man Homecoming (2017) 1080p H264 ITA ENG AC3 5.1 BluRay   LoZio   MIRCrew.mkv", "1337x"),
+            Candidate("Spider Man Homecoming (2017) 1080p BluRay x264 YTS", "1337x"));
+
+        var result = AcquisitionDecisionPipeline.ApplyBlocklist(plan, blockedKeys.ToHashSet(StringComparer.Ordinal));
+
+        Assert.Equal("Spider Man Homecoming (2017) 1080p BluRay x264 YTS", Assert.Single(result.Candidates).ReleaseName);
+    }
+
+    [Fact]
+    public void Names_that_differ_only_in_separators_match_but_different_episodes_do_not()
+    {
+        Assert.Equal(BlockedReleaseKeys.ForName("Show.S01E01.1080p"), BlockedReleaseKeys.ForName("show s01e01 1080p.mkv"));
+        Assert.NotEqual(BlockedReleaseKeys.ForName("Show.S01E01.1080p"), BlockedReleaseKeys.ForName("Show.S01E011.1080p"));
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private static HashSet<string> Keys(string releaseName, string indexerName)

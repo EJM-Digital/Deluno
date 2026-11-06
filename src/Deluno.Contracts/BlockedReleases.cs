@@ -146,4 +146,59 @@ public static class BlockedReleaseKeys
     /// </summary>
     public static string ForHash(string torrentHashOrItemId)
         => $"hash|{torrentHashOrItemId.Trim().ToLowerInvariant()}";
+
+    private static readonly string[] VideoExtensions = [".mkv", ".mp4", ".avi", ".m4v", ".ts", ".wmv", ".mov"];
+
+    /// <summary>
+    /// The name key that survives punctuation (#1521): lower case, every run of non-letters and non-digits read as one
+    /// space, and a trailing video extension dropped. The client's file name ("Spider-Man ... BluRay - LoZio - MIRCrew.mkv")
+    /// and the indexer's listing ("Spider Man ... BluRay   LoZio   MIRCrew.mkv") are the same release. Separators are kept
+    /// as boundaries, so "S01E01" and "S01E011" stay different.
+    /// </summary>
+    public static string ForName(string releaseName)
+    {
+        var name = releaseName.Trim();
+        foreach (var extension in VideoExtensions)
+        {
+            if (name.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
+            {
+                name = name[..^extension.Length];
+                break;
+            }
+        }
+
+        var builder = new System.Text.StringBuilder(name.Length);
+        var pendingSpace = false;
+        foreach (var character in name)
+        {
+            if (char.IsLetterOrDigit(character))
+            {
+                if (pendingSpace && builder.Length > 0)
+                {
+                    builder.Append(' ');
+                }
+
+                pendingSpace = false;
+                builder.Append(char.ToLowerInvariant(character));
+            }
+            else
+            {
+                pendingSpace = true;
+            }
+        }
+
+        return "name|" + builder;
+    }
+
+    /// <summary>Every key one refused release holds, as the blocklist is read: its own, any indexer, its hash, and its normalised name.</summary>
+    public static IEnumerable<string> AllFor(string releaseName, string? hash, string? indexerName)
+    {
+        yield return For(releaseName, indexerName);
+        yield return ForEveryIndexer(releaseName);
+        yield return ForName(releaseName);
+        if (!string.IsNullOrWhiteSpace(hash))
+        {
+            yield return ForHash(hash);
+        }
+    }
 }

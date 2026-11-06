@@ -184,6 +184,10 @@ public sealed class SqliteBlockedReleaseRepository(
             // nothing needs migrating.
             keys.Add(BlockedReleaseKeys.ForEveryIndexer(reader.GetString(1)));
 
+            // The name with its punctuation read as spaces (#1521): a client's file name and an indexer's listing of the
+            // same release differ in hyphens, dots and spacing, and a search row carries no hash to fall back on.
+            keys.Add(BlockedReleaseKeys.ForName(reader.GetString(1)));
+
             // The hash/GUID key, added the same way (#802, #874): derived at
             // read time from the column every block already stores, so old
             // rows match on it with nothing to migrate, and no reason code is

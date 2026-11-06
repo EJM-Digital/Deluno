@@ -640,7 +640,8 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 !(!string.IsNullOrWhiteSpace(candidate.TorrentHashOrItemId)
                     && blockedKeys.Contains(BlockedReleaseKeys.ForHash(candidate.TorrentHashOrItemId)))
                 && !blockedKeys.Contains(BlockedReleaseKeys.For(candidate.ReleaseName, candidate.IndexerName))
-                && !blockedKeys.Contains(BlockedReleaseKeys.ForEveryIndexer(candidate.ReleaseName)))
+                && !blockedKeys.Contains(BlockedReleaseKeys.ForEveryIndexer(candidate.ReleaseName))
+                && !blockedKeys.Contains(BlockedReleaseKeys.ForName(candidate.ReleaseName)))
             .ToArray();
 
         var skipped = plan.Candidates.Count - kept.Length;
