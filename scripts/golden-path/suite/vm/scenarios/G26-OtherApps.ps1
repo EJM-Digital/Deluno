@@ -678,6 +678,21 @@ function Get-ToastBodies {
     @($bodies)
 }
 
+# The balloon texts of this title that are new since $Before (an earlier Get-ToastBodies list). Windows' database is not in time order, so the
+# last entry is not the newest: the new ones are the texts that now occur more often than they did before.
+function Get-NewToastBodies {
+    param([Parameter(Mandatory)] [string] $Title, [AllowEmptyCollection()] [object[]] $Before = @())
+    $old = @{}
+    foreach ($t in @($Before)) { $old["$t"] = 1 + [int]$old["$t"] }
+    $now = @{}
+    $fresh = New-Object System.Collections.ArrayList
+    foreach ($t in @(Get-ToastBodies -Title $Title)) {
+        $now["$t"] = 1 + [int]$now["$t"]
+        if ($now["$t"] -gt [int]$old["$t"]) { [void]$fresh.Add("$t") }
+    }
+    @($fresh)
+}
+
 # The addresses Deluno is reachable at, worked out from the machine's own network adapters: localhost, then each adapter that is up, is
 # not the loopback or a tunnel, with each of its IPv4 addresses that is not a 169.254.x.x self-assigned one.
 function Get-ExpectedReachableUrls {
@@ -713,14 +728,15 @@ function Invoke-GroupTrayBalloons {
         try {
             # ---- a start after Quit, with Windows Firewall letting other devices in
             Quit-DelunoFromTray | Out-Null
-            $before = @(Get-ToastBodies -Title 'Deluno is running').Count
+            $beforeList = @(Get-ToastBodies -Title 'Deluno is running')
+            $before = $beforeList.Count
             Start-DelunoTrayNow
             $up = Wait-Until -TimeoutSec 240 -IntervalSec 2 -Condition { Test-DelunoAnswering }
             Add-Check 'Deluno starts again after Quit' $up.Ok ''
             $shown = Wait-Until -TimeoutSec 90 -IntervalSec 2 -Condition { @(Get-ToastBodies -Title 'Deluno is running').Count -gt $before }
-            $bodies = @(Get-ToastBodies -Title 'Deluno is running')
-            $last = if ($bodies.Count) { $bodies[-1] } else { '' }
-            Add-Check "The balloon lists the address Deluno is reachable at: '$wantBody'" ($shown.Ok -and $last -like "$wantBody*" -and $last -notmatch 'Firewall') "balloon text: '$last'"
+            $bodies = @(Get-NewToastBodies -Title 'Deluno is running' -Before $beforeList)
+            $last = (@($bodies | Where-Object { $_ -like "$wantBody*" }) + $bodies | Select-Object -First 1)
+            Add-Check "The balloon lists the address Deluno is reachable at: '$wantBody'" ($shown.Ok -and $last -like "$wantBody*" -and $last -notmatch 'Firewall') "new balloon text: '$($bodies -join ' | ')'"
             Connect-Deluno
 
             # ---- with Windows Firewall blocking other devices, the balloon adds the warning (only when there is a LAN address to block)
@@ -730,12 +746,14 @@ function Invoke-GroupTrayBalloons {
                 $blocked = Wait-LanState -State 'blocked'
                 Add-Check 'With every rule for the port removed Deluno reads the port as blocked' ($null -ne $blocked) ($blocked | ConvertTo-Json -Compress)
                 Quit-DelunoFromTray | Out-Null
-                $before2 = @(Get-ToastBodies -Title 'Deluno is running').Count
+                $beforeList2 = @(Get-ToastBodies -Title 'Deluno is running')
+                $before2 = $beforeList2.Count
                 Start-DelunoTrayNow
                 $up2 = Wait-Until -TimeoutSec 240 -IntervalSec 2 -Condition { Test-DelunoAnswering }
                 $shown2 = Wait-Until -TimeoutSec 90 -IntervalSec 2 -Condition { @(Get-ToastBodies -Title 'Deluno is running').Count -gt $before2 }
-                $last2 = @(Get-ToastBodies -Title 'Deluno is running') | Select-Object -Last 1
-                Add-Check 'With Windows Firewall blocking other devices the balloon adds: "Windows Firewall blocks other devices. Click here to allow them."' ($up2.Ok -and $shown2.Ok -and "$last2" -like "$wantBody*Windows Firewall blocks other devices. Click here to allow them.") "balloon text: '$last2'"
+                $new2 = @(Get-NewToastBodies -Title 'Deluno is running' -Before $beforeList2)
+                $last2 = (@($new2 | Where-Object { $_ -like "$wantBody*" }) + $new2 | Select-Object -First 1)
+                Add-Check 'With Windows Firewall blocking other devices the balloon adds: "Windows Firewall blocks other devices. Click here to allow them."' ($up2.Ok -and $shown2.Ok -and "$last2" -like "$wantBody*Windows Firewall blocks other devices. Click here to allow them.") "new balloon text: '$($new2 -join ' | ')'"
                 Connect-Deluno
             }
             else { Add-Note 'This machine has no LAN address, so the firewall-blocked wording of the balloon could not be seen.' }

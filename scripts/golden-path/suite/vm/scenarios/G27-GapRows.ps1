@@ -553,7 +553,8 @@ function Invoke-GroupGapRows {
         Add-Check 'The install record exists' ($null -ne $recordFile) ''
         Add-Check 'The sign-ins file exists' ($null -ne $credFile) ''
         if (-not $recordFile -or -not $credFile) { return }
-        $record = @(Get-Content -Raw -LiteralPath $recordFile.FullName | ConvertFrom-Json)
+        # Windows PowerShell 5.1 hands a JSON array back as one object; the extra pipe unrolls it.
+        $record = @((Get-Content -Raw -LiteralPath $recordFile.FullName | ConvertFrom-Json) | ForEach-Object { $_ })
         $kinds = @($record | ForEach-Object { "$($_.kind)".ToLowerInvariant() })
         Save-Evidence -Name 'install-record-kinds.txt' -Text ($kinds -join ', ')
         foreach ($kind in 'qbittorrent', 'transmission', 'deluge', 'sabnzbd', 'nzbget') {

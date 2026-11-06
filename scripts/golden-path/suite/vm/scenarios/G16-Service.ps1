@@ -78,6 +78,9 @@ function Invoke-GroupService {
         $proc = Get-Process -Name 'Deluno' -ErrorAction SilentlyContinue | Select-Object -First 1
         if (-not $proc -or (Test-ProcessElevated -ProcessId $proc.Id) -ne $true) { Restart-DelunoElevated | Out-Null }
         try {
+            # The start before this scenario (and the elevated restart above) put a "Deluno is running" balloon over the tray menu; a click on
+            # the sub-menu item then lands on the balloon (five tries in a row saw no dialog, 5 Nov). The balloon has no event that says it left.
+            Start-Sleep -Seconds 20 # reason: the balloon of the last start sits over the tray menu for a while
             $adv = Invoke-TrayMenuItem -Icon 'Deluno' -Item '^Advanced$'
             $item = (Wait-Until -TimeoutSec 5 -IntervalSec 0.3 -Condition { Get-OpenMenuItems | Where-Object { $_ -match '^Run as a Windows service' } | Select-Object -First 1 }).Value
             Add-Check 'Advanced shows "Run as a Windows service..."' ($adv -and $null -ne $item) $item
