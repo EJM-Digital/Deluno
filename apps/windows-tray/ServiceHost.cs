@@ -67,6 +67,7 @@ public static class ServiceHost
         });
 
         builder.Host.UseWindowsService(opts => opts.ServiceName = "Deluno");
+        builder.Host.ConfigureServices((_, services) => TrayLogging.MakeEventLogSafe(services));
         builder.WebHost.ConfigureKestrel(opts => opts.ListenAnyIP(settings.Port));
         builder.Configuration["Storage:DataRoot"] = settings.DataRoot;
 

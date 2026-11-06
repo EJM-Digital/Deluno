@@ -229,7 +229,7 @@ public sealed class ConnectivityMonitor(
 
             using var client = new TcpClient();
             var connect = client.ConnectAsync(host, port, timeout.Token);
-            await connect.AsTask().WaitAsync(ProbeTimeout, timeProvider, timeout.Token);
+            await connect.AsTask().Observed().WaitAsync(ProbeTimeout, timeProvider, timeout.Token);
             return client.Connected;
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)

@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using System.Diagnostics;
 using System.Net.Sockets;
 using System.ServiceProcess;
@@ -367,7 +368,7 @@ internal sealed class RealSabnzbdEnvironment(string dataRoot, string iniPath, IS
         try
         {
             using var client = new TcpClient();
-            return client.ConnectAsync("127.0.0.1", 8080).Wait(TimeSpan.FromSeconds(1)) && client.Connected;
+            return client.ConnectAsync("127.0.0.1", 8080).Observed().Wait(TimeSpan.FromSeconds(1)) && client.Connected;
         }
         catch
         {
