@@ -96,6 +96,19 @@ public sealed class AResentReleaseSettlesItsOwnHandOffTests
         => (await app.Services.GetRequiredService<IJobQueueRepository>().ListAsync(50, CancellationToken.None))
             .Where(job => job.JobType == "filesystem.import.execute").ToArray();
 
+    private static async Task GiveFilmItsFileAsync(ApplicationTestHost app, string movieId)
+    {
+        var db = app.Services.GetRequiredService<Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory>();
+        await using var connection = await db.OpenConnectionAsync("movies", CancellationToken.None);
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE movie_wanted_state SET has_file = 1 WHERE movie_id = @id;";
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = "@id";
+        parameter.Value = movieId;
+        command.Parameters.Add(parameter);
+        await command.ExecuteNonQueryAsync();
+    }
+
     private static async Task CompleteAsync(ApplicationTestHost app, string jobId)
     {
         var db = app.Services.GetRequiredService<Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory>();
@@ -171,6 +184,8 @@ public sealed class AResentReleaseSettlesItsOwnHandOffTests
         var first = await queue.QueueAsync(library, second, output, "processor", CancellationToken.None);
         Assert.NotNull(first.JobId);
         await CompleteAsync(app, first.JobId!);
+        // The import put the film in the library, as a finished import does; a film without a file is waiting for its output (#1529).
+        await GiveFilmItsFileAsync(app, scene.Film);
 
         // The file is still there, not written since: the same import.
         var again = await queue.QueueAsync(library, second, output, "processor-watch", CancellationToken.None);

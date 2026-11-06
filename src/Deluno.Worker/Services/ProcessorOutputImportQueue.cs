@@ -63,7 +63,10 @@ public sealed class ProcessorOutputImportQueue(
         // and a file the processor has not written since, is a second request for the same import: a resent release
         // whose report and whose output watcher both found the one file. A title that came back, or a person's retry,
         // wants the file again on purpose and is not this.
-        if (cameBack is null && retriedBecause is null && await ThisOutputWasImportedAsync(library, outputPath, cancellationToken))
+        // Not when the title has no file now (#1529): a film asked for again after its file left the library waits for exactly this
+        // output, which the processor held and did not write again. The first import is not the one the title is waiting on.
+        if (cameBack is null && retriedBecause is null && await ThisOutputWasImportedAsync(library, outputPath, cancellationToken)
+            && !await TitleWaitsForItsFileAsync(dispatch, cancellationToken))
         {
             return new ProcessorOutputImport(null, dispatch?.DispatchId, dispatch?.EntityId, AlreadyImported: true);
         }
@@ -172,6 +175,23 @@ public sealed class ProcessorOutputImportQueue(
         {
             return false;
         }
+    }
+
+    /// <summary>Whether the film or episode this download is for exists in the catalogue and has no file (#1529).</summary>
+    private async Task<bool> TitleWaitsForItsFileAsync(DispatchCatalogueLink? link, CancellationToken cancellationToken)
+    {
+        if (link is null || string.IsNullOrWhiteSpace(link.EntityId))
+        {
+            return false;
+        }
+
+        if (string.Equals(link.EntityType, "movie", StringComparison.OrdinalIgnoreCase))
+        {
+            return await movieCatalogRepository.GetByIdAsync(link.EntityId, cancellationToken) is { HasFile: false };
+        }
+
+        return string.Equals(link.EntityType, "episode", StringComparison.OrdinalIgnoreCase)
+            && string.IsNullOrWhiteSpace(await seriesCatalogRepository.GetEpisodeFilePathAsync(link.EntityId, cancellationToken));
     }
 
     public async Task<bool> WasAlreadyImportedAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)

@@ -56,7 +56,7 @@ function Invoke-GroupTrayInventory {
                 moviesCategory = 'deluno-movies'; tvCategory = 'deluno-tv'; priority = 43; isEnabled = $true
             }
             $clientId = $c.id
-            $amber = Wait-TrayDot -Match { param($d) $d.Colour -eq 'amber' -and $d.Hover -match "qBittorrent on .*:1 isn't answering|Golden control client isn't answering" } -TimeoutSec 300
+            $amber = Wait-TrayDot -Match { param($d) $d.Colour -eq 'amber' -and $d.Hover -match "qBittorrent on .*:1( \(\w+\))? isn't answering|Golden control client isn't answering" } -TimeoutSec 300
             $seen = Get-TrayDot -Icon 'Deluno' -NoOverflow
             Add-Check 'The switched-on client that does not answer turns the dot amber and is named' $amber.Ok "colour $($seen.Colour), hover '$($seen.Hover)'"
             Add-Check 'Only that one is counted: the two switched-off connections are not named and are not in "and N more"' ($seen.Hover -notmatch 'switched-off' -and $seen.Hover -notmatch 'and \d+ more') "hover '$($seen.Hover)'"
