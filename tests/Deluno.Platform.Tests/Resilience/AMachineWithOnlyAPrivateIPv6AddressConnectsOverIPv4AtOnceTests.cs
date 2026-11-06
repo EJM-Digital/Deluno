@@ -35,7 +35,7 @@ public sealed class AMachineWithOnlyAPrivateIPv6AddressConnectsOverIPv4AtOnceTes
                 lock (tried) { tried.Add(address); }
                 if (address.AddressFamily == AddressFamily.InterNetworkV6)
                 {
-                    await Task.Delay(Timeout.Infinite, token); // never answers, never refuses
+                    await Task.Delay(Timeout.Infinite, token); // reason: the fake IPv6 host never answers and never refuses; the race cancels it
                 }
 
                 var s = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
