@@ -62,8 +62,10 @@ public static class ProcessorOutputFolderWatch
     public static async Task<IReadOnlySet<string>> RecordChangesAsync(
         IReadOnlyList<LibraryItem> libraries,
         IActivityFeedRepository activityFeedRepository,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IHealthCheckRepository? healthChecks = null)
     {
+        var changed = false;
         var unusable = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var library in libraries)
         {
@@ -95,6 +97,7 @@ public static class ProcessorOutputFolderWatch
                     "library",
                     library.Id,
                     cancellationToken);
+                changed = true;
             }
             else if (!problem && last?.Category == MissingCategory)
             {
@@ -106,7 +109,16 @@ public static class ProcessorOutputFolderWatch
                     "library",
                     library.Id,
                     cancellationToken);
+                changed = true;
             }
+        }
+
+        if (changed && healthChecks is not null)
+        {
+            // Health reads the same folder, so its verdict is re-made now through the existing "run this category right
+            // away" request (the health service picks it up within seconds and pushes the change), not at the next
+            // fifteen-minute pass, which left Health contradicting Activity.
+            await healthChecks.RequestImmediateRunAsync(HealthCheckCategories.Processor, cancellationToken);
         }
 
         return unusable;

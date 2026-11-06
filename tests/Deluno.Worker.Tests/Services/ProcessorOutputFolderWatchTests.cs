@@ -56,6 +56,25 @@ public sealed class ProcessorOutputFolderWatchTests : IDisposable
     }
 
     [Fact]
+    public async Task Health_is_asked_to_re_check_the_moment_the_folder_goes_missing_and_the_moment_it_is_back_and_not_on_quiet_scans()
+    {
+        var folder = Path.Combine(_root, "refined");
+        var library = Library(folder);
+        var feed = Feed();
+        var health = new Mock<IHealthCheckRepository>();
+
+        await ProcessorOutputFolderWatch.RecordChangesAsync([library], feed, CancellationToken.None, health.Object);
+        await ProcessorOutputFolderWatch.RecordChangesAsync([library], feed, CancellationToken.None, health.Object);
+        health.Verify(h => h.RequestImmediateRunAsync(HealthCheckCategories.Processor, It.IsAny<CancellationToken>()), Times.Once);
+
+        Directory.CreateDirectory(folder);
+        await ProcessorOutputFolderWatch.RecordChangesAsync([library], feed, CancellationToken.None, health.Object);
+        await ProcessorOutputFolderWatch.RecordChangesAsync([library], feed, CancellationToken.None, health.Object);
+        health.Verify(h => h.RequestImmediateRunAsync(HealthCheckCategories.Processor, It.IsAny<CancellationToken>()), Times.Exactly(2));
+        Assert.Equal(2, _feed.Count);
+    }
+
+    [Fact]
     public async Task A_missing_folder_writes_one_line_naming_the_library_and_folder_however_many_scans_see_it()
     {
         var folder = Path.Combine(_root, "refined");

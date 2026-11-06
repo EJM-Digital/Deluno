@@ -1053,6 +1053,7 @@ public sealed class WorkPlanner(
             libraries,
             knownImportSources,
             recentWaiting,
+            healthChecks,
             cancellationToken);
         // Problems whose title has its file now close themselves, with a line each (#1167).
         await new HandledProblemsSettler(
@@ -2021,6 +2022,7 @@ public sealed class WorkPlanner(
         IReadOnlyList<LibraryItem> libraries,
         ISet<string> knownImportSources,
         IReadOnlyList<ActivityEventItem> recentActivity,
+        IHealthCheckRepository? healthChecks,
         CancellationToken cancellationToken)
     {
         var reportedOutputKeys = recentActivity
@@ -2029,7 +2031,7 @@ public sealed class WorkPlanner(
             .Where(id => !string.IsNullOrWhiteSpace(id))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         // A library whose output folder is missing or unreadable is skipped, but not silently (#1514): one line, and Health.
-        var unusableFolders = await ProcessorOutputFolderWatch.RecordChangesAsync(libraries, activityFeedRepository, cancellationToken);
+        var unusableFolders = await ProcessorOutputFolderWatch.RecordChangesAsync(libraries, activityFeedRepository, cancellationToken, healthChecks);
         var refineLibraries = libraries
             .Where(library =>
                 ImportWorkflows.HandsToProcessor(library.ImportWorkflow) &&
