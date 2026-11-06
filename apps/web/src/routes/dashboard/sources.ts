@@ -48,6 +48,19 @@ export async function fetchLiveExtras(): Promise<DashboardLiveExtras | null> {
   return Array.isArray(extras?.arrivals) ? extras : null;
 }
 
+/**
+ * The live connection came back: read every dashboard list again, once, in place (#1518). The shelf, Activity, the Pipeline's sources and the
+ * counts are all kept on screen while they are read, and the Live extras skip the server's five-second copy, which can hold the moment
+ * before an import that finished while the connection was down.
+ */
+export async function readDashboardAgain() {
+  nextExtrasFresh = true;
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+    queryClient.invalidateQueries({ queryKey: ["src"] })
+  ]);
+}
+
 export const SUMMARY_KEY = ["dashboard", "summary"] as const;
 
 export const summaryQuery = {

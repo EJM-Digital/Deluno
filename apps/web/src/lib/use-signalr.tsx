@@ -578,6 +578,8 @@ export function SignalRProvider({
         }
       } catch (error) {
         trace("resume failed", error);
+        // The hub did not answer, so nothing is known about what was missed: after a drop, the screens read once to catch up (#1518).
+        if (!firstConnect) for (const h of resyncHandlersRef.current) h();
       }
     };
 
