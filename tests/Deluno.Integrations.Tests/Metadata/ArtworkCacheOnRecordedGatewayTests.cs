@@ -272,6 +272,7 @@ public sealed class ArtworkCacheOnRecordedGatewayTests : IDisposable
 
         Assert.Equal(unservedSize, result.PosterUrl);
         Assert.Equal(unknownFile, result.BackdropUrl);
+        await TmdbMetadataProvider.WaitForPosterSavesAsync();
         Assert.Empty(Directory.Exists(ArtworkRoot) ? Directory.GetFiles(ArtworkRoot) : []);
         Assert.Equal(1, await CountRowsAsync(factory, KeyOf(unservedSize)));
         Assert.Null(await provider.GetCachedArtworkAsync(KeyOf(unknownFile), CancellationToken.None));
