@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detailLines, detailRoom, sizePair, spent } from "./detail";
+import { detailLines, stageLines, detailRoom, sizePair, spent } from "./detail";
 import type { JourneyCard } from "./journey";
 
 const NOW = Date.parse("2026-11-04T12:00:00Z");
@@ -44,44 +44,44 @@ describe("the room a card has for detail lines", () => {
 
 describe("a searching card", () => {
   it("says who asked, in bold, with when", () => {
-    const lines = detailLines(card({ routeNote: "Asked by Sam", at: new Date(NOW - 5 * 60_000).toISOString() }), 0, NOW);
+    const lines = stageLines(card({ routeNote: "Asked by Sam", at: new Date(NOW - 5 * 60_000).toISOString() }), 0, NOW);
     expect(lines[0].parts).toEqual(["Asked by ", bold("Sam")]);
     expect(lines[0].right).toBe("5 min ago");
   });
 
   it("says a route note that is not a request as it is, with no time when the card has none or its time is unreadable", () => {
-    expect(detailLines(card({ routeNote: "Looking" }), 0, NOW)).toEqual([{ parts: ["Looking"], right: undefined }]);
-    expect(detailLines(card({ routeNote: "Looking", at: "garbage" }), 0, NOW)[0].right).toBeUndefined();
+    expect(stageLines(card({ routeNote: "Looking" }), 0, NOW)).toEqual([{ parts: ["Looking"], right: undefined }]);
+    expect(stageLines(card({ routeNote: "Looking", at: "garbage" }), 0, NOW)[0].right).toBeUndefined();
   });
 
   it("says nothing when there is no note", () => {
-    expect(detailLines(card({}), 0, NOW)).toEqual([]);
+    expect(stageLines(card({}), 0, NOW)).toEqual([]);
   });
 
   it("says how many indexers a request has to ask, singular or plural, and leaves it out when there are none", () => {
-    expect(detailLines(card({ startedBy: "seerr" }), 3, NOW)).toEqual([{ parts: [bold("3"), " indexers to ask"] }]);
-    expect(detailLines(card({ startedBy: "seerr" }), 1, NOW)).toEqual([{ parts: [bold("1"), " indexer to ask"] }]);
-    expect(detailLines(card({ startedBy: "seerr" }), 0, NOW)).toEqual([]);
-    expect(detailLines(card({}), 5, NOW)).toEqual([]);
+    expect(stageLines(card({ startedBy: "seerr" }), 3, NOW)).toEqual([{ parts: [bold("3"), " indexers to ask"] }]);
+    expect(stageLines(card({ startedBy: "seerr" }), 1, NOW)).toEqual([{ parts: [bold("1"), " indexer to ask"] }]);
+    expect(stageLines(card({ startedBy: "seerr" }), 0, NOW)).toEqual([]);
+    expect(stageLines(card({}), 5, NOW)).toEqual([]);
   });
 });
 
 describe("a grabbed card", () => {
   it("gives the release name, then the size and the client it went to", () => {
-    const lines = detailLines(card({ stage: "grabbed", release: "Arrival.2016", sizeBytes: 2 * GB, client: "qBittorrent" }), 0, NOW);
+    const lines = stageLines(card({ stage: "grabbed", release: "Arrival.2016", sizeBytes: 2 * GB, client: "qBittorrent" }), 0, NOW);
     expect(lines).toEqual([{ parts: ["Arrival.2016"], mono: true }, { parts: [bold("2.0 GB")], right: "to qBittorrent" }]);
   });
 
   it("leaves out the client when there is none, and the size when it is zero or missing", () => {
-    expect(detailLines(card({ stage: "grabbed", sizeBytes: 2 * GB }), 0, NOW)).toEqual([{ parts: [bold("2.0 GB")], right: undefined }]);
-    expect(detailLines(card({ stage: "grabbed", sizeBytes: 0, release: "R" }), 0, NOW)).toEqual([{ parts: ["R"], mono: true }]);
-    expect(detailLines(card({ stage: "grabbed", sizeBytes: null }), 0, NOW)).toEqual([]);
+    expect(stageLines(card({ stage: "grabbed", sizeBytes: 2 * GB }), 0, NOW)).toEqual([{ parts: [bold("2.0 GB")], right: undefined }]);
+    expect(stageLines(card({ stage: "grabbed", sizeBytes: 0, release: "R" }), 0, NOW)).toEqual([{ parts: ["R"], mono: true }]);
+    expect(stageLines(card({ stage: "grabbed", sizeBytes: null }), 0, NOW)).toEqual([]);
   });
 });
 
 describe("a downloading card", () => {
   it("gives what has come of the whole, when it is done, how many peers and the release", () => {
-    const lines = detailLines(card({ stage: "downloading", sizeBytes: 4 * GB, downloadedBytes: 1 * GB, finishAtMs: NOW + 10 * 60_000, peers: 12, release: "R", protocol: "torrent" }), 0, NOW);
+    const lines = stageLines(card({ stage: "downloading", sizeBytes: 4 * GB, downloadedBytes: 1 * GB, finishAtMs: NOW + 10 * 60_000, peers: 12, release: "R", protocol: "torrent" }), 0, NOW);
     expect(lines[0].parts).toEqual([bold("1.0 of 4.0 GB")]);
     expect(lines[0].right).toBeTruthy();
     expect(lines[1]).toEqual({ parts: [bold("12"), " peers"] });
@@ -89,42 +89,42 @@ describe("a downloading card", () => {
   });
 
   it("works out what has come from the progress when the client gave no figure", () => {
-    expect(detailLines(card({ stage: "downloading", sizeBytes: 4 * GB, progress: 25 }), 0, NOW)[0].parts).toEqual([bold("1.0 of 4.0 GB")]);
-    expect(detailLines(card({ stage: "downloading", sizeBytes: 4 * GB }), 0, NOW)).toEqual([]);
+    expect(stageLines(card({ stage: "downloading", sizeBytes: 4 * GB, progress: 25 }), 0, NOW)[0].parts).toEqual([bold("1.0 of 4.0 GB")]);
+    expect(stageLines(card({ stage: "downloading", sizeBytes: 4 * GB }), 0, NOW)).toEqual([]);
   });
 
   it("says seeders beside peers, with the swarm when the client reports it (#1516)", () => {
-    expect(detailLines(card({ stage: "downloading", peers: 5, seeders: 2, protocol: "torrent" }), 0, NOW)[0].parts).toEqual([bold("2"), " seeders · ", bold("5"), " peers"]);
-    expect(detailLines(card({ stage: "downloading", peers: 1, seeders: 1, protocol: "torrent" }), 0, NOW)[0].parts).toEqual([bold("1"), " seeder · ", bold("1"), " peer"]);
-    expect(detailLines(card({ stage: "downloading", peers: 5, seeders: 3, swarmSeeders: 41, protocol: "torrent" }), 0, NOW)[0].parts).toEqual([bold("3 of 41"), " seeders · ", bold("5"), " peers"]);
-    expect(detailLines(card({ stage: "downloading", peers: 8, seeders: 3, protocol: "usenet" }), 0, NOW)[0].parts).toEqual([bold("8"), " connections"]);
+    expect(stageLines(card({ stage: "downloading", peers: 5, seeders: 2, protocol: "torrent" }), 0, NOW)[0].parts).toEqual([bold("2"), " seeders · ", bold("5"), " peers"]);
+    expect(stageLines(card({ stage: "downloading", peers: 1, seeders: 1, protocol: "torrent" }), 0, NOW)[0].parts).toEqual([bold("1"), " seeder · ", bold("1"), " peer"]);
+    expect(stageLines(card({ stage: "downloading", peers: 5, seeders: 3, swarmSeeders: 41, protocol: "torrent" }), 0, NOW)[0].parts).toEqual([bold("3 of 41"), " seeders · ", bold("5"), " peers"]);
+    expect(stageLines(card({ stage: "downloading", peers: 8, seeders: 3, protocol: "usenet" }), 0, NOW)[0].parts).toEqual([bold("8"), " connections"]);
   });
 
   it("calls them connections on Usenet, and one peer a peer", () => {
-    expect(detailLines(card({ stage: "downloading", peers: 8, protocol: "usenet" }), 0, NOW)[0].parts).toEqual([bold("8"), " connections"]);
-    expect(detailLines(card({ stage: "downloading", peers: 1, protocol: "torrent" }), 0, NOW)[0].parts).toEqual([bold("1"), " peer"]);
+    expect(stageLines(card({ stage: "downloading", peers: 8, protocol: "usenet" }), 0, NOW)[0].parts).toEqual([bold("8"), " connections"]);
+    expect(stageLines(card({ stage: "downloading", peers: 1, protocol: "torrent" }), 0, NOW)[0].parts).toEqual([bold("1"), " peer"]);
   });
 
   it("says only when it will be done, when the size is not known", () => {
-    const lines = detailLines(card({ stage: "downloading", finishAtMs: NOW + 10 * 60_000 }), 0, NOW);
+    const lines = stageLines(card({ stage: "downloading", finishAtMs: NOW + 10 * 60_000 }), 0, NOW);
     expect(lines).toHaveLength(1);
     expect(lines[0].parts).toEqual([]);
     expect(lines[0].right).toBeTruthy();
   });
 
   it("says nothing more once it is stuck, and gives no time it will be done", () => {
-    const lines = detailLines(card({ stage: "downloading", sizeBytes: 4 * GB, downloadedBytes: 1 * GB, finishAtMs: NOW + 10 * 60_000, stuck: true, peers: 3, release: "R" }), 0, NOW);
+    const lines = stageLines(card({ stage: "downloading", sizeBytes: 4 * GB, downloadedBytes: 1 * GB, finishAtMs: NOW + 10 * 60_000, stuck: true, peers: 3, release: "R" }), 0, NOW);
     expect(lines).toEqual([{ parts: [bold("1.0 of 4.0 GB")], right: undefined }]);
   });
 
   it("leaves out the peers when there are none or the count is zero", () => {
-    expect(detailLines(card({ stage: "downloading", peers: 0, release: "R" }), 0, NOW)).toEqual([{ parts: ["R"], mono: true }]);
+    expect(stageLines(card({ stage: "downloading", peers: 0, release: "R" }), 0, NOW)).toEqual([{ parts: ["R"], mono: true }]);
   });
 });
 
 describe("a card with the processor", () => {
   it("gives its step, what was handed over and how long ago, its place in line and the release", () => {
-    const lines = detailLines(card({ stage: "processor", processorStep: "Cleaning", sizeBytes: GB, handedOverUtc: new Date(NOW - 4 * 60_000).toISOString(), processorQueuePosition: 2, release: "R" }), 0, NOW);
+    const lines = stageLines(card({ stage: "processor", processorStep: "Cleaning", sizeBytes: GB, handedOverUtc: new Date(NOW - 4 * 60_000).toISOString(), processorQueuePosition: 2, release: "R" }), 0, NOW);
     expect(lines).toEqual([
       { parts: [bold("Cleaning")] },
       { parts: [bold("1.0 GB"), " handed over"], right: "4 min" },
@@ -134,7 +134,7 @@ describe("a card with the processor", () => {
   });
 
   it("says just Handed over when the size is not known, and leaves out a step, a place of zero and a missing time", () => {
-    expect(detailLines(card({ stage: "processor", processorQueuePosition: 0 }), 0, NOW)).toEqual([{ parts: ["Handed over"], right: undefined }]);
+    expect(stageLines(card({ stage: "processor", processorQueuePosition: 0 }), 0, NOW)).toEqual([{ parts: ["Handed over"], right: undefined }]);
   });
 });
 
@@ -142,16 +142,16 @@ describe("a card being imported", () => {
   it("gives where it is going, then the size and quality together, then the release", () => {
     const lines = detailLines(card({ stage: "importing", destination: "Movies", sizeBytes: 2 * GB, quality: "WEB 1080p", release: "R" }), 0, NOW);
     expect(lines).toEqual([
-      { parts: ["To ", bold("Movies")] },
       { parts: [bold("2.0 GB"), " · WEB 1080p"] },
-      { parts: ["R"], mono: true }
+      { parts: ["R"], mono: true },
+      { parts: [bold("Going into Movies")] }
     ]);
   });
 
   it("gives just the quality, or just the size, when that is all it has, and nothing when it has neither", () => {
-    expect(detailLines(card({ stage: "importing", quality: "WEB 1080p" }), 0, NOW)).toEqual([{ parts: [bold("WEB 1080p")] }]);
-    expect(detailLines(card({ stage: "importing", sizeBytes: 2 * GB }), 0, NOW)).toEqual([{ parts: [bold("2.0 GB")] }]);
-    expect(detailLines(card({ stage: "importing" }), 0, NOW)).toEqual([]);
+    expect(stageLines(card({ stage: "importing", quality: "WEB 1080p" }), 0, NOW)).toEqual([{ parts: [bold("WEB 1080p")] }]);
+    expect(stageLines(card({ stage: "importing", sizeBytes: 2 * GB }), 0, NOW)).toEqual([{ parts: [bold("2.0 GB")] }]);
+    expect(stageLines(card({ stage: "importing" }), 0, NOW)).toEqual([]);
   });
 });
 
@@ -163,19 +163,48 @@ describe("a finished card, and the line that says why it is being fetched", () =
   it("adds why Deluno is fetching it at the end, for any stage, and never more than four lines", () => {
     const lines = detailLines(card({ stage: "processor", processorStep: "Cleaning", sizeBytes: GB, processorQueuePosition: 2, release: "R", startedBy: "list" }), 0, NOW);
     expect(lines).toHaveLength(4);
-    const withReason = detailLines(card({ stage: "grabbed", startedBy: "list" }), 0, NOW);
+    const withReason = detailLines(card({ stage: "searching", startedBy: "list" }), 0, NOW);
     expect(withReason).toHaveLength(1);
     expect(withReason[0].parts).toHaveLength(1);
   });
 
   it("says why a request is being fetched at every stage after the search, and why anything else is at the search too", () => {
-    expect(detailLines(card({ stage: "grabbed", startedBy: "seerr" }), 0, NOW)).toHaveLength(1);
+    expect(detailLines(card({ stage: "grabbed", startedBy: "seerr" }), 0, NOW)).toHaveLength(2);
     expect(detailLines(card({ stage: "searching", startedBy: "list" }), 0, NOW)).toHaveLength(1);
     expect(detailLines(card({ stage: "searching", startedBy: "seerr" }), 2, NOW)).toHaveLength(1);
   });
 
   it("gives no size line for a size below nothing, and no place in line for a place below nothing", () => {
-    expect(detailLines(card({ stage: "grabbed", sizeBytes: -5 }), 0, NOW)).toEqual([]);
-    expect(detailLines(card({ stage: "processor", processorQueuePosition: -1 }), 0, NOW)).toEqual([{ parts: ["Handed over"], right: undefined }]);
+    expect(stageLines(card({ stage: "grabbed", sizeBytes: -5 }), 0, NOW)).toEqual([]);
+    expect(stageLines(card({ stage: "processor", processorQueuePosition: -1 }), 0, NOW)).toEqual([{ parts: ["Handed over"], right: undefined }]);
+  });
+});
+
+describe("a card says why it is wanted and, from the grab on, where it is (#1517)", () => {
+  const closing = (c: Partial<JourneyCard>) => detailLines(card(c), 0, NOW).map((line) => line.parts[0]);
+  it("searching keeps only the reason", () => {
+    expect(closing({ stage: "searching", startedBy: "you", routeNote: "Asked by Sam" }).slice(-1)).toEqual([bold("Added manually")]);
+  });
+  it("grabbed names the indexer, or just says Grabbed, then keeps the reason", () => {
+    expect(closing({ stage: "grabbed", startedBy: "you", indexer: "The Pirate Bay" })).toEqual([bold("Grabbed from The Pirate Bay"), bold("Added manually")]);
+    expect(closing({ stage: "grabbed", startedBy: "list", indexer: null })).toEqual([bold("Grabbed"), bold("Import list")]);
+    expect(closing({ stage: "grabbed", startedBy: "you", indexer: "Manual selection" })).toEqual([bold("Selected manually"), bold("Added manually")]);
+  });
+  it("downloading, including a queued download, names the indexer and keeps the reason", () => {
+    expect(closing({ stage: "downloading", startedBy: "upgrade", indexer: "The Pirate Bay", progress: 0 })).toEqual([bold("Grabbed from The Pirate Bay"), bold("Quality upgrade")]);
+    expect(closing({ stage: "downloading", startedBy: "seerr" })).toEqual([bold("Grabbed"), bold("Seerr request")]);
+  });
+  it("processing says who is cleaning it", () => {
+    expect(closing({ stage: "processor", startedBy: "you", processor: "Weir" }).slice(-2)).toEqual([bold("Weir is cleaning it"), bold("Added manually")]);
+    expect(closing({ stage: "processor" }).slice(-1)).toEqual([bold("Being cleaned up")]);
+  });
+  it("importing says where it is going, once", () => {
+    expect(closing({ stage: "importing", startedBy: "you", destination: "Movies" })).toEqual([bold("Going into Movies"), bold("Added manually")]);
+    expect(closing({ stage: "importing" })).toEqual([bold("Going into the library")]);
+  });
+  it("the closing lines are never the ones cut at four", () => {
+    const lines = detailLines(card({ stage: "processor", processorStep: "Cleaning", sizeBytes: GB, processorQueuePosition: 2, release: "R", processor: "Weir", startedBy: "list" }), 0, NOW);
+    expect(lines).toHaveLength(4);
+    expect(lines.slice(-2).map((l) => l.parts[0])).toEqual([bold("Weir is cleaning it"), bold("Import list")]);
   });
 });

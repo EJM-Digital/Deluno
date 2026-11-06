@@ -7,7 +7,7 @@
 import { ago, formatEta } from "../downloads-kit";
 import { formatBytes } from "../../../lib/utils";
 import type { JourneyCard } from "./journey";
-import { startedLabel } from "./provenance";
+import { startedLabel, stageNote } from "./provenance";
 import { isUsenetProtocol } from "../../../lib/protocol";
 import { sharingParts } from "../../../lib/sharing-wording";
 import { doneAbout } from "./times";
@@ -40,7 +40,8 @@ export function spent(from: string | null | undefined, now: number): string | un
   return formatEta(Math.max(60, Math.round((now - start) / 1000)));
 }
 
-export function detailLines(card: JourneyCard, indexers: number, now: number): DetailLine[] {
+/** The lines for what the stage itself has to tell, without the closing "why" line. */
+export function stageLines(card: JourneyCard, indexers: number, now: number): DetailLine[] {
   const lines: DetailLine[] = [];
   // No size line for a missing, zero or negative size.
   const size = Math.max(card.sizeBytes ?? 0, 0) || undefined;
@@ -76,16 +77,23 @@ export function detailLines(card: JourneyCard, indexers: number, now: number): D
       break;
     }
     case "importing": {
-      if (card.destination) lines.push({ parts: ["To ", bold(card.destination)] });
       const facts = [size ? formatBytes(size) : null, card.quality ?? null].filter(Boolean) as string[];
       if (facts.length > 0) lines.push({ parts: [bold(facts[0]), ...(facts.length > 1 ? [` · ${facts[1]}`] : [])] });
       if (release) lines.push(release);
       break;
     }
   }
-  // Why Deluno is fetching it, when what it recorded says (a request already says so in its own line).
-  if (card.startedBy && !(card.stage === "searching" && card.startedBy === "seerr")) lines.push({ parts: [bold(startedLabel(card.startedBy, card.entity, card.release))] });
-  return lines.slice(0, 4);
+  return lines;
+}
+
+export function detailLines(card: JourneyCard, indexers: number, now: number): DetailLine[] {
+  // The closing lines: where it is (from the grab on), then why it is wanted (a request already says so in its own line).
+  const tail: DetailLine[] = [];
+  const note = stageNote(card);
+  if (note) tail.push({ parts: [bold(note)] });
+  if (card.startedBy && !(card.stage === "searching" && card.startedBy === "seerr")) tail.push({ parts: [bold(startedLabel(card.startedBy, card.entity, card.release))] });
+  // Four lines at most, and the closing lines are never the ones cut.
+  return [...stageLines(card, indexers, now).slice(0, 4 - tail.length), ...tail];
 }
 
 /**

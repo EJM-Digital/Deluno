@@ -11,20 +11,20 @@ export type StartedBy = "you" | "seerr" | "list" | "upgrade" | "missing";
 
 /** The words on each tag. */
 export const STARTED_LABEL: Record<StartedBy, string> = {
-  you: "You asked for it",
-  seerr: "Asked for in Seerr",
-  list: "On one of your lists",
-  upgrade: "Looking for an upgrade",
-  missing: "A missing title"
+  you: "Added manually",
+  seerr: "Seerr request",
+  list: "Import list",
+  upgrade: "Quality upgrade",
+  missing: "Missing title"
 };
 
 /** What a tag says for a card: "missing" names the card's own kind (film, episode, season or show) and never calls a film an episode. */
 export function startedLabel(by: StartedBy, entity?: { kind: string }, release?: string | null): string {
   if (by !== "missing") return STARTED_LABEL[by];
-  if (entity?.kind === "movie") return "A missing film";
-  if (entity?.kind === "episode") return "A missing episode";
+  if (entity?.kind === "movie") return "Missing film";
+  if (entity?.kind === "episode") return "Missing episode";
   if (entity?.kind === "series") {
-    return /\bS\d{1,2}[\s._-]?E\d{1,3}\b/i.test(release ?? "") ? "A missing episode" : /\bS\d{1,2}\b|\bSeason[\s._-]?\d{1,2}\b/i.test(release ?? "") ? "A missing season" : "Missing episodes";
+    return /\bS\d{1,2}[\s._-]?E\d{1,3}\b/i.test(release ?? "") ? "Missing episode" : /\bS\d{1,2}\b|\bSeason[\s._-]?\d{1,2}\b/i.test(release ?? "") ? "Missing season" : "Missing episodes";
   }
   return STARTED_LABEL.missing;
 }
@@ -65,5 +65,32 @@ export function startedByOfDispatch(dispatch: Pick<DownloadDispatchItem, "starte
     return startedByFromWord(typeof notes.triggeredBy === "string" ? notes.triggeredBy : null);
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * The line a card and its details drawer carry for the stage it is in (#1517), from one place. From the grab on it says
+ * where the release came from (never invented); in the processor and the import it says what is happening there. While it
+ * is being searched there is none: the reason tag says why it is wanted. It never repeats a line already on the card.
+ */
+export function stageNote(card: {
+  stage: string;
+  indexer?: string | null;
+  processor?: string | null;
+  destination?: string | null;
+}): string | undefined {
+  switch (card.stage) {
+    case "grabbed":
+    case "downloading": {
+      const from = (card.indexer ?? "").trim();
+      if (from === "Manual selection") return "Selected manually";
+      return from ? `Grabbed from ${from}` : "Grabbed";
+    }
+    case "processor":
+      return card.processor ? `${card.processor} is cleaning it` : "Being cleaned up";
+    case "importing":
+      return card.destination ? `Going into ${card.destination}` : "Going into the library";
+    default:
+      return undefined;
   }
 }

@@ -198,7 +198,7 @@ describe("a card on the journey", () => {
 
   it("tells in its tooltip the release, what started it, why it stopped and the route", () => {
     token({ release: "Heat.1995.1080p-GRP", reasonFull: "Peers gone", reason: "Not moving", startedBy: "seerr", indexer: "NZBgeek" });
-    expect(screen.getByRole("link").getAttribute("title")).toBe(`Heat (1995) · Asked for in Seerr · Peers gone · NZBgeek`);
+    expect(screen.getByRole("link").getAttribute("title")).toBe(`Heat (1995) · Seerr request · Peers gone · NZBgeek`);
     cleanup();
     token({ reason: "Not moving", routeNote: "Asked by Sam" });
     expect(screen.getByRole("link").getAttribute("title")).toBe("Heat (1995) · Not moving · Asked by Sam");
@@ -219,7 +219,8 @@ describe("a card on the journey", () => {
   it("draws a detail line's words plain, its figures bold, its release in mono and its right-hand side", () => {
     token({ stage: "grabbed", state: { tone: "ok", label: "Sent" }, sizeBytes: 4e9, client: "qBittorrent", release: "Heat.1995.1080p-GRP" });
     const lines = document.querySelectorAll(".lj-xl");
-    expect(lines).toHaveLength(2);
+    expect(lines).toHaveLength(3);
+    expect(lines[2].textContent).toBe("Grabbed");
     expect(lines[0].firstElementChild).toHaveClass("lj-rel");
     expect(lines[0].firstElementChild?.textContent).toBe("Heat.1995.1080p-GRP");
     expect(lines[0].querySelector("b")).toBeNull();

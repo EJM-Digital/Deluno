@@ -434,31 +434,31 @@ describe("the journey", () => {
     const downloading = screen.getByRole("link", { name: "Stuck One (2001): Stuck at 43% · not moving" });
     expect(downloading).toHaveAttribute("data-glide-stage", "downloading");
     expect(screen.getByText("done about 2:14 pm")).toBeInTheDocument();
-    expect(screen.getByText("You asked for it")).toBeInTheDocument();
+    expect(screen.getByText("Added manually")).toBeInTheDocument();
     // A card that came from Seerr says so; a request card says it in its line and not twice.
     const requested = document.querySelector<HTMLElement>('[data-glide-stage="searching"]')!;
     expect(requested).toHaveAccessibleName("Shogun: Asked for in Seerr · checking");
     expect(within(requested).queryByText("Asked for in Seerr")).toBeNull();
     // A card with no recorded reason has no tag rather than a guess.
-    expect(within(document.querySelector<HTMLElement>('[data-glide-stage="processor"]')!).queryByText(/You asked for it|Asked for in Seerr|On one of your lists|Looking for an upgrade|A missing (film|episode|season|title)|Missing episodes/)).toBeNull();
+    expect(within(document.querySelector<HTMLElement>('[data-glide-stage="processor"]')!).queryByText(/Added manually|Seerr request|Import list|Quality upgrade|Missing (film|episode|season|title|episodes)/)).toBeNull();
     expect(screen.getByRole("link", { name: /Stuck One/ }).querySelector(".lj-pulse")).not.toBeNull();
   });
 
   it("tags a download that came from Seerr, a list, an upgrade hunt or a missing episode", () => {
     render5([card({ key: "a", title: "A (2001)", startedBy: "seerr" }), card({ key: "b", title: "B (2002)", startedBy: "list" }), card({ key: "c", title: "C (2003)", startedBy: "upgrade" }), card({ key: "d", title: "D (2004)", startedBy: "missing" })]);
-    for (const words of ["Asked for in Seerr", "On one of your lists", "Looking for an upgrade", "A missing title"]) expect(screen.getByText(words)).toBeInTheDocument();
+    for (const words of ["Seerr request", "Import list", "Quality upgrade", "Missing title"]) expect(screen.getByText(words)).toBeInTheDocument();
   });
 
   it("names a missing title by its own kind: a film is a film, never an episode (#1190)", () => {
-    expect(startedLabel("missing", { kind: "movie" })).toBe("A missing film");
-    expect(startedLabel("missing", { kind: "episode" })).toBe("A missing episode");
-    expect(startedLabel("missing", { kind: "series" }, "Show.S02.1080p.WEB")).toBe("A missing season");
-    expect(startedLabel("missing", { kind: "series" }, "Show.S02E03.1080p.WEB")).toBe("A missing episode");
+    expect(startedLabel("missing", { kind: "movie" })).toBe("Missing film");
+    expect(startedLabel("missing", { kind: "episode" })).toBe("Missing episode");
+    expect(startedLabel("missing", { kind: "series" }, "Show.S02.1080p.WEB")).toBe("Missing season");
+    expect(startedLabel("missing", { kind: "series" }, "Show.S02E03.1080p.WEB")).toBe("Missing episode");
     expect(startedLabel("missing", { kind: "series" })).toBe("Missing episodes");
-    expect(startedLabel("missing")).toBe("A missing title");
-    expect(startedLabel("upgrade", { kind: "movie" })).toBe("Looking for an upgrade");
+    expect(startedLabel("missing")).toBe("Missing title");
+    expect(startedLabel("upgrade", { kind: "movie" })).toBe("Quality upgrade");
     render5([card({ key: "f", title: "Film (1962)", startedBy: "missing", entity: { kind: "movie", id: "m1" } }), card({ key: "e", title: "Show S01E02", startedBy: "missing", entity: { kind: "episode", id: "e1" } }), card({ key: "p", title: "Pack", release: "Pack.S03.1080p", startedBy: "missing", entity: { kind: "series", id: "s1" } })]);
-    for (const words of ["A missing film", "A missing episode", "A missing season"]) expect(screen.getByText(words)).toBeInTheDocument();
+    for (const words of ["Missing film", "Missing episode", "Missing season"]) expect(screen.getByText(words)).toBeInTheDocument();
   });
 
   it("shows a title whose import has finished full and green: Imported, in your library", () => {
