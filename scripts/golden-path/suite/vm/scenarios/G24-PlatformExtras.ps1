@@ -1288,6 +1288,16 @@ function Invoke-UpdateWithAllBundledClients {
         try {
             # The login boxes appear once NZBGet's row is ticked (here it is pre-ticked); fill them only when found, or the picker refuses
             # the empty login in words ("Choose a username and a password for NZBGet.") and nothing installs.
+            # This picker is the previous release's (the update scenario installs it first), and before #1468 a picker opened by an ask with
+            # NZBGet already ticked drew no login boxes until a tick changed. A person would untick and tick the row; so does the script, once,
+            # when the boxes are not there (R2B, 7 Nov: the picker listed NZBGet ticked and no boxes, on a build that still has that old bug).
+            $w0 = Wait-DesktopWindow -NamePattern $title -Process 'Deluno' -TimeoutSec 5
+            if ($w0 -and -not (Get-WindowControls -Window $w0 | Where-Object { $_.Type -eq 'Edit' -and $_.Name -eq 'NZBGet username' })) {
+                $row = Get-WindowControls -Window $w0 | Where-Object { $_.Type -eq 'CheckBox' -and $_.Name -match '^NZBGet \(' } | Select-Object -First 1
+                if ($row) {
+                    foreach ($i in 1..2) { try { $row.Element.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle() } catch { }; Start-Sleep -Milliseconds 700 } # reason: UI settle after input; Windows raises no event for it
+                }
+            }
             $filled = Wait-Until -TimeoutSec 30 -IntervalSec 1 -Condition {
                 $w = Wait-DesktopWindow -NamePattern $title -Process 'Deluno' -TimeoutSec 2
                 if ($w -and (Set-PickerBox -Window $w -Name 'NZBGet username' -Value $user) -and (Set-PickerBox -Window $w -Name 'NZBGet password' -Value $password)) { $true } else { $null }
