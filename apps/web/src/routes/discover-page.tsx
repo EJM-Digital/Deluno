@@ -266,7 +266,6 @@ export function DiscoverPage() {
           <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center gap-2 py-1.5">
             <FilterChips<DiscoverListName | "">
               label="Discover list"
-              size="sm"
               value={filterCount > 0 ? "" : list}
               onValueChange={(next) => {
                 if (next === "") return;

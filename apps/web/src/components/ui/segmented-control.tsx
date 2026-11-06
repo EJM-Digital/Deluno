@@ -1,6 +1,7 @@
 import * as React from "react";
 import { cn } from "../../lib/utils";
 import { useFieldContext } from "./field";
+import { BOXED_SWITCH_CLASS, BOXED_SWITCH_OFF_CLASS, BOXED_SWITCH_ON_CLASS, BOXED_SWITCH_OPTION_CLASS } from "./filter-chips";
 
 export interface SegmentedOption<T extends string> {
   value: T;
@@ -19,7 +20,7 @@ interface SegmentedControlProps<T extends string> {
 }
 
 /**
- * A small exclusive choice (2–4 options) rendered as one 36px control.
+ * A small exclusive choice (2–4 options) drawn as the boxed switch (the same look as FilterChips, #1530).
  * Real radio semantics: `role="radiogroup"` with roving arrow-key focus.
  */
 export function SegmentedControl<T extends string>({
@@ -50,7 +51,8 @@ export function SegmentedControl<T extends string>({
       aria-label={rest["aria-label"]}
       aria-describedby={field?.describedBy}
       className={cn(
-        "no-scrollbar flex h-(--control-height) w-full overflow-x-auto overflow-y-hidden rounded-[10px] border border-hairline bg-surface-1",
+        "no-scrollbar flex w-full min-w-0 items-center overflow-x-auto sm:w-max sm:max-w-full",
+        BOXED_SWITCH_CLASS,
         disabled && "opacity-60",
         className
       )}
@@ -79,12 +81,9 @@ export function SegmentedControl<T extends string>({
               }
             }}
             className={cn(
-              // whitespace-nowrap: flex-1 gives every segment a 0 basis, so a two-word
-              // label like "TV shows" wraps to two lines and breaks the 36px control.
-              "density-control-text flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap border-r border-hairline px-3 font-medium transition-colors last:border-r-0",
-              "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-              "disabled:cursor-not-allowed",
-              active ? "text-primary" : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+              BOXED_SWITCH_OPTION_CLASS,
+              "gap-1.5 disabled:cursor-not-allowed",
+              active ? BOXED_SWITCH_ON_CLASS : BOXED_SWITCH_OFF_CLASS
             )}
           >
             {option.label}

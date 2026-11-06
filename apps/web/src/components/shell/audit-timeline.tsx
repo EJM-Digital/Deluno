@@ -217,7 +217,6 @@ export function AuditTimelineFilters({ timeline }: { timeline: AuditTimelineStat
     <div className="flex min-w-0 flex-wrap items-center gap-2 lg:flex-nowrap">
       <FilterChips<string>
         label="Filter by kind of event"
-        size="sm"
         value={timeline.catFilter}
         onValueChange={timeline.setCatFilter}
         options={[

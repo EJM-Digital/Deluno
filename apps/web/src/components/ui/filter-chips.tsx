@@ -10,9 +10,18 @@ export interface FilterChipOption<T extends string> {
   count?: number | string;
   /** A status colour, drawn as a dot before the label (the Dashboard's Health areas: red, amber, green). */
   dot?: string;
+  /** Read by screen readers instead of the label, where the label alone repeats (a row of Yes / No questions). */
+  ariaLabel?: string;
   /** Said on hover, where the chip is short for something longer. */
   title?: string;
 }
+
+/** The boxed switch's container, option and states (the owner, 7 Nov 2026, #1530): shared by FilterChips and SegmentedControl so every choice looks the same, and as Weir's `.mm-segmented`. */
+export const BOXED_SWITCH_CLASS = "gap-[2px] rounded-xl border border-hairline bg-card p-[3px]";
+export const BOXED_SWITCH_OPTION_CLASS =
+  "inline-flex h-[30px] shrink-0 items-center whitespace-nowrap rounded-[10px] border px-[14px] text-(length:--type-control) font-medium transition-colors duration-150 motion-reduce:transition-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
+export const BOXED_SWITCH_ON_CLASS = "border-primary/40 bg-primary/10 text-primary";
+export const BOXED_SWITCH_OFF_CLASS = "border-transparent text-muted-foreground hover:bg-surface-2 hover:text-foreground";
 
 /**
  * The one filter control in Deluno (the owner, 2 Oct 2026: "chips with counts", drawn as Weir draws its History's): a joined
@@ -25,7 +34,6 @@ export function FilterChips<T extends string>({
   value,
   onValueChange,
   options,
-  size = "md",
   className
 }: {
   /** What the group chooses, said to screen readers ("Show", "Filter by media type"). */
@@ -33,22 +41,15 @@ export function FilterChips<T extends string>({
   value: T;
   onValueChange: (value: T) => void;
   options: readonly FilterChipOption<T>[];
-  /**
-   * "md" on the header's title line (38px box, 30px options, 13px); "sm" in a card's header (28px box, 22px options,
-   * 12px), so a card filter never makes its header taller than the card's title (#1115). "header" is the Dashboard panel
-   * header's: separate pill chips with no box round them, as Weir's (#1461): 24px tall, 12px text on a 12px line, 6px apart, 600 when chosen and 500 otherwise.
-   */
-  size?: "md" | "sm" | "header";
   className?: string;
 }) {
-  const header = size === "header";
   return (
     <div
       role="radiogroup"
       aria-label={label}
       className={cn(
         "no-scrollbar flex w-max min-w-0 max-w-full shrink items-center overflow-x-auto",
-        header ? "gap-[6px] px-[8px] py-[4px]" : cn("gap-[2px] border border-hairline bg-card", size === "sm" ? "rounded-[9px] p-[2px]" : "rounded-xl p-[3px]"),
+        BOXED_SWITCH_CLASS,
         className
       )}
     >
@@ -61,20 +62,15 @@ export function FilterChips<T extends string>({
             role="radio"
             aria-checked={active}
             title={option.title}
-            aria-label={option.count !== undefined ? `${option.label} ${option.count}` : option.label}
+            aria-label={option.ariaLabel ?? (option.count !== undefined ? `${option.label} ${option.count}` : option.label)}
             onClick={(event) => {
               onValueChange(option.value);
               // A chip the box has cut off is brought into view when it is chosen.
               event.currentTarget.scrollIntoView?.({ inline: "nearest", block: "nearest" });
             }}
             className={cn(
-              "inline-flex shrink-0 items-center whitespace-nowrap border transition-colors duration-150 motion-reduce:transition-none",
-              header ? (active ? "font-semibold" : "font-medium") : "font-medium",
-              header ? "h-[24px] rounded-full px-[10px] text-(length:--type-caption) leading-[12px]" : size === "sm" ? "h-[22px] rounded-[7px] px-[10px] text-(length:--type-caption)" : "h-[30px] rounded-[10px] px-[14px] text-(length:--type-control)",
-              "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
-              header
-                ? active ? "border-primary/45 bg-primary/16 text-primary" : "border-hairline text-muted-foreground hover:bg-surface-2 hover:text-foreground"
-                : active ? "border-primary/40 bg-primary/10 text-primary" : "border-transparent text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+              BOXED_SWITCH_OPTION_CLASS,
+              active ? BOXED_SWITCH_ON_CLASS : BOXED_SWITCH_OFF_CLASS
             )}
           >
             {option.dot ? <span aria-hidden="true" className="mr-[5px] h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: option.dot }} /> : null}
@@ -205,7 +201,6 @@ export function MoreFilters({ groups, size = "sm", className }: { groups: readon
                   <p className="text-(length:--type-micro) font-semibold uppercase tracking-widest text-muted-foreground">{group.label}</p>
                   <FilterChips<string>
                     label={group.ariaLabel}
-                    size="sm"
                     value={group.value}
                     onValueChange={group.onValueChange}
                     options={group.options}

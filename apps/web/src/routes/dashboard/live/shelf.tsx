@@ -185,7 +185,6 @@ export function Shelf({ items, titles, newest, heading, detail, library }: {
   const chips: ReactNode = libraries.length > 0 ? (
     <FilterChips
       label="Libraries"
-      size="header"
       value={chosen?.libraryId ?? "all"}
       onValueChange={choose}
       options={[{ value: "all", label: "All" }, ...libraries.map((entry) => ({ value: entry.libraryId, label: entry.libraryName }))]}

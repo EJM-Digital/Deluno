@@ -114,7 +114,6 @@ export function SettingsQualityPage() {
   const scopeSwitch = (
     <FilterChips<"movie" | "episode">
       label="Show sizes for"
-      size="sm"
       value={scope}
       onValueChange={setScope}
       options={[

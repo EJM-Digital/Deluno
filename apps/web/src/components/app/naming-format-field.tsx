@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Check } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { SegmentedControl } from "../ui/segmented-control";
 import { cn } from "../../lib/utils";
 
 export type NamingFormatKind = "movie-folder" | "series-folder" | "movie-file" | "episode-file" | "daily-episode-file" | "anime-episode-file" | "destination-movie" | "destination-series";
@@ -196,6 +197,8 @@ export function NamingFormatField({
     }
   ];
 
+  const chosenOption = options.find((option) => option.value === selectedValue);
+
   function choosePreset(nextValue: string) {
     if (nextValue === "__custom__") {
       setCustomSelected(true);
@@ -214,46 +217,24 @@ export function NamingFormatField({
         <span className="text-(length:--type-caption) font-medium text-foreground">Format</span>
         <span className="text-(length:--type-caption) text-muted-foreground">{`Choose how Deluno names ${KIND_NOUN[kind]}.`}</span>
       </div>
-      <div
-        role="radiogroup"
+      <SegmentedControl
         aria-label={`${kind} naming style`}
-        className="overflow-hidden rounded-[10px] border border-hairline bg-surface-1"
-      >
-        {options.map((option, index) => {
-          const active = selectedValue === option.value;
-          return (
-            <button
-              key={option.value}
-              type="button"
-              role="radio"
-              aria-label={option.label}
-              aria-checked={active}
-              onClick={() => choosePreset(option.value)}
-              className={cn(
-                "flex w-full items-start gap-3 border-b border-hairline px-3.5 py-3 text-left transition-colors last:border-b-0 focus-visible:z-10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                active ? "bg-primary/8" : "hover:bg-surface-2/70"
-              )}
-            >
-              <span className={cn("mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border", active ? "border-primary bg-primary text-primary-foreground" : "border-hairline bg-background text-transparent")}>
-                <Check aria-hidden className="h-3 w-3" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className={cn("flex items-center gap-2 text-(length:--type-caption) font-semibold", active ? "text-primary" : "text-foreground")}>
-                  <span className="truncate">{option.label}</span>
-                  {index === 0 ? <span className="shrink-0 text-(length:--type-micro) font-semibold uppercase tracking-[0.08em] text-primary">Recommended</span> : null}
-                </span>
-                <span className="mt-0.5 block text-(length:--type-caption) leading-snug text-muted-foreground">{option.description}</span>
-              </span>
-              {showExamples ? (
-                <span className="hidden max-w-[42%] shrink-0 text-right md:block">
-                  <span className="block text-(length:--type-micro) font-semibold uppercase tracking-[0.08em] text-muted-foreground">Example</span>
-                  <code className="mt-0.5 block truncate text-(length:--type-caption) text-foreground">{option.hint}</code>
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
+        value={selectedValue}
+        onValueChange={choosePreset}
+        options={options.map((option) => ({ value: option.value, label: option.label }))}
+      />
+      {chosenOption ? (
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 text-(length:--type-caption)">
+          <span className="text-muted-foreground">{chosenOption.description}</span>
+          {chosenOption === options[0] ? <span className="shrink-0 text-(length:--type-micro) font-semibold uppercase tracking-[0.08em] text-primary">Recommended</span> : null}
+          {showExamples ? (
+            <span className="min-w-0 truncate">
+              <span className="font-semibold uppercase tracking-[0.08em] text-muted-foreground">Example </span>
+              <code className="text-foreground">{chosenOption.hint}</code>
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       {showExamples ? (
         <div className="flex min-w-0 items-baseline gap-3 text-(length:--type-caption)">

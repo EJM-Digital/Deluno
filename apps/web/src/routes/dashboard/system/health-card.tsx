@@ -102,7 +102,6 @@ export function HealthCard({ model, hasChecks, jump, now }: { model: HealthModel
       <div className="sy-areas">
         <FilterChips<string>
           label="Health areas"
-          size="header"
           value={filter ?? ""}
           // Pressing the chosen area again goes back to the problems, as the ribbon always did.
           onValueChange={(key) => setFilter((current) => (current === key ? null : (key as HealthArea)))}

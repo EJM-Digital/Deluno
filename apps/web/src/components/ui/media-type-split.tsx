@@ -39,7 +39,6 @@ export function MediaTypeFilter({
   return (
     <FilterChips<MediaTypeScope>
       label="Filter by media type"
-      size="sm"
       value={value}
       onValueChange={onValueChange}
       options={[

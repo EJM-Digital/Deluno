@@ -1585,7 +1585,6 @@ export function ShowDetailPage() {
               <>
                 <FilterChips<EpisodeFilter>
                   label="Filter episodes"
-                  size="sm"
                   value={episodeFilter}
                   onValueChange={setEpisodeFilter}
                   options={episodeFilterOptions}

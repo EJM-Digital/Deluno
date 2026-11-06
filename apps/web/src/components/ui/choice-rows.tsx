@@ -52,6 +52,7 @@ export function ChoiceRows<T extends string>({
   return (
     <div
       role="radiogroup"
+      data-choice-rows=""
       id={field?.id}
       aria-labelledby={rest["aria-label"] ? undefined : field?.labelId}
       aria-label={rest["aria-label"]}

@@ -61,6 +61,7 @@ import { safeReturnAddress } from "../lib/return-address";
 import { authedFetch, useAuth } from "../lib/use-auth";
 import { addressForOtherDevices, cn, plainAddress } from "../lib/utils";
 import { Button } from "../components/ui/button";
+import { FilterChips } from "../components/ui/filter-chips";
 import { Input } from "../components/ui/input";
 import { Checkbox, CheckboxRow } from "../components/ui/checkbox";
 import { Field, FieldRow } from "../components/ui/field";
@@ -1667,10 +1668,7 @@ function RefineWithWeirQuestions({ form, patch }: { form: GuideForm; patch: (pat
                 <p className="font-medium text-foreground">{type.label}</p>
                 <CurrentSettingNote value={form.savedAnswers?.[type.answerKey]} />
               </div>
-              <div className="flex shrink-0 gap-2" role="radiogroup" aria-label={question(type.label)}>
-                <Button type="button" size="sm" variant={type.answer === true ? "default" : "outline"} role="radio" aria-checked={type.answer === true} aria-label={`${question(type.label)} Yes`} onClick={() => patch({ [type.answerKey]: true })}>Yes</Button>
-                <Button type="button" size="sm" variant={type.answer === false ? "default" : "outline"} role="radio" aria-checked={type.answer === false} aria-label={`${question(type.label)} No`} onClick={() => patch({ [type.answerKey]: false })}>No</Button>
-              </div>
+              <YesNoSwitch question={question(type.label)} value={type.answer} onYes={() => patch({ [type.answerKey]: true })} onNo={() => patch({ [type.answerKey]: false })} />
             </div>
             {type.answer === true ? (
               <Field label={`Where Weir leaves cleaned ${type.label} files`} help="The folder must already exist. Weir sets up its Movies and TV workflows from this by itself.">
@@ -1681,6 +1679,19 @@ function RefineWithWeirQuestions({ form, patch }: { form: GuideForm; patch: (pat
         ))}
       </div>
     </FieldShell>
+  );
+}
+
+/** A Yes / No question as the boxed switch (#1530); each answer is named "<question> Yes" so rows stay distinguishable. Nothing is chosen until it is answered. */
+function YesNoSwitch({ question, value, onYes, onNo }: { question: string; value: boolean | null | undefined; onYes: () => void; onNo: () => void }) {
+  return (
+    <FilterChips<string>
+      label={question}
+      value={value === true ? "yes" : value === false ? "no" : ""}
+      onValueChange={(next) => (next === "yes" ? onYes() : onNo())}
+      options={[{ value: "yes", label: "Yes", ariaLabel: `${question} Yes` }, { value: "no", label: "No", ariaLabel: `${question} No` }]}
+      className="shrink-0"
+    />
   );
 }
 
@@ -1760,30 +1771,7 @@ function AutomationStep({
               </div>
               {/* Unique accessible names per row: plain "Yes"/"No" would repeat
                   across eight rows and break assistive tech and the smoke tests. */}
-              <div className="flex shrink-0 gap-2" role="radiogroup" aria-label={item.question}>
-                <Button
-                  type="button"
-                  variant={value === true ? "default" : "outline"}
-                  size="sm"
-                  role="radio"
-                  aria-checked={value === true}
-                  aria-label={`${item.question} Yes`}
-                  onClick={() => setAnswer(item.key, true)}
-                >
-                  Yes
-                </Button>
-                <Button
-                  type="button"
-                  variant={value === false ? "default" : "outline"}
-                  size="sm"
-                  role="radio"
-                  aria-checked={value === false}
-                  aria-label={`${item.question} No`}
-                  onClick={() => setAnswer(item.key, false)}
-                >
-                  No
-                </Button>
-              </div>
+              <YesNoSwitch question={item.question} value={value} onYes={() => setAnswer(item.key, true)} onNo={() => setAnswer(item.key, false)} />
             </div>
           );
         })}
@@ -1943,30 +1931,7 @@ function AddressesStep({
       label="Only answer on the addresses you use?"
       copy="Off, Deluno answers on any address -- exactly what it has always done. Yes, it only answers on what you tick below, which is safer if this computer is ever reachable from somewhere you don't control."
     >
-      <div className="mb-4 flex gap-2" role="radiogroup" aria-label="Only answer on the addresses you use?">
-        <Button
-          type="button"
-          variant={form.restrictAllowedHosts === true ? "default" : "outline"}
-          size="sm"
-          role="radio"
-          aria-checked={form.restrictAllowedHosts === true}
-          aria-label="Only answer on the addresses you use? Yes"
-          onClick={() => patch({ restrictAllowedHosts: true })}
-        >
-          Yes
-        </Button>
-        <Button
-          type="button"
-          variant={form.restrictAllowedHosts === false ? "default" : "outline"}
-          size="sm"
-          role="radio"
-          aria-checked={form.restrictAllowedHosts === false}
-          aria-label="Only answer on the addresses you use? No"
-          onClick={() => patch({ restrictAllowedHosts: false })}
-        >
-          No
-        </Button>
-      </div>
+      <div className="mb-4"><YesNoSwitch question="Only answer on the addresses you use?" value={form.restrictAllowedHosts} onYes={() => patch({ restrictAllowedHosts: true })} onNo={() => patch({ restrictAllowedHosts: false })} /></div>
 
       <CurrentSettingNote value={form.savedAnswers?.restrictAllowedHosts} />
 
@@ -2031,30 +1996,7 @@ function UpdatesStep({ form, patch, channel }: { form: GuideForm; patch: (patchV
         label="Check for updates by itself?"
         copy="Yes, Deluno looks for a new version every few hours. No, it never looks on its own: you press Check for updates in System -> Updates when you want to."
       >
-        <div className="flex gap-2" role="radiogroup" aria-label="Check for updates by itself?">
-          <Button
-            type="button"
-            variant={form.checkForUpdates === true ? "default" : "outline"}
-            size="sm"
-            role="radio"
-            aria-checked={form.checkForUpdates === true}
-            aria-label="Check for updates by itself? Yes"
-            onClick={() => patch({ checkForUpdates: true })}
-          >
-            Yes
-          </Button>
-          <Button
-            type="button"
-            variant={form.checkForUpdates === false ? "default" : "outline"}
-            size="sm"
-            role="radio"
-            aria-checked={form.checkForUpdates === false}
-            aria-label="Check for updates by itself? No"
-            onClick={() => patch({ checkForUpdates: false })}
-          >
-            No
-          </Button>
-        </div>
+        <YesNoSwitch question="Check for updates by itself?" value={form.checkForUpdates} onYes={() => patch({ checkForUpdates: true })} onNo={() => patch({ checkForUpdates: false })} />
         <CurrentSettingNote value={form.savedAnswers?.checkForUpdates} />
       </FieldShell>
       {form.checkForUpdates === true ? (
@@ -2063,30 +2005,7 @@ function UpdatesStep({ form, patch, channel }: { form: GuideForm; patch: (patchV
           label="Update Deluno automatically?"
           copy={`Yes, Deluno downloads and applies updates on its own and restarts to use them. No, Deluno checks for updates and tells you first. Either way, you stay on the ${channel} channel; change that from System -> Updates.`}
         >
-          <div className="flex gap-2" role="radiogroup" aria-label="Update Deluno automatically?">
-            <Button
-              type="button"
-              variant={form.updateAutomatically === true ? "default" : "outline"}
-              size="sm"
-              role="radio"
-              aria-checked={form.updateAutomatically === true}
-              aria-label="Update Deluno automatically? Yes"
-              onClick={() => patch({ updateAutomatically: true })}
-            >
-              Yes
-            </Button>
-            <Button
-              type="button"
-              variant={form.updateAutomatically === false ? "default" : "outline"}
-              size="sm"
-              role="radio"
-              aria-checked={form.updateAutomatically === false}
-              aria-label="Update Deluno automatically? No"
-              onClick={() => patch({ updateAutomatically: false })}
-            >
-              No
-            </Button>
-          </div>
+          <YesNoSwitch question="Update Deluno automatically?" value={form.updateAutomatically} onYes={() => patch({ updateAutomatically: true })} onNo={() => patch({ updateAutomatically: false })} />
           <CurrentSettingNote value={form.savedAnswers?.updateAutomatically} />
         </FieldShell>
       ) : null}
@@ -2136,30 +2055,7 @@ function LocalNetworkAuthQuestion({
       label="Skip sign-in for devices on your home network?"
       copy={`Off, every device signs in, exactly as Deluno has always done. Yes, a device Deluno can prove is on your local network (not one behind a reverse proxy from outside) skips sign-in. You are connecting from ${plainAddress(currentAddress)}.`}
     >
-      <div className="mb-4 flex gap-2" role="radiogroup" aria-label="Skip sign-in for devices on your home network?">
-        <Button
-          type="button"
-          variant={form.skipSignInLocalNetwork === true ? "default" : "outline"}
-          size="sm"
-          role="radio"
-          aria-checked={form.skipSignInLocalNetwork === true}
-          aria-label="Skip sign-in for devices on your home network? Yes"
-          onClick={() => patch({ skipSignInLocalNetwork: true })}
-        >
-          Yes
-        </Button>
-        <Button
-          type="button"
-          variant={form.skipSignInLocalNetwork === false ? "default" : "outline"}
-          size="sm"
-          role="radio"
-          aria-checked={form.skipSignInLocalNetwork === false}
-          aria-label="Skip sign-in for devices on your home network? No"
-          onClick={() => patch({ skipSignInLocalNetwork: false })}
-        >
-          No
-        </Button>
-      </div>
+      <div className="mb-4"><YesNoSwitch question="Skip sign-in for devices on your home network?" value={form.skipSignInLocalNetwork} onYes={() => patch({ skipSignInLocalNetwork: true })} onNo={() => patch({ skipSignInLocalNetwork: false })} /></div>
 
       <CurrentSettingNote value={form.savedAnswers?.skipSignInLocalNetwork} />
 
@@ -2565,7 +2461,7 @@ function PresetRadioGroup({ label, options }: { label: string; options: PresetRa
   }
 
   return (
-    <div role="radiogroup" aria-label={label} className="grid grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-2">
+    <div role="radiogroup" data-choice-rows="" aria-label={label} className="grid grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-2">
       {options.map((option, index) => (
         <button
           key={option.id}

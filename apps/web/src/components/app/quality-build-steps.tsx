@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { Chip } from "../ui/chip";
+import { FilterChips } from "../ui/filter-chips";
 import { Input } from "../ui/input";
 import { cn } from "../../lib/utils";
 import { judgeDraftProfile, type DraftProfileJudgement } from "../../lib/api";
@@ -354,24 +355,13 @@ function RuleIntentPicker({
                 </button>
               ) : null}
             </span>
-            <div role="radiogroup" aria-label={`How much this profile wants ${friendlyRuleName(format.name)}`} className="flex gap-1">
-              {INTENT_CHOICES.map((choice) => (
-                <button
-                  key={choice.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={intent === choice.value}
-                  title={choice.help}
-                  onClick={() => onFormatIntentChange(formatId, choice.value)}
-                  className={cn(
-                    "rounded-md border px-2 py-0.5 text-(length:--type-caption) transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
-                    intent === choice.value ? "border-ring bg-ring/15 text-foreground" : "border-hairline text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  {choice.label}
-                </button>
-              ))}
-            </div>
+            <FilterChips<string>
+              label={`How much this profile wants ${friendlyRuleName(format.name)}`}
+              value={intent}
+              onValueChange={(next) => onFormatIntentChange(formatId, next)}
+              options={INTENT_CHOICES.map((choice) => ({ value: choice.value, label: choice.label, title: choice.help }))}
+              className="shrink-0"
+            />
           </li>
         );
       })}

@@ -4,28 +4,29 @@ import { FilterChips } from "./filter-chips";
 
 const OPTIONS = [{ value: "all", label: "All" }, { value: "movies", label: "Movies" }, { value: "tv", label: "TV" }] as const;
 
-describe("FilterChips in a Dashboard panel header (#1461)", () => {
-  it("draws separate 24px pills 6px apart with no box round them, 600 when chosen and 500 otherwise, as Weir's", () => {
-    render(<FilterChips label="Libraries" size="header" value="movies" onValueChange={() => undefined} options={OPTIONS} />);
+describe("FilterChips is the boxed switch (#1530)", () => {
+  it("draws a 12px-round box, 3px inside, of 30px 13px options 10px round, the chosen one tinted", () => {
+    render(<FilterChips label="Libraries" value="movies" onValueChange={() => undefined} options={OPTIONS} />);
     const group = screen.getByRole("radiogroup", { name: "Libraries" });
-    expect(group.className).toContain("gap-[6px]");
-    expect(group.className).not.toContain("border");
+    expect(group.className).toContain("rounded-xl");
+    expect(group.className).toContain("p-[3px]");
+    expect(group.className).toContain("border-hairline");
     const chosen = screen.getByRole("radio", { name: "Movies" });
     const other = screen.getByRole("radio", { name: "All" });
     for (const chip of [chosen, other]) {
-      expect(chip.className).toContain("h-[24px]");
-      expect(chip.className).toContain("px-[10px]");
+      expect(chip.className).toContain("h-[30px]");
+      expect(chip.className).toContain("rounded-[10px]");
+      expect(chip.className).toContain("px-[14px]");
+      expect(chip.className).toContain("font-medium");
     }
-    expect(chosen.className).toContain("font-semibold");
-    expect(chosen.className).toContain("bg-primary/16");
-    expect(chosen.className).toContain("border-primary/45");
-    expect(other.className).toContain("font-medium");
+    expect(chosen.className).toContain("bg-primary/10");
+    expect(chosen.className).toContain("border-primary/40");
     expect(other.className).not.toContain("bg-primary");
   });
 
   it("keeps the radio semantics and the keyboard behaviour", () => {
     const choose = vi.fn();
-    render(<FilterChips label="Libraries" size="header" value="all" onValueChange={choose} options={OPTIONS} />);
+    render(<FilterChips label="Libraries" value="all" onValueChange={choose} options={OPTIONS} />);
     expect(screen.getByRole("radio", { name: "All" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("radio", { name: "TV" })).toHaveAttribute("aria-checked", "false");
     fireEvent.click(screen.getByRole("radio", { name: "TV" }));

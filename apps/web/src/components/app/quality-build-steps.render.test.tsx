@@ -246,10 +246,10 @@ describe("how much a chosen rule matters", () => {
     show({ customFormatIds: ["hdr"], formatIntents: { hdr: "avoid" } });
     fireEvent.click(step(/What should the picture be/));
     const [off, never, avoid] = screen.getAllByRole("radio");
-    expect(avoid.className).toContain("border-ring bg-ring/15 text-foreground");
-    expect(off.className).toContain("border-hairline text-muted-foreground");
-    expect(never.className).not.toContain("bg-ring/15");
-    expect(avoid.className).toContain("rounded-md border");
+    expect(avoid.className).toContain("border-primary/40 bg-primary/10 text-primary");
+    expect(off.className).toContain("border-transparent text-muted-foreground");
+    expect(never.className).not.toContain("bg-primary/10");
+    expect(avoid.className).toContain("h-[30px] shrink-0");
   });
 
   it("lists nothing when no rule of the step is chosen", () => {

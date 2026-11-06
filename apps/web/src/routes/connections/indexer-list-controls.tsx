@@ -82,7 +82,6 @@ export function IndexerFilterChips({ indexers, filters, onChange }: { indexers: 
     <div className="flex min-w-0 items-center gap-3">
       <FilterChips<IndexerFilters["status"]>
         label="Filter by on or off"
-        size="sm"
         value={filters.status}
         onValueChange={(status) => onChange({ ...filters, status })}
         options={[
@@ -94,7 +93,6 @@ export function IndexerFilterChips({ indexers, filters, onChange }: { indexers: 
       {movies !== indexers.length || tv !== indexers.length ? (
         <FilterChips<"" | "movies" | "tv">
           label="Filter by what it searches for"
-          size="sm"
           value={filters.scope === "movies" || filters.scope === "tv" ? filters.scope : ""}
           onValueChange={(scope) => onChange({ ...filters, scope })}
           options={[
