@@ -13,6 +13,9 @@ public static class ProcessorOutputReadiness
     // matching it.
     public static bool IsReady(string path) => ImportFileReadiness.IsReady(path);
 
+    /// <summary>A finished download's file is ready to hand to a processor, even while its client still holds it open (#1519).</summary>
+    public static bool IsReadyToHandOver(string path) => ImportFileReadiness.IsReadyToHandOver(path);
+
     public static bool IsReady(string path, TimeProvider timeProvider)
         => ImportFileReadiness.IsReady(path, timeProvider);
 }

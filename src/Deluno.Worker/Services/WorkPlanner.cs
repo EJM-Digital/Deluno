@@ -1105,6 +1105,10 @@ public sealed class WorkPlanner(
 
             if (string.IsNullOrWhiteSpace(item.SourcePath))
             {
+                await TellNotHandedOverOnceAsync(
+                    activityFeedRepository, item, $"{item.ClientId}:{item.Id}",
+                    $"{item.Title} finished in {item.ClientName}, but {item.ClientName} did not say where its files are, so Deluno cannot hand it over or import it. Check the download folder settings of {item.ClientName}.",
+                    cancellationToken);
                 continue;
             }
 
@@ -1114,7 +1118,7 @@ public sealed class WorkPlanner(
             // path is stable and readable. This is a last safety net behind
             // the client's own settled status (#912): logged only when it is
             // actually what is holding the import back.
-            if (File.Exists(item.SourcePath) && !ProcessorOutputReadiness.IsReady(item.SourcePath))
+            if (File.Exists(item.SourcePath) && !ProcessorOutputReadiness.IsReadyToHandOver(item.SourcePath))
             {
                 await TellHeldByFileCheckOnceAsync(activityFeedRepository, item, cancellationToken);
                 continue;
@@ -1154,6 +1158,10 @@ public sealed class WorkPlanner(
             var library = ResolveLibraryForQueueItem(item, libraries, routeCategoriesByLibrary);
             if (library is null)
             {
+                await TellNotHandedOverOnceAsync(
+                    activityFeedRepository, item, sourceKey,
+                    $"{item.Title} finished in {item.ClientName}, but Deluno found no library for it, so it was not handed over or imported. Check that its library is available and that {item.ClientName} puts this category in the library's downloads folder.",
+                    cancellationToken);
                 continue;
             }
 
@@ -1451,6 +1459,7 @@ public sealed class WorkPlanner(
 
     internal const string NotImportedCategory = "filesystem.import.not-imported";
     internal const string HeldByFileCheckCategory = "filesystem.import.held-by-file-check";
+    private const string NotHandedOverCategory = "processing.not-handed-over";
 
     /// <summary>
     /// Says once, against the source path, that the 20-second stability check
@@ -1478,6 +1487,33 @@ public sealed class WorkPlanner(
             null,
             "download-source",
             sourceKey,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Says once, against the download's own place on disk (or its id in the client), why a finished download is not
+    /// being handed over, so it never waits silently (#1519).
+    /// </summary>
+    private static async Task TellNotHandedOverOnceAsync(
+        IActivityFeedRepository activityFeedRepository,
+        DownloadQueueItem item,
+        string key,
+        string message,
+        CancellationToken cancellationToken)
+    {
+        var told = await activityFeedRepository.ListActivityAsync(5, "download-source", key, cancellationToken);
+        if (told.Any(activity => activity.Category == NotHandedOverCategory))
+        {
+            return;
+        }
+
+        await activityFeedRepository.RecordActivityAsync(
+            NotHandedOverCategory,
+            message,
+            JsonSerializer.Serialize(new { item.ClientId, item.ClientName, item.ReleaseName, item.SourcePath }, PayloadJsonOptions),
+            null,
+            "download-source",
+            key,
             cancellationToken);
     }
 

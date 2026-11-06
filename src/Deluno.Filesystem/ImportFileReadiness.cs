@@ -100,6 +100,51 @@ public static class ImportFileReadiness
         }
     }
 
+    /// <summary>How long a file the client still holds open must have sat unchanged to be handed over anyway (#1519).</summary>
+    public static readonly TimeSpan HeldFileSettleAge = TimeSpan.FromMinutes(1);
+
+    /// <summary>
+    /// Ready to be handed to a processor: <see cref="IsReady(string, TimeProvider?)"/>, or a file the download client
+    /// still holds so Deluno cannot open it (a seeding single-file torrent) that has not changed for
+    /// <see cref="HeldFileSettleAge"/>. A client's hold on a finished file is not a writer in progress, and a folder
+    /// download is never opened at all, so the hold must not keep a single file back for ever.
+    /// </summary>
+    public static bool IsReadyToHandOver(string path, TimeProvider? timeProvider = null)
+    {
+        if (IsReady(path, timeProvider))
+        {
+            return true;
+        }
+
+        try
+        {
+            var info = new FileInfo(path);
+            var now = (timeProvider ?? TimeProvider.System).GetUtcNow().UtcDateTime;
+            return info.Exists && info.Length > 0 && now - info.LastWriteTimeUtc >= HeldFileSettleAge && IsHeldByAnotherProcess(path);
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsHeldByAnotherProcess(string path)
+    {
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            return false;
+        }
+        catch (IOException)
+        {
+            return true;
+        }
+    }
+
     public static bool IsReady(string path, TimeProvider? timeProvider)
     {
         try

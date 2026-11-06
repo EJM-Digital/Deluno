@@ -653,10 +653,31 @@ public sealed class DownloadClientTelemetryService(
         }
     }
 
+    private static readonly string[] VideoExtensions = [".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv", ".ts", ".m2ts", ".mpg", ".mpeg"];
+
+    /// <summary>
+    /// A single-file torrent is named by its client after the file, extension and all (qBittorrent's recorded
+    /// <c>finished-single-file</c> reply: <c>Recorded.qbittorrent.A.mkv</c>), while the grab it came from is named
+    /// without one, so every comparison of a client item with its grab drops a trailing video extension (#1519).
+    /// </summary>
+    internal static string WithoutVideoExtension(string? name)
+    {
+        var text = (name ?? string.Empty).Trim();
+        foreach (var extension in VideoExtensions)
+        {
+            if (text.Length > extension.Length && text.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
+            {
+                return text[..^extension.Length];
+            }
+        }
+
+        return text;
+    }
+
     /// <summary>A release name with case, punctuation, separators and a trailing ".nzb" ignored, for comparing an item with its dispatch.</summary>
     internal static string PlainReleaseName(string? name)
     {
-        var plain = string.Concat((name ?? string.Empty).Where(char.IsLetterOrDigit)).ToLowerInvariant();
+        var plain = string.Concat(WithoutVideoExtension(name).Where(char.IsLetterOrDigit)).ToLowerInvariant();
         return plain.EndsWith("nzb", StringComparison.Ordinal) && plain.Length > 3 ? plain[..^3] : plain;
     }
 
@@ -3622,7 +3643,7 @@ public sealed class DownloadClientTelemetryService(
 
         return items
             .Where(item => !string.Equals(item.Id, dispatch.Id, StringComparison.Ordinal)
-                && string.Equals(item.ReleaseName, dispatch.ReleaseName, StringComparison.OrdinalIgnoreCase)
+                && SameRelease(item.ReleaseName, dispatch.ReleaseName)
                 && string.Equals(item.GrabStatus, "succeeded", StringComparison.OrdinalIgnoreCase)
                 && (string.Equals(item.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase)
                     || (string.IsNullOrEmpty(item.ImportStatus)
@@ -4121,7 +4142,7 @@ public sealed class DownloadClientTelemetryService(
                 var dispatch = settledDispatches
                     .Where(candidate =>
                         string.Equals(candidate.DownloadClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
-                        && string.Equals(candidate.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase))
+                        && SameRelease(candidate.ReleaseName, item.ReleaseName))
                     .OrderByDescending(candidate => candidate.CreatedUtc)
                     .FirstOrDefault();
                 if (dispatch is not null
@@ -4275,7 +4296,7 @@ public sealed class DownloadClientTelemetryService(
                 .Where(candidate =>
                     string.Equals(candidate.ClientId, row.ClientId, StringComparison.OrdinalIgnoreCase)
                     && (string.Equals(candidate.QueueItemId, row.Id, StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(candidate.ReleaseName, row.ReleaseName, StringComparison.OrdinalIgnoreCase)))
+                        || SameRelease(candidate.ReleaseName, row.ReleaseName)))
                 .OrderByDescending(candidate => candidate.UpdatedUtc)
                 .FirstOrDefault();
             var ranToItsEnd = handoff is not null
@@ -4566,14 +4587,14 @@ public sealed class DownloadClientTelemetryService(
     private static DateTimeOffset? FinishedUtcOf(DownloadQueueItem item, IReadOnlyList<DownloadDispatchItem> dispatches)
         => dispatches
             .Where(dispatch => string.Equals(dispatch.DownloadClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(dispatch.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase))
+                && SameRelease(dispatch.ReleaseName, item.ReleaseName))
             .OrderByDescending(dispatch => dispatch.CreatedUtc)
             .Select(dispatch => dispatch.ClientCompletedUtc)
             .FirstOrDefault();
 
     private static bool AnotherCopyHasTheHandoff(DownloadQueueItem item, IReadOnlyList<ProcessorHandoffItem> handoffs)
         => handoffs.Any(other =>
-            string.Equals(other.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase)
+            SameRelease(other.ReleaseName, item.ReleaseName)
             && !(string.Equals(other.ClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(other.QueueItemId, item.Id, StringComparison.OrdinalIgnoreCase))
             && (ProcessorHandoffStatuses.IsWithProcessor(other.Status)
@@ -4582,7 +4603,7 @@ public sealed class DownloadClientTelemetryService(
     private static DownloadDispatchItem? LatestDispatchOf(DownloadQueueItem item, IReadOnlyList<DownloadDispatchItem> dispatches)
         => dispatches
             .Where(candidate => string.Equals(candidate.DownloadClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(candidate.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase))
+                && SameRelease(candidate.ReleaseName, item.ReleaseName))
             .OrderByDescending(candidate => candidate.CreatedUtc)
             .FirstOrDefault();
 
@@ -4636,7 +4657,7 @@ public sealed class DownloadClientTelemetryService(
         var dispatch = dispatches
             .OrderByDescending(dispatch => dispatch.CreatedUtc)
             .FirstOrDefault(dispatch =>
-                string.Equals(dispatch.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase) ||
+                SameRelease(dispatch.ReleaseName, item.ReleaseName) ||
                 string.Equals(dispatch.ReleaseName, item.Title, StringComparison.OrdinalIgnoreCase));
         if (dispatch is not null)
         {
@@ -4937,7 +4958,7 @@ public sealed class DownloadClientTelemetryService(
         var latestDispatch = dispatches
             .Where(dispatch =>
                 string.Equals(dispatch.DownloadClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(dispatch.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase))
+                && SameRelease(dispatch.ReleaseName, item.ReleaseName))
             .OrderByDescending(dispatch => dispatch.CreatedUtc)
             .FirstOrDefault();
 
@@ -4972,7 +4993,7 @@ public sealed class DownloadClientTelemetryService(
         var latestDispatch = dispatches
             .Where(dispatch =>
                 string.Equals(dispatch.DownloadClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(dispatch.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase))
+                && SameRelease(dispatch.ReleaseName, item.ReleaseName))
             .OrderByDescending(dispatch => dispatch.CreatedUtc)
             .FirstOrDefault();
 
@@ -4994,7 +5015,7 @@ public sealed class DownloadClientTelemetryService(
         var latestDispatch = dispatches
             .Where(dispatch =>
                 string.Equals(dispatch.DownloadClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(dispatch.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase))
+                && SameRelease(dispatch.ReleaseName, item.ReleaseName))
             .OrderByDescending(dispatch => dispatch.CreatedUtc)
             .FirstOrDefault();
 
@@ -5012,7 +5033,7 @@ public sealed class DownloadClientTelemetryService(
         var latestDispatch = dispatchesIncludingArchived
             .Where(dispatch =>
                 string.Equals(dispatch.DownloadClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(dispatch.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase))
+                && SameRelease(dispatch.ReleaseName, item.ReleaseName))
             .OrderByDescending(dispatch => dispatch.CreatedUtc)
             .FirstOrDefault();
 
@@ -5031,7 +5052,7 @@ public sealed class DownloadClientTelemetryService(
         var latestDispatch = dispatches
             .Where(dispatch =>
                 string.Equals(dispatch.DownloadClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(dispatch.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase))
+                && SameRelease(dispatch.ReleaseName, item.ReleaseName))
             .OrderByDescending(dispatch => dispatch.CreatedUtc)
             .FirstOrDefault();
         return latestDispatch is not null
@@ -5046,7 +5067,7 @@ public sealed class DownloadClientTelemetryService(
         var latestDispatch = dispatches
             .Where(dispatch =>
                 string.Equals(dispatch.DownloadClientId, item.ClientId, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(dispatch.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase))
+                && SameRelease(dispatch.ReleaseName, item.ReleaseName))
             .OrderByDescending(dispatch => dispatch.CreatedUtc)
             .FirstOrDefault();
         if (latestDispatch is null
