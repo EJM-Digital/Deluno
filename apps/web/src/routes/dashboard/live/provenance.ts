@@ -70,7 +70,7 @@ export function startedByOfDispatch(dispatch: Pick<DownloadDispatchItem, "starte
 
 /**
  * The line a card and its details drawer carry for the stage it is in (#1517), from one place. From the grab on it says
- * where the release came from (never invented); in the processor and the import it says what is happening there. While it
+ * where the release came from (never invented); in the import it says where the file is going. While it
  * is being searched there is none: the reason tag says why it is wanted. It never repeats a line already on the card.
  */
 export function stageNote(card: {
@@ -86,8 +86,8 @@ export function stageNote(card: {
       if (from === "Manual selection") return "Selected manually";
       return from ? `Grabbed from ${from}` : "Grabbed";
     }
-    case "processor":
-      return card.processor ? `${card.processor} is cleaning it` : "Being cleaned up";
+    // None with the processor: the card's status already says whether it is waiting for the processor or with it ("Weir is
+    // working on it"), and saying it twice is what #1517 forbids.
     case "importing":
       return card.destination ? `Going into ${card.destination}` : "Going into the library";
     default:

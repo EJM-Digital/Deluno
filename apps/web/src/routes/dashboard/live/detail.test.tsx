@@ -61,7 +61,7 @@ describe("a card's detail lines are the mockup's, from real readings", () => {
 
   it("a title with the processor or being imported ends on its release name, small and monospaced, like every other card", () => {
     const working = detailLines(card({ stage: "processor", release: "Sintel.2010.1080p-NTb" }), 4, NOW);
-    expect(working.map(text)).toEqual(["Handed over", "Sintel.2010.1080p-NTb", "Being cleaned up"]);
+    expect(working.map(text)).toEqual(["Handed over", "Sintel.2010.1080p-NTb"]);
     expect(working[1].mono).toBe(true);
     const importing = detailLines(card({ stage: "importing", destination: "Movies", release: "Sintel.2010.1080p-NTb" }), 4, NOW);
     expect(importing.map(text)).toEqual(["Sintel.2010.1080p-NTb", "Going into Movies"]);

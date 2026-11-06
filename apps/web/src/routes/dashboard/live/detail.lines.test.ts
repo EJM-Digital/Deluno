@@ -194,17 +194,17 @@ describe("a card says why it is wanted and, from the grab on, where it is (#1517
     expect(closing({ stage: "downloading", startedBy: "upgrade", indexer: "The Pirate Bay", progress: 0 })).toEqual([bold("Grabbed from The Pirate Bay"), bold("Quality upgrade")]);
     expect(closing({ stage: "downloading", startedBy: "seerr" })).toEqual([bold("Grabbed"), bold("Seerr request")]);
   });
-  it("processing says who is cleaning it", () => {
-    expect(closing({ stage: "processor", startedBy: "you", processor: "Weir" }).slice(-2)).toEqual([bold("Weir is cleaning it"), bold("Added manually")]);
-    expect(closing({ stage: "processor" }).slice(-1)).toEqual([bold("Being cleaned up")]);
+  it("processing adds no stage line: the status already says the processor has it or is waiting for it", () => {
+    expect(closing({ stage: "processor", startedBy: "you", processor: "Weir" }).slice(-1)).toEqual([bold("Added manually")]);
+    expect(closing({ stage: "processor", startedBy: "you", processor: "Weir" })).not.toContainEqual(bold("Weir is cleaning it"));
   });
   it("importing says where it is going, once", () => {
     expect(closing({ stage: "importing", startedBy: "you", destination: "Movies" })).toEqual([bold("Going into Movies"), bold("Added manually")]);
     expect(closing({ stage: "importing" })).toEqual([bold("Going into the library")]);
   });
   it("the closing lines are never the ones cut at four", () => {
-    const lines = detailLines(card({ stage: "processor", processorStep: "Cleaning", sizeBytes: GB, processorQueuePosition: 2, release: "R", processor: "Weir", startedBy: "list" }), 0, NOW);
+    const lines = detailLines(card({ stage: "downloading", progress: 40, speedMbps: 2, sizeBytes: GB, peers: 3, release: "R", indexer: "YTS", startedBy: "list" }), 0, NOW);
     expect(lines).toHaveLength(4);
-    expect(lines.slice(-2).map((l) => l.parts[0])).toEqual([bold("Weir is cleaning it"), bold("Import list")]);
+    expect(lines.slice(-2).map((l) => l.parts[0])).toEqual([bold("Grabbed from YTS"), bold("Import list")]);
   });
 });
