@@ -3,10 +3,10 @@
     the host uses it to know what must have run (a scenario that never reported is an error, not a skip), and the runner in
     the VM uses it to know which group function to call.
 
-    Client names are the kinds Deluno calls them: qbittorrent, transmission and deluge (torrent); sabnzbd and nzbget (Usenet).
+    Client names are the kinds Deluno calls them: qbittorrent, transmission, deluge, utorrent and rtorrent (torrent); sabnzbd and nzbget (Usenet).
 #>
 
-$script:TorrentKinds = @('qbittorrent', 'transmission', 'deluge')
+$script:TorrentKinds = @('qbittorrent', 'transmission', 'deluge', 'utorrent', 'rtorrent')
 $script:UsenetKinds = @('sabnzbd', 'nzbget')
 $script:AllClientKinds = $script:TorrentKinds + $script:UsenetKinds
 
@@ -153,7 +153,7 @@ function Get-ScenarioTopics {
         [pscustomobject]@{ Group = 'removal'; Proves = '"Remove this copy" on a finished download leaves nothing behind (a folder; and a single file on the torrent clients); removing twice reads as a failure and writes no second Activity row.' }
         [pscustomobject]@{ Group = 'resend'; Proves = '"I don''t want it", then a resend of the same release to the same client, before Weir starts the first send, while Weir works on it, and after Weir has finished it: the new hand-off settles with one import. One more: a single file sent again while Weir works on it, where Deluno imports from the output path Weir names in its finished answer (Weir 1.0.0-rc.18 on) or, when Weir names none, finds the cleaned file at the source''s path below the watched folder and says so; either way one library copy and nothing in Weir''s output. The branch that ran is recorded as a note. (#1262)' }
         [pscustomobject]@{ Group = 'stuck'; Proves = 'Downloads stuck at 0 bytes, stuck just short of the end, too slow, and with too few peers are each struck at their count with the right plural wording; one stuck at 99.99% never reads 100%.' }
-        [pscustomobject]@{ Group = 'keepseeding'; Proves = 'A struck torrent from a private tracker, on qBittorrent, Transmission and Deluge, is moved to the keep-seeding category instead of being deleted: the client still holds it in that category, its data is on disk, it is gone from In progress and stays gone, and Activity says it was moved and that Deluno is looking for another copy. A public tracker''s torrent with the same strike is removed as before. (rTorrent and uTorrent are not installed in the VM.)' }
+        [pscustomobject]@{ Group = 'keepseeding'; Proves = 'A struck torrent from a private tracker, on qBittorrent, Transmission, Deluge, uTorrent and rTorrent, is moved to the keep-seeding category instead of being deleted: the client still holds it in that category, its data is on disk, it is gone from In progress and stays gone, and Activity says it was moved and that Deluno is looking for another copy. A public tracker''s torrent with the same strike is removed as before.' }
         [pscustomobject]@{ Group = 'outage'; Proves = 'Weir quits with nothing in flight, and with a hand-off in flight: the tray, System and the Dashboard go amber within a minute and come back within a minute.' }
         [pscustomobject]@{ Group = 'tryagain'; Proves = 'Try again on a failed hand-off: the drawer, read every 200 ms, never shows the old failure and its header follows the real hand-off.' }
         [pscustomobject]@{ Group = 'vanish'; Proves = 'Files that vanish before the hand-off read "Files are gone" and are never handed off; files that vanish while the hand-off waits end it as "source gone" with nothing imported.' }

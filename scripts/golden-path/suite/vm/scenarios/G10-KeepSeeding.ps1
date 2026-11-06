@@ -2,7 +2,8 @@
     A struck torrent from a private tracker moves to a keep-seeding category instead of being deleted (#1240).
 
     Every torrent client Deluno can move a download on is covered: qBittorrent (setCategory), Deluge (label.set_torrent, Label plugin
-    on) and Transmission (labels). rTorrent and uTorrent are not installed in the VM, so they are not here.
+    on), Transmission (labels), uTorrent (setprops label) and rTorrent (d.custom1), the last two installed by the suite itself
+    (ExtraClients.Lib.ps1, #1276).
 
     For each client, two torrents are sent from the local Torznab feed, each stuck just short of the end (the "short" variant G05 uses, so
     its data is on disk) and struck by "No progress" at two checks in a row:
@@ -25,8 +26,8 @@
 # The clients' own sessions and calls (Open-KsQbit, Open-KsDeluge, Invoke-KsDeluge, Invoke-KsTransmission, the saved logins) live in
 # Fixtures.Lib.ps1, so a group that is chosen alone never depends on this one. $script:Ks (the keep-seeding names) is defined there too.
 
-# Makes the keep-seeding category in the client, as a person does in the client first (Deluno never creates one). Transmission's
-# labels need no making.
+# Makes the keep-seeding category in the client, as a person does in the client first (Deluno never creates one). Transmission's,
+# uTorrent's and rTorrent's labels need no making: a label exists the moment a torrent carries it.
 function New-KsClientCategory {
     param([Parameter(Mandatory)] [string] $Kind, [Parameter(Mandatory)] [string] $Name)
     switch ($Kind) {
@@ -67,6 +68,18 @@ function Get-KsClientTorrent {
             $r = Invoke-KsTransmission -Method 'torrent-get' -Arguments @{ ids = @($Hash); fields = @('hashString', 'labels', 'name', 'status') }
             $t = @($r.arguments.torrents) | Where-Object { $_ } | Select-Object -First 1
             [pscustomobject]@{ Present = [bool]$t; Category = $(if ($t) { (@($t.labels) -join ',') } else { $null }); State = $(if ($t) { [string]$t.status } else { $null }) }
+        }
+        'utorrent' {
+            # The Web UI's list rows are positional: 0 hash, 1 status bits, 11 label.
+            $rows = Invoke-FxClientRead -Kind $Kind -Call 'list' -Subject "hash $Hash" -Read { param($u, $for) (Invoke-KsUTorrent -Session $u -Query 'list=1' -Subject $for).torrents }
+            $row = @($rows | Where-Object { $_ -and ([string]$_[0]) -ieq $Hash })[0]
+            [pscustomobject]@{ Present = [bool]$row; Category = $(if ($row) { [string]$row[11] } else { $null }); State = $(if ($row) { [string]$row[1] } else { $null }) }
+        }
+        'rtorrent' {
+            # d.custom1 is rTorrent's label; its place in the suite's d.multicall2 fields is 9.
+            $rows = Invoke-KsRtorrent -Method 'd.multicall2' -Params (@('', 'main') + $script:Ks.RtFields) -Subject "hash $Hash"
+            $row = @($rows | Where-Object { $_ -and ([string]$_[0]) -ieq $Hash })[0]
+            [pscustomobject]@{ Present = [bool]$row; Category = $(if ($row) { [string]$row[9] } else { $null }); State = $(if ($row) { [string]$row[5] } else { $null }) }
         }
     }
 }

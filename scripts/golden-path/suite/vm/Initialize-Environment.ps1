@@ -5,7 +5,7 @@
 
 .DESCRIPTION
     Dot-source after Suite.Lib.ps1 and Fixtures.Lib.ps1, then call Initialize-SuiteEnvironment. It creates the first account,
-    connects the five download clients and Weir (Weir with a new account of its own), makes the Movies and TV libraries with
+    connects the five download clients and Weir (then installs and connects uTorrent and rTorrent, #1276) (Weir with a new account of its own), makes the Movies and TV libraries with
     their folders and quality profile, routes them, links them to Weir ("refine before import"), points Deluno at the Usenet stub
     and the local Torznab feed, and turns automation on. Every call is one the web screens make; nothing edits an app's files.
     The logins are generated here, kept in secrets.json beside the suite and never printed. Windows PowerShell 5.1.
@@ -75,6 +75,10 @@ function Initialize-SuiteEnvironment {
     Write-SuiteLog ("   connect weir: {0}" -f $weir.Data.message)
     # Remembered for the end of the run: the login below is only real if Connect Weir made it.
     Set-Content -Path (Join-Path (Get-SuiteRoot) 'weir-connected.flag') -Value 'connected' -Encoding ascii
+
+    # 2b. uTorrent and rTorrent, which the picker does not install: installed here (ExtraClients.Lib.ps1), started on 127.0.0.1 with logins made
+    # here, and added to Deluno through the same call the Download clients screen makes, so every client scenario can run on them too (#1276).
+    if (Get-Command Initialize-ExtraClients -ErrorAction SilentlyContinue) { Initialize-ExtraClients }
 
     Complete-WeirWizard
 

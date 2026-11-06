@@ -3,10 +3,10 @@
 #>
 
 $script:AllFilms = New-Object System.Collections.ArrayList
-$script:Kinds = @{ torrent = @('qbittorrent', 'transmission', 'deluge'); usenet = @('sabnzbd', 'nzbget') }
+$script:Kinds = @{ torrent = @('qbittorrent', 'transmission', 'deluge', 'utorrent', 'rtorrent'); usenet = @('sabnzbd', 'nzbget') }
 
-function Get-AllKinds { @('qbittorrent', 'transmission', 'deluge', 'sabnzbd', 'nzbget') }
-function Test-IsTorrent { param([string] $Kind) $Kind -in 'qbittorrent', 'transmission', 'deluge' }
+function Get-AllKinds { @('qbittorrent', 'transmission', 'deluge', 'utorrent', 'rtorrent', 'sabnzbd', 'nzbget') }
+function Test-IsTorrent { param([string] $Kind) $Kind -in 'qbittorrent', 'transmission', 'deluge', 'utorrent', 'rtorrent' }
 
 # Makes a film that fits the client kind (a torrent over a hard link, or a Usenet release) and remembers it for the Activity check.
 function New-FilmFor {
