@@ -64,7 +64,10 @@ public static class DownloadIntegrityCheck
         // title, not the release name) -- read by the "not the film/episode
         // the title says" rule below. Null means Deluno has nothing to
         // compare an embedded title tag against, so that rule never fires.
-        string? knownTitle = null)
+        string? knownTitle = null,
+        // The catalogue's other names for the same title (original title; alternative
+        // titles when the entity has them). A tag matching any of them is the right film (#1520).
+        IReadOnlyList<string>? otherTitles = null)
     {
         var files = DownloadIntegrityFileResolver.Resolve(sourcePath);
         if (files.Count == 0)
@@ -81,7 +84,7 @@ public static class DownloadIntegrityCheck
         foreach (var filePath in SelectFilesToJudge(files, releaseName))
         {
             var result = await RunOnFileAsync(
-                filePath, releaseName, knownRuntimeMinutes, minimumRuntimePercent, probeService, cancellationToken, languagePreference, knownTitle);
+                filePath, releaseName, knownRuntimeMinutes, minimumRuntimePercent, probeService, cancellationToken, languagePreference, knownTitle, otherTitles);
             if (result.Outcome != DownloadIntegrityOutcome.Pass)
             {
                 return result;
@@ -145,7 +148,8 @@ public static class DownloadIntegrityCheck
         IMediaProbeService probeService,
         CancellationToken cancellationToken,
         ProfileLanguagePreference? languagePreference,
-        string? knownTitle)
+        string? knownTitle,
+        IReadOnlyList<string>? otherTitles = null)
     {
         // A file still being written or locked is waited for, not failed.
         if (!ImportFileReadiness.IsReady(filePath))
@@ -250,7 +254,7 @@ public static class DownloadIntegrityCheck
         // at all, a tag too short to mean much, or one that overlaps at all
         // with the known title -- is weak or missing evidence and never fails
         // a file (#917).
-        if (EmbeddedTitleContradicts(probe.EmbeddedTitle, knownTitle))
+        if (EmbeddedTitleContradicts(probe.EmbeddedTitle, knownTitle, otherTitles))
         {
             return DownloadIntegrityResult.Failed(
                 $"The file's own title says \"{probe.EmbeddedTitle}\", not \"{knownTitle}\". This may not be the right film or episode.");
@@ -261,12 +265,11 @@ public static class DownloadIntegrityCheck
 
     /// <summary>
     /// Whether an embedded title tag is strong evidence of a different film,
-    /// per #917's "only on strong evidence" rule. Deliberately conservative:
-    /// a missing tag, a short/generic one, or one that shares any overlap
-    /// with the known title (a studio's own longer or shorter naming, a
-    /// subtitle appended to the main title) is left alone.
+    /// per #917's "only on strong evidence" rule. A tag counts only when it reads
+    /// like a title of its own (<see cref="ReadsAsACreditOrTag"/> says no) and
+    /// shares nothing with the known title, the original title or any other name.
     /// </summary>
-    private static bool EmbeddedTitleContradicts(string? embeddedTitle, string? knownTitle)
+    internal static bool EmbeddedTitleContradicts(string? embeddedTitle, string? knownTitle, IReadOnlyList<string>? otherTitles = null)
     {
         if (string.IsNullOrWhiteSpace(embeddedTitle) || string.IsNullOrWhiteSpace(knownTitle))
         {
@@ -274,21 +277,52 @@ public static class DownloadIntegrityCheck
         }
 
         var normalizedEmbedded = Normalize(embeddedTitle);
-        var normalizedKnown = Normalize(knownTitle);
-        if (normalizedEmbedded.Length < 3 || normalizedKnown.Length < 3)
+        if (normalizedEmbedded.Length < 3 || ReadsAsACreditOrTag(embeddedTitle))
         {
             return false;
         }
 
-        if (normalizedEmbedded == normalizedKnown ||
-            normalizedEmbedded.Contains(normalizedKnown, StringComparison.Ordinal) ||
-            normalizedKnown.Contains(normalizedEmbedded, StringComparison.Ordinal))
+        var embeddedWords = SignificantWords(embeddedTitle);
+        foreach (var known in (otherTitles ?? []).Prepend(knownTitle))
         {
-            return false;
+            var normalizedKnown = Normalize(known ?? string.Empty);
+            if (normalizedKnown.Length < 3)
+            {
+                // A name too short to compare is no evidence either way.
+                if (known == knownTitle) { return false; }
+                continue;
+            }
+
+            if (normalizedEmbedded.Contains(normalizedKnown, StringComparison.Ordinal) ||
+                normalizedKnown.Contains(normalizedEmbedded, StringComparison.Ordinal) ||
+                SignificantWords(known!).Overlaps(embeddedWords))
+            {
+                return false;
+            }
         }
 
         return true;
     }
+
+    // The one list of what a title tag holds when it is not a title (#1520): credits, web
+    // addresses, group tags and release names. None of these is evidence of a different film.
+    private static readonly System.Text.RegularExpressions.Regex NotATitle = new(
+        @"^\s*by\s|\b(encoded|ripped|uploaded|presented|released|subbed|muxed|converted|compressed|authored|brought|ripper|encoder|uploader|rip|encode)\s*(by|from|:)(?![a-z])"
+        + @"|\bwww\.|https?:|\w\.(com|org|net|to|tv|me|io|info|cc|ws|xyz|ru|it|pw|club|co|us|uk|biz|nu|se|eu|in)(?![a-z0-9])"
+        + @"|(?<![a-z0-9])(\d{3,4}p|4k|uhd|x26[45]|h\.?26[45]|hevc|avc|xvid|divx|bluray|blu-ray|bdrip|brrip|bdremux|remux|web-?dl|web-?rip|webrip|hdtv|dvdrip|dvdscr|hdrip|hdcam|camrip|dts(-hd)?|ac3|eac3|aac|ddp?[25]\.[01]|truehd|atmos|flac|10bit|hdr10?|multi|proper|repack)(?![a-z0-9])"
+        + @"|^\s*[\[(][^\])]{1,30}[\])]"
+        + @"|^\S+(\.\S+){2,}$|^\S+_\S+_\S+$",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>True for a credit, web address, group tag or release name (#1520): never evidence of a wrong film.</summary>
+    internal static bool ReadsAsACreditOrTag(string value) => NotATitle.IsMatch(value);
+
+    private static readonly HashSet<string> SmallWords = new(StringComparer.Ordinal) { "the", "and", "for", "with", "from" };
+
+    private static HashSet<string> SignificantWords(string value)
+        => System.Text.RegularExpressions.Regex.Split(value.ToLowerInvariant(), @"[^\p{L}\p{N}]+")
+            .Where(word => word.Length >= 3 && !SmallWords.Contains(word))
+            .ToHashSet(StringComparer.Ordinal);
 
     private static string Normalize(string value)
         => new(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());

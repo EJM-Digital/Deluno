@@ -441,6 +441,52 @@ public sealed class DownloadIntegrityCheckTests : IDisposable
         Assert.Equal(DownloadIntegrityOutcome.Pass, result.Outcome);
     }
 
+    /// <summary>#1520: an encoder's credit, address, group tag or release name in the title tag is never evidence of a wrong film.</summary>
+    [Theory]
+    [InlineData("Encoded By LoZio")]
+    [InlineData("Ripped by Someone")]
+    [InlineData("Uploaded by ScreenGroup")]
+    [InlineData("Presented by ExampleTeam")]
+    [InlineData("by LoZio")]
+    [InlineData("www.example-site.org")]
+    [InlineData("Downloaded from example.com")]
+    [InlineData("http://example.net/film")]
+    [InlineData("Spider-Man.Homecoming.2017.1080p.BluRay.x264-LoZio")]
+    [InlineData("Film Name 1080p BluRay x265 HEVC DTS")]
+    [InlineData("Film Name WEB-DL AAC")]
+    [InlineData("Film Name 2160p WEBRip")]
+    [InlineData("[MIRCrew] Release")]
+    public async Task A_credit_address_or_release_name_in_the_title_tag_passes(string tag)
+    {
+        var result = await Run(Probe.WithTitle(1920, 1080, 120 * 60, tag), "Spider-Man Homecoming (2017) 1080p", 120, knownTitle: "Spider-Man: Homecoming");
+
+        Assert.True(result.Outcome == DownloadIntegrityOutcome.Pass, result.Reason);
+    }
+
+    [Fact]
+    public async Task A_different_real_title_still_fails_with_other_names_known()
+    {
+        var result = await Run(Probe.WithTitle(1920, 1080, 120 * 60, "Some Completely Different Movie"), "Sintel.2010", 120, knownTitle: "Sintel", otherTitles: ["Durian Open Film"]);
+
+        Assert.Equal(DownloadIntegrityOutcome.Failed, result.Outcome);
+    }
+
+    [Fact]
+    public async Task A_title_tag_matching_the_original_title_passes()
+    {
+        var result = await Run(Probe.WithTitle(1920, 1080, 120 * 60, "La Casa de Papel"), "x", 120, knownTitle: "Money Heist", otherTitles: ["La Casa de Papel"]);
+
+        Assert.Equal(DownloadIntegrityOutcome.Pass, result.Outcome);
+    }
+
+    [Fact]
+    public async Task A_known_title_with_a_subtitle_passes_for_its_main_title_tag()
+    {
+        var result = await Run(Probe.WithTitle(1920, 1080, 120 * 60, "Spider-Man"), "x", 120, knownTitle: "Spider-Man: Homecoming");
+
+        Assert.Equal(DownloadIntegrityOutcome.Pass, result.Outcome);
+    }
+
     private sealed class PerPathProbe(Func<string, MediaProbeInfo> byPath) : IMediaProbeService
     {
         public Task<MediaProbeInfo> ProbeAsync(string path, CancellationToken cancellationToken) => Task.FromResult(byPath(path));
@@ -451,8 +497,9 @@ public sealed class DownloadIntegrityCheckTests : IDisposable
         string releaseName,
         int knownRuntimeMinutes,
         ProfileLanguagePreference? languagePreference = null,
-        string? knownTitle = null)
-        => await DownloadIntegrityCheck.RunAsync(_path, releaseName, knownRuntimeMinutes, minimumRuntimePercent: 80, probe, CancellationToken.None, languagePreference, knownTitle);
+        string? knownTitle = null,
+        IReadOnlyList<string>? otherTitles = null)
+        => await DownloadIntegrityCheck.RunAsync(_path, releaseName, knownRuntimeMinutes, minimumRuntimePercent: 80, probe, CancellationToken.None, languagePreference, knownTitle, otherTitles);
 
     private sealed class Probe(MediaProbeInfo info) : IMediaProbeService
     {

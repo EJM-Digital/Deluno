@@ -1649,7 +1649,7 @@ public sealed class WorkPlanner(
             ? null
             : await LanguagePreferenceForAsync(library, qualityRepository, cancellationToken);
         var knownRuntimeMinutes = await KnownRuntimeMinutesAsync(dispatch, movieCatalogRepository, seriesCatalogRepository, cancellationToken);
-        var knownTitle = await KnownTitleAsync(dispatch, movieCatalogRepository, seriesCatalogRepository, cancellationToken);
+        var (knownTitle, otherTitles) = await KnownTitleAsync(dispatch, movieCatalogRepository, seriesCatalogRepository, cancellationToken);
 
         var result = await DownloadIntegrityCheck.RunAsync(
             sourcePath,
@@ -1659,7 +1659,8 @@ public sealed class WorkPlanner(
             mediaProbeService,
             cancellationToken,
             languagePreference,
-            knownTitle);
+            knownTitle,
+            otherTitles);
 
         if (result.Outcome == DownloadIntegrityOutcome.StillWriting)
         {
@@ -2030,7 +2031,7 @@ public sealed class WorkPlanner(
     /// film/episode the title says" rule compares a file's own embedded title
     /// tag against (#917). Null under the same conditions.
     /// </summary>
-    private static async Task<string?> KnownTitleAsync(
+    private static async Task<(string? Title, IReadOnlyList<string> OtherTitles)> KnownTitleAsync(
         DispatchCatalogueLink? dispatch,
         IMovieCatalogRepository movieCatalogRepository,
         ISeriesCatalogRepository seriesCatalogRepository,
@@ -2038,18 +2039,18 @@ public sealed class WorkPlanner(
     {
         if (dispatch is null || string.IsNullOrWhiteSpace(dispatch.EntityId))
         {
-            return null;
+            return (null, []);
         }
 
         if (CatalogueImportNaming.IsShowGrab(dispatch))
         {
             var seriesId = await CatalogueImportNaming.SeriesIdOfAsync(dispatch, seriesCatalogRepository, cancellationToken);
             var series = seriesId is null ? null : await seriesCatalogRepository.GetByIdAsync(seriesId, cancellationToken);
-            return series?.Title;
+            return (series?.Title, series?.OriginalTitle is { Length: > 0 } so ? [so] : []);
         }
 
         var movie = await movieCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken);
-        return movie?.Title;
+        return (movie?.Title, movie?.OriginalTitle is { Length: > 0 } mo ? [mo] : []);
     }
 
     private static async Task RecordUnmatchedProcessorOutputsAsync(
