@@ -82,7 +82,7 @@ export interface CardStatus {
 export function statusOf(card: JourneyCard, indexers: number): CardStatus {
   const percent = formatProgressPercent(card.progress);
   if (card.stage === "searching") {
-    const asked = card.startedBy === "seerr" ? "Asked for in Seerr · checking" : indexers > 0 ? `Checking ${plural(indexers, "indexer")}` : "Looking for it";
+    const asked = card.startedBy === "seerr" ? "Seerr request · checking" : indexers > 0 ? `Checking ${plural(indexers, "indexer")}` : "Looking for it";
     // A show's season or episode search says which one (`Season 2`, `S02E05`); the plain labels are the status line's own words.
     const what = card.state.label;
     const specific = /^(Season \d|S\d{1,2}E\d|The whole show)/.test(what);

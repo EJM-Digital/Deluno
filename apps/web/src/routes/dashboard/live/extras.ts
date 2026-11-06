@@ -52,7 +52,7 @@ export function searchingCards(searching: DashboardLiveExtras["searching"], requ
       entity,
       state: { tone: "info", label: search.label },
       startedBy: asked ? "seerr" : startedByOfSearch(search.startedBy),
-      routeNote: asked ? (asked.requestedBy ? `Asked by ${asked.requestedBy}` : "Asked for in Seerr") : undefined,
+      routeNote: asked ? (asked.requestedBy ? `Requested by ${asked.requestedBy}` : "Seerr request") : undefined,
       at: asked?.createdUtc ?? search.startedUtc,
       to: cardLink(entity)
     });

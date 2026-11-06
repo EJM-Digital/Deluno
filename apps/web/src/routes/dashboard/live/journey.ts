@@ -70,7 +70,7 @@ export interface JourneyCard {
   finishAtMs?: number;
   /** Why Deluno is fetching it, when that can be told from what was recorded. */
   startedBy?: StartedBy;
-  /** A line for the route slot when the card has no indexer, client or processor yet: "Asked by Sam". */
+  /** A line for the route slot when the card has no indexer, client or processor yet: "Requested by Sam". */
   routeNote?: string;
   /** How much the client has downloaded so far, in bytes (a download). */
   downloadedBytes?: number;

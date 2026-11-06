@@ -48,7 +48,7 @@ export function stageLines(card: JourneyCard, indexers: number, now: number): De
   const release = card.release ? ({ parts: [card.release], mono: true } satisfies DetailLine) : undefined;
   switch (card.stage) {
     case "searching": {
-      const asked = card.routeNote?.startsWith("Asked by ") ? ["Asked by ", bold(card.routeNote.slice("Asked by ".length))] : card.routeNote ? [card.routeNote] : [];
+      const asked = card.routeNote?.startsWith("Requested by ") ? ["Requested by ", bold(card.routeNote.slice("Requested by ".length))] : card.routeNote ? [card.routeNote] : [];
       if (asked.length > 0) lines.push({ parts: asked, right: card.at ? ago(card.at, now) || undefined : undefined });
       // The status line says how many indexers a plain search is looking on; a request says it here.
       if (card.startedBy === "seerr" && indexers > 0) lines.push({ parts: [bold(indexers.toLocaleString("en-AU")), ` ${pluralNoun(indexers, "indexer")} to ask`] });

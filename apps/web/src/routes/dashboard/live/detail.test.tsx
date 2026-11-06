@@ -40,8 +40,8 @@ describe("a card's detail lines are the mockup's, from real readings", () => {
   });
 
   it("a request says who asked and when, and how many indexers it will ask, never the status line's own words", () => {
-    const lines = stageLines(card({ stage: "searching", startedBy: "seerr", routeNote: "Asked by Sam", at: new Date(NOW - 5 * 60_000).toISOString() }), 5, NOW);
-    expect(lines.map(text)).toEqual(["Asked by Sam", "5 indexers to ask"]);
+    const lines = stageLines(card({ stage: "searching", startedBy: "seerr", routeNote: "Requested by Sam", at: new Date(NOW - 5 * 60_000).toISOString() }), 5, NOW);
+    expect(lines.map(text)).toEqual(["Requested by Sam", "5 indexers to ask"]);
     expect(lines[0].right).toBe("5 min ago");
     expect(stageLines(card({ stage: "searching", startedBy: "seerr" }), 0, NOW)).toEqual([]);
   });
@@ -69,7 +69,7 @@ describe("a card's detail lines are the mockup's, from real readings", () => {
 
   it("says why Deluno is fetching it as a last line, except for a request that already says so", () => {
     expect(detailLines(card({ stage: "grabbed", release: "x", startedBy: "upgrade" }), 4, NOW).map(text)).toEqual(["x", "Grabbed", "Quality upgrade"]);
-    expect(stageLines(card({ stage: "searching", startedBy: "seerr", routeNote: "Asked by Sam" }), 4, NOW).map(text)).toEqual(["Asked by Sam", "4 indexers to ask"]);
+    expect(stageLines(card({ stage: "searching", startedBy: "seerr", routeNote: "Requested by Sam" }), 4, NOW).map(text)).toEqual(["Requested by Sam", "4 indexers to ask"]);
   });
 
   it("writes two sizes with their unit said once", () => {

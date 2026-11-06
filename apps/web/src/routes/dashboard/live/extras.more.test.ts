@@ -31,12 +31,12 @@ describe("the titles being searched for, as the first station", () => {
 
   it("says who asked when a Seerr request is for the same title, from when they asked", () => {
     const [one] = searchingCards([search()], [request()], []);
-    expect(one).toMatchObject({ startedBy: "seerr", routeNote: "Asked by Sam", at: "2026-11-04T09:00:00Z" });
+    expect(one).toMatchObject({ startedBy: "seerr", routeNote: "Requested by Sam", at: "2026-11-04T09:00:00Z" });
   });
 
   it("says the request came from Seerr when it does not say who", () => {
-    expect(searchingCards([search()], [request({ requestedBy: null })], [])[0].routeNote).toBe("Asked for in Seerr");
-    expect(searchingCards([search()], [request({ requestedBy: "" })], [])[0].routeNote).toBe("Asked for in Seerr");
+    expect(searchingCards([search()], [request({ requestedBy: null })], [])[0].routeNote).toBe("Seerr request");
+    expect(searchingCards([search()], [request({ requestedBy: "" })], [])[0].routeNote).toBe("Seerr request");
   });
 
   it("ignores requests for other titles", () => {

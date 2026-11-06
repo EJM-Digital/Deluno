@@ -30,7 +30,7 @@ describe("the titles being searched for, in the flow (#1442)", () => {
   it("says Seerr and who asked on a search for a requested title, and puts no card for a wanted title that is only waiting", () => {
     const cards = searchingCards([search("s5", "Shogun", "manual", "series")], [request("s5", "added"), request("s9", "added", "Waiting Show")], []);
     expect(cards).toHaveLength(1);
-    expect(cards[0]).toMatchObject({ title: "Shogun", startedBy: "seerr", routeNote: "Asked by Sam" });
+    expect(cards[0]).toMatchObject({ title: "Shogun", startedBy: "seerr", routeNote: "Requested by Sam" });
   });
 
   it("tags a card that came from a Seerr request wherever it is on its way, and no other", () => {

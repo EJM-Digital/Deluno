@@ -313,7 +313,7 @@ describe("what a journey card says", () => {
   it("looks on the indexers, or says Seerr asked", () => {
     expect(statusOf(card({ stage: "searching" }), 5).text).toBe("Checking 5 indexers");
     expect(statusOf(card({ stage: "searching" }), 1).text).toBe("Checking 1 indexer");
-    expect(statusOf(card({ stage: "searching", startedBy: "seerr" }), 5).text).toBe("Asked for in Seerr · checking");
+    expect(statusOf(card({ stage: "searching", startedBy: "seerr" }), 5).text).toBe("Seerr request · checking");
     expect(statusOf(card({ stage: "searching" }), 0).text).toBe("Looking for it");
     // A season or an episode search on a show says which (#1442).
     expect(statusOf(card({ stage: "searching", state: { tone: "info", label: "Season 2" } }), 3).text).toBe("Season 2 · checking 3 indexers");
@@ -437,8 +437,8 @@ describe("the journey", () => {
     expect(screen.getByText("Added manually")).toBeInTheDocument();
     // A card that came from Seerr says so; a request card says it in its line and not twice.
     const requested = document.querySelector<HTMLElement>('[data-glide-stage="searching"]')!;
-    expect(requested).toHaveAccessibleName("Shogun: Asked for in Seerr · checking");
-    expect(within(requested).queryByText("Asked for in Seerr")).toBeNull();
+    expect(requested).toHaveAccessibleName("Shogun: Seerr request · checking");
+    expect(within(requested).queryByText("Seerr request")).toBeNull();
     // A card with no recorded reason has no tag rather than a guess.
     expect(within(document.querySelector<HTMLElement>('[data-glide-stage="processor"]')!).queryByText(/Added manually|Seerr request|Import list|Quality upgrade|Missing (film|episode|season|title|episodes)/)).toBeNull();
     expect(screen.getByRole("link", { name: /Stuck One/ }).querySelector(".lj-pulse")).not.toBeNull();

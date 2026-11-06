@@ -109,7 +109,7 @@ describe("Live", () => {
     expect(within(journey).queryByText("An import did not finish")).toBeNull();
     expect(within(journey).queryByText("Say Yes to the Dress")).toBeNull();
     // The title being searched for is the first station, tagged as Seerr's; a requested title only waiting its turn is not on the board (#1442).
-    expect(await within(journey).findByRole("link", { name: "Shogun: Asked for in Seerr · checking" })).toBeInTheDocument();
+    expect(await within(journey).findByRole("link", { name: "Shogun: Seerr request · checking" })).toBeInTheDocument();
     expect(within(journey).queryByText("Waiting Film")).toBeNull();
 
     const activity = screen.getByRole("region", { name: /^activity/i });

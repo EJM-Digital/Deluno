@@ -16,7 +16,7 @@ const searching = { stage: "searching" as const, state: { tone: "info" as const,
 
 describe("what a card says about itself", () => {
   it("says what a search is doing: for Seerr, with indexers counted, or plainly", () => {
-    expect(statusOf(card({ ...searching, startedBy: "seerr" }), 5)).toEqual({ text: "Asked for in Seerr · checking", tone: "info", pulse: true });
+    expect(statusOf(card({ ...searching, startedBy: "seerr" }), 5)).toEqual({ text: "Seerr request · checking", tone: "info", pulse: true });
     expect(statusOf(card(searching), 5).text).toBe("Checking 5 indexers");
     expect(statusOf(card(searching), 1).text).toBe("Checking 1 indexer");
     expect(statusOf(card(searching), 0).text).toBe("Looking for it");
@@ -200,8 +200,8 @@ describe("a card on the journey", () => {
     token({ release: "Heat.1995.1080p-GRP", reasonFull: "Peers gone", reason: "Not moving", startedBy: "seerr", indexer: "NZBgeek" });
     expect(screen.getByRole("link").getAttribute("title")).toBe(`Heat (1995) · Seerr request · Peers gone · NZBgeek`);
     cleanup();
-    token({ reason: "Not moving", routeNote: "Asked by Sam" });
-    expect(screen.getByRole("link").getAttribute("title")).toBe("Heat (1995) · Not moving · Asked by Sam");
+    token({ reason: "Not moving", routeNote: "Requested by Sam" });
+    expect(screen.getByRole("link").getAttribute("title")).toBe("Heat (1995) · Not moving · Requested by Sam");
   });
 
   it("has only the title in its tooltip when there is nothing else to tell", () => {

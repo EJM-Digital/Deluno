@@ -44,8 +44,8 @@ describe("the room a card has for detail lines", () => {
 
 describe("a searching card", () => {
   it("says who asked, in bold, with when", () => {
-    const lines = stageLines(card({ routeNote: "Asked by Sam", at: new Date(NOW - 5 * 60_000).toISOString() }), 0, NOW);
-    expect(lines[0].parts).toEqual(["Asked by ", bold("Sam")]);
+    const lines = stageLines(card({ routeNote: "Requested by Sam", at: new Date(NOW - 5 * 60_000).toISOString() }), 0, NOW);
+    expect(lines[0].parts).toEqual(["Requested by ", bold("Sam")]);
     expect(lines[0].right).toBe("5 min ago");
   });
 
@@ -183,7 +183,7 @@ describe("a finished card, and the line that says why it is being fetched", () =
 describe("a card says why it is wanted and, from the grab on, where it is (#1517)", () => {
   const closing = (c: Partial<JourneyCard>) => detailLines(card(c), 0, NOW).map((line) => line.parts[0]);
   it("searching keeps only the reason", () => {
-    expect(closing({ stage: "searching", startedBy: "you", routeNote: "Asked by Sam" }).slice(-1)).toEqual([bold("Added manually")]);
+    expect(closing({ stage: "searching", startedBy: "you", routeNote: "Requested by Sam" }).slice(-1)).toEqual([bold("Added manually")]);
   });
   it("grabbed names the indexer, or just says Grabbed, then keeps the reason", () => {
     expect(closing({ stage: "grabbed", startedBy: "you", indexer: "The Pirate Bay" })).toEqual([bold("Grabbed from The Pirate Bay"), bold("Added manually")]);
