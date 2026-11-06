@@ -68,13 +68,18 @@ internal static class ProcessorHandoffSubmission
             }
         }
 
-        var current = await processorRepository.UpdateProcessorHandoffAsync(
+        // Written only over the waiting hand-off the send started from (#1529). The processor can report before it has
+        // answered the send (it already holds a cleaned file); that report finds the hand-off waiting, settles it and
+        // queues the import, and this late write must not put "submitted" back over it.
+        await processorRepository.UpdateProcessorHandoffIfStatusAsync(
             handoff.Id,
+            ProcessorHandoffStatuses.Waiting,
             status,
             null,
             null,
             failure,
-            cancellationToken) ?? handoff;
+            cancellationToken);
+        var current = await processorRepository.GetProcessorHandoffAsync(handoff.Id, cancellationToken) ?? handoff;
         if (ProcessorHealthRules.HealthAfterSubmission(submission) is { } submittedHealth)
         {
             await processorRepository.RecordProcessorConnectionHealthAsync(
