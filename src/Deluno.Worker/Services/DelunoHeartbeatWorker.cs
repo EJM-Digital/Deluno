@@ -405,6 +405,9 @@ public sealed class DelunoHeartbeatWorker(
             await workPlanner.RunProcessorOutcomePassAsync(
                 services.GetRequiredService<ProcessorOutcomeReporter>(),
                 stoppingToken);
+            await workPlanner.RunImportRestartRecoveryAsync(
+                services.GetRequiredService<IImportRestartRecoveryService>(),
+                stoppingToken);
             await workPlanner.RunDownloadStateReconcileAsync(
                 services.GetRequiredService<IDownloadStateReconciler>(),
                 stoppingToken);

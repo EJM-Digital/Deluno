@@ -23,12 +23,17 @@ public sealed record ImportRestartMarker(
     /// The whole import request as it was running (title, year, ids, library, grab), so recovery finishes the same import
     /// instead of starting a new one from the file's name (#1498). Null in a marker an older version wrote.
     /// </summary>
-    string? RequestJson = null);
+    string? RequestJson = null,
+    /// <summary>
+    /// The attempt failed and was undone, but its staging file could not be deleted (a share that dropped, #1525). Recovery
+    /// removes the file when its folder is back and does not import the source again.
+    /// </summary>
+    bool RolledBack = false);
 
 public interface IImportRestartRecoveryService
 {
     /// <summary>
-    /// Called once on startup. Finds every import a restart interrupted,
+    /// Called at startup and then on a schedule (#1526). Finds every import a restart interrupted,
     /// finishes the ones whose source or staged content is still there, and
     /// removes and reports the ones that are not. Never leaves a half-copied
     /// file in a library, and never blocklists a release solely because the
@@ -57,6 +62,8 @@ public sealed class ImportRestartRecoveryService(
         Abandoned,
         Skipped
     }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> HeldMarkersAlreadyLogged = new();
 
     private readonly IImportRestartMarkerIo _io = markerIo ?? RealImportRestartMarkerIo.Instance;
 
@@ -145,20 +152,31 @@ public sealed class ImportRestartRecoveryService(
                 // Gone between the listing and now: the import finished or someone cleared it. Nothing to do.
                 return Outcome.Skipped;
             case ImportRestartMarkerKind.Busy:
-                logger.LogInformation(
-                    "The import restart marker at {MarkerPath} is open in another program; leaving it and its file for the next pass.",
-                    markerPath);
+                // Said once while it is held, not on every scheduled pass (#1526).
+                if (HeldMarkersAlreadyLogged.TryAdd(markerPath, 0))
+                {
+                    logger.LogInformation(
+                        "The import restart marker at {MarkerPath} is open in another program; leaving it and its file for the next pass.",
+                        markerPath);
+                }
+
                 return Outcome.Skipped;
             case ImportRestartMarkerKind.Unreadable:
                 return await RecoverUnreadableAsync(library, markerPath, stagingPath, cancellationToken);
         }
 
+        HeldMarkersAlreadyLogged.TryRemove(markerPath, out _);
         var marker = read.Marker! with { StagingPath = stagingPath };
         if (ImportSourceClaims.IsClaimed(marker.SourcePath))
         {
             // The normal path is importing this very file right now (the job a restart put back on the queue): it is the
             // one import, and this marker is looked at again once it is done (#1498).
             return Outcome.Skipped;
+        }
+
+        if (marker.RolledBack && File.Exists(marker.SourcePath) && !File.Exists(marker.DestinationPath))
+        {
+            return await ClearRolledBackHalfCopyAsync(marker, markerPath, stagingPath, cancellationToken);
         }
 
         try
@@ -261,6 +279,38 @@ public sealed class ImportRestartRecoveryService(
             await RaiseNoticeAsync(library, stagingPath, marker.Title, recycled: false, "Deluno could not finish it", cancellationToken);
             return Outcome.Abandoned;
         }
+    }
+
+    /// <summary>
+    /// A failed import was undone but its half copy would not delete (#1525). Once the folder answers, the copy goes and then
+    /// its mark; the source is never touched. Still refused: nothing changes and nothing is said, so a pass every few
+    /// minutes does not repeat itself.
+    /// </summary>
+    private async Task<Outcome> ClearRolledBackHalfCopyAsync(ImportRestartMarker marker, string markerPath, string stagingPath, CancellationToken cancellationToken)
+    {
+        try
+        {
+            RemoveInterruptedCopies(stagingPath);
+            if (File.Exists(stagingPath))
+            {
+                File.Delete(stagingPath);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return Outcome.Skipped;
+        }
+
+        TryDelete(markerPath);
+        await activityFeedRepository.RecordActivityAsync(
+            "filesystem.import.half-copy-removed",
+            $"Removed the half-copied file a failed import of {marker.Title} left behind. The original download was not touched.",
+            JsonSerializer.Serialize(new { marker.SourcePath, marker.DestinationPath, marker.MediaType }),
+            null,
+            marker.MediaType == "tv" ? "series" : "movie",
+            null,
+            cancellationToken);
+        return Outcome.Recovered;
     }
 
     /// <summary>

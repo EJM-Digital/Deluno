@@ -92,6 +92,7 @@ public static class SystemTasks
     public const string DownloadLeftoverCleanup = "download.leftover.cleanup";
     public const string UnmatchedImportGiveUp = "unmatched.import.giveUp";
     public const string DatabaseIntegrity = "database.integrity";
+    public const string ImportRestartRecovery = "import.restart.recovery";
 
     /// <summary>
     /// Ordered as somebody reading the screen would want them: the things that
@@ -229,6 +230,10 @@ public static class SystemTasks
         new(UnmatchedImportGiveUp, "Give up on old unmatched imports",
             "When you chose 'give up after N days', removes, deletes and blocklists a file Deluno still could not match once that many days have passed.",
             TimeSpan.FromHours(1)),
+        // A restart note skipped because another program held its file is looked at again here, not only at the next start (#1526).
+        new(ImportRestartRecovery, "Finish or clear interrupted imports",
+            "Looks again for imports a restart or a dropped share left half done, and finishes or removes them once their files can be reached.",
+            TimeSpan.FromMinutes(5)),
         new(DatabaseIntegrity, "Check the databases",
             "Asks each of Deluno's databases whether its file is sound, once a day, and notes the result on System.",
             TimeSpan.FromDays(1))

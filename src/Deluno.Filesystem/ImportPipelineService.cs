@@ -4880,16 +4880,28 @@ public sealed partial class ImportPipelineService(
     private Task ApplyImportPermissionsAsync(string destinationPath, PlatformSettingsSnapshot settings, CancellationToken cancellationToken)
         => FilePermissions.ApplyAsync(destinationPath, settings, logger, cancellationToken);
 
-    private static void RollBackPartialImport(
+    internal static void RollBackPartialImport(
         string sourcePath,
         string destinationPath,
         string stagingPath,
         string? backupPath,
         bool restoreSourceOnFailure,
-        bool keepDestination = false)
+        bool keepDestination = false,
+        Action<string>? deleteStagingFile = null)
     {
         RestoreMovedSourceIfNeeded(sourcePath, destinationPath, stagingPath, restoreSourceOnFailure);
-        TryDelete(stagingPath);
+        try
+        {
+            if (File.Exists(stagingPath))
+            {
+                (deleteStagingFile ?? File.Delete)(stagingPath);
+            }
+        }
+        catch
+        {
+            // A dropped share refuses the delete. The half copy is still there, so its restart mark stays (below).
+        }
+
         if (!keepDestination)
         {
             TryDelete(destinationPath);
@@ -4899,9 +4911,36 @@ public sealed partial class ImportPipelineService(
             File.Move(backupPath, destinationPath, overwrite: true);
         }
 
+        if (File.Exists(stagingPath))
+        {
+            // The half copy could not be removed (#1525). Its mark stays so recovery clears it once its folder is
+            // reachable again; the mark says this attempt was rolled back, so recovery removes the file and does not
+            // import the source a second time.
+            ImportRestartMarkerFile.ClearInFlight(stagingPath);
+            MarkRolledBack(stagingPath);
+            return;
+        }
+
         // This attempt is over one way or another - nothing is left for a
         // restart to recover (#913).
         DeleteRestartMarker(stagingPath);
+    }
+
+    private static void MarkRolledBack(string stagingPath)
+    {
+        try
+        {
+            var markerPath = RestartMarkerPath(stagingPath);
+            var read = ImportRestartMarkerFile.Read(markerPath);
+            if (read.Kind == ImportRestartMarkerKind.Ok && !read.Marker!.RolledBack)
+            {
+                ImportRestartMarkerFile.WriteAtomic(markerPath, read.Marker with { RolledBack = true });
+            }
+        }
+        catch
+        {
+            // Best-effort: an unflagged mark is still recovered, by importing the source again.
+        }
     }
 
     /// <summary>

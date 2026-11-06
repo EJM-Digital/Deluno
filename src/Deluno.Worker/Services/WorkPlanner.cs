@@ -153,6 +153,19 @@ public sealed class WorkPlanner(
             cancellationToken);
 
     /// <summary>
+    /// Runs restart recovery again (#1526): a note skipped because another program held its file, or a half copy a dropped
+    /// share would not release, is cleared within minutes of becoming possible, not at the next start.
+    /// </summary>
+    public Task RunImportRestartRecoveryAsync(
+        IImportRestartRecoveryService recovery,
+        CancellationToken cancellationToken)
+        => RunScheduledPassAsync(
+            SystemTasks.ImportRestartRecovery,
+            () => recovery.RecoverAsync(cancellationToken),
+            "Import restart recovery failed.",
+            cancellationToken);
+
+    /// <summary>
     /// Reads each indexer's newest releases and searches for any wanted title
     /// they are for (#587). Rides the automation lane with the search planner,
     /// because it is searching.
