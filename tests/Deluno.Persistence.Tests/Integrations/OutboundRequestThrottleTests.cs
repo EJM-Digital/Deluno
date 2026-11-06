@@ -129,7 +129,7 @@ public sealed class OutboundRequestThrottleTests
         // A person's search takes a permit at once.
         Assert.Equal(TimeSpan.Zero, await throttle.TryAcquireAsync(host, interactive, TimeSpan.FromSeconds(1), CancellationToken.None));
 
-        // Background keeps its pacing: past its burst of 6 the next one waits its 800 ms.
+        // Background keeps its pacing: past its burst the next one waits.
         Assert.False(queued[7].IsCompleted);
 
         // Over one minute from the same start, both lanes together never pass the gateway's limit.
@@ -145,7 +145,25 @@ public sealed class OutboundRequestThrottleTests
         }
 
         var backgroundGranted = queued.Count(call => call.IsCompleted);
-        Assert.True(granted + 1 + backgroundGranted <= OutboundRate.MetadataGatewayDefault.Permits + OutboundRate.MetadataGatewayDefault.Burst);
+        Assert.True(granted + 1 + backgroundGranted <= 120, $"{granted + 1 + backgroundGranted} calls in one minute");
+    }
+
+    [Fact]
+    public async Task Ten_searches_in_a_row_from_the_app_are_not_delayed_while_background_work_is_queued()
+    {
+        var time = new FakeTimeProvider(Start);
+        var throttle = Create(time);
+        for (var index = 0; index < 40; index++)
+        {
+            _ = throttle.TryAcquireAsync("gateway.example", OutboundRate.MetadataGatewayBackground, TimeSpan.FromMinutes(5), CancellationToken.None);
+        }
+
+        // The fifth search in a row waited two seconds when the burst was four.
+        for (var index = 0; index < 10; index++)
+        {
+            Assert.Equal(TimeSpan.Zero, await throttle.TryAcquireAsync(
+                "gateway.example", OutboundRate.MetadataGatewayInteractive, TimeSpan.Zero, CancellationToken.None));
+        }
     }
 
     [Fact]

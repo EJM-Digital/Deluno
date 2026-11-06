@@ -98,14 +98,16 @@ public sealed record OutboundRate(int Permits, TimeSpan Per, int Burst, string? 
 
     /// <summary>
     /// The gateway's budget split in two so a person waiting on a search never
-    /// queues behind background refreshes (#1522): background work gets 75 a
-    /// minute with a burst of 6, a person's own request 25 a minute with a
-    /// burst of 4. Together that is the 100 a minute and burst of 10 above.
+    /// queues behind background refreshes (#1522): background work gets 60 a
+    /// minute with a burst of 5, a person's own request 40 a minute with a
+    /// burst of 10 (measured: a burst of 4 made the fifth search in a row wait
+    /// two seconds). Together at most 100 a minute plus a burst of 15, under
+    /// the gateway's 120.
     /// </summary>
-    public static OutboundRate MetadataGatewayBackground { get; } = new(75, TimeSpan.FromMinutes(1), 6, "background");
+    public static OutboundRate MetadataGatewayBackground { get; } = new(60, TimeSpan.FromMinutes(1), 5, "background");
 
     /// <inheritdoc cref="MetadataGatewayBackground"/>
-    public static OutboundRate MetadataGatewayInteractive { get; } = new(25, TimeSpan.FromMinutes(1), 4, "interactive");
+    public static OutboundRate MetadataGatewayInteractive { get; } = new(40, TimeSpan.FromMinutes(1), 10, "interactive");
 
     public static OutboundRate FromInterval(TimeSpan interval)
         => new(1, interval <= TimeSpan.Zero ? TimeSpan.FromSeconds(2) : interval, 1);

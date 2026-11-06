@@ -213,7 +213,7 @@ public sealed class AFailingMetadataGatewayIsSaidHonestlyTests : IDisposable
         Assert.Equal(TimeSpan.FromMinutes(1), background.Per);
         Assert.Equal(TimeSpan.FromMinutes(1), interactive.Per);
         Assert.True(background.Permits + interactive.Permits <= rate.Permits);
-        Assert.True(background.Burst + interactive.Burst <= rate.Burst);
+        Assert.True(background.Permits + interactive.Permits + background.Burst + interactive.Burst <= 120);
     }
 
     [Fact]

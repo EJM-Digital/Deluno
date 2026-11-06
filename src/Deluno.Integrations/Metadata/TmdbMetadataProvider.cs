@@ -355,6 +355,13 @@ public sealed partial class TmdbMetadataProvider(
         }
     }
 
+    private void Step(string step, ref long mark)
+    {
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        logger.LogDebug("Metadata search step {Step} took {Ms} ms", step, (long)System.Diagnostics.Stopwatch.GetElapsedTime(mark, now).TotalMilliseconds);
+        mark = now;
+    }
+
     private async Task<IReadOnlyList<MetadataSearchResult>> SearchByQueryCoreAsync(
         MetadataLookupRequest request,
         CancellationToken cancellationToken)
@@ -365,10 +372,13 @@ public sealed partial class TmdbMetadataProvider(
             return [];
         }
 
+        var mark = System.Diagnostics.Stopwatch.GetTimestamp();
         var config = await GetMetadataConfigurationAsync(cancellationToken);
+        Step("config", ref mark);
         var mediaType = NormalizeMediaType(request.MediaType);
         var cacheKey = BuildSearchCacheKey(config.ProviderMode, mediaType, query, request.Year, request.ProviderId, config.Language, request.Page);
         var cached = await TryReadSearchCacheAsync(cacheKey, cancellationToken);
+        Step("cache-read", ref mark);
         if (cached is not null)
         {
             return await LocalizeSearchPostersAsync(cached, cancellationToken);
@@ -378,10 +388,12 @@ public sealed partial class TmdbMetadataProvider(
         {
             logger.LogDebug("Attempting metadata search via broker for query: {Query}", query.ForLog());
             var brokerResults = await TryBrokerSearchAsync(config.BrokerUrl, mediaType, request, query, cancellationToken);
+            Step("broker-total", ref mark);
             if (brokerResults is { Count: > 0 })
             {
                 logger.LogDebug("Broker search returned {ResultCount} results for query: {Query}", brokerResults.Count, query.ForLog());
                 await WriteSearchCacheAsync(cacheKey, mediaType, query, brokerResults, cancellationToken);
+                Step("cache-write", ref mark);
                 return await LocalizeSearchPostersAsync(brokerResults, cancellationToken);
             }
 
@@ -3266,6 +3278,7 @@ public sealed partial class TmdbMetadataProvider(
     {
         var serviceName = MetadataServiceName(key);
         var host = ThrottleHost(url);
+        var mark = System.Diagnostics.Stopwatch.GetTimestamp();
 
         // A pause the service itself asked for (a 429's Retry-After). Honoured
         // before anything else: a short one is waited out, a long one defers the
@@ -3297,14 +3310,17 @@ public sealed partial class TmdbMetadataProvider(
         // rate-limit responses out of about 20,000 requests. The gateway's own
         // limit is far lower than TMDb's (30 a minute per address), so calls to
         // it are paced to that instead (#1090).
+        Step("pause-check", ref mark);
         var isGateway = key.StartsWith("metadata:broker:", StringComparison.OrdinalIgnoreCase);
-        if (await outboundRequestThrottle.TryAcquireAsync(
+        var throttleResult = await outboundRequestThrottle.TryAcquireAsync(
                 host,
                 isGateway
                     ? (InteractiveRequest.IsActive ? OutboundRate.MetadataGatewayInteractive : OutboundRate.MetadataGatewayBackground)
                     : OutboundRate.MetadataProviderDefault,
                 MaxMetadataThrottleWait,
-                cancellationToken) is null)
+                cancellationToken);
+        Step("throttle", ref mark);
+        if (throttleResult is null)
         {
             logger.LogInformation(
                 "Deferred {Operation}: the metadata provider is still inside its request budget after {Wait}.",
@@ -3350,7 +3366,9 @@ public sealed partial class TmdbMetadataProvider(
                     // call for 100 s, three times over.
                     using var timeout = new CancellationTokenSource(_health.CallTimeout, timeProvider);
                     using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, timeout.Token);
+                    Step("policy-entered", ref mark);
                     using var response = await httpClient.GetAsync(url, linked.Token);
+                    Step("http-headers", ref mark);
                     if (!response.IsSuccessStatusCode)
                     {
                         var requestedPause = ReadRequestedPause(response, timeProvider.GetUtcNow());
@@ -3416,7 +3434,9 @@ public sealed partial class TmdbMetadataProvider(
                         _health.PauseFor(host, exhaustedFor);
                     }
 
-                    return await response.Content.ReadFromJsonAsync<T>(CacheJsonOptions, linked.Token);
+                    var parsed = await response.Content.ReadFromJsonAsync<T>(CacheJsonOptions, linked.Token);
+                    Step("body+parse", ref mark);
+                    return parsed;
                 }
                 catch (Exception exception) when (exception is not HttpRequestException and not OperationCanceledException and not IOException)
                 {
