@@ -221,6 +221,13 @@ function PosterCard({
   // the grid would make every card re-render when any one of them was clicked.
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [actionResult, setActionResult] = useState<string | null>(null);
+  // Long enough to read, short enough that it is gone before you look back. Nothing else on the card moves while it is
+  // there, and the wait ends with the card: a card that has left the page clears nothing.
+  useEffect(() => {
+    if (actionResult === null) return undefined;
+    const timer = setTimeout(() => setActionResult(null), 6000);
+    return () => clearTimeout(timer);
+  }, [actionResult]);
 
   async function runAction(name: string, url: string) {
     if (busyAction) return;
@@ -239,9 +246,6 @@ function PosterCard({
       setActionResult(name === "search" ? "Search failed" : "Refresh failed");
     } finally {
       setBusyAction(null);
-      // Long enough to read, short enough that it is gone before you look
-      // back. Nothing else on the card moves while it is there.
-      window.setTimeout(() => setActionResult(null), 6000);
     }
   }
   // Whether this card size draws anything under the artwork at all. Small is

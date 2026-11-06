@@ -179,6 +179,12 @@ export function SeerrServersCard({
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
   const [copied, setCopied] = useState<"url" | "secret" | null>(null);
+  // "Copied" shows for two seconds, and the wait ends with the card.
+  useEffect(() => {
+    if (copied === null) return undefined;
+    const timer = setTimeout(() => setCopied(null), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
 
   const editing = drawer.id ? servers.find((server) => server.id === drawer.id) ?? null : null;
   const owed = editing ? cleanups.filter((cleanup) => cleanup.serverId === editing.id) : [];
@@ -290,7 +296,6 @@ export function SeerrServersCard({
     try {
       await navigator.clipboard.writeText(value);
       setCopied(which);
-      setTimeout(() => setCopied((current) => (current === which ? null : current)), 2000);
     } catch {
       // Clipboard access can be denied by the browser; the value is still selectable text.
     }
