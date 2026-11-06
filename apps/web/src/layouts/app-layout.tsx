@@ -433,7 +433,7 @@ export function DesktopSidebar({
 
   return (
     <SidebarRailContext.Provider value={collapsed}>
-    <aside className="fixed inset-y-0 left-0 z-50 hidden w-(--sidebar-width) border-r border-sidebar-border bg-sidebar px-3 py-3 text-sidebar-foreground lg:flex lg:flex-col" data-collapsed={collapsed}>
+    <aside className="fixed inset-y-0 left-0 z-50 hidden w-(--sidebar-width) border-r border-sidebar-border bg-sidebar px-3 py-3 text-sidebar-foreground leading-[1.52] lg:flex lg:flex-col" data-collapsed={collapsed}>
       {/* On the seam between the menu and the page, outside the scrolling list so it never adds a scrollbar. */}
       <button
         type="button"
@@ -450,7 +450,7 @@ export function DesktopSidebar({
       <NavLink to="/" aria-label="Deluno home" className="flex min-h-[61px] items-center gap-3 rounded-lg border border-sidebar-border bg-sidebar-accent/45 px-3 text-sidebar-foreground no-underline">
         <AppMark size={34} />
         <span className={cn("min-w-0", collapsed && "hidden")}>
-          <span className="block whitespace-nowrap font-display text-(length:--shell-brand-size) font-bold tracking-[0.08em]">Deluno</span>
+          <span className="block whitespace-nowrap font-display text-(length:--shell-brand-size) font-bold! leading-[1.52] tracking-[0.08em] text-foreground">Deluno</span>
           <span className="block truncate whitespace-nowrap text-(length:--shell-subtle-size) font-medium text-muted-foreground" title={hostName ?? undefined}>{hostName ?? "Media console"}</span>
         </span>
       </NavLink>
@@ -504,7 +504,7 @@ export function DesktopSidebar({
           title={collapsed ? (user?.displayName ?? "User") : undefined}
           data-testid="user-menu"
         >
-          <span className="flex h-(--shell-avatar-size) w-(--shell-avatar-size) shrink-0 items-center justify-center rounded-full bg-linear-to-br/srgb from-primary to-[hsl(var(--primary-2))] text-(length:--type-body-sm) font-bold text-primary-foreground">
+          <span className="flex h-(--shell-avatar-size) w-(--shell-avatar-size) shrink-0 items-center justify-center rounded-full bg-linear-to-br/srgb from-primary to-[hsl(var(--primary-2))] text-[length:12px] font-bold leading-[1.52] text-primary-foreground dark:text-[hsl(216_55%_9.6%)]">
             {user?.avatarInitials ?? "DU"}
           </span>
           {collapsed ? <span className="sr-only">{`${user?.displayName ?? "User"}, account menu`}</span> : (
