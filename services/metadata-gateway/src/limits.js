@@ -35,13 +35,15 @@ export async function spendProviderCall(env, clientAddress) {
 }
 
 /** A fetch that spends one provider call before every upstream request. */
-export function limitedFetch(env, clientAddress, upstream = fetch) {
+export function limitedFetch(env, clientAddress, upstream = fetch, timings = null) {
   return async (url, init) => {
-    const spend = await spendProviderCall(env, clientAddress);
+    const spend = await (timings
+      ? timings.measure("limiter", () => spendProviderCall(env, clientAddress))
+      : spendProviderCall(env, clientAddress));
     if (!spend.allowed) {
       throw new ProviderRateLimited(spend.retryAfterSeconds);
     }
-    return upstream(url, init);
+    return timings ? timings.measure("tmdb", () => upstream(url, init)) : upstream(url, init);
   };
 }
 

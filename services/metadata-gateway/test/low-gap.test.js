@@ -147,10 +147,9 @@ test("the person to IMDb route uses KV directly, so a KV fault there is an unhan
   const stub = tmdb({ "/3/person/7/external_ids": { imdb_id: "nm0000007" } });
 
   await assert.rejects(ask("/person/7/imdb", { env: { METADATA_CACHE: kv({ failGets: true }) }, stub }), /KV unavailable/);
-  // A write that fails sits inside the route's own try, so it becomes the plain "unavailable" answer.
+  // The write runs after the answer (#1527), so a write that fails no longer fails the lookup.
   const writeFault = await ask("/person/7/imdb", { env: { METADATA_CACHE: kv({ failPuts: true }) }, stub });
-  assert.equal(writeFault.status, 503);
-  assert.equal((await writeFault.json()).error, "provider_unavailable");
+  assert.equal(writeFault.status, 302);
 });
 
 test("a TMDb 404 on a catalogue route answers 404 not_found and is remembered for 60 seconds", async () => {

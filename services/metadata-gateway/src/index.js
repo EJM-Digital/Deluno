@@ -1,6 +1,7 @@
 import { matchTvdbRoute, serveTvdbRoute } from "./tvdb.js";
 import { ProviderRateLimited, limitedFetch, rateLimitedResponse } from "./limits.js";
 import { boundCacheKey, cacheError, readCache, readCachedError, writeCache } from "./cache.js";
+import { createTimings, deferWork } from "./timing.js";
 
 const CACHE_TTL_SECONDS = 60 * 60 * 12;
 // A catalogue changes when a broadcaster announces an episode, so it expires
@@ -36,7 +37,7 @@ const MAX_CAST = 30;
 const MAX_CREW = 20;
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     if (request.method !== "GET") {
@@ -76,25 +77,29 @@ export default {
       return json({ error: "service_unavailable", message: "Metadata service is not configured." }, 503);
     }
 
-    const provider = limitedFetch(env, clientAddress);
+    const timings = createTimings();
+    const provider = limitedFetch(env, clientAddress, fetch, timings);
 
     if (route.kind === "person-imdb") {
-      return servePersonImdbRoute(route, env, provider);
+      return servePersonImdbRoute(route, env, provider, ctx);
     }
 
     if (route.kind !== "search") {
-      return serveCatalogueRoute(route, env, url.searchParams, provider);
+      return serveCatalogueRoute(route, env, url.searchParams, provider, ctx);
     }
 
     const key = await boundCacheKey(buildCacheKey(lookup.value));
-    const cached = await readCache(env.METADATA_CACHE, key);
+    // Both reads start together: a miss costs one KV round trip, not two.
+    const [cached, remembered] = await timings.measure("cache-read", () => Promise.all([
+      readCache(env.METADATA_CACHE, key),
+      readCachedError(env.METADATA_CACHE, key)
+    ]));
     if (cached) {
-      return json(cached, 200, { "Cache-Control": "public, max-age=300" });
+      return json(cached, 200, { "Cache-Control": "public, max-age=300", "Server-Timing": timings.header() });
     }
 
-    const remembered = await readCachedError(env.METADATA_CACHE, key);
     if (remembered) {
-      return json(remembered.body, remembered.status, remembered.headers ?? {});
+      return json(remembered.body, remembered.status, { ...(remembered.headers ?? {}), "Server-Timing": timings.header() });
     }
 
     try {
@@ -108,8 +113,9 @@ export default {
         totalResults: found.totalResults,
         results: found.results
       };
-      await writeCache(env.METADATA_CACHE, key, response, CACHE_TTL_SECONDS);
-      return json(response, 200, { "Cache-Control": "public, max-age=300" });
+      // The answer never waits for the write; a failed write only costs the next lookup.
+      timings.measureSync("cache-write", () => deferWork(ctx, writeCache(env.METADATA_CACHE, key, response, CACHE_TTL_SECONDS)));
+      return json(response, 200, { "Cache-Control": "public, max-age=300", "Server-Timing": timings.header() });
     } catch (error) {
       if (error instanceof ProviderRateLimited) return rateLimitedResponse(error, json);
       const providerStatus = error instanceof TmdbRequestError ? error.status : 502;
@@ -127,8 +133,8 @@ export default {
       }
 
       // Remembered briefly so a stream of distinct failing lookups cannot all reach TMDb (#1064).
-      await cacheError(env.METADATA_CACHE, key, failure);
-      return json(failure.body, failure.status, failure.headers);
+      deferWork(ctx, cacheError(env.METADATA_CACHE, key, failure));
+      return json(failure.body, failure.status, { ...failure.headers, "Server-Timing": timings.header() });
     }
   }
 };
@@ -189,7 +195,7 @@ export function matchRoute(pathname) {
   return null;
 }
 
-async function servePersonImdbRoute(route, env, provider = fetch) {
+async function servePersonImdbRoute(route, env, provider = fetch, ctx = undefined) {
   const key = `person-external-ids:v1:${route.id}`;
   const cached = await env.METADATA_CACHE.get(key, "json");
   if (cached && typeof cached.imdbId === "string") {
@@ -201,17 +207,13 @@ async function servePersonImdbRoute(route, env, provider = fetch) {
 
   try {
     const imdbId = await lookupPersonImdbId(route.id, env.TMDB_API_KEY, provider);
-    await env.METADATA_CACHE.put(key, JSON.stringify({ imdbId }), {
-      expirationTtl: PERSON_EXTERNAL_IDS_TTL_SECONDS
-    });
+    deferWork(ctx, writeCache(env.METADATA_CACHE, key, { imdbId }, PERSON_EXTERNAL_IDS_TTL_SECONDS));
     return imdbId ? redirectToImdb(imdbId) : json({ error: "not_found" }, 404);
   } catch (error) {
     if (error instanceof ProviderRateLimited) return rateLimitedResponse(error, json);
     const providerStatus = error instanceof TmdbRequestError ? error.status : 502;
     if (providerStatus === 404) {
-      await env.METADATA_CACHE.put(key, JSON.stringify({ imdbId: null }), {
-        expirationTtl: PERSON_EXTERNAL_IDS_TTL_SECONDS
-      });
+      deferWork(ctx, writeCache(env.METADATA_CACHE, key, { imdbId: null }, PERSON_EXTERNAL_IDS_TTL_SECONDS));
       return json({ error: "not_found" }, 404);
     }
     if (providerStatus === 429) {
@@ -248,7 +250,7 @@ function redirectToImdb(imdbId) {
   });
 }
 
-async function serveCatalogueRoute(route, env, params = new URLSearchParams(), provider = fetch) {
+async function serveCatalogueRoute(route, env, params = new URLSearchParams(), provider = fetch, ctx = undefined) {
   const isList = route.kind === "popular" || route.kind === "list";
   const page = isList ? parsePopularPage(params) : 1;
   const listQuery = route.kind === "list" ? listQueryFor(route.list, params) : null;
@@ -290,7 +292,7 @@ async function serveCatalogueRoute(route, env, params = new URLSearchParams(), p
           ? await lookupTranslations(route.mediaKind, route.id, env.TMDB_API_KEY, provider)
           : await lookupMovieCollection(route.id, env.TMDB_API_KEY, provider);
 
-    await writeCache(
+    deferWork(ctx, writeCache(
       env.METADATA_CACHE,
       key,
       payload,
@@ -298,7 +300,7 @@ async function serveCatalogueRoute(route, env, params = new URLSearchParams(), p
         ? TRANSLATIONS_TTL_SECONDS
         : route.kind === "popular" || route.kind === "list"
           ? POPULAR_TTL_SECONDS
-          : CATALOGUE_TTL_SECONDS);
+          : CATALOGUE_TTL_SECONDS));
     return json(payload, 200, { "Cache-Control": "public, max-age=600" });
   } catch (error) {
     if (error instanceof ProviderRateLimited) return rateLimitedResponse(error, json);
@@ -312,7 +314,7 @@ async function serveCatalogueRoute(route, env, params = new URLSearchParams(), p
       failure = { status: 503, body: { error: "provider_unavailable", message: "Metadata is temporarily unavailable." }, headers: {} };
     }
 
-    await cacheError(env.METADATA_CACHE, key, failure);
+    deferWork(ctx, cacheError(env.METADATA_CACHE, key, failure));
     return json(failure.body, failure.status, failure.headers);
   }
 }
