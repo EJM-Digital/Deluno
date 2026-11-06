@@ -104,7 +104,7 @@ public sealed class AMachineWithOnlyAPrivateIPv6AddressConnectsOverIPv4AtOnceTes
         {
             try
             {
-                while (true)
+                while (true) // reason: the fake server accepts until the test cancels it
                 {
                     var client = await listener.AcceptTcpClientAsync(stop.Token);
                     Interlocked.Increment(ref accepted);
