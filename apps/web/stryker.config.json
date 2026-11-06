@@ -1,9 +1,9 @@
 {
   "$schema": "../../node_modules/@stryker-mutator/core/schema/stryker-schema.json",
-  "_comment": "Mutation testing for the web app (issue 1269, docs/testing/STRATEGY.md measure 3). Run from apps/web: npm run mutation. A changed-files run adds --since in CI; scripts/check-mutation-ratchet.mjs judges the report.",
+  "_comment": "Mutation testing for the web app (issue 1269, docs/testing/STRATEGY.md measure 3). Run from apps/web: npm run mutation. router.tsx is left out: system-docs-page.test.tsx reads its text, which instrumenting would change. A changed-files run adds --since in CI; scripts/check-mutation-ratchet.mjs judges the report.",
   "testRunner": "vitest",
   "vitest": { "configFile": "vite.config.ts" },
-  "mutate": ["src/**/*.ts", "src/**/*.tsx", "!src/**/*.test.ts", "!src/**/*.test.tsx", "!src/**/*.d.ts", "!src/test/**"],
+  "mutate": ["src/**/*.ts", "src/**/*.tsx", "!src/**/*.test.ts", "!src/**/*.test.tsx", "!src/**/*.d.ts", "!src/test/**", "!src/router.tsx"],
   "coverageAnalysis": "perTest",
   "dryRunTimeoutMinutes": 60,
   "reporters": ["json", "progress", "clear-text"],

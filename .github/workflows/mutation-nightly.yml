@@ -13,6 +13,12 @@ on:
   # first job skips the run on odd ISO weeks. At most 6 jobs at once (4 .NET, 2 JavaScript). Off the top of the hour.
     - cron: "17 11 * * 6"
   workflow_dispatch:
+    inputs:
+      scope:
+        description: "risky = only the risky areas (docs/testing/mutation-risky-areas.json: their .NET projects and folders; a surviving mutant there fails the run); all = every project and the JavaScript packages, scored against the thresholds"
+        type: choice
+        options: [risky, all]
+        default: risky
 
 concurrency:
   group: mutation-nightly
@@ -22,6 +28,8 @@ permissions:
   contents: read
 
 env:
+  # The schedule always measures everything; a run started by hand measures what its `scope` input says (default: risky).
+  SCOPE: ${{ github.event_name == 'workflow_dispatch' && inputs.scope || 'all' }}
   DOTNET_NOLOGO: "1"
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
 
@@ -60,7 +68,7 @@ jobs:
         id: matrix
         run: |
           node scripts/mutation/gen-stryker-configs.mjs --check
-          echo "dotnet=$(node scripts/mutation/gen-stryker-configs.mjs --matrix)" >> "$GITHUB_OUTPUT"
+          echo "dotnet=$(node scripts/mutation/gen-stryker-configs.mjs --matrix "$SCOPE")" >> "$GITHUB_OUTPUT"
 
   dotnet:
     name: ${{ matrix.project }}
@@ -89,9 +97,17 @@ jobs:
       - name: Stryker.NET, pinned in .config/dotnet-tools.json
         timeout-minutes: 330
         shell: bash
+        env:
+          # Set only for a project that is risky in some folders: the globs replace the config's `mutate`.
+          MUTATE: ${{ matrix.mutate }}
         run: |
           dotnet tool restore
-          dotnet tool run dotnet-stryker -f "${{ matrix.config }}" --output "$PWD/StrykerOutput/${{ matrix.project }}"
+          mutate_args=()
+          if [ -n "$MUTATE" ]; then
+            IFS=',' read -ra globs <<< "$MUTATE"
+            for g in "${globs[@]}"; do mutate_args+=(--mutate "$g"); done
+          fi
+          dotnet tool run dotnet-stryker -f "${{ matrix.config }}" "${mutate_args[@]}" --output "$PWD/StrykerOutput/${{ matrix.project }}"
           mkdir -p mutation-reports
           cp "StrykerOutput/${{ matrix.project }}/reports/mutation-report.json" "mutation-reports/${{ matrix.project }}.json"
 
@@ -108,7 +124,8 @@ jobs:
   javascript:
     name: ${{ matrix.name }}
     needs: fortnight
-    if: ${{ needs.fortnight.outputs.run == 'true' }}
+    # The JavaScript packages hold no risky area, so a risky-only run leaves them out.
+    if: ${{ needs.fortnight.outputs.run == 'true' && (github.event_name != 'workflow_dispatch' || inputs.scope == 'all') }}
     runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 340
     strategy:
@@ -178,11 +195,15 @@ jobs:
         run: |
           node scripts/check-mutation-ratchet.mjs --reports mutation-reports --summary >> "$GITHUB_STEP_SUMMARY"
 
+      # A risky-only run mutates part of a project, so its score is not the project's score: it is judged by its
+      # survivors (a survivor in a risky area fails, unless listed as equivalent) and never proposes a threshold.
       - name: No project is below its threshold
-        run: node scripts/check-mutation-ratchet.mjs --reports mutation-reports
+        run: |
+          if [ "$SCOPE" = "risky" ]; then node scripts/check-mutation-ratchet.mjs --reports mutation-reports --survivors
+          else node scripts/check-mutation-ratchet.mjs --reports mutation-reports; fi
 
       - name: Propose the raised thresholds
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && env.SCOPE == 'all' }}
         run: |
           mkdir -p mutation-out
           cp docs/testing/mutation-thresholds.json mutation-out/mutation-thresholds.json
@@ -196,5 +217,5 @@ jobs:
           path: |
             mutation-reports/
             mutation-out/
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7

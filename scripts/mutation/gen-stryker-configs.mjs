@@ -40,15 +40,33 @@ export function expected(root = ".") {
   return out;
 }
 
+// `risky` is the parsed mutation-risky-areas.json, or null for every project.
+export function matrixEntries(configFiles, risky) {
+  const entries = [];
+  for (const file of configFiles) {
+    const dir = file.split("/").slice(-2)[0];
+    const project = dir === "windows-tray" ? "Deluno.Tray" : dir;
+    const entry = { project, config: file, os: project === "Deluno.Tray" ? "windows-latest" : "ubuntu-latest" };
+    if (risky && !Object.hasOwn(risky.projects ?? {}, project)) {
+      const folders = (risky.files ?? []).filter((f) => f.project === project).map((f) => f.path);
+      if (folders.length === 0) continue;
+      // Stryker globs are relative to the project; "!**/Migrations/**" is the config's own exclusion, which a command-line list replaces.
+      entry.mutate = [...folders.map((p) => (p.endsWith("/") ? `**/${p}**/*.cs` : `**/${p}`)), "!**/Migrations/**"].join(",");
+    }
+    entries.push(entry);
+  }
+  return entries;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const check = process.argv.includes("--check");
   if (process.argv.includes("--matrix")) {
-    // The nightly workflow's job matrix: one entry per production project. The tray is Windows-only.
-    const include = Object.keys(expected()).map((file) => {
-      const project = file.split("/").slice(-2)[0] === "windows-tray" ? "Deluno.Tray" : file.split("/").slice(-2)[0];
-      return { project, config: file, os: project === "Deluno.Tray" ? "windows-latest" : "ubuntu-latest" };
-    });
-    console.log(JSON.stringify({ include }));
+    // The mutation workflow's job matrix: one entry per production project. The tray is Windows-only.
+    // `--matrix risky` keeps only the projects that hold a risky area (docs/testing/mutation-risky-areas.json); a project
+    // that is risky only in some folders gets a `mutate` list (comma-separated Stryker globs) so the job mutates just those.
+    const scope = process.argv[process.argv.indexOf("--matrix") + 1] === "risky" ? "risky" : "all";
+    const risky = scope === "risky" ? JSON.parse(readFileSync("docs/testing/mutation-risky-areas.json", "utf8")) : null;
+    console.log(JSON.stringify({ include: matrixEntries(Object.keys(expected()), risky) }));
     process.exit(0);
   }
   const problems = [];

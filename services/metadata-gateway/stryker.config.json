@@ -1,10 +1,11 @@
 {
   "$schema": "../../node_modules/@stryker-mutator/core/schema/stryker-schema.json",
-  "_comment": "Mutation testing for the metadata gateway (issue 1269). Its tests are node:test files, so the command runner runs them. Run from services/metadata-gateway: npx stryker run.",
+  "_comment": "Mutation testing for the metadata gateway (issue 1269). Its tests are node:test files, so the command runner runs them. Runs in place (inPlace): its tests read the recorded replies under tests/fixtures at the repository root, which a sandbox copy does not hold. Run from services/metadata-gateway: npx stryker run.",
   "testRunner": "command",
   "commandRunner": { "command": "node --test" },
   "mutate": ["src/**/*.js"],
   "coverageAnalysis": "off",
+  "inPlace": true,
   "reporters": ["json", "progress", "clear-text"],
   "jsonReporter": { "fileName": "reports/mutation/metadata-gateway.json" },
   "tempDirName": ".stryker-tmp",
