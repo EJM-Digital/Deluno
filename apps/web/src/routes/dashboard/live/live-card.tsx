@@ -33,9 +33,11 @@ export function LiveCard({ title, count, controls, description, aside, to, toLab
       {/* The mockup's card header, rule for rule: 14/18/10 padding, baseline-aligned, a 15px semibold title on a 23px line (the shell standard, #1461; the top padding is 3px less so the header stays 48px), 12px between title and count, the count and link on Weir's 1.52 lines (Weir's header, 2 Oct 2026),
           the link 13px at the right with its arrow. No rule under it. */}
       <header className="flex min-h-[48px] shrink-0 items-baseline gap-[12px] whitespace-nowrap px-[18px] pb-[10px] pt-[11px]">
-        <h2 id={id} className="m-0 shrink-0 text-(length:--type-card-title) font-semibold leading-[calc(var(--type-card-title)*23/15)] text-foreground">{title}</h2>
+        {/* With chips beside it the title holds a 96px slot and the chips sit on the title's centre line, as in Weir, so switching
+            between the apps moves nothing: the chips start at the same x whatever the title says (#1461). */}
+        <h2 id={id} className={cn("m-0 shrink-0 text-(length:--type-card-title) font-semibold leading-[calc(var(--type-card-title)*23/15)] text-foreground", controls && "min-w-[96px]")}>{title}</h2>
         {controls ? (
-          <div className="flex min-w-0 flex-1 self-center -my-1 -ml-2">{controls}</div>
+          <div className="flex min-w-0 flex-1 self-start -mt-[0.5px] -ml-2">{controls}</div>
         ) : (
           <span title={plainTitle(count)} className="min-w-0 flex-1 truncate max-md:whitespace-normal max-md:break-words text-(length:--type-caption) leading-[1.52] text-muted-foreground">{count}</span>
         )}
