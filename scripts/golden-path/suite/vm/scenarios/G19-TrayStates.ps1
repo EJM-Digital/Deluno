@@ -279,7 +279,8 @@ function Invoke-GroupTrayStates {
             if ($lib.Status -in 200, 201) {
                 $libraryId = $lib.Data.id
                 Remove-Item -LiteralPath $folder -Recurse -Force
-                $gone = Wait-TrayDot -Match { param($d) $d.Colour -eq 'amber' -and $d.Hover -match "The Golden amber library library folder has a problem|Golden amber library.*folder has a problem" } -TimeoutSec 600
+                # Taking a folder away asks for no health pass: the library check runs on its fifteen-minute pass (SystemTasks.HealthChecks), so wait past one.
+                $gone = Wait-TrayDot -Match { param($d) $d.Colour -eq 'amber' -and $d.Hover -match "The Golden amber library library folder has a problem|Golden amber library.*folder has a problem" } -TimeoutSec 1200
                 $seen = Get-TrayDot -Icon 'Deluno' -NoOverflow
                 Add-Check 'A library whose folder is gone: the dot goes amber and the hover text names the library' $gone.Ok "colour $($seen.Colour), hover '$($seen.Hover)'"
             }

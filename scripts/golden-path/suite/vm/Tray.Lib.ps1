@@ -246,6 +246,9 @@ function Open-TrayMenuOnce {
     if (-not $viaKey) {
         # The key did not open it twice: a right click on the icon's own rectangle (read just now from the taskbar) always reaches it.
         $r = $btn.Element.Current.BoundingRectangle
+        # An icon that is off screen (in the overflow flyout that has not opened, or just closed) reports an empty rectangle whose numbers are
+        # infinite; casting them to a pixel position throws. That attempt reads no menu, and Open-TrayMenu opens the flyout again on the next.
+        if ($r.IsEmpty -or [double]::IsInfinity($r.X) -or [double]::IsNaN($r.X) -or [double]::IsInfinity($r.Width) -or [double]::IsNaN($r.Width) -or $r.Width -le 0) { return @() }
         Send-Click -X ([int]($r.X + $r.Width / 2)) -Y ([int]($r.Y + $r.Height / 2)) -Right
     }
     Start-Sleep -Milliseconds 700 # reason: UI settle after input; Windows raises no event for it

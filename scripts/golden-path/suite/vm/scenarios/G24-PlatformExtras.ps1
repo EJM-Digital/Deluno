@@ -267,6 +267,17 @@ function Invoke-GroupPlatformExtras {
         Add-Check 'The databases are there' (@(@('jobs.db', 'movies.db', 'platform.db', 'series.db', 'cache.db') | Where-Object { $_ -notin $dbs }).Count -eq 0) ($dbs -join ', ')
         $hook = Join-Path $env:LOCALAPPDATA 'Deluno\logs\install-hook.log'
         $text = if (Test-Path $hook) { Get-Content -Raw $hook } else { '' }
+        # The log is kept for every later start and service command too, and those write stack traces over several lines. What this scenario
+        # judges is the install's own part: from the top to the end of the start that told the last app (the next "Main starting" line ends it).
+        $all = @($text -split "`r?`n")
+        $lastApp = -1
+        for ($i = 0; $i -lt $all.Count; $i++) { if ($all[$i] -match "component '(qbittorrent|transmission|deluge|sabnzbd|nzbget|weir)'") { $lastApp = $i } }
+        if ($lastApp -ge 0) {
+            $end = $all.Count
+            for ($i = $lastApp + 1; $i -lt $all.Count; $i++) { if ($all[$i] -match 'Main starting:') { $end = $i; break } }
+            $text = ($all[0..($end - 1)] -join "`n")
+        }
+        Save-Evidence -Name 'install-hook-whole.log' -Text ($all -join "`n")
         Add-Check 'The install hook log exists and has lines of its own' ($text.Length -gt 200) "$($text.Length) characters"
         Add-Check 'Each line begins with a time' (@($text -split "`r?`n" | Where-Object { $_ } | Where-Object { $_ -notmatch '^\d{4}-\d\d-\d\dT' }).Count -eq 0) ''
         $names = 'qbittorrent', 'transmission', 'deluge', 'sabnzbd', 'nzbget', 'weir'
@@ -1135,6 +1146,11 @@ function Invoke-UpdateUpdatesPageFollows {
             Save-Evidence -Name 'updates-page-0-opened.txt' -Text (Get-UpdatesStatusCard -Page $page)
             $log = New-Object System.Collections.ArrayList
             $t0 = Get-Date
+            # The open page is served by the installed (previous) release. The updater's pushes (#1469) first shipped in rc.30.37, so a release
+            # before it cannot follow a check made elsewhere or show a percent climbing; its page is still walked, and what only the push gives is
+            # noted instead of failed. From rc.30.37 on, as the previous release, both are asserted.
+            $pushBuild = $true
+            if ("$($ctx.PreviousVersion)" -match 'rc\.(\d+)\.(\d+)') { $pushBuild = ([int]$Matches[1] -gt 30) -or ([int]$Matches[1] -eq 30 -and [int]$Matches[2] -ge 37) }
 
             # 1. The feed is down and Check now is pressed: the page says in words that it could not check.
             Click-PageText -Page $page -Pattern '^Check now$' -TimeoutSec 15 | Out-Null
@@ -1148,7 +1164,9 @@ function Invoke-UpdateUpdatesPageFollows {
             $followed = Wait-Until -TimeoutSec 60 -IntervalSec 1 -Condition { $c = Get-UpdatesStatusCard -Page $page; if ($c -match [regex]::Escape($CandidateVersion)) { $c } else { $null } }
             Add-UpdatesPageLogLine -Page $page -Log $log -Start $t0 -What 'check made from outside'
             # #1469: the Windows updater pushes each step, so a check made elsewhere (the API, as the tray's Check for updates does) shows by itself.
-            Add-Check 'A check made through the API shows on the open page within 60 s, without a reload or a button press' $followed.Ok $(if ($followed.Ok) { '' } else { 'the page still read: ' + (Get-UpdatesStatusCard -Page $page) })
+            $followDetail = $(if ($followed.Ok) { '' } else { 'the page still read: ' + (Get-UpdatesStatusCard -Page $page) })
+            if ($pushBuild) { Add-Check 'A check made through the API shows on the open page within 60 s, without a reload or a button press' $followed.Ok $followDetail }
+            else { Add-Note "The installed release ($($ctx.PreviousVersion)) has no push for an update check made elsewhere (#1469 first shipped in rc.30.37), so the page following it was not asserted; followed: $($followed.Ok). $followDetail" }
             if (-not $followed.Ok) {
                 Click-PageText -Page $page -Pattern '^Check now$' -TimeoutSec 15 | Out-Null
                 $found = Wait-Until -TimeoutSec 120 -IntervalSec 1 -Condition { $c = Get-UpdatesStatusCard -Page $page; if ($c -match [regex]::Escape($CandidateVersion)) { $c } else { $null } }
@@ -1190,7 +1208,8 @@ function Invoke-UpdateUpdatesPageFollows {
             # #1469: each step of the download is pushed, so the percent climbs on the open page before it reaches 100.
             $middle = @($percents | Where-Object { $_ -gt 0 -and $_ -lt 100 })
             $rising = $true; for ($i = 1; $i -lt $percents.Count; $i++) { if ($percents[$i] -lt $percents[$i - 1]) { $rising = $false } }
-            Add-Check 'The download percent rose on the open page before it finished (a step between 0 and 100, never going back)' ($middle.Count -ge 1 -and $rising) ("percents seen: " + ($percents -join ', '))
+            if ($pushBuild) { Add-Check 'The download percent rose on the open page before it finished (a step between 0 and 100, never going back)' ($middle.Count -ge 1 -and $rising) ("percents seen: " + ($percents -join ', ')) }
+            else { Add-Note "The installed release ($($ctx.PreviousVersion)) does not push each download step (#1469 first shipped in rc.30.37), so the percent climbing was not asserted; seen: $($percents -join ', ')." }
             $restartButton = [bool](Invoke-CdpEval -Page $page -Script '[].slice.call(document.querySelectorAll("button")).some(function(b){return /Restart and apply/.test(b.innerText) && !b.disabled;})')
             Add-Check 'Restart and apply is offered once the download is ready' $restartButton ''
             Save-PageShot -Page $page -Name 'updates-page-after-download.png'
@@ -1243,7 +1262,8 @@ function Invoke-UpdateWithAllBundledClients {
         Add-Check 'Asking for SABnzbd, qBittorrent and Weir is accepted (HTTP 202)' ($ask.Status -eq 202) "HTTP $($ask.Status) $($ask.Raw)"
         if ($ask.Status -ne 202) { return }
         $final = $null
-        $deadline = (Get-Date).AddMinutes(25)
+        # The runner ends the whole update phase at 30 minutes (Invoke-ScenarioSuite), so this scenario's own waits add up to less: 8 + 12 minutes and the rest.
+        $deadline = (Get-Date).AddMinutes(8)
         while ((Get-Date) -lt $deadline) {
             $r = Try-Deluno -Path '/api/companion-tools'
             if ($r.Status -eq 200) {
@@ -1252,7 +1272,7 @@ function Invoke-UpdateWithAllBundledClients {
             }
             Start-Sleep -Seconds 2 # reason: polling the install's progress; the page reads it the same way
         }
-        Add-Check 'The three are installed within 25 minutes' ($null -ne $final -and @($final.tools | Where-Object { $_.job -and $_.job.status -ne 'done' }).Count -eq 0) ''
+        Add-Check 'The three are installed within 8 minutes' ($null -ne $final -and @($final.tools | Where-Object { $_.job -and $_.job.status -ne 'done' }).Count -eq 0) ''
         if (-not $final) { return }
 
         # Transmission, Deluge and NZBGet through the tray's picker, as a person would tick them.
@@ -1269,11 +1289,11 @@ function Invoke-UpdateWithAllBundledClients {
             [void](Set-PickerBox -Window $dlg -Name 'NZBGet username' -Value $user)
             [void](Set-PickerBox -Window $dlg -Name 'NZBGet password' -Value $password)
             Click-WindowButton -Window $dlg -NamePattern '^Install selected$' | Out-Null
-            $finished = Wait-Until -TimeoutSec 1800 -IntervalSec 5 -Condition {
+            $finished = Wait-Until -TimeoutSec 720 -IntervalSec 5 -Condition {
                 $w = Wait-DesktopWindow -NamePattern $title -Process 'Deluno' -TimeoutSec 2
                 if ($w -and @(Get-WindowControls -Window $w | Where-Object { $_.Type -eq 'Button' -and $_.Name -eq 'Close' -and -not $_.Offscreen -and $_.Enabled }).Count -gt 0) { $w } else { $null }
             }
-            Add-Check 'The three install and the picker shows Close' $finished.Ok ''
+            Add-Check 'The three install and the picker shows Close' $finished.Ok $(if ($finished.Ok) { '' } else { 'the picker read: ' + (Get-WindowText -Window (Wait-DesktopWindow -NamePattern $title -Process 'Deluno' -TimeoutSec 2)) })
             if ($finished.Ok) { Click-WindowButton -Window $finished.Value -NamePattern '^Close$' | Out-Null }
         }
         finally { Remove-Item -LiteralPath $pending -ErrorAction SilentlyContinue }
@@ -1349,7 +1369,8 @@ function Invoke-UpdateDiskFull {
             New-TestVolume -Name 'installdisk' -SizeMb $sizeMb -Fs ntfs -MountFolder $installFolder | Out-Null
             $volume = $true
             & robocopy.exe $aside $installFolder /E /COPY:DAT /DCOPY:DAT /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
-            $mounted = Get-CimInstance Win32_Volume -Filter "Name='$($installFolder.TrimEnd('\') + '\')'" -ErrorAction SilentlyContinue | Select-Object -First 1
+            # WQL reads a backslash as an escape, so each one in the folder's name is doubled.
+            $mounted = Get-CimInstance Win32_Volume -Filter "Name='$(($installFolder.TrimEnd('\') + '\').Replace('\', '\\'))'" -ErrorAction SilentlyContinue | Select-Object -First 1
             $freeMb = if ($mounted) { [math]::Round($mounted.FreeSpace / 1MB, 1) } else { -1 }
             Add-Check 'The install folder is now a small volume with only a few megabytes free' ($null -ne $mounted -and $freeMb -ge 0 -and $freeMb -lt 40) "volume $sizeMb MB, $freeMb MB free, the build is $usedMb MB"
             if (-not $mounted) { return }

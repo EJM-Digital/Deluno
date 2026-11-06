@@ -33,6 +33,10 @@ function Invoke-GroupTrayInventory {
         try {
             $green = Wait-TrayDot -Match { param($d) $d.Colour -eq 'green' -and $d.Hover -notmatch "isn't answering" } -TimeoutSec 300
             Add-Check 'Start: the dot is green and nothing is named' $green.Ok ''
+            if (-not $green.Ok) {
+                # Keep what the tray read and every client's stored health, so a leftover from an earlier scenario can be named.
+                Save-Evidence -Name 'not-a-problem-start-state.txt' -Text (("hover: " + (Get-TrayDot -Icon 'Deluno' -NoOverflow).Hover) + [Environment]::NewLine + ((Try-Deluno -Path '/api/download-clients').Raw))
+            }
 
             $off = Invoke-Deluno -Method POST -Path '/api/download-clients' -Body @{
                 name = 'Golden switched-off client'; protocol = 'qbittorrent'; host = '127.0.0.1'; port = 1; username = 'x'; password = 'y'
@@ -83,7 +87,8 @@ function Invoke-GroupTrayInventory {
             if ($lib.Status -notin 200, 201) { return }
             $libraryId = $lib.Data.id
             Remove-Item -LiteralPath $folder -Recurse -Force
-            $gone = Wait-TrayDot -Match { param($d) $d.Colour -eq 'amber' -and $d.Hover -match 'Golden snooze library' } -TimeoutSec 600
+            # Taking a folder away asks for no health pass: the library check runs on its fifteen-minute pass (SystemTasks.HealthChecks), so wait past one.
+            $gone = Wait-TrayDot -Match { param($d) $d.Colour -eq 'amber' -and $d.Hover -match 'Golden snooze library' } -TimeoutSec 1200
             Add-Check 'The library whose folder is gone turns the dot amber' $gone.Ok "hover '$((Get-TrayDot -Icon 'Deluno' -NoOverflow).Hover)'"
             $row = $null
             $found = Wait-Until -TimeoutSec 120 -IntervalSec 3 -Condition {
@@ -133,7 +138,8 @@ function Invoke-GroupTrayInventory {
             Add-Check 'The hover text is no longer than 127 characters' ($hover.Length -le 127) "$($hover.Length) characters"
             Add-Check 'It ends in "..." (the rest was left out)' ($hover -match '\.\.\.$') $hover
             $kept = ($hover -replace '^Deluno - ', '') -replace '\.\.\.$', ''
-            $fulls = @($names | ForEach-Object { "$_ isn't answering and 2 more" })
+            # Any other connection that does not answer is counted too, so the number in "and N more" is not fixed.
+            $fulls = @($names | ForEach-Object { "$_ isn't answering and 2 more"; "$_ isn't answering and 3 more"; "$_ isn't answering and 4 more" })
             $whole = @($fulls | Where-Object { $_.StartsWith($kept) -and $_.Length -gt $kept.Length -and $_[$kept.Length] -eq ' ' }).Count -gt 0
             Add-Check 'It was cut between words, never in the middle of one' $whole "kept '$kept'"
             $status = (Get-TrayMenuStates | Where-Object { $_.Name -match '^Deluno - ' } | Select-Object -First 1).Name
