@@ -53,13 +53,14 @@ public interface IOutboundRequestThrottle
     IReadOnlyList<OutboundThrottleHostState> Describe();
 }
 
+/// <param name="Lane">A separate share of one host's budget: the same host with another lane is paced on its own, so the lanes together stay inside the host's limit but one cannot queue behind the other.</param>
 /// <param name="Permits">Requests allowed per <paramref name="Per"/>.</param>
 /// <param name="Per">The window those permits refill over.</param>
 /// <param name="Burst">
 /// How many permits may accumulate. One means strict pacing with no bursting,
 /// which is what an indexer wants.
 /// </param>
-public sealed record OutboundRate(int Permits, TimeSpan Per, int Burst)
+public sealed record OutboundRate(int Permits, TimeSpan Per, int Burst, string? Lane = null)
 {
     /// <summary>
     /// One request every two seconds, no bursting.
@@ -95,6 +96,17 @@ public sealed record OutboundRate(int Permits, TimeSpan Per, int Burst)
     /// </summary>
     public static OutboundRate MetadataGatewayDefault { get; } = new(100, TimeSpan.FromMinutes(1), 10);
 
+    /// <summary>
+    /// The gateway's budget split in two so a person waiting on a search never
+    /// queues behind background refreshes (#1522): background work gets 75 a
+    /// minute with a burst of 6, a person's own request 25 a minute with a
+    /// burst of 4. Together that is the 100 a minute and burst of 10 above.
+    /// </summary>
+    public static OutboundRate MetadataGatewayBackground { get; } = new(75, TimeSpan.FromMinutes(1), 6, "background");
+
+    /// <inheritdoc cref="MetadataGatewayBackground"/>
+    public static OutboundRate MetadataGatewayInteractive { get; } = new(25, TimeSpan.FromMinutes(1), 4, "interactive");
+
     public static OutboundRate FromInterval(TimeSpan interval)
         => new(1, interval <= TimeSpan.Zero ? TimeSpan.FromSeconds(2) : interval, 1);
 
@@ -129,7 +141,7 @@ public sealed class OutboundRequestThrottle(
             return TimeSpan.Zero;
         }
 
-        var bucket = _hosts.GetOrAdd(host.Trim(), key => new HostBucket(key));
+        var bucket = _hosts.GetOrAdd(rate.Lane is null ? host.Trim() : $"{host.Trim()}#{rate.Lane}", key => new HostBucket(key));
         var startedUtc = timeProvider.GetUtcNow();
 
         // One waiter at a time per host. Without it, ten callers would each
@@ -238,5 +250,29 @@ public sealed class OutboundRequestThrottle(
                 Interlocked.Read(ref Granted),
                 Interlocked.Read(ref Refused),
                 TimeSpan.FromTicks(Interlocked.Read(ref TotalWaitedTicks)));
+    }
+}
+
+/// <summary>
+/// Marks the work of a person's own request (a page of the app waiting on an
+/// answer) so paced calls it makes can use their interactive share (#1522).
+/// Background lanes never run inside a request, so they are never marked.
+/// </summary>
+public static class InteractiveRequest
+{
+    private static readonly AsyncLocal<bool> Current = new();
+
+    public static bool IsActive => Current.Value;
+
+    public static IDisposable Begin()
+    {
+        var previous = Current.Value;
+        Current.Value = true;
+        return new Scope(previous);
+    }
+
+    private sealed class Scope(bool previous) : IDisposable
+    {
+        public void Dispose() => Current.Value = previous;
     }
 }

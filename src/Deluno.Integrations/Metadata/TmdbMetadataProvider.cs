@@ -3300,7 +3300,9 @@ public sealed partial class TmdbMetadataProvider(
         var isGateway = key.StartsWith("metadata:broker:", StringComparison.OrdinalIgnoreCase);
         if (await outboundRequestThrottle.TryAcquireAsync(
                 host,
-                isGateway ? OutboundRate.MetadataGatewayDefault : OutboundRate.MetadataProviderDefault,
+                isGateway
+                    ? (InteractiveRequest.IsActive ? OutboundRate.MetadataGatewayInteractive : OutboundRate.MetadataGatewayBackground)
+                    : OutboundRate.MetadataProviderDefault,
                 MaxMetadataThrottleWait,
                 cancellationToken) is null)
         {

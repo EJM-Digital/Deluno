@@ -111,6 +111,44 @@ public sealed class OutboundRequestThrottleTests
     }
 
     [Fact]
+    public async Task A_person_waiting_on_a_search_does_not_queue_behind_background_work_and_the_lanes_together_stay_inside_the_gateways_limit()
+    {
+        var time = new FakeTimeProvider(Start);
+        var throttle = Create(time);
+        const string host = "gateway.example";
+        var background = OutboundRate.MetadataGatewayBackground;
+        var interactive = OutboundRate.MetadataGatewayInteractive;
+
+        // Background refreshes drain their burst and queue a long line behind it.
+        var queued = new List<ValueTask<TimeSpan?>>();
+        for (var index = 0; index < 40; index++)
+        {
+            queued.Add(throttle.TryAcquireAsync(host, background, TimeSpan.FromMinutes(5), CancellationToken.None));
+        }
+
+        // A person's search takes a permit at once.
+        Assert.Equal(TimeSpan.Zero, await throttle.TryAcquireAsync(host, interactive, TimeSpan.FromSeconds(1), CancellationToken.None));
+
+        // Background keeps its pacing: past its burst of 6 the next one waits its 800 ms.
+        Assert.False(queued[7].IsCompleted);
+
+        // Over one minute from the same start, both lanes together never pass the gateway's limit.
+        var granted = 0;
+        for (var tick = 0; tick < 600; tick++)
+        {
+            time.Advance(TimeSpan.FromMilliseconds(100));
+            // A zero wait never blocks: it is granted now or refused now.
+            if (await throttle.TryAcquireAsync(host, interactive, TimeSpan.Zero, CancellationToken.None) is not null)
+            {
+                granted++;
+            }
+        }
+
+        var backgroundGranted = queued.Count(call => call.IsCompleted);
+        Assert.True(granted + 1 + backgroundGranted <= OutboundRate.MetadataGatewayDefault.Permits + OutboundRate.MetadataGatewayDefault.Burst);
+    }
+
+    [Fact]
     public async Task A_caller_that_cannot_wait_long_enough_is_refused_rather_than_blocked()
     {
         var time = new FakeTimeProvider(Start);

@@ -254,6 +254,12 @@ public static class DelunoRequestPipeline
         app.UseDelunoAllowedHosts();
 
         app.UseDelunoApiVersioning();
+        // A person's own request: paced calls it makes use the interactive share (#1522).
+        app.Use(async (context, next) =>
+        {
+            using var interactive = Deluno.Infrastructure.Resilience.InteractiveRequest.Begin();
+            await next();
+        });
         app.UseDelunoRealtimePosition();
 
         // Explicit, so the version alias above takes effect on dispatch and the

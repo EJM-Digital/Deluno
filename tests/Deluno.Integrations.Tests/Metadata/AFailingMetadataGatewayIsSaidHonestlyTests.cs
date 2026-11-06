@@ -199,13 +199,21 @@ public sealed class AFailingMetadataGatewayIsSaidHonestlyTests : IDisposable
         var rig = await RigAsync(_ => Json("""{"provider":"deluno-broker","mode":"broker","resultCount":0,"results":[]}"""), throttle: throttle);
         await rig.Provider.SearchAsync(Lookup("Inception"), CancellationToken.None);
 
-        Assert.Equal(OutboundRate.MetadataGatewayDefault, Assert.Single(throttle.Rates));
+        Assert.Equal(OutboundRate.MetadataGatewayBackground, Assert.Single(throttle.Rates));
 
         // 120 provider calls a minute per address: never more than 120 in any
         // minute, even across a window boundary.
         var rate = OutboundRate.MetadataGatewayDefault;
         Assert.Equal(TimeSpan.FromMinutes(1), rate.Per);
         Assert.True(rate.Burst + rate.Permits <= 120);
+
+        // The two lanes (#1522) together never exceed that same budget.
+        var background = OutboundRate.MetadataGatewayBackground;
+        var interactive = OutboundRate.MetadataGatewayInteractive;
+        Assert.Equal(TimeSpan.FromMinutes(1), background.Per);
+        Assert.Equal(TimeSpan.FromMinutes(1), interactive.Per);
+        Assert.True(background.Permits + interactive.Permits <= rate.Permits);
+        Assert.True(background.Burst + interactive.Burst <= rate.Burst);
     }
 
     [Fact]
