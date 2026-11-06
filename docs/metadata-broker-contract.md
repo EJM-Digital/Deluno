@@ -50,7 +50,7 @@ Response:
 ## Response timing (#1527)
 
 Every `/metadata/search` answer carries a `Server-Timing` header listing the phases it ran, in milliseconds:
-`cache-read` (the answer and remembered-failure reads, issued together), `limiter` (the per-install budget),
+`cache-local` (the data centre's own Cache API, tried first; answers and remembered failures are kept there for the same time as in KV), `cache-read` (the KV answer and remembered-failure reads, issued together), `limiter` (the per-install budget),
 `tmdb` (the provider call) and `cache-write`. The write runs after the answer is sent (`ctx.waitUntil`), so
 `cache-write` is only the time to hand it off, and a write that fails never fails the search. Catalogue, list,
 popular and person lookups defer their cache writes the same way.

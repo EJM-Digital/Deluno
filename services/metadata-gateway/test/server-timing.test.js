@@ -67,3 +67,47 @@ test("the answer and error reads are issued together", async () => {
   await search(cache, { waitUntil() {} });
   assert.equal(cache.log.getsStartedBeforeAnyFinished, true);
 });
+
+function fakeCaches() {
+  const map = new Map();
+  const log = { matches: 0, puts: [] };
+  globalThis.caches = {
+    default: {
+      async match(req) { log.matches++; const r = map.get(req.url); return r ? r.clone() : undefined; },
+      async put(req, res) { log.puts.push(res.headers.get("Cache-Control")); map.set(req.url, res); }
+    }
+  };
+  return log;
+}
+
+test("a miss falls through to KV and TMDb, then fills the local cache inside waitUntil", async () => {
+  const log = fakeCaches();
+  try {
+    const cache = kv();
+    const waiting = [];
+    const response = await search(cache, { waitUntil: (p) => waiting.push(p) });
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("Server-Timing"), /cache-local;dur=/);
+    assert.equal(cache.log.gets.length, 2);
+    await Promise.all(waiting);
+    assert.deepEqual(log.puts, ["public, max-age=43200"]);
+  } finally { delete globalThis.caches; }
+});
+
+test("a local hit answers without touching KV or TMDb", async () => {
+  fakeCaches();
+  try {
+    await Promise.all((() => { const w = []; return [search(kv(), { waitUntil: (p) => w.push(p) }).then(() => Promise.all(w))]; })());
+    const cache = kv();
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async () => { throw new Error("TMDb must not be called"); };
+    let response;
+    try { response = await metadataGateway.fetch(
+      new Request("https://gw.example/metadata/search?mediaType=movies&query=Dunkirk", { headers: { "CF-Connecting-IP": "192.0.2.7" } }),
+      { TMDB_API_KEY: "k", METADATA_CACHE: cache }, { waitUntil() {} }); }
+    finally { globalThis.fetch = realFetch; }
+    assert.equal(response.status, 200);
+    assert.equal(cache.log.gets.length, 0);
+    assert.doesNotMatch(response.headers.get("Server-Timing"), /cache-read/);
+  } finally { delete globalThis.caches; }
+});

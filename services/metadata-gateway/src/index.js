@@ -2,6 +2,8 @@ import { matchTvdbRoute, serveTvdbRoute } from "./tvdb.js";
 import { ProviderRateLimited, limitedFetch, rateLimitedResponse } from "./limits.js";
 import { boundCacheKey, cacheError, readCache, readCachedError, writeCache } from "./cache.js";
 import { createTimings, deferWork } from "./timing.js";
+import { ERROR_CACHE_SECONDS } from "./cache.js";
+import { readLocal, writeLocal } from "./local-cache.js";
 
 const CACHE_TTL_SECONDS = 60 * 60 * 12;
 // A catalogue changes when a broadcaster announces an episode, so it expires
@@ -89,16 +91,27 @@ export default {
     }
 
     const key = await boundCacheKey(buildCacheKey(lookup.value));
-    // Both reads start together: a miss costs one KV round trip, not two.
+    // First level: this data centre's own Cache API, far quicker than a KV read.
+    const local = await timings.measure("cache-local", () => readLocal(key));
+    if (local.answer) {
+      return json(local.answer, 200, { "Cache-Control": "public, max-age=300", "Server-Timing": timings.header() });
+    }
+    if (local.failure) {
+      return json(local.failure.body, local.failure.status, { ...(local.failure.headers ?? {}), "Server-Timing": timings.header() });
+    }
+
+    // Both KV reads start together: a miss costs one KV round trip, not two.
     const [cached, remembered] = await timings.measure("cache-read", () => Promise.all([
       readCache(env.METADATA_CACHE, key),
       readCachedError(env.METADATA_CACHE, key)
     ]));
     if (cached) {
+      deferWork(ctx, writeLocal(key, cached, CACHE_TTL_SECONDS));
       return json(cached, 200, { "Cache-Control": "public, max-age=300", "Server-Timing": timings.header() });
     }
 
     if (remembered) {
+      deferWork(ctx, writeLocal(key, remembered, ERROR_CACHE_SECONDS, true));
       return json(remembered.body, remembered.status, { ...(remembered.headers ?? {}), "Server-Timing": timings.header() });
     }
 
@@ -114,7 +127,9 @@ export default {
         results: found.results
       };
       // The answer never waits for the write; a failed write only costs the next lookup.
-      timings.measureSync("cache-write", () => deferWork(ctx, writeCache(env.METADATA_CACHE, key, response, CACHE_TTL_SECONDS)));
+      timings.measureSync("cache-write", () => deferWork(ctx, Promise.all([
+        writeCache(env.METADATA_CACHE, key, response, CACHE_TTL_SECONDS),
+        writeLocal(key, response, CACHE_TTL_SECONDS)])));
       return json(response, 200, { "Cache-Control": "public, max-age=300", "Server-Timing": timings.header() });
     } catch (error) {
       if (error instanceof ProviderRateLimited) return rateLimitedResponse(error, json);
@@ -133,7 +148,7 @@ export default {
       }
 
       // Remembered briefly so a stream of distinct failing lookups cannot all reach TMDb (#1064).
-      deferWork(ctx, cacheError(env.METADATA_CACHE, key, failure));
+      deferWork(ctx, Promise.all([cacheError(env.METADATA_CACHE, key, failure), writeLocal(key, failure, ERROR_CACHE_SECONDS, true)]));
       return json(failure.body, failure.status, { ...failure.headers, "Server-Timing": timings.header() });
     }
   }
