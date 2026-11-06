@@ -37,7 +37,7 @@ export function LiveCard({ title, count, controls, description, aside, to, toLab
             between the apps moves nothing: the chips start at the same x whatever the title says (#1461). */}
         <h2 id={id} className={cn("m-0 shrink-0 text-(length:--type-card-title) font-semibold leading-[calc(var(--type-card-title)*23/15)] text-foreground", controls && "min-w-[96px]")}>{title}</h2>
         {controls ? (
-          <div className="flex min-w-0 flex-1 self-start -mt-[0.5px] -ml-2">{controls}</div>
+          <div className="flex min-w-0 flex-1 self-start -mt-[4.5px] -mb-1 -ml-2">{controls}</div>
         ) : (
           <span title={plainTitle(count)} className="min-w-0 flex-1 truncate max-md:whitespace-normal max-md:break-words text-(length:--type-caption) leading-[1.52] text-muted-foreground">{count}</span>
         )}
