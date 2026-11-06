@@ -339,26 +339,68 @@ public sealed partial class TmdbMetadataProvider(
         CancellationToken cancellationToken)
     {
         var total = System.Diagnostics.Stopwatch.StartNew();
-        var artwork = new System.Runtime.CompilerServices.StrongBox<long>();
-        SearchArtworkTicks.Value = artwork;
+        var timings = new SearchTimings();
+        SearchStepTimings.Value = timings;
         try
         {
             return await SearchByQueryCoreAsync(request, cancellationToken);
         }
         finally
         {
-            SearchArtworkTicks.Value = null;
-            var artworkMs = (long)System.Diagnostics.Stopwatch.GetElapsedTime(0, artwork.Value).TotalMilliseconds;
+            SearchStepTimings.Value = null;
             logger.LogInformation(
-                "Metadata search for {Query} took {TotalMs} ms: {MetadataMs} ms in the metadata service, {ArtworkMs} ms on artwork",
-                request.Query.ForLog(), total.ElapsedMilliseconds, Math.Max(0, total.ElapsedMilliseconds - artworkMs), artworkMs);
+                "Metadata search for {Query} took {TotalMs} ms: {Breakdown}",
+                request.Query.ForLog(), total.ElapsedMilliseconds, timings.Describe());
         }
     }
+
+    /// <summary>
+    /// Where one search spent its time, written into the one summary line (#1522)
+    /// because log levels cannot be changed on an installed app. Steps add up, so
+    /// a retry or a second call is counted rather than hidden.
+    /// </summary>
+    private sealed class SearchTimings
+    {
+        private readonly Dictionary<string, long> _ticks = [];
+        private int _calls;
+        private int _attempts;
+
+        public void Add(string step, long ticks)
+        {
+            lock (_ticks)
+            {
+                _ticks[step] = _ticks.GetValueOrDefault(step) + ticks;
+            }
+        }
+
+        public void CountCall(int attempts)
+        {
+            lock (_ticks)
+            {
+                _calls++;
+                _attempts += attempts;
+            }
+        }
+
+        public string Describe()
+        {
+            lock (_ticks)
+            {
+                long Ms(string step) => (long)System.Diagnostics.Stopwatch.GetElapsedTime(0, _ticks.GetValueOrDefault(step)).TotalMilliseconds;
+                var policy = Math.Max(0, Ms("policy-total") - Ms("send") - Ms("body") - Ms("parse"));
+                return $"config {Ms("config")}, cache {Ms("cache-read")}, pause {Ms("pause")}, throttle {Ms("throttle")}, "
+                    + $"connect+send {Ms("send")}, body {Ms("body")}, parse {Ms("parse")}, retry+policy {policy}, "
+                    + $"cache-write {Ms("cache-write")}, artwork {Ms("artwork")} ({_calls} gateway call(s), {_attempts} attempt(s))";
+            }
+        }
+    }
+
+    private static readonly AsyncLocal<SearchTimings?> SearchStepTimings = new();
 
     private void Step(string step, ref long mark)
     {
         var now = System.Diagnostics.Stopwatch.GetTimestamp();
-        logger.LogDebug("Metadata search step {Step} took {Ms} ms", step, (long)System.Diagnostics.Stopwatch.GetElapsedTime(mark, now).TotalMilliseconds);
+        SearchStepTimings.Value?.Add(step, now - mark);
         mark = now;
     }
 
@@ -388,7 +430,7 @@ public sealed partial class TmdbMetadataProvider(
         {
             logger.LogDebug("Attempting metadata search via broker for query: {Query}", query.ForLog());
             var brokerResults = await TryBrokerSearchAsync(config.BrokerUrl, mediaType, request, query, cancellationToken);
-            Step("broker-total", ref mark);
+            mark = System.Diagnostics.Stopwatch.GetTimestamp();
             if (brokerResults is { Count: > 0 })
             {
                 logger.LogDebug("Broker search returned {ResultCount} results for query: {Query}", brokerResults.Count, query.ForLog());
@@ -746,7 +788,6 @@ public sealed partial class TmdbMetadataProvider(
     // it is saved when the title is added or refreshed by id.
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<Task, byte> PendingPosterSaves = new();
-    private static readonly AsyncLocal<System.Runtime.CompilerServices.StrongBox<long>?> SearchArtworkTicks = new();
 
     /// <summary>Waits for posters being saved in the background (tests and shutdown).</summary>
     internal static async Task WaitForPosterSavesAsync()
@@ -796,10 +837,7 @@ public sealed partial class TmdbMetadataProvider(
             StartPosterSaves(missing);
         }
 
-        if (SearchArtworkTicks.Value is { } box)
-        {
-            box.Value += System.Diagnostics.Stopwatch.GetTimestamp() - started;
-        }
+        SearchStepTimings.Value?.Add("artwork", System.Diagnostics.Stopwatch.GetTimestamp() - started);
 
         return answer;
     }
@@ -3310,7 +3348,7 @@ public sealed partial class TmdbMetadataProvider(
         // rate-limit responses out of about 20,000 requests. The gateway's own
         // limit is far lower than TMDb's (30 a minute per address), so calls to
         // it are paced to that instead (#1090).
-        Step("pause-check", ref mark);
+        Step("pause", ref mark);
         var isGateway = key.StartsWith("metadata:broker:", StringComparison.OrdinalIgnoreCase);
         var throttleResult = await outboundRequestThrottle.TryAcquireAsync(
                 host,
@@ -3344,6 +3382,7 @@ public sealed partial class TmdbMetadataProvider(
         }
 
         IntegrationFailure? boundaryFailure = null;
+        var policyStarted = System.Diagnostics.Stopwatch.GetTimestamp();
         var result = await resiliencePolicy.ExecuteAsync(
             new IntegrationResilienceRequest(
                 key,
@@ -3366,9 +3405,9 @@ public sealed partial class TmdbMetadataProvider(
                     // call for 100 s, three times over.
                     using var timeout = new CancellationTokenSource(_health.CallTimeout, timeProvider);
                     using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, timeout.Token);
-                    Step("policy-entered", ref mark);
+                    mark = System.Diagnostics.Stopwatch.GetTimestamp();
                     using var response = await httpClient.GetAsync(url, linked.Token);
-                    Step("http-headers", ref mark);
+                    Step("send", ref mark);
                     if (!response.IsSuccessStatusCode)
                     {
                         var requestedPause = ReadRequestedPause(response, timeProvider.GetUtcNow());
@@ -3434,8 +3473,10 @@ public sealed partial class TmdbMetadataProvider(
                         _health.PauseFor(host, exhaustedFor);
                     }
 
-                    var parsed = await response.Content.ReadFromJsonAsync<T>(CacheJsonOptions, linked.Token);
-                    Step("body+parse", ref mark);
+                    var body = await response.Content.ReadAsByteArrayAsync(linked.Token);
+                    Step("body", ref mark);
+                    var parsed = JsonSerializer.Deserialize<T>(body, CacheJsonOptions);
+                    Step("parse", ref mark);
                     return parsed;
                 }
                 catch (Exception exception) when (exception is not HttpRequestException and not OperationCanceledException and not IOException)
@@ -3453,6 +3494,8 @@ public sealed partial class TmdbMetadataProvider(
                 ? IntegrationResilienceOutcome.NonRetryableFailure
                 : IntegrationResilienceOutcome.Success,
             cancellationToken);
+        SearchStepTimings.Value?.Add("policy-total", System.Diagnostics.Stopwatch.GetTimestamp() - policyStarted);
+        SearchStepTimings.Value?.CountCall(result.Attempts);
 
         if (result.Value is null)
         {
