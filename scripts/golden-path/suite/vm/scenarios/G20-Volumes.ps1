@@ -640,7 +640,8 @@ public class StallProxy {
         # A pack folder of two small episodes (S01E01, S01E02), written an hour ago so they count as settled.
         function New-PackFolder {
             param([Parameter(Mandatory)] [string] $Name, [string] $SecondEpisodeIn)
-            $dir = Join-Path $srcRoot $Name
+            # The folder names its season (a season pack's folder must identify exactly one), as a real release folder does.
+            $dir = Join-Path $srcRoot ('{0}.S01.{1}' -f $dotted, $Name)
             New-Item -ItemType Directory -Force -Path $dir | Out-Null
             $paths = @()
             foreach ($ep in 1, 2) {
@@ -710,7 +711,7 @@ public class StallProxy {
             $libs += $showM.Library; $seriesIds += $showM.SeriesId
             Add-Check 'The show for the mixed pack has its first two episodes in the catalogue' $showM.Catalogued ''
             if ($showM.Catalogued) {
-                $packDir = Join-Path $srcRoot "Mixed.$token"
+                $packDir = Join-Path $srcRoot "$dotted.S01.Mixed.$token"
                 $mount = Join-Path $packDir 'part2'
                 New-Item -ItemType Directory -Force -Path $packDir | Out-Null
                 New-TestVolume -Name 'packpart' -SizeMb 320 -Fs ntfs -MountFolder $mount | Out-Null
