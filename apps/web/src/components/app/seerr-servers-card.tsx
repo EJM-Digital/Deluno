@@ -2,7 +2,7 @@ import { settleFormAfterSave } from "../../lib/settle-form-after-save";
 import { toast } from "../shell/toaster";
 import { refusalSentence } from "./password-prompt";
 import { SecretUnreadableNotice } from "./secret-unreadable-notice";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useState, type FormEvent } from "react";
 import { Copy, Loader2, Wifi } from "lucide-react";
 import { fetchJson, readValidationProblem } from "../../lib/api";
 import type { LibraryItem, QualityProfileItem } from "../../lib/api/types";
@@ -180,7 +180,7 @@ export function SeerrServersCard({
   const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
   const [copied, setCopied] = useState<"url" | "secret" | null>(null);
   // "Copied" shows for two seconds, and the wait ends with the card.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (copied === null) return undefined;
     const timer = setTimeout(() => setCopied(null), 2000);
     return () => clearTimeout(timer);

@@ -223,7 +223,7 @@ function PosterCard({
   const [actionResult, setActionResult] = useState<string | null>(null);
   // Long enough to read, short enough that it is gone before you look back. Nothing else on the card moves while it is
   // there, and the wait ends with the card: a card that has left the page clears nothing.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (actionResult === null) return undefined;
     const timer = setTimeout(() => setActionResult(null), 6000);
     return () => clearTimeout(timer);
