@@ -20,10 +20,10 @@ function Get-WeirLogText {
 
 # ffprobe, from the same folder as the ffmpeg the suite uses (or Deluno's installed copy); $null when there is none.
 function Get-SuiteFfprobe {
-    $ff = @('C:goldensuitefmpeg.path') | Where-Object { Test-Path $_ } | ForEach-Object { (Get-Content -Raw $_).Trim() } | Select-Object -First 1
+    $ff = @('C:\golden\suite\ffmpeg.path') | Where-Object { Test-Path $_ } | ForEach-Object { (Get-Content -Raw $_).Trim() } | Select-Object -First 1
     $near = if ($ff) { Join-Path (Split-Path $ff -Parent) 'ffprobe.exe' } else { $null }
     if ($near -and (Test-Path $near)) { return $near }
-    (Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Delunocurrent	oolsfmpeg') -Filter ffprobe.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+    (Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Deluno\current\tools\ffmpeg') -Filter ffprobe.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
 }
 
 function Invoke-GroupFilms {
@@ -101,7 +101,7 @@ function Invoke-GroupFilms {
     }
 
     # The same on the other four clients: the extra is left out of the hand-off and the library, and stays in the client's own folder.
-    # A torrent's release folder carries Featuretteseaturette.mkv; a Usenet job holds featurette.mkv posted beside the film in the same .nzb.
+    # A torrent's release folder carries Featurettes\featurette.mkv; a Usenet job holds featurette.mkv posted beside the film in the same .nzb.
     foreach ($kind in @(Get-AllKinds | Where-Object { $_ -ne 'qbittorrent' })) {
         Invoke-Scenario -Id "film.extra-left-out.$kind" -Title "A small extra in the $kind release is left out of the hand-off and stays in the client's folder" -Body {
             $film = $script:FilmByKind[$kind]
@@ -167,7 +167,7 @@ function Invoke-GroupFilms {
     # ------------------------------------------------------------------------------------------------ a TV episode with a poster
     Invoke-Scenario -Id 'film.tv-episode' -Title 'A TV episode through qBittorrent and Weir: searched from the show, imported under its show with the show''s poster, every original still in the client''s folder, and Activity telling the story' -Body {
         $show = 'Better Call Saul'; $year = 2015
-        $film = New-FilmFor -Kind 'qbittorrent' -Layout 'folder' -Label 'ep' -RealTitle $show -RealYear $year -Episode 'S01E01'
+        $film = New-FilmFor -Kind 'qbittorrent' -Layout 'folder' -Size 'tv' -Label 'ep' -RealTitle $show -RealYear $year -Episode 'S01E01'
         $seriesId = $null
         try {
             # The show in the TV library, its episodes from the metadata, the library routed to the one client.

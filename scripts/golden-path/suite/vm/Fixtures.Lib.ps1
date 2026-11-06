@@ -52,9 +52,15 @@ function New-FilmToken {
 # and a Usenet download takes minutes when it is slowed). Both come from ffmpeg, as the Usenet stub's own film does.
 function Initialize-BaseVideos {
     $maker = Get-RepoScript 'usenet-stub\New-UsenetRelease.ps1'
-    foreach ($spec in @(
-            @{ Key = 'small'; Seconds = 125; Rate = 6; Min = 60 },
-            @{ Key = 'big'; Seconds = 300; Rate = 10; Min = 300 })) {
+    $specs = @(
+        @{ Key = 'small'; Seconds = 125; Rate = 6; Min = 60 },
+        @{ Key = 'big'; Seconds = 300; Rate = 10; Min = 300 })
+    # A TV episode is found by a search, and the search judges its size against the WEB 1080p episode floor (420 MB for a 45 minute
+    # episode, more for a longer one), so the TV episode's video is about 500 MB. Made only when that scenario is chosen.
+    if (-not (Get-Command Test-ScenarioSelected -ErrorAction SilentlyContinue) -or (Test-ScenarioSelected 'film.tv-episode')) {
+        $specs += @{ Key = 'tv'; Seconds = 125; Rate = 32; Min = 480 }
+    }
+    foreach ($spec in $specs) {
         $dir = Join-Path (Get-SuiteRoot) "base\$($spec.Key)"
         $meta = Join-Path $dir 'release.json'
         if (-not (Test-Path $meta)) {
@@ -169,7 +175,7 @@ function New-TorrentFilm {
         [Parameter(Mandatory)] [string] $Client,
         [ValidateSet('file', 'folder')] [string] $Layout = 'file',
         [ValidateSet('complete', 'short', 'dummy')] [string] $Variant = 'complete',
-        [ValidateSet('small', 'big', 'fourthree')] [string] $Size = 'small',
+        [ValidateSet('small', 'big', 'fourthree', 'tv')] [string] $Size = 'small',
         [switch] $Extra,
         [string] $Label = 'film',
         # A real title and year (so the metadata has a poster for it), and for a TV episode its S01E01 mark.

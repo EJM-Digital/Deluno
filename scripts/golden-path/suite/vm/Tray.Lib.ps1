@@ -347,6 +347,17 @@ function Get-FirstRunDotSummary {
 function Get-TrayIconBluePixels {
     param([string] $Icon = 'Deluno')
     $btn = Find-TrayIcon -Icon $Icon
+    $opened = $false
+    if (-not $btn -or $btn.Element.Current.IsOffscreen) {
+        $opened = Open-TrayOverflow
+        $btn = Find-TrayIcon -Icon $Icon
+    }
+    try { return (Measure-TrayIconBlue -Button $btn) } finally { if ($opened) { Close-TrayOverflow } }
+}
+
+function Measure-TrayIconBlue {
+    param($Button)
+    $btn = $Button
     if (-not $btn) { return -1 }
     $r = $btn.Element.Current.BoundingRectangle
     $w = [int]$r.Width; $h = [int]$r.Height

@@ -561,6 +561,8 @@ function Invoke-UpdateTrayMenu {
             $statusWords = Wait-Until -TimeoutSec 30 -IntervalSec 2 -Condition { $l = (Get-TrayMenuStates | Where-Object { $_.Name -match '^Deluno - ' } | Select-Object -First 1); if ($l -and $l.Name -match "Couldn't check for updates") { $l.Name } else { $null } }
             Add-Check 'The menu''s status line carries the same reason' $statusWords.Ok $(if ($statusWords.Ok) { $statusWords.Value } else { (Get-TrayMenuStates | ForEach-Object { $_.Name }) -join ' | ' })
             $feed = Start-UpdateFeed -Folder (Get-UpdateFeedFolder) -ThrottleMs 150
+            # The icon is put on the taskbar itself where Windows allows, and read from the hidden-icons pop-up where it is not.
+            Set-TrayIconsPromoted
             $blueNone = Get-TrayIconBluePixels
             Add-Check 'Before any update is found the icon has no blue arrow' ($blueNone -ge 0 -and $blueNone -lt 4) "$blueNone blue pixels"
             $availableBefore = Get-ToastTextCount -Text 'A Deluno update is available'
@@ -576,8 +578,8 @@ function Invoke-UpdateTrayMenu {
             $found = Wait-Until -TimeoutSec 120 -IntervalSec 2 -Condition { $s = Get-UpdateStatus; if ($s -and $s.updateAvailable -and $s.latestVersion -like "*$CandidateVersion*") { $s } else { $null } }
             Add-Check 'The check from the tray found the candidate' $found.Ok $(if ($found.Ok) { "latest $($found.Value.latestVersion), state $($found.Value.state)" } else { 'nothing found' })
             # An update waiting is shown on the icon, in the hover text, in the status line and in one balloon (#1278).
-            $arrow = Wait-Until -TimeoutSec 60 -IntervalSec 2 -Condition { $d = Get-TrayDot -Icon 'Deluno' -NoOverflow; if ($d.Found -and $d.Hover -match 'Update available \(v') { $d } else { $null } }
-            Add-Check 'An update found: the hover text says "Update available (v...)"' $arrow.Ok $(if ($arrow.Ok) { $arrow.Value.Hover } else { (Get-TrayDot -Icon 'Deluno' -NoOverflow).Hover })
+            $arrow = Wait-Until -TimeoutSec 60 -IntervalSec 2 -Condition { $d = Get-TrayDot -Icon 'Deluno'; if ($d.Found -and $d.Hover -match 'Update available \(v') { $d } else { $null } }
+            Add-Check 'An update found: the hover text says "Update available (v...)"' $arrow.Ok $(if ($arrow.Ok) { $arrow.Value.Hover } else { (Get-TrayDot -Icon 'Deluno').Hover })
             $blueWith = Get-TrayIconBluePixels
             Add-Check 'The icon carries the blue update arrow' ($blueWith -ge 4) "$blueWith blue pixels"
             $statusLine = (Get-TrayMenuStates | Where-Object { $_.Name -match '^Deluno - ' } | Select-Object -First 1).Name
@@ -590,8 +592,8 @@ function Invoke-UpdateTrayMenu {
             Add-Check 'While it downloads the item reads "Downloading update..."' (@($names | Where-Object { $_ -match '^Downloading update' }).Count -gt 0) ($names -join ' | ')
             $ready = Wait-Until -TimeoutSec 240 -IntervalSec 2 -Condition { $s = Get-UpdateStatus; if ($s -and $s.state -eq 'ready-to-restart') { $s } else { $null } }
             Add-Check 'The download from the tray ended ready to restart' $ready.Ok $(if ($ready.Ok) { "state $($ready.Value.state)" } else { 'never ready' })
-            $readyHover = Wait-Until -TimeoutSec 60 -IntervalSec 2 -Condition { $d = Get-TrayDot -Icon 'Deluno' -NoOverflow; if ($d.Found -and $d.Hover -match 'Update ready \(v') { $d } else { $null } }
-            Add-Check 'Downloaded: the hover text says "Update ready (v...)" and the arrow is still on the icon' ($readyHover.Ok -and (Get-TrayIconBluePixels) -ge 4) $(if ($readyHover.Ok) { $readyHover.Value.Hover } else { (Get-TrayDot -Icon 'Deluno' -NoOverflow).Hover })
+            $readyHover = Wait-Until -TimeoutSec 60 -IntervalSec 2 -Condition { $d = Get-TrayDot -Icon 'Deluno'; if ($d.Found -and $d.Hover -match 'Update ready \(v') { $d } else { $null } }
+            Add-Check 'Downloaded: the hover text says "Update ready (v...)" and the arrow is still on the icon' ($readyHover.Ok -and (Get-TrayIconBluePixels) -ge 4) $(if ($readyHover.Ok) { $readyHover.Value.Hover } else { (Get-TrayDot -Icon 'Deluno').Hover })
             Add-Check 'One balloon says the update is ready' ((Get-ToastTextCount -Text 'A Deluno update is ready') -gt $readyBefore) 'seen in Windows'' notification record'
             $began = Get-Date
             Add-Check 'The item now reads "Restart to update (v...)" and pressing it restarts into the update' (& $press '^Restart to update \(v') ''
