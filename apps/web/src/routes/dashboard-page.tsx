@@ -193,7 +193,8 @@ export function DashboardPage() {
     <div ref={setRoot} className="flex flex-col gap-(--grid-gap)">
       {slot ? <HeaderTabsPortal slot={slot}>{bar}</HeaderTabsPortal> : bar}
       {/* Drawn over the foot of the page, not in its flow: when the answer arrives (or automation is paused or resumed) nothing under it is pushed down and resized (#1508). */}
-      <div className="pointer-events-none fixed inset-x-0 bottom-3 z-100 flex justify-center px-4 [&>*]:pointer-events-auto [&>*]:max-w-3xl [&>*]:bg-card [&>*]:shadow-card">
+      {/* Below lg the phone tab bar holds the foot of the screen, so the notice sits just above it, never over its buttons. */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--mobile-tabbar-height)+env(safe-area-inset-bottom)+0.75rem)] lg:bottom-3 z-100 flex justify-center px-4 [&>*]:pointer-events-auto [&>*]:max-w-3xl [&>*]:bg-card [&>*]:shadow-card">
         <AutomationPausedNotice context="dashboard" />
       </div>
       {/* The tabs are drawn at the approved mockup's own sizes on every screen (see `.dash-mockup-size` in index.css). */}

@@ -18,7 +18,9 @@ vi.mock("../../lib/api", async (importOriginal) => {
     if (path === "/api/settings") return original.emptyPlatformSettingsSnapshot;
     if (path === "/api/setup/progress") return { lastCompletedStep: 9, isSkipped: false, isCompleted: true, updatedUtc: "2026-09-30T00:00:00Z" };
     const key = Object.keys(lists).find((prefix) => path.startsWith(prefix));
-    return key ? lists[key] : [];
+    const value = key ? lists[key] : [];
+    if (value instanceof Error) throw value;
+    return value;
   };
   return { ...original, fetchJson: read, fetchAllPages: read, fetchPageItems: read };
 });
@@ -82,6 +84,20 @@ describe("System", () => {
     const user = userEvent.setup();
     await user.click(within(health).getByRole("radio", { name: /^Machine/ }));
     expect(within(health).getByText("Library folders")).toBeInTheDocument();
+  });
+
+  it("keeps the health it showed when a later read fails, and says so in a small note (#1508)", async () => {
+    seedBusy();
+    renderTab(fullSummary);
+    const health = screen.getByRole("region", { name: "Health" });
+    expect(await within(health).findByRole("link", { name: "Open System: A drive is nearly full" })).toBeInTheDocument();
+    expect(screen.queryByText("Couldn’t refresh just now. Showing what was last read.")).toBeNull();
+
+    lists["/api/system/health"] = new Error("Deluno could not be reached.");
+    await queryClient.invalidateQueries({ queryKey: ["src", "system-health"] });
+
+    expect(await screen.findByText("Couldn’t refresh just now. Showing what was last read.")).toBeInTheDocument();
+    expect(within(health).getByRole("link", { name: "Open System: A drive is nearly full" })).toBeInTheDocument();
   });
 
   it("jumps to Health from the number on This instance", async () => {

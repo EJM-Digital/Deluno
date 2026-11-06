@@ -138,3 +138,14 @@ describe("useFittingRows watching the card", () => {
     }
   });
 });
+
+describe("a list the hook is not attached to", () => {
+  it("shows every row and watches nothing, since there is no box to measure", () => {
+    function Unattached() {
+      const [, fits] = useFittingRows();
+      return <p data-fits={fits}>list</p>;
+    }
+    const { container } = render(<Unattached />);
+    expect(container.querySelector("p")?.dataset.fits).toBe(String(Number.MAX_SAFE_INTEGER));
+  });
+});
