@@ -653,8 +653,6 @@ public sealed class DownloadClientTelemetryService(
         }
     }
 
-    private static readonly string[] VideoExtensions = [".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv", ".ts", ".m2ts", ".mpg", ".mpeg"];
-
     /// <summary>
     /// A single-file torrent is named by its client after the file, extension and all (qBittorrent's recorded
     /// <c>finished-single-file</c> reply: <c>Recorded.qbittorrent.A.mkv</c>), while the grab it came from is named
@@ -663,15 +661,9 @@ public sealed class DownloadClientTelemetryService(
     internal static string WithoutVideoExtension(string? name)
     {
         var text = (name ?? string.Empty).Trim();
-        foreach (var extension in VideoExtensions)
-        {
-            if (text.Length > extension.Length && text.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
-            {
-                return text[..^extension.Length];
-            }
-        }
-
-        return text;
+        return VideoFileExtensions.TrailingVideoExtension(text) is { } extension && text.Length > extension.Length
+            ? text[..^extension.Length]
+            : text;
     }
 
     /// <summary>A release name with case, punctuation, separators and a trailing ".nzb" ignored, for comparing an item with its dispatch.</summary>

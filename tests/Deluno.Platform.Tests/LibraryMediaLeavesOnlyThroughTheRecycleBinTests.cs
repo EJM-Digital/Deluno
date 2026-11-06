@@ -28,8 +28,8 @@ public sealed class LibraryMediaLeavesOnlyThroughTheRecycleBinTests
         ["src/Deluno.Companions/CompanionTools.cs"] = (2, "A companion installer download. " + OwnData),
         ["src/Deluno.Contracts/StateFiles/StateFile.cs"] = (1, "The one shared state-file writer: the real disk behind it, deleting only the temporary file it wrote beside a state file, or a state file it was asked to clear. " + OwnData),
         ["src/Deluno.Filesystem/FilesystemEndpointRouteBuilderExtensions.cs"] = (1, "A write-probe file. " + OwnData),
-        ["src/Deluno.Filesystem/ImportPipelineService.cs"] = (9, "Import rollback of a file the import itself just placed, the source/processor copy after a successful import, and empty download or hand-off folders. The library file it replaces goes through IRecycleBinService.StoreReplacementAsync, or is left in place when no library matches it (#1188). A broken processed copy with no video in it also goes to the recycle bin now, no longer deleted outright."),
-        ["src/Deluno.Filesystem/ImportRestartRecoveryService.cs"] = (1, "An import marker file. " + OwnData),
+        ["src/Deluno.Filesystem/ImportPipelineService.cs"] = (10, "Import rollback of a file the import itself just placed, the source/processor copy after a successful import, and empty download or hand-off folders. The library file it replaces goes through IRecycleBinService.StoreReplacementAsync, or is left in place when no library matches it (#1188). A broken processed copy with no video in it also goes to the recycle bin now, no longer deleted outright. A failed copy removes its own \".deluno-stage\" staging file through a replaceable delete (#1525); that file is Deluno's temporary name beside the destination, never a library file."),
+        ["src/Deluno.Filesystem/ImportRestartRecoveryService.cs"] = (2, "An import marker file, and the rolled-back half copy a failed import left under its own \".deluno-stage\" staging name (#1525/#1526, found only by its restart marker, after which the original download is untouched and the activity line says so). " + OwnData),
         ["src/Deluno.Filesystem/LibraryAvailabilityService.cs"] = (2, "A write-probe file. " + OwnData),
         ["src/Deluno.Filesystem/ProcessorHandoffOutputCleanup.cs"] = (2, "A processor's partial output and empty folders inside its output folder. " + DownloadArea),
         ["src/Deluno.Infrastructure/Observability/DelunoFileLogger.cs"] = (1, "Deluno's own old log files past their retention. " + OwnData),
@@ -107,7 +107,7 @@ public sealed class LibraryMediaLeavesOnlyThroughTheRecycleBinTests
     {
         ["src/Deluno.Companions/CompanionDownloads.cs"] = 2,
         ["src/Deluno.Filesystem/ImportPipelineService.cs"] = 6,
-        ["src/Deluno.Filesystem/ImportRestartRecoveryService.cs"] = 10,
+        ["src/Deluno.Filesystem/ImportRestartRecoveryService.cs"] = 11,
     };
 
     private static readonly Regex WrapperCall = new(@"\bTryDelete\(", RegexOptions.Compiled);
