@@ -398,7 +398,7 @@ if ($script:Trace.Count -ne 0) { $ksBad += "with no keep-seeding scenario chosen
 Set-ScenarioSelection -Ids @()
 Check 'each keep-seeding scenario chosen alone sets up only its own client, film, indexer and choices; none chosen does nothing' ($ksBad.Count -eq 0) ($ksBad -join '; ')
 # Choosing nothing runs the whole group as before, with the same sends.
-$sendsFull = @{ films = 5; removal = 0; resend = 5; stuck = 15; keepseeding = 6; tryagain = 5; vanish = 10; outage = 0; problems = 0; install = 0; nzbgetsetup = 0; seasonpack = 0; layout = 0; subtitleswanted = 0; github = 0; firewall = 0; tray = 0; service = 0; desktop = 0; traystates = 0; trayplatform = 0; platformextras = 0; volumes = 0; importfaults = 0; weirconnection = 0; servicemodes = 0; pickerwindow = 0; trayport = 0; trayballoons = 0; trayrelaunch = 0; traysignin = 0; traytryagain = 0; trayinventory = 0; gaprows = 0; machine = 0 }
+$sendsFull = @{ films = 7; removal = 0; resend = 7; stuck = 21; keepseeding = 10; tryagain = 7; vanish = 14; outage = 0; problems = 0; install = 0; nzbgetsetup = 0; seasonpack = 0; layout = 0; subtitleswanted = 0; github = 0; firewall = 0; tray = 0; service = 0; desktop = 0; traystates = 0; trayplatform = 0; platformextras = 0; volumes = 0; importfaults = 0; weirconnection = 0; servicemodes = 0; pickerwindow = 0; trayport = 0; trayballoons = 0; trayrelaunch = 0; traysignin = 0; traytryagain = 0; trayinventory = 0; gaprows = 0; machine = 0 }
 $fullBad = @()
 foreach ($g in $groupFunctions) {
     $script:Trace.Clear(); $script:Made.Clear()
@@ -720,7 +720,20 @@ foreach ($fn in 'Initialize-SuiteEnvironment', 'Set-HealthRules', 'Send-Film', '
 }
 
 Write-Host 'The keep-seeding group (#1240)'
-Check 'the plan has a moved and a public-removed scenario for each torrent client, and none for Usenet or the clients that are not in the VM' ((@('qbittorrent', 'transmission', 'deluge') | ForEach-Object { "keepseeding.moved.$_"; "keepseeding.public-removed.$_" } | Where-Object { $_ -notin $allIds }).Count -eq 0 -and @($allIds | Where-Object { $_ -like 'keepseeding.*' }).Count -eq 6)
+Check 'the plan has a moved and a public-removed scenario for each of the five torrent clients (uTorrent and rTorrent included, #1276), and none for Usenet' ((@('qbittorrent', 'transmission', 'deluge', 'utorrent', 'rtorrent') | ForEach-Object { "keepseeding.moved.$_"; "keepseeding.public-removed.$_" } | Where-Object { $_ -notin $allIds }).Count -eq 0 -and @($allIds | Where-Object { $_ -like 'keepseeding.*' }).Count -eq 10)
+# uTorrent and rTorrent (#1276): the suite installs them itself and every per-client scenario runs on them.
+Write-Host 'uTorrent and rTorrent join every client scenario (#1276)'
+. (Join-Path $suite 'vm\ExtraClients.Pins.ps1')
+$fixturesText = Get-Content -Raw (Join-Path $suite 'vm\Fixtures.Lib.ps1')
+$ksPorts = [regex]::Match($fixturesText, 'Ports\s*=\s*@\{([^}]*)\}').Groups[1].Value
+Check 'the fixtures kit and the install pins give uTorrent and rTorrent the same ports' ($ksPorts -match ('utorrent\s*=\s*' + $script:XcPins.Ports.utorrent + '\b') -and $ksPorts -match ('rtorrent\s*=\s*' + $script:XcPins.Ports.rtorrent + '\b')) $ksPorts
+Check 'the pins name a SHA-256 for the Ubuntu root file system rTorrent runs on, and a version for each client' ($script:XcPins.Wsl.RootfsSha256 -match '^[0-9a-f]{64}$' -and $script:XcPins.Rtorrent.Version -and $script:XcPins.UTorrent.Version)
+Check 'every per-client scenario of the plan has an id for uTorrent and for rTorrent' (@($allIds | Where-Object { $_ -match '^(film|remove-copy|resend\.(before|during|after)|stuck\.(zero|short|peers)|tryagain|vanish\.(before|waiting)|keepseeding\.(moved|public-removed)|sharing\.completion)\.(qbittorrent|transmission|deluge)' } | ForEach-Object { $_ -replace '(qbittorrent|transmission|deluge)', 'utorrent'; $_ -replace '(qbittorrent|transmission|deluge)', 'rtorrent' } | Where-Object { $_ -notin $allIds }).Count -eq 0)
+$initText = Get-Content -Raw (Join-Path $suite 'vm\Initialize-Environment.ps1')
+Check 'the setup installs and connects uTorrent and rTorrent after the picker''s clients' ($initText -match 'Initialize-ExtraClients' -and $initText.IndexOf('connect-all') -lt $initText.IndexOf('Initialize-ExtraClients'))
+$extraText = Get-Content -Raw (Join-Path $suite 'vm\ExtraClients.Lib.ps1')
+Check 'both clients listen on 127.0.0.1 only and the login is made by the suite, not written into a script' ($extraText -match "'bind_ip' = '127.0.0.1'" -and $extraText -match 'webui.restrict' -and $extraText -match 'network.bind_address.set = 127.0.0.1' -and $extraText -match 'listen 127.0.0.1:' -and $extraText -match "New-SuiteSecret 'utorrent-password'" -and $extraText -match "New-SuiteSecret 'rtorrent-password'")
+Check 'rTorrent is added with a path mapping from /mnt/c/ to C:\, because it runs under WSL' ($extraText -match "remotePath = '/mnt/c/'" -and $extraText -match "localPath = 'C:\\'")
 Check 'the keep-seeding group runs before the update phase, and both host phases follow the groups' (@($plan | ForEach-Object Name).IndexOf('keepseeding') -gt @($plan | ForEach-Object Name).IndexOf('stuck') -and $plan[-2].Name -eq 'update')
 # The two strike lines Deluno 1.0.0-rc.30.32 really wrote on the golden VM (14 Oct 2026), as /api/activity returns them,
 # with the machine name replaced. Both carry the label "Fixed a stuck download": only the details' actions tell a move

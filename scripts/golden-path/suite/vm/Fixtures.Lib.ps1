@@ -327,11 +327,12 @@ function Send-Film {
     $Film
 }
 
-# Every torrent client has its data placement confirmed against the client's own answer once it holds the torrent; qBittorrent and
-# Deluge are then also told to check it (Transmission checks on its own, and is told to verify only when the data had to move).
+# Every torrent client has its data placement confirmed against the client's own answer once it holds the torrent; qBittorrent,
+# Deluge, uTorrent and rTorrent are then also told to check it (Transmission checks on its own, and is told to verify only when the
+# data had to move).
 function Test-ClientNeedsSettle {
     param([Parameter(Mandatory)] [string] $Kind)
-    $Kind -in 'qbittorrent', 'transmission', 'deluge'
+    $Kind -in 'qbittorrent', 'transmission', 'deluge', 'utorrent', 'rtorrent'
 }
 
 # ---------------------------------------------------------------- asking the clients themselves
@@ -360,7 +361,10 @@ function ConvertTo-FxPath {
 $script:Ks = @{
     Category    = 'golden-keep-seeding'
     PrivateName = 'Golden private feed'
-    Ports       = @{ qbittorrent = 8081; transmission = 9091; deluge = 8112 }
+    # uTorrent and rTorrent are installed by the suite itself (ExtraClients.Lib.ps1, whose pins hold the same two ports).
+    Ports       = @{ qbittorrent = 8081; transmission = 9091; deluge = 8112; utorrent = 8087; rtorrent = 8086 }
+    # The fields of rTorrent's d.multicall2 the suite reads, in this order (Get-ClientTorrent, Get-KsClientTorrent).
+    RtFields    = @('d.hash=', 'd.name=', 'd.complete=', 'd.bytes_done=', 'd.size_bytes=', 'd.is_active=', 'd.is_hash_checking=', 'd.directory=', 'd.is_multi_file=', 'd.custom1=')
     TrSession   = $null
     TrAuth      = $null
 }
@@ -420,7 +424,7 @@ function Get-FxClientSession {
     param([Parameter(Mandatory)] [string] $Kind, [switch] $Fresh, [string] $Subject = '')
     if ($Fresh) { $script:Fx.Sessions.Remove($Kind) }
     if (-not $script:Fx.Sessions.ContainsKey($Kind)) {
-        $script:Fx.Sessions[$Kind] = switch ($Kind) { 'qbittorrent' { Open-KsQbit -Subject $Subject } 'deluge' { Open-KsDeluge -Subject $Subject } default { $null } }
+        $script:Fx.Sessions[$Kind] = switch ($Kind) { 'qbittorrent' { Open-KsQbit -Subject $Subject } 'deluge' { Open-KsDeluge -Subject $Subject } 'utorrent' { Open-KsUTorrent -Subject $Subject } default { $null } }
     }
     $script:Fx.Sessions[$Kind]
 }
@@ -521,6 +525,85 @@ function Invoke-KsDeluge {
     Invoke-FxHttp -Client 'deluge' -Call $Method -Subject $Subject -Uri $Session.Base -Method Post -ContentType 'application/json' -Body $body -WebSession $Session.Session -Waiting 'the web interface to answer'
 }
 
+# The login the suite made for uTorrent or rTorrent when it installed them (ExtraClients.Lib.ps1); both are masked everywhere.
+function Get-KsExtraLogin {
+    param([Parameter(Mandatory)] [ValidateSet('utorrent', 'rtorrent')] [string] $Kind)
+    [pscustomobject]@{ User = (Get-SuiteSecret "$Kind-user"); Password = (Get-SuiteSecret "$Kind-password") }
+}
+function Get-KsExtraAuthHeader {
+    param([Parameter(Mandatory)] [string] $Kind)
+    $login = Get-KsExtraLogin -Kind $Kind
+    @{ Authorization = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("$($login.User):$($login.Password)")) }
+}
+
+# uTorrent's Web UI, signed in: the token page holds the token every later call sends, and sets the cookie it goes with.
+function Open-KsUTorrent {
+    param([string] $Subject = '')
+    $base = 'http://127.0.0.1:' + $script:Ks.Ports.utorrent
+    $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+    $headers = Get-KsExtraAuthHeader -Kind 'utorrent'
+    $page = Invoke-FxHttp -Client 'utorrent' -Call 'token' -Subject $Subject -Uri "$base/gui/token.html" -Headers $headers -WebSession $session -Web
+    $token = ([regex]::Match([string]$page.Content, '>([^<>]+)</div>')).Groups[1].Value.Trim()
+    if (-not $token) { throw 'uTorrent''s token page held no token (its Web UI login was refused or the page changed).' }
+    if ($script:S) { $script:S.Secrets['ks-utorrent-token'] = $token }
+    [pscustomobject]@{ Base = $base; Session = $session; Headers = $headers; Token = $token }
+}
+
+# One uTorrent Web UI call (the query after gui/?token=...&), on an opened session. Returns the reply parsed, or $null when it is not JSON.
+function Invoke-KsUTorrent {
+    param([Parameter(Mandatory)] $Session, [Parameter(Mandatory)] [string] $Query, [string] $Subject = '')
+    $r = Invoke-FxHttp -Client 'utorrent' -Call ($Query -replace '&.*$', '') -Subject $Subject -Uri "$($Session.Base)/gui/?token=$($Session.Token)&$Query" -Headers $Session.Headers -WebSession $Session.Session -Web
+    $text = [string]$r.Content
+    if ($text.TrimStart().StartsWith('{')) { $text | ConvertFrom-Json } else { $null }
+}
+
+# One XML-RPC value as PowerShell: numbers as long, boolean as bool, an array as an object[] (kept whole), text as text.
+function ConvertFrom-KsXmlRpcValue {
+    param($Node)
+    $child = @($Node.ChildNodes | Where-Object { $_.NodeType -eq 'Element' })[0]
+    if (-not $child) { return [string]$Node.InnerText }
+    switch ($child.Name) {
+        'array' {
+            $items = New-Object System.Collections.ArrayList
+            foreach ($v in $child.SelectNodes('data/value')) { [void]$items.Add((ConvertFrom-KsXmlRpcValue $v)) }
+            return , $items.ToArray()
+        }
+        { $_ -in 'i4', 'i8', 'int' } { return [long]$child.InnerText }
+        'boolean' { return ($child.InnerText -eq '1') }
+        default { return [string]$child.InnerText }
+    }
+}
+
+# One rTorrent XML-RPC call through the web mount in front of it (login made by the suite). Parameters are text, whole numbers or bool.
+# A fault is an error naming it.
+function Invoke-KsRtorrent {
+    param([Parameter(Mandatory)] [string] $Method, [object[]] $Params = @(), [string] $Subject = '')
+    $values = foreach ($p in $Params) {
+        if ($p -is [bool]) { "<param><value><boolean>$([int]$p)</boolean></value></param>" }
+        elseif ($p -is [int] -or $p -is [long]) { "<param><value><i4>$p</i4></value></param>" }
+        else { '<param><value><string>' + [Security.SecurityElement]::Escape([string]$p) + '</string></value></param>' }
+    }
+    $xml = '<?xml version="1.0"?><methodCall><methodName>' + $Method + '</methodName><params>' + (@($values) -join '') + '</params></methodCall>'
+    $uri = 'http://127.0.0.1:' + $script:Ks.Ports.rtorrent + '/RPC2'
+    $r = Invoke-FxHttp -Client 'rtorrent' -Call $Method -Subject $Subject -Uri $uri -Method Post -ContentType 'text/xml' -Headers (Get-KsExtraAuthHeader -Kind 'rtorrent') -Body $xml -Waiting 'its XML-RPC mount to answer' -Web
+    $doc = New-Object System.Xml.XmlDocument
+    $doc.LoadXml([string]$r.Content)
+    $fault = $doc.SelectSingleNode('/methodResponse/fault')
+    if ($fault) { throw "rTorrent answered $Method with a fault: $($fault.InnerText)" }
+    ConvertFrom-KsXmlRpcValue $doc.SelectSingleNode('/methodResponse/params/param/value')
+}
+
+# Tells uTorrent or rTorrent to check a torrent's files (the way a person presses Force Re-Check / Check hash). Returns $true when sent.
+function Invoke-KsRecheck {
+    param([Parameter(Mandatory)] [ValidateSet('utorrent', 'rtorrent')] [string] $Kind, [Parameter(Mandatory)] [string] $Hash, [string] $For = '')
+    $upper = $Hash.ToUpperInvariant()
+    if ($Kind -eq 'utorrent') {
+        $null = Invoke-FxClientRead -Kind $Kind -Call 'recheck' -Subject $For -Read { param($u, $for) Invoke-KsUTorrent -Session $u -Query ('action=recheck&hash=' + $upper) -Subject $for }.GetNewClosure()
+    }
+    else { $null = Invoke-KsRtorrent -Method 'd.check_hash' -Params @($upper) -Subject $For }
+    $true
+}
+
 function Invoke-KsTransmission {
     param([Parameter(Mandatory)] [string] $Method, [hashtable] $Arguments = @{}, [string] $Subject = '')
     $uri = 'http://127.0.0.1:' + $script:Ks.Ports.transmission + '/transmission/rpc'
@@ -587,6 +670,15 @@ function Get-ClientDataFolder {
             $s = (Invoke-KsTransmission -Method 'session-get' -Arguments @{ fields = @('incomplete-dir', 'incomplete-dir-enabled', 'download-dir') } -Subject $For).arguments
             $folder = if ($s.'incomplete-dir-enabled' -and $s.'incomplete-dir') { $s.'incomplete-dir' } else { $s.'download-dir' }
         }
+        'utorrent' {
+            $folder = Invoke-FxClientRead -Kind $Kind -Call 'getsettings' -Subject $For -Read {
+                param($u, $for)
+                $settings = (Invoke-KsUTorrent -Session $u -Query 'action=getsettings' -Subject $for).settings
+                $row = @($settings | Where-Object { $_ -and $_[0] -eq 'dir_active_download' })[0]
+                if ($row) { [string]$row[2] }
+            }
+        }
+        'rtorrent' { $folder = ConvertFrom-XcWslPath ([string](Invoke-KsRtorrent -Method 'directory.default' -Subject $For)) }
         default { throw "$Kind is not a torrent client." }
     }
     $folder = ConvertTo-FxPath ([string]$folder)
@@ -637,6 +729,31 @@ function Get-ClientTorrent {
             $save = ConvertTo-FxPath ([string]$t.downloadDir)
             $folder = $(if ($progress -lt 1 -and $dl) { $dl } else { $save })
             [pscustomobject]@{ Kind = $Kind; Present = $true; State = [string]$t.status; Progress = $progress; Checking = ([int]$t.status -in 1, 2); DataFolder = $folder; SavePath = $save; DownloadPath = $dl; ContentPath = $null }
+        }
+        'utorrent' {
+            # The Web UI's list rows are positional: 0 hash, 1 status bits, 2 name, 4 progress in thousandths, 11 label, 26 save path.
+            $rows = Invoke-FxClientRead -Kind $Kind -Call 'list' -Subject $For -Read { param($u, $for) (Invoke-KsUTorrent -Session $u -Query 'list=1' -Subject $for).torrents }
+            $row = @($rows | Where-Object { $_ -and ([string]$_[0]) -ieq $Hash })[0]
+            if (-not $row) { return $none }
+            $bits = [int]$row[1]
+            $progress = [double]$row[4] / 1000
+            $state = $(if ($bits -band 2) { 'checking' } elseif ($bits -band 32) { 'paused' } elseif (-not ($bits -band 1)) { 'stopped' } elseif ($bits -band 64) { 'queued' } elseif ($progress -ge 1) { 'seeding' } else { 'downloading' })
+            # A folder torrent's save path names the folder itself; a single file's is the folder it sits in. The suite wants the folder the item is in.
+            $save = ConvertTo-FxPath ([string]$row[26])
+            $folder = $(if ($save -and (Split-Path $save -Leaf) -ieq [string]$row[2]) { ConvertTo-FxPath (Split-Path $save -Parent) } else { $save })
+            [pscustomobject]@{ Kind = $Kind; Present = $true; State = $state; Progress = $progress; Checking = [bool]($bits -band 2); DataFolder = $folder; SavePath = $save; DownloadPath = $null; ContentPath = $null }
+        }
+        'rtorrent' {
+            $rows = Invoke-KsRtorrent -Method 'd.multicall2' -Params (@('', 'main') + $script:Ks.RtFields) -Subject $For
+            $row = @($rows | Where-Object { $_ -and ([string]$_[0]) -ieq $Hash })[0]
+            if (-not $row) { return $none }
+            $progress = $(if ([double]$row[4] -gt 0) { [double]$row[3] / [double]$row[4] } else { 0.0 })
+            $checking = ([long]$row[6] -ne 0)
+            $state = $(if ($checking) { 'checking' } elseif ([long]$row[5] -eq 0) { 'stopped' } elseif ([long]$row[2] -ne 0) { 'seeding' } else { 'downloading' })
+            # d.directory of a folder torrent names the folder itself; a single file's is the folder it sits in. rTorrent says /mnt/c/..., Windows says C:\...
+            $save = ConvertTo-FxPath (ConvertFrom-XcWslPath ([string]$row[7]))
+            $folder = $(if (([long]$row[8] -ne 0) -and $save) { ConvertTo-FxPath (Split-Path $save -Parent) } else { $save })
+            [pscustomobject]@{ Kind = $Kind; Present = $true; State = $state; Progress = $progress; Checking = $checking; DataFolder = $folder; SavePath = $save; DownloadPath = $null; ContentPath = $null }
         }
         default { throw "$Kind is not a torrent client." }
     }
@@ -769,6 +886,7 @@ function Invoke-FilmSettle {
             'deluge' { $ok = [bool](Invoke-DelugeSettle -Film $Film) }
             'qbittorrent' { $ok = [bool](Invoke-Recheck -Film $Film) }
             'transmission' { if ($p.Moved) { $ok = [bool](Invoke-TransmissionVerify -Film $Film) } }
+            { $_ -in 'utorrent', 'rtorrent' } { $ok = [bool](Invoke-KsRecheck -Kind $Film.ClientKind -Hash $Film.Hash -For $Film.Release) }
         }
     }
     catch { Write-SuiteLog ("   {0}: the settle step failed: {1}" -f $Film.Release, (Hide-Secrets $_.Exception.Message)) }

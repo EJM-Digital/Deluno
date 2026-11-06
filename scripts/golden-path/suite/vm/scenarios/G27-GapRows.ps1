@@ -294,7 +294,7 @@ function Invoke-GroupGapRows {
     }
 
     # ---------------------------------------------------------------- the sharing target
-    foreach ($kind in 'qbittorrent', 'transmission', 'deluge') {
+    foreach ($kind in $script:Kinds.torrent) {
         Invoke-Scenario -Id "sharing.completion.$kind" -Title "A finished, imported $kind torrent whose sharing target is met is removed, or only stopped when that is chosen, and the library file stays whole" -Body {
             $before = Get-SharingForSuite
             try {
