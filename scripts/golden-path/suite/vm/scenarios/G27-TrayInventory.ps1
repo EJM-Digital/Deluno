@@ -113,6 +113,8 @@ function Invoke-GroupTrayInventory {
             if ($offIndexerId) { try { Invoke-Deluno -Method DELETE -Path "/api/indexers/$offIndexerId" | Out-Null } catch { } }
             if ($libraryId) { try { Invoke-Deluno -Method DELETE -Path "/api/libraries/$libraryId" | Out-Null } catch { } }
             Remove-Item -LiteralPath $folder, $downloads -Recurse -Force -ErrorAction SilentlyContinue
+            # A deleted library's folder problem is cleared on the next health pass (fifteen minutes): run it now so the next scenario starts clean.
+            try { Try-Deluno -Method POST -Path '/api/system/health/run' -TimeoutSec 120 | Out-Null } catch { }
         }
     }
 
@@ -148,6 +150,7 @@ function Invoke-GroupTrayInventory {
         finally {
             foreach ($id in $ids) { try { Invoke-Deluno -Method DELETE -Path "/api/indexers/$id" | Out-Null } catch { } }
         }
+        try { Try-Deluno -Method POST -Path '/api/system/health/run' -TimeoutSec 120 | Out-Null } catch { }
         $clear = Wait-TrayDot -Match { param($d) $d.Colour -eq 'green' -and $d.Hover -notmatch "isn't answering" } -TimeoutSec 300
         Add-Check 'With the indexers gone, the dot is green again' $clear.Ok ''
     }

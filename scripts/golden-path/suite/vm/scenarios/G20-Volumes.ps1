@@ -598,14 +598,16 @@ public class StallProxy {
     Invoke-Scenario -Id 'volumes.pack-hardlink' -Title 'A season pack imported by hard link: a pack that cannot be finished is rolled back whole, a pack across two volumes falls back to a copy per file (mode copy), and a pack split across volumes is reported as mixed' -Body {
         $token = New-FilmToken
         $srcRoot = (Join-Path $script:VolDir "src_Pack$token")
-        $title = 'Breaking Bad'; $dotted = 'Breaking.Bad'; $year = 2008
+        # One show per section: the catalogue keeps one row per title, so a second section on the same show would find the first section's
+        # episode files still owned ("already owns a different file") and refuse the pack, as it should.
+        $startYears = @{ 'Breaking Bad' = 2008; 'Better Call Saul' = 2015; 'The Wire' = 2002 }
         $libs = @(); $seriesIds = @(); $minBefore = $null; $lock = $null
         $tvProfile = (Get-Library -MediaType 'tv').qualityProfileId
         $smallBytes = (Get-Item -LiteralPath $script:Fx.Base['small']).Length
 
         # A TV library on a root, with the show in it and its first two episodes in the catalogue (a made-up title owns no episodes).
         function New-PackShow {
-            param([Parameter(Mandatory)] [string] $Root, [Parameter(Mandatory)] [string] $Name)
+            param([Parameter(Mandatory)] [string] $Root, [Parameter(Mandatory)] [string] $Name, [Parameter(Mandatory)] [string] $Title)
             New-Item -ItemType Directory -Force -Path $Root | Out-Null
             $lib = Try-Deluno -Method POST -Path '/api/libraries' -Body @{
                 name = $Name; mediaType = 'tv'; purpose = 'Main library'; rootPath = $Root; qualityProfileId = $tvProfile
@@ -613,7 +615,7 @@ public class StallProxy {
                 removeEmptySourceFolders = $false; searchIntervalMinutes = 720; retryDelayHours = 6; maxItemsPerRun = 10
             }
             if ($lib.Status -lt 200 -or $lib.Status -ge 300) { throw (Hide-Secrets "Making the library $Name answered $($lib.Status). $($lib.Raw)") }
-            $series = Invoke-Deluno -Method POST -Path '/api/series/' -Body @{ title = $title; startYear = $year; monitored = $true; libraryId = $lib.Data.id }
+            $series = Invoke-Deluno -Method POST -Path '/api/series/' -Body @{ title = $Title; startYear = $startYears[$Title]; monitored = $true; libraryId = $lib.Data.id }
             $sid = $series.id
             Try-Deluno -Method POST -Path "/api/series/$sid/metadata/refresh" -TimeoutSec 120 | Out-Null
             $catalogued = Wait-Until -TimeoutSec 180 -IntervalSec 3 -Condition {
@@ -621,7 +623,7 @@ public class StallProxy {
                 $have = @($inv.Data.episodes | Where-Object { $_.seasonNumber -eq 1 -and $_.episodeNumber -in 1, 2 })
                 if ($have.Count -eq 2) { $have } else { $null }
             }
-            [pscustomobject]@{ Library = $lib.Data; SeriesId = $sid; Catalogued = $catalogued.Ok }
+            [pscustomobject]@{ Library = $lib.Data; SeriesId = $sid; Catalogued = $catalogued.Ok; Title = $Title }
         }
         function Get-PackEpisodeFiles {
             param([Parameter(Mandatory)] [string] $SeriesId)
@@ -630,7 +632,7 @@ public class StallProxy {
         }
         function Invoke-PackImport {
             param([Parameter(Mandatory)] [string] $Dir, [Parameter(Mandatory)] $Show, [Parameter(Mandatory)] [string] $Mode, [bool] $Fallback = $true)
-            $pv = [ordered]@{ sourcePath = $Dir; fileName = ((Split-Path $Dir -Leaf) + '.mkv'); mediaType = 'tv'; title = $title; year = $year; genres = @(); tags = @(); seriesId = $Show.SeriesId; libraryId = $Show.Library.id }
+            $pv = [ordered]@{ sourcePath = $Dir; fileName = ((Split-Path $Dir -Leaf) + '.mkv'); mediaType = 'tv'; title = $Show.Title; year = $startYears[$Show.Title]; genres = @(); tags = @(); seriesId = $Show.SeriesId; libraryId = $Show.Library.id }
             $run = Try-Deluno -Method POST -Path '/api/filesystem/import/execute-batch' -TimeoutSec 600 -Body @{
                 items = @(@{ preview = $pv; transferMode = $Mode; overwrite = $false; allowCopyFallback = $Fallback })
             }
@@ -639,7 +641,8 @@ public class StallProxy {
         }
         # A pack folder of two small episodes (S01E01, S01E02), written an hour ago so they count as settled.
         function New-PackFolder {
-            param([Parameter(Mandatory)] [string] $Name, [string] $SecondEpisodeIn)
+            param([Parameter(Mandatory)] [string] $Name, [Parameter(Mandatory)] $Show, [string] $SecondEpisodeIn)
+            $dotted = $Show.Title -replace ' ', '.'
             # The folder names its season (a season pack's folder must identify exactly one), as a real release folder does.
             $dir = Join-Path $srcRoot ('{0}.S01.{1}' -f $dotted, $Name)
             New-Item -ItemType Directory -Force -Path $dir | Out-Null
@@ -664,11 +667,11 @@ public class StallProxy {
 
             # ---------------------------------------------- 1. a pack that cannot be finished is rolled back whole (same volume, hard links)
             $rootC = "C:\Media\Pack$token"
-            $showC = New-PackShow -Root $rootC -Name "Pack on C $token"
+            $showC = New-PackShow -Root $rootC -Name "Pack on C $token" -Title 'Breaking Bad'
             $libs += $showC.Library; $seriesIds += $showC.SeriesId
             Add-Check 'The show''s first two episodes are in its catalogue (from its metadata)' $showC.Catalogued ''
             if (-not $showC.Catalogued) { return }
-            $pk1 = New-PackFolder -Name "Rollback.$token"
+            $pk1 = New-PackFolder -Name "Rollback.$token" -Show $showC
             # The second episode is held open with no sharing, so it can neither be linked nor copied: the pack stops after the first
             # episode may already be placed, and everything placed must go again. (If the import refuses the pack before placing
             # anything, the checks below hold just the same: nothing of it is in the library and nothing is lost.)
@@ -690,11 +693,11 @@ public class StallProxy {
 
             # ---------------------------------------------- 2. a library on a second volume: every file falls back to a copy
             New-TestVolume -Name 'packlib' -SizeMb 320 -Fs ntfs -Letter 'V' | Out-Null
-            $showV = New-PackShow -Root 'V:\TV' -Name "Pack on V $token"
+            $showV = New-PackShow -Root 'V:\TV' -Name "Pack on V $token" -Title 'Better Call Saul'
             $libs += $showV.Library; $seriesIds += $showV.SeriesId
             Add-Check 'The show on the second volume has its first two episodes in the catalogue' $showV.Catalogued ''
             if ($showV.Catalogued) {
-                $pk2 = New-PackFolder -Name "Cross.$token"
+                $pk2 = New-PackFolder -Name "Cross.$token" -Show $showV
                 $r2 = Invoke-PackImport -Dir $pk2.Dir -Show $showV -Mode 'hardlink' -Fallback $true
                 Save-Evidence -Name 'volumes-pack-crossvolume.json' -Text ($r2 | Select-Object Status, Succeeded, Message, Response | ConvertTo-Json -Depth 6)
                 Add-Check 'A pack whose hard links the volume refuses still imports, file by file, by copy' $r2.Succeeded $r2.Message
@@ -707,15 +710,15 @@ public class StallProxy {
 
             # ---------------------------------------------- 3. a pack split across two volumes: one episode links, the other copies: mixed
             $rootC2 = "C:\Media\PackMix$token"
-            $showM = New-PackShow -Root $rootC2 -Name "Pack mixed $token"
+            $showM = New-PackShow -Root $rootC2 -Name "Pack mixed $token" -Title 'The Wire'
             $libs += $showM.Library; $seriesIds += $showM.SeriesId
             Add-Check 'The show for the mixed pack has its first two episodes in the catalogue' $showM.Catalogued ''
             if ($showM.Catalogued) {
-                $packDir = Join-Path $srcRoot "$dotted.S01.Mixed.$token"
+                $packDir = Join-Path $srcRoot ("{0}.S01.Mixed.{1}" -f ($showM.Title -replace ' ', '.'), $token)
                 $mount = Join-Path $packDir 'part2'
                 New-Item -ItemType Directory -Force -Path $packDir | Out-Null
                 New-TestVolume -Name 'packpart' -SizeMb 320 -Fs ntfs -MountFolder $mount | Out-Null
-                $pk3 = New-PackFolder -Name "Mixed.$token" -SecondEpisodeIn $mount
+                $pk3 = New-PackFolder -Name "Mixed.$token" -Show $showM -SecondEpisodeIn $mount
                 $r3 = Invoke-PackImport -Dir $pk3.Dir -Show $showM -Mode 'hardlink' -Fallback $true
                 Save-Evidence -Name 'volumes-pack-mixed.json' -Text ($r3 | Select-Object Status, Succeeded, Message, Response | ConvertTo-Json -Depth 6)
                 Add-Check 'A pack with one episode on this volume and one on another imports' $r3.Succeeded $r3.Message

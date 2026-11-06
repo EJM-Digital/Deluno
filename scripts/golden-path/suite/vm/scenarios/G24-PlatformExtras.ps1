@@ -1286,8 +1286,13 @@ function Invoke-UpdateWithAllBundledClients {
         Add-Check 'The picker opens for Transmission, Deluge and NZBGet' ($pick.Status -eq 202 -and $null -ne $dlg) $(if ($dlg) { "HTTP $($pick.Status)" } else { 'windows: ' + (Format-DesktopWindows) })
         if (-not $dlg) { return }
         try {
-            [void](Set-PickerBox -Window $dlg -Name 'NZBGet username' -Value $user)
-            [void](Set-PickerBox -Window $dlg -Name 'NZBGet password' -Value $password)
+            # The login boxes appear once NZBGet's row is ticked (here it is pre-ticked); fill them only when found, or the picker refuses
+            # the empty login in words ("Choose a username and a password for NZBGet.") and nothing installs.
+            $filled = Wait-Until -TimeoutSec 30 -IntervalSec 1 -Condition {
+                $w = Wait-DesktopWindow -NamePattern $title -Process 'Deluno' -TimeoutSec 2
+                if ($w -and (Set-PickerBox -Window $w -Name 'NZBGet username' -Value $user) -and (Set-PickerBox -Window $w -Name 'NZBGet password' -Value $password)) { $true } else { $null }
+            }
+            Add-Check 'NZBGet''s username and password boxes are shown and filled in' $filled.Ok $(if ($filled.Ok) { '' } else { 'the picker read: ' + (Get-WindowText -Window (Wait-DesktopWindow -NamePattern $title -Process 'Deluno' -TimeoutSec 2)) })
             Click-WindowButton -Window $dlg -NamePattern '^Install selected$' | Out-Null
             $finished = Wait-Until -TimeoutSec 720 -IntervalSec 5 -Condition {
                 $w = Wait-DesktopWindow -NamePattern $title -Process 'Deluno' -TimeoutSec 2

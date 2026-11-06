@@ -290,6 +290,8 @@ function Invoke-GroupTrayStates {
             if ($indexerId) { try { Invoke-Deluno -Method DELETE -Path "/api/indexers/$indexerId" | Out-Null } catch { } }
             if ($libraryId) { try { Invoke-Deluno -Method DELETE -Path "/api/libraries/$libraryId" | Out-Null } catch { } }
             Remove-Item -LiteralPath $folder, $downloads -Recurse -Force -ErrorAction SilentlyContinue
+            # A deleted library's folder problem is cleared on the next health pass (fifteen minutes): run it now so the next scenario starts clean.
+            try { Try-Deluno -Method POST -Path '/api/system/health/run' -TimeoutSec 120 | Out-Null } catch { }
         }
     }
     Invoke-Scenario -Id 'tray.quit' -Title 'Quit Deluno from the menu: the icon shows busy, Deluno stops within 30 seconds, the icon is removed and the host is down; Deluno is then started again' -Body {
