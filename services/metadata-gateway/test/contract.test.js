@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { localCacheTest } from "./local-cache-stub.js";
 import metadataGateway, { lookupTmdb, mapTmdbResult } from "../src/index.js";
 
 function memoryKv() {
@@ -75,7 +76,7 @@ test("the search answer is the one envelope the contract states, with the count 
   assert.equal(body.resultCount, 1);
 });
 
-test("a search TMDb cannot answer is a 503, never a title that is gone, and a repeat does not reach TMDb again", async () => {
+localCacheTest("a search TMDb cannot answer is a 503, never a title that is gone, and a repeat does not reach TMDb again", async () => {
   const notFound = tmdbAnswering(404);
   const kv = memoryKv();
 
@@ -88,7 +89,7 @@ test("a search TMDb cannot answer is a 503, never a title that is gone, and a re
   assert.equal(notFound.calls.length, 1, "the failure is remembered");
 });
 
-test("TMDb saying it is busy is a 503 provider_busy with a minute to wait, remembered for the next ask", async () => {
+localCacheTest("TMDb saying it is busy is a 503 provider_busy with a minute to wait, remembered for the next ask", async () => {
   const busy = tmdbAnswering(429);
   const kv = memoryKv();
 

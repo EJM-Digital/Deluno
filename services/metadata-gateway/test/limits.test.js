@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { localCacheTest } from "./local-cache-stub.js";
 import gateway from "../src/index.js";
 
 /** A Workers Rate Limiting binding stand-in: allows `allowed` calls per key, then refuses. */
@@ -64,7 +65,7 @@ async function call(path, env, upstream, ip = "203.0.113.9") {
   }
 }
 
-test("a cache hit is never counted or limited", async () => {
+localCacheTest("a cache hit is never counted or limited", async () => {
   const perInstall = fakeLimiter(1);
   const upstream = stub();
   const env = { METADATA_CACHE: kv(), PROVIDER_CALLS_PER_INSTALL: perInstall };

@@ -49,11 +49,13 @@ Response:
 
 ## Response timing (#1527)
 
-Every `/metadata/search` answer carries a `Server-Timing` header listing the phases it ran, in milliseconds:
-`cache-local` (the data centre's own Cache API, tried first; answers and remembered failures are kept there for the same time as in KV), `cache-read` (the KV answer and remembered-failure reads, issued together), `limiter` (the per-install budget),
-`tmdb` (the provider call) and `cache-write`. The write runs after the answer is sent (`ctx.waitUntil`), so
-`cache-write` is only the time to hand it off, and a write that fails never fails the search. Catalogue, list,
-popular and person lookups defer their cache writes the same way.
+`/metadata/search` answers (and remembered failures) are kept only in the serving data centre's Cache API, never in
+KV: a KV miss cost about 250 ms on every new title. A miss goes straight to TMDb through the per-install limiter and
+the answer is stored after it is sent (`ctx.waitUntil`) for 12 hours (failures for 60 seconds). Every search answer
+carries a `Server-Timing` header listing the phases it ran, in milliseconds: `cache-local` (the Cache API lookup),
+`limiter` (the per-install budget), `tmdb` (the provider call) and `cache-write` (only the time to hand the write
+off). A write that fails never fails the search. Catalogue, list, popular, translations and person lookups keep
+using KV and defer their writes the same way.
 
 ## Local Development Endpoint
 

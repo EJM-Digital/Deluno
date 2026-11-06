@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { installLocalCache } from "./local-cache-stub.js";
 import metadataGateway from "../src/index.js";
 
 const tmdbSearch = { page: 1, total_pages: 1, total_results: 0, results: [] };
@@ -36,66 +37,54 @@ async function search(cache, ctx) {
 test("the answer returns before a slow cache write finishes", async () => {
   let release;
   const gate = new Promise((r) => { release = r; });
-  const cache = kv({ putImpl: () => gate });
-  const waiting = [];
-  const response = await search(cache, { waitUntil: (p) => waiting.push(p) });
-  assert.equal(response.status, 200);
-  assert.equal(waiting.length, 1);
-  release();
-  await Promise.all(waiting);
+  installLocalCache({ putImpl: () => gate });
+  try {
+    const waiting = [];
+    const response = await search(kv(), { waitUntil: (p) => waiting.push(p) });
+    assert.equal(response.status, 200);
+    assert.equal(waiting.length, 1);
+    release();
+    await Promise.all(waiting);
+  } finally { delete globalThis.caches; }
 });
 
 test("a rejecting cache write still answers 200 with the results", async () => {
-  const cache = kv({ putImpl: async () => { throw new Error("kv down"); } });
-  const waiting = [];
-  const response = await search(cache, { waitUntil: (p) => waiting.push(p) });
-  assert.equal(response.status, 200);
-  assert.equal((await response.json()).provider, "deluno-broker");
-  await Promise.all(waiting);
+  installLocalCache({ putImpl: async () => { throw new Error("cache down"); } });
+  try {
+    const waiting = [];
+    const response = await search(kv(), { waitUntil: (p) => waiting.push(p) });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).provider, "deluno-broker");
+    await Promise.all(waiting);
+  } finally { delete globalThis.caches; }
 });
 
-test("a search lists each phase in Server-Timing", async () => {
+test("a search lists each phase in Server-Timing and has no KV read", async () => {
   const response = await search(kv(), { waitUntil() {} });
   const header = response.headers.get("Server-Timing");
-  for (const phase of ["cache-read", "limiter", "tmdb", "cache-write"]) {
+  for (const phase of ["cache-local", "limiter", "tmdb", "cache-write"]) {
     assert.match(header, new RegExp(phase + ";dur=[0-9]+(\.[0-9]+)?"));
   }
+  assert.doesNotMatch(header, /cache-read/);
 });
 
-test("the answer and error reads are issued together", async () => {
-  const cache = kv({ getDelay: 20 });
-  await search(cache, { waitUntil() {} });
-  assert.equal(cache.log.getsStartedBeforeAnyFinished, true);
-});
-
-function fakeCaches() {
-  const map = new Map();
-  const log = { matches: 0, puts: [] };
-  globalThis.caches = {
-    default: {
-      async match(req) { log.matches++; const r = map.get(req.url); return r ? r.clone() : undefined; },
-      async put(req, res) { log.puts.push(res.headers.get("Cache-Control")); map.set(req.url, res); }
-    }
-  };
-  return log;
-}
-
-test("a miss falls through to KV and TMDb, then fills the local cache inside waitUntil", async () => {
-  const log = fakeCaches();
+test("a miss goes straight to TMDb without touching KV, then fills the local cache inside waitUntil", async () => {
+  const { log } = installLocalCache();
   try {
     const cache = kv();
     const waiting = [];
     const response = await search(cache, { waitUntil: (p) => waiting.push(p) });
     assert.equal(response.status, 200);
     assert.match(response.headers.get("Server-Timing"), /cache-local;dur=/);
-    assert.equal(cache.log.gets.length, 2);
+    assert.equal(cache.log.gets.length, 0);
+    assert.equal(cache.log.puts, 0);
     await Promise.all(waiting);
     assert.deepEqual(log.puts, ["public, max-age=43200"]);
   } finally { delete globalThis.caches; }
 });
 
 test("a local hit answers without touching KV or TMDb", async () => {
-  fakeCaches();
+  installLocalCache();
   try {
     await Promise.all((() => { const w = []; return [search(kv(), { waitUntil: (p) => w.push(p) }).then(() => Promise.all(w))]; })());
     const cache = kv();

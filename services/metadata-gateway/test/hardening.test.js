@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { localCacheTest } from "./local-cache-stub.js";
 import gateway from "../src/index.js";
 import {
   ERROR_CACHE_SECONDS,
@@ -132,7 +133,7 @@ test("a remembered failure for one key does not answer another key", async () =>
   assert.equal(await readCachedError(kv, "tvdb:v1:series:6"), null);
 });
 
-test("a TMDb title-search failure is remembered too", async () => {
+localCacheTest("a TMDb title-search failure is remembered too", async () => {
   const kv = strictKv();
   let upstream = 0;
   const realFetch = globalThis.fetch;

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { localCacheTest } from "./local-cache-stub.js";
 import gateway from "../src/index.js";
 
 // The gateway's small, mostly one-line promises (#1329): its health, method and path answers, the budgets, the cache lifetimes
@@ -25,6 +26,8 @@ function kv({ failPuts = false, failGets = false } = {}) {
     }
   };
 }
+
+const localUrl = (key) => `https://local-cache.deluno.invalid/search/ok/${encodeURIComponent(key)}`;
 
 function tmdb(routes) {
   const calls = [];
@@ -81,7 +84,7 @@ test("the budgets are counted per CF-Connecting-IP and a request without it is c
   assert.deepEqual(spent, ["203.0.113.9", "unknown"]);
 });
 
-test("search answers carry max-age 300 and the other TMDb answers max-age 600, the same on a cache hit", async () => {
+localCacheTest("search answers carry max-age 300 and the other TMDb answers max-age 600, the same on a cache hit", async () => {
   const stub = tmdb({
     "/3/search/movie": { results: [{ id: 1, title: "Alpha", release_date: "2000-01-01" }] },
     "/3/movie/popular": { results: [{ id: 2, title: "Beta" }] }
@@ -97,7 +100,7 @@ test("search answers carry max-age 300 and the other TMDb answers max-age 600, t
   assert.equal(stub.calls.filter((path) => path === "/3/search/movie").length, 1, "the second search came from the cache");
 });
 
-test("cache lifetimes: search 12 h, popular 3 h, translations 7 days, release dates and collection 6 h, person to IMDb 365 days", async () => {
+localCacheTest("cache lifetimes: search 12 h, popular 3 h, translations 7 days, release dates and collection 6 h, person to IMDb 365 days", async (local) => {
   const stub = tmdb({
     "/3/search/movie": { results: [{ id: 1, title: "Alpha" }] },
     "/3/movie/popular": { results: [{ id: 2, title: "Beta" }] },
@@ -117,7 +120,8 @@ test("cache lifetimes: search 12 h, popular 3 h, translations 7 days, release da
   await ask("/person/7/imdb", { env, stub });
 
   const ttl = (prefix) => cache.puts.find((put) => put.key.startsWith(prefix))?.options.expirationTtl;
-  assert.equal(ttl("search:v9:"), 60 * 60 * 12);
+  assert.deepEqual(local.log.puts, ["public, max-age=43200"], "search is kept only in the local cache, for 12 hours");
+  assert.equal(ttl("search:v9:"), undefined, "search never writes KV");
   assert.equal(ttl("popular:v1:movies:1"), 60 * 60 * 3);
   assert.equal(ttl("translations:v1:movie:5"), 60 * 60 * 24 * 7);
   assert.equal(ttl("release-dates:v1:5"), 60 * 60 * 6);
@@ -125,13 +129,14 @@ test("cache lifetimes: search 12 h, popular 3 h, translations 7 days, release da
   assert.equal(ttl("person-external-ids:v1:7"), 60 * 60 * 24 * 365);
 });
 
-test("the search cache key is versioned search:v9 and lower-cases the query", async () => {
+localCacheTest("the search cache key is versioned search:v9 and lower-cases the query", async (local) => {
   const cache = kv();
   const stub = tmdb({ "/3/search/movie": { results: [{ id: 1, title: "Alpha" }] } });
 
   await ask("/metadata/search?mediaType=movies&query=THE%20Matrix&year=1999", { env: { METADATA_CACHE: cache }, stub });
 
-  assert.deepEqual([...cache.store.keys()], [`search:v9:${encodeURIComponent("movies|the matrix|1999||1")}`]);
+  assert.deepEqual([...local.entries.keys()], [localUrl(`search:v9:${encodeURIComponent("movies|the matrix|1999||1")}`)]);
+  assert.equal(cache.store.size, 0);
 });
 
 test("a KV write that throws never fails the request", async () => {
@@ -356,7 +361,7 @@ test("a search returns all twenty matches of TMDb's page with its page numbers",
   assert.deepEqual([body.page, body.totalPages, body.totalResults], [1, 3, 45]);
 });
 
-test("page is passed to TMDb, kept in its own cache entry, and defaults to 1", async () => {
+localCacheTest("page is passed to TMDb, kept in its own cache entry, and defaults to 1", async (local) => {
   const cache = kv();
   const asked = [];
   const stub = {
@@ -374,9 +379,9 @@ test("page is passed to TMDb, kept in its own cache entry, and defaults to 1", a
   await ask("/metadata/search?mediaType=tv&query=Kickboxer&page=3", { env, stub });
   assert.deepEqual(asked, ["1", "3"], "the repeat came from the cache");
   assert.deepEqual([third.page, third.resultCount], [3, 5]);
-  assert.deepEqual([...cache.store.keys()].sort(), [
-    `search:v9:${encodeURIComponent("tv|kickboxer|||1")}`,
-    `search:v9:${encodeURIComponent("tv|kickboxer|||3")}`
+  assert.deepEqual([...local.entries.keys()].sort(), [
+    localUrl(`search:v9:${encodeURIComponent("tv|kickboxer|||1")}`),
+    localUrl(`search:v9:${encodeURIComponent("tv|kickboxer|||3")}`)
   ]);
 });
 
