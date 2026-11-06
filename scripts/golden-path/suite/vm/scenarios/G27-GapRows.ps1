@@ -295,7 +295,7 @@ function Invoke-GroupGapRows {
 
     # ---------------------------------------------------------------- the sharing target
     foreach ($kind in $script:Kinds.torrent) {
-        Invoke-Scenario -Id "sharing.completion.$kind" -Title "A finished, imported $kind torrent whose sharing target is met is removed, or only stopped when that is chosen, and the library file stays whole" -Body {
+        Invoke-Scenario -Id "sharing.completion.$kind" -Title "A finished, imported $kind torrent tidied up straight away is removed (the 'only stop seeding' choice applies to a met sharing target, not to this), and the library file stays whole" -Body {
             $before = Get-SharingForSuite
             try {
                 # Tidy up at once: the target is met the moment the title is safely in the library.
@@ -315,20 +315,19 @@ function Invoke-GroupGapRows {
                     Add-Check 'The library file can still be read' ($read -gt 0) "$read bytes read"
                 }
 
-                # The same, when the person chose to stop seeding and leave the entry and its files alone.
+                # "Only stop seeding" is what happens once a sharing TARGET is met (#821). Tidying up straight away has no target and nothing
+                # shared yet to stop (SharingPolicyEvaluator: tidy-now always reclaims), so with the stop choice made it still removes the
+                # torrent. A met time or ratio target needs real seeding (at least an hour, or a peer taking data), which the suite cannot
+                # wait for; the stop-at-target path is held by SharingPolicyEvaluatorTests and SharingReclaimServiceTests.
                 Set-SharingForSuite -Mode 'tidy-now' -Completion 'stop'
-                $kept = Send-Film -Film (New-FilmFor -Kind $kind -Layout 'folder' -Label 'stopped') -Kind $kind
-                $r2 = Wait-FilmImported -Film $kept
+                $second = Send-Film -Film (New-FilmFor -Kind $kind -Layout 'folder' -Label 'stopchosen') -Kind $kind
+                $r2 = Wait-FilmImported -Film $second
                 Add-Check 'The second film was imported' $r2.Imported ''
                 if (-not $r2.Imported) { return }
                 $length2 = $r2.File.Length
-                $stopped = Wait-Until -TimeoutSec 300 -IntervalSec 5 -Condition {
-                    $t = Get-ClientTorrent -Kind $kind -Hash $kept.Hash -For $kept.Release
-                    if ($t.Present -and ("$($t.State)" -match '(?i)paused|stopped' -or "$($t.State)" -eq '0')) { $t } else { $null }
-                }
-                Add-Check "The real $kind still holds the torrent but has stopped it" $stopped.Ok $(if ($stopped.Ok) { "state $($stopped.Value.State)" } else { 'it did not stop, or it removed the torrent' })
-                Add-Check 'Its files are still in the client''s folder' (@(Get-FilmLeftovers -Film $kept).Count -gt 0) ''
-                $lib2 = Find-Imported -Title $kept.Title
+                $gone2 = Wait-Until -TimeoutSec 300 -IntervalSec 5 -Condition { -not (Get-ClientTorrent -Kind $kind -Hash $second.Hash -For $second.Release).Present }
+                Add-Check "With 'only stop' chosen, tidying up straight away still removes the finished $kind torrent (there is no sharing target to stop at)" $gone2.Ok "after $($gone2.Seconds) s"
+                $lib2 = Find-Imported -Title $second.Title
                 Add-Check 'The library file is whole' ($lib2 -and $lib2.Length -eq $length2) ''
             }
             finally { try { Set-SharingForSuite -Mode $before.Mode -Completion $before.Completion -ForHours $before.ForHours -UntilRatio $before.UntilRatio } catch { Write-SuiteLog "   could not put the sharing choices back: $($_.Exception.Message)" } }
@@ -393,10 +392,16 @@ function Invoke-GroupGapRows {
             Start-Sleep -Seconds 150 # reason: five more planning passes, so a second listing would show; the file must be named once however many passes see it
             $lines = @(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($stem) -and $_ -match '"category":"processing\.output\.unmatched"' })
             Add-Check 'It is listed once, however many passes saw it' ($lines.Count -eq 1) "$($lines.Count) lines"
+            # Health runs its full pass every 15 minutes; "Check now" (#1217) asks every check to run within seconds, which is how a person sees it.
+            Try-Deluno -Method POST -Path '/api/system/health/run' | Out-Null
+            $listed = Wait-Until -TimeoutSec 90 -IntervalSec 3 -Condition {
+                $h = Try-Deluno -Path '/api/system/health'
+                if ($h.Raw -match [regex]::Escape($stem) -and $h.Raw -match '(?i)unmatched in a processor') { $h } else { $null }
+            }
             $health = Try-Deluno -Path '/api/system/health'
             $rows = ([regex]::Matches($health.Raw, [regex]::Escape($stem))).Count
             Save-Evidence -Name 'import-unmatched-output-health.json' -Text $health.Raw
-            Add-Check 'Health lists it as unmatched in a processor''s output' ($health.Raw -match '(?i)unmatched in a processor') "$rows mention(s) of the file"
+            Add-Check 'Health lists it as unmatched in a processor''s output' ($health.Raw -match '(?i)unmatched in a processor' -and $rows -gt 0) "$rows mention(s) of the file"
             Add-Check 'It was never imported on a guess' ($null -eq (Find-Imported -Title $stem)) ''
             Add-Check 'The file is still in Weir''s output, untouched' (Test-Path -LiteralPath $file) $file
         }
@@ -446,7 +451,16 @@ function Invoke-GroupGapRows {
             Add-Check 'The kill left the restart mark' ($null -ne $marker) ''
             if (-not $marker) { return }
             $staging = $marker.FullName.Substring(0, $marker.FullName.Length - '.deluno-marker.json'.Length)
-            $stagingBefore = if (Test-Path -LiteralPath $staging) { (Get-Item -LiteralPath $staging -Force).Length } else { -1 }
+            # A copy killed part-way is still in its own temporary file beside the staging name (<staging>.deluno-copy-*.tmp); the staging
+            # name itself exists only once that copy has been finished and verified. Either one is the half-copied file.
+            $halfFiles = {
+                $found = @()
+                if (Test-Path -LiteralPath $staging) { $found += Get-Item -LiteralPath $staging -Force }
+                $found += @(Get-ChildItem -LiteralPath (Split-Path $staging -Parent) -Force -File -Filter ((Split-Path $staging -Leaf) + '.deluno-copy-*.tmp') -ErrorAction SilentlyContinue)
+                $found
+            }
+            $stagingBefore = [long](@(& $halfFiles) | Measure-Object -Property Length -Sum).Sum
+            if (@(& $halfFiles).Count -eq 0) { $stagingBefore = -1 }
             Add-Check 'The half-copied file is on disk beside it' ($stagingBefore -ge 0) $staging
 
             # Another program (this runner, a different process from Deluno) opens the mark and keeps it open, as a media server, an antivirus scan or a sync client does.
@@ -456,7 +470,8 @@ function Invoke-GroupGapRows {
             if (-not $up) { return }
             Start-Sleep -Seconds 90 # reason: recovery runs at start and again every pass; this is several passes, bounded so a mark held for good is seen to be left alone
             Add-Check 'The mark is still there (it was not taken for a damaged one and deleted)' (Test-Path -LiteralPath $marker.FullName) ''
-            $stagingNow = if (Test-Path -LiteralPath $staging) { (Get-Item -LiteralPath $staging -Force).Length } else { -1 }
+            $stagingNow = [long](@(& $halfFiles) | Measure-Object -Property Length -Sum).Sum
+            if (@(& $halfFiles).Count -eq 0) { $stagingNow = -1 }
             Add-Check 'The half-copied file was never deleted, the only copy of a move import' ($stagingNow -eq $stagingBefore) "was $stagingBefore bytes, now $stagingNow"
             Add-Check 'The source film is whole' ((Test-Path -LiteralPath $src) -and (Get-Item -LiteralPath $src).Length -eq $size) ''
             $damaged = @(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($title) -and $_ -match '(?i)damaged|unreadable|corrupt' })
@@ -514,11 +529,25 @@ function Invoke-GroupGapRows {
         }
         Add-Check 'The same release is sent to the client again and taken' ($sent.Status -ge 200 -and $sent.Status -lt 300 -and $sent.Raw -match '"dispatchStatus":\s*"sent"') "HTTP $($sent.Status)"
         $film.SentUtc = [DateTime]::UtcNow
-        $again = Wait-FilmImported -Film $film
-        Add-Check 'The new copy finished in the real client' $again.Finished ''
-        $second = Get-FilmHandoff -Film $film
-        Add-Check 'It was handed to Weir, as the library''s workflow says (a new hand-off, not the first one)' ($again.HandedOff -and $second -and (-not $firstHandoff -or $second.id -ne $firstHandoff.id)) $(if ($second) { "hand-off $($second.id), status $($second.status)" } else { 'no hand-off' })
-        Add-Check 'Weir finished it and Deluno imported the cleaned file into the library' ($again.Settled -and $again.Imported) "settled $($again.Settled), imported $($again.Imported)"
+        # Wait-FilmImported cannot be used here: the first copy's finished row and hand-off carry the same release name, so it would take
+        # them for the new copy's and give up on the import two minutes later while the client was still checking the restored data.
+        # The new copy is waited for by what is new: the client holding it whole again, then a hand-off other than the first.
+        $newHandoff = Wait-Until -TimeoutSec 300 -IntervalSec 2 -Condition {
+            $h = Get-FilmHandoff -Film $film
+            if ($h -and (-not $firstHandoff -or $h.id -ne $firstHandoff.id)) { return $h }
+            Invoke-FilmSettle -Film $film -IfChanged | Out-Null
+            $null
+        }
+        $held = Get-ClientTorrent -Kind 'qbittorrent' -Hash $film.Hash -For $film.Release
+        Add-Check 'The new copy finished in the real client' ($held.Present -and $held.Progress -ge 1) "present $($held.Present), progress $($held.Progress)"
+        $second = $newHandoff.Value
+        Add-Check 'It was handed to Weir, as the library''s workflow says (a new hand-off, not the first one)' ($newHandoff.Ok -and $second -and (-not $firstHandoff -or $second.id -ne $firstHandoff.id)) $(if ($second) { "hand-off $($second.id), status $($second.status)" } else { 'no new hand-off' })
+        $settled = Wait-Until -TimeoutSec 300 -IntervalSec 2 -Condition {
+            $h = Find-Handoffs -Name $film.Release | Where-Object { $_.id -eq $second.id } | Select-Object -First 1
+            if ($h -and $h.status -eq 'completed' -and $h.importJobId) { $h } else { $null }
+        }
+        $in = Wait-Until -TimeoutSec 180 -IntervalSec 2 -Condition { Find-Imported -Title $film.Title }
+        Add-Check 'Weir finished it and Deluno imported the cleaned file into the library' ($settled.Ok -and $in.Ok) "settled $($settled.Ok), imported $($in.Ok)"
         try { if ($created.id) { Invoke-Deluno -Method DELETE -Path "/api/api-keys/$($created.id)" | Out-Null } } catch { }
     }
 
@@ -632,9 +661,15 @@ function Invoke-GroupGapRows {
             $t = Try-Deluno -Method POST -Path "/api/indexers/$indexerId/test" -TimeoutSec 120
             Save-Evidence -Name 'proxy-http-test.json' -Text $t.Raw
             Add-Check 'The indexer test through the HTTP proxy is healthy' ($t.Status -eq 200 -and $t.Raw -match '(?i)healthy') "HTTP $($t.Status) $($t.Raw)"
+            # The caps request is made by the test an Add or Edit drawer runs (POST /api/indexers/test), not by the saved indexer's Test button
+            # above, which presents the key with a one-row search only (#755).
+            $drawer = Try-Deluno -Method POST -Path "/api/indexers/test?id=$indexerId" -TimeoutSec 120 -Body @{
+                name = 'Golden feed'; protocol = 'torrent'; privacy = 'public'; baseUrl = $proxiedUrl; apiKey = 'golden'; isEnabled = $true; proxyId = $good.id
+            }
+            Save-Evidence -Name 'proxy-http-drawer-test.json' -Text $drawer.Raw
             $lines = @($http.Lines)
             Save-Evidence -Name 'proxy-http-lines.txt' -Text ($lines -join "`n")
-            Add-Check 'The proxy turned the first, unsigned request away with 407, then passed on the signed one' ($http.Rejected -ge 1 -and @($lines | Where-Object { $_ -like 'GET http://127.0.0.1:*' }).Count -ge 1) "rejected $($http.Rejected); $($lines.Count) lines"
+            Add-Check 'The proxy turned the first, unsigned request away with 407, then passed on the signed one' ($http.Rejected -ge 1 -and @($lines | Where-Object { $_ -like "GET $proxiedUrl/*" }).Count -ge 1) "rejected $($http.Rejected); $($lines.Count) lines"
             Add-Check 'The caps request left through the proxy' (@($lines | Where-Object { $_ -match 't=caps' }).Count -ge 1) ''
             Add-Check 'A search request left through the proxy' (@($lines | Where-Object { $_ -like 'GET *' -and $_ -notmatch 't=caps' }).Count -ge 1) ''
 
@@ -661,7 +696,7 @@ function Invoke-GroupGapRows {
             $t5 = Try-Deluno -Method POST -Path "/api/indexers/$indexerId/test" -TimeoutSec 120
             Save-Evidence -Name 'proxy-socks5-test.json' -Text $t5.Raw
             Add-Check 'The indexer test through the SOCKS5 proxy is healthy' ($t5.Status -eq 200 -and $t5.Raw -match '(?i)healthy') "HTTP $($t5.Status) $($t5.Raw)"
-            Add-Check 'The SOCKS5 proxy opened a connection to the feed after the login' (@(@($socks.Lines) | Where-Object { $_ -like 'SOCKS5 CONNECT 127.0.0.1:*' }).Count -ge 1) ((@($socks.Lines)) -join ' | ')
+            Add-Check 'The SOCKS5 proxy opened a connection to the feed after the login' (@(@($socks.Lines) | Where-Object { $_ -like 'SOCKS5 CONNECT golden-feed.test:*' }).Count -ge 1) ((@($socks.Lines)) -join ' | ')
         }
         finally {
             try { Invoke-Deluno -Method PUT -Path "/api/indexers/$indexerId" -Body @{ clearProxy = $true; baseUrl = $feedUrl } | Out-Null } catch { Write-SuiteLog "   could not clear the indexer's proxy: $($_.Exception.Message)" }
@@ -678,7 +713,10 @@ function Invoke-GroupGapRows {
         $before = @(Invoke-Deluno -Path '/api/integrations/processors/connections' | Where-Object { $_.name -match 'weir' })
         Add-Check 'Weir is connected to start with' ($before.Count -ge 1) "$($before.Count) connection(s)"
         $missing = Try-Deluno -Method POST -Path $path -Body @{ username = ''; password = '' } -TimeoutSec 120
-        Add-Check 'Missing details are asked for in words' ($missing.Status -in 200, 400 -and "$($missing.Raw)" -match '(?i)username|password|enter|choose') "HTTP $($missing.Status) $($missing.Raw)"
+        # A Weir that is already connected answers before it looks at any details (CompanionTools: "already connected"), so with the Weir
+        # this suite connected the answer to empty details is that, in words, and nothing is created (the connection check at the end holds).
+        # Details are asked for only when no Weir is connected yet, which this scenario does not undo.
+        Add-Check 'Missing details are asked for in words, or the answer says Weir is already connected' ($missing.Status -in 200, 400 -and "$($missing.Raw)" -match '(?i)username|password|enter|choose|already connected') "HTTP $($missing.Status) $($missing.Raw)"
         $badPassword = 'Wrong-' + [guid]::NewGuid().ToString('N').Substring(0, 10)
         $script:S.Secrets['gaprows-weir-wrong'] = $badPassword
         $wrong = Try-Deluno -Method POST -Path $path -Body @{ username = (Get-SuiteSecret 'weir-username'); password = $badPassword } -TimeoutSec 120

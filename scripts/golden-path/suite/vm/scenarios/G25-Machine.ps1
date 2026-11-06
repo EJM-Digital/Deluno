@@ -96,7 +96,11 @@ function Invoke-GroupMachine {
         $m = $o.Data.machine
         $os = Get-CimInstance Win32_OperatingSystem
         Add-Check 'It names this operating system' ("$($m.os)" -match [regex]::Escape(($os.Caption.Trim() -replace '^Microsoft\s+', '')) -or "$($m.os)" -match [regex]::Escape($os.Version)) "Windows: $($os.Caption) $($os.Version); Deluno: $($m.os)"
-        $realUptime = ((Get-Date) - $os.LastBootUpTime).TotalSeconds
+        # The time since the last start comes from the system's own tick counter, as Deluno's does. Win32_OperatingSystem.LastBootUpTime is a
+        # wall-clock date, and a VM whose clock was stepped (a restored checkpoint, a time sync) makes (now - LastBootUpTime) negative.
+        $realUptime = $null
+        try { $realUptime = [double](Get-CimInstance Win32_PerfFormattedData_PerfOS_System -ErrorAction Stop).SystemUpTime } catch { }
+        if ($null -eq $realUptime) { $realUptime = ((Get-Date) - $os.LastBootUpTime).TotalSeconds }
         Add-Check 'Its uptime is the real time since the last start (within two minutes)' ([math]::Abs($m.uptimeSeconds - $realUptime) -lt 120) ("Windows {0:N0} s, Deluno {1:N0} s" -f $realUptime, $m.uptimeSeconds)
         $totalBytes = [long]((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory)
         Add-Check 'Its memory total is the installed memory (within 2%)' ([math]::Abs($m.memoryTotalBytes - $totalBytes) -le ($totalBytes * 0.02)) ("Windows {0:N0} MB, Deluno {1:N0} MB" -f ($totalBytes / 1MB), ($m.memoryTotalBytes / 1MB))
@@ -111,9 +115,23 @@ function Invoke-GroupMachine {
         Add-Check 'A pending reboot is reported as Windows has it (or "cannot say")' ($null -eq $m.rebootPending -or [bool]$m.rebootPending -eq $pending) "Windows $pending, Deluno $($m.rebootPending)"
         $temp = $m.cpuTemperatureC
         Add-Check 'The temperature is a believable number or absent (never a made-up zero)' ($null -eq $temp -or ($temp -gt 10 -and $temp -lt 120)) "$(if ($null -eq $temp) { 'absent: this machine has no sensor' } else { "$temp C" })"
-        $c = @($o.Data.drives | Where-Object { "$($_.path)" -match '^[Cc]:' -or "$($_.name)" -match '^[Cc]:' }) | Select-Object -First 1
+        $findC = { @($o.Data.drives | Where-Object { "$($_.path)" -match '^[Cc]:' -or "$($_.name)" -match '^[Cc]:' }) | Select-Object -First 1 }
+        $c = & $findC
         $cReal = New-Object System.IO.DriveInfo('C')
         Add-Check 'The drive that holds Deluno is listed with its real size (within 1%)' ($c -and [math]::Abs($c.totalBytes - $cReal.TotalSize) -le ($cReal.TotalSize * 0.01)) $(if ($c) { "Windows {0:N1} GB, Deluno {1:N1} GB" -f ($cReal.TotalSize / 1GB), ($c.totalBytes / 1GB) } else { 'no C: in ' + (($o.Data.drives | ForEach-Object { "$($_.path)" }) -join ', ') })
+        # Deluno keeps a drive's reading for up to about 90 seconds (the drive list 30 s, the volume sweep 60 s), and earlier scenarios free
+        # tens of GB just before this one, so look again until the reading has caught up with the disk.
+        $caughtUp = Wait-Until -TimeoutSec 150 -IntervalSec 5 -Condition {
+            $again = Try-Deluno -Path '/api/system/overview'
+            if ($again.Status -ne 200) { return $null }
+            $o = $again
+            $c = & $findC
+            $cReal = New-Object System.IO.DriveInfo('C')
+            if ($c -and [math]::Abs($c.freeBytes - $cReal.AvailableFreeSpace) -le ($cReal.TotalSize * 0.01)) { $true } else { $null }
+        }
+        $o = Try-Deluno -Path '/api/system/overview'
+        $c = & $findC
+        $cReal = New-Object System.IO.DriveInfo('C')
         Add-Check 'Its free space is the real free space (within 1% of the drive)' ($c -and [math]::Abs($c.freeBytes - $cReal.AvailableFreeSpace) -le ($cReal.TotalSize * 0.01)) $(if ($c) { "Windows {0:N1} GB, Deluno {1:N1} GB" -f ($cReal.AvailableFreeSpace / 1GB), ($c.freeBytes / 1GB) } else { '' })
         $disk = $null
         try { $part = Get-Partition -DriveLetter C -ErrorAction Stop; $disk = Get-PhysicalDisk | Where-Object { $_.DeviceId -eq "$($part.DiskNumber)" } | Select-Object -First 1 } catch { }
