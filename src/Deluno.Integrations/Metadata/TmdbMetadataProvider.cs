@@ -338,6 +338,27 @@ public sealed partial class TmdbMetadataProvider(
         MetadataLookupRequest request,
         CancellationToken cancellationToken)
     {
+        var total = System.Diagnostics.Stopwatch.StartNew();
+        var artwork = new System.Runtime.CompilerServices.StrongBox<long>();
+        SearchArtworkTicks.Value = artwork;
+        try
+        {
+            return await SearchByQueryCoreAsync(request, cancellationToken);
+        }
+        finally
+        {
+            SearchArtworkTicks.Value = null;
+            var artworkMs = (long)System.Diagnostics.Stopwatch.GetElapsedTime(0, artwork.Value).TotalMilliseconds;
+            logger.LogInformation(
+                "Metadata search for {Query} took {TotalMs} ms: {MetadataMs} ms in the metadata service, {ArtworkMs} ms on artwork",
+                request.Query.ForLog(), total.ElapsedMilliseconds, Math.Max(0, total.ElapsedMilliseconds - artworkMs), artworkMs);
+        }
+    }
+
+    private async Task<IReadOnlyList<MetadataSearchResult>> SearchByQueryCoreAsync(
+        MetadataLookupRequest request,
+        CancellationToken cancellationToken)
+    {
         var query = request.Query?.Trim();
         if (string.IsNullOrWhiteSpace(query))
         {
@@ -350,7 +371,7 @@ public sealed partial class TmdbMetadataProvider(
         var cached = await TryReadSearchCacheAsync(cacheKey, cancellationToken);
         if (cached is not null)
         {
-            return await LocalizeArtworkAsync(cached, cancellationToken);
+            return await LocalizeSearchPostersAsync(cached, cancellationToken);
         }
 
         if (config.ProviderMode is "broker" or "hybrid" && !string.IsNullOrWhiteSpace(config.BrokerUrl))
@@ -359,10 +380,9 @@ public sealed partial class TmdbMetadataProvider(
             var brokerResults = await TryBrokerSearchAsync(config.BrokerUrl, mediaType, request, query, cancellationToken);
             if (brokerResults is { Count: > 0 })
             {
-                var localizedBrokerResults = await LocalizeArtworkAsync(brokerResults, cancellationToken);
                 logger.LogDebug("Broker search returned {ResultCount} results for query: {Query}", brokerResults.Count, query.ForLog());
-                await WriteSearchCacheAsync(cacheKey, mediaType, query, localizedBrokerResults, cancellationToken);
-                return localizedBrokerResults;
+                await WriteSearchCacheAsync(cacheKey, mediaType, query, brokerResults, cancellationToken);
+                return await LocalizeSearchPostersAsync(brokerResults, cancellationToken);
             }
 
             if (config.ProviderMode == "broker")
@@ -376,7 +396,7 @@ public sealed partial class TmdbMetadataProvider(
                     var brokerStale = await TryReadStaleCacheAsync(cacheKey, cancellationToken);
                     if (brokerStale is not null)
                     {
-                        return await LocalizeArtworkAsync(brokerStale, cancellationToken);
+                        return await LocalizeSearchPostersAsync(brokerStale, cancellationToken);
                     }
                 }
 
@@ -397,7 +417,7 @@ public sealed partial class TmdbMetadataProvider(
             }
 
             var stale = await TryReadStaleCacheAsync(cacheKey, cancellationToken);
-            return stale is null ? [] : await LocalizeArtworkAsync(stale, cancellationToken);
+            return stale is null ? [] : await LocalizeSearchPostersAsync(stale, cancellationToken);
         }
 
         var live = await SearchDirectAsync(
@@ -411,7 +431,7 @@ public sealed partial class TmdbMetadataProvider(
             cancellationToken);
         if (live.Count > 0)
         {
-            return await LocalizeArtworkAsync(live, cancellationToken);
+            return await LocalizeSearchPostersAsync(live, cancellationToken);
         }
 
         var omdbFallbackAfterTmdb = await SearchOmdbFallbackAsync(request, mediaType, query, config.OmdbApiKey, cancellationToken);
@@ -422,7 +442,7 @@ public sealed partial class TmdbMetadataProvider(
         }
 
         var staleFallback = await TryReadStaleCacheAsync(cacheKey, cancellationToken);
-        return staleFallback is null ? [] : await LocalizeArtworkAsync(staleFallback, cancellationToken);
+        return staleFallback is null ? [] : await LocalizeSearchPostersAsync(staleFallback, cancellationToken);
     }
 
     private async Task<MetadataProviderRecordLookup> ResolveTmdbProviderRecordAsync(
@@ -528,7 +548,7 @@ public sealed partial class TmdbMetadataProvider(
         var cached = await TryReadSearchCacheAsync(cacheKey, cancellationToken);
         if (cached is not null)
         {
-            return await LocalizeArtworkAsync(cached, cancellationToken);
+            return await LocalizeSearchPostersAsync(cached, cancellationToken);
         }
 
         return await SearchDirectAsync(request, apiKey, cacheKey, mediaType, query, language, certificationCountry, cancellationToken);
@@ -593,9 +613,8 @@ public sealed partial class TmdbMetadataProvider(
             results.Add(await ToResultAsync(item, mediaType, apiKey, cancellationToken));
         }
 
-        var localizedResults = await LocalizeArtworkAsync(results, cancellationToken);
-        await WriteSearchCacheAsync(cacheKey, mediaType, query, localizedResults, cancellationToken);
-        return localizedResults;
+        await WriteSearchCacheAsync(cacheKey, mediaType, query, results, cancellationToken);
+        return await LocalizeSearchPostersAsync(results, cancellationToken);
     }
 
     private async Task<IReadOnlyList<MetadataSearchResult>> SearchOmdbFallbackAsync(
@@ -705,7 +724,106 @@ public sealed partial class TmdbMetadataProvider(
             results.Add(fallback);
         }
 
-        return await LocalizeArtworkAsync(results, cancellationToken);
+        return await LocalizeSearchPostersAsync(results, cancellationToken);
+    }
+
+    // ---- Search artwork (#1522) -------------------------------------------
+    // A search answers as soon as the metadata service has: the poster is
+    // saved in the background, and until it is the card keeps the remote
+    // address, which always works. The backdrop is not fetched for a search;
+    // it is saved when the title is added or refreshed by id.
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Task, byte> PendingPosterSaves = new();
+    private static readonly AsyncLocal<System.Runtime.CompilerServices.StrongBox<long>?> SearchArtworkTicks = new();
+
+    /// <summary>Waits for posters being saved in the background (tests and shutdown).</summary>
+    internal static async Task WaitForPosterSavesAsync()
+    {
+        while (!PendingPosterSaves.IsEmpty)
+        {
+            try { await Task.WhenAll(PendingPosterSaves.Keys); }
+            catch (Exception) { /* each save logs its own failure */ }
+        }
+    }
+
+    private async Task<IReadOnlyList<MetadataSearchResult>> LocalizeSearchPostersAsync(
+        IReadOnlyList<MetadataSearchResult> results,
+        CancellationToken cancellationToken)
+    {
+        if (results.Count == 0)
+        {
+            return results;
+        }
+
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        var answer = new MetadataSearchResult[results.Count];
+        var missing = new List<(string MediaType, string Url)>();
+        for (var i = 0; i < results.Count; i++)
+        {
+            var result = results[i];
+            answer[i] = result;
+            if (!Uri.TryCreate(result.PosterUrl, UriKind.Absolute, out var uri) ||
+                (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
+            {
+                continue;
+            }
+
+            var key = ComputeSha256(uri.ToString());
+            if (await FindCachedArtworkFileAsync(key, cancellationToken) is not null)
+            {
+                answer[i] = result with { PosterUrl = $"/api/metadata/artwork/{key}" };
+            }
+            else
+            {
+                missing.Add((result.MediaType, result.PosterUrl!));
+            }
+        }
+
+        if (missing.Count > 0)
+        {
+            StartPosterSaves(missing);
+        }
+
+        if (SearchArtworkTicks.Value is { } box)
+        {
+            box.Value += System.Diagnostics.Stopwatch.GetTimestamp() - started;
+        }
+
+        return answer;
+    }
+
+    private void StartPosterSaves(IReadOnlyList<(string MediaType, string Url)> posters)
+    {
+        // Its own scope: the request that asked for the search may end first.
+        Task? save = null;
+        save = Task.Run(async () =>
+        {
+            try
+            {
+                using var deadline = new CancellationTokenSource(ArtworkSearchDeadline);
+                using var slots = new SemaphoreSlim(ArtworkSearchConcurrency);
+                await Task.WhenAll(posters.Select(async poster =>
+                {
+                    try
+                    {
+                        await slots.WaitAsync(deadline.Token);
+                        try { await CacheArtworkUrlAsync(poster.MediaType, poster.Url, deadline.Token); }
+                        finally { slots.Release(); }
+                    }
+                    catch (OperationCanceledException) { }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex, "Saving a search poster failed for {Url}", poster.Url.ForLog());
+                    }
+                }));
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Saving search posters in the background failed");
+            }
+        });
+        PendingPosterSaves[save] = 0;
+        _ = save.ContinueWith(done => PendingPosterSaves.TryRemove(done, out _), TaskScheduler.Default);
     }
 
     private async Task<IReadOnlyList<MetadataSearchResult>> LocalizeArtworkAsync(

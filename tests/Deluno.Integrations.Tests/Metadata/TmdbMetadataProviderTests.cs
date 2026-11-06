@@ -136,6 +136,12 @@ public sealed class TmdbMetadataProviderTests : IDisposable
             new MetadataLookupRequest("Inception", "movies", 2010, null),
             CancellationToken.None);
 
+        // The answer carries the remote poster; it is saved in the background (#1522) and the next search names Deluno's copy.
+        Assert.Equal("https://img.deluno.test/inception.jpg", Assert.Single(results).PosterUrl);
+        await TmdbMetadataProvider.WaitForPosterSavesAsync();
+        results = await provider.SearchAsync(
+            new MetadataLookupRequest("Inception", "movies", 2010, null),
+            CancellationToken.None);
         var first = Assert.Single(results);
         Assert.Equal("omdb", first.Provider);
         Assert.NotNull(first.PosterUrl);

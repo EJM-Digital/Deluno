@@ -121,8 +121,11 @@ public sealed class ArtworkCacheOnRecordedGatewayTests : IDisposable
     private static async Task SearchAsync(TmdbMetadataProvider provider)
     {
         var result = Assert.Single(await provider.SearchAsync(new MetadataLookupRequest("Sintel", "movies", 2010, null), CancellationToken.None));
-        Assert.Equal($"/api/metadata/artwork/{KeyOf(PosterUrl)}", result.PosterUrl);
-        Assert.Equal($"/api/metadata/artwork/{KeyOf(BackdropUrl)}", result.BackdropUrl);
+        // The answer does not wait for images (#1522): the poster is saved in the background, and the backdrop is saved when the title is added.
+        Assert.Equal(PosterUrl, result.PosterUrl);
+        await TmdbMetadataProvider.WaitForPosterSavesAsync();
+        Assert.Equal($"/api/metadata/artwork/{KeyOf(PosterUrl)}", await provider.CacheArtworkUrlAsync("movies", PosterUrl, CancellationToken.None));
+        Assert.Equal($"/api/metadata/artwork/{KeyOf(BackdropUrl)}", await provider.CacheArtworkUrlAsync("movies", result.BackdropUrl, CancellationToken.None));
     }
 
     [Fact]
@@ -199,9 +202,7 @@ public sealed class ArtworkCacheOnRecordedGatewayTests : IDisposable
         var posterKey = KeyOf(PosterUrl);
         var backdropKey = KeyOf(BackdropUrl);
 
-        // The search just made is still kept for an outage, and its images with it: nothing is deleted while a cached search names them.
-        var kept = await provider.CleanupArtworkCacheAsync(new HashSet<string>(), DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None);
-        Assert.Equal(new ArtworkCacheCleanupResult(2, 0, 0, 2, 0), kept);
+        // A cached search names remote addresses now (#1522), so it pins no saved image; the cache is cleared to keep the test about the library alone.
         await ExecuteAsync(factory, "DELETE FROM search_result_cache;");
 
         // Inside the grace window nothing is old enough, referenced or not.

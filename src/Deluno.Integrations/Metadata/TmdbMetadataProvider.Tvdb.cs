@@ -340,7 +340,7 @@ public sealed partial class TmdbMetadataProvider
 
         merged.AddRange(tmdbResults.Where(result => !used.Contains(result.ProviderId)));
         var ranked = RankSearchResults(request, merged);
-        return await LocalizeArtworkAsync(ranked.Take(MetadataSearchPaging.PageSize).ToArray(), cancellationToken);
+        return await LocalizeSearchPostersAsync(ranked.Take(MetadataSearchPaging.PageSize).ToArray(), cancellationToken);
     }
 
     private static bool IsRealMatch(TvdbSeriesRecord hit, string typed)
