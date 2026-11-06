@@ -249,6 +249,25 @@ describe("resync (#1179)", () => {
     info.mockRestore();
   });
 
+  // #1518: a reconnect whose resume cannot be answered leaves the screens not knowing what they missed: they read once.
+  it("reads once after a reconnect whose resume the hub cannot answer, and not on the first connect", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    hub.failResume = true;
+    const resync = vi.fn();
+    renderHook(() => { useSignalRResync(resync); useSignalREvent("DownloadProgress", "queue", () => {}); }, { wrapper });
+    await waitFor(() => expect(hub.resumes).toBe(1));
+    await Promise.resolve();
+    expect(resync).not.toHaveBeenCalled();
+    await act(async () => {
+      hub.state = "Reconnecting";
+      hub.onreconnecting?.();
+      hub.state = "Connected";
+      hub.onreconnected?.();
+    });
+    await waitFor(() => expect(resync).toHaveBeenCalledTimes(1));
+    info.mockRestore();
+  });
+
   // The screens have been told to read again only if the connection is still up; if it dropped meanwhile, the notice stays.
   it("stays reconnecting when the connection drops again before the resume has answered", async () => {
     hub.answer = "ResyncRequired";

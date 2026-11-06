@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const api = vi.hoisted(() => ({ fetchJson: vi.fn(), fetchPageItems: vi.fn() }));
 vi.mock("../../lib/api", async (importOriginal) => ({ ...(await importOriginal<typeof import("../../lib/api")>()), fetchJson: api.fetchJson, fetchPageItems: api.fetchPageItems }));
 
-const { fetchLiveExtras, liveSources, refreshLiveExtrasNow, refreshSummary, setupNeedsFromCache, setupSources, storedLists, summaryQuery, SUMMARY_KEY, useDashboardSummary, useSetupState } = await import("./sources");
+const { fetchLiveExtras, liveSources, readDashboardAgain, refreshLiveExtrasNow, refreshSummary, setupNeedsFromCache, setupSources, storedLists, summaryQuery, SUMMARY_KEY, useDashboardSummary, useSetupState } = await import("./sources");
 const { queryClient } = await import("../../lib/route-cache");
 const { sharedSources } = await import("../../lib/shared-sources");
 
@@ -54,6 +54,18 @@ describe("the Live extras for the person's own day", () => {
     await fetchLiveExtras();
     expect(api.fetchJson.mock.calls[0][0]).toMatch(/&fresh=true$/);
     expect(api.fetchJson.mock.calls[1][0]).not.toContain("fresh");
+  });
+});
+
+describe("reading the dashboard again after the connection returns (#1518)", () => {
+  it("re-reads every dashboard list once, the Live extras past the server's remembered copy", async () => {
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
+    await readDashboardAgain();
+    expect(invalidate.mock.calls.map((call) => call[0])).toEqual([{ queryKey: ["dashboard"] }, { queryKey: ["src"] }]);
+    invalidate.mockRestore();
+    api.fetchJson.mockResolvedValue({ arrivals: [] });
+    await fetchLiveExtras();
+    expect(api.fetchJson.mock.calls.at(-1)?.[0]).toMatch(/&fresh=true$/);
   });
 });
 

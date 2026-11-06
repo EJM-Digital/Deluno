@@ -23,7 +23,7 @@ import { cn } from "../lib/utils";
 import { LiveTab } from "./dashboard/live-tab";
 import { SystemTab } from "./dashboard/system-tab";
 import type { DashboardSummary } from "../lib/api";
-import { liveSources, refreshLiveExtrasNow, refreshSummary, setupSources, summaryQuery, useDashboardSummary, useSetupState } from "./dashboard/sources";
+import { liveSources, readDashboardAgain, refreshLiveExtrasNow, refreshSummary, setupSources, summaryQuery, useDashboardSummary, useSetupState } from "./dashboard/sources";
 import "./dashboard/phone-wrap.css";
 
 export const DASHBOARD_TABS = ["live", "system"] as const;
@@ -161,7 +161,7 @@ export function DashboardPage() {
     void queryClient.invalidateQueries({ queryKey: ["src", "system-health"], exact: true });
   }, 150);
   useSignalREvent("HealthChanged", RealtimeGroups.Dashboard, readConnectionsAgain);
-  useSignalRResync(() => { void queryClient.invalidateQueries({ queryKey: ["dashboard"] }); void queryClient.invalidateQueries({ queryKey: ["src"] }); });
+  useSignalRResync(() => { void readDashboardAgain(); });
 
   const select = useCallback((next: DashboardTab) => {
     setSearchParams((current) => {

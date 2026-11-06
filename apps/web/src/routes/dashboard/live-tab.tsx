@@ -38,6 +38,7 @@ import { useArrivals, useElementSize, useFreshKeys, useNow, useRemPx, useTitles 
 import { SourcesCard } from "./live/sources-card";
 import { pipelineCards } from "./live/in-progress";
 import { byStage, buildJourney, laneCounts } from "./live/journey";
+import { useJourneyIdentity } from "./live/identity";
 import { useFlyToShelf, useLandingHold } from "./live/motion";
 import { arrivedDetail, arrivedHeading, LATEST_ARRIVALS_HEADING, Shelf } from "./live/shelf";
 import { ActivityStream } from "./live/stream";
@@ -100,7 +101,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   );
   // The titles Deluno is searching for right now are the first station of the journey: one that already has a card further along is that card.
   // A title whose import has just finished stays a moment, full and green, before it leaves for the shelf.
-  const cards = useLandingHold(useMemo(() => pipelineCards(built, extras), [built, extras?.requests, extras?.searching]));
+  const { cards, idents } = useJourneyIdentity(useLandingHold(useMemo(() => pipelineCards(built, extras), [built, extras?.requests, extras?.searching])));
   const grouped = useMemo(() => byStage(cards), [cards]);
   const items = useMemo(() => arrivalItems(extras, cards), [extras, cards]);
   // With nothing in today, the shelf shows the latest of the last seven days instead of an empty box.
@@ -189,7 +190,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
           <Band summary={summary} samples={data.throughput?.samples ?? NO_ROWS} operations={operations} upcoming={upcoming} across={layout.band === "across"} />
         </div>
         <div className="flex min-h-0 min-w-0 flex-col" style={side ? { gridArea: "board" } : undefined}>
-          <Journey fill={side} budget={side ? undefined : stackedJourneyBudget(windowHeight)} grouped={grouped} counts={counts} context={context} hasProcessor={hasProcessor} usual={usual} by={by} lastArrival={lastArrival} />
+          <Journey idents={idents} fill={side} budget={side ? undefined : stackedJourneyBudget(windowHeight)} grouped={grouped} counts={counts} context={context} hasProcessor={hasProcessor} usual={usual} by={by} lastArrival={lastArrival} />
         </div>
         <div className="grid min-h-0 min-w-0 gap-(--grid-gap) md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]" style={side ? { gridArea: "low", gridTemplateColumns: LOW_COLUMNS } : undefined}>
           <Shelf

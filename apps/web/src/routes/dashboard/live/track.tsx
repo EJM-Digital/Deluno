@@ -74,8 +74,11 @@ export function Journey({
   by,
   lastArrival,
   budget,
-  fill = false
+  fill = false,
+  idents: lasting
 }: {
+  /** Each card's lasting element key (its journey's), from the board; without it a card is told apart by its sent download. */
+  idents?: ReadonlyMap<string, string>;
   grouped: Record<Stage, JourneyCard[]>;
   counts: Record<Stage, number>;
   context: CardContext;
@@ -126,7 +129,7 @@ export function Journey({
   // One stable order for every card, so a card that changes station keeps its element and glides instead of being re-made.
   // The order and the element keys are the card's identity (its sent download when it has one), not its list key, which changes as the lists take it over (#1508).
   const onBoard = stations.flatMap((stage) => grouped[stage]);
-  const idents = cardIdents(onBoard);
+  const idents = lasting ?? cardIdents(onBoard);
   const identOf = (card: JourneyCard) => idents.get(card.key) ?? card.key;
   const everyCard = [...onBoard].sort((a, b) => (identOf(a) < identOf(b) ? -1 : identOf(a) > identOf(b) ? 1 : 0));
 

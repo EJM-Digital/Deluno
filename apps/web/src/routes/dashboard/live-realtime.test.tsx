@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryClient } from "../../lib/route-cache";
 import { fullSummary } from "./downloads-fixtures";
 import { LiveTab } from "./live-tab";
+import { readDashboardAgain } from "./sources";
 
 /**
  * #1097: Live is fully live. Each test sends one pushed event the way the server
@@ -207,5 +208,29 @@ describe("Live applies each pushed change with no fetch after it", () => {
     // A processor with a title glows while it has it.
     send("ConnectionUsed", { kind: "processor", id: "p1", name: "Weir", countToday: 7, busy: 1, atUtc: new Date(Date.now() + 6_000).toISOString() });
     expect(await within(group).findByRole("link", { name: "Weir: Processor · working on 1, 7 today" })).toBeInTheDocument();
+  });
+});
+
+describe("after the live connection returns (#1518)", () => {
+  it("reads the lists again in place, past the server's remembered copy, so a title imported while it was down is on the shelf with its poster and nothing remounts", async () => {
+    seed();
+    lists["/api/dashboard/live-extras"] = liveExtras();
+    lists["/api/movies/titles"] = { m2000: { id: "m2000", title: "Final Destination", releaseYear: 2000, posterUrl: "/poster/fd.jpg" } };
+    renderTab();
+    const board = screen.getByRole("region", { name: /^pipeline/i });
+    await within(board).findByText("Metropolis (1927)");
+    await waitFor(() => expect(asked.paths.some((path) => path.includes("/api/dashboard/live-extras"))).toBe(true));
+    const node = board.querySelector(".lj-token");
+    expect(screen.queryByRole("link", { name: /^Final Destination/ })).toBeNull();
+
+    // The import finished while the connection was down: the push was never heard, only a read can show it.
+    lists["/api/dashboard/live-extras"] = { ...liveExtras(), importsToday: 1, arrivals: [{ entityType: "movie", entityId: "m2000", release: "Final.Destination.2000.1080p", quality: "WEB 1080p", previousQuality: null, upgraded: false, sizeBytes: 100, importedUtc: new Date().toISOString() }] };
+    asked.paths.length = 0;
+    await act(async () => { await readDashboardAgain(); });
+
+    const tile = await screen.findByRole("link", { name: /^Final Destination \(2000\): in the library/ });
+    expect(tile.querySelector("img")?.getAttribute("src")).toContain("/poster/fd.jpg");
+    expect(board.querySelector(".lj-token")).toBe(node);
+    expect(asked.paths.filter((path) => path.includes("/api/dashboard/live-extras")).map((path) => path.includes("fresh=true"))).toEqual([true]);
   });
 });
