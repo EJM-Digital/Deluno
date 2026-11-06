@@ -36,7 +36,7 @@ export function FilterChips<T extends string>({
   /**
    * "md" on the header's title line (38px box, 30px options, 13px); "sm" in a card's header (28px box, 22px options,
    * 12px), so a card filter never makes its header taller than the card's title (#1115). "header" is the Dashboard panel
-   * header's: separate pill chips with no box round them, as Weir's (#1461): 24px tall, 12px text, 6px apart, 600 when chosen and 500 otherwise.
+   * header's: separate pill chips with no box round them, as Weir's (#1461): 24px tall, 12px text on a 12px line, 6px apart, 600 when chosen and 500 otherwise.
    */
   size?: "md" | "sm" | "header";
   className?: string;
@@ -70,7 +70,7 @@ export function FilterChips<T extends string>({
             className={cn(
               "inline-flex shrink-0 items-center whitespace-nowrap border transition-colors duration-150 motion-reduce:transition-none",
               header ? (active ? "font-semibold" : "font-medium") : "font-medium",
-              header ? "h-[24px] rounded-full px-[10px] text-(length:--type-caption)" : size === "sm" ? "h-[22px] rounded-[7px] px-[10px] text-(length:--type-caption)" : "h-[30px] rounded-[10px] px-[14px] text-(length:--type-control)",
+              header ? "h-[24px] rounded-full px-[10px] text-(length:--type-caption) leading-[12px]" : size === "sm" ? "h-[22px] rounded-[7px] px-[10px] text-(length:--type-caption)" : "h-[30px] rounded-[10px] px-[14px] text-(length:--type-control)",
               "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
               header
                 ? active ? "border-primary/45 bg-primary/16 text-primary" : "border-hairline text-muted-foreground hover:bg-surface-2 hover:text-foreground"
