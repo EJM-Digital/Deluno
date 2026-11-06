@@ -147,8 +147,6 @@ public static class BlockedReleaseKeys
     public static string ForHash(string torrentHashOrItemId)
         => $"hash|{torrentHashOrItemId.Trim().ToLowerInvariant()}";
 
-    private static readonly string[] VideoExtensions = [".mkv", ".mp4", ".avi", ".m4v", ".ts", ".wmv", ".mov"];
-
     /// <summary>
     /// The name key that survives punctuation (#1521): lower case, every run of non-letters and non-digits read as one
     /// space, and a trailing video extension dropped. The client's file name ("Spider-Man ... BluRay - LoZio - MIRCrew.mkv")
@@ -158,13 +156,9 @@ public static class BlockedReleaseKeys
     public static string ForName(string releaseName)
     {
         var name = releaseName.Trim();
-        foreach (var extension in VideoExtensions)
+        if (VideoFileExtensions.TrailingVideoExtension(name) is { } extension)
         {
-            if (name.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
-            {
-                name = name[..^extension.Length];
-                break;
-            }
+            name = name[..^extension.Length];
         }
 
         var builder = new System.Text.StringBuilder(name.Length);
