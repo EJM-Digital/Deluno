@@ -454,13 +454,14 @@ function Invoke-GroupGapRows {
             # A copy killed part-way is still in its own temporary file beside the staging name (<staging>.deluno-copy-*.tmp); the staging
             # name itself exists only once that copy has been finished and verified. Either one is the half-copied file.
             $halfFiles = {
+                param($staging)
                 $found = @()
                 if (Test-Path -LiteralPath $staging) { $found += Get-Item -LiteralPath $staging -Force }
                 $found += @(Get-ChildItem -LiteralPath (Split-Path $staging -Parent) -Force -File -Filter ((Split-Path $staging -Leaf) + '.deluno-copy-*.tmp') -ErrorAction SilentlyContinue)
                 $found
             }
-            $stagingBefore = [long](@(& $halfFiles) | Measure-Object -Property Length -Sum).Sum
-            if (@(& $halfFiles).Count -eq 0) { $stagingBefore = -1 }
+            $stagingBefore = [long](@(& $halfFiles $staging) | Measure-Object -Property Length -Sum).Sum
+            if (@(& $halfFiles $staging).Count -eq 0) { $stagingBefore = -1 }
             Add-Check 'The half-copied file is on disk beside it' ($stagingBefore -ge 0) $staging
 
             # Another program (this runner, a different process from Deluno) opens the mark and keeps it open, as a media server, an antivirus scan or a sync client does.
@@ -470,8 +471,8 @@ function Invoke-GroupGapRows {
             if (-not $up) { return }
             Start-Sleep -Seconds 90 # reason: recovery runs at start and again every pass; this is several passes, bounded so a mark held for good is seen to be left alone
             Add-Check 'The mark is still there (it was not taken for a damaged one and deleted)' (Test-Path -LiteralPath $marker.FullName) ''
-            $stagingNow = [long](@(& $halfFiles) | Measure-Object -Property Length -Sum).Sum
-            if (@(& $halfFiles).Count -eq 0) { $stagingNow = -1 }
+            $stagingNow = [long](@(& $halfFiles $staging) | Measure-Object -Property Length -Sum).Sum
+            if (@(& $halfFiles $staging).Count -eq 0) { $stagingNow = -1 }
             Add-Check 'The half-copied file was never deleted, the only copy of a move import' ($stagingNow -eq $stagingBefore) "was $stagingBefore bytes, now $stagingNow"
             Add-Check 'The source film is whole' ((Test-Path -LiteralPath $src) -and (Get-Item -LiteralPath $src).Length -eq $size) ''
             $damaged = @(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($title) -and $_ -match '(?i)damaged|unreadable|corrupt' })

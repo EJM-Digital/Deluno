@@ -115,8 +115,8 @@ function Invoke-GroupMachine {
         Add-Check 'A pending reboot is reported as Windows has it (or "cannot say")' ($null -eq $m.rebootPending -or [bool]$m.rebootPending -eq $pending) "Windows $pending, Deluno $($m.rebootPending)"
         $temp = $m.cpuTemperatureC
         Add-Check 'The temperature is a believable number or absent (never a made-up zero)' ($null -eq $temp -or ($temp -gt 10 -and $temp -lt 120)) "$(if ($null -eq $temp) { 'absent: this machine has no sensor' } else { "$temp C" })"
-        $findC = { @($o.Data.drives | Where-Object { "$($_.path)" -match '^[Cc]:' -or "$($_.name)" -match '^[Cc]:' }) | Select-Object -First 1 }
-        $c = & $findC
+        $findC = { param($overview) @($overview.Data.drives | Where-Object { "$($_.path)" -match '^[Cc]:' -or "$($_.name)" -match '^[Cc]:' }) | Select-Object -First 1 }
+        $c = & $findC $o
         $cReal = New-Object System.IO.DriveInfo('C')
         Add-Check 'The drive that holds Deluno is listed with its real size (within 1%)' ($c -and [math]::Abs($c.totalBytes - $cReal.TotalSize) -le ($cReal.TotalSize * 0.01)) $(if ($c) { "Windows {0:N1} GB, Deluno {1:N1} GB" -f ($cReal.TotalSize / 1GB), ($c.totalBytes / 1GB) } else { 'no C: in ' + (($o.Data.drives | ForEach-Object { "$($_.path)" }) -join ', ') })
         # Deluno keeps a drive's reading for up to about 90 seconds (the drive list 30 s, the volume sweep 60 s), and earlier scenarios free
@@ -124,13 +124,12 @@ function Invoke-GroupMachine {
         $caughtUp = Wait-Until -TimeoutSec 150 -IntervalSec 5 -Condition {
             $again = Try-Deluno -Path '/api/system/overview'
             if ($again.Status -ne 200) { return $null }
-            $o = $again
-            $c = & $findC
+            $c = & $findC $again
             $cReal = New-Object System.IO.DriveInfo('C')
             if ($c -and [math]::Abs($c.freeBytes - $cReal.AvailableFreeSpace) -le ($cReal.TotalSize * 0.01)) { $true } else { $null }
         }
         $o = Try-Deluno -Path '/api/system/overview'
-        $c = & $findC
+        $c = & $findC $o
         $cReal = New-Object System.IO.DriveInfo('C')
         Add-Check 'Its free space is the real free space (within 1% of the drive)' ($c -and [math]::Abs($c.freeBytes - $cReal.AvailableFreeSpace) -le ($cReal.TotalSize * 0.01)) $(if ($c) { "Windows {0:N1} GB, Deluno {1:N1} GB" -f ($cReal.AvailableFreeSpace / 1GB), ($c.freeBytes / 1GB) } else { '' })
         $disk = $null
