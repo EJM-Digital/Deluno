@@ -94,10 +94,10 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   }, [data.dispatches, data.boardDispatches]);
   const extras = data.liveExtras ?? undefined;
   const built = useMemo(
-    () => buildJourney({ queue, handoffs: data.handoffs ?? NO_ROWS, dispatches, live: liveProgress, summary, now: Date.now(), queueCapturedUtc: data.telemetry?.capturedUtc, work }),
+    () => buildJourney({ queue, handoffs: data.handoffs ?? NO_ROWS, dispatches, live: liveProgress, summary, now: Date.now(), queueCapturedUtc: data.telemetry?.capturedUtc, work, libraries: data.libraries }),
     // `now` moves the clock-dependent parts (today, recent) along once a minute.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [queue, data.handoffs, dispatches, liveProgress, summary, data.telemetry?.capturedUtc, work, now]
+    [queue, data.handoffs, dispatches, liveProgress, summary, data.telemetry?.capturedUtc, work, data.libraries, now]
   );
   // The titles Deluno is searching for right now are the first station of the journey: one that already has a card further along is that card.
   // A title whose import has just finished stays a moment, full and green, before it leaves for the shelf.

@@ -14,6 +14,7 @@
  * only its quiet second line.
  */
 import type { DownloadDispatchItem, DownloadQueueItem, ProcessorHandoffItem } from "../../../lib/api";
+import type { LibraryItem } from "../../../lib/api/types/resources";
 import type { DashboardSummary } from "../../../lib/api/types/operations";
 import { dispatchImportEnded, dispatchStanding } from "../../../lib/dispatch-final-state";
 import { clientQueueNote, isHeldInClientQueue, stuckNextStep, waitingWords } from "../../../lib/download-wait";
@@ -88,7 +89,8 @@ export interface JourneyCard {
   /** The processor's own place in its line for this file, when it says. */
   processorQueuePosition?: number | null;
   /** Where the import is putting it. */
-  destination?: "Movies" | "TV Shows";
+  /** The real library's own name; absent when the library is not known (the line then says "the library"). */
+  destination?: string;
   /** The import has just finished: the card is held for a moment at 100%, green, before it leaves for the library. */
   landed?: boolean;
   /** Where to act on it when its title is not known. */
@@ -204,6 +206,8 @@ export interface JourneyInput {
   queueCapturedUtc?: string;
   /** A grab on its way to a client or an import under way, from the events that start and end them. */
   work?: WorkItem[];
+  /** The libraries, so a card names the one it is going into (#1517). */
+  libraries?: LibraryItem[];
 }
 
 /** How long a sent release may wait for its client to list it before the board stops drawing it from the record alone. */
@@ -254,12 +258,11 @@ export function finishAt(item: Pick<DownloadQueueItem, "etaSeconds" | "sizeBytes
 /** How long a card whose import has just finished stays on the board as "Imported", before it flies to the library. */
 export const LANDED_MS = 4000;
 
-/** Which library a title is going into, from what is known: the title's kind first, then the way the download was filed. */
-export function destinationOf(entity: JourneyCard["entity"], mediaType: string | null | undefined): JourneyCard["destination"] {
-  if (entity) return entity.kind === "movie" ? "Movies" : "TV Shows";
-  const said = (mediaType ?? "").toLowerCase();
-  if (!said) return undefined;
-  return /tv|series|show|episode/.test(said) ? "TV Shows" : "Movies";
+/** The name of the library a download is going into, from its library id; never guessed, absent when the library is not known. */
+export function destinationOf(libraries: ReadonlyArray<Pick<LibraryItem, "id" | "name">> | undefined, libraryId: string | null | undefined): JourneyCard["destination"] {
+  if (!libraryId) return undefined;
+  const name = libraries?.find((library) => library.id === libraryId)?.name?.trim();
+  return name || undefined;
 }
 
 /** What a card in Importing says while its import is actually running (a finished download waiting its turn says "Downloaded"). */
@@ -274,7 +277,7 @@ function dispatchClosed(dispatch: DownloadDispatchItem | null | undefined): bool
 }
 
 /** Every card on the Live board, grouped by the caller with `byStage`. */
-export function buildJourney({ queue, handoffs, dispatches, live, summary, now, queueCapturedUtc, work = [] }: JourneyInput): JourneyCard[] {
+export function buildJourney({ queue, handoffs, dispatches, live, summary, now, queueCapturedUtc, work = [], libraries }: JourneyInput): JourneyCard[] {
   const cards: JourneyCard[] = [];
   const dispatchByRelease = new Map<string, DownloadDispatchItem>();
   const dispatchByClientItem = new Map<string, DownloadDispatchItem>();
@@ -418,7 +421,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
       handedOverUtc: handoff?.createdUtc ?? null,
       processorStep: handoff?.processor?.message?.trim() || null,
       processorQueuePosition: handoff?.processor?.queuePosition ?? null,
-      destination: destinationOf(entity, dispatch?.mediaType ?? item.mediaType),
+      destination: destinationOf(libraries, dispatch?.libraryId ?? handoff?.libraryId ?? item.libraryId),
       landed: landed || undefined,
       speedMbps: item.speedMbps,
       etaSeconds: item.etaSeconds ?? undefined,
@@ -460,7 +463,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
       handedOverUtc: handoff.createdUtc,
       processorStep: handoff.processor?.message?.trim() || null,
       processorQueuePosition: handoff.processor?.queuePosition ?? null,
-      destination: destinationOf(entity, handoff.mediaType),
+      destination: destinationOf(libraries, dispatch?.libraryId ?? handoff.libraryId),
       at: handoff.updatedUtc,
       to: "/queue"
     });
@@ -491,7 +494,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
       quality: dispatch.decisionQuality ?? null,
       indexer: dispatch.indexerName || null,
       client,
-      destination: destinationOf(entity, dispatch.mediaType),
+      destination: destinationOf(libraries, dispatch.libraryId),
       at: dispatch.grabAttemptedUtc ?? dispatch.createdUtc,
       to: cardLink(entity)
     });
@@ -516,7 +519,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
       quality: dispatch?.decisionQuality ?? null,
       indexer: dispatch?.indexerName ?? null,
       client: short(item.client ?? dispatch?.downloadClientName),
-      destination: destinationOf(entity, dispatch?.mediaType),
+      destination: destinationOf(libraries, dispatch?.libraryId),
       to: item.to
     });
   }

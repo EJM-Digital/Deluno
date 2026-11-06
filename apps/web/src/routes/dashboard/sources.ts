@@ -111,7 +111,8 @@ export const storedLists = defineSources({
   telemetry: sharedSources.telemetry,
   handoffs: sharedSources.handoffs,
   dispatches: sharedSources.dispatches,
-  indexers: sharedSources.indexers
+  indexers: sharedSources.indexers,
+  libraries: sharedSources.libraries
 });
 
 /** What only the Now tab reads beyond the summary and the download queue. */
