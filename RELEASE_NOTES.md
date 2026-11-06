@@ -9,6 +9,12 @@ developer: say what changed in everyday words, not internal file or class
 names. `npm run ci:check` warns (does not fail) when the version currently
 being built has no section here yet.
 
+## Unreleased
+
+Fixed:
+- A password typed for the Windows service no longer reaches the log: the start-up line in `install-hook.log` shows it as `***`. If you chose to run Deluno as a Windows service under a named account with a version before this one, that account's password may be in `install-hook.log`, in the `Deluno\logs` folder under your Windows user's local application data. Existing logs are not rewritten, so delete or edit that file if you want the password gone, and change the account's password if others can read that folder.
+- Installing, starting and stopping the Windows service no longer leaves stray network-connection and event-log errors in `install-hook.log`.
+
 ## 1.0.0-rc.30.37
 
 Deluno is early. It is still being tested hard and it is not finished. Expect

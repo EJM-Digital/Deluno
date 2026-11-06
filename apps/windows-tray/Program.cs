@@ -40,7 +40,7 @@ internal static class Program
         // WinForms, ASP.NET, EF or any Deluno.* assembly.
         AppDomain.CurrentDomain.UnhandledException += HookUnhandledException;
         TaskScheduler.UnobservedTaskException += (_, e) => HookLog.Write($"unobserved task exception: {e.Exception}");
-        HookLog.Write($"Main starting: args=[{string.Join(' ', args)}].");
+        HookLog.Write($"Main starting: args=[{CommandLineRedaction.ForLog(args)}].");
         HookLog.Write($"Standard handles at start: {standardHandles}.");
 
         // The install and update hooks do almost nothing here (the first-run steps run on the first start of a true first
