@@ -3,6 +3,9 @@
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Deluno.Platform.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Deluno.Contracts\Deluno.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>
