@@ -8,7 +8,7 @@
  *
  * Posters are sized from the row's own height, exactly 2:3, and only whole posters are drawn. A title that has just been
  * imported flies in from the journey (see `useFlyToShelf`) when the chip shown includes its library, and simply appears
- * with reduced motion. With nothing in today, the shelf shows the latest of the last seven days.
+ * with reduced motion. The shelf lists the latest finished titles, newest first, up to twelve and with no time cutoff (#1531).
  */
 import { useLayoutEffect, useMemo, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -32,7 +32,7 @@ import { TILE_KEY_ATTRIBUTE, useSlideNeighbours, useTileArrivals } from "./shelf
 import type { TitleLookup } from "./titles";
 import { plural } from "../../../lib/plural";
 
-/** The header when nothing has come in today and the shelf shows the latest of the last seven days. */
+/** The header when nothing has come in today: the shelf still shows the latest arrivals. */
 export const LATEST_ARRIVALS_HEADING = "Nothing yet today · latest arrivals";
 
 /** What the shelf calls when a title arrived: "12 min ago" today, then "yesterday", "3 days ago" by calendar day. */
@@ -64,6 +64,9 @@ export function arrivedDetail(titles: number, upgraded: number, bytes: number): 
  */
 export const LIBRARY_HUES = [205, 265, 320, 188, 232, 290] as const;
 export const libraryHue = (position: number): number => LIBRARY_HUES[Math.max(0, position) % LIBRARY_HUES.length];
+
+/** The most titles the shelf lists, as Weir's Just finished does. */
+export const SHELF_CAP = 12;
 
 /** The chosen chip is remembered per browser. */
 export const SHELF_LIBRARY_KEY = "deluno.live.shelfLibrary";
@@ -143,7 +146,7 @@ function Poster({ group, isNew, caption, tag, small, width, measure }: { group: 
   );
 }
 
-export function Shelf({ items, titles, newest, heading, detail, latest = false, library }: {
+export function Shelf({ items, titles, newest, heading, detail, library }: {
   items: ArrivalItem[];
   titles: TitleLookup;
   /** Keys that have just arrived: the newest has the ring. */
@@ -152,8 +155,6 @@ export function Shelf({ items, titles, newest, heading, detail, latest = false, 
   heading: string;
   /** What the heading adds up to, said on hover. */
   detail?: string;
-  /** The items are the latest of the last seven days, not today's. */
-  latest?: boolean;
   /** The library's own counts: for each kind of title, and for each library. */
   library?: DashboardLibrarySection | null;
 }) {
@@ -167,7 +168,7 @@ export function Shelf({ items, titles, newest, heading, detail, latest = false, 
     rememberChoice(value);
   };
   const names = useMemo(() => new Map(libraries.map((entry) => [entry.libraryId, entry.libraryName])), [libraries]);
-  const shown = chosen ? groups.filter((group) => group.libraryId === chosen.libraryId) : groups;
+  const shown = (chosen ? groups.filter((group) => group.libraryId === chosen.libraryId) : groups).slice(0, SHELF_CAP);
 
   const [boxRef, box] = useElementSize<HTMLUListElement>();
   // The poster size comes from the row's own measured box, so nothing shifts after paint.
@@ -203,7 +204,7 @@ export function Shelf({ items, titles, newest, heading, detail, latest = false, 
   return (
     <Panel title="Your library" count={headingNode} controls={chips} description={chips ? (detail ? `${heading}: ${detail}` : heading) : undefined} to="/movies" toLabel="Library" className="lsh">
       <ul ref={boxRef} className="lsh-posters" style={rowStyle}>
-        {inRow.length === 0 ? <li className="lsh-empty">{latest ? "Nothing in the last seven days." : "Nothing has arrived yet today."}</li> : inRow.map((group) => {
+        {inRow.length === 0 ? <li className="lsh-empty">Nothing has arrived yet.</li> : inRow.map((group) => {
           const id = group.libraryId;
           const name = id ? names.get(id) ?? group.libraryName : null;
           const position = libraries.findIndex((entry) => entry.libraryId === id);

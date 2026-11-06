@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DashboardLiveExtras, LiveArrivalItem, LiveRequestItem } from "../../../lib/api/types/operations";
 import type { JourneyCard } from "./journey";
-import { arrivalItems, recentArrivalItems, searchingCards, withSeerr } from "./extras";
+import { arrivalItems, recentArrivalItems, searchingCards, shelfArrivalItems, withSeerr } from "./extras";
 
 type Search = NonNullable<DashboardLiveExtras["searching"]>[number];
 const search = (overrides: Partial<Search> = {}): Search => ({ entityType: "movie", entityId: "m1", title: "Dune", startedBy: "manual", label: "Searching", startedUtc: "2026-11-04T10:00:00Z", ...overrides });
@@ -160,5 +160,33 @@ describe("an arrival's key does not depend on the time of the import (#1508)", (
     const both = keysOf([row("2026-11-04T11:00:00Z"), row("2026-11-04T09:00:00Z")]);
     expect(both[1]).toBe(older);
     expect(new Set(both).size).toBe(2);
+  });
+});
+
+describe("what the shelf lists (#1531)", () => {
+  const at = (day: number) => `2026-11-0${day}T10:00:00Z`;
+  const extrasOf = (arrivals: LiveArrivalItem[], recentArrivals: LiveArrivalItem[]) => ({ arrivals, recentArrivals, requests: [] }) as unknown as DashboardLiveExtras;
+
+  it("keeps yesterday's titles beside the one that arrived today, newest first", () => {
+    const today = arrival({ entityId: "t", importedUtc: at(5) });
+    const older = [1, 2, 3, 4, 5].map((n) => arrival({ entityId: `y${n}`, importedUtc: `2026-11-04T0${n}:00:00Z` }));
+    const extras = extrasOf([today], [today, ...older.reverse()]);
+    const items = shelfArrivalItems(extras, arrivalItems(extras, []));
+    expect(items).toHaveLength(6);
+    expect(items.map((i) => i.to ?? i.key).length).toBe(6);
+    expect(items.map((i) => i.at)).toEqual([...items.map((i) => i.at)].sort().reverse());
+    expect(items[0].at).toBe(at(5));
+  });
+
+  it("shows the latest titles when nothing has arrived for a month", () => {
+    const extras = extrasOf([], [arrival({ entityId: "a", importedUtc: "2026-10-01T10:00:00Z" }), arrival({ entityId: "b", importedUtc: "2026-09-01T10:00:00Z" })]);
+    expect(shelfArrivalItems(extras, [])).toHaveLength(2);
+  });
+
+  it("falls back to today's own list when the server sends no recent ones", () => {
+    const extras = { arrivals: [arrival()], requests: [] } as unknown as DashboardLiveExtras;
+    const today = arrivalItems(extras, []);
+    expect(shelfArrivalItems(extras, today)).toEqual(today);
+    expect(shelfArrivalItems(undefined, today)).toEqual(today);
   });
 });

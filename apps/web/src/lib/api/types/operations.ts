@@ -816,7 +816,7 @@ export interface DashboardLiveExtras {
   cleanedUpToday?: number;
   /** Processors, media servers, Seerr, subtitle providers and import lists (#1098). */
   connections?: LiveConnection[] | null;
-  /** The newest imports of the last seven days (at most thirty, newest first), for the shelf when nothing has arrived today (#1098). */
+  /** The newest imports however long ago (at most thirty, newest first), for the shelf (#1098, #1531). */
   recentArrivals?: LiveArrivalItem[] | null;
   /** Every title Deluno is searching for right now (#1442). */
   searching?: Array<{ entityType: string; entityId: string; title: string; startedBy: string; label: string; startedUtc: string }> | null;

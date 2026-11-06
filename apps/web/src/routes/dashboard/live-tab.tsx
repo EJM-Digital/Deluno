@@ -33,7 +33,7 @@ import { authedFetch } from "../../lib/use-auth";
 import { useLiveActivity, useLiveProgress, useWorkingNow } from "./live-events";
 import { Band, buildOperations } from "./live/band";
 import { type CardContext } from "./live/card";
-import { arrivalItems, recentArrivalItems } from "./live/extras";
+import { arrivalItems, shelfArrivalItems } from "./live/extras";
 import { useArrivals, useElementSize, useFreshKeys, useNow, useRemPx, useTitles } from "./live/hooks";
 import { SourcesCard } from "./live/sources-card";
 import { pipelineCards } from "./live/in-progress";
@@ -104,10 +104,9 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   const { cards, idents } = useJourneyIdentity(useLandingHold(useMemo(() => pipelineCards(built, extras), [built, extras?.requests, extras?.searching])));
   const grouped = useMemo(() => byStage(cards), [cards]);
   const items = useMemo(() => arrivalItems(extras, cards), [extras, cards]);
-  // With nothing in today, the shelf shows the latest of the last seven days instead of an empty box.
-  const recent = useMemo(() => recentArrivalItems(extras), [extras]);
-  const showingLatest = items.length === 0 && recent.length > 0;
-  const shelfItems = showingLatest ? recent : items;
+  // The shelf shows the latest finished titles, however long ago, so one arrival today never hides yesterday's (#1531).
+  const shelfItems = useMemo(() => shelfArrivalItems(extras, items), [extras, items]);
+  const arrivedToday = Math.max(items.length, extras?.importsToday ?? 0);
   const counts = useMemo(() => laneCounts(grouped, summary), [grouped, summary]);
   // Titles are asked for in one request: the cards' and the activity's.
   const extraEntities = useMemo<Array<Entity | undefined>>(
@@ -198,9 +197,8 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
             titles={titles}
             newest={newestArrivals}
             library={summary?.library}
-            latest={showingLatest}
-            heading={showingLatest ? LATEST_ARRIVALS_HEADING : arrivedHeading(Math.max(items.length, extras?.importsToday ?? 0))}
-            detail={showingLatest ? undefined : arrivedDetail(Math.max(items.length, extras?.importsToday ?? 0), upgraded, extras?.importedBytesToday ?? 0)}
+            heading={arrivedToday > 0 ? arrivedHeading(arrivedToday) : LATEST_ARRIVALS_HEADING}
+            detail={arrivedToday > 0 ? arrivedDetail(arrivedToday, upgraded, extras?.importedBytesToday ?? 0) : undefined}
           />
           <div className={cn("flex min-h-0 min-w-0 flex-col", !side && "h-104")}>
             <ActivityStream rows={latest} titles={titles} dense={compactActivity} />

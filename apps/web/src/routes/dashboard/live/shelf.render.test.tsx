@@ -233,12 +233,15 @@ describe("how many posters the row holds", () => {
     expect(document.querySelectorAll(".lsh-poster")).toHaveLength(12);
   });
 
-  it("says nothing has arrived, or nothing in the last seven days", () => {
+  it("says nothing has arrived only when the library has never had an arrival", () => {
     show([]);
-    expect(screen.getByText("Nothing has arrived yet today.")).toBeInTheDocument();
-    cleanup();
-    show([], { latest: true });
-    expect(screen.getByText("Nothing in the last seven days.")).toBeInTheDocument();
+    expect(screen.getByText("Nothing has arrived yet.")).toBeInTheDocument();
+  });
+
+  it("never shows more than twelve titles, however wide the row (#1531)", () => {
+    box = { width: 4000, height: 330 };
+    show(many(20));
+    expect(document.querySelectorAll(".lsh-poster")).toHaveLength(12);
   });
 
   it("tells the row's motion which posters are in it and how wide they are, and the arrivals which are on the shelf", () => {

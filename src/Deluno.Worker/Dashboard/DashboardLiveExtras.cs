@@ -89,8 +89,8 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
     public async Task<DashboardLiveExtras> GetAsync(DateTimeOffset now, DateTimeOffset sinceUtc, CancellationToken cancellationToken)
     {
         var imports = await WithLibrariesAsync(await ReadImportsAsync(sinceUtc, 500, cancellationToken), cancellationToken);
-        // The shelf shows the latest arrivals when nothing has come in today: the newest thirty of the last seven days.
-        var recent = await WithLibrariesAsync(await ReadImportsAsync(now.AddDays(-7), 30, cancellationToken), cancellationToken);
+        // The shelf shows the latest arrivals however long ago (#1531): the newest thirty, with no time cutoff.
+        var recent = await WithLibrariesAsync(await ReadImportsAsync(DateTimeOffset.MinValue, 30, cancellationToken), cancellationToken);
         var protectedYou = await ReadProtectedAsync(sinceUtc, cancellationToken);
         var requests = await ReadRequestsAsync(now.AddDays(-7), cancellationToken);
         var reclaim = await ReadReclaimBytesAsync(cancellationToken);

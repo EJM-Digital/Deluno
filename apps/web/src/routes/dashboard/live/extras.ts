@@ -128,7 +128,7 @@ function toArrivalItem(arrival: LiveArrivalItem, key: string, asked: ReadonlyMap
   };
 }
 
-/** The newest arrivals of the last seven days, for the shelf when nothing has arrived today. Empty when the server does not send them. */
+/** The newest arrivals however long ago (#1531), for the shelf. Empty when the server does not send them. */
 export function recentArrivalItems(extras: DashboardLiveExtras | null | undefined): ArrivalItem[] {
   if (!extras?.recentArrivals) return [];
   const asked = new Map(extras.requests?.map((request) => [request.entityId, request.requestedBy]));
@@ -146,4 +146,10 @@ export function arrivalItems(extras: DashboardLiveExtras | null | undefined, car
   return cards
     .filter((card) => card.stage === "imported")
     .map((card) => ({ key: card.key, entity: card.entity, fallbackTitle: card.title, release: card.release ?? null, quality: card.quality ?? null, previousQuality: null, upgraded: false, sizeBytes: card.sizeBytes ?? null, at: card.at ?? "", libraryId: null, libraryName: null, requestedBy: null, to: card.to }));
+}
+
+/** What the shelf lists (#1531): the newest finished titles with no time cutoff, today's among them; today's own list when the server sends no recent ones. */
+export function shelfArrivalItems(extras: DashboardLiveExtras | null | undefined, today: ArrivalItem[]): ArrivalItem[] {
+  const recent = recentArrivalItems(extras);
+  return recent.length > 0 ? recent : today;
 }

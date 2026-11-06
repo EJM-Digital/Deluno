@@ -34,20 +34,14 @@ describe("Live top band: Speed and Working on now", () => {
 });
 
 describe("Live your library shelf", () => {
-  const shelf = (latest: boolean) => (
+  const shelf = () => (
     <MemoryRouter>
-      <Shelf items={[]} titles={NO_TITLES} newest={new Set()} heading="Nothing yet today" latest={latest} />
+      <Shelf items={[]} titles={NO_TITLES} newest={new Set()} heading="Nothing yet today" />
     </MemoryRouter>
   );
 
-  it("says \"Nothing in the last seven days.\" when the shelf shows the latest arrivals and there are none", () => {
-    render(shelf(true));
-    expect(screen.getByText("Nothing in the last seven days.")).toBeInTheDocument();
-    expect(screen.queryByText("Nothing has arrived yet today.")).toBeNull();
-  });
-
   it("sends the shelf header's Library link to the movies library", () => {
-    render(shelf(false));
+    render(shelf());
     const region = screen.getByRole("region", { name: "Your library" });
     const link = within(region).getByRole("link", { name: /^Library:/ });
     expect(link).toHaveAttribute("href", "/movies");

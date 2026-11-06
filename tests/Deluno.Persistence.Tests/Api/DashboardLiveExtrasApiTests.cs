@@ -87,7 +87,7 @@ public sealed class DashboardLiveExtrasApiTests
     }
 
     [Fact]
-    public async Task Recent_arrivals_are_the_newest_imports_of_the_last_seven_days_when_nothing_came_in_today()
+    public async Task Recent_arrivals_are_the_newest_imports_however_long_ago_with_no_time_cutoff()
     {
         await using var app = await ApplicationTestHost.StartAsync();
         var databases = app.Services.GetRequiredService<IDelunoDatabaseConnectionFactory>();
@@ -107,10 +107,11 @@ public sealed class DashboardLiveExtrasApiTests
 
         Assert.Equal(0, live.GetProperty("arrivals").GetArrayLength());
         var recent = live.GetProperty("recentArrivals");
-        Assert.Equal(2, recent.GetArrayLength());
+        Assert.Equal(3, recent.GetArrayLength());
         Assert.Equal("m1", recent[0].GetProperty("entityId").GetString());
         Assert.Equal("Bluray 1080p", recent[0].GetProperty("quality").GetString());
         Assert.Equal("m2", recent[1].GetProperty("entityId").GetString());
+        Assert.Equal("m3", recent[2].GetProperty("entityId").GetString());
     }
 
     [Fact]

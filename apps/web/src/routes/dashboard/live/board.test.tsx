@@ -686,7 +686,7 @@ describe("arrived today", () => {
 
   it("says something true when nothing has arrived", () => {
     withRouter(<Shelf items={[]} titles={NO_TITLES} newest={new Set()} heading="0 arrived today" />);
-    expect(screen.getAllByText("Nothing has arrived yet today.")).toHaveLength(1);
+    expect(screen.getAllByText("Nothing has arrived yet.")).toHaveLength(1);
   });
 });
 
