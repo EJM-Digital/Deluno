@@ -1709,6 +1709,9 @@ public sealed class WorkPlanner(
         var subjectId = entityId ?? item.Id;
         var earlier = (await activityFeedRepository.ListActivityAsync(30, subjectType, subjectId, cancellationToken))
             .Where(activity => activity.Category == DownloadIntegrityFailedCategory
+                // The same torrent grabbed again has the same id; a report from before this one was added to the
+                // client belongs to an earlier acquisition and does not stand in for it (#1519).
+                && (item.AddedUtc <= DateTimeOffset.UnixEpoch || activity.CreatedUtc >= item.AddedUtc)
                 && activity.DetailsJson is { Length: > 0 } details
                 && details.Contains(item.Id, StringComparison.Ordinal))
             .OrderByDescending(activity => activity.CreatedUtc)

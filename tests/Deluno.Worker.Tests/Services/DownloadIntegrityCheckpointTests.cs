@@ -141,6 +141,30 @@ public sealed class DownloadIntegrityCheckpointTests : IDisposable
     }
 
     /// <summary>#1148: the same failed download, seen again on a later pass, is not written to Activity again.</summary>
+    /// <summary>
+    /// #1519, from the rig's own databases: Spider-Man: Homecoming (hash 50f2...) failed this check on 5 Nov and was
+    /// removed. Grabbed again on 6 Nov, the same torrent has the same id, so the old report matched it, the new failure
+    /// was taken as already said, and the download sat in the client with nothing written for ever.
+    /// </summary>
+    [Fact]
+    public async Task The_same_torrent_grabbed_again_after_an_earlier_failure_is_checked_and_reported_afresh()
+    {
+        var scheduler = new Mock<IJobScheduler>();
+        var telemetry = Telemetry(out _, addedUtc: DateTimeOffset.UtcNow.AddHours(-2));
+        var blocked = new Mock<IBlockedReleaseRepository>();
+        var activity = Activity();
+        activity.Setup(instance => instance.ListActivityAsync(It.IsAny<int>(), "movie", "movie-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new ActivityEventItem(
+                "event-1", WorkPlanner.DownloadIntegrityFailedCategory, "yesterday", "{\"itemId\":\"queue-1\",\"removedFromClient\":true}",
+                null, "movie", "movie-1", DateTimeOffset.UtcNow.AddHours(-20))]);
+
+        await Run(scheduler, telemetry, blocked, checkEnabled: true, probe: Probe.Failed(), activity: activity);
+
+        activity.Verify(instance => instance.RecordActivityAsync(
+            WorkPlanner.DownloadIntegrityFailedCategory, It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+        blocked.Verify(instance => instance.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     [Fact]
     public async Task A_failure_already_reported_for_this_download_is_not_written_again()
     {
@@ -404,22 +428,22 @@ processorRepository
         return activity;
     }
 
-    private Mock<IDownloadClientTelemetryService> Telemetry(out string file)
+    private Mock<IDownloadClientTelemetryService> Telemetry(out string file, DateTimeOffset? addedUtc = null)
     {
         file = Path.Combine(_root, "Downloads", ReleaseName, ReleaseName + ".mkv");
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
         File.WriteAllText(file, "finished download");
         File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddHours(-1));
-        return TelemetryWithSource(file);
+        return TelemetryWithSource(file, addedUtc);
     }
 
-    private static Mock<IDownloadClientTelemetryService> TelemetryWithSource(string sourcePath)
+    private static Mock<IDownloadClientTelemetryService> TelemetryWithSource(string sourcePath, DateTimeOffset? addedUtc = null)
     {
         var summary = new DownloadTelemetrySummary(0, 0, 0, 0, 0, 0, 0);
         var item = new DownloadQueueItem(
             "queue-1", "client-1", "qBittorrent", "qbittorrent", "movies", "Sintel", ReleaseName,
             "deluno-movies", DownloadQueueStatuses.Completed, 1, 0, 0, 100, 100, 0, "Indexer", null,
-            DateTimeOffset.UnixEpoch, sourcePath, "library-1");
+            addedUtc ?? DateTimeOffset.UnixEpoch, sourcePath, "library-1");
         var overview = new DownloadTelemetryOverview(
             summary,
             [new DownloadClientTelemetrySnapshot(
