@@ -135,7 +135,8 @@ export function compare(thresholds, scores) {
 export function compareFloors(before, after) {
   const failures = [];
   const lowered = after?.lowered ?? {};
-  const has = (name) => typeof lowered[name] === "string" && lowered[name].trim().length >= 20;
+  // A reason excuses a drop only when this change wrote it: an entry already at the base excuses nothing.
+  const has = (name) => typeof lowered[name] === "string" && lowered[name].trim().length >= 20 && lowered[name] !== before?.lowered?.[name];
   for (const [name, t] of Object.entries(before?.projects ?? {})) {
     const now = after?.projects?.[name];
     if (!now) {
@@ -155,7 +156,9 @@ export function update(thresholds, scores) {
     projects[name] = { score: Math.max(floor2(now), projects[name]?.score ?? 0) };
   }
   const sorted = Object.fromEntries(Object.keys(projects).sort().map((k) => [k, projects[k]]));
-  return { ...thresholds, version: 1, projects: sorted };
+  // A raise ends any earlier reason for a lowered floor; `lowered` entries are cleared.
+  const { lowered: _cleared, ...rest } = thresholds;
+  return { ...rest, version: 1, projects: sorted };
 }
 
 export function unlistedSurvivors(equivalents, project, report) {

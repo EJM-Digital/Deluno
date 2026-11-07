@@ -118,3 +118,16 @@ test("an invalid thresholds file fails, including a lowered entry without a real
   assert.equal(validateThresholds({ projects: { A: { score: 1 } }, lowered: { A: "no" } }).length, 1);
   assert.deepEqual(validateThresholds({ projects: { A: { score: 1 } }, lowered: { A: "A reason that says why in a sentence." } }), []);
 });
+
+test("a reason already at the base excuses nothing; a new or reworded one does", () => {
+  const reason = "Tests moved to Deluno.Api.Tests, so the score is measured afresh.";
+  const before = { projects: { A: { score: 40 } }, lowered: { A: reason } };
+  assert.equal(compareFloors(before, { projects: { A: { score: 10 } }, lowered: { A: reason } }).length, 1);
+  assert.deepEqual(compareFloors(before, { projects: { A: { score: 10 } }, lowered: { A: reason + " Again." } }), []);
+});
+
+test("--update clears lowered entries", () => {
+  const next = update({ projects: { A: { score: 40 } }, lowered: { A: "A reason that says why in a sentence." } }, { A: 50 });
+  assert.equal(next.lowered, undefined);
+  assert.deepEqual(next.projects, { A: { score: 50 } });
+});

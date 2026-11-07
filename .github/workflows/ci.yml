@@ -163,6 +163,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2 # the mutation floor check compares with the previous commit on a manual run or a first push
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -272,9 +274,14 @@ jobs:
           node --test scripts/check-mutation-ratchet.test.mjs
           if [ -z "$BEFORE" ] || [ -z "${BEFORE//0/}" ]; then
             BEFORE=$(git rev-parse --verify -q HEAD~1 || true)
+            BASE="$BEFORE"
+          elif git fetch --no-tags --depth=1 origin "$BEFORE" 2>/dev/null; then
+            BASE=FETCH_HEAD
+          else
+            BASE=""
           fi
-          if [ -n "$BEFORE" ] && git fetch --no-tags --depth=1 origin "$BEFORE" 2>/dev/null; then
-            node scripts/check-mutation-ratchet.mjs --base FETCH_HEAD
+          if [ -n "$BASE" ]; then
+            node scripts/check-mutation-ratchet.mjs --base "$BASE"
           else
             echo "No earlier commit to compare the floors with: the floor ratchet is skipped."
             node scripts/check-mutation-ratchet.mjs
