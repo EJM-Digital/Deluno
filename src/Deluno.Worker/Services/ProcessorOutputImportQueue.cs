@@ -194,15 +194,29 @@ public sealed class ProcessorOutputImportQueue(
             && string.IsNullOrWhiteSpace(await seriesCatalogRepository.GetEpisodeFilePathAsync(link.EntityId, cancellationToken));
     }
 
-    public async Task<bool> TitleWaitsForItsFileAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)
+    public async Task<bool> TitleWaitsForItsFileAsync(ProcessorHandoffItem handoff, LibraryItem library, string outputPath, CancellationToken cancellationToken)
     {
         var link = await jobQueueRepository.FindDispatchLinkForDownloadAsync(handoff.ClientId, handoff.QueueItemId, handoff.ReleaseName, cancellationToken);
-        // A download with no catalogue link, and a season pack (a grab for a whole show), have no single title to hold a file:
-        // the caller has already answered a download that was imported, so what is left is waiting for its output.
-        return link is null
-            || !(string.Equals(link.EntityType, "movie", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(link.EntityType, "episode", StringComparison.OrdinalIgnoreCase))
-            || await TitleWaitsForItsFileAsync(link, cancellationToken);
+        if (link is not null
+            && (string.Equals(link.EntityType, "movie", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(link.EntityType, "episode", StringComparison.OrdinalIgnoreCase)))
+        {
+            return await TitleWaitsForItsFileAsync(link, cancellationToken);
+        }
+
+        // A download with no catalogue link, and a season pack (a grab for a whole show), have no single title to hold a file.
+        // What was imported from this output is told by the import records, not by the file being gone: an import that
+        // already ran to its end took it, and a repeat of it is "already imported", not a failure (#1226).
+        return !await AnImportOfThisOutputCompletedAsync(library, ImportPathFor(outputPath, library.MediaType), cancellationToken);
+    }
+
+    private async Task<bool> AnImportOfThisOutputCompletedAsync(LibraryItem library, string outputPath, CancellationToken cancellationToken)
+    {
+        var key = OutputKey(library, outputPath);
+        return ((await jobQueueRepository.ListAsync(500, cancellationToken)) ?? [])
+            .Any(job => job.JobType == "filesystem.import.execute"
+                && string.Equals(job.IdempotencyKey, key, StringComparison.Ordinal)
+                && string.Equals(job.Status, "completed", StringComparison.OrdinalIgnoreCase));
     }
 
     public async Task<bool> WasAlreadyImportedAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)

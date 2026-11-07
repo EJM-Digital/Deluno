@@ -38,7 +38,7 @@ public interface IProcessorOutputImportQueue
     /// that is not there, for a title in that state, is a processor that cannot deliver; for a title that has its file it is
     /// a repeat of an import that took the output.
     /// </summary>
-    Task<bool> TitleWaitsForItsFileAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)
+    Task<bool> TitleWaitsForItsFileAsync(ProcessorHandoffItem handoff, LibraryItem library, string outputPath, CancellationToken cancellationToken)
         => Task.FromResult(false);
 
     /// <summary>
@@ -76,9 +76,26 @@ public interface IProcessorOutputImportQueue
     Task<bool> WasSentAgainAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken);
 }
 
-/// <summary>How long Deluno looks again for an output a processor named that is not there yet (#1529).</summary>
-public static class ProcessorOutputGrace
+/// <summary>
+/// A processor reported a finished output that is not there (#1529). A network share can answer "not there" for a file
+/// written moments ago (Windows keeps a negative lookup for about 5 s and a directory listing for about 10 s), so the report
+/// is answered at once and the ending is decided later, from a fresh look at the path, by the hand-off watcher.
+/// </summary>
+public static class ProcessorMissingOutput
 {
-    /// <summary>The pauses between looks. Tests may shorten them; nothing else changes them.</summary>
-    public static IReadOnlyList<TimeSpan> Waits { get; set; } = [TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2)];
+    public const string CheckingCategory = "processing.output-missing.checking";
+
+    public const string GaveUpCategory = "processing.output-missing.gave-up";
+
+    /// <summary>How long after the report Deluno looks again, longer than a share's cached "not there".</summary>
+    public static readonly TimeSpan RecheckAfter = TimeSpan.FromSeconds(15);
+
+    public static string CheckingMessage(string processorName, string releaseName, string path)
+        => $"{processorName} said {releaseName} was ready at {path}, but that file was not there yet. Deluno will check it again.";
+
+    public static string GaveUpMessage(string processorName, string releaseName, string path, string libraryName, bool importOriginal)
+        => $"{processorName} reported {releaseName} finished at {path}, but that file is not there and nothing from it has been imported. "
+            + (importOriginal
+                ? $"{libraryName} imports the original when processing fails, so Deluno is importing it unprocessed."
+                : "Check the processor's output folder and path mapping, then send it again, or import the original from Queue.");
 }
