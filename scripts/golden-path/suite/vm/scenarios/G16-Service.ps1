@@ -145,11 +145,25 @@ function Invoke-GroupService {
             }
 
             # Killed: Windows starts it again after the 60 s delay.
-            $pid0 = $facts.ProcessId
+            # The service's own process is read fresh just before the kill (the facts above can be taken while it is still starting), with
+            # when it began; "started again" is a different process id OR a process that began after the kill, so a recycled id cannot hide it.
+            $before = Get-DelunoServiceFacts
+            $pid0 = $before.ProcessId
             if ($pid0) {
+                $killedAt = Get-Date
                 Stop-Process -Id $pid0 -Force
-                $again = Wait-Until -TimeoutSec 240 -IntervalSec 5 -Condition { $x = Get-DelunoServiceFacts; if ($x -and $x.State -eq 'Running' -and $x.ProcessId -ne 0 -and $x.ProcessId -ne $pid0) { $x } else { $null } }
-                Add-Check 'Killed, the service is started again by Windows (a new process within four minutes)' $again.Ok $(if ($again.Ok) { "process $pid0 -> $($again.Value.ProcessId) after $($again.Seconds) s" } else { 'still ' + (Get-DelunoServiceFacts).State })
+                $seen = New-Object System.Collections.ArrayList
+                $deadline = (Get-Date).AddSeconds(240)
+                $again = $null
+                while ((Get-Date) -lt $deadline -and -not $again) {
+                    Start-Sleep -Seconds 5 # reason: Windows restarts the service after its 60 s delay; nothing signals it
+                    $x = Get-DelunoServiceFacts
+                    if (-not $x) { continue }
+                    $began = if ($x.ProcessId) { (Get-Process -Id $x.ProcessId -ErrorAction SilentlyContinue).StartTime } else { $null }
+                    $null = $seen.Add("$($x.State)/pid $($x.ProcessId)")
+                    if ($x.State -eq 'Running' -and $x.ProcessId -ne 0 -and ($x.ProcessId -ne $pid0 -or ($began -and $began -gt $killedAt))) { $again = [pscustomobject]@{ Facts = $x; Seconds = [int]((Get-Date) - $killedAt).TotalSeconds } }
+                }
+                Add-Check 'Killed, the service is started again by Windows (a new process within four minutes)' ($null -ne $again) $(if ($again) { "process $pid0 -> $($again.Facts.ProcessId) after $($again.Seconds) s" } else { "killed process $pid0; the service then read: " + (($seen | Select-Object -Unique) -join ', ') })
             }
         }
         finally {

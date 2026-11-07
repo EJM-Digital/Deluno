@@ -88,13 +88,16 @@ function Invoke-GroupProofs2 {
             $libB = New-VolumeLibrary -Name "Prefix $token two" -Root $rootB
             foreach ($case in @(@{ Lib = $libB; Root = $rootB; Name = 'two' }, @{ Lib = $libA; Root = $rootA; Name = 'one' })) {
                 $title = "Pfx $($case.Name) $token"
+                # The film is in the catalogue first, as a person adds it: an import of a title Deluno has not got is held for a
+                # choice (#1498), which left no row to read a library from.
+                $made = New-VolumeMovie -Title $title -Library $case.Lib
+                if ($made) { $movies += $made }
                 $src = New-VolumeSource -Folder (Join-Path $srcRoot $case.Name) -Title $title
                 $r = Invoke-VolumeImport -Source $src -Library $case.Lib -Title $title -Mode 'copy' -Fallback $true
                 Save-Evidence -Name "proofs2-library-prefix-$($case.Name).json" -Text $r.Raw
                 $file = Find-VolumeFilm -Root $case.Root -Title $title
                 Add-Check "The film for '$($case.Name)' landed under $($case.Root)" ($r.Succeeded -and $null -ne $file) $r.Message
                 $m = Find-CatalogMovie -Title $title
-                if ($m) { $movies += $m }
                 $credited = if ($m) { Try-Deluno -Path "/api/movies/$($m.id)" } else { $null }
                 $libId = if ($credited -and $credited.Data) { [string]$credited.Data.libraryId } else { '' }
                 Add-Check "The film for '$($case.Name)' is credited to its own library ($($case.Lib.name)), not the other one" ($libId -eq $case.Lib.id) "title's library '$libId', expected '$($case.Lib.id)'"
@@ -113,7 +116,8 @@ function Invoke-GroupProofs2 {
         $film = $null; $client = $null; $before = $null
         try {
             $client = Get-ClientByKind -Kind 'qbittorrent'
-            $before = (Invoke-Deluno -Path "/api/download-clients/$($client.id)")
+            # There is no single-client read; the list carries each client with its folder.
+            $before = Get-DownloadClients | Where-Object { $_.id -eq $client.id } | Select-Object -First 1
             # A drive letter nothing holds: qBittorrent answers setLocation with "Cannot make save path" (recorded, 5.2.1).
             $letter = @('Z', 'Y', 'X', 'W', 'U') | Where-Object { -not (Test-Path "${_}:\") } | Select-Object -First 1
             if (-not $letter) { throw 'Every spare drive letter is in use; the scenario needs one that does not exist.' }
@@ -163,6 +167,8 @@ function Invoke-GroupProofs2 {
             Add-Check 'A Seerr connection pointing at a closed port is saved' ($made.Status -in 200, 201 -and $made.Data.id) "HTTP $($made.Status) $($made.Raw)"
             if (-not $made.Data.id) { return }
             $id = $made.Data.id
+            # Deluno names a connection itself (the app on its host, made unique), whatever name was sent; the screen shows that name.
+            $name = [string]$made.Data.name
 
             Start-Edge
             $page = New-CdpPage 'about:blank'
@@ -186,6 +192,7 @@ function Invoke-GroupProofs2 {
                 # ---- Deluno cannot be reached: the page's request is rejected the way the browser rejects one nothing answered
                 $made2 = Try-Deluno -Method POST -Path '/api/seerr-servers' -Body @{ name = $name; baseUrl = 'http://127.0.0.1:1'; apiKey = 'golden-scratch'; isEnabled = $true }
                 $id = $made2.Data.id
+                $name = [string]$made2.Data.name
                 Open-DelunoPage -Page $page -Path '/indexers/media-servers' -Login $script:S.Login
                 $again = Wait-Until -TimeoutSec 60 -IntervalSec 1 -Condition { if ((Get-PageText -Page $page) -match [regex]::Escape($name)) { $true } else { $null } }
                 Add-Check 'The connection is listed again' $again.Ok 'not on the page'
