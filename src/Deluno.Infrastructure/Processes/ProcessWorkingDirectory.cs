@@ -24,17 +24,30 @@ public static class ProcessWorkingDirectory
 
     /// <summary>
     /// The folder a program is run in: its own folder (where a client keeps its files) unless that is missing or is
-    /// <paramref name="installFolder"/> or inside it, then <see cref="Neutral"/>.
+    /// the install root (<see cref="InstallRoot"/>) or inside it, then <see cref="Neutral"/>.
     /// </summary>
     public static string For(string? programPath, string? installFolder = null)
     {
         var folder = string.IsNullOrWhiteSpace(programPath) ? null : Path.GetDirectoryName(programPath);
-        if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder) || IsInside(folder, installFolder ?? AppContext.BaseDirectory))
+        if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder) || IsInside(folder, installFolder ?? InstallRoot()))
         {
             return Neutral;
         }
 
         return folder;
+    }
+
+    /// <summary>
+    /// The folder Velopack's Setup renames: the install root, the PARENT of <c>current</c> (where the program runs from),
+    /// so anything under it, <c>packages</c> and old <c>components</c> folders included, blocks an update.
+    /// </summary>
+    public static string InstallRoot(string? baseDirectory = null)
+    {
+        var current = Path.TrimEndingDirectorySeparator(baseDirectory ?? AppContext.BaseDirectory);
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        return string.Equals(Path.GetFileName(current), "current", comparison) && Path.GetDirectoryName(current) is { Length: > 0 } root
+            ? root
+            : current;
     }
 
     /// <summary>True when <paramref name="folder"/> is <paramref name="root"/> or below it.</summary>

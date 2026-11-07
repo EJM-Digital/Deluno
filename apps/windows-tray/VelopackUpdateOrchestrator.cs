@@ -142,6 +142,7 @@ public sealed class VelopackUpdateOrchestrator(
             token => PreUpdateBackupGate.TakePreUpdateBackupAsync(hostServices, token),
             () =>
             {
+                ClientsStoppedForUpdate.Stop();
                 UpdateAppliedNote.WriteBeforeApply(_currentVersion, pending.Version.ToString());
                 ExitReasonNote.Write(ExitReason.Quit);
                 manager.WaitExitThenApplyUpdates(pending, silent: true, restart: false);
@@ -189,6 +190,7 @@ public sealed class VelopackUpdateOrchestrator(
                 }),
             () =>
             {
+                ClientsStoppedForUpdate.Stop();
                 UpdateAppliedNote.WriteBeforeApply(_currentVersion, pending.Version.ToString());
                 ExitReasonNote.Write(ExitReason.Restart);
                 manager.ApplyUpdatesAndRestart(pending);
@@ -380,6 +382,7 @@ public sealed class VelopackUpdateOrchestrator(
                         try { await stopHost(); } catch { /* the update still applies */ }
                     }
 
+                    ClientsStoppedForUpdate.Stop();
                     UpdateAppliedNote.WriteBeforeApply(_currentVersion, toApply.Version.ToString());
                     ExitReasonNote.Write(ExitReason.Restart);
                     manager.ApplyUpdatesAndRestart(toApply);

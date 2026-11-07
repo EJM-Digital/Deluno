@@ -19,7 +19,7 @@ public sealed class ElevatedCommandRunner : IServiceCommandRunner
     {
         try
         {
-            using var p = Process.Start(new ProcessStartInfo { FileName = fileName, Arguments = arguments, UseShellExecute = true, WorkingDirectory = workingDirectory ?? "", Verb = "runas", CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden });
+            using var p = Process.Start(new ProcessStartInfo { FileName = fileName, Arguments = arguments, UseShellExecute = true, WorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory) ? Deluno.Infrastructure.Processes.ProcessWorkingDirectory.Neutral : workingDirectory, Verb = "runas", CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden });
             p?.WaitForExit(Limit);
         }
         catch (System.ComponentModel.Win32Exception)
