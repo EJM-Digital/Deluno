@@ -1,16 +1,16 @@
-# Nightly full mutation run (issue 1269, docs/testing/STRATEGY.md measure 3). Every push already mutates its changed
-# files in ci.yml; this scores whole projects, publishes the score per project, and fails when a score falls below the
-# checked-in threshold (docs/testing/mutation-thresholds.json), which only goes up. Surviving mutants are published
-# in the report as findings for the owner; they do not fail this run by themselves.
+# Mutation testing (the owner, 7 Nov 2026; docs/testing/STRATEGY.md measure 3). It runs weekly (Saturday 11:17 UTC) and by
+# hand (workflow_dispatch), and it gates nothing: not releases, ci.yml, ci-passed, branch protection or any check script.
+# It scores whole projects, publishes the score per project, and its own run fails when a score falls below the checked-in
+# threshold (docs/testing/mutation-thresholds.json). Every surviving mutant or floor drop from the weekly run is raised as an
+# issue and fixed during the week, and the next weekly run checks those fixes.
 #
 # Each .NET production project is one job (Stryker.NET, its stryker-config.json, the test projects that cover it), so a
 # slow project cannot starve the others. The web app, the API client and the metadata gateway are StrykerJS jobs.
-name: Mutation (fortnightly)
+name: Mutation (weekly)
 
 on:
   schedule:
-  # Saturdays, 11:17 UTC (Saturday 22:17 Sydney, AEDT), and only every second one: cron cannot say fortnightly, so the
-  # first job skips the run on odd ISO weeks. At most 6 jobs at once (4 .NET, 2 JavaScript). Off the top of the hour.
+    # Saturdays, 11:17 UTC (Saturday night in Sydney), every week. Off the top of the hour. At most 6 jobs at once (4 .NET, 2 JavaScript).
     - cron: "17 11 * * 6"
   workflow_dispatch:
     inputs:
@@ -34,25 +34,8 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
 
 jobs:
-  # Every push already mutates its changed files (ci.yml); the whole-project scores move slowly, so they are measured
-  # every second week (the owner, 1 Nov 2026). A run started by hand always runs.
-  fortnight:
-    name: This week's run
-    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
-    timeout-minutes: 5
-    outputs:
-      run: ${{ steps.week.outputs.run }}
-    steps:
-      - name: Even ISO week, or started by hand
-        id: week
-        run: |
-          week=$(date -u +%V)
-          if [ "${{ github.event_name }}" != "schedule" ] || [ $((10#$week % 2)) -eq 0 ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else echo "run=false" >> "$GITHUB_OUTPUT"; echo "ISO week $week is odd: this fortnight's run was last week."; fi
-
   matrix:
     name: Projects to mutate
-    needs: fortnight
-    if: ${{ needs.fortnight.outputs.run == 'true' }}
     runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 5
     outputs:
@@ -123,9 +106,8 @@ jobs:
 
   javascript:
     name: ${{ matrix.name }}
-    needs: fortnight
     # The JavaScript packages hold no risky area, so a risky-only run leaves them out.
-    if: ${{ needs.fortnight.outputs.run == 'true' && (github.event_name != 'workflow_dispatch' || inputs.scope == 'all') }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.scope == 'all' }}
     runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 340
     strategy:
@@ -173,9 +155,9 @@ jobs:
   # this workflow never commits it.
   score:
     name: Score per project and ratchet
-    needs: [fortnight, dotnet, javascript]
+    needs: [dotnet, javascript]
     # Scores whatever finished, even after a cancel or a timeout; a project with no report is listed as not measured.
-    if: ${{ always() && needs.fortnight.outputs.run == 'true' }}
+    if: ${{ always() }}
     runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:

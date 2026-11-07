@@ -63,7 +63,6 @@ jobs:
       run_windows_installer: ${{ steps.flags.outputs.run_windows_installer }}
       run_e2e_linux: ${{ steps.flags.outputs.run_e2e_linux }}
       run_coverage: ${{ steps.flags.outputs.run_coverage }}
-      run_mutation: ${{ steps.flags.outputs.run_mutation }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -121,7 +120,7 @@ jobs:
           WORKFLOWS: ${{ steps.filter.outputs.workflows }}
         run: |
           set -euo pipefail
-          backend=false; web=false; smoke=false; docker=false; installer=false; e2e_linux=false; coverage=false; mutation=false
+          backend=false; web=false; smoke=false; docker=false; installer=false; e2e_linux=false; coverage=false
           if [ "$EVENT" = "workflow_dispatch" ]; then
             backend=true; web=true; smoke=true; docker=true; installer=true; e2e_linux=true
           else
@@ -143,9 +142,6 @@ jobs:
           # protect by skipping one side. A change to documents only still runs neither.
           if [ "$CODE" = "true" ] && [ "$EVENT" != "workflow_dispatch" ]; then backend=true; web=true; fi
           if [ "$backend" = "true" ] && [ "$web" = "true" ]; then coverage=true; fi
-          # Mutation runs on the changed files of every push or pull request that changes code. A manual run has no
-          # base to compare with (the nightly workflow, mutation-nightly.yml, runs the full mutation).
-          if [ "$EVENT" != "workflow_dispatch" ] && [ "$CODE" = "true" ]; then mutation=true; fi
           # The smoke shards and the web checks both want the production web build.
           web_dist=false
           if [ "$web" = "true" ] || [ "$smoke" = "true" ]; then web_dist=true; fi
@@ -158,7 +154,6 @@ jobs:
             echo "run_windows_installer=$installer"
             echo "run_e2e_linux=$e2e_linux"
             echo "run_coverage=$coverage"
-            echo "run_mutation=$mutation"
           } | tee -a "$GITHUB_OUTPUT"
 
   # Checks of the repository itself. Always runs: it takes seconds, and it is what keeps the workflows honest.
@@ -200,7 +195,7 @@ jobs:
       - name: Every Node test file is run by a CI job
         run: |
           node scripts/check-node-tests-run.mjs
-          node --test scripts/check-node-tests-run.test.mjs scripts/check-persistence-parts.test.mjs scripts/check-component-pins.test.mjs scripts/check-recorded-manifest.test.mjs scripts/check-recording-freshness.test.mjs scripts/report-nightly-issue.test.mjs scripts/mutation/test-filter.test.mjs scripts/mutation/run-changed.test.mjs scripts/mutation/gen-stryker-configs.test.mjs scripts/verify-ci-for-release.test.mjs scripts/verify-golden-path-for-release.test.mjs scripts/tag-release.test.mjs scripts/check-release-workflow-gates.test.mjs scripts/coverage/testindex.test.mjs scripts/coverage/coverage-docs.test.mjs scripts/check-repository-references.test.mjs scripts/ci-check-runs-every-gateway-file.test.mjs scripts/home-assistant-recipe.test.mjs scripts/deluno-stays-independent-of-weir.test.mjs scripts/bundled-components-docs.test.mjs
+          node --test scripts/check-node-tests-run.test.mjs scripts/check-persistence-parts.test.mjs scripts/check-component-pins.test.mjs scripts/check-recorded-manifest.test.mjs scripts/check-recording-freshness.test.mjs scripts/report-nightly-issue.test.mjs scripts/verify-ci-for-release.test.mjs scripts/verify-golden-path-for-release.test.mjs scripts/tag-release.test.mjs scripts/check-release-workflow-gates.test.mjs scripts/coverage/testindex.test.mjs scripts/coverage/coverage-docs.test.mjs scripts/check-repository-references.test.mjs scripts/ci-check-runs-every-gateway-file.test.mjs scripts/home-assistant-recipe.test.mjs scripts/deluno-stays-independent-of-weir.test.mjs scripts/bundled-components-docs.test.mjs
 
       - name: Validate agent-readable repository map
         shell: pwsh
@@ -281,12 +276,6 @@ jobs:
         run: |
           node scripts/check-coverage-ratchet.mjs
           node --test scripts/check-coverage-ratchet.test.mjs scripts/coverage/merge-coverage.test.mjs scripts/coverage/async-coverage.test.mjs
-
-      - name: The mutation tooling works, the configs are current, and the thresholds and equivalent-mutant list are valid
-        run: |
-          node scripts/mutation/gen-stryker-configs.mjs --check
-          node scripts/check-mutation-ratchet.mjs
-          node --test scripts/check-mutation-ratchet.test.mjs
 
       - name: The Windows icon is built from the current logo
         run: node scripts/check-windows-icon.mjs
@@ -1180,71 +1169,9 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # Runs on every push that changes code (issue 1269): `changes` publishes run_mutation, and a documents-only push skips it.
-  # Mutation testing on the changed files (issue 1269, docs/testing/STRATEGY.md measure 3): Stryker.NET's diff mode
-  # (--since) for the .NET projects the change reaches, StrykerJS on the changed web, sdk and gateway source files.
-  # A mutant that survived or was never covered fails the job when it is in a risky area (docs/testing/mutation-risky-areas.json:
-  # imports, deletes, download clients, the processor hand-off, files on disk), unless docs/testing/mutation-equivalents.json
-  # lists it with the reason no test can kill it. Survivors elsewhere are printed, not failed. The nightly run (mutation-nightly.yml) scores whole projects.
-  mutation:
-    name: Mutation on the changed files
-    needs: changes
-    if: ${{ needs.changes.outputs.run_mutation == 'true' }}
-    runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
-    # A push that carries a day of changes across several .NET projects ran past 90 minutes (29 Oct 2026); the repository is
-    # public, so a longer limit costs no Actions minutes.
-    timeout-minutes: 360
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        with:
-          dotnet-version: 10.0.x
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-
-      - name: Install the pinned tools
-        run: |
-          dotnet tool restore
-          npm ci
-
-      # The base is the pull request's base commit, or the commit before the push. A first push or a force push has no
-      # base to diff against: the job says so and stops, and the nightly run still scores everything.
-      - name: Mutate the changed files
-        id: run
-        env:
-          BEFORE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          if [ -z "$BEFORE" ] || [ -z "${BEFORE//0/}" ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
-            echo "No earlier commit to compare with (a first push or a force push): the changed-file mutation is skipped."
-            echo "ran=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          node scripts/mutation/run-changed.mjs --base "$BEFORE" --out mutation-reports
-          echo "ran=true" >> "$GITHUB_OUTPUT"
-
-      - name: No mutant survives in a risky area, unless it is listed as equivalent
-        if: ${{ steps.run.outputs.ran == 'true' }}
-        run: |
-          mkdir -p mutation-reports
-          node scripts/check-mutation-ratchet.mjs --reports mutation-reports --survivors
-
-      - name: Upload the mutation reports
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: mutation-changed
-          path: mutation-reports/
-          if-no-files-found: ignore
-          retention-days: 7
-
   # The verdict. `always()` so it reports even when a job it needs failed or was skipped.
   ci-passed:
-    needs: [changes, repo-checks, backend, web-dist, web, e2e-smoke, docker, windows-installer, e2e-windows, e2e-linux, coverage-node, coverage, mutation]
+    needs: [changes, repo-checks, backend, web-dist, web, e2e-smoke, docker, windows-installer, e2e-windows, e2e-linux, coverage-node, coverage]
     if: ${{ always() }}
     runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 5

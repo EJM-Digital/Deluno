@@ -114,7 +114,7 @@ function dueJobs(environment) {
     const outputFile = path.join(folder, "output.txt");
     writeFileSync(outputFile, "");
     const result = spawnSync("bash", ["-c", script.join("\n")], {
-      env: { PATH: process.env.PATH, GITHUB_OUTPUT: outputFile, EVENT: "push", MUTATION_ON_PUSH: "", CODE: "false", CODE_COUNT: "0", NOTES: "false", WEB: "false", WEB_COUNT: "0", DOCKER: "false", WORKFLOWS: "false", ...environment },
+      env: { PATH: process.env.PATH, GITHUB_OUTPUT: outputFile, EVENT: "push", CODE: "false", CODE_COUNT: "0", NOTES: "false", WEB: "false", WEB_COUNT: "0", DOCKER: "false", WORKFLOWS: "false", ...environment },
       encoding: "utf8"
     });
     assert.equal(result.status, 0, result.stderr);
@@ -127,7 +127,7 @@ function dueJobs(environment) {
 test("a push that changes only documents runs no backend, web, smoke, image, installer or end-to-end job", () => {
   assert.deepEqual(dueJobs({}), {
     run_backend: "false", run_web_dist: "false", run_web: "false", run_e2e_smoke: "false", run_docker: "false",
-    run_windows_installer: "false", run_e2e_linux: "false", run_coverage: "false", run_mutation: "false"
+    run_windows_installer: "false", run_e2e_linux: "false", run_coverage: "false"
   });
 });
 
@@ -138,17 +138,15 @@ test("a push that changes only the web app runs the web, backend and smoke jobs,
   assert.equal(due.run_web_dist, "true");
   assert.equal(due.run_backend, "true");
   assert.equal(due.run_coverage, "true");
-  assert.equal(due.run_mutation, "true");
   assert.equal(due.run_docker, "false");
 });
 
-test("a push that changes backend code also runs the web and smoke tests, and measures coverage and mutation", () => {
+test("a push that changes backend code also runs the web and smoke tests, and measures coverage", () => {
   const due = dueJobs({ CODE: "true", CODE_COUNT: "2", WEB: "false", WEB_COUNT: "0" });
   assert.equal(due.run_backend, "true");
   assert.equal(due.run_e2e_smoke, "true");
   assert.equal(due.run_web, "true");
   assert.equal(due.run_coverage, "true");
-  assert.equal(due.run_mutation, "true");
 });
 
 test("a changed release-notes file reaches the backend, because it is embedded in the build", () => {
