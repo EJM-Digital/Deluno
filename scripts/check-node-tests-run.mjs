@@ -10,7 +10,8 @@ export function testFilesNotInWorkflow(files, workflowText) {
 }
 
 // Tests of the mutation tooling, which gates nothing (the owner, 7 Nov 2026): ci.yml does not run them, on purpose.
-export const MANUAL_ONLY = (file) => file === "scripts/check-mutation-ratchet.test.mjs" || file.startsWith("scripts/mutation/");
+// (The floor ratchet test, check-mutation-ratchet.test.mjs, does run: it never runs mutation.)
+export const MANUAL_ONLY = (file) => file.startsWith("scripts/mutation/");
 
 export function listTestFiles(root) {
   const out = execFileSync("git", ["ls-files", "*.test.mjs"], { cwd: root, encoding: "utf8" });

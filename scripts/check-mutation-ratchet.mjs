@@ -14,12 +14,17 @@
 //       unless docs/testing/mutation-equivalents.json lists it with a reason. Survivors elsewhere are listed, not failed.
 //   node scripts/check-mutation-ratchet.mjs --reports <dir> --summary
 //       print the score per project and every unlisted survivor as markdown (the nightly job summary)
+//   node scripts/check-mutation-ratchet.mjs --base <ref>
+//       the floor ratchet, the one mutation check CI runs (it never runs mutation and gates on no score): fails when a project's
+//       floor in the thresholds file is lower than at <ref>, or a project was removed, unless the file's top-level `lowered`
+//       object has an entry { "<project>": "<reason>" } for it. A missing file at <ref> or an unreachable <ref> passes.
 //   --thresholds <file> --equivalents <file> --risky <file> override the default paths.
 //
 // The score is (killed + timeout) / (killed + timeout + survived + no coverage), the same for Stryker.NET and StrykerJS.
 // An equivalent mutant is one no test can tell apart from the original code (for example `i < n` to `i != n` in a
 // loop that always ends exactly at n); each entry names the project, file, mutator, line and replacement, and says why.
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -68,6 +73,14 @@ export function survivors(report) {
 export function validateThresholds(doc) {
   const problems = [];
   if (!doc || typeof doc.projects !== "object" || doc.projects === null) return ["mutation-thresholds.json must hold a `projects` object."];
+  if (doc.lowered !== undefined) {
+    if (typeof doc.lowered !== "object" || doc.lowered === null || Array.isArray(doc.lowered)) problems.push("`lowered` must be an object of project name to reason.");
+    else {
+      for (const [name, why] of Object.entries(doc.lowered)) {
+        if (typeof why !== "string" || why.trim().length < 20) problems.push(`lowered.${name} needs a reason of at least 20 characters.`);
+      }
+    }
+  }
   for (const [name, t] of Object.entries(doc.projects)) {
     if (typeof t?.score !== "number" || t.score < 0 || t.score > 100) problems.push(`Threshold for ${name} must be a number from 0 to 100.`);
   }
@@ -118,6 +131,23 @@ export function compare(thresholds, scores) {
   return { failures, notes };
 }
 
+// The floor ratchet: `before` and `after` are parsed thresholds files. A lowered or removed floor fails unless `after.lowered` explains it.
+export function compareFloors(before, after) {
+  const failures = [];
+  const lowered = after?.lowered ?? {};
+  // A reason excuses a drop only when this change wrote it: an entry already at the base excuses nothing.
+  const has = (name) => typeof lowered[name] === "string" && lowered[name].trim().length >= 20 && lowered[name] !== before?.lowered?.[name];
+  for (const [name, t] of Object.entries(before?.projects ?? {})) {
+    const now = after?.projects?.[name];
+    if (!now) {
+      if (!has(name)) failures.push(`${name}: its mutation floor (${t.score}%) was removed. Put a reason in \`lowered.${name}\` of mutation-thresholds.json, or keep the floor.`);
+    } else if (now.score < t.score && !has(name)) {
+      failures.push(`${name}: its mutation floor was lowered from ${t.score}% to ${now.score}%. Put a reason in \`lowered.${name}\` of mutation-thresholds.json, or keep the floor.`);
+    }
+  }
+  return failures;
+}
+
 // Raises, never lowers.
 export function update(thresholds, scores) {
   const projects = { ...(thresholds.projects ?? {}) };
@@ -126,7 +156,9 @@ export function update(thresholds, scores) {
     projects[name] = { score: Math.max(floor2(now), projects[name]?.score ?? 0) };
   }
   const sorted = Object.fromEntries(Object.keys(projects).sort().map((k) => [k, projects[k]]));
-  return { ...thresholds, version: 1, projects: sorted };
+  // A raise ends any earlier reason for a lowered floor; `lowered` entries are cleared.
+  const { lowered: _cleared, ...rest } = thresholds;
+  return { ...rest, version: 1, projects: sorted };
 }
 
 export function unlistedSurvivors(equivalents, project, report) {
@@ -197,6 +229,7 @@ function parseArgs(argv) {
     else if (a === "--thresholds") o.thresholds = argv[++i];
     else if (a === "--equivalents") o.equivalents = argv[++i];
     else if (a === "--risky") o.risky = argv[++i];
+    else if (a === "--base") o.base = argv[++i];
     else if (a === "--update") o.update = true;
     else if (a === "--survivors") o.survivors = true;
     else if (a === "--summary") o.summary = true;
@@ -218,6 +251,16 @@ function main() {
   if (!equivalents) problems.push(`${o.equivalents} is missing.`);
   else problems.push(...validateEquivalents(equivalents));
   const notes = [];
+
+  if (o.base && thresholds && problems.length === 0) {
+    let before = null;
+    try {
+      before = JSON.parse(execFileSync("git", ["show", `${o.base}:docs/testing/mutation-thresholds.json`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }));
+    } catch {
+      notes.push(`No thresholds file at ${o.base} (or ${o.base} cannot be read): the floor ratchet is skipped.`);
+    }
+    if (before) problems.push(...compareFloors(before, thresholds));
+  }
 
   if (o.reports && problems.length === 0) {
     const reports = loadReports(o.reports);
