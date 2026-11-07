@@ -75,6 +75,14 @@ public interface IProcessorRepository
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Asks the processor again for a hand-off whose reported output was not there (#1529): the hand-off goes back to waiting
+    /// under a new id, the id the processor holds is remembered as replaced, and the new one is returned. A processor keys
+    /// its record on the id, so the old one would be answered from the earlier run.
+    /// </summary>
+    Task<ProcessorHandoffItem?> ResubmitProcessorHandoffAsync(string id, CancellationToken cancellationToken)
+        => UpdateProcessorHandoffAsync(id, ProcessorHandoffStatuses.Waiting, null, null, null, cancellationToken);
+
+    /// <summary>
     /// Tells the records that mirror a dismissed hand-off (its import issues and their System rows) that it is closed, again.
     /// For a hand-off dismissed before they followed it (#1228); a hand-off that is not dismissed is left alone.
     /// </summary>
