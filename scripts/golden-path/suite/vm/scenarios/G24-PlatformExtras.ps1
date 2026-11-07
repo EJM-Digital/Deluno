@@ -907,6 +907,22 @@ function Get-ClientConfigLines {
     @($lines | Sort-Object)
 }
 
+# When Setup ends with a failure, keeps what Velopack wrote about it (its own log sits in the install folder's top level, which
+# Collect-Logs does not read) as evidence and the last lines as a note, so the exact error is in the run record (#1276).
+function Save-SetupFailureEvidence {
+    param([Parameter(Mandatory)] [datetime] $Since)
+    $roots = @((Join-Path $env:LOCALAPPDATA 'Deluno'), $env:TEMP) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+    foreach ($r in $roots) {
+        $files = @(Get-ChildItem -LiteralPath $r -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in '.log', '.txt' -and $_.LastWriteTime -ge $Since -and ($r -ne $env:TEMP -or $_.Name -match 'elopack|Setup|Deluno') })
+        foreach ($f in $files) {
+            $text = try { (Get-Content -LiteralPath $f.FullName -Raw -ErrorAction Stop) } catch { "unreadable: $($_.Exception.Message)" }
+            Save-Evidence -Name ('setup-' + ($f.FullName -replace '[\:/ ]', '_')) -Text $text
+            $tail = @($text -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 12) -join ' | '
+            Add-Note "Setup log $($f.FullName): $tail"
+        }
+    }
+}
+
 function Invoke-UpdateWithBundledClients {
     param([Parameter(Mandatory)] [string] $CandidateSetup, [Parameter(Mandatory)] [string] $CandidateVersion)
     Invoke-Scenario -Id 'update.with-bundled-clients' -Title 'An update over a running Deluno that has SABnzbd and qBittorrent installed (through the Companion Tools page) keeps both: they answer again on their ports and their settings (port, login) are the same' -Body {
@@ -1338,9 +1354,11 @@ function Invoke-UpdateWithAllBundledClients {
         Save-Evidence -Name 'update-all-clients-before.json' -Text (@{ ports = $ports; pids = $pidsBefore; folders = $foldersBefore } | ConvertTo-Json -Depth 4)
 
         $ctx.Before = Get-DelunoStateSummary
+        $setupStarted = Get-Date
         $p = Start-Process -FilePath $CandidateSetup -ArgumentList '--silent' -PassThru
         $done = $p.WaitForExit(600000)
         Add-Check 'Setup.exe --silent over the running previous release finished' ($done -and $p.ExitCode -eq 0) "exit $(if ($done) { $p.ExitCode } else { 'none' })"
+        if (-not $done -or $p.ExitCode -ne 0) { Save-SetupFailureEvidence -Since $setupStarted }
         if (-not (Test-CameBackAsCandidate -Context $ctx -CandidateVersion $CandidateVersion)) { return }
 
         $back = Wait-Until -TimeoutSec 300 -IntervalSec 5 -Condition { $now = Get-ListenerPids -Ports $ports; if ($now.Count -eq 6) { $now } else { $null } }
