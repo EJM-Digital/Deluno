@@ -8,6 +8,8 @@ import { settingsRoutes, sidebarRoutes } from "../helpers/route-lists";
 // Radiogroups that list choices with a sentence under each (data-choice-rows) are rows, not switches, and are left out.
 // The walk visits every route and fails on any switch drawn differently.
 
+test.skip(({ isMobile }) => isMobile, "The switch is drawn by the same component at every width; the walk measures it once, at desktop size.");
+
 test("every radiogroup on every screen is the boxed switch", async ({ page }) => {
   test.setTimeout(240_000);
   await authenticateAndNavigate(page, "/movies");
