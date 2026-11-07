@@ -13,7 +13,8 @@ Deluno and Weir each keep their own identical copy of this standard and of the s
 | `.github/workflows/ci.yml` | CI. Runs on a push to `main`, on a pull request, and by hand. A manual run is also how any commit gets an installable build for the golden path. |
 | `.github/workflows/release.yml` | The one release. Runs on a `v*` tag. The only workflow that publishes anything. |
 | `.github/workflows/audit.yml` | The weekly dependency audit. Runs on a schedule and by hand. |
-| `.github/workflows/mutation-nightly.yml`, `repeat-nightly.yml`, `freshness-nightly.yml` | The nightly tier of the test strategy (`docs/testing/STRATEGY.md`): the full mutation run, every suite repeated, and the recordings against the newest releases. Each runs at 15:00 to 15:30 UTC and by hand, on the same runners as CI (`DELUNO_LINUX_RUNS_ON`, `DELUNO_WINDOWS_RUNS_ON`), so the schedule costs nothing on a self-hosted or a public repository. |
+| `.github/workflows/mutation-nightly.yml` | Mutation testing: weekly (Saturday 11:17 UTC) and by hand (`workflow_dispatch`, `scope` risky or all). It gates nothing: not releases, `ci.yml`, `ci-passed`, branch protection or any check script. |
+| `.github/workflows/repeat-nightly.yml`, `freshness-nightly.yml` | The nightly tier of the test strategy (`docs/testing/STRATEGY.md`): every suite repeated, and the recordings against the newest releases. Each runs at 15:00 to 15:30 UTC and by hand, on the same runners as CI (`DELUNO_LINUX_RUNS_ON`, `DELUNO_WINDOWS_RUNS_ON`), so the schedule costs nothing on a self-hosted or a public repository. |
 | `.github/dependabot.yml` | Dependabot, security updates only. |
 
 Any other workflow follows the same rules below.
@@ -134,4 +135,4 @@ The backend tests run in seven parallel jobs (issue 1346): the six smaller test 
 
 Shared with Weir. Rule 3, on mutation testing: A repository that gates releases on mutation testing judges it per area: each area (a mutation target) needs a passing result on the tagged commit, or on an earlier commit where that area's own mutated files, the tests that kill its mutants and its mutation setup are unchanged. An unchanged area carries forward from its last passing run even when other areas changed, and an area whose files changed needs a run that covers it, so a release usually runs only the changed areas.
 
-Deluno does not gate releases on mutation testing: it mutates the changed files on every code push and runs the full mutation set weekly, with score floors that can only go up (`docs/testing/mutation-thresholds.json`).
+Mutation testing runs weekly (Saturday 11:17 UTC) and by hand (`mutation-nightly.yml`); it gates nothing (not releases, CI, `ci-passed`, branch protection or any check script). Every surviving mutant or floor drop from the weekly run is raised as an issue and fixed during the week, and the next weekly run checks those fixes. The tooling (`scripts/mutation/`, the Stryker configs, `docs/testing/mutation-thresholds.json`) stays so a person can run it when needed.
