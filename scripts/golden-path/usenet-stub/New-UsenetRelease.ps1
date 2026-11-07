@@ -46,6 +46,12 @@
 .PARAMETER MinimumMegabytes
     The smallest the video may be. Defaults to 1550, above Deluno's 1.5 GB film minimum for WEB 1080p at the 2-hour default runtime (1536 MB) and Weir's 50 MB floor.
 
+.PARAMETER Width
+    The picture width (default 1280); with -Height, the picture size of a video made here.
+
+.PARAMETER Height
+    The picture height (default 720). A scenario that needs a true 1080p picture passes 1920 and 1080.
+
 .PARAMETER VideoMegabitsPerSecond
     The first video bitrate tried. Defaults to 22.5, which makes about 1.6 GB for 600 s (the file must stay under about 1.67 GB, the WEB 1080p maximum for Big Buck Bunny's 8-minute runtime). The rates tried after it are only used when the file is under -MinimumMegabytes.
 
@@ -61,6 +67,8 @@ param(
     [int] $MinimumMegabytes = 1550,
     [double] $VideoMegabitsPerSecond = 22.5,
     [int] $DurationSeconds = 600,
+    [int] $Width = 1280,
+    [int] $Height = 720,
     [int] $PartSizeKilobytes = 700,
     [string] $Group = 'alt.binaries.golden',
     [int] $ExtraKilobytes = 0,
@@ -103,7 +111,7 @@ else {
     foreach ($rate in $VideoMegabitsPerSecond, ($VideoMegabitsPerSecond + 3), ($VideoMegabitsPerSecond + 6)) {
         Write-Host "Making a $DurationSeconds s test video with $ffmpeg ($rate Mbit/s)"
         $ffArgs = @('-y', '-v', 'error',
-            '-f', 'lavfi', '-i', "testsrc2=size=1280x720:rate=24:duration=$DurationSeconds",
+            '-f', 'lavfi', '-i', "testsrc2=size=${Width}x${Height}:rate=24:duration=$DurationSeconds",
             '-f', 'lavfi', '-i', "sine=frequency=440:sample_rate=48000:duration=$DurationSeconds",
             '-vf', 'noise=alls=25:allf=t+u', '-c:v', 'mpeg4', '-b:v', "${rate}M", '-g', '48',
             '-c:a', 'aac', '-b:a', '128k', '-shortest', $video)

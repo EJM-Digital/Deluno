@@ -231,12 +231,12 @@ function Invoke-GroupProofs2 {
             Add-Check 'The download check is switched on' ([bool](Invoke-Deluno -Path '/api/settings').downloadIntegrityCheckEnabled) ''
 
             # ---- the name says UHD BluRay and 1080p; the file is 1080p
-            $good = New-FilmFor -Kind 'qbittorrent' -Layout 'folder' -Label 'uhd' -NameTags 'UHD.BluRay.1080p.x264'
+            $good = New-FilmFor -Kind 'qbittorrent' -Layout 'folder' -Size 'hd' -Label 'uhd' -NameTags 'UHD.BluRay.1080p.x264'
             $films += $good
             Add-Check 'The release name carries both the UHD tag and 1080p' ($good.Release -match 'UHD\.BluRay\.1080p') $good.Release
             $ffprobe = Get-SuiteFfprobe
             if ($ffprobe) {
-                $h = [int]((& $ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 $script:Fx.Base['small'] 2>$null | Select-Object -First 1) -as [int])
+                $h = [int]((& $ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 $script:Fx.Base['hd'] 2>$null | Select-Object -First 1) -as [int])
                 Add-Check 'The test video is a real 1080p-class picture (ffprobe)' ($h -ge 800 -and $h -le 1080) "height $h"
             }
             $good = Send-Film -Film $good -Kind 'qbittorrent' -Quality 'Bluray 1080p'
@@ -259,7 +259,7 @@ function Invoke-GroupProofs2 {
             Save-Evidence -Name 'proofs2-uhd-bluray-1080p.json' -Text (@{ release = $good.Release; imported = $r.Imported; quality = $(if ($m.Ok) { $m.Value.currentQuality } else { $null }) } | ConvertTo-Json)
 
             # ---- the name says 2160p; the file is 1080p: still refused (the rule is unchanged)
-            $bad = New-FilmFor -Kind 'qbittorrent' -Layout 'folder' -Label 'uhdlie' -NameTags '2160p.UHD.BluRay.x265'
+            $bad = New-FilmFor -Kind 'qbittorrent' -Layout 'folder' -Size 'hd' -Label 'uhdlie' -NameTags '2160p.UHD.BluRay.x265'
             $films += $bad
             $bad = Send-Film -Film $bad -Kind 'qbittorrent' -Quality 'Bluray 2160p'
             $refused = Wait-Until -TimeoutSec 360 -IntervalSec 5 -Condition {

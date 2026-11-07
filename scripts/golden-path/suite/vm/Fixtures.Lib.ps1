@@ -60,11 +60,15 @@ function Initialize-BaseVideos {
     if (-not (Get-Command Test-ScenarioSelected -ErrorAction SilentlyContinue) -or (Test-ScenarioSelected 'film.tv-episode')) {
         $specs += @{ Key = 'tv'; Seconds = 125; Rate = 32; Min = 480 }
     }
+    # A real 1920x1080 picture for the proof that a film named 1080p is judged by its real height (#1505); the other videos are 720p.
+    if (-not (Get-Command Test-ScenarioSelected -ErrorAction SilentlyContinue) -or (Test-ScenarioSelected 'proofs2.uhd-bluray-1080p')) {
+        $specs += @{ Key = 'hd'; Seconds = 125; Rate = 6; Min = 60; Width = 1920; Height = 1080 }
+    }
     foreach ($spec in $specs) {
         $dir = Join-Path (Get-SuiteRoot) "base\$($spec.Key)"
         $meta = Join-Path $dir 'release.json'
         if (-not (Test-Path $meta)) {
-            & $maker -OutDirectory $dir -Name "Gpbase$($spec.Key).2008.1080p.WEB-DL.x264-GOLDEN" -DurationSeconds $spec.Seconds -VideoMegabitsPerSecond $spec.Rate -MinimumMegabytes $spec.Min | Out-Null
+            & $maker -OutDirectory $dir -Name "Gpbase$($spec.Key).2008.1080p.WEB-DL.x264-GOLDEN" -DurationSeconds $spec.Seconds -VideoMegabitsPerSecond $spec.Rate -MinimumMegabytes $spec.Min -Width $(if ($spec.Width) { $spec.Width } else { 1280 }) -Height $(if ($spec.Height) { $spec.Height } else { 720 }) | Out-Null
         }
         $info = Get-Content -Raw $meta | ConvertFrom-Json
         $script:Fx.Base[$spec.Key] = (Join-Path $dir $info.file)
@@ -175,7 +179,7 @@ function New-TorrentFilm {
         [Parameter(Mandatory)] [string] $Client,
         [ValidateSet('file', 'folder')] [string] $Layout = 'file',
         [ValidateSet('complete', 'short', 'dummy')] [string] $Variant = 'complete',
-        [ValidateSet('small', 'big', 'fourthree', 'tv')] [string] $Size = 'small',
+        [ValidateSet('small', 'big', 'fourthree', 'tv', 'hd')] [string] $Size = 'small',
         [switch] $Extra,
         [string] $Label = 'film',
         # A real title and year (so the metadata has a poster for it), and for a TV episode its S01E01 mark.
