@@ -66,7 +66,7 @@ public sealed class LoopbackFirstConnectionRaceTests
             async (address, token) =>
             {
                 started.SetResult();
-                await Task.Delay(Timeout.Infinite, token);
+                await Task.Delay(Timeout.Infinite, token); // reason: the stand-in attempt never answers; the race cancels it
                 return NewSocket(address);
             },
             failedFamilyHost: null,
@@ -98,7 +98,7 @@ public sealed class LoopbackFirstConnectionRaceTests
         slow.SetResult(late);
         for (var i = 0; i < 100 && !IsDisposed(late); i++)
         {
-            await Task.Delay(50);
+            await Task.Delay(50); // reason: polls, at most five seconds, until the late connection is closed
         }
 
         Assert.True(IsDisposed(late), "a connection that arrives after the race is won is closed, not leaked");
@@ -118,7 +118,7 @@ public sealed class LoopbackFirstConnectionRaceTests
             CancellationToken.None);
 
         slow.SetException(new SocketException((int)SocketError.ConnectionRefused));
-        await Task.Delay(50);
+        await Task.Delay(50); // reason: gives the late failure time to be observed and swallowed; there is nothing to poll
 
         Assert.Equal(AddressFamily.InterNetwork, winner.AddressFamily);
         winner.Dispose();
