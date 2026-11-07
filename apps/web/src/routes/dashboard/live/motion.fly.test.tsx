@@ -139,7 +139,7 @@ describe("the poster of a title that has just been imported", () => {
     reducedMotion(false);
     const view = render(<Harness cards={[card()]} arrivals={[]} />);
     view.rerender(<Harness cards={[card()]} arrivals={[]} />);
-    const visible = { call: () => ({ x: 10, y: 10, left: 10, top: 10, right: 110, bottom: 160, width: 100, height: 150, toJSON: () => ({}) }) as DOMRect };
+    const visible = { call: (_el?: unknown) => ({ x: 10, y: 10, left: 10, top: 10, right: 110, bottom: 160, width: 100, height: 150, toJSON: () => ({}) }) as DOMRect };
     const below = { x: 10, y: 5000, left: 10, top: 5000, right: 110, bottom: 5150, width: 100, height: 150, toJSON: () => ({}) } as DOMRect;
     vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) { return this.hasAttribute("data-arrival-poster") ? below : visible.call(this); });
     view.rerender(<Harness cards={[]} arrivals={[arrival()]} />);
@@ -151,7 +151,7 @@ describe("the poster of a title that has just been imported", () => {
   it("does not fly when the card was scrolled off the window", async () => {
     reducedMotion(false);
     const view = render(<Harness cards={[card()]} arrivals={[]} />);
-    const visible = { call: () => ({ x: 10, y: 10, left: 10, top: 10, right: 110, bottom: 160, width: 100, height: 150, toJSON: () => ({}) }) as DOMRect };
+    const visible = { call: (_el?: unknown) => ({ x: 10, y: 10, left: 10, top: 10, right: 110, bottom: 160, width: 100, height: 150, toJSON: () => ({}) }) as DOMRect };
     const above = { x: 10, y: -900, left: 10, top: -900, right: 110, bottom: -750, width: 100, height: 150, toJSON: () => ({}) } as DOMRect;
     vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) { return this.closest("[data-card-poster]") ? above : visible.call(this); });
     view.rerender(<Harness cards={[card()]} arrivals={[]} />);
