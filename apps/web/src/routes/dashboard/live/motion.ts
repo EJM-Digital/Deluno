@@ -156,6 +156,19 @@ export interface Delivery {
   look: HTMLElement;
   /** Where the poster was on screen. */
   from: DOMRect;
+  /** Whether the poster's picture had loaded: a poster that has not (initials only) never flies. */
+  loaded: boolean;
+}
+
+/** Whether a rectangle is on screen (it has size and touches the window). */
+function onScreen(rect: DOMRect): boolean {
+  return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0 && rect.top < window.innerHeight && rect.left < window.innerWidth;
+}
+
+/** A poster counts as loaded when it carries a picture that has finished loading. */
+function posterLoaded(poster: Element): boolean {
+  const image = poster instanceof HTMLImageElement ? poster : poster.querySelector("img");
+  return image !== null && image.complete && image.naturalWidth > 0;
 }
 
 /**
@@ -167,7 +180,7 @@ export interface Delivery {
 export function flyToShelf(delivery: Delivery, target: HTMLElement): void {
   const { from } = delivery;
   const to = target.getBoundingClientRect();
-  if (!motionAllowed() || document.body.classList.contains("live-resizing") || to.width === 0 || to.height === 0 || from.width === 0 || from.height === 0) {
+  if (!delivery.loaded || !onScreen(to) || !onScreen(from) || !motionAllowed() || document.body.classList.contains("live-resizing")) {
     release(target);
     return;
   }
@@ -236,6 +249,8 @@ export function useFlyToShelf(root: RefObject<HTMLElement | null>, cards: readon
   const rects = useRef(new Map<string, Delivery>());
   const pending = useRef<Pending[]>([]);
   const waiting = useRef(new Map<string, { item: ArrivalItem; until: number }>());
+  // Cards seen importing, not yet done, while this page was open: only these may fly (never an import already done at load).
+  const seenLive = useRef(new Set<string>());
 
   // Where each card's poster is, as drawn now (read before the next change moves it).
   useLayoutEffect(() => {
@@ -245,7 +260,7 @@ export function useFlyToShelf(root: RefObject<HTMLElement | null>, cards: readon
     for (const element of Array.from(host.querySelectorAll<HTMLElement>("[data-card-poster]"))) {
       const poster = element.firstElementChild;
       const look = poster?.cloneNode(true);
-      if (poster && look instanceof HTMLElement) next.set(element.dataset.cardPoster ?? "", { look, from: poster.getBoundingClientRect() });
+      if (poster && look instanceof HTMLElement) next.set(element.dataset.cardPoster ?? "", { look, from: poster.getBoundingClientRect(), loaded: posterLoaded(poster) });
     }
     // Rects of cards that are gone are kept from the render before, so the one that just left can still be found.
     const before = previous.current;
@@ -254,8 +269,10 @@ export function useFlyToShelf(root: RefObject<HTMLElement | null>, cards: readon
     for (const key of departed) {
       const card = before?.cards.get(key);
       const seen = rects.current.get(key);
-      if (card && seen) pending.current.push({ card: { entity: card.entity, release: card.release }, delivery: seen, until: now + PENDING_MS });
+      const live = seenLive.current.delete(key);
+      if (card && seen && live) pending.current.push({ card: { entity: card.entity, release: card.release }, delivery: seen, until: now + PENDING_MS });
     }
+    for (const card of cards) if (card.stage === "importing" && !card.landed) seenLive.current.add(card.key);
     // An arrival that is new since the last render waits for its card to leave, and the other way round.
     const knownArrivals = before?.arrivals ?? null;
     if (knownArrivals) for (const item of arrivals) if (!knownArrivals.has(item.key)) waiting.current.set(item.key, { item, until: now + PENDING_MS });
