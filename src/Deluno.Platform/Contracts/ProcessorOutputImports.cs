@@ -75,3 +75,10 @@ public interface IProcessorOutputImportQueue
     /// </summary>
     Task<bool> WasSentAgainAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken);
 }
+
+/// <summary>How long Deluno looks again for an output a processor named that is not there yet (#1529).</summary>
+public static class ProcessorOutputGrace
+{
+    /// <summary>The pauses between looks. Tests may shorten them; nothing else changes them.</summary>
+    public static IReadOnlyList<TimeSpan> Waits { get; set; } = [TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2)];
+}

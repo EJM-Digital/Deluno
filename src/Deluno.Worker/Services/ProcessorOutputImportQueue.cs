@@ -195,9 +195,15 @@ public sealed class ProcessorOutputImportQueue(
     }
 
     public async Task<bool> TitleWaitsForItsFileAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)
-        => await TitleWaitsForItsFileAsync(
-            await jobQueueRepository.FindDispatchLinkForDownloadAsync(handoff.ClientId, handoff.QueueItemId, handoff.ReleaseName, cancellationToken),
-            cancellationToken);
+    {
+        var link = await jobQueueRepository.FindDispatchLinkForDownloadAsync(handoff.ClientId, handoff.QueueItemId, handoff.ReleaseName, cancellationToken);
+        // A download with no catalogue link, and a season pack (a grab for a whole show), have no single title to hold a file:
+        // the caller has already answered a download that was imported, so what is left is waiting for its output.
+        return link is null
+            || !(string.Equals(link.EntityType, "movie", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(link.EntityType, "episode", StringComparison.OrdinalIgnoreCase))
+            || await TitleWaitsForItsFileAsync(link, cancellationToken);
+    }
 
     public async Task<bool> WasAlreadyImportedAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)
         => await FindReturnedTitleAsync(handoff, cancellationToken) is null

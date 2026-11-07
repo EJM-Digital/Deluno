@@ -171,7 +171,7 @@ public sealed class AProcessorIsNotTakenAtItsWordTests
         var scene = await SceneAsync(app);
         // Weir's recorded report posted twice. Weir does not repeat a report by itself within five minutes of a 503 (events-completed-answered-503-not-repeated),
         // so the second post is this test's own; what is held is that Deluno imports once however many times the same body arrives.
-        var (handoff, first) = await RecordedReportAsync(app, scene, "events-completed", 2, Ours);
+        var (handoff, first) = await RecordedReportAsync(app, scene, "events-completed", 2, Ours, writeFiles: true);
         Assert.True(first.IsSuccessStatusCode, await first.Content.ReadAsStringAsync());
 
         var second = await RecordedPostAsync(app, scene, handoff, "events-completed", 2, Ours);
@@ -190,7 +190,7 @@ public sealed class AProcessorIsNotTakenAtItsWordTests
     {
         await using var app = await ApplicationTestHost.StartAsync();
         var scene = await SceneAsync(app);
-        var (handoff, first) = await RecordedReportAsync(app, scene, "events-completed", 2, Ours);
+        var (handoff, first) = await RecordedReportAsync(app, scene, "events-completed", 2, Ours, writeFiles: true);
         Assert.True(first.IsSuccessStatusCode);
 
         // The same report again, naming another file: Weir's real body with its output changed to a second part.
