@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { NamingFormatField, type NamingFormatKind } from "./naming-format-field";
 import { repeatedSentences } from "../../test/repeated-text";
@@ -18,5 +18,15 @@ describe("Media Naming's sections", () => {
     );
 
     expect(repeatedSentences(container)).toEqual([]);
+  });
+});
+
+describe("the example beside a chosen style", () => {
+  it("shows the chosen style's example, and leaves it out when the page shows examples itself", () => {
+    const { rerender } = render(<NamingFormatField kind="movie-folder" value="{Movie Title} ({Release Year})" onChange={() => undefined} />);
+    expect(screen.getAllByText("Blade Runner 2049 (2017)").length).toBeGreaterThan(0);
+
+    rerender(<NamingFormatField kind="movie-folder" value="{Movie Title} ({Release Year})" onChange={() => undefined} showExamples={false} />);
+    expect(screen.queryByText("Blade Runner 2049 (2017)")).not.toBeInTheDocument();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { previewNamingFormat } from "./naming-format-field";
+import { namingStyleLabel, previewNamingFormat, sanitizeIllegalCharacters } from "./naming-format-field";
 
 describe("previewNamingFormat's sample for every token (#1329)", () => {
   it.each([
@@ -42,5 +42,25 @@ describe("previewNamingFormat's sample for every token (#1329)", () => {
     expect(previewNamingFormat("{Movie Title} ({Release Year}) - {Movie Title} {Something Else}")).toBe("Arrival (2016) - Arrival {Something Else}");
     expect(previewNamingFormat("")).toBe("");
     expect(previewNamingFormat("no tokens here")).toBe("no tokens here");
+  });
+});
+
+describe("the short name of a naming style", () => {
+  it.each([
+    ["movie-folder", "{Movie Title} ({Release Year})", "Title + year"],
+    ["movie-folder", "{Movie Title} ({Release Year}) [{IMDb ID}]", "Title + ID"],
+    ["series-folder", "{Series Title} ({Series Year}) [tvdb-{TVDb ID}]", "Title + ID"],
+    ["movie-folder", "{Movie Title}", "Title only"],
+    ["movie-folder", "{Movie Title} - my own", "Custom pattern"],
+    ["movie-folder", "   ", "Choose a style"]
+  ] as const)("%s %s reads as %s", (kind, value, label) => {
+    expect(namingStyleLabel(kind, value)).toBe(label);
+  });
+});
+
+describe("the colon in a preview name", () => {
+  it("is a plain dash when no space follows it, and a spaced dash when one does", () => {
+    expect(sanitizeIllegalCharacters("Mission:Impossible", true)).toBe("Mission-Impossible");
+    expect(sanitizeIllegalCharacters("Star Wars: A New Hope", true)).toBe("Star Wars - A New Hope");
   });
 });

@@ -39,4 +39,28 @@ describe("MoreFilters (#1168)", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(button).toHaveFocus();
   });
+
+  it("stays open for another key and for a click inside the panel, and closes on a click anywhere else", () => {
+    render(<div><span>elsewhere</span><MoreFilters groups={groups()} /></div>);
+    fireEvent.click(screen.getByRole("button", { name: "More filters" }));
+
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(screen.getByRole("dialog", { name: "More filters" })).toBeInTheDocument();
+
+    fireEvent.pointerDown(screen.getByRole("dialog", { name: "More filters" }));
+    expect(screen.getByRole("dialog", { name: "More filters" })).toBeInTheDocument();
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "More filters" }));
+    expect(screen.getByRole("dialog", { name: "More filters" })).toBeInTheDocument();
+
+    fireEvent.pointerDown(screen.getByText("elsewhere"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("treats a group with no options and no neutral value as narrowing only when it holds a value", () => {
+    const empty: MoreFilterGroup = { label: "Step", ariaLabel: "Filter by step", value: "", onValueChange: () => undefined, options: [] };
+
+    expect(activeMoreFilters([empty])).toBe(0);
+    expect(activeMoreFilters([{ ...empty, value: "grabbed" }])).toBe(1);
+  });
 });
