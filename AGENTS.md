@@ -15,6 +15,19 @@ This file is the small entry point for agent work. It is a map, not the full man
   gates, and push. A branch found lying around is a mistake: fold it into
   `main` or delete it, locally and on GitHub.
 
+## How Issues Close (the owner, 7 Nov 2026)
+
+Kept permanently, the same in Weir's AGENTS.md: "we waste too much time getting to the end result only to go backwards".
+
+1. Raise the issue, then fix it.
+2. Before merge, a higher-capability model peer-reviews the fix; risky or contested fixes get a round table.
+3. Prove it live on a CI build on the rig, then close.
+4. Nothing per issue waits on mutation or any multi-hour run.
+5. Mutation runs weekly (`mutation-nightly.yml`, Saturday 11:17 UTC) and by hand, and gates nothing: not releases, CI,
+   `ci-passed`, branch protection or any check script. Every surviving mutant or floor drop from the weekly run is
+   raised as an issue and fixed during the week; the next weekly run checks those fixes. When no issues are left, run
+   the full mutation and the full tests, and file every finding, until a full run passes clean.
+
 ## Source Of Truth
 
 - **Closing issues: `docs/exec-plans/active/BACKLOG-SWEEP.md`.** Run
