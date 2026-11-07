@@ -194,6 +194,11 @@ public sealed class ProcessorOutputImportQueue(
             && string.IsNullOrWhiteSpace(await seriesCatalogRepository.GetEpisodeFilePathAsync(link.EntityId, cancellationToken));
     }
 
+    public async Task<bool> TitleWaitsForItsFileAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)
+        => await TitleWaitsForItsFileAsync(
+            await jobQueueRepository.FindDispatchLinkForDownloadAsync(handoff.ClientId, handoff.QueueItemId, handoff.ReleaseName, cancellationToken),
+            cancellationToken);
+
     public async Task<bool> WasAlreadyImportedAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)
         => await FindReturnedTitleAsync(handoff, cancellationToken) is null
             && await ImportedDownloads.WasImportedAsync(jobQueueRepository, handoff.ClientId, handoff.ReleaseName, cancellationToken);

@@ -34,6 +34,14 @@ public interface IProcessorOutputImportQueue
         string? retriedBecause = null);
 
     /// <summary>
+    /// Whether the film or episode this hand-off's download is for exists and has no file (#1529). A report naming an output
+    /// that is not there, for a title in that state, is a processor that cannot deliver; for a title that has its file it is
+    /// a repeat of an import that took the output.
+    /// </summary>
+    Task<bool> TitleWaitsForItsFileAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)
+        => Task.FromResult(false);
+
+    /// <summary>
     /// Whether the download behind this hand-off was already imported (#1155):
     /// the latest fetch of that release from that client holds its file in the
     /// library. A genuine upgrade is a newer fetch and is not.
