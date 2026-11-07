@@ -12,7 +12,7 @@ being built has no section here yet.
 ## Unreleased
 
 Fixed:
-- Updating no longer fails with "Access is denied" while a download client Deluno started (NZBGet was the one that did it) is running: Deluno now starts every program from its own folder, not from Deluno's install folder, and stops its clients before it applies an update. Updating from 1.0.0-rc.30.36 or earlier with NZBGet running can still fail with "Access is denied": stop NZBGet (or Deluno's download clients) first, then update. Later updates are not affected.
+- Updating no longer fails with "Access is denied" while a download client Deluno started (NZBGet was the one that did it) is running: Deluno now starts every program from its own folder, not from Deluno's install folder. Updating from 1.0.0-rc.30.36 or earlier with NZBGet running can still fail with "Access is denied": stop NZBGet (or Deluno's download clients) first, then update. Later updates are not affected.
 - A password typed for the Windows service no longer reaches the log: the start-up line in `install-hook.log` shows it as `***`. If you chose to run Deluno as a Windows service under a named account with a version before this one, that account's password may be in `install-hook.log`, in the `Deluno\logs` folder under your Windows user's local application data. Existing logs are not rewritten, so delete or edit that file if you want the password gone, and change the account's password if others can read that folder.
 - Installing, starting and stopping the Windows service no longer leaves stray network-connection and event-log errors in `install-hook.log`.
 
