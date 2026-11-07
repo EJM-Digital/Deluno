@@ -11,6 +11,7 @@ using Deluno.Movies.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Quality.Data;
+using Deluno.Series.Contracts;
 using Deluno.Series.Data;
 using Deluno.Worker.Services;
 using Microsoft.Extensions.Configuration;
@@ -35,6 +36,9 @@ public sealed class DownloadIntegrityCheckpointTests : IDisposable
 
     private string _linkEntityType = "movie";
     private string _linkEntityId = "movie-1";
+    private string _movieTitle = "Sintel";
+    private string? _movieOriginalTitle;
+    private SeriesListItem? _series;
 
     public void Dispose()
     {
@@ -420,6 +424,80 @@ processorRepository
         blocked.Verify(instance => instance.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    /// <summary>A film known by a different original title: a file tagged with that original title is the right film (#1520).</summary>
+    [Fact]
+    public async Task A_movie_whose_file_is_tagged_with_its_original_title_passes()
+    {
+        _movieTitle = "Amélie";
+        _movieOriginalTitle = "Le Fabuleux Destin d'Amélie Poulain";
+        var scheduler = ImportScheduler();
+        var blocked = new Mock<IBlockedReleaseRepository>();
+
+        await Run(scheduler, Telemetry(out _), blocked, checkEnabled: true, probe: Probe.WithTitle("Le Fabuleux Destin d'Amélie Poulain"));
+
+        blocked.Verify(instance => instance.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()), Times.Never);
+        scheduler.Verify(instance => instance.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>The original title does not excuse a file that names neither title (#1520).</summary>
+    [Fact]
+    public async Task A_movie_with_an_original_title_still_fails_when_the_file_names_a_different_film()
+    {
+        _movieTitle = "Amélie";
+        _movieOriginalTitle = "Le Fabuleux Destin d'Amélie Poulain";
+        var telemetry = Telemetry(out _);
+        telemetry.Setup(instance => instance.ExecuteActionAsync(
+                "client-1", It.IsAny<DownloadClientActionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DownloadClientActionResult("client-1", "queue-1", DownloadClientActions.DeleteWithData, true, "removed"));
+        var blocked = new Mock<IBlockedReleaseRepository>();
+
+        await Run(new Mock<IJobScheduler>(), telemetry, blocked, checkEnabled: true, probe: Probe.WithTitle("Some Completely Different Movie"));
+
+        blocked.Verify(instance => instance.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>An empty original title adds nothing: the known title alone is compared, as before (#1520).</summary>
+    [Fact]
+    public async Task A_movie_with_an_empty_original_title_is_compared_by_its_title_alone()
+    {
+        _movieOriginalTitle = "";
+        var scheduler = ImportScheduler();
+        var blocked = new Mock<IBlockedReleaseRepository>();
+
+        await Run(scheduler, Telemetry(out _), blocked, checkEnabled: true, probe: Probe.WithTitle("Sintel Extended Cut"));
+
+        blocked.Verify(instance => instance.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>A show known by a different original title: an episode tagged with it passes (#1520).</summary>
+    [Fact]
+    public async Task A_series_episode_tagged_with_the_shows_original_title_passes()
+    {
+        _linkEntityType = "series";
+        _linkEntityId = "series-1";
+        _series = (SeriesListItem)RuntimeHelpers.GetUninitializedObject(typeof(SeriesListItem)) with
+        {
+            Id = "series-1",
+            Title = "Dark",
+            OriginalTitle = "Dunkel Zeit",
+        };
+        var scheduler = ImportScheduler();
+        var blocked = new Mock<IBlockedReleaseRepository>();
+
+        await Run(scheduler, Telemetry(out _), blocked, checkEnabled: true, probe: Probe.WithTitle("Dunkel Zeit"));
+
+        blocked.Verify(instance => instance.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()), Times.Never);
+        scheduler.Verify(instance => instance.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    private static Mock<IJobScheduler> ImportScheduler()
+    {
+        var scheduler = new Mock<IJobScheduler>();
+        scheduler.Setup(instance => instance.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((JobQueueItem)RuntimeHelpers.GetUninitializedObject(typeof(JobQueueItem)) with { Id = "import-job" });
+        return scheduler;
+    }
+
     private static Mock<IActivityFeedRepository> Activity()
     {
         var activity = new Mock<IActivityFeedRepository>();
@@ -496,7 +574,11 @@ processorRepository
 
         var movies = new Mock<IMovieCatalogRepository>();
         movies.Setup(repository => repository.GetByIdAsync("movie-1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync((MovieListItem)RuntimeHelpers.GetUninitializedObject(typeof(MovieListItem)) with { Id = "movie-1", Title = "Sintel", ReleaseYear = 2010 });
+            .ReturnsAsync((MovieListItem)RuntimeHelpers.GetUninitializedObject(typeof(MovieListItem)) with { Id = "movie-1", Title = _movieTitle, OriginalTitle = _movieOriginalTitle, ReleaseYear = 2010 });
+
+        var series = new Mock<ISeriesCatalogRepository>();
+        series.Setup(repository => repository.GetByIdAsync("series-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_series);
 
         var settings = new Mock<IPlatformSettingsRepository>();
         settings.Setup(repository => repository.GetAsync(It.IsAny<CancellationToken>()))
@@ -518,7 +600,7 @@ processorRepository
                 Mock.Of<IProcessorConnectionService>(),
                 (activity ?? Activity()).Object,
                 movies.Object,
-                Mock.Of<ISeriesCatalogRepository>(),
+                series.Object,
                 TimeProvider.System,
                 CancellationToken.None,
                 settings.Object,
