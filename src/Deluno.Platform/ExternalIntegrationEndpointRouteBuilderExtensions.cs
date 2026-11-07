@@ -1380,6 +1380,50 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 });
             }
 
+            // A processor that says it is done and names an output that is not there (#1529): Weir's "already cleaned this
+            // exact file" answer names the first run's copy, which Deluno imported and deleted. Importing it can only fail
+            // (missingSource), and "already handled" is untrue for a title that is still waiting for its file. The hand-off
+            // ends here by the library's failure rule, once, with one Activity line. Each write is conditional on the
+            // hand-off still being as it was read, so a good report that got there first is never overwritten.
+            if (status == "completed" && importsOutput && !string.IsNullOrWhiteSpace(request.OutputPath)
+                && !ReportedOutputExists(request)
+                && await outputImports.TitleWaitsForItsFileAsync(handoff, cancellationToken))
+            {
+                var namedPath = request.OutputPath.Trim();
+                var importOriginal = string.Equals(library.ProcessorFailureMode, "import-original", StringComparison.OrdinalIgnoreCase);
+                var gaveUp = $"{processorName} reported {handoff.ReleaseName} finished at {namedPath}, but that file is not there and {handoff.ReleaseName} has no file in the library. "
+                    + (importOriginal
+                        ? $"{library.Name} imports the original when processing fails, so Deluno is importing it unprocessed."
+                        : "Check the processor's output folder and path mapping, then send it again, or import the original from Queue.");
+                var endStatus = importOriginal ? ProcessorHandoffStatuses.Released : ProcessorHandoffStatuses.Failed;
+                if (!await repository.UpdateProcessorHandoffIfStatusAsync(handoff.Id, handoff.Status, endStatus, null, null, gaveUp, cancellationToken))
+                {
+                    // Another report moved the hand-off first (the same report twice, or a good one): that outcome stands.
+                    return Results.Json(
+                        new { status = "superseded", handoffId = handoff.Id, alreadyHandled = true },
+                        statusCode: StatusCodes.Status202Accepted);
+                }
+
+                var gaveUpActivity = await activityFeed.RecordActivityAsync(
+                    "processing.output-missing.gave-up",
+                    gaveUp,
+                    JsonSerializer.Serialize(new { request.LibraryId, HandoffId = handoff.Id, OutputPath = namedPath, ProcessorName = processorName, ImportOriginal = importOriginal }),
+                    null,
+                    "processor-handoff",
+                    handoff.Id,
+                    cancellationToken);
+                if (!importOriginal)
+                {
+                    await failureReports.HandleOutputsMissingAsync(
+                        new ProcessorMissingOutputReport(library, entityId, processorName, handoff.ReleaseName, namedPath, [namedPath], 1),
+                        cancellationToken);
+                }
+
+                return Results.Json(
+                    new { status = importOriginal ? ProcessorHandoffStatuses.Released : "failed", handoffId = handoff.Id, activityId = gaveUpActivity.Id },
+                    statusCode: StatusCodes.Status202Accepted);
+            }
+
             // A processor that deleted its copy is waiting on this answer before
             // it counts the deletion as safe (#497). A repeat of a report already
             // acted on is answered the same way and does nothing new: a worker
@@ -1662,6 +1706,11 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
 
         return endpoints;
     }
+
+    /// <summary>Whether anything a completed report names (the output, or any file it lists) is there to import (#1529).</summary>
+    private static bool ReportedOutputExists(ProcessorEventRequest request)
+        => File.Exists(request.OutputPath!.Trim()) || Directory.Exists(request.OutputPath.Trim())
+           || (request.OutputFiles ?? []).Any(file => !string.IsNullOrWhiteSpace(file) && File.Exists(file.Trim()));
 
     private static Dictionary<string, string[]> ValidateProcessorEvent(ProcessorEventRequest request)
     {
