@@ -1384,61 +1384,37 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
 
             // A processor that says it is done and names an output that is not there (#1529): Weir's "already cleaned this
             // exact file" answer names the first run's copy, which Deluno imported and deleted. Importing it can only fail
-            // (missingSource), and "already handled" is untrue for a title that is still waiting for its file. The hand-off
-            // ends here by the library's failure rule, once, with one Activity line. Each write is conditional on the
-            // hand-off still being as it was read, so a good report that got there first is never overwritten.
+            // (missingSource), and "already handled" is untrue for a title that is still waiting for its file. The processor
+            // is answered at once: a share can show a file a few seconds late, so the ending is decided later, from a fresh
+            // look at the path, by the hand-off watcher (ProcessorMissingOutput).
             if (status == "completed" && importsOutput && !string.IsNullOrWhiteSpace(request.OutputPath)
                 && ProcessorHandoffStatuses.IsWithProcessor(handoff.Status)
                 && !ReportedOutputExists(request)
-                && await outputImports.TitleWaitsForItsFileAsync(handoff, cancellationToken)
-                && !await OutputAppearsAsync(request, cancellationToken))
+                && await outputImports.TitleWaitsForItsFileAsync(handoff, library, request.OutputPath.Trim(), cancellationToken))
             {
                 var namedPath = request.OutputPath.Trim();
-                var importOriginal = string.Equals(library.ProcessorFailureMode, "import-original", StringComparison.OrdinalIgnoreCase);
-                var gaveUp = $"{processorName} reported {handoff.ReleaseName} finished at {namedPath}, but that file is not there and nothing from it has been imported. "
-                    + (importOriginal
-                        ? $"{library.Name} imports the original when processing fails, so Deluno is importing it unprocessed."
-                        : "Check the processor's output folder and path mapping, then send it again, or import the original from Queue.");
-                var endStatus = importOriginal ? ProcessorHandoffStatuses.Released : ProcessorHandoffStatuses.Failed;
-                // The write is made over the status just read. The send's own write can land between the read and this one
-                // (waiting, submitted, accepted: all still with the processor), so a miss is read again and tried again a few
-                // times; a hand-off that has ended meanwhile is another report's outcome, and that stands.
-                var ended = false;
-                for (var attempt = 0; attempt < 4 && !ended; attempt++)
+                if (!ProcessorMissingOutput.IsChecking(handoff.FailureMessage)
+                    && await repository.UpdateProcessorHandoffIfStatusAsync(
+                        handoff.Id,
+                        handoff.Status,
+                        handoff.Status,
+                        null,
+                        null,
+                        ProcessorMissingOutput.CheckingMessage(processorName, handoff.ReleaseName, namedPath),
+                        cancellationToken))
                 {
-                    var current = await repository.GetProcessorHandoffAsync(handoff.Id, cancellationToken);
-                    if (current is null || !ProcessorHandoffStatuses.IsWithProcessor(current.Status))
-                    {
-                        break;
-                    }
-
-                    ended = await repository.UpdateProcessorHandoffIfStatusAsync(current.Id, current.Status, endStatus, null, null, gaveUp, cancellationToken);
-                }
-
-                if (!ended)
-                {
-                    return Results.Json(
-                        new { status = "superseded", handoffId = handoff.Id, alreadyHandled = true },
-                        statusCode: StatusCodes.Status202Accepted);
-                }
-
-                var gaveUpActivity = await activityFeed.RecordActivityAsync(
-                    "processing.output-missing.gave-up",
-                    gaveUp,
-                    JsonSerializer.Serialize(new { request.LibraryId, HandoffId = handoff.Id, OutputPath = namedPath, ProcessorName = processorName, ImportOriginal = importOriginal }),
-                    null,
-                    "processor-handoff",
-                    handoff.Id,
-                    cancellationToken);
-                if (!importOriginal)
-                {
-                    await failureReports.HandleOutputsMissingAsync(
-                        new ProcessorMissingOutputReport(library, entityId, processorName, handoff.ReleaseName, namedPath, [namedPath], 1),
+                    await activityFeed.RecordActivityAsync(
+                        ProcessorMissingOutput.CheckingCategory,
+                        ProcessorMissingOutput.CheckingMessage(processorName, handoff.ReleaseName, namedPath),
+                        JsonSerializer.Serialize(new { request.LibraryId, HandoffId = handoff.Id, OutputPath = namedPath, ProcessorName = processorName }),
+                        null,
+                        "processor-handoff",
+                        handoff.Id,
                         cancellationToken);
                 }
 
                 return Results.Json(
-                    new { status = importOriginal ? ProcessorHandoffStatuses.Released : "failed", handoffId = handoff.Id, activityId = gaveUpActivity.Id },
+                    new { status = "checking", handoffId = handoff.Id },
                     statusCode: StatusCodes.Status202Accepted);
             }
 
@@ -1723,24 +1699,6 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
         }).AddEndpointFilter(ProcessorEventAnswerLog.LogAsync);
 
         return endpoints;
-    }
-
-    /// <summary>
-    /// Whether a reported output turns up within a few seconds (#1529): a network share can answer "not there" for a file that
-    /// was written a moment ago, and one missed check must not fail a hand-off. Bounded: about three seconds in all.
-    /// </summary>
-    private static async Task<bool> OutputAppearsAsync(ProcessorEventRequest request, CancellationToken cancellationToken)
-    {
-        foreach (var wait in ProcessorOutputGrace.Waits)
-        {
-            await Task.Delay(wait, cancellationToken);
-            if (ReportedOutputExists(request))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /// <summary>Whether anything a completed report names (the output, or any file it lists) is there to import (#1529).</summary>

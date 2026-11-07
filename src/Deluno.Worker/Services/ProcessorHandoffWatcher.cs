@@ -98,6 +98,7 @@ public sealed class ProcessorHandoffWatcher(
         await SettleReturnedTitlesAsync(allLibraries ?? libraries, now, cancellationToken);
         await SettleFailedImportsAsync(allLibraries ?? libraries, now, cancellationToken);
         await SettleSupersededAsync(allLibraries ?? libraries, now, cancellationToken);
+        await SettleMissingOutputsAsync(allLibraries ?? libraries, now, cancellationToken);
 
         // Exactly the hand-offs a processor still has, however much history sits
         // in front of them (#571).
@@ -326,6 +327,119 @@ public sealed class ProcessorHandoffWatcher(
     /// hand-off. The import adopts an identical file already at the destination. Once: the Activity line it writes is
     /// the record that it was tried, and a person's Try again does the rest.
     /// </summary>
+    /// <summary>
+    /// A processor reported a finished output that was not there (#1529) and was answered at once. Once the share's cached
+    /// "not there" has passed, the path is looked at fresh. If the file is there, it is imported as the report would have
+    /// been. If not, the hand-off ends by the library's failure rule, once, with one Activity line. Every write is over the
+    /// status just read, so a good report that arrives meanwhile is never overwritten.
+    /// </summary>
+    private async Task SettleMissingOutputsAsync(IReadOnlyList<LibraryItem> libraries, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var waiting = (await processorRepository.ListProcessorHandoffsWithStatusAsync(ProcessorHandoffStatuses.WithProcessor, cancellationToken))
+            .Where(item => ProcessorHandoffStatuses.IsWithProcessor(item.Status) && ProcessorMissingOutput.IsChecking(item.FailureMessage));
+        foreach (var handoff in waiting)
+        {
+            var library = libraries.FirstOrDefault(item => string.Equals(item.Id, handoff.LibraryId, StringComparison.OrdinalIgnoreCase));
+            if (library is null || !ImportWorkflows.HandsToProcessor(library.ImportWorkflow))
+            {
+                continue;
+            }
+
+            var checking = (await activityFeed.ListActivityAsync(50, "processor-handoff", handoff.Id, cancellationToken))
+                .Where(item => item.Category == ProcessorMissingOutput.CheckingCategory)
+                .OrderByDescending(item => item.CreatedUtc)
+                .FirstOrDefault();
+            if (checking is null || now - checking.CreatedUtc < ProcessorMissingOutput.RecheckAfter)
+            {
+                continue;
+            }
+
+            string? path = null;
+            try
+            {
+                path = System.Text.Json.Nodes.JsonNode.Parse(checking.DetailsJson ?? "{}")?["OutputPath"]?.GetValue<string>();
+            }
+            catch (System.Text.Json.JsonException)
+            {
+            }
+
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                continue;
+            }
+
+            var name = library.ProcessorName ?? "The processor";
+            if (File.Exists(path) || Directory.Exists(path))
+            {
+                if (outputImports is null)
+                {
+                    continue;
+                }
+
+                var import = await outputImports.QueueAsync(library, handoff, path, "processor", cancellationToken);
+                if (import.AlreadyImported
+                    || !await processorRepository.UpdateProcessorHandoffIfStatusAsync(handoff.Id, handoff.Status, ProcessorHandoffStatuses.Completed, path, import.JobId, null, cancellationToken))
+                {
+                    continue;
+                }
+
+                await activityFeed.RecordActivityAsync(
+                    "processing.completed.import-queued",
+                    $"{name} produced a cleaned file; it turned up a moment after the report, and Deluno queued it for import.",
+                    JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.LibraryId, OutputPath = path, import.JobId, import.DispatchId }),
+                    import.JobId,
+                    "processor-handoff",
+                    handoff.Id,
+                    cancellationToken);
+                continue;
+            }
+
+            var importOriginal = string.Equals(library.ProcessorFailureMode, "import-original", StringComparison.OrdinalIgnoreCase);
+            var gaveUp = ProcessorMissingOutput.GaveUpMessage(name, handoff.ReleaseName, path, library.Name, importOriginal);
+            var endStatus = importOriginal ? ProcessorHandoffStatuses.Released : ProcessorHandoffStatuses.Failed;
+            var ended = false;
+            var current = handoff;
+            for (var attempt = 0; attempt < 4 && !ended; attempt++)
+            {
+                ended = await processorRepository.UpdateProcessorHandoffIfStatusAsync(current.Id, current.Status, endStatus, null, null, gaveUp, cancellationToken);
+                if (ended)
+                {
+                    break;
+                }
+
+                current = await processorRepository.GetProcessorHandoffAsync(handoff.Id, cancellationToken);
+                if (current is null || !ProcessorHandoffStatuses.IsWithProcessor(current.Status))
+                {
+                    break;
+                }
+            }
+
+            if (!ended)
+            {
+                continue;
+            }
+
+            await activityFeed.RecordActivityAsync(
+                ProcessorMissingOutput.GaveUpCategory,
+                gaveUp,
+                JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.LibraryId, OutputPath = path, ImportOriginal = importOriginal }),
+                null,
+                "processor-handoff",
+                handoff.Id,
+                cancellationToken);
+            if (!importOriginal)
+            {
+                await RaiseRecoveryCaseAsync(
+                    handoff,
+                    library,
+                    "processor-output-missing",
+                    gaveUp,
+                    "Check the processor's output folder and path mapping, then send it again, or import the original from Queue.",
+                    cancellationToken);
+            }
+        }
+    }
+
     private async Task SettleFailedImportsAsync(IReadOnlyList<LibraryItem> libraries, DateTimeOffset now, CancellationToken cancellationToken)
     {
         if (outputImports is null)
