@@ -91,7 +91,7 @@ public static class ProcessorMissingOutput
     public static readonly TimeSpan RecheckAfter = TimeSpan.FromSeconds(15);
 
     public static string CheckingMessage(string processorName, string releaseName, string path)
-        => $"{processorName} said {releaseName} was ready at {path}, but that file is not there yet. Deluno will look again in a few seconds.";
+        => $"{processorName} said {releaseName} was ready at {path}, but that file was not there yet. Deluno will check it again.";
 
     public static string GaveUpMessage(string processorName, string releaseName, string path, string libraryName, bool importOriginal)
         => $"{processorName} reported {releaseName} finished at {path}, but that file is not there and nothing from it has been imported. "

@@ -410,6 +410,28 @@ public sealed class AReportedOutputThatIsNotThereEndsTheHandOffClearlyTests
     }
 
     [Fact]
+    public async Task A_report_that_arrives_after_the_send_is_recorded_is_judged_too_and_says_what_happened()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        // The send's answer is recorded first: waiting becomes submitted, then the report comes.
+        await Repository(app).UpdateProcessorHandoffAsync(scene.Handoff.Id, ProcessorHandoffStatuses.Waiting, null, null, null, CancellationToken.None);
+        Assert.True(await Repository(app).UpdateProcessorHandoffIfStatusAsync(
+            scene.Handoff.Id, ProcessorHandoffStatuses.Waiting, ProcessorHandoffStatuses.Submitted, null, null, null, CancellationToken.None));
+
+        var response = await AlreadyCleanedAsync(app, scene);
+
+        Assert.Contains("checking", await BodyOfAsync(response));
+        var line = (await app.Services.GetRequiredService<IActivityFeedRepository>().ListActivityAsync(50, "processor-handoff", scene.Handoff.Id, CancellationToken.None))
+            .Single(item => item.Category == "processing.output-missing.checking");
+        Assert.Contains("was not there yet", line.Message);
+        Assert.DoesNotContain("few seconds", line.Message);
+        await WatchLaterAsync(app);
+        Assert.Equal(ProcessorHandoffStatuses.Failed, (await CurrentAsync(app, scene.Handoff.Id)).Status);
+        Assert.Equal(1, await GaveUpLinesAsync(app, scene.Handoff.Id));
+    }
+
+    [Fact]
     public async Task The_card_does_not_promise_a_look_that_the_stall_timeout_would_have_to_keep()
     {
         await using var app = await ApplicationTestHost.StartAsync();
