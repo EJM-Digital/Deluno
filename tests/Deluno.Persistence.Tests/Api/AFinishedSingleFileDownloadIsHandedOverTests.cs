@@ -159,6 +159,22 @@ public sealed class AFinishedSingleFileDownloadIsHandedOverTests
     }
 
     [Fact]
+    public async Task A_finished_download_whose_client_does_not_say_where_its_files_are_says_so_once()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var unplaced = scene.Item with { SourcePath = null };
+
+        await PlanAsync(app, unplaced);
+        await PlanAsync(app, unplaced);
+
+        Assert.Equal(0, await ApiScenes.ScalarAsync(app, "platform", "SELECT COUNT(*) FROM processor_handoffs"));
+        var told = await app.Services.GetRequiredService<IActivityFeedRepository>().ListActivityAsync(20, null, null, CancellationToken.None);
+        var line = Assert.Single(told, activity => activity.Category == "processing.not-handed-over");
+        Assert.Contains("did not say where its files are", line.Message);
+    }
+
+    [Fact]
     public async Task A_finished_single_file_with_no_hand_off_reads_not_handed_over_after_ten_minutes_whatever_the_client_calls_it()
     {
         await using var app = await ApplicationTestHost.StartAsync();
