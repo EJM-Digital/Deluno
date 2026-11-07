@@ -787,7 +787,8 @@ function Test-FilmDataAt {
     $expected = @($Film.DataFiles | Where-Object { $_ })
     $missing = @(); $wrong = @()
     foreach ($f in $expected) {
-        $p = Join-Path $Folder $f.Rel
+        # Joined as text: Join-Path throws for a drive the machine does not have, which a client may be told to save to (and refuse).
+        $p = $Folder.TrimEnd([char]92) + [char]92 + $f.Rel
         if (-not (Test-Path -LiteralPath $p)) { $missing += $f.Rel; continue }
         $len = (Get-Item -LiteralPath $p).Length
         if ($len -ne $f.Length) { $wrong += ('{0} is {1} bytes, not {2}' -f $f.Rel, $len, $f.Length) }

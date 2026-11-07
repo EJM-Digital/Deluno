@@ -101,10 +101,13 @@ function Invoke-GroupProofs2 {
                 Save-Evidence -Name "proofs2-library-prefix-$($case.Name).json" -Text $r.Raw
                 $file = Find-VolumeFilm -Root $case.Root -Title $title
                 Add-Check "The film for '$($case.Name)' landed under $($case.Root)" ($r.Succeeded -and $null -ne $file) $r.Message
-                $m = Find-CatalogMovie -Title $title
-                $credited = if ($m) { Try-Deluno -Path "/api/movies/$($m.id)" } else { $null }
+                # The film added above is read by its own id (a title search can land on another row), and what the title says about its
+                # library is the detail's libraryId, which comes from the wanted-state row the import writes.
+                $credited = if ($made) { Try-Deluno -Path "/api/movies/$($made.id)" } else { $null }
+                if ($credited) { Save-Evidence -Name "proofs2-library-prefix-$($case.Name)-movie.json" -Text $credited.Raw }
                 $libId = if ($credited -and $credited.Data) { [string]$credited.Data.libraryId } else { '' }
-                Add-Check "The film for '$($case.Name)' is credited to its own library ($($case.Lib.name)), not the other one" ($libId -eq $case.Lib.id) "title's library '$libId', expected '$($case.Lib.id)'"
+                $shown = if ($credited) { "HTTP $($credited.Status) $($credited.Raw.Substring(0, [Math]::Min(300, $credited.Raw.Length)))" } else { 'the film was not added' }
+                Add-Check "The film for '$($case.Name)' is credited to its own library ($($case.Lib.name)), not the other one" ($libId -eq $case.Lib.id) "title's library '$libId', expected '$($case.Lib.id)'; $shown"
             }
         }
         finally {
@@ -123,7 +126,7 @@ function Invoke-GroupProofs2 {
             # There is no single-client read; the list carries each client with its folder.
             $before = Get-DownloadClients | Where-Object { $_.id -eq $client.id } | Select-Object -First 1
             # A drive letter nothing holds: qBittorrent answers setLocation with "Cannot make save path" (recorded, 5.2.1).
-            $letter = @('Z', 'Y', 'X', 'W', 'U') | Where-Object { -not (Test-Path "${_}:\") } | Select-Object -First 1
+            $letter = @('Z', 'Y', 'X', 'W', 'U') | Where-Object { -not (Test-Path -LiteralPath "${_}:\") } | Select-Object -First 1
             if (-not $letter) { throw 'Every spare drive letter is in use; the scenario needs one that does not exist.' }
             $badFolder = "${letter}:\no-such-drive\golden-movies"
             $set = Try-Deluno -Method PUT -Path "/api/download-clients/$($client.id)" -Body @{ location = $badFolder }
