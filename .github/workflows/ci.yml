@@ -263,6 +263,23 @@ jobs:
           fi
           node scripts/check-coverage-register.mjs "${args[@]}"
 
+      # Never runs mutation and gates on no score: it only fails a change that lowers or removes a floor in
+      # docs/testing/mutation-thresholds.json without a reason of its own (the `lowered` entry). No base to compare with passes.
+      - name: The mutation floors have not slid back
+        env:
+          BEFORE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          node --test scripts/check-mutation-ratchet.test.mjs
+          if [ -z "$BEFORE" ] || [ -z "${BEFORE//0/}" ]; then
+            BEFORE=$(git rev-parse --verify -q HEAD~1 || true)
+          fi
+          if [ -n "$BEFORE" ] && git fetch --no-tags --depth=1 origin "$BEFORE" 2>/dev/null; then
+            node scripts/check-mutation-ratchet.mjs --base FETCH_HEAD
+          else
+            echo "No earlier commit to compare the floors with: the floor ratchet is skipped."
+            node scripts/check-mutation-ratchet.mjs
+          fi
+
       - name: Upload the coverage register statistics
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

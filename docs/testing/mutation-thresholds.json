@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "$comment": "Mutation score floor per project (issue 1269). It only goes up: scripts/check-mutation-ratchet.mjs --update raises it from the nightly report, the owner reviews and commits it. 0 means not measured yet.",
+  "$comment": "Mutation score floor per project (issue 1269). It only goes up: scripts/check-mutation-ratchet.mjs --update raises it from the nightly report, the owner reviews and commits it. 0 means not measured yet. CI never runs mutation; it only runs `check-mutation-ratchet.mjs --base <previous commit>`, which fails a change that lowers or removes a floor unless the top-level `lowered` object (project name to a reason of at least 20 characters, in this file, in the same change) says why.",
   "projects": {
     "Deluno.Api": {
       "score": 0

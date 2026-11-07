@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { score, survivors, compare, update, validateThresholds, validateEquivalents, unlistedSurvivors, floor2 } from "./check-mutation-ratchet.mjs";
+import { compareFloors, score, survivors, compare, update, validateThresholds, validateEquivalents, unlistedSurvivors, floor2 } from "./check-mutation-ratchet.mjs";
 import { plan } from "./mutation/run-changed.mjs";
 
 const m = (id, status, line = 1, mutator = "Arithmetic", replacement = "-") => ({ id, status, mutatorName: mutator, replacement, location: { start: { line, column: 1 }, end: { line, column: 2 } } });
@@ -99,4 +99,22 @@ test("the risky list validates, and the checked-in one is valid", () => {
   assert.equal(validateRisky({}).length, 1);
   assert.equal(validateRisky({ projects: { A: "" }, files: [{ project: "A" }] }).length, 3);
   assert.deepEqual(validateRisky(JSON.parse(readFileSync(new URL("../docs/testing/mutation-risky-areas.json", import.meta.url), "utf8"))), []);
+});
+
+test("the floor ratchet: raising passes, lowering fails, lowering with a reason passes, removing fails", () => {
+  const before = { projects: { A: { score: 50 }, B: { score: 10 } } };
+  assert.deepEqual(compareFloors(before, { projects: { A: { score: 60 }, B: { score: 10 }, C: { score: 5 } } }), []);
+  assert.equal(compareFloors(before, { projects: { A: { score: 49.99 }, B: { score: 10 } } }).length, 1);
+  const reason = "Tests moved to Deluno.Api.Tests, so the score is measured afresh.";
+  assert.deepEqual(compareFloors(before, { projects: { A: { score: 40 }, B: { score: 10 } }, lowered: { A: reason } }), []);
+  assert.equal(compareFloors(before, { projects: { A: { score: 40 }, B: { score: 10 } }, lowered: { B: reason } }).length, 1);
+  assert.equal(compareFloors(before, { projects: { A: { score: 50 } } }).length, 1);
+  assert.deepEqual(compareFloors(before, { projects: { A: { score: 50 } }, lowered: { B: reason } }), []);
+});
+
+test("an invalid thresholds file fails, including a lowered entry without a real reason", () => {
+  assert.equal(validateThresholds({}).length, 1);
+  assert.equal(validateThresholds({ projects: { A: { score: 101 } } }).length, 1);
+  assert.equal(validateThresholds({ projects: { A: { score: 1 } }, lowered: { A: "no" } }).length, 1);
+  assert.deepEqual(validateThresholds({ projects: { A: { score: 1 } }, lowered: { A: "A reason that says why in a sentence." } }), []);
 });
