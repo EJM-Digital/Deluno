@@ -228,7 +228,8 @@ describe("after the live connection returns (#1518)", () => {
     asked.paths.length = 0;
     await act(async () => { await readDashboardAgain(); });
 
-    const tile = await screen.findByRole("link", { name: /^Final Destination \(2000\): in the library/ });
+    // A loaded CI runner can take longer than the default second to settle the re-read; the order of events is what is tested.
+    const tile = await screen.findByRole("link", { name: /^Final Destination \(2000\): in the library/ }, { timeout: 5000 });
     expect(tile.querySelector("img")?.getAttribute("src")).toContain("/poster/fd.jpg");
     expect(board.querySelector(".lj-token")).toBe(node);
     expect(asked.paths.filter((path) => path.includes("/api/dashboard/live-extras")).map((path) => path.includes("fresh=true"))).toEqual([true]);
