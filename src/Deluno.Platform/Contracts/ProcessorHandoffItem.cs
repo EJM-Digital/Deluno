@@ -29,7 +29,12 @@ public sealed record ProcessorHandoffItem(
     /// The files of <see cref="SourcePath"/> the processor is asked to take, set only on the copy that goes over the wire and
     /// only when the processor advertises a minimum file size (#1199). Null means the whole folder.
     /// </summary>
-    IReadOnlyList<string>? SourceFiles = null);
+    IReadOnlyList<string>? SourceFiles = null,
+    /// <summary>A finished output the processor named that was not there when it reported, and when (#1529). Null when nothing is pending.</summary>
+    ProcessorMissingOutputMark? MissingOutput = null);
+
+/// <summary>The path a processor reported that was not there, and when Deluno was told.</summary>
+public sealed record ProcessorMissingOutputMark(string Path, DateTimeOffset SinceUtc);
 
 /// <param name="DownloadAddedUtc">
 /// When the download client took this download, when it says. A torrent's queue

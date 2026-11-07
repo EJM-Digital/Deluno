@@ -90,13 +90,8 @@ public static class ProcessorMissingOutput
     /// <summary>How long after the report Deluno looks again, longer than a share's cached "not there".</summary>
     public static readonly TimeSpan RecheckAfter = TimeSpan.FromSeconds(15);
 
-    private const string CheckingEnding = " Deluno will look again shortly.";
-
     public static string CheckingMessage(string processorName, string releaseName, string path)
-        => $"{processorName} said {releaseName} was ready at {path}, but that file is not there yet.{CheckingEnding}";
-
-    public static bool IsChecking(string? failureMessage)
-        => failureMessage is not null && failureMessage.EndsWith(CheckingEnding, StringComparison.Ordinal);
+        => $"{processorName} said {releaseName} was ready at {path}, but that file is not there yet. Deluno will look again in a few seconds.";
 
     public static string GaveUpMessage(string processorName, string releaseName, string path, string libraryName, bool importOriginal)
         => $"{processorName} reported {releaseName} finished at {path}, but that file is not there and nothing from it has been imported. "

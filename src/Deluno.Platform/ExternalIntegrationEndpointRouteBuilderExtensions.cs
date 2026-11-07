@@ -1393,15 +1393,10 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 && await outputImports.TitleWaitsForItsFileAsync(handoff, library, request.OutputPath.Trim(), cancellationToken))
             {
                 var namedPath = request.OutputPath.Trim();
-                if (!ProcessorMissingOutput.IsChecking(handoff.FailureMessage)
-                    && await repository.UpdateProcessorHandoffIfStatusAsync(
-                        handoff.Id,
-                        handoff.Status,
-                        handoff.Status,
-                        null,
-                        null,
-                        ProcessorMissingOutput.CheckingMessage(processorName, handoff.ReleaseName, namedPath),
-                        cancellationToken))
+                // Kept in its own columns, over whatever status the hand-off has while it is with the processor: this report and
+                // the send's own write race, and neither order may lose it. A hand-off that has moved on meanwhile (a good report
+                // settled it) is another report's outcome, and this one is answered as handled.
+                if (await repository.MarkMissingOutputAsync(handoff.Id, namedPath, cancellationToken))
                 {
                     await activityFeed.RecordActivityAsync(
                         ProcessorMissingOutput.CheckingCategory,
@@ -1411,6 +1406,13 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                         "processor-handoff",
                         handoff.Id,
                         cancellationToken);
+                }
+                else if (await repository.GetProcessorHandoffAsync(handoff.Id, cancellationToken) is not { } pending
+                    || !ProcessorHandoffStatuses.IsWithProcessor(pending.Status))
+                {
+                    return Results.Json(
+                        new { status = "superseded", handoffId = handoff.Id, alreadyHandled = true },
+                        statusCode: StatusCodes.Status202Accepted);
                 }
 
                 return Results.Json(

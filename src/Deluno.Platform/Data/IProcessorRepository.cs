@@ -75,6 +75,14 @@ public interface IProcessorRepository
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Keeps the output a processor reported that was not there, and when, on a hand-off still with the processor (#1529). Its own
+    /// columns: no other write changes them, and the hand-off ending clears them. True when it was newly kept; false when one was
+    /// already pending, or the hand-off is no longer with the processor.
+    /// </summary>
+    Task<bool> MarkMissingOutputAsync(string id, string outputPath, CancellationToken cancellationToken)
+        => Task.FromResult(false);
+
+    /// <summary>
     /// Tells the records that mirror a dismissed hand-off (its import issues and their System rows) that it is closed, again.
     /// For a hand-off dismissed before they followed it (#1228); a hand-off that is not dismissed is left alone.
     /// </summary>

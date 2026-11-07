@@ -390,6 +390,69 @@ public sealed class AReportedOutputThatIsNotThereEndsTheHandOffClearlyTests
         Assert.Equal(1, await ImportJobsAsync(app));
     }
 
+    [Fact]
+    public async Task A_report_that_arrives_before_the_send_is_recorded_is_still_judged_after_the_send_writes()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        // The order in the golden VM log: the hand-off is still waiting when the report comes, and the send writes right after it.
+        await Repository(app).UpdateProcessorHandoffAsync(scene.Handoff.Id, ProcessorHandoffStatuses.Waiting, null, null, null, CancellationToken.None);
+
+        var response = await AlreadyCleanedAsync(app, scene);
+        Assert.Contains("checking", await BodyOfAsync(response));
+        var sent = await Repository(app).UpdateProcessorHandoffIfStatusAsync(
+            scene.Handoff.Id, ProcessorHandoffStatuses.Waiting, ProcessorHandoffStatuses.Submitted, null, null, null, CancellationToken.None);
+        Assert.True(sent);
+        await WatchLaterAsync(app);
+
+        Assert.Equal(ProcessorHandoffStatuses.Failed, (await CurrentAsync(app, scene.Handoff.Id)).Status);
+        Assert.Equal(1, await GaveUpLinesAsync(app, scene.Handoff.Id));
+    }
+
+    [Fact]
+    public async Task The_card_does_not_promise_a_look_that_the_stall_timeout_would_have_to_keep()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+
+        await AlreadyCleanedAsync(app, scene);
+
+        // The pending look is kept apart from the hand-off's own message, which stays as it was.
+        var pending = await CurrentAsync(app, scene.Handoff.Id);
+        Assert.Null(pending.FailureMessage);
+        Assert.NotNull(pending.MissingOutput);
+        // Other writes to the hand-off leave it in place.
+        await Repository(app).UpdateProcessorHandoffAsync(scene.Handoff.Id, ProcessorHandoffStatuses.Accepted, null, null, "Weir has it.", CancellationToken.None);
+        Assert.NotNull((await CurrentAsync(app, scene.Handoff.Id)).MissingOutput);
+        await WatchLaterAsync(app);
+        Assert.Equal(ProcessorHandoffStatuses.Failed, (await CurrentAsync(app, scene.Handoff.Id)).Status);
+        Assert.Null((await CurrentAsync(app, scene.Handoff.Id)).MissingOutput);
+    }
+
+    [Fact]
+    public async Task An_output_found_on_the_second_look_that_an_import_already_took_settles_the_hand_off_and_imports_nothing_over_it()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app, withLink: false);
+        var report = AlreadyCleanedBody(scene, scene.Handoff.Id);
+        await RecordedWeirReports.PostAsync(app.Client, report);
+        // Meanwhile an import of this very output ran to its end, and the file is back where it was named.
+        var named = RecordedWeirReports.OutputFilesOf(report).First();
+        WriteFiles(report);
+        var job = await app.Services.GetRequiredService<IJobScheduler>().EnqueueAsync(
+            new EnqueueJobRequest("filesystem.import.execute", "processor", "{}", "movie", null,
+                IdempotencyKey: $"processor-output:{scene.Library.Id}:{Path.GetFullPath(named).ToLowerInvariant()}"),
+            CancellationToken.None);
+        await CompleteJobAsync(app, job.Id);
+        File.SetLastWriteTimeUtc(named, DateTime.UtcNow.AddMinutes(-30));
+
+        await WatchLaterAsync(app);
+
+        Assert.Equal(ProcessorHandoffStatuses.Completed, (await CurrentAsync(app, scene.Handoff.Id)).Status);
+        Assert.Equal(0, await GaveUpLinesAsync(app, scene.Handoff.Id));
+        Assert.Equal(1, await ImportJobsAsync(app));
+    }
+
     private static async Task CompleteJobAsync(ApplicationTestHost app, string jobId)
     {
         var db = app.Services.GetRequiredService<Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory>();

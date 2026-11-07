@@ -531,7 +531,9 @@ public sealed class SqliteProcessorRepository(
                     processor_last_changed_utc = NULL,
                     processor_checked_utc = NULL,
                     processor_unreachable_since_utc = NULL,
-                    processor_answering_since_utc = NULL
+                    processor_answering_since_utc = NULL,
+                    missing_output_path = NULL,
+                    missing_output_since_utc = NULL
                 WHERE library_id = @libraryId
                   AND source_key = @sourceKey
                   -- Any other ending restarts only for a new download. The same
@@ -824,6 +826,24 @@ public sealed class SqliteProcessorRepository(
         return await update.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
+    public async Task<bool> MarkMissingOutputAsync(string id, string outputPath, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        using var mark = connection.CreateCommand();
+        // Over whichever status the hand-off has while it is with the processor: the report and the send race, and either may come first.
+        mark.CommandText =
+            """
+            UPDATE processor_handoffs
+            SET missing_output_path = @path, missing_output_since_utc = @now
+            WHERE id = @id AND missing_output_path IS NULL
+              AND status IN ('waiting', 'submitted', 'accepted', 'started');
+            """;
+        AddParameter(mark, "@id", id.Trim());
+        AddParameter(mark, "@path", outputPath);
+        AddParameter(mark, "@now", timeProvider.GetUtcNow().ToString("O"));
+        return await mark.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
     public Task<ProcessorHandoffItem?> UpdateProcessorHandoffAsync(
         string id,
         string status,
@@ -884,7 +904,10 @@ public sealed class SqliteProcessorRepository(
                         WHEN @status = 'dismissed' AND status IN ('failed', 'rejected') THEN COALESCE(processor_checked_utc, @updatedUtc)
                         ELSE processor_checked_utc END,
                     processor_unreachable_since_utc = CASE WHEN @status = 'waiting' THEN NULL ELSE processor_unreachable_since_utc END,
-                    processor_answering_since_utc = CASE WHEN @status = 'waiting' THEN NULL ELSE processor_answering_since_utc END
+                    processor_answering_since_utc = CASE WHEN @status = 'waiting' THEN NULL ELSE processor_answering_since_utc END,
+                    -- A finished output that was not there (#1529) is pending only while the hand-off is with the processor.
+                    missing_output_path = CASE WHEN @status IN ('waiting', 'submitted', 'accepted', 'started') THEN missing_output_path ELSE NULL END,
+                    missing_output_since_utc = CASE WHEN @status IN ('waiting', 'submitted', 'accepted', 'started') THEN missing_output_since_utc ELSE NULL END
                 WHERE id = @id
                   -- A poller writes only over the status it read (#1363): a report that moved the hand-off since wins.
                   AND (@expectedStatus IS NULL OR status = @expectedStatus);
@@ -997,7 +1020,7 @@ public sealed class SqliteProcessorRepository(
     /// <summary>One column list for every hand-off read, so a new column cannot reach some reads and miss others.</summary>
     private const string HandoffSelect =
         "SELECT id, library_id, media_type, client_id, queue_item_id, release_name, source_path, COALESCE((SELECT pc.name FROM processor_connections pc WHERE pc.id = processor_handoffs.processor_connection_id), processor_name), status, output_path, import_job_id, failure_message, created_utc, updated_utc, "
-        + "processor_state, processor_message, processor_queue_position, processor_scheduled_for_utc, processor_last_changed_utc, processor_checked_utc, processor_unreachable_since_utc, processor_answering_since_utc, processor_connection_id "
+        + "processor_state, processor_message, processor_queue_position, processor_scheduled_for_utc, processor_last_changed_utc, processor_checked_utc, processor_unreachable_since_utc, processor_answering_since_utc, processor_connection_id, missing_output_path, missing_output_since_utc "
         + "FROM processor_handoffs";
 
     private static ProcessorHandoffItem ReadProcessorHandoff(System.Data.Common.DbDataReader reader)
@@ -1017,7 +1040,8 @@ public sealed class SqliteProcessorRepository(
                     ParseTimestamp(reader.GetString(19)),
                     ReadOptionalTimestamp(reader, 20),
                     ReadOptionalTimestamp(reader, 21)),
-            ProcessorConnectionId: reader.IsDBNull(22) ? null : reader.GetString(22));
+            ProcessorConnectionId: reader.IsDBNull(22) ? null : reader.GetString(22),
+            MissingOutput: reader.IsDBNull(23) || reader.IsDBNull(24) ? null : new ProcessorMissingOutputMark(reader.GetString(23), ParseTimestamp(reader.GetString(24))));
 
     private static DateTimeOffset? ReadOptionalTimestamp(System.Data.Common.DbDataReader reader, int ordinal)
         => reader.IsDBNull(ordinal) ? null : ParseTimestamp(reader.GetString(ordinal));

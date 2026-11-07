@@ -322,12 +322,6 @@ public sealed class ProcessorHandoffWatcher(
     }
 
     /// <summary>
-    /// A finished hand-off whose output is still on disk, while its title (the one that is there now) holds no file
-    /// and its import gave up, is imported once more (#1155), whatever the order of the title's return and the
-    /// hand-off. The import adopts an identical file already at the destination. Once: the Activity line it writes is
-    /// the record that it was tried, and a person's Try again does the rest.
-    /// </summary>
-    /// <summary>
     /// A processor reported a finished output that was not there (#1529) and was answered at once. Once the share's cached
     /// "not there" has passed, the path is looked at fresh. If the file is there, it is imported as the report would have
     /// been. If not, the hand-off ends by the library's failure rule, once, with one Activity line. Every write is over the
@@ -336,38 +330,23 @@ public sealed class ProcessorHandoffWatcher(
     private async Task SettleMissingOutputsAsync(IReadOnlyList<LibraryItem> libraries, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var waiting = (await processorRepository.ListProcessorHandoffsWithStatusAsync(ProcessorHandoffStatuses.WithProcessor, cancellationToken))
-            .Where(item => ProcessorHandoffStatuses.IsWithProcessor(item.Status) && ProcessorMissingOutput.IsChecking(item.FailureMessage));
+            .Where(item => ProcessorHandoffStatuses.IsWithProcessor(item.Status) && item.MissingOutput is not null);
         foreach (var handoff in waiting)
         {
             var library = libraries.FirstOrDefault(item => string.Equals(item.Id, handoff.LibraryId, StringComparison.OrdinalIgnoreCase));
             if (library is null || !ImportWorkflows.HandsToProcessor(library.ImportWorkflow))
             {
+                // The pass over the open hand-offs below ends a hand-off whose library stopped processing; nothing is judged here.
                 continue;
             }
 
-            var checking = (await activityFeed.ListActivityAsync(50, "processor-handoff", handoff.Id, cancellationToken))
-                .Where(item => item.Category == ProcessorMissingOutput.CheckingCategory)
-                .OrderByDescending(item => item.CreatedUtc)
-                .FirstOrDefault();
-            if (checking is null || now - checking.CreatedUtc < ProcessorMissingOutput.RecheckAfter)
-            {
-                continue;
-            }
-
-            string? path = null;
-            try
-            {
-                path = System.Text.Json.Nodes.JsonNode.Parse(checking.DetailsJson ?? "{}")?["OutputPath"]?.GetValue<string>();
-            }
-            catch (System.Text.Json.JsonException)
-            {
-            }
-
-            if (string.IsNullOrWhiteSpace(path))
+            var mark = handoff.MissingOutput!;
+            if (now - mark.SinceUtc < ProcessorMissingOutput.RecheckAfter)
             {
                 continue;
             }
 
+            var path = mark.Path;
             var name = library.ProcessorName ?? "The processor";
             if (File.Exists(path) || Directory.Exists(path))
             {
@@ -377,8 +356,25 @@ public sealed class ProcessorHandoffWatcher(
                 }
 
                 var import = await outputImports.QueueAsync(library, handoff, path, "processor", cancellationToken);
-                if (import.AlreadyImported
-                    || !await processorRepository.UpdateProcessorHandoffIfStatusAsync(handoff.Id, handoff.Status, ProcessorHandoffStatuses.Completed, path, import.JobId, null, cancellationToken))
+                if (import.AlreadyImported)
+                {
+                    // An import of this output already ran: settled as the report would have been (a repeat is not a new import).
+                    if (await processorRepository.UpdateProcessorHandoffIfStatusAsync(handoff.Id, handoff.Status, ProcessorHandoffStatuses.Completed, path, null, null, cancellationToken))
+                    {
+                        await activityFeed.RecordActivityAsync(
+                            "processing.output.already-imported",
+                            $"{name} reported {handoff.ReleaseName}, which Deluno had already imported. There was nothing to import.",
+                            JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.LibraryId, OutputPath = path }),
+                            null,
+                            "processor-handoff",
+                            handoff.Id,
+                            cancellationToken);
+                    }
+
+                    continue;
+                }
+
+                if (!await processorRepository.UpdateProcessorHandoffIfStatusAsync(handoff.Id, handoff.Status, ProcessorHandoffStatuses.Completed, path, import.JobId, null, cancellationToken))
                 {
                     continue;
                 }
@@ -440,6 +436,12 @@ public sealed class ProcessorHandoffWatcher(
         }
     }
 
+    /// <summary>
+    /// A finished hand-off whose output is still on disk, while its title (the one that is there now) holds no file
+    /// and its import gave up, is imported once more (#1155), whatever the order of the title's return and the
+    /// hand-off. The import adopts an identical file already at the destination. Once: the Activity line it writes is
+    /// the record that it was tried, and a person's Try again does the rest.
+    /// </summary>
     private async Task SettleFailedImportsAsync(IReadOnlyList<LibraryItem> libraries, DateTimeOffset now, CancellationToken cancellationToken)
     {
         if (outputImports is null)

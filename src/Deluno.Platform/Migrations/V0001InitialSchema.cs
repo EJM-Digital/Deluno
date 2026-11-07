@@ -148,7 +148,8 @@ public static class PlatformDatabaseMigrations
         new V0140ConnectionChecksAlwaysOn(),
         new V0141RecoveryCodes(),
         new V0142LibraryPairs(),
-        new V0143IndexerMinimumSeedersDefaultOne()
+        new V0143IndexerMinimumSeedersDefaultOne(),
+        new V0144ProcessorHandoffMissingOutput()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration
