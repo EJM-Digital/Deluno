@@ -35,6 +35,7 @@ public sealed class WindowsTransmissionDaemonControl(BundledComponentSpec? spec)
 
             var info = new ProcessStartInfo("powershell.exe",
                 "-NoProfile -NonInteractive -Command \"Get-CimInstance Win32_Process -Filter \\\"Name='transmission-daemon.exe'\\\" | ForEach-Object { $_.CommandLine }\"");
+            info.WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.Neutral;
             // Read as it arrives, closed standard input, and a limit: PowerShell can stall on a busy machine (#1258).
             var result = await ChildProcess.RunAsync(info, TimeSpan.FromSeconds(30), cancellationToken).ConfigureAwait(false);
             if (!result.Started || result.TimedOut)

@@ -145,7 +145,7 @@ public sealed class LeftoverDownloadCleanupService(
         }
 
         // Read as it arrives and stopped if it does not finish (#1258).
-        var result = Deluno.Infrastructure.Processes.ChildProcess.Run(new ProcessStartInfo("stat", ["-c", "%h", path]), TimeSpan.FromSeconds(10));
+        var result = Deluno.Infrastructure.Processes.ChildProcess.Run(new ProcessStartInfo("stat", ["-c", "%h", path]) { WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.Neutral }, TimeSpan.FromSeconds(10));
         if (!result.Started)
         {
             throw new IOException("Could not start 'stat' to read the link count.");

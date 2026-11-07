@@ -114,7 +114,7 @@ internal static class PowerShellRead
         try
         {
             var exe = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
-            var start = new ProcessStartInfo(exe);
+            var start = new ProcessStartInfo(exe) { WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.Neutral };
             start.ArgumentList.Add("-NoProfile");
             start.ArgumentList.Add("-NonInteractive");
             start.ArgumentList.Add("-Command");

@@ -76,7 +76,7 @@ public sealed class FileIdentity : IFileIdentity
 
     private static string? UnixIdentity(string path)
     {
-        var startInfo = new ProcessStartInfo { FileName = "stat" };
+        var startInfo = new ProcessStartInfo { FileName = "stat", WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.Neutral };
         startInfo.ArgumentList.Add("-c");
         startInfo.ArgumentList.Add("%d:%i");
         startInfo.ArgumentList.Add(path);

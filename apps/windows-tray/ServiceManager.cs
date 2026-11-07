@@ -208,7 +208,7 @@ public static class ServiceManager
         public int? Run(string arguments, TimeSpan timeout)
         {
             // Both streams are read as they arrive so a full pipe never holds sc.exe up, and it is stopped if it does not finish.
-            var result = ChildProcess.Run(new ProcessStartInfo { FileName = "sc.exe", Arguments = arguments }, timeout);
+            var result = ChildProcess.Run(new ProcessStartInfo { FileName = "sc.exe", Arguments = arguments, WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.Neutral }, timeout);
             return result.Started && !result.TimedOut ? result.ExitCode : null;
         }
     }
@@ -303,7 +303,8 @@ public static class ServiceManager
             Arguments = args,
             UseShellExecute = true,
             Verb = "runas",     // UAC elevation
-            CreateNoWindow = true
+            CreateNoWindow = true,
+            WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.Neutral
         });
         // No pipes (a shell start), but not an open-ended wait either (#1258).
         p?.WaitForExit(ElevatedScLimit);

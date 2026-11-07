@@ -254,7 +254,7 @@ public sealed class ComponentPickerDialog : Form
         // Only because the person pressed the button. Deluno may still be starting; the page loads once it is up.
         try
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo($"http://localhost:{AppSettings.Load().Port}") { UseShellExecute = true });
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo($"http://localhost:{AppSettings.Load().Port}") { UseShellExecute = true, WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.Neutral });
         }
         catch
         {

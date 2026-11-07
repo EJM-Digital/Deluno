@@ -1265,12 +1265,12 @@ internal static class WinTrust
 public sealed class RealProcessRunner : IProcessRunner
 {
     public Task<int?> RunAsync(string path, string? arguments, TimeSpan timeout, CancellationToken cancellationToken)
-        => RunCoreAsync(new ProcessStartInfo(path, arguments ?? string.Empty) { UseShellExecute = true }, timeout, cancellationToken);
+        => RunCoreAsync(new ProcessStartInfo(path, arguments ?? string.Empty) { UseShellExecute = true, WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.For(path) }, timeout, cancellationToken);
 
     /// <summary>Windows' own permission prompt (none when already elevated), then the process with no window: the person sees one prompt, not an installer.</summary>
     public Task<int?> RunElevatedAsync(string path, string? arguments, TimeSpan timeout, CancellationToken cancellationToken)
         => RunCoreAsync(
-            new ProcessStartInfo(path, arguments ?? string.Empty) { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden },
+            new ProcessStartInfo(path, arguments ?? string.Empty) { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden, WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.For(path) },
             timeout,
             cancellationToken);
 
@@ -1337,7 +1337,9 @@ public sealed class RealProcessStarter : IProcessStarter
             var process = Process.Start(new ProcessStartInfo(path, arguments ?? string.Empty)
             {
                 UseShellExecute = false,
-                CreateNoWindow = hidden
+                CreateNoWindow = hidden,
+                // The program's own folder, not the tray's (the install folder): a client standing there blocks Setup's rename (#1532).
+                WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.For(path)
             });
             return process is null ? null : new RealStartedProcess(process);
         }

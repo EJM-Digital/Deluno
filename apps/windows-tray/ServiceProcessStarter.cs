@@ -31,6 +31,8 @@ public sealed class ServiceProcessStarter(string dataRoot) : IProcessStarter
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,
+                // The client's own folder, never the tray's: a client left standing in the install folder blocks Setup's rename (#1532).
+                WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.For(path),
             };
             if (ProfileFoldersFor(dataRoot) is { } folders)
             {

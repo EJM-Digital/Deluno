@@ -190,6 +190,7 @@ internal static class RelaunchAfterSetup
         {
             UseShellExecute = true,
             WindowStyle = ProcessWindowStyle.Hidden,
+            WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.Neutral,
         };
         foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", HelperScript(kind, setupProcessId, executable, logPath) })
         {

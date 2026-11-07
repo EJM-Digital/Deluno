@@ -361,7 +361,7 @@ public sealed class TrayApplication : ApplicationContext
         {
             try
             {
-                Process.Start(new ProcessStartInfo(address + path) { UseShellExecute = true });
+                Process.Start(new ProcessStartInfo(address + path) { UseShellExecute = true, WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.Neutral });
             }
             catch (Exception ex)
             {
@@ -386,7 +386,7 @@ public sealed class TrayApplication : ApplicationContext
         try
         {
             Directory.CreateDirectory(folder);
-            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{folder}\"") { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{folder}\"") { UseShellExecute = true, WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.Neutral });
         }
         catch
         {

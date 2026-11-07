@@ -204,7 +204,7 @@ public sealed class WindowsCompanionSystem : ICompanionSystem
     {
         try
         {
-            using var process = Process.Start(new ProcessStartInfo(path, arguments) { UseShellExecute = true, Verb = "runas" })
+            using var process = Process.Start(new ProcessStartInfo(path, arguments) { UseShellExecute = true, Verb = "runas", WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.For(path) })
                 ?? throw new InvalidOperationException($"{Path.GetFileName(path)} did not start.");
             return await WaitForInstallerAsync(process, cancellationToken);
         }
@@ -216,7 +216,7 @@ public sealed class WindowsCompanionSystem : ICompanionSystem
 
     public async Task<CompanionRunResult> RunAsync(string path, string arguments, CancellationToken cancellationToken)
     {
-        using var process = Process.Start(new ProcessStartInfo(path, arguments) { UseShellExecute = false, CreateNoWindow = true })
+        using var process = Process.Start(new ProcessStartInfo(path, arguments) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.For(path) })
             ?? throw new InvalidOperationException($"{Path.GetFileName(path)} did not start.");
         return await WaitForInstallerAsync(process, cancellationToken);
     }
@@ -242,7 +242,7 @@ public sealed class WindowsCompanionSystem : ICompanionSystem
     }
 
     public void Start(string path, string arguments)
-        => Process.Start(new ProcessStartInfo(path, arguments) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(path) })?.Dispose();
+        => Process.Start(new ProcessStartInfo(path, arguments) { UseShellExecute = true, WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.For(path) })?.Dispose();
 
     public void StartAtSignIn(string name, string command)
     {

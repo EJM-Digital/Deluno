@@ -355,7 +355,8 @@ public sealed class WindowsFirewall : IWindowsFirewall
                 {
                     UseShellExecute = true,
                     Verb = "runas",
-                    WindowStyle = ProcessWindowStyle.Hidden
+                    WindowStyle = ProcessWindowStyle.Hidden,
+                    WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.Neutral
                 });
                 if (elevated is null)
                 {
@@ -378,7 +379,7 @@ public sealed class WindowsFirewall : IWindowsFirewall
             }
 
             // Both streams are read as they arrive and netsh is stopped if it does not finish (#1258).
-            var result = await Deluno.Infrastructure.Processes.ChildProcess.RunAsync(new ProcessStartInfo("netsh", netshArguments), NetshLimit, cancellationToken);
+            var result = await Deluno.Infrastructure.Processes.ChildProcess.RunAsync(new ProcessStartInfo("netsh", netshArguments) { WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.Neutral }, NetshLimit, cancellationToken);
             if (!result.Started)
             {
                 return new FirewallCommandResult(-1, "Windows did not start netsh.");

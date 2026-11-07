@@ -91,6 +91,7 @@ public sealed class FfmpegSpeechDetector(ILogger<FfmpegSpeechDetector> logger, T
         var startInfo = new ProcessStartInfo
         {
             FileName = executable,
+            WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.Neutral,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,

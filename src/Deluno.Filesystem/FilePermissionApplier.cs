@@ -56,7 +56,7 @@ public static class FilePermissions
 
     private static async Task TryChownGroupAsync(string path, string group, ILogger logger, CancellationToken cancellationToken)
     {
-        var startInfo = new ProcessStartInfo { FileName = "chgrp" };
+        var startInfo = new ProcessStartInfo { FileName = "chgrp", WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.Neutral };
         startInfo.ArgumentList.Add(group);
         startInfo.ArgumentList.Add(path);
 

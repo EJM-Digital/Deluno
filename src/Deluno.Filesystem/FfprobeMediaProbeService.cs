@@ -39,7 +39,7 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
             return Unreadable(exception.Message);
         }
 
-        var startInfo = new ProcessStartInfo { FileName = executable };
+        var startInfo = new ProcessStartInfo { FileName = executable, WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.Neutral };
         startInfo.ArgumentList.Add("-v");
         startInfo.ArgumentList.Add("error");
         startInfo.ArgumentList.Add("-print_format");

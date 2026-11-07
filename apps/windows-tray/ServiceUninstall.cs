@@ -103,7 +103,7 @@ internal sealed class RealServiceUninstallEnvironment : IServiceUninstallEnviron
 
         try
         {
-            using var p = Process.Start(new ProcessStartInfo { FileName = exe, Arguments = "--uninstall-service", UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden });
+            using var p = Process.Start(new ProcessStartInfo { FileName = exe, Arguments = "--uninstall-service", UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden, WorkingDirectory = Deluno.Infrastructure.Processes.ProcessWorkingDirectory.Neutral });
             return p is not null && p.WaitForExit(Limit);
         }
         catch (System.ComponentModel.Win32Exception)
