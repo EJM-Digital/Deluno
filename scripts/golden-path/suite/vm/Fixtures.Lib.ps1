@@ -179,12 +179,14 @@ function New-TorrentFilm {
         [switch] $Extra,
         [string] $Label = 'film',
         # A real title and year (so the metadata has a poster for it), and for a TV episode its S01E01 mark.
-        [string] $RealTitle, [int] $RealYear = 2020, [string] $Episode
+        [string] $RealTitle, [int] $RealYear = 2020, [string] $Episode,
+        # What follows the year in the release name (the group is added).
+        [string] $NameTags = '1080p.WEB-DL.x264'
     )
     $token = New-FilmToken
     $title = ('Gp{0}{1}' -f $Label, $token).Replace('-', '')
     $year = 2020
-    $release = "$title.$year.1080p.WEB-DL.x264-GOLDEN"
+    $release = "$title.$year.$NameTags-GOLDEN"
     if ($RealTitle) {
         $title = $RealTitle; $year = $RealYear
         $mark = $(if ($Episode) { $Episode } else { "$year" })

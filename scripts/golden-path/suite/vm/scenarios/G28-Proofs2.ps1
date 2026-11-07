@@ -16,6 +16,10 @@
                                       the server refuses the request the switch says why and keeps the state the server holds, and
                                       when Deluno cannot be reached the message is "Deluno could not be reached", never "Failed to
                                       fetch". The connection is removed afterwards.
+      proofs2.uhd-bluray-1080p        #1505. With the download check on, a real qBittorrent finishes a 1080p film named UHD.BluRay.1080p:
+                                      the name's explicit 1080p beats the UHD tag, so the check passes, Weir gets it, it is imported
+                                      and the library reads 1080p. A film named 2160p whose file is 1080p is still refused,
+                                      blocklisted and never imported (the rule is unchanged).
 #>
 
 # The film at the destination is looked up in the catalogue by title (a list may be paged under items).
@@ -212,6 +216,66 @@ function Invoke-GroupProofs2 {
         }
         finally {
             if ($id) { Try-Deluno -Method DELETE -Path "/api/seerr-servers/$id" | Out-Null }
+        }
+    }
+
+    # ------------------------------------------------------------------------------------------------ #1505
+    Invoke-Scenario -Id 'proofs2.uhd-bluray-1080p' -Title 'A 1080p film named "UHD BluRay 1080p" passes the download check and is imported as 1080p; one named 2160p with a 1080p file is still refused' -Body {
+        $saved = $null; $films = @()
+        try {
+            $saved = [bool](Invoke-Deluno -Path '/api/settings').downloadIntegrityCheckEnabled
+            Invoke-Deluno -Method PATCH -Path '/api/settings' -Body @{ downloadIntegrityCheckEnabled = $true } | Out-Null
+            Add-Check 'The download check is switched on' ([bool](Invoke-Deluno -Path '/api/settings').downloadIntegrityCheckEnabled) ''
+
+            # ---- the name says UHD BluRay and 1080p; the file is 1080p
+            $good = New-FilmFor -Kind 'qbittorrent' -Layout 'folder' -Label 'uhd' -NameTags 'UHD.BluRay.1080p.x264'
+            $films += $good
+            Add-Check 'The release name carries both the UHD tag and 1080p' ($good.Release -match 'UHD\.BluRay\.1080p') $good.Release
+            $ffprobe = Get-SuiteFfprobe
+            if ($ffprobe) {
+                $h = [int]((& $ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 $script:Fx.Base['small'] 2>$null | Select-Object -First 1) -as [int])
+                Add-Check 'The test video is a real 1080p-class picture (ffprobe)' ($h -ge 800 -and $h -le 1080) "height $h"
+            }
+            $good = Send-Film -Film $good -Kind 'qbittorrent' -Quality 'Bluray 1080p'
+            $r = Wait-FilmImported -Film $good
+            Add-Check 'The client finished the download' $r.Finished ("{0} s after the send" -f $r.FinishedSec)
+            $passed = Wait-Until -TimeoutSec 60 -IntervalSec 3 -Condition { @(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($good.Title) -and $_ -match 'download\.integrity\.passed' }).Count -gt 0 }
+            Add-Check 'Activity records download.integrity.passed for the release' $passed.Ok ((@(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($good.Title) }) | Select-Object -First 3) -join ' || ')
+            Add-Check 'No "2160p" rejection was written for it' (@(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($good.Title) -and $_ -match 'Name said 2160p' }).Count -eq 0) ''
+            $blocked = Try-Deluno -Path '/api/blocked-releases?take=200'
+            Add-Check 'The release is not on the blocklist' (-not ($blocked.Status -eq 200 -and $blocked.Raw -match [regex]::Escape($good.Release))) ''
+            Add-Check 'Deluno handed it to Weir' $r.HandedOff ("{0} s after the send" -f $r.HandedSec)
+            Add-Check 'Weir cleaned it and the hand-off settled' $r.Settled ''
+            Add-Check 'Deluno imported it into the library' $r.Imported $(if ($r.File) { $r.File.FullName } else { 'no file in the library' })
+            if ($r.File -and $ffprobe) {
+                $fh = [int]((& $ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 $r.File.FullName 2>$null | Select-Object -First 1) -as [int])
+                Add-Check 'The imported file really is 1080p-class (not 2160p)' ($fh -ge 800 -and $fh -le 1080) "height $fh"
+            }
+            $m = Wait-Until -TimeoutSec 90 -IntervalSec 3 -Condition { $x = Find-CatalogMovie -Title $good.Title; if ($x -and $x.currentQuality) { $x } else { $null } }
+            Add-Check 'The library file''s quality reads 1080p' ($m.Ok -and "$($m.Value.currentQuality)" -match '1080p' -and "$($m.Value.currentQuality)" -notmatch '2160p') $(if ($m.Ok) { "currentQuality '$($m.Value.currentQuality)'" } else { 'the title has no quality yet' })
+            Save-Evidence -Name 'proofs2-uhd-bluray-1080p.json' -Text (@{ release = $good.Release; imported = $r.Imported; quality = $(if ($m.Ok) { $m.Value.currentQuality } else { $null }) } | ConvertTo-Json)
+
+            # ---- the name says 2160p; the file is 1080p: still refused (the rule is unchanged)
+            $bad = New-FilmFor -Kind 'qbittorrent' -Layout 'folder' -Label 'uhdlie' -NameTags '2160p.UHD.BluRay.x265'
+            $films += $bad
+            $bad = Send-Film -Film $bad -Kind 'qbittorrent' -Quality 'Bluray 2160p'
+            $refused = Wait-Until -TimeoutSec 360 -IntervalSec 5 -Condition {
+                $b = Try-Deluno -Path '/api/blocked-releases?take=200'
+                if ($b.Status -eq 200 -and $b.Raw -match [regex]::Escape($bad.Release)) { $b } else { $null }
+            }
+            Save-Evidence -Name 'proofs2-uhd-2160p-name-blocklist.json' -Text $(if ($refused.Ok) { $refused.Value.Raw } else { 'not blocklisted' })
+            Add-Check '2160p name, 1080p file: the release is blocklisted' $refused.Ok ("after {0} s" -f $refused.Seconds)
+            $said = Wait-Until -TimeoutSec 60 -IntervalSec 3 -Condition { @(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($bad.Title) -and $_ -match 'Name said 2160p' }).Count -gt 0 }
+            Add-Check '2160p name, 1080p file: Activity says the name said 2160p' $said.Ok ((@(Get-ActivityText | Where-Object { $_ -match [regex]::Escape($bad.Title) }) | Select-Object -First 2) -join ' || ')
+            Add-Check '2160p name, 1080p file: it was never handed to Weir' (@(Find-Handoffs -Name $bad.Release).Count -eq 0) ''
+            Add-Check '2160p name, 1080p file: it was never imported' ($null -eq (Find-Imported -Title $bad.Title)) ''
+        }
+        finally {
+            if ($null -ne $saved) { try { Invoke-Deluno -Method PATCH -Path '/api/settings' -Body @{ downloadIntegrityCheckEnabled = $saved } | Out-Null } catch { } }
+            foreach ($f in $films) {
+                try { Remove-FilmDownload -Film $f -Reason 'unwanted' | Out-Null } catch { }
+                if ($f.MovieId) { Try-Deluno -Method DELETE -Path "/api/movies/$($f.MovieId)?deleteFiles=true" -TimeoutSec 120 | Out-Null }
+            }
         }
     }
 }
