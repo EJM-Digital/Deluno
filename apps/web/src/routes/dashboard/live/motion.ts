@@ -244,13 +244,16 @@ interface Pending {
  * When a card leaves Importing because the title was imported, its poster flies into the shelf where the arrival appears.
  * The card is remembered as it leaves and matched to the arrival that turns up for the same title, in either order.
  */
-export function useFlyToShelf(root: RefObject<HTMLElement | null>, cards: readonly JourneyCard[], arrivals: readonly ArrivalItem[]): void {
+export function useFlyToShelf(root: RefObject<HTMLElement | null>, cards: readonly JourneyCard[], arrivals: readonly ArrivalItem[], settled = true): void {
   const previous = useRef<{ stages: Map<string, JourneyCard["stage"]>; cards: Map<string, JourneyCard>; arrivals: Set<string> } | null>(null);
   const rects = useRef(new Map<string, Delivery>());
   const pending = useRef<Pending[]>([]);
   const waiting = useRef(new Map<string, { item: ArrivalItem; until: number }>());
   // Cards seen importing, not yet done, while this page was open: only these may fly (never an import already done at load).
   const seenLive = useRef(new Set<string>());
+  // Whether a reading has been taken since every source first answered fresh in this mount: the saved board drawn on mount, a
+  // late-answering list and the first fresh read are not live updates, so a card seen only there is never counted as seen.
+  const primed = useRef(false);
 
   // Where each card's poster is, as drawn now (read before the next change moves it).
   useLayoutEffect(() => {
@@ -272,7 +275,9 @@ export function useFlyToShelf(root: RefObject<HTMLElement | null>, cards: readon
       const live = seenLive.current.delete(key);
       if (card && seen && live) pending.current.push({ card: { entity: card.entity, release: card.release }, delivery: seen, until: now + PENDING_MS });
     }
-    for (const card of cards) if (card.stage === "importing" && !card.landed) seenLive.current.add(card.key);
+    // Any station before done counts: a fast import can go from downloading to done between two readings.
+    if (primed.current) for (const card of cards) if (!card.landed && (card.stage === "grabbed" || card.stage === "downloading" || card.stage === "processor" || card.stage === "importing")) seenLive.current.add(card.key);
+    if (settled) primed.current = true;
     // An arrival that is new since the last render waits for its card to leave, and the other way round.
     const knownArrivals = before?.arrivals ?? null;
     if (knownArrivals) for (const item of arrivals) if (!knownArrivals.has(item.key)) waiting.current.set(item.key, { item, until: now + PENDING_MS });

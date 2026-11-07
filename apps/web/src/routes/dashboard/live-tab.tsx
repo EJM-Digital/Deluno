@@ -56,7 +56,7 @@ const NO_ROWS: never[] = [];
 
 export function LiveTab({ summary }: { summary: DashboardSummary | undefined }): JSX.Element {
   const setup = useSetupState();
-  const { data, lastReadFailed } = useRouteSources({ ...storedLists, ...liveSources });
+  const { data, lastReadFailed, ready, isFetching } = useRouteSources({ ...storedLists, ...liveSources });
   const liveProgress = useLiveProgress();
   const latest = useLiveActivity(data.latestActivity?.length ? data.latestActivity : summary?.activity?.recent ?? []);
   // Every pushed change is applied to the list it changes, so the board below moves as it happens (#1097).
@@ -151,7 +151,8 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   const rows = gridRows(grid.height, grid.height);
   // Activity's rows go to one line when its row is short.
   const compactActivity = side && rows.low < 12.5 * rem;
-  useFlyToShelf(root, cards, items);
+  // Only readings after the first fresh answer in this visit count as watching an import live (not the saved board, a late list or the first read).
+  useFlyToShelf(root, cards, items, ready && !isFetching);
 
   function dismissOnboarding() {
     void authedFetch("/api/setup/progress", {

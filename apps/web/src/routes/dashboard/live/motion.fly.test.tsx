@@ -14,9 +14,9 @@ import { useFlyToShelf } from "./motion";
 const card = (): JourneyCard => ({ key: "card-1", stage: "importing", title: "Arrival", release: "Arrival.2016.1080p", entity: { kind: "movie", id: "m1" }, state: { tone: "ok", label: "Importing" } }) as unknown as JourneyCard;
 const arrival = (): ArrivalItem => ({ key: "arrival-1", entity: { kind: "movie", id: "m1" }, fallbackTitle: "Arrival", release: "Arrival.2016.1080p", quality: null, previousQuality: null, upgraded: false, sizeBytes: null, at: "2026-10-30T00:00:00Z" }) as unknown as ArrivalItem;
 
-function Harness({ cards, arrivals }: { cards: JourneyCard[]; arrivals: ArrivalItem[] }) {
+function Harness({ cards, arrivals, settled = true }: { cards: JourneyCard[]; arrivals: ArrivalItem[]; settled?: boolean }) {
   const root = useRef<HTMLDivElement>(null);
-  useFlyToShelf(root, cards, arrivals);
+  useFlyToShelf(root, cards, arrivals, settled);
   return (
     <div ref={root}>
       {cards.map((item) => <div key={item.key} data-card-poster={item.key}><img alt="" src="/poster.jpg" /></div>)}
@@ -50,6 +50,8 @@ afterEach(() => {
 
 async function importIt() {
   const view = render(<Harness cards={[card()]} arrivals={[]} />);
+  // A later reading still shows it importing: it has been watched live.
+  view.rerender(<Harness cards={[{ ...card() }]} arrivals={[]} />);
   // The card leaves the board and its title turns up on the shelf.
   view.rerender(<Harness cards={[]} arrivals={[arrival()]} />);
   await act(async () => { await vi.advanceTimersByTimeAsync(0); });
@@ -91,6 +93,7 @@ describe("the poster of a title that has just been imported", () => {
   it("does not fly for a card that left when a different title arrived", async () => {
     reducedMotion(false);
     const view = render(<Harness cards={[card()]} arrivals={[]} />);
+    view.rerender(<Harness cards={[card()]} arrivals={[]} />);
 
     view.rerender(<Harness cards={[]} arrivals={[{ ...arrival(), key: "arrival-2", entity: { kind: "movie", id: "other" }, release: "Heat.1995.1080p" } as ArrivalItem]} />);
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
@@ -113,6 +116,7 @@ describe("the poster of a title that has just been imported", () => {
   it("flies once, carrying the poster, for a card seen importing that then completes live", async () => {
     reducedMotion(false);
     const view = render(<Harness cards={[card()]} arrivals={[]} />);
+    view.rerender(<Harness cards={[{ ...card() }]} arrivals={[]} />);
     view.rerender(<Harness cards={[{ ...card(), landed: true } as JourneyCard]} arrivals={[]} />);
     view.rerender(<Harness cards={[]} arrivals={[arrival()]} />);
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
@@ -131,13 +135,54 @@ describe("the poster of a title that has just been imported", () => {
     expect(view.getByTestId("shelf-poster")).not.toHaveAttribute(HELD_ATTRIBUTE);
   });
 
-  it("does not fly when the shelf tile is not on screen", async () => {
+  it("does not fly when the shelf tile is below the window", async () => {
     reducedMotion(false);
     const view = render(<Harness cards={[card()]} arrivals={[]} />);
-    const visible = Element.prototype.getBoundingClientRect;
-    const off = { x: 0, y: 0, left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0, toJSON: () => ({}) } as DOMRect;
-    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) { return this.hasAttribute("data-arrival-poster") ? off : visible.call(this); });
+    view.rerender(<Harness cards={[card()]} arrivals={[]} />);
+    const visible = { call: () => ({ x: 10, y: 10, left: 10, top: 10, right: 110, bottom: 160, width: 100, height: 150, toJSON: () => ({}) }) as DOMRect };
+    const below = { x: 10, y: 5000, left: 10, top: 5000, right: 110, bottom: 5150, width: 100, height: 150, toJSON: () => ({}) } as DOMRect;
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) { return this.hasAttribute("data-arrival-poster") ? below : visible.call(this); });
     view.rerender(<Harness cards={[]} arrivals={[arrival()]} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(document.body.querySelectorAll(".lj-fly")).toHaveLength(0);
+    expect(view.getByTestId("shelf-poster")).not.toHaveAttribute(HELD_ATTRIBUTE);
+  });
+
+  it("does not fly when the card was scrolled off the window", async () => {
+    reducedMotion(false);
+    const view = render(<Harness cards={[card()]} arrivals={[]} />);
+    const visible = { call: () => ({ x: 10, y: 10, left: 10, top: 10, right: 110, bottom: 160, width: 100, height: 150, toJSON: () => ({}) }) as DOMRect };
+    const above = { x: 10, y: -900, left: 10, top: -900, right: 110, bottom: -750, width: 100, height: 150, toJSON: () => ({}) } as DOMRect;
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) { return this.closest("[data-card-poster]") ? above : visible.call(this); });
+    view.rerender(<Harness cards={[card()]} arrivals={[]} />);
+    view.rerender(<Harness cards={[]} arrivals={[arrival()]} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(document.body.querySelectorAll(".lj-fly")).toHaveLength(0);
+  });
+
+  it("flies a fast import that went from downloading straight to done between two readings", async () => {
+    reducedMotion(false);
+    const view = render(<Harness cards={[{ ...card(), stage: "downloading" } as JourneyCard]} arrivals={[]} />);
+    view.rerender(<Harness cards={[{ ...card(), stage: "downloading" } as JourneyCard]} arrivals={[]} />);
+    view.rerender(<Harness cards={[]} arrivals={[arrival()]} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(document.body.querySelectorAll(".lj-fly")).toHaveLength(1);
+  });
+
+  it("flies nothing for a card drawn from the saved board that completes on the first fresh reading", async () => {
+    reducedMotion(false);
+    const view = render(<Harness cards={[card()]} arrivals={[]} settled={false} />);
+    view.rerender(<Harness cards={[]} arrivals={[arrival()]} settled />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(document.body.querySelectorAll(".lj-fly")).toHaveLength(0);
+  });
+
+  it("flies nothing when Live is returned to and the card completes on the fresh read", async () => {
+    reducedMotion(false);
+    // Returning to Live: the cached board is drawn while the sources are read again, and the first fresh answer lands it.
+    const back = render(<Harness cards={[card()]} arrivals={[]} settled={false} />);
+    back.rerender(<Harness cards={[card()]} arrivals={[]} settled />);
+    back.rerender(<Harness cards={[]} arrivals={[arrival()]} settled />);
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(document.body.querySelectorAll(".lj-fly")).toHaveLength(0);
   });
