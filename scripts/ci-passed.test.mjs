@@ -1,9 +1,11 @@
 // node --test scripts/ci-passed.test.mjs
 // CI's single verdict on hand-built `needs` objects, the shape GitHub's toJSON(needs) produces.
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
-import { GATES, verdict } from "./ci-passed.mjs";
+import { GATES, NEVER_SELF_HOSTED, verdict } from "./ci-passed.mjs";
 
 function needs({ due = {}, results = {}, changes = "success" } = {}) {
   const outputs = {};
@@ -79,4 +81,43 @@ test("with the Windows jobs on a self-hosted runner, the Windows end-to-end job 
   assert.match(verdict(needs({ results: { "windows-installer": "skipped", "e2e-windows": "skipped" } }), options).join(" "), /windows-installer ended skipped; it was due/);
   // Without the variable nothing changes.
   assert.match(verdict(needs({ results: { "e2e-windows": "skipped" } })).join(" "), /e2e-windows ended skipped; it was due/);
+});
+
+test("a missing changes job and an empty flag set are reported, not thrown (and a changes job with no outputs published no flags)", () => {
+  assert.match(verdict({})[0], /changes ended missing/);
+  const noFlags = needs();
+  delete noFlags.changes.outputs;
+  assert.match(verdict(noFlags).join(" "), /changes published no usable run_backend/);
+});
+
+// The job itself: the script run as GitHub runs it, with toJSON(needs) in NEEDS.
+function runVerdict(needsObject, extraEnv = {}) {
+  const result = spawnSync(process.execPath, [fileURLToPath(new URL("./ci-passed.mjs", import.meta.url))], {
+    encoding: "utf8",
+    env: { ...process.env, NEEDS: JSON.stringify(needsObject), DELUNO_WINDOWS_RUNS_ON: "", ...extraEnv }
+  });
+  return { status: result.status, out: result.stdout, err: result.stderr };
+}
+
+test("run as the ci-passed job, it prints each job's state and exits 0 when every due job passed", () => {
+  const run = runVerdict(needs());
+  assert.equal(run.status, 0, run.err);
+  assert.match(run.out, /repo-checks\s+always\s+success/);
+  assert.match(run.out, /Every job that was due passed/);
+});
+
+test("run as the ci-passed job, a failed or missing job exits 1 with an error line for each", () => {
+  const all = needs({ results: { backend: "failure" } });
+  delete all.web;
+  const run = runVerdict(all);
+  assert.equal(run.status, 1);
+  assert.match(run.err, /::error::backend ended failure/);
+  assert.match(run.err, /::error::web is not in ci-passed's needs/);
+  assert.match(run.out, /web\s+(due|not due)\s+missing/);
+});
+
+test("run as the ci-passed job on a self-hosted Windows runner, the installer end-to-end job must be skipped", () => {
+  const all = needs({ results: { [NEVER_SELF_HOSTED]: "skipped" } });
+  assert.equal(runVerdict(all, { DELUNO_WINDOWS_RUNS_ON: '"self-hosted"' }).status, 0);
+  assert.equal(runVerdict(all).status, 1);
 });

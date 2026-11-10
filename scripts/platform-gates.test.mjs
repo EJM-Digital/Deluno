@@ -204,6 +204,15 @@ function runCheck(folder, script) {
   return { status: result.status, output: `${result.stdout}${result.stderr}` };
 }
 
+/** The real hygiene script (not a copy, so its coverage is its own) pointed at the workflows of a folder the test controls. */
+function runRealHygiene(folder) {
+  const result = spawnSync(process.execPath, [path.join(root, "scripts", "check-workflow-hygiene.mjs")], {
+    encoding: "utf8",
+    env: { ...process.env, WORKFLOW_HYGIENE_DIR: path.join(folder, ".github", "workflows") }
+  });
+  return { status: result.status, output: `${result.stdout}${result.stderr}` };
+}
+
 test("the real workflows are all pinned to a commit SHA with a release comment, least-privilege, with a timeout on every job", () => {
   for (const script of ["check-github-action-pins.mjs", "check-workflow-hygiene.mjs"]) {
     const result = spawnSync(process.execPath, [path.join(root, "scripts", script)], { encoding: "utf8" });
@@ -243,7 +252,7 @@ test("a workflow with no permissions block, a write grant at the top, or a job w
   for (const [name, [text, expected]] of Object.entries(cases)) {
     const folder = workflowRepo({ [name]: text });
     try {
-      const result = runCheck(folder, "check-workflow-hygiene.mjs");
+      const result = runRealHygiene(folder);
       assert.equal(result.status, 1, name);
       assert.match(result.output, expected, name);
     } finally {
@@ -256,6 +265,28 @@ test("a workflow with no permissions block, a write grant at the top, or a job w
     assert.equal(runCheck(folder, "check-github-action-pins.mjs").status, 0);
   } finally {
     rmSync(folder, { recursive: true, force: true });
+  }
+});
+
+test("a workflow with no jobs, a write word only in a comment, and a job that calls a reusable workflow are judged correctly", () => {
+  const noJobs = workflowRepo({ "nojobs.yml": "name: Empty\non: push\npermissions:\n  contents: read\n" });
+  const commented = workflowRepo({
+    "ok.yml": goodWorkflow.replace("contents: read", "contents: read # never write here"),
+    "caller.yml": "name: Caller\non: push\npermissions:\n  contents: read\njobs:\n  call: # a reusable workflow\n    uses: ./.github/workflows/ok.yml\n"
+  });
+  const tail = workflowRepo({ "two.yml": goodWorkflow + "  second:\n    runs-on: ubuntu-latest\n    steps: []\n" });
+  try {
+    const none = runRealHygiene(noJobs);
+    assert.equal(none.status, 1);
+    assert.match(none.output, /no jobs: section/);
+    const fine = runRealHygiene(commented);
+    assert.equal(fine.status, 0, fine.output);
+    const last = runRealHygiene(tail);
+    assert.equal(last.status, 1);
+    assert.match(last.output, /job "second" has no timeout-minutes/);
+    assert.doesNotMatch(last.output, /job "build"/);
+  } finally {
+    for (const folder of [noJobs, commented, tail]) rmSync(folder, { recursive: true, force: true });
   }
 });
 

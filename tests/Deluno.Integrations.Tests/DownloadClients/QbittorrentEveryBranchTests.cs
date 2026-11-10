@@ -119,19 +119,19 @@ public sealed class QbittorrentEveryBranchTests
     public async Task A_silently_turned_down_release_is_a_failure_when_the_second_look_cannot_read_the_list_either()
     {
         var before = QbittorrentDownloadClient.ExtendedConfirmationDelay;
-        QbittorrentDownloadClient.ExtendedConfirmationDelay = TimeSpan.Zero;
+        QbittorrentDownloadClient.ExtendedConfirmationDelay = TimeSpan.FromSeconds(2);
         try
         {
             var lastRead = DateTime.MinValue;
-            var reads = 0;
             var (client, _) = Rig((request, _) =>
             {
                 if (Is(request, "torrents/add")) return RecordedReplies.Json("Fine.");
                 if (!Is(request, "torrents/info")) return null;
-                // Readable and empty while the wait goes on (a look every 400 milliseconds); the second look follows the last of them at
-                // once, and that one is unreadable.
+                // Readable and empty while the wait goes on (a look every 400 milliseconds). The second look is the only one that
+                // follows the 2 second pause, so it is told apart by the gap before it, not by a count or a tight timing: that
+                // gap is five times the wait's, so a slow machine cannot turn one into the other.
                 var now = DateTime.UtcNow;
-                var second = ++reads > 2 && now - lastRead < TimeSpan.FromMilliseconds(100);
+                var second = lastRead != DateTime.MinValue && now - lastRead > TimeSpan.FromMilliseconds(1200);
                 lastRead = now;
                 return second ? Status(500) : RecordedReplies.Json("[]");
             });

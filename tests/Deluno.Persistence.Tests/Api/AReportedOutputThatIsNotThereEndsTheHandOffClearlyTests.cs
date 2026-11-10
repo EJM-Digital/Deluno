@@ -475,6 +475,66 @@ public sealed class AReportedOutputThatIsNotThereEndsTheHandOffClearlyTests
         Assert.Equal(1, await ImportJobsAsync(app));
     }
 
+    [Fact]
+    public async Task A_report_for_a_hand_off_that_ended_while_the_report_was_being_judged_is_answered_as_already_handled()
+    {
+        var (app, hook) = await HookedHostAsync();
+        await using var _ = app;
+        var scene = await SceneAsync(app);
+        // The send is settled by another report after this one was read but before the mark could be kept (the mark reports
+        // "not kept" because the hand-off is no longer with the processor).
+        hook.Before = (name, _) =>
+        {
+            if (name == nameof(IProcessorRepository.MarkMissingOutputAsync))
+            {
+                hook.Before = null;
+                Repository(app).UpdateProcessorHandoffAsync(scene.Handoff.Id, ProcessorHandoffStatuses.Completed, null, null, null, CancellationToken.None).GetAwaiter().GetResult();
+            }
+        };
+
+        var response = await AlreadyCleanedAsync(app, scene);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var body = await BodyOfAsync(response);
+        Assert.Contains("superseded", body);
+        Assert.Contains("alreadyHandled", body);
+        Assert.Equal(ProcessorHandoffStatuses.Completed, (await CurrentAsync(app, scene.Handoff.Id)).Status);
+        Assert.Equal(0, await GaveUpLinesAsync(app, scene.Handoff.Id));
+    }
+
+    [Fact]
+    public async Task A_missing_output_is_not_judged_when_any_file_the_report_lists_is_there()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var body = AlreadyCleanedBody(scene, scene.Handoff.Id);
+        // The named output is gone but the report lists a file that is there: that is something to import, not a missing output.
+        var listed = Path.Combine(app.DataRoot, "Ready", Release + ".mkv");
+        File.WriteAllBytes(listed, new byte[2048]);
+        File.SetLastWriteTimeUtc(listed, DateTime.UtcNow.AddMinutes(-30));
+        body["outputPath"] = Path.Combine(app.DataRoot, "Ready", "gone", Release + ".mkv");
+        body["outputFiles"] = new JsonArray("  ", Path.Combine(app.DataRoot, "Ready", "also-gone.mkv"), listed);
+
+        var response = await RecordedWeirReports.PostAsync(app.Client, body);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.DoesNotContain("checking", await BodyOfAsync(response));
+    }
+
+    [Fact]
+    public async Task A_missing_output_is_judged_when_the_files_the_report_lists_are_blank_or_gone_too()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var scene = await SceneAsync(app);
+        var body = AlreadyCleanedBody(scene, scene.Handoff.Id);
+        body["outputPath"] = Path.Combine(app.DataRoot, "Ready", "gone", Release + ".mkv");
+        body["outputFiles"] = new JsonArray("  ", Path.Combine(app.DataRoot, "Ready", "also-gone.mkv"));
+
+        var response = await RecordedWeirReports.PostAsync(app.Client, body);
+
+        Assert.Contains("checking", await BodyOfAsync(response));
+    }
+
     private static async Task CompleteJobAsync(ApplicationTestHost app, string jobId)
     {
         var db = app.Services.GetRequiredService<Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory>();

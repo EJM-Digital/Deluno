@@ -14,7 +14,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const workflowDir = path.join(root, ".github", "workflows");
+// WORKFLOW_HYGIENE_DIR points the check at another folder of workflows, so a test can run this very script on a bad one.
+const workflowDir = process.env.WORKFLOW_HYGIENE_DIR || path.join(root, ".github", "workflows");
 const failures = [];
 
 for (const name of readdirSync(workflowDir).filter((file) => /\.ya?ml$/i.test(file))) {
