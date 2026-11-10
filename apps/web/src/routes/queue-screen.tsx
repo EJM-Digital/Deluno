@@ -20,7 +20,7 @@
 import { statusPresentation, statusTone, toneSortValue } from "../lib/status-tones";
 import { eventLabel } from "../lib/activity-format";
 import { handoffCanBeSentAgain } from "../lib/alert-actions";
-import { goneKeys, useGoneRows, withoutGoneRows } from "./queue-gone";
+import { goneKeys, listedRows, useGoneRows, withoutGoneRows } from "./queue-gone";
 import { approveHeldRelease, dismissHeldRelease, findAnotherForHeldRelease, heldReleasesSource, heldReleaseTitle, type HeldReleaseRow } from "../lib/held-releases";
 import { plainSearchResult } from "../lib/release-candidate-status";
 import { useEffect, useMemo, useState } from "react";
@@ -236,6 +236,8 @@ function QueuePageBody({ data: loaded, revalidator }: { data: RouteSourceData<ty
   // A row the server accepted an action on leaves at once and is not drawn again by a read that began before the action (#1538).
   const gone = useGoneRows();
   const data = useMemo(() => withoutGoneRows(loaded, gone), [loaded, gone]);
+  const { settle } = gone;
+  useEffect(() => settle(listedRows(loaded)), [loaded, settle]);
   const { telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, failedJobs, healthRecords, processorConnections, processorHandoffs, activityEvents, orphans, heldReleases } = data;
   const { preferences } = useDisplayPreferences();
   const queueColumns = useColumnVisibility("queue-screen.columns", QUEUE_OPTIONAL_COLUMNS);
@@ -626,7 +628,8 @@ function QueuePageBody({ data: loaded, revalidator }: { data: RouteSourceData<ty
         });
         if (!response.ok) throw new Error(await readErrorText(response, "That download could not be added to the ignore list."));
       },
-      "Added to the ignore list — exempt from every health rule until removed"
+      "Added to the ignore list — exempt from every health rule until removed",
+      (item.healthFindings ?? []).map((finding) => goneKeys.finding(item.clientId, item.id, finding.kind))
     );
   }
 
@@ -957,12 +960,12 @@ function QueuePageBody({ data: loaded, revalidator }: { data: RouteSourceData<ty
   }
 
   /** Every row of Needs attention that Dismiss clears, with the request that clears it (#1167). */
-  const dismissibleRows: { key: string; title: string; dismiss: () => Promise<void> }[] = [
-    ...heldReleases.map((row) => ({ key: `held:${row.historyId}`, title: heldReleaseTitle(row), dismiss: () => dismissHeldRelease(row) })),
-    ...recoveryCases.map((item) => ({ key: `recovery:${item.mediaType}:${item.id}`, title: item.title, dismiss: () => dismissRecoveryRequest(item) })),
-    ...failedImportJobs.map((job) => ({ key: `job:${job.id}`, title: jobTitle(job), dismiss: () => dismissFailedJob(job.id).then(() => undefined) })),
-    ...failedProcessorHandoffs.map((handoff) => ({ key: `handoff:${handoff.id}`, title: handoff.releaseName, dismiss: () => dismissHandoffRequest(handoff) })),
-    ...failedDownloads.map(({ dispatch }) => ({ key: `dispatch:${dispatch.id}`, title: dispatch.releaseName, dismiss: () => dismissDispatchRequest(dispatch) }))
+  const dismissibleRows: { key: string; gone: string; title: string; dismiss: () => Promise<void> }[] = [
+    ...heldReleases.map((row) => ({ key: `held:${row.historyId}`, gone: goneKeys.held(row.historyId), title: heldReleaseTitle(row), dismiss: () => dismissHeldRelease(row) })),
+    ...recoveryCases.map((item) => ({ key: `recovery:${item.mediaType}:${item.id}`, gone: goneKeys.recovery(item.mediaType, item.id), title: item.title, dismiss: () => dismissRecoveryRequest(item) })),
+    ...failedImportJobs.map((job) => ({ key: `job:${job.id}`, gone: goneKeys.job(job.id), title: jobTitle(job), dismiss: () => dismissFailedJob(job.id).then(() => undefined) })),
+    ...failedProcessorHandoffs.map((handoff) => ({ key: `handoff:${handoff.id}`, gone: goneKeys.handoff(handoff.id), title: handoff.releaseName, dismiss: () => dismissHandoffRequest(handoff) })),
+    ...failedDownloads.map(({ dispatch }) => ({ key: `dispatch:${dispatch.id}`, gone: goneKeys.dispatch(dispatch.id), title: dispatch.releaseName, dismiss: () => dismissDispatchRequest(dispatch) }))
   ];
   const selectedDismissRows = dismissibleRows.filter((row) => selectedDismissKeys.has(row.key));
   /** Two rows can name the same release, and a button's name must be unique on screen. */
@@ -1003,7 +1006,7 @@ function QueuePageBody({ data: loaded, revalidator }: { data: RouteSourceData<ty
         try {
           await row.dismiss();
           dismissed += 1;
-          gone.mark(row.key);
+          gone.mark(row.gone);
         } catch (error) {
           firstFailure ??= plainFailureMessage(error, `${row.title} could not be dismissed.`);
         }

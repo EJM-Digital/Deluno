@@ -58,7 +58,7 @@ vi.mock("../lib/route-cache", async (importOriginal) => {
   const { readyRouteSources } = await import("../test/route-sources");
   return {
     ...(await importOriginal<typeof import("../lib/route-cache")>()),
-    useRouteSources: () => readyRouteSources(queueLoaderData, revalidateMock)
+    useRouteSources: () => readyRouteSources({ ...queueLoaderData }, revalidateMock)
   };
 });
 
@@ -169,17 +169,32 @@ describe("a held release leaves Needs attention on the success reply", () => {
     expect(screen.getByText("Waiting for your OK: Dune.2021.2160p.WEB-DL-GROUP")).toBeVisible();
   });
 
-  it("does not come back when the screen is handed the old list again", async () => {
+  const heldText = "Waiting for your OK: Dune.2021.2160p.WEB-DL-GROUP";
+
+  it("does not come back when a read that began before the action hands the old list again", async () => {
     queueLoaderData.heldReleases = [held()];
     const { rerender } = render(<MemoryRouter><QueuePage /></MemoryRouter>);
     fireEvent.click(screen.getByRole("button", { name: "Dismiss Dune.2021.2160p.WEB-DL-GROUP" }));
-    await waitFor(() => expect(screen.queryByText("Waiting for your OK: Dune.2021.2160p.WEB-DL-GROUP")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText(heldText)).not.toBeInTheDocument());
 
+    rerender(<MemoryRouter><QueuePage /></MemoryRouter>);
+    rerender(<MemoryRouter><QueuePage /></MemoryRouter>);
+
+    expect(screen.queryByText(heldText)).not.toBeInTheDocument();
+  });
+
+  it("is shown again when the server stopped listing it and then lists it as a new item", async () => {
+    queueLoaderData.heldReleases = [held()];
+    const { rerender } = render(<MemoryRouter><QueuePage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss Dune.2021.2160p.WEB-DL-GROUP" }));
+    await waitFor(() => expect(screen.queryByText(heldText)).not.toBeInTheDocument());
+
+    queueLoaderData.heldReleases = [];
     rerender(<MemoryRouter><QueuePage /></MemoryRouter>);
     queueLoaderData.heldReleases = [held()];
     rerender(<MemoryRouter><QueuePage /></MemoryRouter>);
 
-    expect(screen.queryByText("Waiting for your OK: Dune.2021.2160p.WEB-DL-GROUP")).not.toBeInTheDocument();
+    expect(await screen.findByText(heldText)).toBeVisible();
   });
 });
 
@@ -267,6 +282,34 @@ describe("a download still in the client", () => {
 
     await waitFor(() => expect(toastError).toHaveBeenCalledWith("qBittorrent is not answering."));
     expect(screen.getAllByText("Stuck.Film.2020.1080p-GROUP").length).toBeGreaterThan(0);
+  });
+
+  it("a download that is removed and comes back as a new item is shown again", async () => {
+    withStuckItem();
+    const { rerender } = render(<MemoryRouter><QueuePage /></MemoryRouter>);
+    fireEvent.click(screen.getByText("Release refused: it stopped downloading"));
+    fireEvent.click(await screen.findByRole("button", { name: "Remove from client" }));
+    fireEvent.click(await screen.findByRole("button", { name: /I don't want it/ }));
+    await waitFor(() => expect(screen.queryByText("Release refused: it stopped downloading")).not.toBeInTheDocument());
+
+    // The next list no longer has it; later the same release is grabbed again and is listed as new.
+    const client = queueLoaderData.telemetry.clients[0];
+    queueLoaderData.telemetry = { ...queueLoaderData.telemetry, clients: [{ ...client, queue: [] }] };
+    rerender(<MemoryRouter><QueuePage /></MemoryRouter>);
+    queueLoaderData.telemetry = { ...queueLoaderData.telemetry, clients: [{ ...client, queue: [{ ...stuckItem(), addedUtc: new Date(Date.now() + 5000).toISOString() }] }] };
+    rerender(<MemoryRouter><QueuePage /></MemoryRouter>);
+
+    expect(await screen.findByText("Release refused: it stopped downloading")).toBeVisible();
+  });
+
+  it("Ignore this download takes its findings off the row at once", async () => {
+    withStuckItem();
+    open();
+    fireEvent.click(screen.getByText("Release refused: it stopped downloading"));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Ignore this download" }));
+
+    await waitFor(() => expect(screen.queryByText("Release refused: it stopped downloading")).not.toBeInTheDocument());
   });
 
   it("Dismiss on a finding takes the finding off the row at once", async () => {

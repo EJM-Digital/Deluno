@@ -182,6 +182,18 @@ public interface IDownloadTelemetrySnapshotStore
     /// and no reading taken before the client agrees brings it back. A store with nothing held has nothing to do.
     /// </summary>
     void Forget(string clientId, string queueItemId) { }
+
+    /// <summary>
+    /// Deluno sent this download to the client and the client accepted it (#1538): if it was forgotten earlier (the same release
+    /// removed and grabbed again has the same id), it is shown at once.
+    /// </summary>
+    void Release(string clientId, string queueItemId) { }
+
+    /// <summary>
+    /// Findings a person dismissed or ignored leave the held reading at once (#1538). An empty client id means any client;
+    /// a null kind means every finding on that download.
+    /// </summary>
+    void DropFindings(string clientId, string queueItemId, string? kind) { }
 }
 
 public sealed class DownloadTelemetrySnapshotStore : IDownloadTelemetrySnapshotStore
@@ -250,6 +262,39 @@ public sealed class DownloadTelemetrySnapshotStore : IDownloadTelemetrySnapshotS
         var key = ForgetKey(clientId, queueItemId);
         forgotten[key] = timeProvider.GetUtcNow();
         cell.Update(capture => RemoveFrom(capture, new HashSet<string>([key], StringComparer.Ordinal)));
+    }
+
+    public void Release(string clientId, string queueItemId)
+    {
+        if (!string.IsNullOrEmpty(queueItemId))
+        {
+            forgotten.TryRemove(ForgetKey(clientId, queueItemId), out _);
+        }
+    }
+
+    public void DropFindings(string clientId, string queueItemId, string? kind)
+    {
+        if (string.IsNullOrEmpty(queueItemId))
+        {
+            return;
+        }
+
+        cell.Update(capture =>
+        {
+            var clients = capture.Overview.Clients
+                .Select(client => string.IsNullOrEmpty(clientId) || string.Equals(client.ClientId, clientId, StringComparison.OrdinalIgnoreCase)
+                    ? client with
+                    {
+                        Queue = client.Queue
+                            .Select(item => string.Equals(item.Id, queueItemId, StringComparison.OrdinalIgnoreCase) && item.HealthFindings is { Count: > 0 } findings
+                                ? item with { HealthFindings = findings.Where(finding => kind is not null && !string.Equals(finding.Kind, kind, StringComparison.OrdinalIgnoreCase)).ToArray() }
+                                : item)
+                            .ToArray()
+                    }
+                    : client)
+                .ToArray();
+            return capture with { Overview = capture.Overview with { Clients = clients } };
+        });
     }
 
     private static string ForgetKey(string clientId, string queueItemId)

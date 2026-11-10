@@ -184,6 +184,28 @@ public sealed class DownloadTelemetrySnapshotTests(ITestOutputHelper output)
         Assert.DoesNotContain(overview.Clients.Single(c => c.ClientId == clientId).Queue, item => item.Id == itemId);
     }
 
+    // The Remove dialog's three answers and "stop tracking" all go through RemoveWithReasonAsync, not through queue/actions.
+    [Theory]
+    [InlineData(QueueRemovalReasons.Failed)]
+    [InlineData(QueueRemovalReasons.Unwanted)]
+    [InlineData(QueueRemovalReasons.Reclaim)]
+    [InlineData(QueueRemovalReasons.Forget)]
+    public async Task A_removal_with_a_reason_leaves_the_held_snapshot_at_once_and_stays_gone_while_the_client_still_lists_it(string reason)
+    {
+        using var world = await World.CreateAsync();
+        await world.Store.RefreshAsync(TimeSpan.FromTicks(-1), CancellationToken.None);
+        var clientId = world.ClientIds[3];
+        var itemId = $"{clientId}-11";
+
+        var result = await world.Service.RemoveWithReasonAsync(clientId, itemId, reason, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        await world.Store.RefreshAsync(TimeSpan.FromTicks(-1), CancellationToken.None);
+        var overview = await world.Service.GetLatestOverviewAsync(TimeSpan.FromHours(1), CancellationToken.None);
+        Assert.DoesNotContain(overview.Clients.Single(c => c.ClientId == clientId).Queue, item => item.Id == itemId);
+        Assert.Contains(itemId, world.Pushed.Removed);
+    }
+
     [Fact]
     public async Task A_removal_the_client_refuses_leaves_the_download_listed_and_pushes_nothing()
     {

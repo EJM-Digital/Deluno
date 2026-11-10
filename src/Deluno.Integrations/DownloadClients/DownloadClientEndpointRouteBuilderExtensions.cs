@@ -16,6 +16,20 @@ namespace Deluno.Integrations.DownloadClients;
 
 public static class DownloadClientEndpointRouteBuilderExtensions
 {
+    /// <summary>Reads the clients again without holding up the reply; whatever goes wrong there is the next pass's to report (#1538).</summary>
+    private static void ReadClientsAgainInBackground(IDownloadTelemetrySnapshotStore snapshotStore)
+        => _ = Task.Run(async () =>
+        {
+            try
+            {
+                await snapshotStore.RefreshAsync(TimeSpan.Zero, CancellationToken.None);
+            }
+            catch (Exception)
+            {
+                // The dismiss is recorded; the refresher's next pass shows the clients as they are.
+            }
+        });
+
     /// <summary>The strike records for downloads Deluno sent; anything written for someone else's download is left out (#1062).</summary>
     public static async Task<IReadOnlyList<DownloadHealthRecord>> OwnHealthRecordsAsync(
         IReadOnlyList<DownloadHealthRecord> records,
@@ -209,6 +223,7 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             [FromBody] AddDownloadHealthIgnoreEntryRequest request,
             HttpContext httpContext,
             IDownloadHealthRepository platformRepository,
+            IDownloadTelemetrySnapshotStore snapshotStore,
             TimeProvider timeProvider,
             CancellationToken cancellationToken) =>
         {
@@ -231,7 +246,15 @@ public static class DownloadClientEndpointRouteBuilderExtensions
                 Note: request.Note?.Trim(),
                 CreatedUtc: timeProvider.GetUtcNow(),
                 Tag: request.Tag?.Trim());
-            return Results.Ok(await platformRepository.AddDownloadHealthIgnoreEntryAsync(entry, cancellationToken));
+            var added = await platformRepository.AddDownloadHealthIgnoreEntryAsync(entry, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(entry.Hash))
+            {
+                // An ignored download has no findings: they leave the held reading now (#1538).
+                snapshotStore.DropFindings(string.Empty, entry.Hash!, null);
+                ReadClientsAgainInBackground(snapshotStore);
+            }
+
+            return Results.Ok(added);
         });
 
         endpoints.MapDelete("/api/download-health/ignore-list/{id}", async (
@@ -585,9 +608,10 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             var record = await platformRepository.IgnoreDownloadHealthFindingAsync(clientId, queueItemId, kind, request.DurationDays, cancellationToken);
             if (record is not null)
             {
-                // The finding is part of the held reading, so read again now: Dismiss takes it off the screen at once (#1538).
-                try { await snapshotStore.RefreshAsync(TimeSpan.Zero, cancellationToken); }
-                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException) { /* dismissed; the next pass shows it */ }
+                // The finding is part of the held reading: it leaves that at once, and the clients are read again behind the
+                // reply. Nothing in this can turn an accepted dismiss into an error (#1538).
+                snapshotStore.DropFindings(clientId, queueItemId, kind);
+                ReadClientsAgainInBackground(snapshotStore);
             }
 
             return record is null ? Results.NotFound() : Results.Ok(record);

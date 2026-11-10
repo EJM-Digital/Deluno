@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 /**
- * Rows a person has acted on and the server has accepted (#1538). A row leaves the screen on the success reply and stays gone:
- * a read that was started before the action, or a server list that has not caught up, must not draw it again. Each row is
- * held by its key until the server's own list stops naming it (the next lists simply do not contain it) or this long passes,
- * whichever is first, so a row that really does come back later is shown.
+ * Rows a person has acted on and the server has accepted (#1538). A row leaves the screen on the success reply and is held off
+ * it, so a read that began before the action cannot draw it again. The hold ends as soon as a list that is loaded afterwards
+ * no longer names the row (the server agrees) or names a download that was added after the action (it came back as a new
+ * item), and in any case after this long, so a real reappearance is always shown.
  */
 export const GONE_HOLD_MS = 90_000;
 
@@ -24,6 +24,8 @@ export interface GoneRows {
   has: (key: string) => boolean;
   /** The server accepted what was done to these rows. */
   mark: (...keys: string[]) => void;
+  /** A newly loaded list: ends the hold on every row it no longer names, or names as a download added since. */
+  settle: (listed: ReadonlyMap<string, number | null>) => void;
 }
 
 export function useGoneRows(): GoneRows {
@@ -37,6 +39,19 @@ export function useGoneRows(): GoneRows {
       return next;
     });
   }, []);
+  const settle = useCallback((listed: ReadonlyMap<string, number | null>) => {
+    setHeld((current) => {
+      let next: Map<string, number> | null = null;
+      for (const [key, at] of current) {
+        const addedMs = listed.get(key);
+        if (addedMs === undefined || (addedMs !== null && addedMs > at)) {
+          next ??= new Map(current);
+          next.delete(key);
+        }
+      }
+      return next ?? current;
+    });
+  }, []);
   // The hold ends by itself, so a row that is back for good is not hidden for the life of the page.
   useEffect(() => {
     if (held.size === 0) return;
@@ -47,11 +62,11 @@ export function useGoneRows(): GoneRows {
     }, Math.max(0, oldest + GONE_HOLD_MS - Date.now()) + 50);
     return () => clearTimeout(timer);
   }, [held]);
-  return useMemo(() => ({ has: (key: string) => held.has(key), mark }), [held, mark]);
+  return useMemo(() => ({ has: (key: string) => held.has(key), mark, settle }), [held, mark, settle]);
 }
 
 interface WithId { id: string }
-interface QueueRow extends WithId { clientId: string; healthFindings?: { kind: string }[] | null }
+interface QueueRow extends WithId { clientId: string; addedUtc?: string | null; healthFindings?: { kind: string }[] | null }
 interface ClientRow { clientId: string; queue: QueueRow[] }
 
 /** The lists the Transfers screen reads, with the rows held off them removed. Anything else on the data passes through. */
@@ -97,4 +112,24 @@ export function withoutGoneRows<T extends GoneShaped>(data: T, gone: GoneRows): 
     orphans: data.orphans.filter((item) => !gone.has(goneKeys.orphan(item.path))),
     heldReleases: data.heldReleases.filter((item) => !gone.has(goneKeys.held(item.historyId)))
   };
+}
+
+/** Every row the lists name, by key; a download carries when it was added, so one that comes back as a new item is told apart. */
+export function listedRows(data: GoneShaped): Map<string, number | null> {
+  const listed = new Map<string, number | null>();
+  for (const client of data.telemetry.clients) {
+    for (const item of client.queue) {
+      const added = item.addedUtc ? Date.parse(item.addedUtc) : Number.NaN;
+      listed.set(goneKeys.download(item.clientId, item.id), Number.isFinite(added) ? added : null);
+      for (const finding of item.healthFindings ?? []) listed.set(goneKeys.finding(item.clientId, item.id, finding.kind), null);
+    }
+  }
+  for (const item of data.dispatches) listed.set(goneKeys.dispatch(item.id), null);
+  for (const item of data.movieRecovery.recentCases) listed.set(goneKeys.recovery("movie", item.id), null);
+  for (const item of data.seriesRecovery.recentCases) listed.set(goneKeys.recovery("series", item.id), null);
+  for (const item of data.failedJobs) listed.set(goneKeys.job(item.id), null);
+  for (const item of data.processorHandoffs) listed.set(goneKeys.handoff(item.id), null);
+  for (const item of data.orphans) listed.set(goneKeys.orphan(item.path), null);
+  for (const item of data.heldReleases) listed.set(goneKeys.held(item.historyId), null);
+  return listed;
 }
