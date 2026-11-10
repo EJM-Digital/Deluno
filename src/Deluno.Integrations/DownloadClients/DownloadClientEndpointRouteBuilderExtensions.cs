@@ -18,7 +18,10 @@ public static class DownloadClientEndpointRouteBuilderExtensions
 {
     /// <summary>Reads the clients again without holding up the reply; whatever goes wrong there is the next pass's to report (#1538).</summary>
     private static void ReadClientsAgainInBackground(IDownloadTelemetrySnapshotStore snapshotStore)
-        => _ = Task.Run(async () =>
+        => _ = ReadClientsAgainAsync(snapshotStore);
+
+    internal static Task ReadClientsAgainAsync(IDownloadTelemetrySnapshotStore snapshotStore)
+        => Task.Run(async () =>
         {
             try
             {
