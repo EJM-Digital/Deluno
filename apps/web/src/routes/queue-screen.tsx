@@ -20,6 +20,7 @@
 import { statusPresentation, statusTone, toneSortValue } from "../lib/status-tones";
 import { eventLabel } from "../lib/activity-format";
 import { handoffCanBeSentAgain } from "../lib/alert-actions";
+import { goneKeys, useGoneRows, withoutGoneRows } from "./queue-gone";
 import { approveHeldRelease, dismissHeldRelease, findAnotherForHeldRelease, heldReleasesSource, heldReleaseTitle, type HeldReleaseRow } from "../lib/held-releases";
 import { plainSearchResult } from "../lib/release-candidate-status";
 import { useEffect, useMemo, useState } from "react";
@@ -231,7 +232,10 @@ export function QueuePage() {
   );
 }
 
-function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof queueSources>; revalidator: RouteSourceState<typeof queueSources>["revalidator"] }) {
+function QueuePageBody({ data: loaded, revalidator }: { data: RouteSourceData<typeof queueSources>; revalidator: RouteSourceState<typeof queueSources>["revalidator"] }) {
+  // A row the server accepted an action on leaves at once and is not drawn again by a read that began before the action (#1538).
+  const gone = useGoneRows();
+  const data = useMemo(() => withoutGoneRows(loaded, gone), [loaded, gone]);
   const { telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, failedJobs, healthRecords, processorConnections, processorHandoffs, activityEvents, orphans, heldReleases } = data;
   const { preferences } = useDisplayPreferences();
   const queueColumns = useColumnVisibility("queue-screen.columns", QUEUE_OPTIONAL_COLUMNS);
@@ -497,10 +501,11 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   const openFileProvenance = fileProvenanceFromTimeline(openDispatchDetail?.timeline ?? []);
 
   /* ------------------------------------------------------------- actions */
-  async function run(key: string, action: () => Promise<unknown>, success?: string) {
+  async function run(key: string, action: () => Promise<unknown>, success?: string, leaves: string[] = []) {
     setBusyKey(key);
     try {
       await action();
+      gone.mark(...leaves);
       if (success) toast.success(success);
       revalidator.revalidate();
       return true;
@@ -551,6 +556,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
     try {
       const result = await submitQueueRemoval(item.clientId, item.id, reason);
 
+      gone.mark(goneKeys.download(item.clientId, item.id));
       toast.success(result.message);
       setPendingRemoval(null);
       setDrawer(null);
@@ -598,7 +604,8 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         );
         if (!response.ok) throw new Error(await readErrorText(response, "That finding could not be dismissed."));
       },
-      "Dismissed for a week, or until it happens again"
+      "Dismissed for a week, or until it happens again",
+      [goneKeys.finding(item.clientId, item.id, kind)]
     );
   }
 
@@ -738,6 +745,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
       const body = (await response.json().catch(() => null)) as { message?: string } | null;
       if (!response.ok) throw new Error(body?.message || "That could not be done.");
       toast.success(body?.message ?? (action === "keep" ? `Kept ${orphan.name}.` : `Removed ${orphan.name}.`));
+      gone.mark(goneKeys.orphan(orphan.path));
     });
   }
 
@@ -772,6 +780,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         });
         if (response.ok) {
           removed += 1;
+          gone.mark(goneKeys.orphan(orphan.path));
         } else {
           const body = (await response.json().catch(() => null)) as { message?: string } | null;
           failures.push(body?.message ?? `${orphan.name} could not be removed.`);
@@ -790,7 +799,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   }
 
   async function dismissFailedImport(job: JobQueueItem) {
-    await run(`job:dismiss:${job.id}`, () => dismissFailedJob(job.id), `${jobTitle(job)} dismissed`);
+    await run(`job:dismiss:${job.id}`, () => dismissFailedJob(job.id), `${jobTitle(job)} dismissed`, [goneKeys.job(job.id)]);
   }
 
   async function dismissRecoveryRequest(item: (typeof recoveryCases)[number]) {
@@ -800,7 +809,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   }
 
   async function dismissRecovery(item: (typeof recoveryCases)[number]) {
-    await run(`recovery:dismiss:${item.id}`, () => dismissRecoveryRequest(item), `${item.title} dismissed`);
+    await run(`recovery:dismiss:${item.id}`, () => dismissRecoveryRequest(item), `${item.title} dismissed`, [goneKeys.recovery(item.mediaType, item.id)]);
   }
 
   async function importOriginal(handoff: ProcessorHandoffItem) {
@@ -823,7 +832,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   }
 
   async function dismissDispatch(dispatch: DownloadDispatchItem) {
-    const done = await run(`dispatch:dismiss:${dispatch.id}`, () => dismissDispatchRequest(dispatch), `${dispatch.releaseName} dismissed`);
+    const done = await run(`dispatch:dismiss:${dispatch.id}`, () => dismissDispatchRequest(dispatch), `${dispatch.releaseName} dismissed`, [goneKeys.dispatch(dispatch.id)]);
     if (done) setDrawer(null);
   }
 
@@ -843,21 +852,22 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         setHeldRefusal(row.historyId, plainFailureMessage(error, `${row.releaseName} could not be sent to a download client.`));
         throw error;
       }),
-      `Sent ${row.releaseName} to your download client.`);
+      `Sent ${row.releaseName} to your download client.`,
+      [goneKeys.held(row.historyId)]);
   }
 
   async function findAnotherHeld(row: HeldReleaseRow) {
     setHeldRefusal(row.historyId, null);
-    await run(`held:another:${row.historyId}`, () => findAnotherForHeldRelease(row), `${row.releaseName} will not be used again. Searching for another.`);
+    await run(`held:another:${row.historyId}`, () => findAnotherForHeldRelease(row), `${row.releaseName} will not be used again. Searching for another.`, [goneKeys.held(row.historyId)]);
   }
 
   async function dismissHeld(row: HeldReleaseRow) {
     setHeldRefusal(row.historyId, null);
-    await run(`held:dismiss:${row.historyId}`, () => dismissHeldRelease(row), `${heldReleaseTitle(row)} dismissed`);
+    await run(`held:dismiss:${row.historyId}`, () => dismissHeldRelease(row), `${heldReleaseTitle(row)} dismissed`, [goneKeys.held(row.historyId)]);
   }
 
   async function dismissHandoff(handoff: ProcessorHandoffItem) {
-    const done = await run(`handoff:dismiss:${handoff.id}`, () => dismissHandoffRequest(handoff), `${handoff.releaseName} dismissed`);
+    const done = await run(`handoff:dismiss:${handoff.id}`, () => dismissHandoffRequest(handoff), `${handoff.releaseName} dismissed`, [goneKeys.handoff(handoff.id)]);
     if (done) setDrawer(null);
   }
 
@@ -993,6 +1003,7 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         try {
           await row.dismiss();
           dismissed += 1;
+          gone.mark(row.key);
         } catch (error) {
           firstFailure ??= plainFailureMessage(error, `${row.title} could not be dismissed.`);
         }
