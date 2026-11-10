@@ -82,7 +82,7 @@ export interface GoneShaped {
 }
 
 export function withoutGoneRows<T extends GoneShaped>(data: T, gone: GoneRows): T {
-  const clients = data.telemetry.clients.map((client) => {
+  const clients = (data.telemetry?.clients ?? []).map((client) => {
     let changed = false;
     const queue: QueueRow[] = [];
     for (const item of client.queue) {
@@ -98,38 +98,39 @@ export function withoutGoneRows<T extends GoneShaped>(data: T, gone: GoneRows): 
     return changed ? { ...client, queue } : client;
   });
   const cases = (summary: { recentCases: WithId[] }, mediaType: string) => {
+    if (!summary?.recentCases) return summary;
     const recentCases = summary.recentCases.filter((item) => !gone.has(goneKeys.recovery(mediaType, item.id)));
     return recentCases.length === summary.recentCases.length ? summary : { ...summary, recentCases };
   };
   return {
     ...data,
     telemetry: clients.some((client, index) => client !== data.telemetry.clients[index]) ? { ...data.telemetry, clients } : data.telemetry,
-    dispatches: data.dispatches.filter((item) => !gone.has(goneKeys.dispatch(item.id))),
+    dispatches: data.dispatches?.filter((item) => !gone.has(goneKeys.dispatch(item.id))),
     movieRecovery: cases(data.movieRecovery, "movie"),
     seriesRecovery: cases(data.seriesRecovery, "series"),
-    failedJobs: data.failedJobs.filter((item) => !gone.has(goneKeys.job(item.id))),
-    processorHandoffs: data.processorHandoffs.filter((item) => !gone.has(goneKeys.handoff(item.id))),
-    orphans: data.orphans.filter((item) => !gone.has(goneKeys.orphan(item.path))),
-    heldReleases: data.heldReleases.filter((item) => !gone.has(goneKeys.held(item.historyId)))
+    failedJobs: data.failedJobs?.filter((item) => !gone.has(goneKeys.job(item.id))),
+    processorHandoffs: data.processorHandoffs?.filter((item) => !gone.has(goneKeys.handoff(item.id))),
+    orphans: data.orphans?.filter((item) => !gone.has(goneKeys.orphan(item.path))),
+    heldReleases: data.heldReleases?.filter((item) => !gone.has(goneKeys.held(item.historyId)))
   };
 }
 
 /** Every row the lists name, by key; a download carries when it was added, so one that comes back as a new item is told apart. */
 export function listedRows(data: GoneShaped): Map<string, number | null> {
   const listed = new Map<string, number | null>();
-  for (const client of data.telemetry.clients) {
+  for (const client of data.telemetry?.clients ?? []) {
     for (const item of client.queue) {
       const added = item.addedUtc ? Date.parse(item.addedUtc) : Number.NaN;
       listed.set(goneKeys.download(item.clientId, item.id), Number.isFinite(added) ? added : null);
       for (const finding of item.healthFindings ?? []) listed.set(goneKeys.finding(item.clientId, item.id, finding.kind), null);
     }
   }
-  for (const item of data.dispatches) listed.set(goneKeys.dispatch(item.id), null);
-  for (const item of data.movieRecovery.recentCases) listed.set(goneKeys.recovery("movie", item.id), null);
-  for (const item of data.seriesRecovery.recentCases) listed.set(goneKeys.recovery("series", item.id), null);
-  for (const item of data.failedJobs) listed.set(goneKeys.job(item.id), null);
-  for (const item of data.processorHandoffs) listed.set(goneKeys.handoff(item.id), null);
-  for (const item of data.orphans) listed.set(goneKeys.orphan(item.path), null);
-  for (const item of data.heldReleases) listed.set(goneKeys.held(item.historyId), null);
+  for (const item of data.dispatches ?? []) listed.set(goneKeys.dispatch(item.id), null);
+  for (const item of data.movieRecovery?.recentCases ?? []) listed.set(goneKeys.recovery("movie", item.id), null);
+  for (const item of data.seriesRecovery?.recentCases ?? []) listed.set(goneKeys.recovery("series", item.id), null);
+  for (const item of data.failedJobs ?? []) listed.set(goneKeys.job(item.id), null);
+  for (const item of data.processorHandoffs ?? []) listed.set(goneKeys.handoff(item.id), null);
+  for (const item of data.orphans ?? []) listed.set(goneKeys.orphan(item.path), null);
+  for (const item of data.heldReleases ?? []) listed.set(goneKeys.held(item.historyId), null);
   return listed;
 }
