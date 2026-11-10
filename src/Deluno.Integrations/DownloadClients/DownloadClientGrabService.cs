@@ -34,7 +34,9 @@ public sealed class DownloadClientGrabService(
     IIndexerAuthFailureRecorder? indexerAuthFailureRecorder = null,
     IIndexerTorrentFetcher? torrentFetcher = null,
     IBlockedReleaseRepository? blockedReleases = null,
-    IJobScheduler? jobScheduler = null)
+    IJobScheduler? jobScheduler = null,
+    // #1538: a release removed and sent again has the same id; the held reading must show it at once.
+    IDownloadTelemetrySnapshotStore? snapshotStore = null)
     : IDownloadClientGrabService
 {
     public async Task<DownloadClientGrabResult> GrabAsync(
@@ -708,6 +710,15 @@ public sealed class DownloadClientGrabService(
             }
 
             var sent = await implementation.GrabAsync(client, request, cancellationToken);
+            if (sent.Succeeded)
+            {
+                // Every grab path comes through here: whatever id the client files it under is no longer a removed download.
+                snapshotStore?.Release(client.Id, sent.ExternalId ?? string.Empty);
+                if (request.KnownInfoHash is { Length: > 0 } knownHash)
+                {
+                    snapshotStore?.Release(client.Id, knownHash);
+                }
+            }
 
             // The hash Deluno worked out before sending is the id every torrent
             // client files the download under, so the grab is found by it

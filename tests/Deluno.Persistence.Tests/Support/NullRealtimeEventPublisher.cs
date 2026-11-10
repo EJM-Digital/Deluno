@@ -38,7 +38,7 @@ internal class NullRealtimeEventPublisher : IRealtimeEventPublisher
         CancellationToken cancellationToken)
         => Task.CompletedTask;
 
-    public Task PublishQueueItemRemovedAsync(string id, CancellationToken cancellationToken)
+    public virtual Task PublishQueueItemRemovedAsync(string id, CancellationToken cancellationToken)
         => Task.CompletedTask;
 
     public Task PublishQueueItemStatusChangedAsync(

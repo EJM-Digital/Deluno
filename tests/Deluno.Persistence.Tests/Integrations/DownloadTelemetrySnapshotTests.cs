@@ -114,6 +114,130 @@ public sealed class DownloadTelemetrySnapshotTests(ITestOutputHelper output)
         Assert.True(DateTimeOffset.UtcNow - overview.CapturedUtc >= TimeSpan.Zero);
     }
 
+
+    // #1538: a row took ages to leave Needs attention after its action worked, because the screen read the held snapshot,
+    // which still listed the download until the clients' next pass. The fake client here keeps reporting it, as a real
+    // client does until it next syncs.
+    [Theory]
+    [InlineData(DownloadClientActions.Delete)]
+    [InlineData(DownloadClientActions.DeleteWithData)]
+    public async Task A_download_the_client_accepted_the_removal_of_leaves_the_held_snapshot_at_once(string action)
+    {
+        using var world = await World.CreateAsync();
+        await world.Store.RefreshAsync(TimeSpan.FromTicks(-1), CancellationToken.None);
+        var clientId = world.ClientIds[0];
+        var itemId = $"{clientId}-3";
+
+        var result = await world.Service.ExecuteActionAsync(clientId, new DownloadClientActionRequest(action, itemId), CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        var overview = await world.Service.GetLatestOverviewAsync(TimeSpan.FromHours(1), CancellationToken.None);
+        var client = overview.Clients.Single(c => c.ClientId == clientId);
+        Assert.DoesNotContain(client.Queue, item => item.Id == itemId);
+        Assert.Equal(ItemsPerClient - 1, client.Queue.Count);
+        Assert.Equal(ItemsPerClient - 1, client.Summary.ActiveCount);
+        Assert.Contains(itemId, world.Pushed.Removed);
+    }
+
+    [Fact]
+    public async Task A_reading_taken_from_the_client_after_the_removal_does_not_bring_the_download_back_until_the_client_agrees()
+    {
+        using var world = await World.CreateAsync();
+        await world.Store.RefreshAsync(TimeSpan.FromTicks(-1), CancellationToken.None);
+        var clientId = world.ClientIds[1];
+        var itemId = $"{clientId}-7";
+        await world.Service.ExecuteActionAsync(clientId, new DownloadClientActionRequest(DownloadClientActions.DeleteWithData, itemId), CancellationToken.None);
+
+        // The client has not synced: it still reports the download on every pass.
+        await world.Store.RefreshAsync(TimeSpan.FromTicks(-1), CancellationToken.None);
+        await world.Store.RefreshAsync(TimeSpan.FromTicks(-1), CancellationToken.None);
+
+        var held = await world.Service.GetLatestOverviewAsync(TimeSpan.FromHours(1), CancellationToken.None);
+        Assert.DoesNotContain(held.Clients.Single(c => c.ClientId == clientId).Queue, item => item.Id == itemId);
+
+        // The client now agrees (it no longer lists it), so the hold is let go; if it came back later it would show.
+        world.Fake.Forget(itemId);
+        await world.Store.RefreshAsync(TimeSpan.FromTicks(-1), CancellationToken.None);
+        world.Fake.Restore(itemId);
+        await world.Store.RefreshAsync(TimeSpan.FromTicks(-1), CancellationToken.None);
+        var again = await world.Service.GetLatestOverviewAsync(TimeSpan.FromHours(1), CancellationToken.None);
+        Assert.Contains(again.Clients.Single(c => c.ClientId == clientId).Queue, item => item.Id == itemId);
+    }
+
+    [Fact]
+    public async Task A_reading_already_in_flight_when_the_removal_is_accepted_does_not_bring_the_download_back()
+    {
+        using var world = await World.CreateAsync();
+        await world.Store.RefreshAsync(TimeSpan.FromTicks(-1), CancellationToken.None);
+        var clientId = world.ClientIds[2];
+        var itemId = $"{clientId}-9";
+
+        // A pass starts before the removal and reads the client while it still lists the download...
+        world.Fake.HoldAll();
+        var inFlight = world.Store.RefreshAsync(TimeSpan.FromTicks(-1), CancellationToken.None);
+        await world.Service.ExecuteActionAsync(clientId, new DownloadClientActionRequest(DownloadClientActions.Delete, itemId), CancellationToken.None);
+        world.Fake.Release();
+        await inFlight;
+
+        // ...and its answer, which is older than the removal, must not put it back.
+        var overview = await world.Service.GetLatestOverviewAsync(TimeSpan.FromHours(1), CancellationToken.None);
+        Assert.DoesNotContain(overview.Clients.Single(c => c.ClientId == clientId).Queue, item => item.Id == itemId);
+    }
+
+    // The Remove dialog's three answers and "stop tracking" all go through RemoveWithReasonAsync, not through queue/actions.
+    [Theory]
+    [InlineData(QueueRemovalReasons.Failed)]
+    [InlineData(QueueRemovalReasons.Unwanted)]
+    [InlineData(QueueRemovalReasons.Reclaim)]
+    [InlineData(QueueRemovalReasons.Forget)]
+    public async Task A_removal_with_a_reason_leaves_the_held_snapshot_at_once_and_stays_gone_while_the_client_still_lists_it(string reason)
+    {
+        using var world = await World.CreateAsync();
+        await world.Store.RefreshAsync(TimeSpan.FromTicks(-1), CancellationToken.None);
+        var clientId = world.ClientIds[3];
+        var itemId = $"{clientId}-11";
+
+        var result = await world.Service.RemoveWithReasonAsync(clientId, itemId, reason, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        await world.Store.RefreshAsync(TimeSpan.FromTicks(-1), CancellationToken.None);
+        var overview = await world.Service.GetLatestOverviewAsync(TimeSpan.FromHours(1), CancellationToken.None);
+        Assert.DoesNotContain(overview.Clients.Single(c => c.ClientId == clientId).Queue, item => item.Id == itemId);
+        Assert.Contains(itemId, world.Pushed.Removed);
+    }
+
+    [Fact]
+    public async Task A_removal_the_client_refuses_leaves_the_download_listed_and_pushes_nothing()
+    {
+        using var world = await World.CreateAsync();
+        await world.Store.RefreshAsync(TimeSpan.FromTicks(-1), CancellationToken.None);
+        var clientId = world.ClientIds[0];
+        var itemId = $"{clientId}-4";
+        world.Fake.RefuseActions = true;
+
+        var result = await world.Service.ExecuteActionAsync(clientId, new DownloadClientActionRequest(DownloadClientActions.DeleteWithData, itemId), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        var overview = await world.Service.GetLatestOverviewAsync(TimeSpan.FromHours(1), CancellationToken.None);
+        Assert.Contains(overview.Clients.Single(c => c.ClientId == clientId).Queue, item => item.Id == itemId);
+        Assert.Empty(world.Pushed.Removed);
+    }
+
+    [Fact]
+    public async Task An_action_that_leaves_the_download_in_the_client_does_not_hide_it()
+    {
+        using var world = await World.CreateAsync();
+        await world.Store.RefreshAsync(TimeSpan.FromTicks(-1), CancellationToken.None);
+        var clientId = world.ClientIds[0];
+        var itemId = $"{clientId}-5";
+
+        await world.Service.ExecuteActionAsync(clientId, new DownloadClientActionRequest(DownloadClientActions.Pause, itemId), CancellationToken.None);
+
+        var overview = await world.Service.GetLatestOverviewAsync(TimeSpan.FromHours(1), CancellationToken.None);
+        Assert.Contains(overview.Clients.Single(c => c.ClientId == clientId).Queue, item => item.Id == itemId);
+        Assert.Empty(world.Pushed.Removed);
+    }
+
     [Fact]
     public async Task Clients_are_read_side_by_side_not_one_after_another()
     {
@@ -247,6 +371,8 @@ public sealed class DownloadTelemetrySnapshotTests(ITestOutputHelper output)
 
         public FakeClients Fake { get; private set; } = null!;
 
+        public RemovalRecorder Pushed { get; } = new();
+
         public DownloadClientTelemetryService Service { get; private set; } = null!;
 
         public IDownloadTelemetrySnapshotStore Store { get; private set; } = null!;
@@ -327,7 +453,8 @@ public sealed class DownloadTelemetrySnapshotTests(ITestOutputHelper output)
                 world.Jobs, dispatches, world.Jobs, new DownloadHealthEvaluator(), processors,
                 Deluno.Contracts.Connectivity.NullConnectivityMonitor.Instance, blocklist,
                 dispatchProblemLog: problems,
-                snapshotStore: sp.GetRequiredService<IDownloadTelemetrySnapshotStore>()));
+                snapshotStore: sp.GetRequiredService<IDownloadTelemetrySnapshotStore>(),
+                realtimeEventPublisher: world.Pushed));
             services.AddScoped<IOrphanedDownloadService>(sp => world.BuildOrphans(
                 sp.GetRequiredService<IDownloadClientTelemetryService>(), settings, libraries, processors,
                 sp.GetRequiredService<OrphanedDownloadCache>(), storage));
@@ -410,8 +537,30 @@ public sealed class DownloadTelemetrySnapshotTests(ITestOutputHelper output)
         }
     }
 
+    /// <summary>Records the queue items the server said were removed.</summary>
+    private sealed class RemovalRecorder : NullRealtimeEventPublisher
+    {
+        public ConcurrentQueue<string> Removed { get; } = new();
+
+        public override Task PublishQueueItemRemovedAsync(string id, CancellationToken cancellationToken)
+        {
+            Removed.Enqueue(id);
+            return Task.CompletedTask;
+        }
+    }
+
     private sealed class FakeClients : IDownloadClient
     {
+        /// <summary>When set, the client refuses every action.</summary>
+        public bool RefuseActions { get; set; }
+
+        private readonly ConcurrentDictionary<string, byte> gone = new();
+
+        /// <summary>The client stops listing this download (it has synced).</summary>
+        public void Forget(string itemId) => gone[itemId] = 0;
+
+        public void Restore(string itemId) => gone.TryRemove(itemId, out _);
+
         private readonly ConcurrentDictionary<string, int> calls = new();
         private TimeSpan delay = TimeSpan.Zero;
 
@@ -466,7 +615,7 @@ public sealed class DownloadTelemetrySnapshotTests(ITestOutputHelper output)
                 await allArrived.Task.WaitAsync(cancellationToken);
             }
 
-            var queue = Enumerable.Range(0, ItemsPerClient).Select(index => new DownloadQueueItem(
+            var queue = Enumerable.Range(0, ItemsPerClient).Where(index => !gone.ContainsKey($"{requested.Id}-{index}")).Select(index => new DownloadQueueItem(
                 $"{requested.Id}-{index}", requested.Id, requested.Name, Protocol, "movies", $"Release.{index}", $"Release.{index}",
                 "deluno-movies", DownloadQueueStatuses.Downloading, 0.4, 1, 60, 1024, 400, 0, "Fixture", null, capturedUtc.AddHours(-1),
                 SourcePath: $"C:/dl/{requested.Id}/Release.{index}")).ToArray();
@@ -479,7 +628,7 @@ public sealed class DownloadTelemetrySnapshotTests(ITestOutputHelper output)
             => throw new NotSupportedException();
 
         public Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem requested, string action, string queueItemId, CancellationToken cancellationToken)
-            => Task.FromResult(new DownloadClientActionResult(requested.Id, queueItemId, action, true, "done"));
+            => Task.FromResult(new DownloadClientActionResult(requested.Id, queueItemId, action, !RefuseActions, RefuseActions ? "The client said no." : "done"));
 
         public Task<IReadOnlyList<DownloadClientHistoryItem>> GetHistoryAsync(DownloadClientItem requested, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
             => Task.FromResult<IReadOnlyList<DownloadClientHistoryItem>>([]);
