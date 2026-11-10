@@ -94,6 +94,8 @@ export const ACTIVITY_KINDS: Readonly<Record<string, ActivityKind>> = {
   "processing.no-progress": "process",
   "processing.not-taken": "process",
   "processing.not-taken.gave-up": "process",
+  "processing.output-missing.checking": "process",
+  "processing.output-missing.gave-up": "process",
   "processing.outcome-delayed": "process",
   "processing.outcome-kept": "process",
   "processing.outcome-never-received": "process",

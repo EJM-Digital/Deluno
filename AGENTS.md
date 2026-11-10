@@ -17,48 +17,8 @@ This file is the small entry point for agent work. It is a map, not the full man
 
 ## How Issues Close (the owner, 7 Nov 2026)
 
-Kept permanently, the same in Weir's AGENTS.md (the owner, 7 Nov 2026: "we waste too much time getting to the end
-result only to go backwards"; "thats awesome, this needs to match for Deluno as well then we keep pushing forward now").
-
-**Each issue**
-- An issue is raised by the owner, by the weekly mutation run, by a test failure, or by anything either session finds.
-- A builder agent fixes it on its own branch in its own worktree, with a test that fails before the fix.
-- A stronger model (Opus) reviews the fix before it merges; a risky or contested fix gets a round table. The review
-  asks whether the fix is right and whether the test would fail if the fix were reverted.
-- Deluno has no pull requests (see First Checks): the reviewed branch is merged into `main` locally and pushed, and CI
-  on that push is the gate. A red run is fixed at once.
-- It is proved live: the CI build goes onto the rig straight away and the fix is shown working on real use. Nobody
-  waits for a release.
-- The issue closes as soon as the proof is in, with the evidence in the closing note. It never sits waiting on the
-  owner without something set up to finish it.
-- Nothing per issue waits on mutation or any other long run.
-
-**Tests and CI**
-- GitHub CI does the heavy checks; this PC writes code and runs targeted tests.
-- Every change keeps coverage, and every route, setting and screen control is tied to a test in
-  `docs/testing/COVERAGE.md`. Deluno closes its register gaps toward 0 (216 on 7 Nov 2026), then turns on `--strict`.
-- A test that fails sometimes is a bug: root-caused, never re-run until it passes.
-- Tests actually run in CI: no skip guard that CI never meets (#1536).
-
-**Mutation**
-- Weekly on a schedule (`mutation-nightly.yml`, Saturday 11:17 UTC; Weir runs Sunday) and by hand. The scheduled run
-  covers everything.
-- It never gates a merge, a release or an issue: not releases, CI, `ci-passed`, branch protection or any check script.
-- Each week's findings become issues, fixed during the week through this workflow; the next run checks them.
-- Floors only go up. One cheap CI check, which never runs mutation, fails a change that lowers a floor in
-  `docs/testing/mutation-thresholds.json` without a stated reason.
-- Target: at least 80% in every area, then 100% accounted for (every mutant killed, or marked equivalent with a
-  written reason that the review checks). Risky areas first (`docs/testing/mutation-risky-areas.json`; tracked in #1534).
-
-**Releases**
-- Fixes are batched into a release, not one release per change.
-- A release needs the build, the golden-VM scenario round on that exact version (see Releases below) and a clean
-  audit. No mutation.
-
-**Between sessions**
-- Any instruction of the owner's that covers both apps goes to the other session straight away, in full and word for word.
-- Shared design and behaviour rules are agreed once, applied to both apps, then measured side by side on the rig.
-- Each session owns its own repo. The other reports what it finds and never changes it.
+Read `docs/working-agreement.md` first (the same in Weir): builder fix with a failing-first test, Opus review before
+merge, live proof on the rig, close. Mutation runs weekly and by hand, gates nothing; findings become issues (#1534).
 
 ## Source Of Truth
 
@@ -155,13 +115,8 @@ release comment, every workflow has `permissions` and every job a timeout.
   whose checks failed. `scripts/check-release-workflow-gates.mjs` enforces the shape.
 - After tagging, confirm the Release run is green, the GitHub Release has its
   assets and the image pulls by its version tag before saying it is released.
-- The account is on GitHub Pro (the owner, 3 Oct 2026), so branch protection and
-  rulesets are available on this private repository; require the `ci-passed`
-  check on `main` and restrict who can create a `v*` tag. Until that is set up,
-  nothing on GitHub guards `main`, and any collaborator (Write access is the
-  most a personal repository gives) could push to it or push a tag, which
-  publishes a public container image and GitHub release. A local pre-push hook is
-  available; enable it once with:
+- GitHub Pro (3 Oct 2026): require `ci-passed` on `main` and restrict `v*` tags. Until then nothing on GitHub guards
+  `main` or tags (a tag publishes a public image and release). Enable the local pre-push hook once with:
 
 ```powershell
 git config core.hooksPath .githooks

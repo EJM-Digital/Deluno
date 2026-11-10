@@ -57,6 +57,7 @@ public sealed class EveryStoredFilePathFollowsAFolderRenameOnDiskTests
         ["platform.media_server_path_mappings.deluno_path"] = (Other, "a folder setting"),
         ["platform.media_server_path_mappings.server_path"] = (Other, "a folder setting"),
         ["platform.policy_sets.quality_profile_id"] = (Other, "an id"),
+        ["platform.processor_handoffs.missing_output_path"] = (Other, "a path a processor reported that was not there; checked once, then cleared when the hand-off ends"),
         ["platform.processor_handoffs.output_path"] = (Other, "the processor's output folder"),
         ["platform.processor_handoffs.source_path"] = (Other, "the download folder"),
         ["platform.processor_path_mappings.deluno_path"] = (Other, "a folder setting"),

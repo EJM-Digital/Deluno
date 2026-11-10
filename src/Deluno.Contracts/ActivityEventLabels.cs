@@ -188,6 +188,8 @@ public static class ActivityEventLabels
             ["processing.resubmitted"] = "Sent to the processor again",
             ["processing.not-taken"] = "Processor busy with the file for another connection, sending again",
             ["processing.not-taken.gave-up"] = "Another connection keeps taking the file",
+            ["processing.output-missing.checking"] = "Processor's finished file was not there yet, checking again",
+            ["processing.output-missing.gave-up"] = "Processor's finished file never appeared",
             ["processing.source-gone"] = "Download gone before the processor could clean it",
             ["processing.source-gone.settled"] = "Closed a hand-off whose download was gone",
             ["processing.superseded"] = "Hand-off closed, title imported another way",

@@ -30,8 +30,12 @@ public sealed record ProcessorHandoffItem(
     /// only when the processor advertises a minimum file size (#1199). Null means the whole folder.
     /// </summary>
     IReadOnlyList<string>? SourceFiles = null,
-    /// <summary>A finished output the processor named that was not there when it reported, and when (#1529). Null when nothing is pending.</summary>
-    ProcessorMissingOutputMark? MissingOutput = null);
+    /// <summary>
+    /// A finished output the processor named that was not there when it reported, and when (#1529). Null when nothing is
+    /// pending. Deluno's own bookkeeping for the hand-off watcher: never sent to a processor, so the recorded replies stay
+    /// as they were.
+    /// </summary>
+    [property: System.Text.Json.Serialization.JsonIgnore] ProcessorMissingOutputMark? MissingOutput = null);
 
 /// <summary>The path a processor reported that was not there, and when Deluno was told.</summary>
 public sealed record ProcessorMissingOutputMark(string Path, DateTimeOffset SinceUtc);

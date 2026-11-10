@@ -30,6 +30,7 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 - `DEPLOYMENT.md`: current deployment instructions for Docker, Compose, and Windows publish runs.
 - `TROUBLESHOOTING.md`: runtime, path-mapping, and startup troubleshooting.
 - `backup-restore-runbook.md`: packaged Windows backup, restore, rollback, and migration recovery procedures.
+- `working-agreement.md`: how every issue is fixed, reviewed, proved and closed, and how mutation, releases and the two sessions work; the same in Weir.
 - `ci-standard.md`: the CI and release standard shared with Weir: the `ci-passed` check, job names, path filters, pinning, permissions, timeouts, the release (two publish jobs, one per thing published, behind the same checks) and Dependabot.
 - `ga-release-checklist.md`: RC1/RC2/GA checklist, gates, and sign-off workflow for `1.x` promotion.
 - `golden-path.md`: the golden-path run on a clean VM that gates every release tag (#1158), shared byte for byte with Weir. Since #1238 it is a scripted scenario suite (`scripts/golden-path/Invoke-ScenarioSuite.ps1`) that runs before every tag and records the status itself.
