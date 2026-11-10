@@ -513,6 +513,15 @@ public sealed record Recording(string App, string Version, string State, IReadOn
         => Matches($@"(?<=""Name"":\s*""{System.Text.RegularExpressions.Regex.Escape(name)}""[^{{}}]*?""Id"":\s*"")[0-9A-Fa-f]{{32}}").FirstOrDefault()
             ?? throw new InvalidOperationException($"{App} {Version} {State} has no item named '{name}' with an id. The recording changed; look at it and update the test that reads it.");
 
+    /// <summary>The GUID (a SABnzbd job id) at that position in the recording, as the app wrote it.</summary>
+    public string Guid(int index = 0)
+    {
+        var all = Matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+        return index < all.Count
+            ? all[index]
+            : throw new InvalidOperationException($"{App} {Version} {State} holds {all.Count} GUID(s), not {index + 1}. The recording changed; look at it and update the test that reads it.");
+    }
+
     /// <summary>The id of the given length (32 hex digits for a Jellyfin or Weir id) at that position in the recording.</summary>
     public string HexId(int length, int index = 0)
     {

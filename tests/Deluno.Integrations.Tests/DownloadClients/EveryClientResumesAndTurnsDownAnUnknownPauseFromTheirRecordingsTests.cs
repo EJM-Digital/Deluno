@@ -14,7 +14,7 @@ public sealed class EveryClientResumesAndTurnsDownAnUnknownPauseFromTheirRecordi
 {
     private static readonly Dictionary<string, string> RecordedIds = new()
     {
-        ["sabnzbd"] = "e50a667e-1b42-4218-999e-5e97c9527db6",
+        ["sabnzbd"] = RecordedReplies.Sabnzbd("resumed").Guid(),
         ["nzbget"] = "1",
         ["qbittorrent"] = RecordedReplies.Qbittorrent("resumed").Hash(),
         ["transmission"] = RecordedReplies.Transmission("resumed").Hash(),
