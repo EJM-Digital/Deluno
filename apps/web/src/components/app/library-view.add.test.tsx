@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { repoRoot } from "../../test/repo-root";
 import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -134,7 +135,7 @@ describe("the title search in the Add dialog", () => {
 });
 
 // The gateway's own recorded replies for Kickboxer (78 matches, 20 to a page): the results of each page, as Deluno's endpoint passes them on.
-const recordedPage = (state: string) => JSON.parse(readFileSync(resolve(import.meta.dirname, `../../../../../tests/fixtures/recorded/tmdb/2026-11-04/${state}.json`), "utf8")).exchanges[0].reply.body.results as Array<{ providerId: string; title: string }>;
+const recordedPage = (state: string) => JSON.parse(readFileSync(resolve(repoRoot(), `tests/fixtures/recorded/tmdb/2026-11-04/${state}.json`), "utf8")).exchanges[0].reply.body.results as Array<{ providerId: string; title: string }>;
 
 describe("More matches in the Add dialog (#1473)", () => {
   const moreButton = (dialog: HTMLElement) => within(dialog).queryByRole("button", { name: "More matches" });

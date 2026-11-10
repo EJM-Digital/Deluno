@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { repoRoot } from "../test/repo-root";
 import { failureKindWords, KNOWN_IMPORT_FAILURE_REASONS } from "./failure-reasons";
 
 // #1329: the words for a failed import's kind, and the web's list of reasons held to the backend's.
@@ -38,7 +39,7 @@ describe("failureKindWords", () => {
 });
 
 describe("the web's list of import-failure reasons against the backend's", () => {
-  const source = readFileSync(resolve(__dirname, "../../../../src/Deluno.Contracts/ImportFailurePolicy.cs"), "utf8");
+  const source = readFileSync(resolve(repoRoot(), "src/Deluno.Contracts/ImportFailurePolicy.cs"), "utf8");
 
   /** `public const string Name = "value";` for every constant in ImportFailurePolicy. */
   const constants = new Map<string, string>([...source.matchAll(/public const string (\w+) = "([^"]+)";/g)].map((match) => [match[1], match[2]]));
