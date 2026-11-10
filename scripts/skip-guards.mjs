@@ -26,7 +26,8 @@ const isTest = {
   dotnet: (f) => /^tests\/.+\.cs$/.test(f) && !/\/(obj|bin)\//.test(f),
   vitest: (f) => /^(apps\/web\/src|sdk\/typescript|services\/[^/]+)\/.*\.test\.(ts|tsx|js|mjs)$/.test(f),
   playwright: (f) => /^apps\/web\/tests\/.*\.spec\.ts$/.test(f) || /^tests\/e2e\/.*\.spec\.ts$/.test(f),
-  node: (f) => /\.test\.mjs$/.test(f) && !f.startsWith("scripts/mutation/") && !f.startsWith("apps/web/"),
+  // This check's own test is left out: its fixtures are made-up files that hold the very text the scanner looks for.
+  node: (f) => /\.test\.mjs$/.test(f) && !f.startsWith("scripts/mutation/") && !f.startsWith("apps/web/") && f !== "scripts/skip-guards.test.mjs",
   powershell: (f) => /^(scripts|tests)\/.*\/?(Test|Run)-[\w.-]+\.ps1$/.test(f)
 };
 
@@ -114,13 +115,28 @@ function dotnetGuards(text) {
     const user = /Environment\.IsPrivilegedProcess|Environment\.UserName/.test(condition);
     // The result of a lookup that found nothing (a signed file, a tool) in a file that asks the machine questions.
     const lookup = askedTheMachine(lines, i, condition);
-    if (!os && !env && !user && !usesHelper && !lookup) continue;
+    // A variable read first and tested after, or a tool or file that must exist.
+    const absent = /File\.Exists|Directory\.Exists|IsNullOrEmpty|IsNullOrWhiteSpace/.test(condition);
+    if (!os && !env && !user && !usesHelper && !lookup && !absent) continue;
     const block = blockOf(lines, i);
     // A bare `return;` leaves the test; `return value;` answers a question (a lookup of a tool) and is not a skip.
     if (!/\breturn\s*;|\bAssert\.Skip|\bSkip\./.test(block)) continue;
     const kind = os || usesHelper ? "operating-system" : env ? "environment-variable" : user ? "user" : "lookup";
     found.push({ kind, line: i + 1, needs: os ? needsOf(condition) : [] });
   }
+  return found;
+}
+
+/** A JavaScript `if` on the platform, an environment variable or a file or tool that then leaves the test with a bare return. */
+function scriptGuards(text, kind) {
+  const lines = text.split(/\r?\n/);
+  const found = [];
+  lines.forEach((raw, i) => {
+    const line = code(raw);
+    if (!/^\s*(?:\}\s*else\s+)?if\s*\(.*(process\.platform|process\.env|existsSync|which\(|commandExists|hasCommand)/.test(line)) return;
+    const near = [line, code(lines[i + 1] ?? ""), code(lines[i + 2] ?? "")].join("\n");
+    if (/\breturn\s*;|\breturn\s*\}|\bt\.skip\(|\bctx\.skip\(/.test(near) || /\)\s*return\s*$/.test(line)) found.push({ kind, line: i + 1, needs: [] });
+  });
   return found;
 }
 
@@ -134,12 +150,18 @@ function matchesAt(text, pattern, kind) {
 
 function guardsOf(file, text) {
   if (isTest.dotnet(file)) return dotnetGuards(text);
-  if (isTest.playwright(file)) return matchesAt(text, /\btest(?:\.describe)?\.(skip|fixme)\s*\(|\btest\.slow\b.*skip/, "playwright-skip");
+  if (isTest.playwright(file)) return matchesAt(text, /\btest(?:\.describe)?\.(skip|fixme)\s*\(|\btestInfo\.(skip|fixme)\s*\(|\btest\.slow\b.*skip/, "playwright-skip");
   if (isTest.vitest(file)) {
-    return matchesAt(text, /\b(?:it|test|describe)\.(?:skip|skipIf|todo|runIf)\b|\bdescribe\.skipIf\b|\bxit\(|\bxdescribe\(/, "vitest-skip");
+    return [
+      ...matchesAt(text, /\b(?:it|test|describe)\.(?:skip|skipIf|todo|runIf)\b|\bdescribe\.skipIf\b|\bxit\(|\bxdescribe\(|\bctx\.skip\(/, "vitest-skip"),
+      ...scriptGuards(text, "vitest-skip")
+    ];
   }
   if (isTest.node(file)) {
-    return matchesAt(text, /\{\s*skip\b|\bskip\s*:/, "node-test-skip").filter((g) => /node:test/.test(text));
+    if (!/node:test/.test(text)) return [];
+    const marked = matchesAt(text, /\{\s*skip\b|\bskip\s*:|^\s*(?:test|it|t|describe)\.skip\(|^\s*(?:await\s+)?t\.skip\(/, "node-test-skip");
+    const early = scriptGuards(text, "node-test-skip").filter((g) => !marked.some((m) => m.line === g.line));
+    return [...marked, ...early];
   }
   if (isTest.powershell(file)) {
     return matchesAt(text, /-ne\s+'Windows_NT'|\$IsWindows\b|\$IsLinux\b|skipped \(no /, "powershell-skip");
