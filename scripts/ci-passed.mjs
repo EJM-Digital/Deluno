@@ -14,6 +14,8 @@ import { resolve } from "node:path";
 export const GATES = {
   "repo-checks": null,
   backend: "run_backend",
+  // The Windows-only backend tests (docs/testing/skip-guards.json), due with the backend (issue 1536).
+  "backend-windows": "run_backend",
   // The production web build the smoke shards and the web checks share.
   "web-dist": "run_web_dist",
   web: "run_web",

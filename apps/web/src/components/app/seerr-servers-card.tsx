@@ -463,11 +463,11 @@ export function SeerrServersCard({
             <p className="text-(length:--type-body-sm) text-muted-foreground">…save this server first…</p>
           )}
           <FieldRow>
-            <Field label="Fallback movie library" optional help="Used only when no destination rule matches. Blank uses the first movie library.">
+            <Field label="Fallback movie library" optional help="Used only when no destination rule matches. Blank means no fallback: such a request is refused until you add a destination rule or choose a library.">
               <Select
                 value={form.movieLibraryId}
                 onChange={(event) => setForm((current) => ({ ...current, movieLibraryId: event.target.value }))}
-                placeholder="First movie library"
+                placeholder="No fallback"
                 options={libraries.filter((library) => library.mediaType === "movies").map((library) => ({ value: library.id, label: library.name }))}
               />
             </Field>
@@ -481,11 +481,11 @@ export function SeerrServersCard({
             </Field>
           </FieldRow>
           <FieldRow>
-            <Field label="Fallback TV library" optional help="Used only when no destination rule matches. Blank uses the first TV library.">
+            <Field label="Fallback TV library" optional help="Used only when no destination rule matches. Blank means no fallback: such a request is refused until you add a destination rule or choose a library.">
               <Select
                 value={form.seriesLibraryId}
                 onChange={(event) => setForm((current) => ({ ...current, seriesLibraryId: event.target.value }))}
-                placeholder="First TV library"
+                placeholder="No fallback"
                 options={libraries.filter((library) => library.mediaType === "tv").map((library) => ({ value: library.id, label: library.name }))}
               />
             </Field>

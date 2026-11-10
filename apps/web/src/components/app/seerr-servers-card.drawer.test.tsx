@@ -217,8 +217,8 @@ describe("the fallback pickers", () => {
     fireEvent.click(screen.getByText("Seerr on den"));
     // The four pickers, in the order the drawer lays them out: movie library, movie profile, TV library, TV profile.
     const [movies, , shows, showProfile] = screen.getAllByRole("combobox") as HTMLSelectElement[];
-    expect(within(movies).getAllByRole("option").map((option) => option.textContent)).toEqual(["First movie library", "Films", "Kids films"]);
-    expect(within(shows).getAllByRole("option").map((option) => option.textContent)).toEqual(["First TV library", "Shows"]);
+    expect(within(movies).getAllByRole("option").map((option) => option.textContent)).toEqual(["No fallback", "Films", "Kids films"]);
+    expect(within(shows).getAllByRole("option").map((option) => option.textContent)).toEqual(["No fallback", "Shows"]);
     expect(movies.value).toBe("lib-films");
 
     fireEvent.change(movies, { target: { value: "lib-kids" } });
@@ -233,12 +233,13 @@ describe("the fallback pickers", () => {
     expect(bodyOf(calls("PUT")[1])).toMatchObject({ movieLibraryId: "" });
   });
 
-  it.skip("Defect in the text: a blank fallback library says it 'uses the first movie library' (and 'the first TV library'), but an approval with no destination rule and no fallback is refused (SeerrAcquisitionService: 'No destination rule matched ... has no fallback'). Found 19 Oct 2026.", () => {
+  it("A blank fallback library does not promise it uses the first library, because an approval with no destination rule and no fallback is refused", () => {
     renderCard([server()], { libraries, qualityProfiles: profiles });
     fireEvent.click(screen.getByText("Seerr on den"));
 
     expect(screen.queryByText(/Blank uses the first movie library/)).toBeNull();
     expect(screen.queryByText(/Blank uses the first TV library/)).toBeNull();
+    expect(screen.getAllByText(/Blank means no fallback/)).toHaveLength(2);
   });
 });
 

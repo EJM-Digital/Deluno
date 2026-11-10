@@ -67,3 +67,7 @@ replayed on both sides from the same recordings.
 - The golden-VM suite: [../golden-path.md](../golden-path.md)
 - Recorded replies, and what is still missing: `tests/fixtures/recorded/README.md`, `tests/fixtures/recorded/MISSING.md`
 - The Deluno–Weir contract: [../deluno-weir-contract.md](../deluno-weir-contract.md)
+
+### Tests that skip themselves (issue 1536)
+
+A test that returns or skips where CI never meets its condition passes without proving anything. `docs/testing/skip-guards.json` lists every such guard (operating-system, environment-variable and tool checks, `Skip` reasons, Playwright and vitest skips, `node:test` skips, PowerShell skips) and the CI job that meets the condition and runs the test. `node scripts/skip-guards.mjs` (the repo-checks job) fails when a guard has no entry, an entry is stale, a named job does not exist, a job runs on the wrong system, or a named variable is never set. Windows-only backend tests run in the `backend-windows` job; the filter it uses comes from the same file (`node scripts/skip-guards.mjs filter`). A guard that is run by hand on purpose (a benchmark, live-site probes, the README screenshot tool) is marked `manual` with the reason and the command.

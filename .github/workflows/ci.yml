@@ -199,6 +199,12 @@ jobs:
           node scripts/check-node-tests-run.mjs
           node --test scripts/check-node-tests-run.test.mjs scripts/check-persistence-parts.test.mjs scripts/check-component-pins.test.mjs scripts/check-recorded-manifest.test.mjs scripts/check-recording-freshness.test.mjs scripts/report-nightly-issue.test.mjs scripts/verify-ci-for-release.test.mjs scripts/verify-golden-path-for-release.test.mjs scripts/tag-release.test.mjs scripts/check-release-workflow-gates.test.mjs scripts/coverage/testindex.test.mjs scripts/coverage/coverage-docs.test.mjs scripts/check-repository-references.test.mjs scripts/ci-check-runs-every-gateway-file.test.mjs scripts/home-assistant-recipe.test.mjs scripts/deluno-stays-independent-of-weir.test.mjs scripts/bundled-components-docs.test.mjs
 
+      # Issue 1536: every test that can skip itself has a CI job that meets its condition and runs it.
+      - name: Every skip guard has a CI job that runs its test
+        run: |
+          node scripts/skip-guards.mjs
+          node --test scripts/skip-guards.test.mjs
+
       - name: Validate agent-readable repository map
         shell: pwsh
         run: ./scripts/validate-agent-readiness.ps1
@@ -436,6 +442,66 @@ jobs:
           name: coverage-dotnet-${{ matrix.leg }}
           path: tests/*/TestResults/*/coverage.opencover.xml
           if-no-files-found: error
+          retention-days: 7
+
+  # Issue 1536: tests that return or skip when the machine is not Windows never ran in the Linux legs above. The classes named in
+  # docs/testing/skip-guards.json for this job run here on windows-latest, with real ffmpeg for the probe tests. The filter comes from
+  # that file, and scripts/skip-guards.mjs (repo-checks) fails when a guard has no entry, so a new Windows-only test cannot hide.
+  # The tray tests are not repeated here: the Windows installer job runs that whole project.
+  backend-windows:
+    name: Backend (Windows-only tests)
+    needs: changes
+    if: ${{ needs.changes.outputs.run_backend == 'true' }}
+    runs-on: ${{ vars.DELUNO_WINDOWS_RUNS_ON && fromJSON(vars.DELUNO_WINDOWS_RUNS_ON) || 'windows-latest' }}
+    # Windows minutes bill at twice the rate: one build and a few dozen test classes, not the whole suite.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Cache FFmpeg
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tools/ffmpeg/win-x64
+          key: ${{ runner.os }}-ffmpeg-${{ hashFiles('scripts/fetch-ffmpeg.ps1') }}
+
+      # The real-ffprobe tests skip when no ffmpeg is found. Here it must be found, so the step fails if it is not.
+      - name: Fetch FFmpeg for the real-video tests
+        shell: pwsh
+        run: |
+          ./scripts/fetch-ffmpeg.ps1 -RuntimeIdentifier win-x64
+          $folder = Join-Path $PWD "tools/ffmpeg/win-x64"
+          foreach ($required in @("ffmpeg.exe", "ffprobe.exe")) {
+            if (-not (Test-Path (Join-Path $folder $required))) { Write-Error "$required is missing from $folder"; exit 1 }
+          }
+          "DELUNO_FFMPEG_DIR=$folder" >> $env:GITHUB_ENV
+
+      - name: Build backend
+        run: dotnet build Deluno.slnx --configuration Release
+
+      - name: Run the Windows-only backend tests
+        shell: pwsh
+        run: |
+          $classes = node scripts/skip-guards.mjs filter
+          if ($LASTEXITCODE -ne 0 -or -not $classes) { Write-Error "scripts/skip-guards.mjs named no test class for $env:JOB"; exit 1 }
+          ./scripts/test-dotnet-serial.ps1 -NoBuild -Except Deluno.Tray.Tests -Filter "Category!=Timing&($classes)"
+        env:
+          JOB: backend-windows
+
+      - name: Summarize backend test results
+        if: always()
+        run: node scripts/summarize-test-results.mjs trx tests "Backend tests (Windows-only)"
+
+      - name: Upload backend test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: backend-test-results-windows
+          path: "**/TestResults/*.trx"
+          if-no-files-found: ignore
           retention-days: 7
 
   # The production web build, made once: the web checks and all three smoke shards use this one (the smoke suite used to
@@ -1195,7 +1261,7 @@ jobs:
 
   # The verdict. `always()` so it reports even when a job it needs failed or was skipped.
   ci-passed:
-    needs: [changes, repo-checks, backend, web-dist, web, e2e-smoke, docker, windows-installer, e2e-windows, e2e-linux, coverage-node, coverage]
+    needs: [changes, repo-checks, backend, backend-windows, web-dist, web, e2e-smoke, docker, windows-installer, e2e-windows, e2e-linux, coverage-node, coverage]
     if: ${{ always() }}
     runs-on: ${{ vars.DELUNO_LINUX_RUNS_ON && fromJSON(vars.DELUNO_LINUX_RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 5
