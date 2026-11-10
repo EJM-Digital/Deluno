@@ -74,6 +74,13 @@
   {"file":"tests/Deluno.Worker.Tests/Dashboard/VolumeSpaceTests.cs","kind":"lookup","count":1,"runsIn":["backend-windows"],"needs":["windows"],"reason":"Returns when this machine has no administrative share; windows-latest has one."},
   {"file":"tests/Deluno.Worker.Tests/Dashboard/VolumeSpaceTests.cs","kind":"operating-system","count":1,"runsIn":["backend-windows"],"reason":"Windows-only; runs on windows-latest."},
   {"file":"tests/Deluno.Worker.Tests/Services/ARootThatAnswersButCannotBeWrittenIsReadOnlyTests.cs","kind":"operating-system","count":1,"runsIn":["backend"],"reason":"Skips only for the superuser on Linux; CI runners are not root."},
+  {
+    "file": "tests/Deluno.Persistence.Tests/Api/TheWindowsFirewallAnswersSafelyOffWindowsTests.cs",
+    "kind": "operating-system",
+    "count": 1,
+    "runsIn": ["backend"],
+    "reason": "Checks what the firewall code answers off Windows; the Linux backend legs run it."
+  },
   {"file":"tests/Deluno.Worker.Tests/Services/ProcessorOutputFolderWatchTests.cs","kind":"operating-system","count":1,"runsIn":["backend"],"reason":"Needs a Linux file system (permissions, mounts); the Linux backend legs run it."}
  ]
 }
