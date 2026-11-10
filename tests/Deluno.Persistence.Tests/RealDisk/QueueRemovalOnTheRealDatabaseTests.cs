@@ -17,8 +17,8 @@ namespace Deluno.Persistence.Tests.RealDisk;
 /// </summary>
 public sealed class QueueRemovalOnTheRealDatabaseTests
 {
-    private const string HashA = "69ca35bca234b9cb822abc435ddbababf6147591";
-    private const string HashB = "d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c";
+    private static readonly string HashA = RecordedReplies.Qbittorrent("downloading").Hash();
+    private static readonly string HashB = RecordedReplies.Qbittorrent("category-moved").Hash();
     private const string ReleaseA = "First.Film.2020.1080p.WEB-DL-DELUNO";
     private const string ReleaseB = "Second.Film.2021.1080p.WEB-DL-DELUNO";
 

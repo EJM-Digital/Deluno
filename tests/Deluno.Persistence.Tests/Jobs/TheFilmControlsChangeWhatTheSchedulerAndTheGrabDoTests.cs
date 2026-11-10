@@ -1,3 +1,4 @@
+using Deluno.Tests.Recorded;
 using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
@@ -180,7 +181,7 @@ public sealed class TheFilmControlsChangeWhatTheSchedulerAndTheGrabDoTests
 
         var worse = await app.Client.PostAsJsonAsync($"/api/movies/{film.MovieId}/grab", new
         {
-            releaseName = "Dune.2021.720p.HDTV.x264-GRP", downloadUrl = "magnet:?xt=urn:btih:A779FA758F2229586EEBC2E5960EB32FE5659596",
+            releaseName = "Dune.2021.720p.HDTV.x264-GRP", downloadUrl = "magnet:?xt=urn:btih:" + RecordedReplies.Jackett("search-movie-imdb").Hash() + "",
             candidateQuality = "HDTV 720p", sizeBytes = 1_500_000_000L, force = false
         });
 
@@ -193,7 +194,7 @@ public sealed class TheFilmControlsChangeWhatTheSchedulerAndTheGrabDoTests
         Assert.True((await app.Client.PutAsJsonAsync($"/api/movies/{film.MovieId}/replacement-protection", new { preventLowerQualityReplacements = false })).IsSuccessStatusCode);
         object Release(bool force) => new
         {
-            releaseName = "Dune.2021.720p.HDTV.x264-GRP", downloadUrl = "magnet:?xt=urn:btih:A779FA758F2229586EEBC2E5960EB32FE5659596",
+            releaseName = "Dune.2021.720p.HDTV.x264-GRP", downloadUrl = "magnet:?xt=urn:btih:" + RecordedReplies.Jackett("search-movie-imdb").Hash() + "",
             candidateQuality = "HDTV 720p", sizeBytes = 1_500_000_000L, force, overrideReason = force ? "You chose this release." : null
         };
         var unprotected = await app.Client.PostAsJsonAsync($"/api/movies/{film.MovieId}/grab", Release(force: false));

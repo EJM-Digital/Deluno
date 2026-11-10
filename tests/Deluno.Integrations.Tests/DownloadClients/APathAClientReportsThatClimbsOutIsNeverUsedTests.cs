@@ -168,7 +168,7 @@ public sealed class APathAClientReportsThatClimbsOutIsNeverUsedTests
         async Task<string?> Read(string savePath)
         {
             // uTorrent 3.6's recorded list with its torrent's save path (index 26, the value under test) and the status and name this test sets.
-            var list = RecordedReplies.UtorrentList(["0123456789abcdef0123456789abcdef01234567"],
+            var list = RecordedReplies.UtorrentList([RecordedReplies.UnknownHash],
                 ("torrents.0.1", 136), ("torrents.0.2", "Some.Film.2020"), ("torrents.0.11", "movies"), ("torrents.0.26", savePath));
             var handler = new Answering((request, _) =>
                 request.RequestUri!.AbsolutePath.EndsWith("token.html", StringComparison.Ordinal)

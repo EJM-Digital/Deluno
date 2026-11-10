@@ -26,7 +26,7 @@ namespace Deluno.Integrations.Tests.Processors.WeirContract;
 public sealed class WeirBusyRetryAfterTests
 {
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-10-14T09:00:00Z", CultureInfo.InvariantCulture);
-    private const string HandoffId = "01a1371c38837e979272e31cd3ce6c3a";
+    private static readonly string HandoffId = RecordedReplies.Deluno("events-completed").HexId(32, 0);
 
     private static HttpResponseMessage Busy(string? retryAfter)
     {

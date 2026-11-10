@@ -111,7 +111,7 @@ public sealed class ClientGapsOnRecordingsTests
     {
         var old = RecordedReplies.Qbittorrent("old-pause-resume-names");
         Assert.All(old.Exchanges, e => Assert.Equal(404, e.Reply.Status));
-        var stalledHash = "8d878a21c3d4180ae08b4e044904667d9f30bec5";
+        var stalledHash = RecordedReplies.Qbittorrent("paused").Hash();
         var stopped = false;
         var handler = new Calls("qbittorrent", [RecordedReplies.Qbittorrent("stalled"), RecordedReplies.Qbittorrent("paused"), RecordedReplies.Qbittorrent("sign-in"), RecordedReplies.Qbittorrent("version")], (request, _) =>
         {

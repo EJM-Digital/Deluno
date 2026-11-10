@@ -57,6 +57,7 @@ public sealed class AnNzbgetJobStuckNearTheEndIsNotCalledQueuedTests
         var list = RecordedReplies.Nzbget("stalled-near-end").Body(
             "listgroups",
             ("^result", 1), ("result.0.NZBID", 29), ("result.0.NZBName", "Recorded.Stuck"), ("result.0.Status", status), ("result.0.ActiveDownloads", activeDownloads),
+            // 595073366 and 594731554 must be the sizes in nzbget stalled-near-end (RecordedNumbersMatchTheirRecordingsTests).
             ("result.0.FileSizeLo", 595073366L), ("result.0.FileSizeHi", 0), ("result.0.FileSizeMB", 567),
             ("result.0.RemainingSizeLo", (595073366L - (startedBytes ?? 594731554L))), ("result.0.RemainingSizeHi", 0), ("result.0.RemainingSizeMB", 0));
         var handler = new Handler(request =>

@@ -17,7 +17,7 @@ namespace Deluno.Persistence.Tests.RealDisk;
 /// </summary>
 public sealed class CleanUpOneRefusedReleaseRouteTests
 {
-    private const string Hash = "69ca35bca234b9cb822abc435ddbababf6147591";
+    private static readonly string Hash = RecordedReplies.Qbittorrent("downloading").Hash();
     private const string Release = "First.Film.2020.1080p.WEB-DL-DELUNO";
 
     private static Task<RecordedAppServer> QbittorrentAsync()

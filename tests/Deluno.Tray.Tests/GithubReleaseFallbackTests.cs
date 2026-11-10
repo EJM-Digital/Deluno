@@ -18,8 +18,8 @@ public sealed class GithubReleaseFallbackTests
     private const string Rc17 = "v1.0.0-rc.17";
     private const string Rc13 = "v1.0.0-rc.13";
     private const string Rc12 = "v1.0.0-rc.12";
-    private const string Rc13InstallerSha = "444a5d166c92dde2730cc37977830358d77b26869b7ba86a0c3d5278d36189b7";
-    private const string Rc12InstallerSha = "81d40beddd5db7cdbb5dcf1ed8d13cfddfcd52bdb711f53f99ea0f20a42c75a5";
+    // Must match tests/fixtures/recorded/github/2022-11-28/weir-newest-release-has-no-files (rc.12's SHA256SUMS.txt); guarded in GithubLatestReleaseTests (#1535).
+    internal const string Rc12InstallerSha = "81d40beddd5db7cdbb5dcf1ed8d13cfddfcd52bdb711f53f99ea0f20a42c75a5";
 
     private static BundledComponentSpec Weir() => BundledComponents.Load().Single(s => s.Kind == "weir");
 
@@ -73,7 +73,7 @@ public sealed class GithubReleaseFallbackTests
         var lookup = await GithubLatestRelease.LookupAsync(Weir(), CancellationToken.None, replay.Handler);
 
         Assert.Equal($"https://github.com/EJM-Digital/Weir/releases/download/{Rc13}/Weir-win-Setup.exe", lookup.Asset?.AssetUrl);
-        Assert.Equal(Rc13InstallerSha, lookup.Asset?.Sha256);
+        Assert.Equal(GithubLatestReleaseTests.Rc13InstallerSha, lookup.Asset?.Sha256);
         Assert.Equal(Rc13, lookup.Tag);
         Assert.Contains(lookup.Skipped ?? [], skipped => skipped.StartsWith(Rc17, StringComparison.Ordinal));
         Assert.False(lookup.NoInstallerYet);
@@ -253,7 +253,7 @@ public sealed class GithubReleaseFallbackTests
         var lookup = await GithubLatestRelease.LookupAsync(Weir(), CancellationToken.None, replay.Handler);
 
         Assert.Equal(Rc13, lookup.Tag);
-        Assert.Equal(Rc13InstallerSha, lookup.Asset?.Sha256);
+        Assert.Equal(GithubLatestReleaseTests.Rc13InstallerSha, lookup.Asset?.Sha256);
         Assert.Contains(lookup.Skipped!, skipped => skipped.StartsWith(Rc17, StringComparison.Ordinal) && skipped.Contains("no Weir-win-Setup.exe", StringComparison.Ordinal));
         // The feed, the list of releases, and the one checksum file of the release used: the assets of every release came in the list.
         Assert.Equal(1, replay.ApiCalls);

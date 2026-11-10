@@ -14,7 +14,7 @@ namespace Deluno.Tray.Tests;
 /// </summary>
 public sealed class TransmissionRecoveryOnRecordedRepliesTests : IDisposable
 {
-    private const string Magnet = "magnet:?xt=urn:btih:04d6d32adaa36ddd9877f0734a7027a4a0055042";
+    private static readonly string Magnet = "magnet:?xt=urn:btih:" + RecordedReplies.Transmission("duplicate-add").Hash() + "";
     private readonly string dataRoot = Path.Combine(Path.GetTempPath(), "deluno-tray-recorded-" + Guid.NewGuid().ToString("n"));
 
     public void Dispose()

@@ -19,7 +19,7 @@ namespace Deluno.Persistence.Tests.Api;
 public sealed class ARemovedFilmTakesItsRealDownloadWithItTests
 {
     // The hash the recorded removal was made with: the request below must carry exactly it.
-    private const string RecordedHash = "d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c";
+    private static readonly string RecordedHash = RecordedReplies.Qbittorrent("category-moved").Hash();
 
     [Fact]
     public async Task Removing_a_film_mid_download_sends_qBittorrent_the_recorded_delete_with_the_data_and_blocklists_nothing()

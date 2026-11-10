@@ -535,7 +535,7 @@ public sealed class UTorrentOnItsRecordedRepliesTests
 
     // ------------------------------------------------------------------ a release sent (U9, U11), add paused
 
-    private const string Magnet = "magnet:?xt=urn:btih:497891bbd14f5850b06b426aa5a2945725bea7bd&dn=Recorded.Magnet";
+    private static readonly string Magnet = "magnet:?xt=urn:btih:" + RecordedReplies.Utorrent("magnet-no-metadata").Hash() + "&dn=Recorded.Magnet";
 
     private static DownloadClientGrabRequest Grab(string url) => new("Recorded.Magnet", url, "movies", null, "Lab Torznab", "dispatch-1");
 
@@ -549,7 +549,7 @@ public sealed class UTorrentOnItsRecordedRepliesTests
         var result = await On(uTorrent).GrabAsync(Client(), Grab(Magnet), CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
-        Assert.Equal("497891bbd14f5850b06b426aa5a2945725bea7bd", result.ExternalId, ignoreCase: true);
+        Assert.Equal(RecordedReplies.Utorrent("magnet-no-metadata").Hash(), result.ExternalId, ignoreCase: true);
         Assert.Contains("s=magnet", Assert.Single(uTorrent.Actions("add-url")), StringComparison.Ordinal);
         Assert.Contains("v=movies", Assert.Single(uTorrent.Actions("setprops")), StringComparison.Ordinal);
     }
@@ -638,7 +638,7 @@ public sealed class UTorrentOnItsRecordedRepliesTests
 
         Assert.True(result.Succeeded, result.Message);
         var stop = Assert.Single(uTorrent.Actions("stop"));
-        Assert.Contains("hash=497891BBD14F5850B06B426AA5A2945725BEA7BD", stop, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("hash=" + RecordedReplies.Utorrent("magnet-no-metadata").Hash() + "", stop, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

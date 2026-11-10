@@ -33,8 +33,10 @@ public sealed class TrackerMagnetHtmlNameTests
     private static string DisplayName(string magnet)
         => magnet.Split('?', 2)[1].Split('&').Select(pair => pair.Split('=', 2)).Where(pair => pair[0] == "dn").Select(pair => WebUtility.UrlDecode(pair[1])).Single();
 
+    private static readonly string PageHash = RecordedReplies.Tracker1337x("detail-page-with-ampersand-and-dash").Matches("(?<=btih:)[0-9A-Fa-f]{40}")[0];
+
     private static string PageWithDn(string dn)
-        => $"""<html><body><ul><li><a href="magnet:?xt=urn:btih:50B9A79D0629410557B556616838693F933C5397&amp;dn={dn}&amp;tr=udp%3A%2F%2Ftracker.example%3A1337%2Fannounce">Magnet Download</a></li></ul></body></html>""";
+        => $"""<html><body><ul><li><a href="magnet:?xt=urn:btih:{PageHash}&amp;dn={dn}&amp;tr=udp%3A%2F%2Ftracker.example%3A1337%2Fannounce">Magnet Download</a></li></ul></body></html>""";
 
     [Fact]
     public async Task The_recorded_1337x_page_gives_a_magnet_named_with_the_plain_name()
@@ -45,7 +47,7 @@ public sealed class TrackerMagnetHtmlNameTests
 
         Assert.Equal(PlainName, DisplayName(grab.MagnetUrl!));
         Assert.DoesNotContain("amp", DisplayName(grab.MagnetUrl!), StringComparison.Ordinal);
-        Assert.Equal("50B9A79D0629410557B556616838693F933C5397", TrackerMagnet.InfoHashOf(grab.MagnetUrl));
+        Assert.Equal(PageHash, TrackerMagnet.InfoHashOf(grab.MagnetUrl));
         // The trackers after the name are kept.
         Assert.Contains("&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce", grab.MagnetUrl, StringComparison.Ordinal);
     }

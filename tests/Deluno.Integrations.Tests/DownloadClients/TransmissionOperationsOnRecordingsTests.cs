@@ -14,9 +14,9 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// </summary>
 public sealed class TransmissionOperationsOnRecordingsTests
 {
-    private const string Finished = "04d6d32adaa36ddd9877f0734a7027a4a0055042";
-    private const string FolderHash = "6c3e9edfdfed4f074f7a1ea1580dd68fa6bd06d2";
-    private const string Removed = "ff7447384425ba526a3efb9efb792f7ba67a77dd";
+    private static readonly string Finished = RecordedReplies.Transmission("duplicate-add").Hash();
+    private static readonly string FolderHash = RecordedReplies.Transmission("finished-folder").Hash();
+    private static readonly string Removed = RecordedReplies.Transmission("paused").Hash();
 
     private static bool Is(string body, string method) => body.Contains($"\"method\":\"{method}\"", StringComparison.Ordinal);
 

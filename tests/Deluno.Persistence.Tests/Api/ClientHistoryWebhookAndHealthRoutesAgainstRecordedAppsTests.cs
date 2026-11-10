@@ -85,7 +85,7 @@ public sealed class ClientHistoryWebhookAndHealthRoutesAgainstRecordedAppsTests
         var repeat = await (await app.Client.PostAsJsonAsync("/api/download-clients/client-1/webhook", new { @event = "completed", hash, name })).Content.ReadFromJsonAsync<JsonElement>();
         Assert.Contains("skipped duplicate webhook", repeat.GetProperty("message").GetString(), StringComparison.Ordinal);
 
-        var unknown = await app.Client.PostAsJsonAsync("/api/download-clients/client-1/webhook", new { @event = "completed", hash = "0000000000000000000000000000000000000000", name = "Something.Else" });
+        var unknown = await app.Client.PostAsJsonAsync("/api/download-clients/client-1/webhook", new { @event = "completed", hash = RecordedReplies.ZeroHash, name = "Something.Else" });
         Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
         Assert.Contains("No matching dispatch found.", await unknown.Content.ReadAsStringAsync(), StringComparison.Ordinal);
     }

@@ -167,7 +167,7 @@ public sealed class TransmissionAndDelugeQueueAndSeedLimitTests
     public async Task Deluge_reorder_actions_call_its_own_queue_methods_on_that_torrent(string action, string method)
     {
         var sent = new List<string>();
-        const string hash = "0123456789abcdef0123456789abcdef01234567";
+        var hash = RecordedReplies.UnknownHash;
         var result = await new DelugeDownloadClient(new Factory(new RecordedDelugeQueueHandler(sent)))
             .ExecuteActionAsync(DelugeClient(), action, hash, CancellationToken.None);
 

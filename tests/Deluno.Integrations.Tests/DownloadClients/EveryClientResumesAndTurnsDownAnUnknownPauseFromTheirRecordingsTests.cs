@@ -14,11 +14,11 @@ public sealed class EveryClientResumesAndTurnsDownAnUnknownPauseFromTheirRecordi
 {
     private static readonly Dictionary<string, string> RecordedIds = new()
     {
-        ["sabnzbd"] = "e50a667e-1b42-4218-999e-5e97c9527db6",
+        ["sabnzbd"] = RecordedReplies.Sabnzbd("resumed").Guid(),
         ["nzbget"] = "1",
-        ["qbittorrent"] = "2d24a2f8b7448f1ef3fc61507a1d866c647ec47e",
-        ["transmission"] = "953d25cd8b330ca129b4097f680c00a5cf57fcb6",
-        ["deluge"] = "5f7e2aa930c440ad6c3c45ac673e8ab82cf667ae"
+        ["qbittorrent"] = RecordedReplies.Qbittorrent("resumed").Hash(),
+        ["transmission"] = RecordedReplies.Transmission("resumed").Hash(),
+        ["deluge"] = RecordedReplies.Deluge("resumed").Hash()
     };
 
     private static DownloadClientItem Client(string protocol)
@@ -101,7 +101,7 @@ public sealed class EveryClientResumesAndTurnsDownAnUnknownPauseFromTheirRecordi
             "transmission" => RecordedReplies.Transmission("pause-unknown-id"),
             _ => RecordedReplies.Deluge("pause-unknown-id")
         };
-        var id = app == "deluge" ? "0000000000000000000000000000000000000000" : "0000000000000000000000000000000000000000";
+        var id = RecordedReplies.ZeroHash;
         var pauseSent = 0;
         var handler = RecordedReplies.Handler(app, [.. Opening(app), recording], (request, body) =>
         {

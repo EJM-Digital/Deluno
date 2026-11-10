@@ -14,9 +14,9 @@ namespace Deluno.Integrations.Tests.MediaServers;
 /// </summary>
 public sealed class JellyfinOperationsOnRecordingsTests
 {
-    private const string UserId = "969361c614714565bc0f626152fd14d1";
-    private const string CollectionId = "18da5b93435bf32b1375cc6efe0ca347";
-    private const string Sintel = "78990f6a0a40212925e5c0f2d9bfb5d2";
+    private static readonly string UserId = RecordedReplies.Jellyfin("catalogue-movies").Matches(@"(?<=/Users/)[0-9A-Fa-f]{32}")[0];
+    private static readonly string CollectionId = RecordedReplies.Jellyfin("catalogue-grouped").IdNamed("Recorded collection");
+    private static readonly string Sintel = RecordedReplies.Jellyfin("catalogue-grouped").IdNamed("Sintel");
 
     private static MediaServerConnection Server(string? token = "key")
         => new("server-1", MediaServerKinds.Jellyfin, "Jellyfin", "http://192.168.1.51:8096", token, true, "untested", null, null, null, null, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
@@ -251,7 +251,7 @@ public sealed class JellyfinOperationsOnRecordingsTests
     public async Task A_collection_a_person_edited_by_hand_is_put_back_its_description_is_set_again_and_a_member_added_by_hand_is_taken_out()
     {
         var jellyfin = new Jellyfin();
-        const string added = "26dd671357211ea17afc94eb99474205";
+        var added = RecordedReplies.Jellyfin("catalogue-series").IdNamed("Recorded Show", "Series");
         var client = jellyfin.Client((request, _) =>
         {
             var recorded = RecordedReplies.Jellyfin("collection-sync");

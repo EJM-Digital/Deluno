@@ -125,6 +125,15 @@ public static class RecordedReplies
         return document.Declaration is null ? document.ToString(SaveOptions.DisableFormatting) : document.Declaration + "\n" + document.ToString(SaveOptions.DisableFormatting);
     }
 
+    /// <summary>
+    /// The hash the recording of "a hash Deluge never had" asked about. The recording made it up, so it is read from the
+    /// recording and not copied: a test of an unknown hash follows the recording (#1535).
+    /// </summary>
+    public static string UnknownHash => Deluge("status-unknown-hash").Hash();
+
+    /// <summary>The all-zero hash the recording of "a pause of a torrent the client never had" asked about (#1535).</summary>
+    public static string ZeroHash => Deluge("pause-unknown-id").Hash();
+
     /// <summary>rTorrent's XML-RPC mount, recorded from the real app (the `methodName` of the call is the operation).</summary>
     public static Recording Rtorrent(string state) => RecordedReplies.LoadLatest("rtorrent", state);
     /// <summary>Jackett's Torznab endpoint over public trackers.</summary>
@@ -454,6 +463,111 @@ public sealed record FeedRelease(string Title, string? Link = null, long? Size =
 
 public sealed record Recording(string App, string Version, string State, IReadOnlyList<Exchange> Exchanges)
 {
+    /// <summary>
+    /// Every distinct text in the recording (requests and replies) that matches the pattern, in the order it first appears,
+    /// as the app wrote it. A test that needs an id, a hash or a revision the recording holds reads it here, never copies it
+    /// (#1535): when the recording is made again, the expectation moves with the data.
+    /// </summary>
+    public IReadOnlyList<string> Matches(string pattern)
+    {
+        var found = new List<string>();
+        foreach (var exchange in Exchanges)
+        {
+            foreach (var text in new[] { exchange.Request.Path, exchange.Request.Body, exchange.Reply.Body })
+            {
+                if (text is null)
+                {
+                    continue;
+                }
+
+                foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(text, pattern))
+                {
+                    if (!found.Contains(match.Value, StringComparer.OrdinalIgnoreCase))
+                    {
+                        found.Add(match.Value);
+                    }
+                }
+            }
+        }
+
+        return found;
+    }
+
+    /// <summary>A helper that finds one value must not quietly take the first of several: the caller names which (#1535).</summary>
+    private void Ambiguous(string what, IReadOnlyList<string> all, int? index)
+    {
+        if (index is null && all.Count > 1)
+        {
+            throw new InvalidOperationException($"{App} {Version} {State} holds {all.Count} {what}s ({string.Join(", ", all)}); say which one the test means (an index, or a narrower pattern with Matches).");
+        }
+    }
+
+    /// <summary>
+    /// The torrent info hash (40 hex digits) the recording is about, as the app wrote it. A state that holds more than one
+    /// names the one wanted by <paramref name="index"/>; a state that holds none fails and says so.
+    /// </summary>
+    public string Hash(int? index = null)
+    {
+        var all = Matches(@"(?<![0-9A-Fa-f])[0-9A-Fa-f]{40}(?![0-9A-Fa-f])");
+        Ambiguous("info hash", all, index);
+        return (index ?? 0) < all.Count
+            ? all[index ?? 0]
+            : throw new InvalidOperationException($"{App} {Version} {State} holds {all.Count} info hash(es), not {(index ?? 0) + 1}. The recording changed; look at it and update the test that reads it.");
+    }
+
+    /// <summary>
+    /// The 32-digit "Id" of the item named <paramref name="name"/> (of the given <paramref name="type"/>, such as "Series" or
+    /// "BoxSet", when several items share a name) in a Jellyfin catalogue recording, so a test says "the id of Sintel" and
+    /// reads it from the recording instead of copying it. More than one match with no type given fails.
+    /// </summary>
+    public string IdNamed(string name, string? type = null)
+    {
+        var ids = new List<string>();
+        foreach (var exchange in Exchanges)
+        {
+            if (exchange.Reply.Body is not { Length: > 0 } body || !body.TrimStart().StartsWith('{'))
+            {
+                continue;
+            }
+
+            if (JsonNode.Parse(body) is JsonObject root && root["Items"] is JsonArray items)
+            {
+                foreach (var item in items.OfType<JsonObject>())
+                {
+                    if ((string?)item["Name"] == name && (type is null || (string?)item["Type"] == type) && (string?)item["Id"] is { } id && !ids.Contains(id))
+                    {
+                        ids.Add(id);
+                    }
+                }
+            }
+        }
+
+        Ambiguous($"item named '{name}'", ids, null);
+        return ids.Count > 0
+            ? ids[0]
+            : throw new InvalidOperationException($"{App} {Version} {State} has no item named '{name}'{(type is null ? "" : $" of type {type}")} with an id. The recording changed; look at it and update the test that reads it.");
+    }
+
+    /// <summary>The GUID (a SABnzbd job id) at that position in the recording, as the app wrote it.</summary>
+    public string Guid(int? index = null)
+    {
+        var all = Matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+        Ambiguous("GUID", all, index);
+        return (index ?? 0) < all.Count
+            ? all[index ?? 0]
+            : throw new InvalidOperationException($"{App} {Version} {State} holds {all.Count} GUID(s), not {(index ?? 0) + 1}. The recording changed; look at it and update the test that reads it.");
+    }
+
+    /// <summary>The id of the given length (32 hex digits for a Jellyfin or Weir id) at that position in the recording.</summary>
+    public string HexId(int length, int? index = null)
+    {
+        var all = Matches($@"(?<![0-9A-Fa-f])[0-9A-Fa-f]{{{length}}}(?![0-9A-Fa-f])");
+        Ambiguous($"{length}-digit id", all, index);
+        return (index ?? 0) < all.Count
+            ? all[index ?? 0]
+            : throw new InvalidOperationException($"{App} {Version} {State} holds {all.Count} {length}-digit id(s), not {(index ?? 0) + 1}. The recording changed; look at it and update the test that reads it.");
+    }
+
     /// <summary>The only exchange of a state recorded with one.</summary>
     public Exchange Single => Exchanges.Count == 1 ? Exchanges[0] : throw new InvalidOperationException($"{App} {Version} {State} holds {Exchanges.Count} exchanges; pick one.");
 

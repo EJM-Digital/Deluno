@@ -86,7 +86,7 @@ public sealed class LibraryDownloadFolderPerGrabTests
 
         using var pin = JsonDocument.Parse(sent[pinIndex]);
         var parameters = pin.RootElement.GetProperty("params");
-        Assert.Equal("5422d19ec8580f2821a8ffa67236cf7ed86fc07d", Assert.Single(parameters[0].EnumerateArray()).GetString());
+        Assert.Equal(RecordedReplies.Deluge("magnet-no-metadata").Hash(0), Assert.Single(parameters[0].EnumerateArray()).GetString());
         Assert.True(parameters[1].GetProperty("move_completed").GetBoolean());
         Assert.Equal(LibraryFolder, parameters[1].GetProperty("move_completed_path").GetString());
     }
@@ -602,7 +602,7 @@ public sealed class LibraryDownloadFolderPerGrabTests
     // ------------------------------------------------------------ fixtures
 
     private static DownloadClientGrabRequest Request()
-        => new("Big.Buck.Bunny.2008.1080p.WEB-DL.x264-DELUNO", "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567", "movies", "movies", "Fixture indexer");
+        => new("Big.Buck.Bunny.2008.1080p.WEB-DL.x264-DELUNO", "magnet:?xt=urn:btih:" + RecordedReplies.UnknownHash + "", "movies", "movies", "Fixture indexer");
 
     private static DownloadClientItem Client(string protocol, string host = "localhost")
         => new(

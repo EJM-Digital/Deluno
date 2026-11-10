@@ -4,7 +4,7 @@ import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { api, openScreen, recordRequests } from "../helpers/real";
 import { untilQuiet } from "../helpers/settle";
-import { loadRecording, startRecordedAppServer, type RecordedAppServer } from "../helpers/recorded-app-server";
+import { loadRecording, recordedHash, startRecordedAppServer, type RecordedAppServer } from "../helpers/recorded-app-server";
 
 /**
  * In progress with a download client that answers as qBittorrent really answered (tests/fixtures/recorded/qbittorrent),
@@ -14,10 +14,10 @@ import { loadRecording, startRecordedAppServer, type RecordedAppServer } from ".
  * sorts last.
  */
 
-const HASH = "69ca35bca234b9cb822abc435ddbababf6147591";
+const HASH = recordedHash("qbittorrent", "5.2.1", "downloading");
 const RELEASE = "Recorded Swarm deluge qbittorrent mkv";
 const stamp = `qc${Date.now()}`;
-const PAUSED_HASH = "8d878a21c3d4180ae08b4e044904667d9f30bec5";
+const PAUSED_HASH = recordedHash("qbittorrent", "5.2.1", "paused");
 const PAUSED_RELEASE = "Recorded Stalled One qbittorrent";
 let qb: RecordedAppServer;
 let qbPaused: RecordedAppServer;

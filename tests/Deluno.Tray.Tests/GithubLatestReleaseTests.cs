@@ -10,7 +10,11 @@ public sealed class GithubLatestReleaseTests
     // rc.17 (published with no files), rc.13 and rc.12; where a test needs another state it changes only the value it is about.
     private const string Rc17 = "v1.0.0-rc.17";
     private const string Rc13 = "v1.0.0-rc.13";
-    private const string Rc13InstallerSha = "444a5d166c92dde2730cc37977830358d77b26869b7ba86a0c3d5278d36189b7";
+    // The checksum is the point of these tests, so it is written out here: it must match tests/fixtures/recorded/github/2022-11-28/weir-newest-release-has-no-files
+    // (the SHA256SUMS.txt of rc.13). The guard test below fails when a new recording and this value disagree (#1535).
+    internal const string Rc13InstallerSha = "444a5d166c92dde2730cc37977830358d77b26869b7ba86a0c3d5278d36189b7";
+    // Must match tests/fixtures/recorded/github/2022-11-28/nzbget-latest-release (its .sig.txt); guarded below.
+    internal const string NzbgetSetupSha = "5ddba34ef3dcc7dc3e62480a95ccf36cb02d4f0876dd2dc81ccc42cab27a3bd7";
 
     private static Recording WeirRecording() => RecordedReplies.Github("weir-newest-release-has-no-files");
 
@@ -90,12 +94,20 @@ public sealed class GithubLatestReleaseTests
         => Assert.Equal(Rc13InstallerSha, GithubLatestRelease.ParseChecksum(Sums(Rc13).Replace("  Weir-win-Setup.exe", "  dist/Weir-win-Setup.exe", StringComparison.Ordinal), "Weir-win-Setup.exe"));
 
     [Fact]
+    public void The_checksums_written_out_in_these_tests_are_still_the_ones_in_their_recordings()
+    {
+        Assert.Contains(Rc13InstallerSha, WeirRecording().Matches("[0-9a-f]{64}"), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(NzbgetSetupSha, RecordedReplies.Github("nzbget-latest-release").Matches("[0-9a-f]{64}"), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(GithubReleaseFallbackTests.Rc12InstallerSha, WeirRecording().Matches("[0-9a-f]{64}"), StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Reads_a_hash_out_of_nzbgets_own_jsonp_signature_file()
     {
         // NZBGet's nzbget-<version>.sig.txt is not a SHA256SUMS.txt line -- it is a JSONP body naming every asset's SHA256 as its own key.
         var hash = GithubLatestRelease.ParseChecksum(NzbgetSignature(), "nzbget-26.3-bin-windows-setup.exe");
 
-        Assert.Equal("5ddba34ef3dcc7dc3e62480a95ccf36cb02d4f0876dd2dc81ccc42cab27a3bd7", hash);
+        Assert.Equal(NzbgetSetupSha, hash);
     }
 
     [Fact]
@@ -180,7 +192,7 @@ public sealed class DirectoryListingLatestReleaseTests
         var resolved = await GithubLatestRelease.ResolveAsync(nzbget, CancellationToken.None, github.Handler);
 
         Assert.Equal(Nzbget263Installer, resolved!.AssetUrl);
-        Assert.Equal("5ddba34ef3dcc7dc3e62480a95ccf36cb02d4f0876dd2dc81ccc42cab27a3bd7", resolved.Sha256);
+        Assert.Equal(GithubLatestReleaseTests.NzbgetSetupSha, resolved.Sha256);
         // One API call, for the latest release; the other call is the release's own signature file.
         var api = Assert.Single(github.ApiRequests);
         Assert.EndsWith("/releases/latest", api);
@@ -214,7 +226,7 @@ public sealed class DirectoryListingLatestReleaseTests
 
         // rc.17 is the newest tag but has no files: the newest release that has them is used.
         Assert.Equal("https://github.com/EJM-Digital/Weir/releases/download/v1.0.0-rc.13/Weir-win-Setup.exe", resolved!.AssetUrl);
-        Assert.Equal("444a5d166c92dde2730cc37977830358d77b26869b7ba86a0c3d5278d36189b7", resolved.Sha256);
+        Assert.Equal(GithubLatestReleaseTests.Rc13InstallerSha, resolved.Sha256);
         Assert.DoesNotContain(handler.Requests, url => url.Contains("api.github.com", StringComparison.Ordinal));
     }
 

@@ -422,7 +422,7 @@ public sealed class RtorrentOnRecordingsTests
 
     // ---- removing (#1288) ----
 
-    private const string HeldHash = "D3A2428E690FB2056D885BA960C5D85EA531454F";
+    private static readonly string HeldHash = RecordedReplies.Rtorrent("add-file").Hash();
 
     [Fact]
     public async Task Delete_sends_d_erase_for_the_held_download_and_is_done_once_rTorrent_no_longer_holds_it()

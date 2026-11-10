@@ -4,7 +4,7 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { api, openScreen } from "../helpers/real";
 import { untilQuiet } from "../helpers/settle";
-import { loadRecording, startRecordedAppServer, type RecordedAppServer } from "../helpers/recorded-app-server";
+import { loadRecording, recordedHash, startRecordedAppServer, type RecordedAppServer } from "../helpers/recorded-app-server";
 
 /**
  * A show's page with a download sent for it, against the real server, nothing stubbed (measure 4, issue 1270). The download client
@@ -67,7 +67,7 @@ test.describe("A show's sent downloads", () => {
   test("a download sent for the show lists under Sent to downloads with Open In progress, which goes to In progress", async ({ page }) => {
     await openScreen(page, "/tv");
     const sent = await api(page, "POST", "/api/testing/transfers/handoff", {
-      libraryId, mediaType: "tv", entityId: seriesId, releaseName: "Breaking.Bad.S01E02.1080p-LIST", clientId, queueItemId: "69ca35bca234b9cb822abc435ddbababf6147591"
+      libraryId, mediaType: "tv", entityId: seriesId, releaseName: "Breaking.Bad.S01E02.1080p-LIST", clientId, queueItemId: recordedHash("qbittorrent", "5.2.1", "downloading")
     });
     expect(sent.status, JSON.stringify(sent.body)).toBe(200);
     try {

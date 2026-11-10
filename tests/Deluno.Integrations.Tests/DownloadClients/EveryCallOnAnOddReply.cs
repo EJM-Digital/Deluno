@@ -1,3 +1,4 @@
+using Deluno.Tests.Recorded;
 using Deluno.Connections.Contracts;
 using Deluno.Integrations.DownloadClients;
 
@@ -17,7 +18,7 @@ internal static class EveryCallOnAnOddReply
         return document.RootElement.TryGetProperty("method", out var method) ? method.GetString() ?? string.Empty : string.Empty;
     }
 
-    public static readonly string[] MagnetHash = ["d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c"];
+    public static readonly string[] MagnetHash = [RecordedReplies.Qbittorrent("category-moved").Hash()];
 
     public static IEnumerable<DownloadClientGrabRequest> GrabRequests(bool usenet)
     {

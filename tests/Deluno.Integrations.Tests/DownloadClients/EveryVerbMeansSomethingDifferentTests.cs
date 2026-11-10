@@ -187,7 +187,7 @@ public sealed class EveryVerbMeansSomethingDifferentTests
         var sent = await CaptureAsync("qbittorrent", action);
 
         var request = Assert.Single(sent, line => line.Contains(endpoint, StringComparison.Ordinal));
-        Assert.Contains("hashes=0123456789abcdef0123456789abcdef01234567", request, StringComparison.Ordinal);
+        Assert.Contains("hashes=" + RecordedReplies.UnknownHash + "", request, StringComparison.Ordinal);
         Assert.DoesNotContain(sent, line => line.Contains("torrents/stop", StringComparison.Ordinal) || line.Contains("torrents/delete", StringComparison.Ordinal));
     }
 
@@ -307,7 +307,7 @@ public sealed class EveryVerbMeansSomethingDifferentTests
         var sent = new List<string>();
         var handler = new RecordingHandler(sent);
         var client = Client(protocol);
-        var wrongShape = protocol == "transmission" ? "not-an-id-at-all" : "0123456789abcdef0123456789abcdef01234567";
+        var wrongShape = protocol == "transmission" ? "not-an-id-at-all" : RecordedReplies.UnknownHash;
 
         var result = protocol == "transmission"
             ? await new TransmissionDownloadClient(new StubHttpClientFactory(handler))
@@ -363,7 +363,7 @@ public sealed class EveryVerbMeansSomethingDifferentTests
         "nzbget" => "42",
         "transmission" => "7",
         "sabnzbd" => "SABnzbd_nzo_abc123",
-        _ => "0123456789abcdef0123456789abcdef01234567"
+        _ => RecordedReplies.UnknownHash
     };
 
     private static DownloadClientItem Client(string protocol)
@@ -429,7 +429,7 @@ public sealed class EveryVerbMeansSomethingDifferentTests
             if (isTorrentList)
             {
                 var held = !_removed;
-                var infoHash = "0123456789abcdef0123456789abcdef01234567";
+                var infoHash = RecordedReplies.UnknownHash;
                 string content;
                 if (path.Contains("api/v2/torrents/info", StringComparison.OrdinalIgnoreCase))
                 {

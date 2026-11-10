@@ -13,7 +13,7 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// </summary>
 public sealed class QbittorrentSurvivorsTests
 {
-    private const string Finished = "d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c";
+    private static readonly string Finished = RecordedReplies.Qbittorrent("category-moved").Hash();
 
     private static readonly string[] BaseStates =
     [

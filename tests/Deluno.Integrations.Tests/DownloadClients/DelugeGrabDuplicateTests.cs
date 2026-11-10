@@ -14,7 +14,7 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// </summary>
 public sealed class DelugeGrabDuplicateTests
 {
-    private const string Hash = "d8185091144732e990e3595f7db0e4410b1d9424";
+    private static readonly string Hash = RecordedReplies.Deluge("duplicate-add").Hash();
 
     private static DownloadClientGrabRequest Magnet()
         => new("Example.Movie.2024.1080p", $"magnet:?xt=urn:btih:{Hash}&dn=Example", "movies", "movies", "Fixture indexer");

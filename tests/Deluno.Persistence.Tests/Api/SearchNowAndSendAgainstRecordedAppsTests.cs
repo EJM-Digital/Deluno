@@ -158,7 +158,7 @@ public sealed class SearchNowAndSendAgainstRecordedAppsTests
         Assert.False(string.IsNullOrWhiteSpace(answer.GetProperty("dispatchMessage").GetString()));
         Assert.Contains("qBittorrent", answer.GetProperty("downloadClientName").GetString());
         var added = Assert.Single(rig.Qbit.Requests, request => request.Method == "POST" && request.PathAndQuery.EndsWith("torrents/add", StringComparison.Ordinal));
-        Assert.Contains("A779FA758F2229586EEBC2E5960EB32FE5659596", added.Body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(RecordedReplies.Jackett("search-movie-imdb").Hash(), added.Body, StringComparison.OrdinalIgnoreCase);
         Assert.Empty(rig.Qbit.Unanswered);
     }
 
@@ -251,7 +251,7 @@ public sealed class SearchNowAndSendAgainstRecordedAppsTests
 
         var grab = await rig.App.Client.PostAsJsonAsync($"/api/movies/{filmId}/grab", new
         {
-            releaseName = "Sintel.2010.720p.BluRay.x264-YTS", indexerName = "Fixture Indexer", downloadUrl = "magnet:?xt=urn:btih:A779FA758F2229586EEBC2E5960EB32FE5659596",
+            releaseName = "Sintel.2010.720p.BluRay.x264-YTS", indexerName = "Fixture Indexer", downloadUrl = "magnet:?xt=urn:btih:" + RecordedReplies.Jackett("search-movie-imdb").Hash() + "",
             candidateQuality = "Bluray 720p", sizeBytes = 143151596L, force = true, overrideReason = "You chose this release."
         });
         Assert.NotEqual(0, (int)grab.StatusCode);
@@ -323,7 +323,7 @@ public sealed class SearchNowAndSendAgainstRecordedAppsTests
         var response = await rig.App.Client.PostAsJsonAsync($"/api/movies/{filmId}/grab", new
         {
             releaseName = "Sintel (2010) 720p BRRip x264 -YTS", indexerId = rig.FilmIndexerId, indexerName = "yts",
-            downloadUrl = "magnet:?xt=urn:btih:A779FA758F2229586EEBC2E5960EB32FE5659596", candidateQuality = "Bluray 720p", sizeBytes = 143151596L
+            downloadUrl = "magnet:?xt=urn:btih:" + RecordedReplies.Jackett("search-movie-imdb").Hash() + "", candidateQuality = "Bluray 720p", sizeBytes = 143151596L
         });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -341,7 +341,7 @@ public sealed class SearchNowAndSendAgainstRecordedAppsTests
         var release = new
         {
             releaseName = "Sintel (2010) 720p BRRip x264 -YTS", indexerId = rig.FilmIndexerId, indexerName = "yts",
-            downloadUrl = "magnet:?xt=urn:btih:A779FA758F2229586EEBC2E5960EB32FE5659596", candidateQuality = "Bluray 720p", sizeBytes = 143151596L
+            downloadUrl = "magnet:?xt=urn:btih:" + RecordedReplies.Jackett("search-movie-imdb").Hash() + "", candidateQuality = "Bluray 720p", sizeBytes = 143151596L
         };
 
         async Task<string> ReasonAsync()

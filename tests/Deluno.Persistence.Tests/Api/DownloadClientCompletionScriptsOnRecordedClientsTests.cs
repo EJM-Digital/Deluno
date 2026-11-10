@@ -126,7 +126,7 @@ public sealed class DownloadClientCompletionScriptsOnRecordedClientsTests
         await using var app = await ApplicationTestHost.StartAsync();
         var finished = await SentAsync(app, added);
 
-        var response = await app.Client.PostAsJsonAsync("/api/download-clients/client-1/webhook", new { @event = "torrent_completed", hash = "0000000000000000000000000000000000000000", name = added.ReleaseName });
+        var response = await app.Client.PostAsJsonAsync("/api/download-clients/client-1/webhook", new { @event = "torrent_completed", hash = RecordedReplies.ZeroHash, name = added.ReleaseName });
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Null((await StoredAsync(app, finished)).ClientCompletedUtc);

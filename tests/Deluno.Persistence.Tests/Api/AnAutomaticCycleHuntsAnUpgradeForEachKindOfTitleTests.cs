@@ -144,7 +144,7 @@ public sealed class AnAutomaticCycleHuntsAnUpgradeForEachKindOfTitleTests
 
         Assert.Equal(1, rig.Adds);
         var added = Assert.Single(rig.Qbit.Requests, request => request.Method == "POST" && request.PathAndQuery.EndsWith("torrents/add", StringComparison.Ordinal));
-        Assert.Contains("A779FA758F2229586EEBC2E5960EB32FE5659596", added.Body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(RecordedReplies.Jackett("search-movie-imdb").Hash(), added.Body, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(1, await ApiScenes.ScalarAsync(rig.App, "jobs", $"SELECT COUNT(*) FROM download_dispatches WHERE entity_id = '{held.MovieId}' AND status = 'sent';"));
         Assert.Equal(1, await ApiScenes.ScalarAsync(rig.App, "jobs", $"SELECT replacement_authorized FROM download_dispatches WHERE entity_id = '{held.MovieId}';"));
         Assert.True(File.Exists(held.FilePath), "the file already in the library stays until the better one is imported");
@@ -201,7 +201,7 @@ public sealed class AnAutomaticCycleHuntsAnUpgradeForEachKindOfTitleTests
         Assert.Contains(rig.Jackett.Requests.Skip(askedBefore), request => request.PathAndQuery.Contains("t=movie", StringComparison.Ordinal) || request.PathAndQuery.Contains("t=search", StringComparison.Ordinal));
         Assert.True(rig.Adds == 1, string.Join(" | ", rig.Jackett.Requests.Skip(askedBefore).Select(r => r.PathAndQuery)) + " // " + await ApiScenes.TextAsync(rig.App, "movies", $"SELECT last_search_result FROM movie_wanted_state WHERE movie_id = '{movieId}';") + " // " + await rig.App.Client.GetStringAsync("/api/activity?take=8"));
         var sent = Assert.Single(rig.Qbit.Requests, request => request.Method == "POST" && request.PathAndQuery.EndsWith("torrents/add", StringComparison.Ordinal));
-        Assert.Contains("A779FA758F2229586EEBC2E5960EB32FE5659596", sent.Body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(RecordedReplies.Jackett("search-movie-imdb").Hash(), sent.Body, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(1, await ApiScenes.ScalarAsync(rig.App, "jobs", $"SELECT COUNT(*) FROM download_dispatches WHERE entity_id = '{movieId}' AND status = 'sent';"));
         Assert.Equal(0, await ApiScenes.ScalarAsync(rig.App, "jobs", $"SELECT replacement_authorized FROM download_dispatches WHERE entity_id = '{movieId}';"));
     }
