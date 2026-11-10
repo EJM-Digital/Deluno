@@ -127,7 +127,8 @@ function Initialize-SuiteEnvironment {
 
     # 4b. Weir takes each library's watched folder from Deluno on its own schedule. A hand-off sent before that is refused with "No Weir
     # workflow watches the folder" (rc.18: seen on a scenario run alone from a fresh setup). Weir rc.18 took about a minute; Weir 1.0.0-rc.28
-    # took 4 min 41 s on a fresh golden VM (10 Nov 2026), so the wait covers two of its five-minute passes.
+    # took 4 min 41 s on a fresh golden VM (10 Nov 2026): it syncs a new manager's folders once on connect, then only on
+    # its five-minute task, so the wait covers two of those. Back to 240 s once EJM-Digital/Weir#1427 (retry until the folders arrive) ships.
     $synced = Wait-Until -TimeoutSec 600 -IntervalSec 5 -Condition {
         $r = Invoke-Weir -Path '/processing/libraries'
         $list = if ($r.PSObject.Properties.Name -contains 'value') { @($r.value) } else { @($r) }
