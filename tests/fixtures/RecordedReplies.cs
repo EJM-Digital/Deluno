@@ -126,6 +126,15 @@ public static class RecordedReplies
     }
 
     /// <summary>rTorrent's XML-RPC mount, recorded from the real app (the `methodName` of the call is the operation).</summary>
+    /// <summary>
+    /// The hash the recording of "a hash Deluge never had" asked about. The recording made it up, so it is read from the
+    /// recording and not copied: a test of an unknown hash follows the recording (#1535).
+    /// </summary>
+    public static string UnknownHash => Deluge("status-unknown-hash").Hash();
+
+    /// <summary>The all-zero hash the recording of "a pause of a torrent the client never had" asked about (#1535).</summary>
+    public static string ZeroHash => Deluge("pause-unknown-id").Hash();
+
     public static Recording Rtorrent(string state) => RecordedReplies.LoadLatest("rtorrent", state);
     /// <summary>Jackett's Torznab endpoint over public trackers.</summary>
     public static Recording Jackett(string state) => RecordedReplies.LoadLatest("jackett", state);
@@ -454,6 +463,65 @@ public sealed record FeedRelease(string Title, string? Link = null, long? Size =
 
 public sealed record Recording(string App, string Version, string State, IReadOnlyList<Exchange> Exchanges)
 {
+    /// <summary>
+    /// Every distinct text in the recording (requests and replies) that matches the pattern, in the order it first appears,
+    /// as the app wrote it. A test that needs an id, a hash or a revision the recording holds reads it here, never copies it
+    /// (#1535): when the recording is made again, the expectation moves with the data.
+    /// </summary>
+    public IReadOnlyList<string> Matches(string pattern)
+    {
+        var found = new List<string>();
+        foreach (var exchange in Exchanges)
+        {
+            foreach (var text in new[] { exchange.Request.Path, exchange.Request.Body, exchange.Reply.Body })
+            {
+                if (text is null)
+                {
+                    continue;
+                }
+
+                foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(text, pattern))
+                {
+                    if (!found.Contains(match.Value, StringComparer.OrdinalIgnoreCase))
+                    {
+                        found.Add(match.Value);
+                    }
+                }
+            }
+        }
+
+        return found;
+    }
+
+    /// <summary>
+    /// The torrent info hash (40 hex digits) the recording is about, as the app wrote it. A state that holds more than one
+    /// names the one wanted by <paramref name="index"/>; a state that holds none fails and says so.
+    /// </summary>
+    public string Hash(int index = 0)
+    {
+        var all = Matches(@"(?<![0-9A-Fa-f])[0-9A-Fa-f]{40}(?![0-9A-Fa-f])");
+        return index < all.Count
+            ? all[index]
+            : throw new InvalidOperationException($"{App} {Version} {State} holds {all.Count} info hash(es), not {index + 1}. The recording changed; look at it and update the test that reads it.");
+    }
+
+    /// <summary>
+    /// The 32-digit "Id" of the item named <paramref name="name"/> in the recording (a Jellyfin catalogue), so a test says
+    /// "the id of Sintel" and reads it from the recording instead of copying it.
+    /// </summary>
+    public string IdNamed(string name)
+        => Matches($@"(?<=""Name"":\s*""{System.Text.RegularExpressions.Regex.Escape(name)}""[^{{}}]*?""Id"":\s*"")[0-9A-Fa-f]{{32}}").FirstOrDefault()
+            ?? throw new InvalidOperationException($"{App} {Version} {State} has no item named '{name}' with an id. The recording changed; look at it and update the test that reads it.");
+
+    /// <summary>The id of the given length (32 hex digits for a Jellyfin or Weir id) at that position in the recording.</summary>
+    public string HexId(int length, int index = 0)
+    {
+        var all = Matches($@"(?<![0-9A-Fa-f])[0-9A-Fa-f]{{{length}}}(?![0-9A-Fa-f])");
+        return index < all.Count
+            ? all[index]
+            : throw new InvalidOperationException($"{App} {Version} {State} holds {all.Count} {length}-digit id(s), not {index + 1}. The recording changed; look at it and update the test that reads it.");
+    }
+
     /// <summary>The only exchange of a state recorded with one.</summary>
     public Exchange Single => Exchanges.Count == 1 ? Exchanges[0] : throw new InvalidOperationException($"{App} {Version} {State} holds {Exchanges.Count} exchanges; pick one.");
 

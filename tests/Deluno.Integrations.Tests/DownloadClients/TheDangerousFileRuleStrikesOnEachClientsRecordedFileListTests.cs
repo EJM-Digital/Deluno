@@ -29,7 +29,7 @@ public sealed class TheDangerousFileRuleStrikesOnEachClientsRecordedFileListTest
             {
                 var handler = RecordedReplies.Handler("qbittorrent", [RecordedReplies.Qbittorrent("sign-in"), RecordedReplies.Qbittorrent("version"), RecordedReplies.Qbittorrent("finished-folder")]);
                 files = await new QbittorrentDownloadClient(() => handler)
-                    .GetFilesAsync(Client("qbittorrent", "deluno"), "3b1d84012faffbb5c3c8d00d92358d52f2c856eb", CancellationToken.None);
+                    .GetFilesAsync(Client("qbittorrent", "deluno"), RecordedReplies.Qbittorrent("finished-folder").Hash(), CancellationToken.None);
                 break;
             }
 
@@ -64,14 +64,14 @@ public sealed class TheDangerousFileRuleStrikesOnEachClientsRecordedFileListTest
                 // rTorrent 0.16.25's f.multicall for a finished release folder of three episodes.
                 var handler = RecordedReplies.Handler("rtorrent", [RecordedReplies.Rtorrent("finished-folder")]);
                 files = await new RtorrentDownloadClient(new Factory(handler))
-                    .GetFilesAsync(Client("rtorrent"), "C703E0C4CD781E6772DDF298A5486ABA003F5353", CancellationToken.None);
+                    .GetFilesAsync(Client("rtorrent"), RecordedReplies.Rtorrent("finished-folder").Hash(), CancellationToken.None);
                 break;
             }
 
             default:
             {
                 var handler = new Calls("deluge", [RecordedReplies.Deluge("sign-in"), RecordedReplies.Deluge("location-moved")]).Build();
-                files = await new DelugeDownloadClient(new Factory(handler)).GetFilesAsync(Client("deluge"), "d8185091144732e990e3595f7db0e4410b1d9424", CancellationToken.None);
+                files = await new DelugeDownloadClient(new Factory(handler)).GetFilesAsync(Client("deluge"), RecordedReplies.Deluge("duplicate-add").Hash(), CancellationToken.None);
                 break;
             }
         }

@@ -234,7 +234,7 @@ public sealed class TitleSearchAndGrabRoutesAgainstRecordedAppsTests
 
         Assert.Equal(candidate.GetProperty("releaseName").GetString(), grab.GetProperty("releaseName").GetString());
         var added = Assert.Single(rig.Qbit.Requests, request => request.Method == "POST" && request.PathAndQuery.EndsWith("torrents/add", StringComparison.Ordinal));
-        Assert.Contains("A779FA758F2229586EEBC2E5960EB32FE5659596", added.Body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(RecordedReplies.Jackett("search-movie-imdb").Hash(), added.Body, StringComparison.OrdinalIgnoreCase);
         Assert.Empty(rig.Qbit.Unanswered);
         Assert.Equal(1, await ApiScenes.ScalarAsync(rig.App, "jobs", $"SELECT COUNT(*) FROM download_dispatches WHERE entity_id = '{filmId}';"));
         Assert.Equal(HttpStatusCode.NotFound, (await rig.App.Client.PostAsJsonAsync("/api/movies/no-such-film/grab", new { releaseName = "x", downloadUrl = "magnet:?xt=urn:btih:00" })).StatusCode);
@@ -299,8 +299,8 @@ public sealed class TitleSearchAndGrabRoutesAgainstRecordedAppsTests
     public async Task A_second_hand_send_for_a_film_already_downloading_asks_first_and_Send_as_well_keeps_both_and_Replace_takes_the_first_out_of_qBittorrent()
     {
         await using var rig = await RigAsync("removed-with-data");
-        const string recordedHash = "d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c";
-        const string otherHash = "A779FA758F2229586EEBC2E5960EB32FE5659596";
+        var recordedHash = RecordedReplies.Qbittorrent("category-moved").Hash();
+        var otherHash = RecordedReplies.Jackett("search-movie-imdb").Hash();
         const string thirdHash = "B889FA758F2229586EEBC2E5960EB32FE5659597";
         object Send(string release, string hash, string? duplicateAction) => new
         {

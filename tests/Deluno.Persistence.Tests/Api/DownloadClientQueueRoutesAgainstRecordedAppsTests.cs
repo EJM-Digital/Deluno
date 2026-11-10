@@ -15,7 +15,7 @@ namespace Deluno.Persistence.Tests.Api;
 /// </summary>
 public sealed class DownloadClientQueueRoutesAgainstRecordedAppsTests
 {
-    private const string Hash = "69ca35bca234b9cb822abc435ddbababf6147591";
+    private static readonly string Hash = RecordedReplies.Qbittorrent("downloading").Hash();
 
     private static Task<RecordedAppServer> QbittorrentAsync(Func<HttpRequestMessage, string, HttpResponseMessage?>? intercept, params string[] states)
         => RecordedAppServer.StartAsync("qbittorrent", states.Select(RecordedReplies.Qbittorrent), intercept);

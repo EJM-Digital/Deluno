@@ -39,7 +39,7 @@ public sealed class AHandSendOnEachClientKindTests
         public abstract bool IsRemove(RecordedAppServer.Seen seen);
 
         /// <summary>The hash every torrent release is offered under: the one the client's recorded reply to a magnet add names.</summary>
-        public virtual string Hash => "A779FA758F2229586EEBC2E5960EB32FE5659596";
+        public virtual string Hash => RecordedReplies.Jackett("search-movie-imdb").Hash();
 
         public string Url(string release) => Usenet
             ? $"http://indexer.invalid/getnzb/{Uri.EscapeDataString(release)}.nzb?apikey=0123456789abcdef"
@@ -146,7 +146,7 @@ public sealed class AHandSendOnEachClientKindTests
 
         public override bool Usenet => false;
 
-        public override string Hash => "5422d19ec8580f2821a8ffa67236cf7ed86fc07d";
+        public override string Hash => RecordedReplies.Deluge("magnet-no-metadata").Hash();
 
         public override Task<RecordedAppServer> StartAsync()
         {

@@ -14,7 +14,7 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// </summary>
 public sealed class TransmissionEveryBranchTests
 {
-    private const string Hash = "d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c";
+    private static readonly string Hash = RecordedReplies.Qbittorrent("category-moved").Hash();
 
     private static DownloadClientItem Item() => Client("transmission", "user", "pw");
 
@@ -25,6 +25,13 @@ public sealed class TransmissionEveryBranchTests
         return new TransmissionDownloadClient(new Factory(made.Build()));
     }
 
+    private static readonly string Rich = "{\"result\":\"success\",\"arguments\":{\"rpc-version\":18,\"version\":\"4.1.3 (abc)\",\"download-dir\":\"/downloads\",\"incomplete-dir\":\"/incomplete\",\"incomplete-dir-enabled\":true,\"alt-speed-enabled\":true,\"size-bytes\":500,"
+        + "\"torrent-added\":{\"id\":3,\"hashString\":\"" + RecordedReplies.Qbittorrent("category-moved").Hash() + "\"},"
+        + "\"torrents\":[{\"id\":7,\"hashString\":\"" + RecordedReplies.Qbittorrent("category-moved").Hash() + "\",\"name\":\"n\",\"status\":4,\"percentDone\":0.5,\"rateDownload\":5,\"rateUpload\":2,\"eta\":100,\"totalSize\":1000,\"downloadedEver\":500,\"peersConnected\":3,"
+        + "\"addedDate\":1700000000,\"downloadDir\":\"/d\",\"labels\":[\"movies\",\"seeding\"],\"error\":3,\"errorString\":\"x\",\"peersSendingToUs\":2,\"isStalled\":true,\"uploadRatio\":1.5,\"secondsSeeding\":120,\"isPrivate\":true,"
+        + "\"trackerStats\":[{\"lastAnnounceResult\":\"Unregistered\",\"lastAnnounceSucceeded\":false,\"hasAnnounced\":true,\"announce\":\"http://t.example/a\"}],\"activityDate\":1,\"doneDate\":2,\"queuePosition\":1,\"seedRatioMode\":1,\"seedRatioLimit\":2.0,\"seedIdleMode\":1,\"seedIdleLimit\":30,\"files\":[{\"name\":\"a.mkv\"}]},"
+        + "{\"id\":8,\"hashString\":\"other\",\"status\":6,\"percentDone\":1,\"error\":1,\"trackerStats\":[{\"hasAnnounced\":true,\"lastAnnounceSucceeded\":true}]},{}]}}";
+
     private static readonly string[] OddReplies =
     [
         "null",
@@ -32,8 +39,8 @@ public sealed class TransmissionEveryBranchTests
         "{\"result\":\"success\",\"arguments\":{}}",
         "{\"result\":\"success\",\"arguments\":{\"torrents\":[]}}",
         "{\"result\":\"success\",\"arguments\":{\"torrents\":[{}]}}",
-        "{\"result\":\"success\",\"arguments\":{\"torrent-added\":{},\"torrent-duplicate\":{},\"torrents\":[{\"id\":7,\"hashString\":\"d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c\",\"status\":4,\"percentDone\":0.5,\"labels\":[\"\",\"movies\"],\"files\":[{\"name\":\"a/b.mkv\"},{}],\"trackerStats\":[{}],\"error\":3}]}}",
-        "{\"result\":\"success\",\"arguments\":{\"rpc-version\":18,\"version\":\"4.1.3 (abc)\",\"download-dir\":\"/downloads\",\"size-bytes\":500,\"alt-speed-enabled\":true,\"torrents\":[{\"id\":7,\"hashString\":\"d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c\",\"name\":\"x\",\"status\":0,\"labels\":[],\"files\":[]}]}}",
+        "{\"result\":\"success\",\"arguments\":{\"torrent-added\":{},\"torrent-duplicate\":{},\"torrents\":[{\"id\":7,\"hashString\":\"" + RecordedReplies.Qbittorrent("category-moved").Hash() + "\",\"status\":4,\"percentDone\":0.5,\"labels\":[\"\",\"movies\"],\"files\":[{\"name\":\"a/b.mkv\"},{}],\"trackerStats\":[{}],\"error\":3}]}}",
+        "{\"result\":\"success\",\"arguments\":{\"rpc-version\":18,\"version\":\"4.1.3 (abc)\",\"download-dir\":\"/downloads\",\"size-bytes\":500,\"alt-speed-enabled\":true,\"torrents\":[{\"id\":7,\"hashString\":\"" + RecordedReplies.Qbittorrent("category-moved").Hash() + "\",\"name\":\"x\",\"status\":0,\"labels\":[],\"files\":[]}]}}",
         "{\"result\":\"success\",\"arguments\":{\"rpc-version\":18,\"torrents\":[{\"id\":7,\"hashString\":\"other\",\"status\":6,\"percentDone\":1}]}}",
         "{\"result\":\"no such torrent\"}",
         "{\"result\":\"success\",\"arguments\":{\"torrent-added\":{\"id\":3,\"hashString\":\" ABCDEF \"}}}",
@@ -45,12 +52,6 @@ public sealed class TransmissionEveryBranchTests
         Rich.Replace("\"result\":\"success\"", "\"result\":\"too many\"", StringComparison.Ordinal)
     ];
 
-    private const string Rich = "{\"result\":\"success\",\"arguments\":{\"rpc-version\":18,\"version\":\"4.1.3 (abc)\",\"download-dir\":\"/downloads\",\"incomplete-dir\":\"/incomplete\",\"incomplete-dir-enabled\":true,\"alt-speed-enabled\":true,\"size-bytes\":500,"
-        + "\"torrent-added\":{\"id\":3,\"hashString\":\"d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c\"},"
-        + "\"torrents\":[{\"id\":7,\"hashString\":\"d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c\",\"name\":\"n\",\"status\":4,\"percentDone\":0.5,\"rateDownload\":5,\"rateUpload\":2,\"eta\":100,\"totalSize\":1000,\"downloadedEver\":500,\"peersConnected\":3,"
-        + "\"addedDate\":1700000000,\"downloadDir\":\"/d\",\"labels\":[\"movies\",\"seeding\"],\"error\":3,\"errorString\":\"x\",\"peersSendingToUs\":2,\"isStalled\":true,\"uploadRatio\":1.5,\"secondsSeeding\":120,\"isPrivate\":true,"
-        + "\"trackerStats\":[{\"lastAnnounceResult\":\"Unregistered\",\"lastAnnounceSucceeded\":false,\"hasAnnounced\":true,\"announce\":\"http://t.example/a\"}],\"activityDate\":1,\"doneDate\":2,\"queuePosition\":1,\"seedRatioMode\":1,\"seedRatioLimit\":2.0,\"seedIdleMode\":1,\"seedIdleLimit\":30,\"files\":[{\"name\":\"a.mkv\"}]},"
-        + "{\"id\":8,\"hashString\":\"other\",\"status\":6,\"percentDone\":1,\"error\":1,\"trackerStats\":[{\"hasAnnounced\":true,\"lastAnnounceSucceeded\":true}]},{}]}}";
 
     [Fact]
     public async Task No_question_throws_when_the_client_answers_every_call_with_a_reply_that_says_little()

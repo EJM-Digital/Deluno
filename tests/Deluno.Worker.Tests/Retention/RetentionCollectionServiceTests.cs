@@ -196,16 +196,20 @@ public sealed class RetentionCollectionServiceTests
             NullLogger<RetentionCollectionService>.Instance);
     }
 
+    // Read from the recording, so a new recording moves the expectation with the data (#1535).
+    private static readonly string SintelId = Deluno.Tests.Recorded.RecordedReplies.Jellyfin("catalogue-grouped").IdNamed("Sintel");
+    private static readonly string CollectionId = Deluno.Tests.Recorded.RecordedReplies.Jellyfin("catalogue-grouped").IdNamed("Recorded collection");
+
     [Fact]
     public async Task What_a_rule_marks_goes_into_a_real_jellyfins_collection_by_the_calls_it_recorded_taking()
     {
         _store.Add(Rule("r1", RetentionLevels.Movie, "jf"));
-        await Mark("r1", "m1", ("jf", "78990f6a0a40212925e5c0f2d9bfb5d2", null));
+        await Mark("r1", "m1", ("jf", SintelId, null));
         var calls = new List<string>();
 
         await RealJellyfinService(RecordedJellyfin(calls, collectionExists: false)).SyncAsync(CancellationToken.None);
 
-        Assert.Contains(calls, call => call == "POST /Collections?Name=Leaving%20soon&Ids=78990f6a0a40212925e5c0f2d9bfb5d2");
+        Assert.Contains(calls, call => call == "POST /Collections?Name=Leaving%20soon&Ids=" + SintelId);
         var synced = _store.Collections[("jf", "movies")];
         Assert.Null(synced.Problem);
         Assert.Equal(1, synced.Members);
@@ -215,7 +219,7 @@ public sealed class RetentionCollectionServiceTests
     public async Task Turning_the_rule_off_asks_a_real_jellyfin_to_delete_its_emptied_collection_and_nothing_else()
     {
         _store.Add(Rule("r1", RetentionLevels.Movie, "jf"));
-        await Mark("r1", "m1", ("jf", "78990f6a0a40212925e5c0f2d9bfb5d2", null));
+        await Mark("r1", "m1", ("jf", SintelId, null));
         var calls = new List<string>();
         await RealJellyfinService(RecordedJellyfin(calls, collectionExists: false)).SyncAsync(CancellationToken.None);
         calls.Clear();
@@ -223,7 +227,7 @@ public sealed class RetentionCollectionServiceTests
         _store.Add(Rule("r1", RetentionLevels.Movie, "jf") with { IsEnabled = false });
         await RealJellyfinService(RecordedJellyfin(calls, collectionExists: true)).SyncAsync(CancellationToken.None);
 
-        Assert.Equal(["DELETE /Items/18da5b93435bf32b1375cc6efe0ca347"], calls.Where(call => call.StartsWith("DELETE", StringComparison.Ordinal)));
+        Assert.Equal(["DELETE /Items/" + CollectionId], calls.Where(call => call.StartsWith("DELETE", StringComparison.Ordinal)));
         Assert.Equal(0, _store.Collections[("jf", "movies")].Members);
         Assert.Null(_store.Collections[("jf", "movies")].Problem);
     }
@@ -232,7 +236,7 @@ public sealed class RetentionCollectionServiceTests
     public async Task A_jellyfin_that_does_not_answer_is_recorded_against_the_server_and_caught_up_when_it_does()
     {
         _store.Add(Rule("r1", RetentionLevels.Movie, "jf"));
-        await Mark("r1", "m1", ("jf", "78990f6a0a40212925e5c0f2d9bfb5d2", null));
+        await Mark("r1", "m1", ("jf", SintelId, null));
         var down = Deluno.Tests.Recorded.RecordedReplies.Jellyfin("not-answering").NotAnswering();
 
         await RealJellyfinService(down).SyncAsync(CancellationToken.None);

@@ -1,3 +1,4 @@
+using Deluno.Tests.Recorded;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Contracts;
@@ -23,7 +24,7 @@ namespace Deluno.Persistence.Tests.Integrations;
 /// </summary>
 public sealed class AClientThatAlreadyHasATorrentFromElsewhereIsLeftAloneTests
 {
-    private const string Hash = "0123456789abcdef0123456789abcdef01234567";
+    private static readonly string Hash = RecordedReplies.UnknownHash;
     private const string Release = "Arrival.2016.1080p.WEB";
 
     [Fact]

@@ -4,7 +4,7 @@ import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { api, expectNoErrorScreen, openScreen, recordRequests } from "../helpers/real";
 import { untilQuiet } from "../helpers/settle";
-import { loadRecording, startRecordedAppServer, type RecordedAppServer } from "../helpers/recorded-app-server";
+import { loadRecording, recordedHash, startRecordedAppServer, type RecordedAppServer } from "../helpers/recorded-app-server";
 
 /**
  * A film's page with a release to choose from, against the real server, nothing stubbed (measure 4, issue 1270). The indexer is
@@ -147,7 +147,7 @@ test.describe("A film's releases", () => {
   test("sending a release for a film that is already downloading asks first: Cancel sends nothing, and Send as well sends it", async ({ page }) => {
     await openMovie(page);
     const seeded = await api(page, "POST", "/api/testing/transfers/handoff", {
-      libraryId, mediaType: "movies", entityId: movieId, releaseName: "Sintel.2010.1080p.WEB-DL-OTHER", clientId, queueItemId: "69ca35bca234b9cb822abc435ddbababf6147591"
+      libraryId, mediaType: "movies", entityId: movieId, releaseName: "Sintel.2010.1080p.WEB-DL-OTHER", clientId, queueItemId: recordedHash("qbittorrent", "5.2.1", "downloading")
     });
     expect(seeded.status, JSON.stringify(seeded.body)).toBe(200);
     try {
@@ -189,7 +189,7 @@ test.describe("A film's releases", () => {
   test("a download sent for the film lists under Sent to downloads with Open In progress, which goes to In progress", async ({ page }) => {
     await openMovie(page);
     const seeded = await api(page, "POST", "/api/testing/transfers/handoff", {
-      libraryId, mediaType: "movies", entityId: movieId, releaseName: "Sintel.2010.1080p.WEB-DL-LIST", clientId, queueItemId: "69ca35bca234b9cb822abc435ddbababf6147591"
+      libraryId, mediaType: "movies", entityId: movieId, releaseName: "Sintel.2010.1080p.WEB-DL-LIST", clientId, queueItemId: recordedHash("qbittorrent", "5.2.1", "downloading")
     });
     expect(seeded.status, JSON.stringify(seeded.body)).toBe(200);
     try {

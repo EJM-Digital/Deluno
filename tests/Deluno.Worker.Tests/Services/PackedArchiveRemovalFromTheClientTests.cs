@@ -15,7 +15,7 @@ namespace Deluno.Worker.Tests.Services;
 /// </summary>
 public sealed class PackedArchiveRemovalFromTheClientTests
 {
-    private const string Hash = "3b1d84012faffbb5c3c8d00d92358d52f2c856eb";
+    private static readonly string Hash = RecordedReplies.Qbittorrent("finished-folder").Hash();
 
     /// <summary>A recorded qBittorrent that holds the download until the delete call arrives.</summary>
     private sealed class RecordedQbittorrent

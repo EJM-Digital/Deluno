@@ -23,7 +23,7 @@ public sealed class TransmissionGrabDuplicateTests
             .GrabAsync(Client(), Request(), CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
-        Assert.Equal("04d6d32adaa36ddd9877f0734a7027a4a0055042", result.ExternalId);
+        Assert.Equal(RecordedReplies.Transmission("duplicate-add").Hash(), result.ExternalId);
         Assert.True(result.IsDuplicateFollow);
         Assert.Contains("already holds this release", result.Message, StringComparison.Ordinal);
     }

@@ -1,3 +1,4 @@
+using Deluno.Tests.Recorded;
 using System.Net;
 using System.Text;
 using Deluno.Connections.Contracts;
@@ -37,7 +38,7 @@ public sealed class TransmissionCategoryFolderTests
 
         var result = await client.GrabAsync(
             Transmission(),
-            new DownloadClientGrabRequest("Pioneer.One.S01E01.720p", "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567", "tv", "TV", "Fixture"),
+            new DownloadClientGrabRequest("Pioneer.One.S01E01.720p", "magnet:?xt=urn:btih:" + RecordedReplies.UnknownHash + "", "tv", "TV", "Fixture"),
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);

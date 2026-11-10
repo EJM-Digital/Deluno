@@ -29,6 +29,23 @@ export function loadRecording(app: string, version: string, state: string): Reco
   return JSON.parse(fs.readFileSync(path.join(recordedRoot, app, version, `${state}.json`), "utf8")) as Recording;
 }
 
+/**
+ * The torrent info hash a recording is about, read from the recording so a test never copies it (#1535). A recording with no
+ * hash, or more than one when `index` is not given, fails with a message that names it.
+ */
+export function recordedHash(app: string, version: string, state: string, index = 0): string {
+  const found: string[] = [];
+  for (const exchange of loadRecording(app, version, state).exchanges) {
+    const text = JSON.stringify(exchange);
+    for (const match of text.matchAll(/(?<![0-9A-Fa-f])[0-9A-Fa-f]{40}(?![0-9A-Fa-f])/g)) {
+      if (!found.some((hash) => hash.toLowerCase() === match[0].toLowerCase())) found.push(match[0]);
+    }
+  }
+  const hash = found[index];
+  if (!hash) throw new Error(`${app} ${version} ${state} holds ${found.length} info hash(es), not ${index + 1}. The recording changed; update the test that reads it.`);
+  return hash;
+}
+
 export interface RecordedAppServer {
   readonly host: string;
   readonly port: number;

@@ -13,7 +13,7 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// </summary>
 public sealed class UTorrentEveryBranchTests
 {
-    private const string Hash = "d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c";
+    private static readonly string Hash = RecordedReplies.Qbittorrent("category-moved").Hash();
 
     internal static DownloadClientItem Item() => Client("utorrent", "user", "pw");
 
@@ -27,12 +27,12 @@ public sealed class UTorrentEveryBranchTests
         "null",
         "{\"build\":1,\"torrents\":[]}",
         "{\"build\":1,\"torrents\":[[]]}",
-        "{\"build\":1,\"torrents\":[[\"d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c\"]]}",
-        "{\"build\":1,\"torrents\":[[\"d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c\",201,\"Name\"]]}",
-        "{\"build\":1,\"torrents\":[[\"d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c\",\"x\",null,\"3\",\"y\",0,0,0,0,0]]}",
-        "{\"build\":1,\"files\":[\"d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c\"]}",
-        "{\"build\":1,\"files\":[\"d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c\",[[\"a/b.mkv\",100]]]}",
-        "{\"build\":1,\"files\":[\"d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c\",null]}",
+        "{\"build\":1,\"torrents\":[[\"" + RecordedReplies.Qbittorrent("category-moved").Hash() + "\"]]}",
+        "{\"build\":1,\"torrents\":[[\"" + RecordedReplies.Qbittorrent("category-moved").Hash() + "\",201,\"Name\"]]}",
+        "{\"build\":1,\"torrents\":[[\"" + RecordedReplies.Qbittorrent("category-moved").Hash() + "\",\"x\",null,\"3\",\"y\",0,0,0,0,0]]}",
+        "{\"build\":1,\"files\":[\"" + RecordedReplies.Qbittorrent("category-moved").Hash() + "\"]}",
+        "{\"build\":1,\"files\":[\"" + RecordedReplies.Qbittorrent("category-moved").Hash() + "\",[[\"a/b.mkv\",100]]]}",
+        "{\"build\":1,\"files\":[\"" + RecordedReplies.Qbittorrent("category-moved").Hash() + "\",null]}",
         "{\"build\":1,\"props\":[{}]}",
         "{\"build\":1,\"props\":[]}",
         "{\"build\":1,\"label\":[]}"

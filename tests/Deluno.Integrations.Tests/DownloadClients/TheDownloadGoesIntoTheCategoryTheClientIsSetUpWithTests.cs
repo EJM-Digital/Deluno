@@ -15,7 +15,7 @@ public sealed class TheDownloadGoesIntoTheCategoryTheClientIsSetUpWithTests
 {
     private const string MoviesCategory = "family-films";
     private const string TvCategory = "weekly-shows";
-    private const string Magnet = "magnet:?xt=urn:btih:8d878a21c3d4180ae08b4e044904667d9f30bec5&dn=Big.Buck.Bunny";
+    private static readonly string Magnet = "magnet:?xt=urn:btih:" + RecordedReplies.Qbittorrent("paused").Hash() + "&dn=Big.Buck.Bunny";
 
     [Theory]
     [InlineData("movies", MoviesCategory)]

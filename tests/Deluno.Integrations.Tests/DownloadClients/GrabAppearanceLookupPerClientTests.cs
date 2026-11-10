@@ -68,7 +68,7 @@ public sealed class GrabAppearanceLookupPerClientTests
     // ── Transmission ────────────────────────────────────────────────────────
 
     // Transmission keys a torrent on its hash.
-    private const string TransmissionHash = "ff7447384425ba526a3efb9efb792f7ba67a77dd";
+    private static readonly string TransmissionHash = RecordedReplies.Transmission("paused").Hash();
 
     [Fact]
     public async Task Transmission_found_under_its_own_category_is_reported_as_expected()
@@ -149,7 +149,7 @@ public sealed class GrabAppearanceLookupPerClientTests
     private static string RecordedDelugeTorrent(string name, string hash, string category)
         => RecordedReplies.Deluge("downloading").Body(
             "web.update_ui",
-            (">result.torrents.c8bd46949c0daee70a4abf5e3096df264b7ac60c", hash), ("result.torrents." + hash + ".name", name), ("result.torrents." + hash + ".label", category));
+            (">result.torrents." + RecordedReplies.Deluge("downloading").Hash() + "", hash), ("result.torrents." + hash + ".name", name), ("result.torrents." + hash + ".label", category));
 
     // ── uTorrent ────────────────────────────────────────────────────────────
 

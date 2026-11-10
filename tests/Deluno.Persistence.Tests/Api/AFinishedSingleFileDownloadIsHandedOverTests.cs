@@ -1,3 +1,4 @@
+using Deluno.Tests.Recorded;
 using System.Net.Http.Json;
 using Deluno.Filesystem;
 using Deluno.Integrations.DownloadClients;
@@ -26,7 +27,7 @@ namespace Deluno.Persistence.Tests.Api;
 public sealed class AFinishedSingleFileDownloadIsHandedOverTests
 {
     private const string Client = "qbittorrent-1";
-    private const string Hash = "d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c";
+    private static readonly string Hash = RecordedReplies.Qbittorrent("category-moved").Hash();
     private const string Indexer = "Spider-Man Homecoming (2017) 1080p H264 ITA ENG AC3 5.1 BluRay - LoZio - MIRCrew";
 
     private sealed record Scene(LibraryItem Library, string File, DownloadQueueItem Item);

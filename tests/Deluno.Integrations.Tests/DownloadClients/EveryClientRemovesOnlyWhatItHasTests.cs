@@ -43,7 +43,7 @@ public sealed class EveryClientRemovesOnlyWhatItHasTests
         });
     }
 
-    private const string Hash = "3b1d84012faffbb5c3c8d00d92358d52f2c856eb";
+    private static readonly string Hash = RecordedReplies.Qbittorrent("finished-folder").Hash();
 
     private static Rig RigFor(string app, bool has = true, bool keepsItAfterDelete = false, bool listingFails = false)
         => app switch
@@ -74,8 +74,8 @@ public sealed class EveryClientRemovesOnlyWhatItHasTests
         return app switch
         {
             "qbittorrent" => new QbittorrentDownloadClient(() => rig.Handler).ExecuteActionAsync(item, action, Hash, CancellationToken.None),
-            "transmission" => new TransmissionDownloadClient(new Factory(rig.Handler)).ExecuteActionAsync(item, action, "6c3e9edfdfed4f074f7a1ea1580dd68fa6bd06d2", CancellationToken.None),
-            "deluge" => new DelugeDownloadClient(new Factory(rig.Handler)).ExecuteActionAsync(item, action, "e9bd596b3856c07c12055a22bc5f6046a76d1328", CancellationToken.None),
+            "transmission" => new TransmissionDownloadClient(new Factory(rig.Handler)).ExecuteActionAsync(item, action, RecordedReplies.Transmission("finished-folder").Hash(), CancellationToken.None),
+            "deluge" => new DelugeDownloadClient(new Factory(rig.Handler)).ExecuteActionAsync(item, action, RecordedReplies.Deluge("finished-folder").Hash(), CancellationToken.None),
             _ => throw new ArgumentOutOfRangeException(nameof(app))
         };
     }

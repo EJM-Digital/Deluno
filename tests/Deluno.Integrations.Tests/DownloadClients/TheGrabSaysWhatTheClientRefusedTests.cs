@@ -18,7 +18,7 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// </summary>
 public sealed class TheGrabSaysWhatTheClientRefusedTests
 {
-    private const string Hash = "d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c";
+    private static readonly string Hash = RecordedReplies.Qbittorrent("category-moved").Hash();
     private const string Release = "Example.Movie.2026.1080p";
 
     private static DownloadClientGrabRequest Request()

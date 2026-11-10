@@ -92,7 +92,7 @@ public sealed class ProcessorHandoffSearchAgainTests
     [Fact]
     public async Task Giving_up_on_a_download_in_a_recorded_qbittorrent_removes_it_with_its_files_blocklists_it_and_searches_now()
     {
-        const string hash = "69ca35bca234b9cb822abc435ddbababf6147591";
+        var hash = RecordedReplies.Qbittorrent("downloading").Hash();
         const string release = "Pioneer.One.S01E01.1080p.WEB-DL.DDP5.1.H.264-DELUNO";
         await using var qbit = await RecordedAppServer.StartAsync(
             "qbittorrent",

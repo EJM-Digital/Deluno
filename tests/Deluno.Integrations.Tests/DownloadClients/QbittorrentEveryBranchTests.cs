@@ -15,7 +15,7 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// </summary>
 public sealed class QbittorrentEveryBranchTests
 {
-    private const string Finished = "d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c";
+    private static readonly string Finished = RecordedReplies.Qbittorrent("category-moved").Hash();
 
     private static readonly string[] BaseStates =
     [
@@ -68,7 +68,7 @@ public sealed class QbittorrentEveryBranchTests
         var added = RecordedReplies.Qbittorrent("finished-single-file").Find("torrents/add").Reply;
         Assert.True(QbittorrentDownloadClient.AnswerSaysItWasTaken("Ok.", Finished));
         Assert.True(QbittorrentDownloadClient.AnswerSaysItWasTaken(added.BodyWith(("success_count", 0)), Finished));
-        Assert.False(QbittorrentDownloadClient.AnswerSaysItWasTaken(added.BodyWith(("success_count", 0)), "0000000000000000000000000000000000000000"));
+        Assert.False(QbittorrentDownloadClient.AnswerSaysItWasTaken(added.BodyWith(("success_count", 0)), RecordedReplies.ZeroHash));
         Assert.True(QbittorrentDownloadClient.AnswerSaysItWasTaken(added.BodyWith(("added_torrent_ids.0", "nothing"), ("pending_count", 2), ("success_count", 0)), Finished));
         Assert.True(QbittorrentDownloadClient.AnswerSaysItWasTaken(added.BodyWith(("added_torrent_ids.0", "nothing"), ("pending_count", 0), ("success_count", 3)), Finished));
         Assert.False(QbittorrentDownloadClient.AnswerSaysItWasTaken(added.BodyWith(("added_torrent_ids.0", "nothing"), ("pending_count", 0), ("success_count", 0)), Finished));

@@ -113,7 +113,7 @@ public sealed class AddPausedGrabTests
 
     // ------------------------------------------------------------------ fixtures
 
-    private const string Magnet = "magnet:?xt=urn:btih:8d878a21c3d4180ae08b4e044904667d9f30bec5&dn=Big.Buck.Bunny";
+    private static readonly string Magnet = "magnet:?xt=urn:btih:" + RecordedReplies.Qbittorrent("paused").Hash() + "&dn=Big.Buck.Bunny";
 
     /// <summary>A client answering from the given recordings, keeping the body of every call it gets.</summary>
     private static HttpMessageHandler Capture(string app, List<string> sent, params Recording[] recordings)

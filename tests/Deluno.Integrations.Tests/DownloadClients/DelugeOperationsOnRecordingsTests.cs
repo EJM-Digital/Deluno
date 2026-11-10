@@ -15,8 +15,8 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// </summary>
 public sealed class DelugeOperationsOnRecordingsTests
 {
-    private const string Stalled = "b7b95339b09b0e7249d2b51ecc500b1650a18592";
-    private const string Finished = "d8185091144732e990e3595f7db0e4410b1d9424";
+    private static readonly string Stalled = RecordedReplies.Deluge("paused").Hash();
+    private static readonly string Finished = RecordedReplies.Deluge("duplicate-add").Hash();
 
     private static HttpMessageHandler Deluge(Calls calls) => calls.Build();
 

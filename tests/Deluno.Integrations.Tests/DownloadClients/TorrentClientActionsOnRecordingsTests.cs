@@ -13,9 +13,9 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// </summary>
 public sealed class TorrentClientActionsOnRecordingsTests
 {
-    private const string QbitHash = "2b989b4d477b273025b90f3743d314e92d11a8fa";
-    private const string TransmissionHash = "937e80abc22fab1cd6d130e04c63d6a3fef582ae";
-    private const string DelugeHash = "139422fdc923bb71e01c87542e8f517a07240837";
+    private static readonly string QbitHash = RecordedReplies.Qbittorrent("failed").Hash();
+    private static readonly string TransmissionHash = RecordedReplies.Transmission("failed").Hash();
+    private static readonly string DelugeHash = RecordedReplies.Deluge("failed").Hash();
 
     [Fact]
     public async Task A_recheck_of_a_qbittorrent_torrent_posts_torrents_recheck_with_its_hash_and_is_done()

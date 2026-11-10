@@ -16,7 +16,7 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// </summary>
 public sealed class EveryClientMethodKeepsItsContractOnARefusedLoginTests
 {
-    private const string Id = "b7b95339b09b0e7249d2b51ecc500b1650a18592";
+    private static readonly string Id = RecordedReplies.Deluge("paused").Hash();
 
     public static IEnumerable<object[]> Clients() => [["qbittorrent"], ["transmission"], ["deluge"], ["nzbget"], ["sabnzbd"]];
 

@@ -95,7 +95,7 @@ public sealed class ARefusedKeyOrLoginIsSaidPlainlyTests
         var handler = AnsweringEverythingWith(RecordedReplies.Qbittorrent("login-refused").Single.Reply);
 
         var result = await new QbittorrentDownloadClient(() => handler)
-            .ExecuteActionAsync(Client("qbittorrent", "deluno"), action, "8d878a21c3d4180ae08b4e044904667d9f30bec5", CancellationToken.None);
+            .ExecuteActionAsync(Client("qbittorrent", "deluno"), action, RecordedReplies.Qbittorrent("paused").Hash(), CancellationToken.None);
 
         AssertSaysSo(result, "qBittorrent refused Deluno's username and password; check them in the client's settings");
     }
@@ -124,7 +124,7 @@ public sealed class ARefusedKeyOrLoginIsSaidPlainlyTests
         var handler = AnsweringEverythingWith(RecordedReplies.Deluge("login-refused").Single.Reply);
 
         var result = await new DelugeDownloadClient(new Factory(handler))
-            .ExecuteActionAsync(Client("deluge"), action, "b7b95339b09b0e7249d2b51ecc500b1650a18592", CancellationToken.None);
+            .ExecuteActionAsync(Client("deluge"), action, RecordedReplies.Deluge("paused").Hash(), CancellationToken.None);
 
         AssertSaysSo(result, "Deluge refused Deluno's password; check it in the client's settings");
     }
@@ -169,7 +169,7 @@ public sealed class ARefusedKeyOrLoginIsSaidPlainlyTests
         var handler = AnsweringEverythingWith(RecordedReplies.Transmission("login-refused").Find("session-get").Reply);
 
         var result = await new TransmissionDownloadClient(new Factory(handler))
-            .ExecuteActionAsync(Client("transmission", "transmission"), action, "ff7447384425ba526a3efb9efb792f7ba67a77dd", CancellationToken.None);
+            .ExecuteActionAsync(Client("transmission", "transmission"), action, RecordedReplies.Transmission("paused").Hash(), CancellationToken.None);
 
         AssertSaysSo(result, "Transmission refused Deluno's username and password; check them in the client's settings");
     }

@@ -109,7 +109,7 @@ public sealed class SearchAndGrabRoutesAgainstRecordedAppsTests
 
         var candidate = Assert.Single(search.GetProperty("candidates").EnumerateArray());
         Assert.Equal("Sintel (2010) 720p BRRip x264 -YTS", candidate.GetProperty("releaseName").GetString());
-        Assert.StartsWith("magnet:?xt=urn:btih:A779FA758F2229586EEBC2E5960EB32FE5659596", candidate.GetProperty("downloadUrl").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("magnet:?xt=urn:btih:" + RecordedReplies.Jackett("search-movie-imdb").Hash() + "", candidate.GetProperty("downloadUrl").GetString(), StringComparison.OrdinalIgnoreCase);
         Assert.Empty(jackett.Unanswered);
         var history = await app.Client.GetFromJsonAsync<JsonElement>("/api/indexer-history");
         Assert.Contains(history.GetProperty("items").EnumerateArray(), item => item.GetProperty("eventType").GetString() == "search" && item.GetProperty("indexerId").GetString() == indexerId);
@@ -146,7 +146,7 @@ public sealed class SearchAndGrabRoutesAgainstRecordedAppsTests
         var grabbed = await grab.Content.ReadFromJsonAsync<JsonElement>();
         Assert.True(grabbed.GetProperty("succeeded").GetBoolean(), grabbed.ToString());
         var added = Assert.Single(qbit.Requests, request => request.Method == "POST" && request.PathAndQuery.EndsWith("torrents/add", StringComparison.Ordinal));
-        Assert.Contains("A779FA758F2229586EEBC2E5960EB32FE5659596", added.Body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(RecordedReplies.Jackett("search-movie-imdb").Hash(), added.Body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(jackett.Requests, request => request.PathAndQuery.StartsWith("/dl/", StringComparison.Ordinal));
         Assert.Empty(qbit.Unanswered);
         Assert.Empty(jackett.Unanswered);

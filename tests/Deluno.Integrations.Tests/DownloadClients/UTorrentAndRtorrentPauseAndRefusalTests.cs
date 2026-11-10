@@ -1,3 +1,4 @@
+using Deluno.Tests.Recorded;
 using System.Net;
 using Deluno.Connections.Contracts;
 using Deluno.Contracts;
@@ -18,7 +19,7 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// </summary>
 public sealed class UTorrentAndRtorrentPauseAndRefusalTests
 {
-    private const string Hash = "0123456789abcdef0123456789abcdef01234567";
+    private static readonly string Hash = RecordedReplies.UnknownHash;
 
     private static DownloadClientItem Client(string protocol)
         => new("client-1", protocol, protocol, "localhost", 8080, "user", "secret", "http://localhost:8080/", false, null,

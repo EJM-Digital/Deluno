@@ -163,7 +163,7 @@ public sealed class UTorrentStrikeRulesOnItsRecordedRepliesTests
     {
         var recording = RecordedReplies.Utorrent("finished-folder");
         var reply = recording.Exchanges.Last(e => e.Request.Path.Contains("action=getfiles", StringComparison.Ordinal)).Reply.Body!;
-        var files = await new UTorrentDownloadClient(() => new UTorrent("{}", reply)).GetFilesAsync(Client(), "88b7f3162f5b6f3dbb72c2bf2339fb3e51d793dc", CancellationToken.None);
+        var files = await new UTorrentDownloadClient(() => new UTorrent("{}", reply)).GetFilesAsync(Client(), RecordedReplies.Utorrent("finished-folder").Hash(), CancellationToken.None);
         Assert.NotNull(files);
         Assert.Equal(2, files.Count);
         return files;

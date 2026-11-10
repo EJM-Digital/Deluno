@@ -14,7 +14,7 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// </summary>
 public sealed class TransmissionIsKeyedOnTheTorrentHashTests
 {
-    private const string Hash = "0123456789abcdef0123456789abcdef01234567";
+    private static readonly string Hash = RecordedReplies.UnknownHash;
 
     [Fact]
     public async Task The_queue_files_a_torrent_by_its_hash_and_keeps_the_number_only_as_its_old_id()

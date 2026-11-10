@@ -13,7 +13,7 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// </summary>
 public sealed class DelugeAndUTorrentSayWhatTheyRefusedTests
 {
-    private const string Hash = "d8185091144732e990e3595f7db0e4410b1d9424";
+    private static readonly string Hash = RecordedReplies.Deluge("duplicate-add").Hash();
 
     private static DownloadClientGrabRequest Request(string? saveFolder = null)
         => new("Example.Movie.2024.1080p", $"magnet:?xt=urn:btih:{Hash}&dn=Example", "movies", "movies", "Fixture indexer") { SaveFolder = saveFolder };
@@ -96,7 +96,7 @@ public sealed class DelugeAndUTorrentSayWhatTheyRefusedTests
         Assert.Equal("core.set_torrent_options", refusal.Call);
         Assert.Equal("the save folder /golden/recorded/deluge/save", refusal.What);
         Assert.True(refusal.CanStopImport);
-        Assert.Equal("KeyError: '0000000000000000000000000000000000000000'", refusal.Reason);
+        Assert.Equal("KeyError: '" + RecordedReplies.ZeroHash + "'", refusal.Reason);
     }
 
     // ---- uTorrent's label, from label-refused ----

@@ -28,9 +28,9 @@ public sealed class EveryClientPausesAndResumesOnlyWhatItHasTests
 
     private const string SabId = "7690dfab-c8ad-4a5e-92cd-427a14ce4ea6";
     private const string NzbGetId = "26";
-    private const string QbitHash = "8d878a21c3d4180ae08b4e044904667d9f30bec5";
-    private const string TransmissionHash = "ff7447384425ba526a3efb9efb792f7ba67a77dd";
-    private const string DelugeHash = "b7b95339b09b0e7249d2b51ecc500b1650a18592";
+    private static readonly string QbitHash = RecordedReplies.Qbittorrent("paused").Hash();
+    private static readonly string TransmissionHash = RecordedReplies.Transmission("paused").Hash();
+    private static readonly string DelugeHash = RecordedReplies.Deluge("paused").Hash();
 
     private static string IdOf(string app) => app switch
     {

@@ -1,3 +1,4 @@
+using Deluno.Tests.Recorded;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -188,7 +189,7 @@ public sealed class TheSearchAndSendRoutesRefuseInPlainWordsTests
         var other = await RoutedLibraryAsync(app, "movies", "C Films Archive");
         var filmId = await AddFilmAsync(app, first);
         (await app.Client.PostAsJsonAsync($"/api/movies/{filmId}/libraries/", new { libraryId = second })).EnsureSuccessStatusCode();
-        var release = new { releaseName = "Sintel (2010) 720p BRRip x264 -YTS", downloadUrl = "magnet:?xt=urn:btih:A779FA758F2229586EEBC2E5960EB32FE5659596", candidateQuality = "Bluray 720p", sizeBytes = 143151596L, force = true, overrideReason = "You chose it." };
+        var release = new { releaseName = "Sintel (2010) 720p BRRip x264 -YTS", downloadUrl = "magnet:?xt=urn:btih:" + RecordedReplies.Jackett("search-movie-imdb").Hash() + "", candidateQuality = "Bluray 720p", sizeBytes = 143151596L, force = true, overrideReason = "You chose it." };
 
         var unknown = await app.Client.PostAsJsonAsync("/api/movies/no-such-film/grab", release);
         var ambiguous = await app.Client.PostAsJsonAsync($"/api/movies/{filmId}/grab", release);
@@ -212,7 +213,7 @@ public sealed class TheSearchAndSendRoutesRefuseInPlainWordsTests
         var filmId = await AddFilmAsync(app, library);
         object Release(bool force) => new
         {
-            releaseName = "Sintel (2010) 720p BRRip x264 -YTS", downloadUrl = "magnet:?xt=urn:btih:A779FA758F2229586EEBC2E5960EB32FE5659596",
+            releaseName = "Sintel (2010) 720p BRRip x264 -YTS", downloadUrl = "magnet:?xt=urn:btih:" + RecordedReplies.Jackett("search-movie-imdb").Hash() + "",
             candidateQuality = "Bluray 720p", sizeBytes = 143151596L, force, overrideReason = force ? "You chose this release." : null
         };
 

@@ -14,7 +14,9 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// </summary>
 public sealed class TorrentClientHandshakeAndAddsOnRecordingsTests
 {
-    private const string Magnet = "magnet:?xt=urn:btih:ff7447384425ba526a3efb9efb792f7ba67a77dd&dn=Example";
+    private static readonly string Magnet = "magnet:?xt=urn:btih:" + RecordedReplies.Transmission("paused").Hash() + "&dn=Example";
+    public static TheoryData<string> Addresses => new() { Magnet, Link };
+
     private const string Link = "http://indexer.test/download/1.torrent";
 
     private sealed class RecordedTap(HttpMessageHandler inner, List<(string Body, string? SessionId)> seen) : DelegatingHandler(inner)
@@ -62,8 +64,7 @@ public sealed class TorrentClientHandshakeAndAddsOnRecordingsTests
     }
 
     [Theory]
-    [InlineData(Magnet)]
-    [InlineData(Link)]
+    [MemberData(nameof(Addresses))]
     public async Task Transmission_is_given_a_link_or_a_magnet_as_the_filename_of_the_add(string address)
     {
         var calls = new Calls("transmission", [RecordedReplies.Transmission("settings"), RecordedReplies.Transmission("finished-single-file"), RecordedReplies.Transmission("label-set")]);

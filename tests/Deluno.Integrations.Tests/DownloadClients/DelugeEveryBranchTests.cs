@@ -14,7 +14,7 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// </summary>
 public sealed class DelugeEveryBranchTests
 {
-    private const string Hash = "d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c";
+    private static readonly string Hash = RecordedReplies.Qbittorrent("category-moved").Hash();
 
     private static DownloadClientItem Item() => Client("deluge", null, "deluge");
 
@@ -180,7 +180,7 @@ public sealed class DelugeEveryBranchTests
 
     private static string Full(string method, string body) => method switch
     {
-        "web.update_ui" => "{\"id\":2,\"result\":{\"torrents\":{\"d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c\":" + FullTorrent
+        "web.update_ui" => "{\"id\":2,\"result\":{\"torrents\":{\"" + RecordedReplies.Qbittorrent("category-moved").Hash() + "\":" + FullTorrent
             + ",\"f\":{\"state\":\"Seeding\",\"progress\":100,\"label\":\"tv\",\"save_path\":\"/same/\",\"move_completed\":true,\"move_completed_path\":\"/same\"},\"g\":{\"state\":\"Seeding\",\"progress\":100,\"move_completed\":false,\"save_path\":\"/x\",\"move_completed_path\":\"/y\"},\"h\":{\"state\":\"Seeding\",\"progress\":100,\"move_completed\":true,\"move_completed_path\":\"/y\"},\"e\":{\"state\":\"Seeding\",\"progress\":100,\"label\":\"movies\"},\"b\":{\"name\":\"Moving\",\"state\":\"Moving\",\"progress\":100,\"label\":\"tv\",\"save_path\":\"/x\",\"move_completed\":true,\"move_completed_path\":\"/y\"},\"c\":{},\"d\":{\"state\":\"Paused\",\"progress\":3,\"label\":\"movies\",\"message\":\"OK\"}}},\"error\":null}",
         "core.get_free_space" => "{\"id\":8,\"result\":123456789,\"error\":null}",
         "daemon.info" or "daemon.get_version" => "{\"id\":9,\"result\":\"2.2.0\",\"error\":null}",
@@ -188,8 +188,8 @@ public sealed class DelugeEveryBranchTests
         "label.get_labels" => "{\"id\":5,\"result\":[\"movies\",\"tv\",\"seeding\"],\"error\":null}",
         "label.get_options" => "{\"id\":12,\"result\":{\"apply_move_completed\":true,\"move_completed\":true,\"move_completed_path\":\"/labelfolder\"},\"error\":null}",
         "core.get_config_values" => "{\"id\":10,\"result\":{\"download_location\":\"/incomplete\",\"move_completed\":true,\"move_completed_path\":\"/final\"},\"error\":null}",
-        "core.get_session_state" => "{\"id\":9,\"result\":[\"d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c\"],\"error\":null}",
-        "core.add_torrent_file" or "core.add_torrent_magnet" or "core.add_torrent_url" => "{\"id\":2,\"result\":\"d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c\",\"error\":null}",
+        "core.get_session_state" => "{\"id\":9,\"result\":[\"" + RecordedReplies.Qbittorrent("category-moved").Hash() + "\"],\"error\":null}",
+        "core.add_torrent_file" or "core.add_torrent_magnet" or "core.add_torrent_url" => "{\"id\":2,\"result\":\"" + RecordedReplies.Qbittorrent("category-moved").Hash() + "\",\"error\":null}",
         "core.remove_torrent" => "{\"id\":3,\"result\":true,\"error\":null}",
         _ => "{\"id\":3,\"result\":null,\"error\":null}"
     };
@@ -208,7 +208,7 @@ public sealed class DelugeEveryBranchTests
         "odd" => "{\"id\":2,\"result\":{\"move_completed\":\"yes\",\"move_completed_path\":5,\"apply_move_completed\":0,\"label\":5,\"download_location\":5,\"files\":null,\"torrents\":null},\"error\":null}",
         "nomessage" => "{\"id\":2,\"result\":null,\"error\":{\"code\":4}}",
         "blankmessage" => "{\"id\":2,\"result\":null,\"error\":{\"message\":\"\",\"code\":4}}",
-        "error" => "{\"id\":2,\"result\":null,\"error\":{\"message\":\"Torrent already in session (D725BF5A29BCF10E3F7D2B8EBBB221B1FE0E783C)\",\"code\":4}}",
+        "error" => "{\"id\":2,\"result\":null,\"error\":{\"message\":\"Torrent already in session (" + RecordedReplies.Qbittorrent("category-moved").Hash() + ")\",\"code\":4}}",
         "keyerror" => "{\"id\":2,\"result\":null,\"error\":{\"message\":\"KeyError: 'x'\",\"code\":4}}",
         "refused" => "{\"id\":2,\"result\":null,\"error\":{\"message\":\"Plugin not enabled\",\"code\":4}}",
         "null" => "{\"id\":2,\"result\":null,\"error\":null}",

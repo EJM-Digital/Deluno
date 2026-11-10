@@ -1,3 +1,4 @@
+using Deluno.Tests.Recorded;
 using Deluno.Integrations.Processors;
 using Deluno.Platform.Contracts;
 using System.Net;
@@ -14,6 +15,8 @@ namespace Deluno.Integrations.Tests.Processors.WeirContract;
 /// </summary>
 public sealed class WeirPlainTextFiveHundredTests
 {
+    private static readonly string HandoffId = RecordedReplies.Deluno("events-completed").HexId(32);
+
     private static HttpMessageHandler Always500() => new Fixed(() =>
     {
         var response = new HttpResponseMessage(HttpStatusCode.InternalServerError) { Content = new StringContent("Internal Server Error") };
@@ -26,7 +29,7 @@ public sealed class WeirPlainTextFiveHundredTests
     [Fact]
     public async Task A_status_poll_answered_with_a_plain_text_500_is_unreachable_so_Deluno_asks_again()
     {
-        var status = await Service().GetHandoffStatusAsync(Connection, "01a1371c38837e979272e31cd3ce6c3a", CancellationToken.None);
+        var status = await Service().GetHandoffStatusAsync(Connection, HandoffId, CancellationToken.None);
 
         Assert.Equal(ProcessorAnswer.Unreachable, status.Answer);
     }
@@ -34,7 +37,7 @@ public sealed class WeirPlainTextFiveHundredTests
     [Fact]
     public async Task A_cancel_answered_with_a_plain_text_500_is_unreachable_so_the_hand_off_is_not_given_up_on()
     {
-        var result = await Service().CancelHandoffAsync(Connection, "01a1371c38837e979272e31cd3ce6c3a", CancellationToken.None);
+        var result = await Service().CancelHandoffAsync(Connection, HandoffId, CancellationToken.None);
 
         Assert.Equal(ProcessorAnswer.Unreachable, result.Answer);
     }
@@ -43,7 +46,7 @@ public sealed class WeirPlainTextFiveHundredTests
     public async Task An_outcome_answered_with_a_plain_text_500_stays_owed_and_is_sent_again()
     {
         var result = await Service().ReportOutcomeAsync(
-            Connection, "01a1371c38837e979272e31cd3ce6c3a", ProcessorHandoffOutcome.Imported, "/library/x.mkv", null, DateTimeOffset.UtcNow, CancellationToken.None);
+            Connection, HandoffId, ProcessorHandoffOutcome.Imported, "/library/x.mkv", null, DateTimeOffset.UtcNow, CancellationToken.None);
 
         Assert.Equal(ProcessorAnswer.Unreachable, result.Answer);
         Assert.False(result.Released);

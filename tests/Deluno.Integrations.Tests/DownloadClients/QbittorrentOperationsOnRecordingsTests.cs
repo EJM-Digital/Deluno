@@ -15,8 +15,8 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// </summary>
 public sealed class QbittorrentOperationsOnRecordingsTests
 {
-    private const string Finished = "d725bf5a29bcf10e3f7d2b8ebbb221b1fe0e783c";
-    private const string Stalled = "8d878a21c3d4180ae08b4e044904667d9f30bec5";
+    private static readonly string Finished = RecordedReplies.Qbittorrent("category-moved").Hash();
+    private static readonly string Stalled = RecordedReplies.Qbittorrent("paused").Hash();
 
     private static HttpClient SignInClient(HttpMessageHandler handler)
         => new(handler, disposeHandler: false) { BaseAddress = new Uri("http://localhost:8080/") };
@@ -125,7 +125,7 @@ public sealed class QbittorrentOperationsOnRecordingsTests
         var handler = RecordedReplies.Handler("qbittorrent", [RecordedReplies.Qbittorrent("sign-in"), RecordedReplies.Qbittorrent("version"), RecordedReplies.Qbittorrent("finished-folder")]);
 
         var files = await new QbittorrentDownloadClient(() => handler)
-            .GetFilesAsync(Client("qbittorrent", "deluno"), "3b1d84012faffbb5c3c8d00d92358d52f2c856eb", CancellationToken.None);
+            .GetFilesAsync(Client("qbittorrent", "deluno"), RecordedReplies.Qbittorrent("finished-folder").Hash(), CancellationToken.None);
 
         Assert.NotNull(files);
         Assert.NotEmpty(files);
@@ -181,7 +181,7 @@ public sealed class QbittorrentOperationsOnRecordingsTests
         var handler = calls.Build();
 
         var result = await new QbittorrentDownloadClient(() => handler)
-            .ExecuteActionAsync(Client("qbittorrent", "deluno"), DownloadClientActions.Delete, "0000000000000000000000000000000000000000", CancellationToken.None);
+            .ExecuteActionAsync(Client("qbittorrent", "deluno"), DownloadClientActions.Delete, RecordedReplies.ZeroHash, CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.False(calls.Sent("torrents/delete"), "nothing is deleted for a torrent the client does not have");
