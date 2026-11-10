@@ -176,6 +176,12 @@ public interface IDownloadTelemetrySnapshotStore
 
     /// <summary>Says the held capture is out of date (after a cleanup, say), so the next reader refreshes.</summary>
     void MarkStale();
+
+    /// <summary>
+    /// A person (or Deluno) removed this download and its client accepted it (#1538): it leaves the held capture at once,
+    /// and no reading taken before the client agrees brings it back. A store with nothing held has nothing to do.
+    /// </summary>
+    void Forget(string clientId, string queueItemId) { }
 }
 
 public sealed class DownloadTelemetrySnapshotStore : IDownloadTelemetrySnapshotStore
@@ -192,19 +198,30 @@ public sealed class DownloadTelemetrySnapshotStore : IDownloadTelemetrySnapshotS
     /// </summary>
     internal TimeSpan ColdWait { get; set; } = DefaultColdWait;
 
+    /// <summary>
+    /// How long a removed download stays hidden when its client never stops listing it. A client takes a moment to drop
+    /// a removed download (NZBGet lists it until a connection gives up), but not minutes; past this the client is believed.
+    /// </summary>
+    internal static readonly TimeSpan ForgetHold = TimeSpan.FromMinutes(2);
+
     private readonly SingleFlightSnapshot<DownloadTelemetryCapture> cell;
+    private readonly TimeProvider timeProvider;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTimeOffset> forgotten = new();
 
     public DownloadTelemetrySnapshotStore(
         IServiceScopeFactory scopeFactory,
         TimeProvider timeProvider,
         ILogger<DownloadTelemetrySnapshotStore> logger)
     {
+        this.timeProvider = timeProvider;
         cell = new SingleFlightSnapshot<DownloadTelemetryCapture>(
             async cancellationToken =>
             {
                 using var scope = scopeFactory.CreateScope();
                 var service = scope.ServiceProvider.GetRequiredService<IDownloadClientTelemetryService>();
-                return await service.CaptureAsync(cancellationToken);
+                // The moment this reading began: a removal accepted after it is newer than the reading.
+                var startedUtc = timeProvider.GetUtcNow();
+                return WithoutForgotten(await service.CaptureAsync(cancellationToken), startedUtc);
             },
             timeProvider,
             logger,
@@ -222,6 +239,71 @@ public sealed class DownloadTelemetrySnapshotStore : IDownloadTelemetrySnapshotS
         => cell.RefreshAsync(reuseWithin, cancellationToken);
 
     public void MarkStale() => cell.MarkStale();
+
+    public void Forget(string clientId, string queueItemId)
+    {
+        if (string.IsNullOrEmpty(queueItemId))
+        {
+            return;
+        }
+
+        var key = ForgetKey(clientId, queueItemId);
+        forgotten[key] = timeProvider.GetUtcNow();
+        cell.Update(capture => RemoveFrom(capture, new HashSet<string>([key], StringComparer.Ordinal)));
+    }
+
+    private static string ForgetKey(string clientId, string queueItemId)
+        => $"{clientId.ToLowerInvariant()}|{queueItemId.ToLowerInvariant()}";
+
+    /// <summary>
+    /// A reading that began before a removal was accepted can still list the download, and so can any later reading until the
+    /// client itself drops it. Those are hidden. The hold is let go as soon as a reading that began after the removal no longer
+    /// lists the download (the client agrees), so a download that comes back for real is shown, and after <see cref="ForgetHold"/>.
+    /// </summary>
+    private DownloadTelemetryCapture WithoutForgotten(DownloadTelemetryCapture capture, DateTimeOffset startedUtc)
+    {
+        if (forgotten.IsEmpty)
+        {
+            return capture;
+        }
+
+        var now = timeProvider.GetUtcNow();
+        var listed = capture.Overview.Clients
+            .SelectMany(client => client.Queue.Select(item => ForgetKey(client.ClientId, item.Id)))
+            .ToHashSet(StringComparer.Ordinal);
+        var hide = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (key, at) in forgotten.ToArray())
+        {
+            if (now - at > ForgetHold || (at <= startedUtc && !listed.Contains(key)))
+            {
+                forgotten.TryRemove(key, out _);
+            }
+            else
+            {
+                hide.Add(key);
+            }
+        }
+
+        return hide.Count == 0 ? capture : RemoveFrom(capture, hide);
+    }
+
+    private static DownloadTelemetryCapture RemoveFrom(DownloadTelemetryCapture capture, HashSet<string> keys)
+    {
+        var clients = capture.Overview.Clients
+            .Select(client =>
+            {
+                if (!client.Queue.Any(item => keys.Contains(ForgetKey(client.ClientId, item.Id))))
+                {
+                    return client;
+                }
+
+                var queue = client.Queue.Where(item => !keys.Contains(ForgetKey(client.ClientId, item.Id))).ToArray();
+                return client with { Queue = queue, Summary = DownloadQueueSummary.Of(queue) };
+            })
+            .ToArray();
+        var overview = capture.Overview with { Clients = clients, Summary = DownloadQueueSummary.Of(clients.SelectMany(client => client.Queue)) };
+        return capture with { Overview = overview };
+    }
 }
 
 /// <summary>

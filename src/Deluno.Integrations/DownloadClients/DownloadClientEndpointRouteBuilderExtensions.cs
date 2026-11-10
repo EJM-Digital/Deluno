@@ -576,12 +576,20 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] IgnoreDownloadHealthFindingRequest request,
             IDownloadHealthRepository platformRepository,
+            IDownloadTelemetrySnapshotStore snapshotStore,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
 
             var record = await platformRepository.IgnoreDownloadHealthFindingAsync(clientId, queueItemId, kind, request.DurationDays, cancellationToken);
+            if (record is not null)
+            {
+                // The finding is part of the held reading, so read again now: Dismiss takes it off the screen at once (#1538).
+                try { await snapshotStore.RefreshAsync(TimeSpan.Zero, cancellationToken); }
+                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException) { /* dismissed; the next pass shows it */ }
+            }
+
             return record is null ? Results.NotFound() : Results.Ok(record);
         });
 

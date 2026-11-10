@@ -1042,6 +1042,11 @@ public sealed class DownloadClientTelemetryService(
         {
             Failure = result.Failure
         };
+        if (actionResult.Succeeded && DownloadClientActions.RemovesTheDownload(action))
+        {
+            await ForgetRemovedDownloadAsync(client.Id, request.QueueItemId, cancellationToken);
+        }
+
         return !actionResult.Succeeded && actionResult.Failure is null
             ? actionResult with
             {
@@ -1055,6 +1060,16 @@ public sealed class DownloadClientTelemetryService(
                     attempts: result.Attempts)
             }
             : actionResult;
+    }
+
+    /// <summary>
+    /// A download left Deluno's view and the client accepted it (#1538). The held reading drops it now, so the next read of
+    /// Transfers does not list it until the clients are next polled, and the screens are told by push, so a row leaves at once.
+    /// </summary>
+    private async Task ForgetRemovedDownloadAsync(string clientId, string queueItemId, CancellationToken cancellationToken)
+    {
+        snapshotStore?.Forget(clientId, queueItemId);
+        await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishQueueItemRemovedAsync(queueItemId, cancellationToken));
     }
 
     public async Task<QueueRemovalResult> RemoveWithReasonAsync(
@@ -1267,6 +1282,9 @@ public sealed class DownloadClientTelemetryService(
             cancellationToken,
             queueRemovalTags);
 
+        // Every way a removal succeeds takes the download out of Deluno's view, including stopping tracking, which touches
+        // nothing at the client (#1538).
+        await ForgetRemovedDownloadAsync(client.Id, queueItemId, cancellationToken);
         return new QueueRemovalResult(client.Id, queueItemId, reason, true, message, blocklisted, searchStarted, dispatch?.EntityId, dispatch?.MediaType);
     }
 
