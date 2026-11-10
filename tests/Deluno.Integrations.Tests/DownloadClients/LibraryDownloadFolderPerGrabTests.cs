@@ -86,7 +86,7 @@ public sealed class LibraryDownloadFolderPerGrabTests
 
         using var pin = JsonDocument.Parse(sent[pinIndex]);
         var parameters = pin.RootElement.GetProperty("params");
-        Assert.Equal(RecordedReplies.Deluge("magnet-no-metadata").Hash(), Assert.Single(parameters[0].EnumerateArray()).GetString());
+        Assert.Equal(RecordedReplies.Deluge("magnet-no-metadata").Hash(0), Assert.Single(parameters[0].EnumerateArray()).GetString());
         Assert.True(parameters[1].GetProperty("move_completed").GetBoolean());
         Assert.Equal(LibraryFolder, parameters[1].GetProperty("move_completed_path").GetString());
     }

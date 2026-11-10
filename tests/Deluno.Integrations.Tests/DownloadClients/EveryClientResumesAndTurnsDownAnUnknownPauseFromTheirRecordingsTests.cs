@@ -101,7 +101,7 @@ public sealed class EveryClientResumesAndTurnsDownAnUnknownPauseFromTheirRecordi
             "transmission" => RecordedReplies.Transmission("pause-unknown-id"),
             _ => RecordedReplies.Deluge("pause-unknown-id")
         };
-        var id = app == "deluge" ? RecordedReplies.ZeroHash : RecordedReplies.ZeroHash;
+        var id = RecordedReplies.ZeroHash;
         var pauseSent = 0;
         var handler = RecordedReplies.Handler(app, [.. Opening(app), recording], (request, body) =>
         {

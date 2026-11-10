@@ -39,7 +39,7 @@ public sealed class UsenetClientOperationsOnRecordingsTests
             .GrabAsync(Client("sabnzbd", secret: "key"), Grab(), CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
-        Assert.Equal(RecordedReplies.Sabnzbd("category-moved").Guid(), result.ExternalId);
+        Assert.Equal(RecordedReplies.Sabnzbd("category-moved").Guid(0), result.ExternalId);
         var sent = QueryOf(Assert.Single(calls.Log));
         Assert.Equal("addurl", sent["mode"]);
         Assert.Equal(Url, sent["name"]);
@@ -79,7 +79,7 @@ public sealed class UsenetClientOperationsOnRecordingsTests
         var keyless = Client("sabnzbd", secret: null);
 
         var grab = await client.GrabAsync(keyless, Grab(), CancellationToken.None);
-        var pause = await client.ExecuteActionAsync(keyless, DownloadClientActions.Pause, RecordedReplies.Sabnzbd("category-moved").Guid(), CancellationToken.None);
+        var pause = await client.ExecuteActionAsync(keyless, DownloadClientActions.Pause, RecordedReplies.Sabnzbd("category-moved").Guid(0), CancellationToken.None);
         var resumeWhole = await client.ResumeClientAsync(keyless, CancellationToken.None);
 
         Assert.False(grab.Succeeded);
@@ -98,7 +98,7 @@ public sealed class UsenetClientOperationsOnRecordingsTests
         var handler = calls.Build();
 
         var result = await new SabnzbdDownloadClient(new Factory(handler))
-            .SetCategoryAsync(Client("sabnzbd", secret: "key"), RecordedReplies.Sabnzbd("category-moved").Guid(), "keep", null, CancellationToken.None);
+            .SetCategoryAsync(Client("sabnzbd", secret: "key"), RecordedReplies.Sabnzbd("category-moved").Guid(0), "keep", null, CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.Contains("does not support this action", result.Message);

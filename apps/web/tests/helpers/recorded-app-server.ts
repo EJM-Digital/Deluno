@@ -33,16 +33,23 @@ export function loadRecording(app: string, version: string, state: string): Reco
  * The torrent info hash a recording is about, read from the recording so a test never copies it (#1535). A recording with no
  * hash, or more than one when `index` is not given, fails with a message that names it.
  */
-export function recordedHash(app: string, version: string, state: string, index = 0): string {
+export function recordedHash(app: string, version: string, state: string, index?: number): string {
   const found: string[] = [];
   for (const exchange of loadRecording(app, version, state).exchanges) {
-    const text = JSON.stringify(exchange);
+    // The request's path and body and the reply's body, as the C# helper reads them; headers are left out.
+    const parts = [exchange.request, exchange.reply] as unknown as Array<Record<string, unknown>>;
+    const text = [parts[0].path, parts[0].body, parts[0].bodyText, parts[1].body, parts[1].bodyText]
+      .map((part) => (part === undefined || part === null ? "" : typeof part === "string" ? part : JSON.stringify(part)))
+      .join(" ");
     for (const match of text.matchAll(/(?<![0-9A-Fa-f])[0-9A-Fa-f]{40}(?![0-9A-Fa-f])/g)) {
       if (!found.some((hash) => hash.toLowerCase() === match[0].toLowerCase())) found.push(match[0]);
     }
   }
-  const hash = found[index];
-  if (!hash) throw new Error(`${app} ${version} ${state} holds ${found.length} info hash(es), not ${index + 1}. The recording changed; update the test that reads it.`);
+  if (index === undefined && found.length > 1) {
+    throw new Error(`${app} ${version} ${state} holds ${found.length} info hashes (${found.join(", ")}); say which one the test means.`);
+  }
+  const hash = found[index ?? 0];
+  if (!hash) throw new Error(`${app} ${version} ${state} holds ${found.length} info hash(es), not ${(index ?? 0) + 1}. The recording changed; update the test that reads it.`);
   return hash;
 }
 

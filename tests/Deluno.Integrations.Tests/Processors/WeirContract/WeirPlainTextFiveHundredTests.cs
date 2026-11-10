@@ -15,7 +15,7 @@ namespace Deluno.Integrations.Tests.Processors.WeirContract;
 /// </summary>
 public sealed class WeirPlainTextFiveHundredTests
 {
-    private static readonly string HandoffId = RecordedReplies.Deluno("events-completed").HexId(32);
+    private static readonly string HandoffId = RecordedReplies.Deluno("events-completed").HexId(32, 0);
 
     private static HttpMessageHandler Always500() => new Fixed(() =>
     {

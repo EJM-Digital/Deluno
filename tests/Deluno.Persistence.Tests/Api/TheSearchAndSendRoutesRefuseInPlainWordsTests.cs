@@ -228,11 +228,17 @@ public sealed class TheSearchAndSendRoutesRefuseInPlainWordsTests
         Assert.Equal("Sintel (2010) 720p BRRip x264 -YTS", (await forced.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("releaseName").GetString());
     }
 
+    // The last one is a magnet missing its "?" after "magnet:"; its hash is the one the Jackett recording holds (#1535).
+    public static TheoryData<string> NotAnAddress => new()
+    {
+        "not a link at all",
+        "/relative/path.torrent",
+        "ftp://indexer.example/get/1",
+        "magnet:xt=urn:btih:" + RecordedReplies.Jackett("search-movie-imdb").Hash()
+    };
+
     [Theory]
-    [InlineData("not a link at all")]
-    [InlineData("/relative/path.torrent")]
-    [InlineData("ftp://indexer.example/get/1")]
-    [InlineData("magnet:xt=urn:btih:A779FA758F2229586EEBC2E5960EB32FE5659596")]
+    [MemberData(nameof(NotAnAddress))]
     public async Task A_release_whose_download_link_is_not_an_address_a_client_can_take_is_refused_400_in_plain_words_for_a_film_and_a_show_and_nothing_is_sent(string link)
     {
         var grabs = new CountingGrabs();

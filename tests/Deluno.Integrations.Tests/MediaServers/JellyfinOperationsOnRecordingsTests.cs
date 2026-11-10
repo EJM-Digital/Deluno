@@ -251,7 +251,7 @@ public sealed class JellyfinOperationsOnRecordingsTests
     public async Task A_collection_a_person_edited_by_hand_is_put_back_its_description_is_set_again_and_a_member_added_by_hand_is_taken_out()
     {
         var jellyfin = new Jellyfin();
-        var added = RecordedReplies.Jellyfin("catalogue-series").IdNamed("Recorded Show");
+        var added = RecordedReplies.Jellyfin("catalogue-series").IdNamed("Recorded Show", "Series");
         var client = jellyfin.Client((request, _) =>
         {
             var recorded = RecordedReplies.Jellyfin("collection-sync");

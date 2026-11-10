@@ -46,7 +46,7 @@ public sealed class SabnzbdAnswersAnAddOfADuplicateLikeAnyOtherAddTests
         var snapshot = await new SabnzbdDownloadClient(new Factory(handler)).GetSnapshotAsync(Client(), DateTimeOffset.UtcNow, CancellationToken.None);
 
         Assert.NotEmpty(snapshot!.Queue);
-        Assert.Contains(snapshot.Queue, item => item.Id == RecordedReplies.Sabnzbd("category-moved").Guid() && item.Status == DownloadQueueStatuses.Paused);
+        Assert.Contains(snapshot.Queue, item => item.Id == RecordedReplies.Sabnzbd("category-moved").Guid(0) && item.Status == DownloadQueueStatuses.Paused);
         // The recorded queue is paused as a whole, so the waiting job reads Paused, not Queued (#1414);
     }
 }

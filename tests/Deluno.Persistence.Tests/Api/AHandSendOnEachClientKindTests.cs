@@ -146,7 +146,7 @@ public sealed class AHandSendOnEachClientKindTests
 
         public override bool Usenet => false;
 
-        public override string Hash => RecordedReplies.Deluge("magnet-no-metadata").Hash();
+        public override string Hash => RecordedReplies.Deluge("magnet-no-metadata").Hash(0);
 
         public override Task<RecordedAppServer> StartAsync()
         {
